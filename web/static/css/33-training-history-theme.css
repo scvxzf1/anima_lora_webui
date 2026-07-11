@@ -612,3 +612,30 @@
     background: color-mix(in srgb, var(--training-danger) 12%, transparent);
     color: var(--training-danger);
 }
+
+
+#tab-training .history-config-group-toggle {
+    border: 1px solid var(--training-border);
+    border-radius: 4px;
+    background: var(--training-field-bg);
+    color: var(--training-text-dim, var(--text-dim));
+    font-size: 0.66rem;
+    line-height: 1.2;
+    min-height: 22px;
+    padding: 0.12rem 0.32rem;
+}
+#tab-training .history-config-group-toggle:hover,
+#tab-training .history-config-group-card.is-expanded .history-config-group-toggle {
+    border-color: color-mix(in srgb, var(--training-accent) 48%, var(--training-border));
+    color: var(--training-accent);
+}
+#tab-training .history-config-group-collapse-summary {
+    border-color: color-mix(in srgb, var(--training-border) 80%, transparent);
+    background: color-mix(in srgb, var(--training-field-bg) 86%, transparent);
+    color: var(--training-text-dim, var(--text-dim));
+}
+#tab-training .history-config-group-collapse-summary:hover {
+    border-color: color-mix(in srgb, var(--training-accent) 48%, var(--training-border));
+    background: color-mix(in srgb, var(--training-accent) 8%, var(--training-field-bg));
+    color: var(--training-accent);
+}

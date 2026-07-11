@@ -12,19 +12,20 @@ import {
     historyTaskIds,
     historyTaskIsArchived,
     selectedHistoryTasks,
-} from '../helpers/history-collections-bridge.js?v=module-bootstrap-20260711-ir2';
-import { clearHistoryManagerDetail, configureHistoryTaskActionsBridge, isHistoryDetailDialogOpen, loadConfigGroupTimeline, loadHistoryTask, openSidebarHistoryTask, renderHistoryManagerDetail, showHistoryCollectionSelectDialog, showHistoryTaskConfirmDialog, showHistoryTaskDialog, showHistoryTaskMessageDialog } from '../helpers/history-task-actions-bridge.js?v=module-bootstrap-20260711-ir2';
-import { isHistoryReviewMode } from '../helpers/history-detail-bridge.js?v=module-bootstrap-20260711-ir2';
-import { historyStateLabel } from '../helpers/history-timeline-bridge.js?v=module-bootstrap-20260711-ir2';
-import { loadTrainingHistoryList, uniqueStringList } from '../helpers/history-list-bridge.js?v=module-bootstrap-20260711-ir2';
-import { api } from '../helpers/runtime-bridge.js?v=module-bootstrap-20260711-ir2';
-import { getHistoryState } from '../helpers/history-state-bridge.js?v=module-bootstrap-20260711-ir2';
+} from '../helpers/history-collections-bridge.js?v=module-bootstrap-20260711-ir6';
+import { clearHistoryManagerDetail, configureHistoryTaskActionsBridge, isHistoryDetailDialogOpen, loadConfigGroupTimeline, loadHistoryTask, openSidebarHistoryTask, renderHistoryManagerDetail, showHistoryCollectionSelectDialog, showHistoryTaskConfirmDialog, showHistoryTaskDialog, showHistoryTaskMessageDialog } from '../helpers/history-task-actions-bridge.js?v=module-bootstrap-20260711-ir6';
+import { isHistoryReviewMode } from '../helpers/history-detail-bridge.js?v=module-bootstrap-20260711-ir6';
+import { historyStateLabel } from '../helpers/history-timeline-bridge.js?v=module-bootstrap-20260711-ir6';
+import { loadTrainingHistoryList, uniqueStringList } from '../helpers/history-list-bridge.js?v=module-bootstrap-20260711-ir6';
+import { api } from '../helpers/runtime-bridge.js?v=module-bootstrap-20260711-ir6';
+import { getHistoryState } from '../helpers/history-state-bridge.js?v=module-bootstrap-20260711-ir6';
 
 const historyState = getHistoryState();
 
     export function createHistoryTaskItem(task) {
         const card = document.createElement('article');
         card.className = 'task-history-item';
+        card.dataset.taskId = String(task.id || '');
         if (task.id === historyState.viewingHistoryTaskId && isHistoryReviewMode()) card.classList.add('active');
         const archived = historyTaskIsArchived(task);
         if (archived) card.classList.add('archived');

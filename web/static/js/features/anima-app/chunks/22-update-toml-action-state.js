@@ -2,25 +2,25 @@
  * Mechanical split from the former monolithic app closure.
  * Keep this module focused; move newly edited behavior into domain modules.
  */
-import { isLiveRunningState } from '../../live-training/index.js?v=module-bootstrap-20260711-ir2';
-import { VARIANT_METHOD_FAMILY } from '../../../config/catalog.js?v=module-bootstrap-20260711-ir2';
+import { isLiveRunningState } from '../../live-training/index.js?v=module-bootstrap-20260711-ir6';
+import { VARIANT_METHOD_FAMILY } from '../../../config/catalog.js?v=module-bootstrap-20260711-ir6';
 import {
     configTrainingSourceMode,
     trainingSourceLaunchReadiness,
-} from '../helpers/training-source-bridge.js?v=module-bootstrap-20260711-ir2';
-import { showHistoryTaskInputDialog } from '../helpers/history-task-actions-bridge.js?v=module-bootstrap-20260711-ir2';
-import { loadTomlFileList } from '../helpers/toml-manager-bridge.js?v=module-bootstrap-20260711-ir2';
-import { getMovableTomlGroups } from '../helpers/toml-actions-bridge.js?v=module-bootstrap-20260711-ir2';
-import { configureTomlActionStateBridge } from '../helpers/toml-action-state-bridge.js?v=module-bootstrap-20260711-ir2';
-import { loadConfig } from '../helpers/app-shell-startup-bridge.js?v=module-bootstrap-20260711-ir2';
-import { currentFormConfigFile, hasPendingConfigChanges, hasUnsavedFormChanges, isTomlDirty, showAppConfirmDialog, updateTomlDirtyState } from '../helpers/toml-selection-bridge.js?v=module-bootstrap-20260711-ir2';
-import { api, populateSelect, val } from '../helpers/runtime-bridge.js?v=module-bootstrap-20260711-ir2';
-import { getTomlState } from '../helpers/toml-state-bridge.js?v=module-bootstrap-20260711-ir2';
-import { getTrainingState } from '../helpers/training-state-bridge.js?v=module-bootstrap-20260711-ir2';
-import { reorderTomlFileGroups } from '../helpers/toml-io-bridge.js?v=module-bootstrap-20260711-ir2';
-import { currentTrainingConfigFile } from '../helpers/preflight-dialog-bridge.js?v=module-bootstrap-20260711-ir2';
-import { renderTomlFileGroups } from '../helpers/toml-drag-bridge.js?v=module-bootstrap-20260711-ir2';
-import { rememberSelectionSnapshot } from './13-update-dataset-editor-rows-setting-value.js?v=module-bootstrap-20260711-ir2';
+} from '../helpers/training-source-bridge.js?v=module-bootstrap-20260711-ir6';
+import { showHistoryTaskInputDialog } from '../helpers/history-task-actions-bridge.js?v=module-bootstrap-20260711-ir6';
+import { loadTomlFileList } from '../helpers/toml-manager-bridge.js?v=module-bootstrap-20260711-ir6';
+import { getMovableTomlGroups } from '../helpers/toml-actions-bridge.js?v=module-bootstrap-20260711-ir6';
+import { configureTomlActionStateBridge } from '../helpers/toml-action-state-bridge.js?v=module-bootstrap-20260711-ir6';
+import { loadConfig } from '../helpers/app-shell-startup-bridge.js?v=module-bootstrap-20260711-ir6';
+import { currentFormConfigFile, hasPendingConfigChanges, hasUnsavedFormChanges, isTomlDirty, showAppConfirmDialog, updateTomlDirtyState } from '../helpers/toml-selection-bridge.js?v=module-bootstrap-20260711-ir6';
+import { api, populateSelect, val } from '../helpers/runtime-bridge.js?v=module-bootstrap-20260711-ir6';
+import { getTomlState } from '../helpers/toml-state-bridge.js?v=module-bootstrap-20260711-ir6';
+import { getTrainingState } from '../helpers/training-state-bridge.js?v=module-bootstrap-20260711-ir6';
+import { reorderTomlFileGroups } from '../helpers/toml-io-bridge.js?v=module-bootstrap-20260711-ir6';
+import { currentTrainingConfigFile } from '../helpers/preflight-dialog-bridge.js?v=module-bootstrap-20260711-ir6';
+import { renderTomlFileGroups } from '../helpers/toml-drag-bridge.js?v=module-bootstrap-20260711-ir6';
+import { rememberSelectionSnapshot } from './13-update-dataset-editor-rows-setting-value.js?v=module-bootstrap-20260711-ir6';
 
 const tomlState = getTomlState();
 const trainingState = getTrainingState();

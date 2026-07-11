@@ -2,9 +2,13 @@
  * Compatibility shim.
  * Domain truth: js/features/history-list/collections-workbench.js
  */
-import { configureHistoryCollectionsBridge } from '../helpers/history-collections-bridge.js?v=module-bootstrap-20260711-ir2';
+import { configureHistoryCollectionsBridge } from '../helpers/history-collections-bridge.js?v=module-bootstrap-20260711-ir6';
 import {
     renderHistoryCollectionsWorkbench,
+    refreshHistoryWorkbenchConfigPanel,
+    selectHistoryCollectionInWorkbench,
+    toggleHistoryConfigGroupExpanded,
+    isHistoryConfigGroupExpanded,
     renderHistoryManagerStats,
     applyHistoryStatFilter,
     historyStatFilterIsActive,
@@ -29,10 +33,14 @@ import {
     compactHistoryResumeLabel,
     createHistoryMoreActions,
     selectedHistoryConfigGroups,
-} from '../../history-list/collections-workbench.js?v=module-bootstrap-20260711-ir2';
+} from '../../history-list/collections-workbench.js?v=module-bootstrap-20260711-ir6';
 
 export {
     renderHistoryCollectionsWorkbench,
+    refreshHistoryWorkbenchConfigPanel,
+    selectHistoryCollectionInWorkbench,
+    toggleHistoryConfigGroupExpanded,
+    isHistoryConfigGroupExpanded,
     renderHistoryManagerStats,
     applyHistoryStatFilter,
     historyStatFilterIsActive,
@@ -57,10 +65,14 @@ export {
     compactHistoryResumeLabel,
     createHistoryMoreActions,
     selectedHistoryConfigGroups,
-} from '../../history-list/collections-workbench.js?v=module-bootstrap-20260711-ir2';
+} from '../../history-list/collections-workbench.js?v=module-bootstrap-20260711-ir6';
 
 configureHistoryCollectionsBridge({
         renderHistoryCollectionsWorkbench,
+        refreshHistoryWorkbenchConfigPanel,
+        selectHistoryCollectionInWorkbench,
+        toggleHistoryConfigGroupExpanded,
+        isHistoryConfigGroupExpanded,
         renderHistoryManagerStats,
         applyHistoryStatFilter,
         historyStatFilterIsActive,

@@ -2567,7 +2567,8 @@ def test_file_group_drag_has_pointer_fallback() -> None:
 
     assert len(re.findall(r"\bregisterFileGroupDropTarget\(", drop_targets)) == 4
     assert "position: 'inside'" in drop_targets
-    assert "configFileDropIndex(group, targetFile, placeAfter, payload.file)" in drop_targets
+    assert "resolveFileGroupRowPlacement" in source
+    assert "configFileDropIndex(group, targetFile, placeAfter, payload.file)" in source
     assert "configGroupDropIndex(options.getSortableGroups(), group.id, placeAfter, payload.groupId)" in drop_targets
     assert "clearFileGroupDropTarget(row);" in drop_targets
     assert "clearFileGroupDropTarget(list);" in drop_targets
@@ -2577,6 +2578,40 @@ def test_file_group_drag_has_pointer_fallback() -> None:
     assert ".file-group-drag-image-pointer" in css
     assert ".file-group-drop-preview" in css
     assert "position: fixed;" in css
+
+
+def test_file_group_drop_targets_resolve_shared_helpers_and_prefer_rows() -> None:
+    """数据集/配置列表拖拽落点必须和预览一致，不能被拆模块后的缺失依赖或列表容器抢占。"""
+    targets = (STATIC_DIR / "js/features/toml-manager/file-group-drag-targets.js").read_text(encoding="utf-8")
+    core = (STATIC_DIR / "js/features/toml-manager/file-group-drag-core.js").read_text(encoding="utf-8")
+
+    # 拆模块后 targets 必须显式拿到 drag state 与 closest 工具，原生 dragover/drop 才不会静默失效。
+    assert "import { getDatasetState }" in targets or "getDatasetState" in targets
+    assert "function currentFileGroupDragState()" in targets
+    assert "eventTargetClosest" in targets
+    assert "originClosest" in targets
+    assert "export function originClosest" in core or "export function eventTargetClosest" in core
+
+    # 同组排序必须按“排除拖动项后的中点插入下标”计算，松手时还要按最终坐标重算，避免卡在旧落点。
+    assert "function resolveFileGroupRowPlacement" in targets or "function resolveFileGroupListDropTarget" in targets
+    assert "resolveFileGroupRowPlacement" in targets
+    assert "mid" in targets or "height / 2" in targets
+    assert "recompute" in core or "resolveFileGroupPointerDropTarget(moveEvent.clientX, moveEvent.clientY)" in core
+    assert "finishFileGroupPointerDrag" in core
+    assert "resolveFileGroupPointerDropTarget(" in core
+    # 松手阶段必须用 up 事件坐标重算，而不是只信拖动过程中的 currentDrop。
+    assert "resolveFileGroupPointerDropTarget(upEvent.clientX, upEvent.clientY)" in core or "resolveFileGroupPointerDropTarget(event.clientX, event.clientY)" in core or "finalX" in core
+    assert "configFileDropIndex(group, targetFile, placeAfter, payload.file)" in targets
+    assert "fileGroupDropTargetPriority" in core
+
+
+def test_config_file_drop_index_matches_same_group_midpoint_insert() -> None:
+    """同组 1..5 拖动时，插入下标必须与排除拖动项后的目标位置一致。"""
+    core = (STATIC_DIR / "js/features/toml-manager/file-group-drag-core.js").read_text(encoding="utf-8")
+    assert "export function configFileDropIndex(group, targetFile, placeAfter, draggedFile)" in core
+    assert "path !== draggedFile" in core
+    # 明确保留“先剔除拖动项再算 before/after 下标”，避免同组 off-by-one。
+    assert "return targetIndex + (placeAfter ? 1 : 0);" in core
 
 
 def test_dataset_preset_manager_is_isolated_from_config_page() -> None:

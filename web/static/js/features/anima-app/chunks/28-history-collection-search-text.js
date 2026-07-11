@@ -6,14 +6,14 @@ import {
     HISTORY_CONFIG_GROUP_DRAG_MIME,
     HISTORY_TASK_DRAG_MIME,
     HISTORY_UNGROUPED_COLLECTION_KEY,
-} from '../helpers/app-constants.js?v=module-bootstrap-20260711-ir2';
+} from '../helpers/app-constants.js?v=module-bootstrap-20260711-ir6';
 import {
     closeHistoryDropPopover,
     configureHistoryCollectionDragBridge,
     historyDraggedTasksAlreadyInCollection,
     reorderHistoryConfigGroupValue,
     setHistoryDropFeedback,
-} from '../helpers/history-collection-drag-bridge.js?v=module-bootstrap-20260711-ir2';
+} from '../helpers/history-collection-drag-bridge.js?v=module-bootstrap-20260711-ir6';
 import {
     applyHistoryTaskIdsToCollection,
     configureHistoryCollectionsBridge,
@@ -25,9 +25,9 @@ import {
     historyGroupDisplayLabel,
     historyTaskSearchText,
     historyTaskIds,
-} from '../helpers/history-collections-bridge.js?v=module-bootstrap-20260711-ir2';
-import { renderHistoryManager, uniqueStringList } from '../helpers/history-list-bridge.js?v=module-bootstrap-20260711-ir2';
-import { getHistoryState } from '../helpers/history-state-bridge.js?v=module-bootstrap-20260711-ir2';
+} from '../helpers/history-collections-bridge.js?v=module-bootstrap-20260711-ir6';
+import { renderHistoryManager, uniqueStringList } from '../helpers/history-list-bridge.js?v=module-bootstrap-20260711-ir6';
+import { getHistoryState } from '../helpers/history-state-bridge.js?v=module-bootstrap-20260711-ir6';
 
 const historyState = getHistoryState();
 

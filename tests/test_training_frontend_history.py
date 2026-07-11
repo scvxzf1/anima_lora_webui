@@ -571,8 +571,15 @@ def test_history_manager_frontend_hooks_are_present() -> None:
     assert "main.addEventListener('click', () => loadHistoryTask(task.id))" in manager_row_section
     assert "createHistoryActionButton('查看', () => loadHistoryTask(task.id))" in manager_row_section
     assert "function openSidebarHistoryTask" in source
-    assert "renderHistoryTask(payload);" in source
+    assert "renderHistoryTask(payload, { stickLogsToBottom: true });" in source
     assert "historyState.historyViewMode = 'task';" in source
+    sidebar_history_state = _frontend_module_text("js/features/anima-app/state/history-state.js")
+    assert "sidebarHistoryPayloadCache: new Map()" in sidebar_history_state
+    assert "sidebarHistoryRequestId: 0" in sidebar_history_state
+    assert "syncRecentHistorySidebarSelection()" in source
+    assert "rememberSidebarHistoryPayload" in source
+    assert "SIDEBAR_HISTORY_LOG_RENDER_LIMIT" in source
+    assert "if (requestId !== historyState.sidebarHistoryRequestId) return;" in source
     assert "await openSidebarHistoryTask(historyState.viewingHistoryTaskId);" in source
     assert "showTrainingView('history')" not in load_task_section
     assert "renderHistoryTask(payload)" not in load_task_section
@@ -890,6 +897,16 @@ def test_history_collection_drag_drop_frontend_hooks_are_present() -> None:
     )
     collection_card = _section(card_impl, "function createHistoryCollectionWorkbenchCard", "function createHistoryConfigGroupWorkbenchCard")
     config_card = _section(card_impl, "function createHistoryConfigGroupWorkbenchCard", "function historyCollectionNamesForTasks")
+    config_card_module = _frontend_module_text("js/features/history-list/workbench-config-group-card.js")
+    order_module = _frontend_module_text("js/features/history-list/workbench-order.js")
+
+    # Regression: config-group cards must import the storage-key helper they call at render time.
+    # Missing this import crashes history workbench rendering and surfaces as
+    # "historyCollectionStorageKey is not defined" when opening task preview/detail.
+    assert "export function historyCollectionStorageKey" in order_module
+    assert "historyCollectionStorageKey," in config_card_module
+    assert "from './workbench-order.js" in config_card_module
+    assert "card.dataset.collectionKey = historyCollectionStorageKey(options.collection || '__all__');" in config_card
 
     assert "export const HISTORY_TASK_DRAG_MIME = 'application/x-anima-history-task-ids';" in app_constants
     assert "export const HISTORY_COLLECTION_DRAG_MIME = 'application/x-anima-history-collection';" in app_constants
@@ -1455,6 +1472,64 @@ def test_history_detail_config_files_are_tool_ready() -> None:
     assert ".history-detail-kv > div" in css
     assert ".history-detail-kv div" not in css
 
+def test_history_collection_switch_uses_partial_refresh() -> None:
+    """Switching collection nav should refresh left config panel without full workbench rebuild."""
+    workbench = _frontend_module_text("js/features/history-list/collections-workbench.js")
+    collection_card = _frontend_module_text("js/features/history-list/workbench-collection-card.js")
+    config_card = _frontend_module_text("js/features/history-list/workbench-config-group-card.js")
+    chunked = _frontend_module_text("js/features/history-list/chunked-render.js")
+    fill = _frontend_module_text("js/features/history-list/workbench-chunk-fill.js")
+    history_state = _frontend_module_text("js/features/anima-app/state/history-state.js")
+    open_section = _section(collection_card, "export function createHistoryCollectionWorkbenchCard", "const head = document.createElement('div');")
+
+    assert "expandedHistoryConfigGroupKeys: new Set()" in history_state
+    assert "historyWorkbenchCollectionsCache: null" in history_state
+    assert "export function selectHistoryCollectionInWorkbench" in workbench
+    assert "export function refreshHistoryWorkbenchConfigPanel" in workbench
+    assert "selectHistoryCollectionInWorkbench(collection.key);" in open_section
+    assert "renderHistoryManager();" not in open_section
+    assert "configOnly = false" in fill
+    assert "const node = createNode(source[index], index);" in chunked
+    assert "toggleHistoryConfigGroupExpanded" in config_card
+    assert "createHistoryManagerGroupButton(" in config_card
+    assert "history-config-group-collapse-summary" in config_card
+    assert "isHistoryConfigGroupExpanded(group, options.collection)" in config_card
+
+
+def test_sidebar_history_switch_avoids_full_list_rerender() -> None:
+    """Sidebar task switching should reuse selection sync/cache instead of rebuilding the list every time."""
+    task_dialogs = _frontend_module_text("js/features/history-list/task-dialogs.js")
+    history_list = _frontend_module_text("js/features/history-list/list.js")
+    history_state = _frontend_module_text("js/features/anima-app/state/history-state.js")
+    task_item = _frontend_feature_text(
+        "js/features/anima-app/chunks/33-create-history-task-item.js",
+    )
+    open_section = _section(task_dialogs, "async function openSidebarHistoryTask", "async function refreshHistoryView")
+
+    assert "sidebarHistoryPayloadCache: new Map()" in history_state
+    assert "sidebarHistoryRequestId: 0" in history_state
+    assert "function syncRecentHistorySidebarSelection" in history_list
+    assert "card.dataset.taskId" in task_item
+    assert "syncRecentHistorySidebarSelection();" in open_section
+    assert "renderTrainingHistoryList();" not in open_section
+    assert "rememberSidebarHistoryPayload(id, payload);" in open_section
+    assert "if (requestId !== historyState.sidebarHistoryRequestId) return;" in open_section
+    assert "sidebarHistoryLogLines" in task_dialogs
+    assert "SIDEBAR_HISTORY_LOG_RENDER_LIMIT" in task_dialogs
+    assert "export function renderHistoryTask(payload, options = {})" in task_dialogs
+    assert "renderLogOutputLines(logLines, { stickToBottom: options.stickLogsToBottom !== false });" in task_dialogs
+
+
+def test_history_config_group_card_imports_storage_key() -> None:
+    """Config-group cards must import historyCollectionStorageKey from workbench-order."""
+    config_card = _frontend_module_text("js/features/history-list/workbench-config-group-card.js")
+    order = _frontend_module_text("js/features/history-list/workbench-order.js")
+    assert "export function historyCollectionStorageKey" in order
+    assert "historyCollectionStorageKey," in config_card
+    assert "from './workbench-order.js" in config_card
+    assert "card.dataset.collectionKey = historyCollectionStorageKey(options.collection || '__all__');" in config_card
+
+
 def test_history_workbench_renders_items_in_chunks() -> None:
     """Large history workbench lists should append cards in rAF chunks, not one blocking loop only."""
     helper = _frontend_module_text("js/features/history-list/chunked-render.js")
@@ -1467,6 +1542,7 @@ def test_history_workbench_renders_items_in_chunks() -> None:
     assert "export function renderItemsInChunks" in helper
     assert "HISTORY_RENDER_CHUNK_SIZE" in helper
     assert "requestAnimationFrame" in helper
+    assert "const node = createNode(source[index], index);" in helper
 
     assert "fillHistoryWorkbenchCardLists" in workbench
     fill_helper = _frontend_module_text("js/features/history-list/workbench-chunk-fill.js")

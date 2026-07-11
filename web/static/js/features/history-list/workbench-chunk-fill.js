@@ -1,4 +1,4 @@
-import { renderItemsInChunks } from './chunked-render.js?v=module-bootstrap-20260711-ir2';
+import { renderItemsInChunks } from './chunked-render.js?v=module-bootstrap-20260711-ir6';
 
 /**
  * Fill config-group and collection card lists with cancelable chunked append.
@@ -17,32 +17,38 @@ export function fillHistoryWorkbenchCardLists({
     createHistoryCollectionWorkbenchCard,
     emptyConfigMessage,
     signal,
+    configOnly = false,
+    collectionsOnly = false,
 }) {
-    if (!visibleConfigGroups.length) {
-        const empty = document.createElement('div');
-        empty.className = 'history-current-group-empty';
-        empty.textContent = emptyConfigMessage;
-        configList.appendChild(empty);
-    } else {
+    if (!collectionsOnly) {
+        if (!visibleConfigGroups.length) {
+            const empty = document.createElement('div');
+            empty.className = 'history-current-group-empty';
+            empty.textContent = emptyConfigMessage;
+            configList.appendChild(empty);
+        } else {
+            renderItemsInChunks(
+                configList,
+                visibleConfigGroups,
+                (group) => createHistoryConfigGroupWorkbenchCard(group, splitCollections, {
+                    groups: configGroups,
+                    collection: selectedCollection,
+                }),
+                { signal },
+            );
+        }
+    }
+
+    if (!configOnly && collectionList) {
         renderItemsInChunks(
-            configList,
-            visibleConfigGroups,
-            (group) => createHistoryConfigGroupWorkbenchCard(group, splitCollections, {
-                groups: configGroups,
-                collection: selectedCollection,
-            }),
+            collectionList,
+            visibleCollections,
+            (collection) => createHistoryCollectionWorkbenchCard(
+                collection,
+                selectedTasksLength,
+                allCollections,
+            ),
             { signal },
         );
     }
-
-    renderItemsInChunks(
-        collectionList,
-        visibleCollections,
-        (collection) => createHistoryCollectionWorkbenchCard(
-            collection,
-            selectedTasksLength,
-            allCollections,
-        ),
-        { signal },
-    );
 }

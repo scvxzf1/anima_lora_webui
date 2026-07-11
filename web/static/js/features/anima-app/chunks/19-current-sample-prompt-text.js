@@ -6,28 +6,28 @@ import {
     BLANK_PRESET_TEMPLATE_FILE,
     BLANK_PRESET_TEMPLATE_LABEL,
     FORM_UI_DEFAULTS,
-} from '../../../config/catalog.js?v=module-bootstrap-20260711-ir2';
-import { DEFAULT_SAMPLE_PROMPTS_PATH } from '../helpers/app-constants.js?v=module-bootstrap-20260711-ir2';
-import { collectChangedFormValues, prepareFormPatchValues } from '../helpers/config-form-bridge.js?v=module-bootstrap-20260711-ir2';
-import { applySelectedDatasetPresetToCurrentConfig } from '../helpers/dataset-preset-actions-bridge.js?v=module-bootstrap-20260711-ir2';
-import { showHistoryTaskDialog } from '../helpers/history-task-actions-bridge.js?v=module-bootstrap-20260711-ir2';
-import { loadTomlFileList } from '../helpers/toml-manager-bridge.js?v=module-bootstrap-20260711-ir2';
-import { setSamplePromptsEditorContent } from './14-lora-adapter-kind-from-config.js?v=module-bootstrap-20260711-ir2';
+} from '../../../config/catalog.js?v=module-bootstrap-20260711-ir6';
+import { DEFAULT_SAMPLE_PROMPTS_PATH } from '../helpers/app-constants.js?v=module-bootstrap-20260711-ir6';
+import { collectChangedFormValues, prepareFormPatchValues } from '../helpers/config-form-bridge.js?v=module-bootstrap-20260711-ir6';
+import { applySelectedDatasetPresetToCurrentConfig } from '../helpers/dataset-preset-actions-bridge.js?v=module-bootstrap-20260711-ir6';
+import { showHistoryTaskDialog } from '../helpers/history-task-actions-bridge.js?v=module-bootstrap-20260711-ir6';
+import { loadTomlFileList } from '../helpers/toml-manager-bridge.js?v=module-bootstrap-20260711-ir6';
+import { setSamplePromptsEditorContent } from './14-lora-adapter-kind-from-config.js?v=module-bootstrap-20260711-ir6';
 import {
     applyTomlLockState,
     applyTomlToConfig,
     setTomlStatus,
     setTomlEditorLocked,
-} from '../helpers/toml-action-state-bridge.js?v=module-bootstrap-20260711-ir2';
-import { getConfigState } from '../helpers/config-state-bridge.js?v=module-bootstrap-20260711-ir2';
-import { getGlobalModelPathOverrides } from '../helpers/global-settings-bridge.js?v=module-bootstrap-20260711-ir2';
-import { confirmDiscardTomlChanges, handlePendingConfigSwitch, updateTomlDirtyState, updateTomlSelectionUI } from '../helpers/toml-selection-bridge.js?v=module-bootstrap-20260711-ir2';
-import { getAppContext } from '../helpers/app-context-bridge.js?v=module-bootstrap-20260711-ir2';
-import { getTomlState } from '../helpers/toml-state-bridge.js?v=module-bootstrap-20260711-ir2';
-import { getTrainingState } from '../helpers/training-state-bridge.js?v=module-bootstrap-20260711-ir2';
-import { api, val } from '../helpers/runtime-bridge.js?v=module-bootstrap-20260711-ir2';
-import { configureSamplePromptsBridge } from '../helpers/sample-prompts-bridge.js?v=module-bootstrap-20260711-ir2';
-import { configureTomlIoBridge } from '../helpers/toml-io-bridge.js?v=module-bootstrap-20260711-ir2';
+} from '../helpers/toml-action-state-bridge.js?v=module-bootstrap-20260711-ir6';
+import { getConfigState } from '../helpers/config-state-bridge.js?v=module-bootstrap-20260711-ir6';
+import { getGlobalModelPathOverrides } from '../helpers/global-settings-bridge.js?v=module-bootstrap-20260711-ir6';
+import { confirmDiscardTomlChanges, handlePendingConfigSwitch, updateTomlDirtyState, updateTomlSelectionUI } from '../helpers/toml-selection-bridge.js?v=module-bootstrap-20260711-ir6';
+import { getAppContext } from '../helpers/app-context-bridge.js?v=module-bootstrap-20260711-ir6';
+import { getTomlState } from '../helpers/toml-state-bridge.js?v=module-bootstrap-20260711-ir6';
+import { getTrainingState } from '../helpers/training-state-bridge.js?v=module-bootstrap-20260711-ir6';
+import { api, val } from '../helpers/runtime-bridge.js?v=module-bootstrap-20260711-ir6';
+import { configureSamplePromptsBridge } from '../helpers/sample-prompts-bridge.js?v=module-bootstrap-20260711-ir6';
+import { configureTomlIoBridge } from '../helpers/toml-io-bridge.js?v=module-bootstrap-20260711-ir6';
 
 const ctx = getAppContext();
 const configState = getConfigState();

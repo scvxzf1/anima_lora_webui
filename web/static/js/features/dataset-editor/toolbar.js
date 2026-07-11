@@ -1,9 +1,9 @@
 /**
  * Dataset editor top toolbar: experimental + stage-schedule entries.
  */
-import { getDatasetState } from '../anima-app/helpers/dataset-state-bridge.js?v=module-bootstrap-20260711-ir2';
-import { openStageResolutionDialog } from '../config-form/stage-resolution.js?v=module-bootstrap-20260711-ir2';
-import { openDatasetExperimentalDialog } from './experimental-dialog.js?v=module-bootstrap-20260711-ir2';
+import { getDatasetState } from '../anima-app/helpers/dataset-state-bridge.js?v=module-bootstrap-20260711-ir6';
+import { openStageResolutionDialog } from '../config-form/stage-resolution.js?v=module-bootstrap-20260711-ir6';
+import { openDatasetExperimentalDialog } from './experimental-dialog.js?v=module-bootstrap-20260711-ir6';
 
 const datasetState = getDatasetState();
 

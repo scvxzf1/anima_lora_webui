@@ -92,6 +92,10 @@ export function runLabelFromPath(...args) { return requireHistoryCollectionsHand
 export function historyGroupDisplayLabel(...args) { return requireHistoryCollectionsHandler('historyGroupDisplayLabel')(...args); }
 export function createHistoryGroupHeading(...args) { return requireHistoryCollectionsHandler('createHistoryGroupHeading')(...args); }
 export function renderHistoryCollectionsWorkbench(...args) { return requireHistoryCollectionsHandler('renderHistoryCollectionsWorkbench')(...args); }
+export function refreshHistoryWorkbenchConfigPanel(...args) { return requireHistoryCollectionsHandler('refreshHistoryWorkbenchConfigPanel')(...args); }
+export function selectHistoryCollectionInWorkbench(...args) { return requireHistoryCollectionsHandler('selectHistoryCollectionInWorkbench')(...args); }
+export function toggleHistoryConfigGroupExpanded(...args) { return requireHistoryCollectionsHandler('toggleHistoryConfigGroupExpanded')(...args); }
+export function isHistoryConfigGroupExpanded(...args) { return requireHistoryCollectionsHandler('isHistoryConfigGroupExpanded')(...args); }
 export function renderHistoryManagerStats(...args) { return requireHistoryCollectionsHandler('renderHistoryManagerStats')(...args); }
 export function applyHistoryStatFilter(...args) { return requireHistoryCollectionsHandler('applyHistoryStatFilter')(...args); }
 export function historyStatFilterIsActive(...args) { return requireHistoryCollectionsHandler('historyStatFilterIsActive')(...args); }

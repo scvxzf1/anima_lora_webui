@@ -2,22 +2,22 @@
  * Mechanical split from the former monolithic app closure.
  * Keep this module focused; move newly edited behavior into domain modules.
  */
-import { ensureQueueFeature } from '../helpers/feature-ensurers.js?v=module-bootstrap-20260711-ir2';
+import { ensureQueueFeature } from '../helpers/feature-ensurers.js?v=module-bootstrap-20260711-ir6';
 import {
     renderLiveTrainingDashboard,
     renderTrainingRunSummary,
     resetLiveSystemPeaks,
-} from '../helpers/live-status-bridge.js?v=module-bootstrap-20260711-ir2';
-import { closeHistoryDetailDialog, renderHistoryManagerDetail } from '../helpers/history-task-actions-bridge.js?v=module-bootstrap-20260711-ir2';
-import { ensureHistoryDetailFeature } from '../helpers/history-detail-bridge.js?v=module-bootstrap-20260711-ir2';
-import { getHistoryState } from '../helpers/history-state-bridge.js?v=module-bootstrap-20260711-ir2';
-import { configureHistoryTimelineBridge } from '../helpers/history-timeline-bridge.js?v=module-bootstrap-20260711-ir2';
-import { formatLr, lastValue, parseMetricsFromProgressLine } from '../../live-training/index.js?v=module-bootstrap-20260711-ir2';
-import { recoverLiveTrainingState, renderLogOutputLines, resetLogOutputLines, setLogStatus } from '../helpers/live-log-bridge.js?v=module-bootstrap-20260711-ir2';
-import { resetLiveMetricPlaceholders, setEtaMetricText, setMetricText, setText, setTrainingDashboardHeadState, syncLossChartEmptyState, updateDashboardProgressIdleState, updateTrainingToolbarState } from './03-parse-network-arg-entry.js?v=module-bootstrap-20260711-ir2';
-import { showTrainingView } from '../helpers/queue-view-bridge.js?v=module-bootstrap-20260711-ir2';
-import { loadTrainingHistoryList, renderTrainingHistoryList } from '../helpers/history-list-bridge.js?v=module-bootstrap-20260711-ir2';
-import { getTrainingState } from '../helpers/training-state-bridge.js?v=module-bootstrap-20260711-ir2';
+} from '../helpers/live-status-bridge.js?v=module-bootstrap-20260711-ir6';
+import { closeHistoryDetailDialog, renderHistoryManagerDetail } from '../helpers/history-task-actions-bridge.js?v=module-bootstrap-20260711-ir6';
+import { ensureHistoryDetailFeature } from '../helpers/history-detail-bridge.js?v=module-bootstrap-20260711-ir6';
+import { getHistoryState } from '../helpers/history-state-bridge.js?v=module-bootstrap-20260711-ir6';
+import { configureHistoryTimelineBridge } from '../helpers/history-timeline-bridge.js?v=module-bootstrap-20260711-ir6';
+import { formatLr, lastValue, parseMetricsFromProgressLine } from '../../live-training/index.js?v=module-bootstrap-20260711-ir6';
+import { recoverLiveTrainingState, renderLogOutputLines, resetLogOutputLines, setLogStatus } from '../helpers/live-log-bridge.js?v=module-bootstrap-20260711-ir6';
+import { resetLiveMetricPlaceholders, setEtaMetricText, setMetricText, setText, setTrainingDashboardHeadState, syncLossChartEmptyState, updateDashboardProgressIdleState, updateTrainingToolbarState } from './03-parse-network-arg-entry.js?v=module-bootstrap-20260711-ir6';
+import { showTrainingView } from '../helpers/queue-view-bridge.js?v=module-bootstrap-20260711-ir6';
+import { loadTrainingHistoryList, renderTrainingHistoryList } from '../helpers/history-list-bridge.js?v=module-bootstrap-20260711-ir6';
+import { getTrainingState } from '../helpers/training-state-bridge.js?v=module-bootstrap-20260711-ir6';
 
 const historyState = getHistoryState();
 const trainingState = getTrainingState();

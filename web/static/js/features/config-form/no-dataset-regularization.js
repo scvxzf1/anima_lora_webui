@@ -11,17 +11,17 @@ import {
     NO_DATASET_REGULARIZATION_DEFAULT_WEIGHT,
     NO_DATASET_REGULARIZATION_DOP_CLASS_REQUIRED,
     NO_DATASET_REGULARIZATION_MODE_SPECS,
-} from '../anima-app/helpers/app-constants.js?v=module-bootstrap-20260711-ir2';
-import { originalConfigFieldValue, readFieldInputValue } from '../anima-app/helpers/config-form-bridge.js?v=module-bootstrap-20260711-ir2';
-import { setFieldInputValue } from './field-input.js?v=module-bootstrap-20260711-ir2';
+} from '../anima-app/helpers/app-constants.js?v=module-bootstrap-20260711-ir6';
+import { originalConfigFieldValue, readFieldInputValue } from '../anima-app/helpers/config-form-bridge.js?v=module-bootstrap-20260711-ir6';
+import { setFieldInputValue } from './field-input.js?v=module-bootstrap-20260711-ir6';
 import {
     configureNoDatasetRegularizationModePanelUpdater,
     handleFormFieldChange,
-} from './form-fields.js?v=module-bootstrap-20260711-ir2';
-import { appendFieldRows } from './field-rows.js?v=module-bootstrap-20260711-ir2';
+} from './form-fields.js?v=module-bootstrap-20260711-ir6';
+import { appendFieldRows } from './field-rows.js?v=module-bootstrap-20260711-ir6';
 import {
     setTomlStatus,
-} from '../anima-app/helpers/toml-action-state-bridge.js?v=module-bootstrap-20260711-ir2';
+} from '../anima-app/helpers/toml-action-state-bridge.js?v=module-bootstrap-20260711-ir6';
 
     function createNoDatasetRegularizationModePanel() {
         const panel = document.createElement('div');

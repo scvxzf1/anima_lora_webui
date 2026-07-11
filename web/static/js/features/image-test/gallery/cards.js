@@ -2,7 +2,7 @@ import {
     imageCardMetaText as formatImageCardMetaText,
     imageKey,
     imageTimestampText,
-} from './image-meta.js?v=module-bootstrap-20260711-ir2';
+} from './image-meta.js?v=module-bootstrap-20260711-ir6';
 
 /**
  * 历史分组与图片卡片 DOM。

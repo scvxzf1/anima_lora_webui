@@ -1,18 +1,18 @@
 /**
  * Config form field rows, live change handling, and field input factory.
  */
-import { updateChoiceGuide } from './choice-guide-ui.js?v=module-bootstrap-20260711-ir2';
-import { updateStepEstimatePanel } from './step-estimate.js?v=module-bootstrap-20260711-ir2';
-import { valuesEqual } from '../anima-app/helpers/form-values.js?v=module-bootstrap-20260711-ir2';
-import { collectLiveCompatIssues, formatLiveCompatStatus } from './live-compat.js?v=module-bootstrap-20260711-ir2';
-import { setTomlStatus } from '../anima-app/helpers/toml-action-state-bridge.js?v=module-bootstrap-20260711-ir2';
-import { buildFieldPresentation, fieldSourceBadgeLabel } from './field-presentation.js?v=module-bootstrap-20260711-ir2';
-import { isTruthy } from '../anima-app/helpers/config-values.js?v=module-bootstrap-20260711-ir2';
-import { getConfigState } from '../anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260711-ir2';
+import { updateChoiceGuide } from './choice-guide-ui.js?v=module-bootstrap-20260711-ir6';
+import { updateStepEstimatePanel } from './step-estimate.js?v=module-bootstrap-20260711-ir6';
+import { valuesEqual } from '../anima-app/helpers/form-values.js?v=module-bootstrap-20260711-ir6';
+import { collectLiveCompatIssues, formatLiveCompatStatus } from './live-compat.js?v=module-bootstrap-20260711-ir6';
+import { setTomlStatus } from '../anima-app/helpers/toml-action-state-bridge.js?v=module-bootstrap-20260711-ir6';
+import { buildFieldPresentation, fieldSourceBadgeLabel } from './field-presentation.js?v=module-bootstrap-20260711-ir6';
+import { isTruthy } from '../anima-app/helpers/config-values.js?v=module-bootstrap-20260711-ir6';
+import { getConfigState } from '../anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260711-ir6';
 import {
     formatFieldName,
     shouldRenderSelectInput,
-} from '../anima-app/helpers/config-field-display.js?v=module-bootstrap-20260711-ir2';
+} from '../anima-app/helpers/config-field-display.js?v=module-bootstrap-20260711-ir6';
 import {
     allowsNegativeNumberField,
     createHelpContent,
@@ -20,14 +20,14 @@ import {
     fieldValueTypeForKey,
     isIntegerNumericField,
     isNumericField,
-} from '../anima-app/helpers/config-field-ui-bridge.js?v=module-bootstrap-20260711-ir2';
+} from '../anima-app/helpers/config-field-ui-bridge.js?v=module-bootstrap-20260711-ir6';
 import {
     CONFIG_FORM_INTERNAL_KEYS,
     FIELD_OPTIONS,
     FORM_UI_DEFAULTS,
     help,
-} from '../../config/catalog.js?v=module-bootstrap-20260711-ir2';
-import { LOSS_WEIGHTING_DEPENDENT_FIELDS } from '../anima-app/helpers/app-constants.js?v=module-bootstrap-20260711-ir2';
+} from '../../config/catalog.js?v=module-bootstrap-20260711-ir6';
+import { LOSS_WEIGHTING_DEPENDENT_FIELDS } from '../anima-app/helpers/app-constants.js?v=module-bootstrap-20260711-ir6';
 import {
     applyLossWeightingFieldInputState,
     collectNetworkArgsFromForm,
@@ -43,14 +43,14 @@ import {
     updateLoKrFieldState,
     updateLossWeightingFieldState,
     updateVeRAFieldState,
-} from '../anima-app/helpers/config-form-bridge.js?v=module-bootstrap-20260711-ir2';
-import { updateTomlDirtyState } from '../anima-app/helpers/toml-selection-bridge.js?v=module-bootstrap-20260711-ir2';
+} from '../anima-app/helpers/config-form-bridge.js?v=module-bootstrap-20260711-ir6';
+import { updateTomlDirtyState } from '../anima-app/helpers/toml-selection-bridge.js?v=module-bootstrap-20260711-ir6';
 import {
     createSamplePromptAddButton,
     createSamplePromptTextModeButton,
     createSamplePromptsEditor,
     createSamplePromptsPathInput,
-} from './form-fields-sample.js?v=module-bootstrap-20260711-ir2';
+} from './form-fields-sample.js?v=module-bootstrap-20260711-ir6';
 
 let updateNoDatasetRegularizationModePanelCallback = () => {};
 const configState = getConfigState();

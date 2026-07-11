@@ -7,7 +7,7 @@ export {
     createStageResolutionChartPanel,
     createStageResolutionEditor,
     createStageResolutionTable,
-} from './stage-resolution-ui-widgets.js?v=module-bootstrap-20260711-ir2';
+} from './stage-resolution-ui-widgets.js?v=module-bootstrap-20260711-ir6';
 
 export {
     drawStageResolutionChart,
@@ -15,4 +15,4 @@ export {
     createOpenStageResolutionDialogButton,
     openStageResolutionDialog,
     createStageScheduleInlineSummary,
-} from './stage-resolution-ui-dialog.js?v=module-bootstrap-20260711-ir2';
+} from './stage-resolution-ui-dialog.js?v=module-bootstrap-20260711-ir6';

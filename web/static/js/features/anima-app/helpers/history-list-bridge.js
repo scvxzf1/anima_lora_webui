@@ -23,6 +23,7 @@ export function normalizeHistoryCollectionSettings(...args) { return requireHist
 export function uniqueStringList(...args) { return requireHistoryListHandler('uniqueStringList')(...args); }
 export function normalizeHistoryConfigGroupOrder(...args) { return requireHistoryListHandler('normalizeHistoryConfigGroupOrder')(...args); }
 export function renderTrainingHistoryList(...args) { return requireHistoryListHandler('renderTrainingHistoryList')(...args); }
+export function syncRecentHistorySidebarSelection(...args) { return requireHistoryListHandler('syncRecentHistorySidebarSelection')(...args); }
 export function recentTrainingSidebarTasks(...args) { return requireHistoryListHandler('recentTrainingSidebarTasks')(...args); }
 export function renderHistoryManager(...args) { return requireHistoryListHandler('renderHistoryManager')(...args); }
 export function renderHistoryManagerItems(...args) { return requireHistoryListHandler('renderHistoryManagerItems')(...args); }

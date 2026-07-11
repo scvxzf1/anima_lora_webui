@@ -1,10 +1,10 @@
 /**
  * Training queue API wrappers and training-view mode helpers.
  */
-import { ensureQueueFeature } from '../anima-app/helpers/feature-ensurers.js?v=module-bootstrap-20260711-ir2';
-import { returnToLiveTraining } from '../anima-app/helpers/history-timeline-bridge.js?v=module-bootstrap-20260711-ir2';
-import { renderHistoryManager } from '../anima-app/helpers/history-list-bridge.js?v=module-bootstrap-20260711-ir2';
-import { getTrainingState } from '../anima-app/helpers/training-state-bridge.js?v=module-bootstrap-20260711-ir2';
+import { ensureQueueFeature } from '../anima-app/helpers/feature-ensurers.js?v=module-bootstrap-20260711-ir6';
+import { returnToLiveTraining } from '../anima-app/helpers/history-timeline-bridge.js?v=module-bootstrap-20260711-ir6';
+import { renderHistoryManager } from '../anima-app/helpers/history-list-bridge.js?v=module-bootstrap-20260711-ir6';
+import { getTrainingState } from '../anima-app/helpers/training-state-bridge.js?v=module-bootstrap-20260711-ir6';
 
 const trainingState = getTrainingState();
 

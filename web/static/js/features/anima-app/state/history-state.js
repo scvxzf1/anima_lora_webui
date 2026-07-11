@@ -2,6 +2,8 @@ export function createHistoryState() {
     return {
         viewingHistoryTaskId: '',
         historyViewMode: 'live',
+        sidebarHistoryPayloadCache: new Map(),
+        sidebarHistoryRequestId: 0,
         currentHistoryTaskForResume: null,
         currentHistoryConfigGroup: null,
         currentHistoryTimelineSelection: [],
@@ -24,6 +26,8 @@ export function createHistoryState() {
         historyCollectionSearch: '',
         historyConfigGroupSearch: '',
         selectedHistoryCollectionKey: 'collection:__ungrouped__',
+        expandedHistoryConfigGroupKeys: new Set(),
+        historyWorkbenchCollectionsCache: null,
         historyCurrentVisibleTaskIds: [],
         historyDragState: {
             active: false,

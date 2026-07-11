@@ -4,13 +4,13 @@
 import {
     appendSamplePromptRow,
     updateSamplePromptRemoveButtons,
-} from '../anima-app/helpers/config-field-ui-bridge.js?v=module-bootstrap-20260711-ir2';
+} from '../anima-app/helpers/config-field-ui-bridge.js?v=module-bootstrap-20260711-ir6';
 import {
     blankSamplePromptRow,
     parseSamplePromptRows,
     samplePromptsContentNeedsTextMode,
     serializeSamplePromptsEditor,
-} from '../sample-prompts/model.js?v=module-bootstrap-20260711-ir2';
+} from '../sample-prompts/model.js?v=module-bootstrap-20260711-ir6';
 
 function createSamplePromptsPathInput(value) {
     const input = document.createElement('input');

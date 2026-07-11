@@ -6,4 +6,4 @@ export {
     createNoDatasetRegularizationAdvancedFields,
     createNoDatasetRegularizationModePanel,
     updateNoDatasetRegularizationModePanel,
-} from '../../config-form/no-dataset-regularization.js?v=module-bootstrap-20260711-ir2';
+} from '../../config-form/no-dataset-regularization.js?v=module-bootstrap-20260711-ir6';

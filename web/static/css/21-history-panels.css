@@ -3190,3 +3190,29 @@ body.history-detail-window-open {
     word-break: break-all;
     line-height: 1.4;
 }
+
+
+.history-config-group-toggle {
+    min-width: 2.4rem;
+}
+.history-config-group-collapse-summary {
+    margin: 0.12rem 0 0.28rem 1.9rem;
+    padding: 0.22rem 0.42rem;
+    border-radius: 4px;
+    border: 1px dashed color-mix(in srgb, var(--history-level-border, var(--border)) 78%, transparent);
+    background: color-mix(in srgb, var(--history-row-bg, var(--bg-card)) 78%, transparent);
+    color: var(--text-dim);
+    font-size: 0.66rem;
+    line-height: 1.25;
+    cursor: pointer;
+    user-select: none;
+}
+.history-config-group-collapse-summary:hover {
+    color: var(--accent);
+    border-color: color-mix(in srgb, var(--accent) 48%, var(--border));
+    background: color-mix(in srgb, var(--accent) 8%, var(--history-row-bg, var(--bg-card)));
+}
+.history-config-group-card.is-expanded .history-config-group-toggle {
+    border-color: color-mix(in srgb, var(--accent) 42%, var(--border));
+    color: var(--accent);
+}

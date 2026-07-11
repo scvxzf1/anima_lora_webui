@@ -1,5 +1,5 @@
-import { DEFAULT_FILTER_VALUE, DEFAULT_SELECTION_NOTE, GROUP_INITIAL_RENDER_COUNT, GROUP_VIRTUALIZE_THRESHOLD } from './gallery/constants.js?v=module-bootstrap-20260711-ir2';
-import { createGalleryController, createInitialGalleryState } from './gallery/controller.js?v=module-bootstrap-20260711-ir2';
+import { DEFAULT_FILTER_VALUE, DEFAULT_SELECTION_NOTE, GROUP_INITIAL_RENDER_COUNT, GROUP_VIRTUALIZE_THRESHOLD } from './gallery/constants.js?v=module-bootstrap-20260711-ir6';
+import { createGalleryController, createInitialGalleryState } from './gallery/controller.js?v=module-bootstrap-20260711-ir6';
 
 // Contract anchors for frontend source tests (implementation lives in gallery/*):
 // GROUP_INITIAL_RENDER_COUNT = 24

@@ -81,11 +81,64 @@ export function appendNodesInChunks(parent, nodes, options = {}) {
  * @param {{ chunkSize?: number, signal?: { cancelled: boolean }, onDone?: () => void }} [options]
  */
 export function renderItemsInChunks(parent, items, createNode, options = {}) {
-    const nodes = [];
     const source = Array.isArray(items) ? items : [];
-    for (let i = 0; i < source.length; i += 1) {
-        const node = createNode(source[i], i);
-        if (node) nodes.push(node);
+    const chunkSize = Math.max(1, Number(options.chunkSize) || HISTORY_RENDER_CHUNK_SIZE);
+    const signal = options.signal || { cancelled: false };
+    let index = 0;
+    let resolveDone;
+    const done = new Promise((resolve) => {
+        resolveDone = resolve;
+    });
+
+    const finish = () => {
+        if (typeof options.onDone === 'function') {
+            try {
+                options.onDone();
+            } catch {
+                // ignore callback errors
+            }
+        }
+        resolveDone();
+    };
+
+    if (!parent || !source.length) {
+        finish();
+        return {
+            cancel: () => {
+                signal.cancelled = true;
+            },
+            done,
+        };
     }
-    return appendNodesInChunks(parent, nodes, options);
+
+    const pump = () => {
+        if (signal.cancelled) {
+            finish();
+            return;
+        }
+        const fragment = document.createDocumentFragment();
+        const end = Math.min(index + chunkSize, source.length);
+        for (; index < end; index += 1) {
+            const node = createNode(source[index], index);
+            if (node) fragment.appendChild(node);
+        }
+        parent.appendChild(fragment);
+        if (index >= source.length) {
+            finish();
+            return;
+        }
+        if (typeof requestAnimationFrame === 'function') {
+            requestAnimationFrame(pump);
+        } else {
+            setTimeout(pump, 0);
+        }
+    };
+
+    pump();
+    return {
+        cancel: () => {
+            signal.cancelled = true;
+        },
+        done,
+    };
 }

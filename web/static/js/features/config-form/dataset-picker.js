@@ -2,14 +2,14 @@
  * Config form dataset-preset picker panel.
  * Extracted from anima-app chunk 06.
  */
-import { getConfigState } from '../anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260711-ir2';
-import { getDatasetState } from '../anima-app/helpers/dataset-state-bridge.js?v=module-bootstrap-20260711-ir2';
-import { datasetPresetByFile } from '../anima-app/helpers/dataset-presets.js?v=module-bootstrap-20260711-ir2';
+import { getConfigState } from '../anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260711-ir6';
+import { getDatasetState } from '../anima-app/helpers/dataset-state-bridge.js?v=module-bootstrap-20260711-ir6';
+import { datasetPresetByFile } from '../anima-app/helpers/dataset-presets.js?v=module-bootstrap-20260711-ir6';
 import {
     ensureConfigDatasetPreview,
     renderConfigDatasetPickerDialog,
-} from '../anima-app/helpers/dataset-render-bridge.js?v=module-bootstrap-20260711-ir2';
-import { loadDatasetPresets } from '../dataset-editor/load.js?v=module-bootstrap-20260711-ir2';
+} from '../anima-app/helpers/dataset-render-bridge.js?v=module-bootstrap-20260711-ir6';
+import { loadDatasetPresets } from '../dataset-editor/load.js?v=module-bootstrap-20260711-ir6';
 
 const configState = getConfigState();
 const datasetState = getDatasetState();

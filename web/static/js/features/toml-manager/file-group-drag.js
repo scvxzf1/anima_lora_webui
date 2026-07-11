@@ -4,6 +4,8 @@
  */
 export {
     eventTargetClosest,
+    originClosest,
+    fileGroupDropTargetPriority,
     removeFileGroupDragImage,
     setFileGroupDragData,
     canBeginFileGroupDrag,
@@ -19,12 +21,12 @@ export {
     configFileDropIndex,
     configGroupDropIndex,
     fileGroupContainsRelatedTarget,
-} from './file-group-drag-core.js?v=module-bootstrap-20260711-ir2';
+} from './file-group-drag-core.js?v=module-bootstrap-20260711-ir6';
 
 export {
     setupFileGroupRowDropTarget,
     setupFileGroupListDropTarget,
     setupFileGroupHeaderDropTarget,
-} from './file-group-drag-targets.js?v=module-bootstrap-20260711-ir2';
+} from './file-group-drag-targets.js?v=module-bootstrap-20260711-ir6';
 
 // file-group-drag module end

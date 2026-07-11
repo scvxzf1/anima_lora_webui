@@ -5,9 +5,9 @@ import {
     configDraftValueChanged,
     originalConfigFieldValue,
     updateConfigDraftFromInput,
-} from '../anima-app/helpers/config-form-bridge.js?v=module-bootstrap-20260711-ir2';
-import { getConfigState } from '../anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260711-ir2';
-import { escapeHtml as sharedEscapeHtml } from '../../shared/format.js?v=module-bootstrap-20260711-ir2';
+} from '../anima-app/helpers/config-form-bridge.js?v=module-bootstrap-20260711-ir6';
+import { getConfigState } from '../anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260711-ir6';
+import { escapeHtml as sharedEscapeHtml } from '../../shared/format.js?v=module-bootstrap-20260711-ir6';
 
 const configState = getConfigState();
 

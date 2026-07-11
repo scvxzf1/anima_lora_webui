@@ -2,8 +2,8 @@
  * Mechanical split from the former monolithic app closure.
  * Keep this module focused; move newly edited behavior into domain modules.
  */
-import { FILE_GROUP_DROP_TARGET_ATTR } from '../anima-app/helpers/app-constants.js?v=module-bootstrap-20260711-ir2';
-import { getDatasetState } from '../anima-app/helpers/dataset-state-bridge.js?v=module-bootstrap-20260711-ir2';
+import { FILE_GROUP_DROP_TARGET_ATTR } from '../anima-app/helpers/app-constants.js?v=module-bootstrap-20260711-ir6';
+import { getDatasetState } from '../anima-app/helpers/dataset-state-bridge.js?v=module-bootstrap-20260711-ir6';
 const datasetState = getDatasetState();
 
 function currentFileGroupDragState() {
@@ -101,13 +101,23 @@ export function moveFileGroupPointerDragImage(image, x, y) {
         image.style.top = `${y + 14}px`;
     }
 
+
+export function fileGroupDropTargetPriority(node, position) {
+    if (!(node instanceof Element)) return 50;
+    if (node.matches('.dataset-preset-row, .toml-file-row-wrap')) return 0;
+    if (position === 'before' || position === 'after') return 1;
+    if (node.matches('summary') || node.tagName === 'SUMMARY') return 3;
+    if (position === 'inside') return 4;
+    return 2;
+}
+
 export function registerFileGroupDropTarget(node, resolve) {
         node.setAttribute(FILE_GROUP_DROP_TARGET_ATTR, '1');
         datasetState.fileGroupDropTargets.set(node, resolve);
         datasetState.fileGroupDropTargetNodes.add(node);
     }
 
-    function originClosest(origin, selector) {
+    export function originClosest(origin, selector) {
         return origin instanceof Element ? origin.closest(selector) : null;
     }
 
@@ -115,13 +125,30 @@ export function registerFileGroupDropTarget(node, resolve) {
         const payload = currentFileGroupDragState();
         const origin = document.elementFromPoint(x, y);
         let node = origin;
+        let best = null;
         while (node && node !== document.documentElement) {
             if (node instanceof Element && node.hasAttribute(FILE_GROUP_DROP_TARGET_ATTR)) {
                 const resolve = currentFileGroupDropTargets().get(node);
                 const target = resolve?.({ payload, x, y, origin });
-                if (target) return { node, ...target };
+                if (target) {
+                    const resolvedNode = target.node instanceof Element ? target.node : node;
+                    const candidate = { ...target, node: resolvedNode, distance: 0 };
+                    const priority = fileGroupDropTargetPriority(candidate.node, candidate.position);
+                    if (!best || priority < best.priority) {
+                        best = { ...candidate, priority };
+                    }
+                    // 精确行命中时直接返回，避免再被祖先 list/header 覆盖。
+                    if (priority === 0) {
+                        const { priority: _priority, distance: _distance, ...result } = best;
+                        return result;
+                    }
+                }
             }
             node = node.parentElement;
+        }
+        if (best) {
+            const { priority: _priority, distance: _distance, ...result } = best;
+            return result;
         }
         return resolveNearestFileGroupDropTarget(x, y, origin, payload);
     }
@@ -144,10 +171,19 @@ export function registerFileGroupDropTarget(node, resolve) {
             const resolve = currentFileGroupDropTargets().get(node);
             const target = resolve?.({ payload, x, y, origin });
             if (!target) continue;
-            if (!best || distance < best.distance) best = { node, distance, ...target };
+            const resolvedNode = target.node instanceof Element ? target.node : node;
+            const priority = fileGroupDropTargetPriority(resolvedNode, target.position);
+            const candidate = { ...target, node: resolvedNode, distance, priority };
+            if (
+                !best
+                || candidate.priority < best.priority
+                || (candidate.priority === best.priority && candidate.distance < best.distance)
+            ) {
+                best = candidate;
+            }
         }
         if (!best) return null;
-        const { distance, ...target } = best;
+        const { distance, priority, ...target } = best;
         return target;
     }
 
@@ -254,10 +290,20 @@ export function autoScrollFileGroupPointerDrag(x, y) {
         return drag;
     }
 
-    function finishFileGroupPointerDrag(commit = false) {
+    function finishFileGroupPointerDrag(commit = false, event = null) {
         const drag = cleanupFileGroupPointerDrag();
         if (!drag) return;
-        const target = commit && drag.active ? drag.currentDrop : null;
+        let target = null;
+        if (commit && drag.active) {
+            // 松手时按最终坐标重算，避免 currentDrop 停在同组较早的旧行上。
+            const finalX = Number.isFinite(event?.clientX) ? event.clientX : null;
+            const finalY = Number.isFinite(event?.clientY) ? event.clientY : null;
+            if (finalX !== null && finalY !== null) {
+                target = resolveFileGroupPointerDropTarget(finalX, finalY);
+            } else {
+                target = drag.currentDrop;
+            }
+        }
         finishFileGroupDrag();
         if (!target) return;
         Promise.resolve(target.drop()).catch((e) => {
@@ -310,7 +356,7 @@ export function autoScrollFileGroupPointerDrag(x, y) {
             if (upEvent.pointerId !== pointerId) return;
             upEvent.preventDefault();
             upEvent.stopPropagation();
-            finishFileGroupPointerDrag(true);
+            finishFileGroupPointerDrag(true, upEvent);
         };
         drag.onMouseMove = (moveEvent) => {
             moveDrag(moveEvent);
@@ -318,7 +364,7 @@ export function autoScrollFileGroupPointerDrag(x, y) {
         drag.onMouseUp = (upEvent) => {
             upEvent.preventDefault();
             upEvent.stopPropagation();
-            finishFileGroupPointerDrag(true);
+            finishFileGroupPointerDrag(true, upEvent);
         };
         drag.onCancel = (cancelEvent) => {
             if (cancelEvent.pointerId !== pointerId) return;

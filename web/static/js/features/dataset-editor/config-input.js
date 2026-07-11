@@ -2,8 +2,8 @@
  * Dataset config field inputs (defaults editor).
  * Extracted from former chunk 10.
  */
-import { datasetConfigLabel, datasetConfigValue } from '../anima-app/helpers/dataset-config-fields.js?v=module-bootstrap-20260711-ir2';
-import { updateDatasetDefault } from './row-fields.js?v=module-bootstrap-20260711-ir2';
+import { datasetConfigLabel, datasetConfigValue } from '../anima-app/helpers/dataset-config-fields.js?v=module-bootstrap-20260711-ir6';
+import { updateDatasetDefault } from './row-fields.js?v=module-bootstrap-20260711-ir6';
 
 export function createDatasetConfigInput(key, type, defaults) {
         if (type === 'switch') {

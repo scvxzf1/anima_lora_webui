@@ -15,11 +15,13 @@ import {
     startHistoryConfigGroupMouseDrag,
     startHistoryConfigGroupPointerDrag,
     startHistoryConfigGroupTouchDrag,
-} from '../anima-app/helpers/history-collection-drag-bridge.js?v=module-bootstrap-20260711-ir2';
+} from '../anima-app/helpers/history-collection-drag-bridge.js?v=module-bootstrap-20260711-ir6';
 import {
     clearHistoryCollectionForTasks,
     commonHistoryCollectionValue,
     configGroupKey,
+    isHistoryConfigGroupExpanded,
+    toggleHistoryConfigGroupExpanded,
     createHistoryConfigGroupMergeButton,
     createHistoryConfigGroupPreviewButton,
     createHistoryManagerGroupButton,
@@ -42,7 +44,7 @@ import {
     setHistoryCollectionForTasks,
     setHistoryCollectionForTasksDirect,
     toggleHistoryTaskSelection,
-} from '../anima-app/helpers/history-collections-bridge.js?v=module-bootstrap-20260711-ir2';
+} from '../anima-app/helpers/history-collections-bridge.js?v=module-bootstrap-20260711-ir6';
 import {
     archiveHistoryTask,
     createHistoryActionButton,
@@ -50,13 +52,14 @@ import {
     createHistoryTaskPreviewButton,
     deleteHistoryTask,
     loadHistoryTask,
-} from '../anima-app/helpers/history-task-actions-bridge.js?v=module-bootstrap-20260711-ir2';
-import { historyStateLabel } from '../anima-app/helpers/history-timeline-bridge.js?v=module-bootstrap-20260711-ir2';
-import { getHistoryState } from '../anima-app/helpers/history-state-bridge.js?v=module-bootstrap-20260711-ir2';
+} from '../anima-app/helpers/history-task-actions-bridge.js?v=module-bootstrap-20260711-ir6';
+import { historyStateLabel } from '../anima-app/helpers/history-timeline-bridge.js?v=module-bootstrap-20260711-ir6';
+import { getHistoryState } from '../anima-app/helpers/history-state-bridge.js?v=module-bootstrap-20260711-ir6';
 import {
     historyCollectionNamesForTasks,
+    historyCollectionStorageKey,
     moveHistoryConfigGroup,
-} from './workbench-order.js?v=module-bootstrap-20260711-ir2';
+} from './workbench-order.js?v=module-bootstrap-20260711-ir6';
 
 const historyState = getHistoryState();
 
@@ -262,16 +265,43 @@ export function createHistoryConfigGroupWorkbenchCard(group, splitCollections, o
         createHistoryManagerGroupButton('清除分组', () => clearHistoryCollectionForTasks(group.tasks, historyGroupDisplayLabel(group))),
     ]));
 
+    const expanded = isHistoryConfigGroupExpanded(group, options.collection);
+    card.classList.toggle('is-expanded', expanded);
+    card.dataset.expanded = expanded ? '1' : '0';
+
+    const toggle = createHistoryManagerGroupButton(
+        expanded ? '收起' : '展开',
+        () => toggleHistoryConfigGroupExpanded(group, options.collection),
+    );
+    toggle.classList.add('history-config-group-toggle');
+    toggle.title = expanded ? '收起任务列表' : '展开任务列表';
+    toggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+    actions.prepend(toggle);
+
     const head = document.createElement('div');
     head.className = 'history-config-group-card-head';
     head.append(select, handle, main, actions);
     card.appendChild(head);
-    const taskList = document.createElement('div');
-    taskList.className = 'history-config-group-task-list';
-    for (const task of group.tasks) {
-        taskList.appendChild(createHistoryManagerRow(task));
+
+    if (expanded) {
+        const taskList = document.createElement('div');
+        taskList.className = 'history-config-group-task-list';
+        for (const task of group.tasks) {
+            taskList.appendChild(createHistoryManagerRow(task));
+        }
+        card.appendChild(taskList);
+    } else {
+        const summary = document.createElement('div');
+        summary.className = 'history-config-group-collapse-summary';
+        summary.textContent = `已折叠 ${group.tasks.length} 条任务 · 点击“展开”查看`;
+        summary.title = summary.textContent;
+        summary.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            toggleHistoryConfigGroupExpanded(group, options.collection);
+        });
+        card.appendChild(summary);
     }
-    card.appendChild(taskList);
     return card;
 }
 

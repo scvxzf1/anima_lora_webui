@@ -1,8 +1,8 @@
 /**
  * History collections workbench rendering and filter/search helpers.
  */
-import { HISTORY_UNGROUPED_COLLECTION_KEY } from '../anima-app/helpers/app-constants.js?v=module-bootstrap-20260711-ir2';
-import { openHistoryNewCollectionPopover, renderHistoryDropPopover } from '../anima-app/helpers/history-collection-drag-bridge.js?v=module-bootstrap-20260711-ir2';
+import { HISTORY_UNGROUPED_COLLECTION_KEY } from '../anima-app/helpers/app-constants.js?v=module-bootstrap-20260711-ir6';
+import { openHistoryNewCollectionPopover, renderHistoryDropPopover } from '../anima-app/helpers/history-collection-drag-bridge.js?v=module-bootstrap-20260711-ir6';
 import {
     applySelectedHistoryTasksToCollection,
     clearSelectedHistoryCollection,
@@ -13,6 +13,7 @@ import {
     createHistoryCollectionsToolbarButton,
     groupHistoryTasks,
     historyConfigGroupCollectionMap,
+    configGroupKey,
     historyCollectionByKey,
     historyCollectionSearchText,
     historyCollectionStorageKey,
@@ -27,12 +28,14 @@ import {
     historyTaskDisplayName,
     historyTaskIds,
     historyTaskIsArchived,
+    renderHistoryBulkBar,
+    selectedHistoryTasks,
     historyTaskCollectionValue,
     runLabelFromPath,
     sortHistoryManagerGroupTasks,
     sortedHistoryConfigGroups,
     syncHistoryFilterControls,
-} from '../anima-app/helpers/history-collections-bridge.js?v=module-bootstrap-20260711-ir2';
+} from '../anima-app/helpers/history-collections-bridge.js?v=module-bootstrap-20260711-ir6';
 import {
     archiveHistoryTask,
     createHistoryActionButton,
@@ -42,27 +45,55 @@ import {
     groupSelectedHistoryTasks,
     isHistoryDetailDialogOpen,
     loadHistoryTask,
-} from '../anima-app/helpers/history-task-actions-bridge.js?v=module-bootstrap-20260711-ir2';
-import { historyStateLabel } from '../anima-app/helpers/history-timeline-bridge.js?v=module-bootstrap-20260711-ir2';
-import { renderHistoryManager } from '../anima-app/helpers/history-list-bridge.js?v=module-bootstrap-20260711-ir2';
-import { fillHistoryWorkbenchCardLists } from './workbench-chunk-fill.js?v=module-bootstrap-20260711-ir2';
-import { getHistoryState } from '../anima-app/helpers/history-state-bridge.js?v=module-bootstrap-20260711-ir2';
+} from '../anima-app/helpers/history-task-actions-bridge.js?v=module-bootstrap-20260711-ir6';
+import { historyStateLabel } from '../anima-app/helpers/history-timeline-bridge.js?v=module-bootstrap-20260711-ir6';
+import { renderHistoryManager } from '../anima-app/helpers/history-list-bridge.js?v=module-bootstrap-20260711-ir6';
+import { fillHistoryWorkbenchCardLists } from './workbench-chunk-fill.js?v=module-bootstrap-20260711-ir6';
+import { getHistoryState } from '../anima-app/helpers/history-state-bridge.js?v=module-bootstrap-20260711-ir6';
 
 const historyState = getHistoryState();
 
-export function renderHistoryCollectionsWorkbench(list, visible) {
-    if (historyState.historyWorkbenchRenderSignal) {
-        historyState.historyWorkbenchRenderSignal.cancelled = true;
-    }
-    const renderSignal = { cancelled: false };
-    historyState.historyWorkbenchRenderSignal = renderSignal;
-    const workbench = document.createElement('div');
-    workbench.className = 'history-collections-workbench compact';
-    if (historyState.historyDragState.active) workbench.classList.add('dragging');
-    if (historyState.historyDragState.pending) workbench.classList.add('drop-pending');
-    if (historyState.historyCollectionDragState.active) workbench.classList.add('collection-reordering');
+function historyConfigGroupExpandKey(group, collection = null) {
+    const collectionPart = historyCollectionStorageKey(collection || historyState.selectedHistoryCollectionKey || '__all__');
+    return `${collectionPart}::${configGroupKey(group)}`;
+}
 
-    const allCollections = historyCollectionsForWorkbench(visible);
+export function isHistoryConfigGroupExpanded(group, collection = null) {
+    return historyState.expandedHistoryConfigGroupKeys.has(historyConfigGroupExpandKey(group, collection));
+}
+
+export function toggleHistoryConfigGroupExpanded(group, collection = null) {
+    const key = historyConfigGroupExpandKey(group, collection);
+    if (historyState.expandedHistoryConfigGroupKeys.has(key)) {
+        historyState.expandedHistoryConfigGroupKeys.delete(key);
+    } else {
+        historyState.expandedHistoryConfigGroupKeys.add(key);
+    }
+    refreshHistoryWorkbenchConfigPanel();
+}
+
+function workbenchCollectionsCacheKey(tasks) {
+    // Include collection membership so regrouped tasks invalidate the cache.
+    const ids = (tasks || []).map((task) => `${task?.id || ''}\u0002${task?.group || ''}`).join('\n');
+    const order = (historyState.historyCollectionSettings.collection_order || []).join('\n');
+    const groupOrder = JSON.stringify(historyState.historyCollectionSettings.config_group_order || {});
+    const sort = historyState.historyManagerFilters?.sort || 'newest';
+    return `${sort}\u0001${order}\u0001${groupOrder}\u0001${ids}`;
+}
+
+function getHistoryWorkbenchCollections(tasks) {
+    const key = workbenchCollectionsCacheKey(tasks);
+    const cache = historyState.historyWorkbenchCollectionsCache;
+    if (cache && cache.key === key && Array.isArray(cache.collections)) {
+        return cache.collections;
+    }
+    const collections = historyCollectionsForWorkbench(tasks);
+    historyState.historyWorkbenchCollectionsCache = { key, collections };
+    return collections;
+}
+
+function buildHistoryWorkbenchModel(visible) {
+    const allCollections = getHistoryWorkbenchCollections(visible);
     if (
         historyState.historyCollectionWorkbenchTarget
         && !allCollections.some((item) => item.value === historyState.historyCollectionWorkbenchTarget)
@@ -76,8 +107,12 @@ export function renderHistoryCollectionsWorkbench(list, visible) {
     const visibleCollections = visibleHistoryCollectionsForSearch(allCollections, collectionSearchTerms);
     const selectedCollection = selectedHistoryCollectionForWorkbench(allCollections, collectionSearchTerms);
     const scopedTasks = selectedCollection.tasks || [];
+    // Prefer precomputed groups on the collection object when present.
+    const baseGroups = Array.isArray(selectedCollection.groups) && selectedCollection.groups.length
+        ? selectedCollection.groups.map(sortHistoryManagerGroupTasks)
+        : groupHistoryTasks(scopedTasks).map(sortHistoryManagerGroupTasks);
     const configGroups = sortedHistoryConfigGroups(
-        groupHistoryTasks(scopedTasks).map(sortHistoryManagerGroupTasks),
+        baseGroups,
         historyCollectionStorageKey(selectedCollection),
     );
     const visibleConfigGroups = configGroups.filter((group) =>
@@ -90,6 +125,194 @@ export function renderHistoryCollectionsWorkbench(list, visible) {
         (task) => task.id && historyState.selectedHistoryTaskIds.has(task.id)
     );
     const selectedGroups = selectedHistoryConfigGroups(visibleConfigGroups);
+    const splitCollections = historyConfigGroupCollectionMap(visible);
+    return {
+        allCollections,
+        visibleCollections,
+        selectedCollection,
+        configGroups,
+        visibleConfigGroups,
+        currentVisibleTasks,
+        selectedTasks,
+        selectedGroups,
+        splitCollections,
+    };
+}
+
+function updateHistoryWorkbenchChrome(workbench, model) {
+    if (!workbench || !model) return;
+    const {
+        allCollections,
+        visibleCollections,
+        selectedCollection,
+        configGroups,
+        visibleConfigGroups,
+        currentVisibleTasks,
+        selectedTasks,
+        selectedGroups,
+    } = model;
+
+    const desc = workbench.querySelector('.history-collections-title span');
+    if (desc) {
+        desc.textContent = `左侧: ${selectedCollection.is_ungrouped ? '未分类' : selectedCollection.label} · 右侧切换/拖拽归类`;
+    }
+
+    const stats = workbench.querySelector('.history-collections-stats');
+    if (stats) {
+        const values = [
+            allCollections.filter((item) => !item.is_ungrouped).length,
+            currentVisibleTasks.length,
+            visibleConfigGroups.length,
+            selectedGroups.length,
+        ];
+        Array.from(stats.querySelectorAll('strong')).forEach((el, index) => {
+            if (values[index] !== undefined) el.textContent = String(values[index]);
+        });
+    }
+
+    const target = workbench.querySelector('.history-collections-toolbar > span');
+    if (target) {
+        target.textContent = [
+            `当前: ${selectedCollection.label}`,
+            historyState.historyCollectionWorkbenchTarget ? `目标: ${historyState.historyCollectionWorkbenchTarget}` : '',
+            selectedTasks.length ? `已选: ${selectedTasks.length}` : '未选',
+        ].filter(Boolean).join(' · ');
+    }
+
+    const configTitleMeta = workbench.querySelector('.history-current-group-content .history-collections-panel-title span');
+    if (configTitleMeta) {
+        configTitleMeta.textContent = `${visibleConfigGroups.length}/${configGroups.length} 组 · ${currentVisibleTasks.length} 条`;
+    }
+    const configTitleStrong = workbench.querySelector('.history-current-group-content .history-collections-panel-title strong');
+    if (configTitleStrong) {
+        configTitleStrong.textContent = selectedCollection.is_ungrouped
+            ? '未分类任务'
+            : `${selectedCollection.label} 内的任务`;
+    }
+
+    const collectionTitleMeta = workbench.querySelector('.history-collection-nav .history-collections-panel-title span');
+    if (collectionTitleMeta) {
+        collectionTitleMeta.textContent = `${visibleCollections.length}/${allCollections.length} 组`;
+    }
+
+    workbench.querySelectorAll('.history-collection-card.nav-card').forEach((card) => {
+        const key = String(card.dataset.collectionKey || '');
+        const active = key && key === historyState.selectedHistoryCollectionKey;
+        card.classList.toggle('active', active);
+        card.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+}
+
+function fillHistoryWorkbenchConfigList(configList, model, signal) {
+    if (!configList || !model) return;
+    configList.innerHTML = '';
+    const {
+        visibleConfigGroups,
+        splitCollections,
+        configGroups,
+        selectedCollection,
+    } = model;
+    if (!visibleConfigGroups.length) {
+        const empty = document.createElement('div');
+        empty.className = 'history-current-group-empty';
+        empty.textContent = selectedCollection.is_ungrouped ? '未分类暂无任务。' : '该分组暂无任务。';
+        configList.appendChild(empty);
+        return;
+    }
+    fillHistoryWorkbenchCardLists({
+        configList,
+        collectionList: document.createElement('div'),
+        visibleConfigGroups,
+        visibleCollections: [],
+        splitCollections,
+        configGroups,
+        selectedCollection,
+        selectedTasksLength: model.selectedTasks.length,
+        allCollections: model.allCollections,
+        createHistoryConfigGroupWorkbenchCard,
+        createHistoryCollectionWorkbenchCard,
+        emptyConfigMessage: selectedCollection.is_ungrouped ? '未分类暂无任务。' : '该分组暂无任务。',
+        signal,
+        configOnly: true,
+    });
+}
+
+export function refreshHistoryWorkbenchConfigPanel(options = {}) {
+    const list = document.getElementById('history-manager-list');
+    const workbench = list?.querySelector('.history-collections-workbench');
+    if (!list || !workbench) {
+        renderHistoryManager();
+        return;
+    }
+    if (historyState.historyWorkbenchRenderSignal) {
+        historyState.historyWorkbenchRenderSignal.cancelled = true;
+    }
+    const renderSignal = { cancelled: false };
+    historyState.historyWorkbenchRenderSignal = renderSignal;
+    const visible = options.visible || historyManagerBaseFilteredTasks();
+    const model = buildHistoryWorkbenchModel(visible);
+    updateHistoryWorkbenchChrome(workbench, model);
+    const configList = workbench.querySelector('.history-config-group-card-list');
+    fillHistoryWorkbenchConfigList(configList, model, renderSignal);
+
+    const selectAll = document.getElementById('history-select-all');
+    if (selectAll) {
+        const visibleIds = historyState.historyCurrentVisibleTaskIds;
+        const selectedVisible = visibleIds.filter((id) => historyState.selectedHistoryTaskIds.has(id)).length;
+        selectAll.checked = visibleIds.length > 0 && selectedVisible === visibleIds.length;
+        selectAll.indeterminate = selectedVisible > 0 && selectedVisible < visibleIds.length;
+    }
+    const status = document.getElementById('history-manager-status');
+    if (status) {
+        const archivedCount = historyState.historyTasks.filter(historyTaskIsArchived).length;
+        status.textContent = [
+            `共 ${historyState.historyTasks.length} 条记录`,
+            `当前分组 ${model.currentVisibleTasks.length} 条`,
+            `筛选后 ${(options.baseCount != null ? options.baseCount : visible.length)} 条`,
+            `归档 ${archivedCount} 条`,
+            historyState.historyDropFeedback.message,
+        ].filter(Boolean).join(' · ');
+        status.dataset.feedbackTone = historyState.historyDropFeedback.tone || '';
+    }
+    renderHistoryBulkBar();
+    const mergeBtn = document.getElementById('btn-history-manager-merge');
+    if (mergeBtn) {
+        mergeBtn.disabled = selectedHistoryTasks().filter((task) => task.job === 'training').length === 0;
+    }
+}
+
+export function selectHistoryCollectionInWorkbench(collectionKey) {
+    const key = String(collectionKey || '').trim();
+    if (!key) return;
+    if (historyState.selectedHistoryCollectionKey === key) return;
+    historyState.selectedHistoryCollectionKey = key;
+    refreshHistoryWorkbenchConfigPanel();
+}
+
+export function renderHistoryCollectionsWorkbench(list, visible) {
+    if (historyState.historyWorkbenchRenderSignal) {
+        historyState.historyWorkbenchRenderSignal.cancelled = true;
+    }
+    const renderSignal = { cancelled: false };
+    historyState.historyWorkbenchRenderSignal = renderSignal;
+    const model = buildHistoryWorkbenchModel(visible);
+    const {
+        allCollections,
+        visibleCollections,
+        selectedCollection,
+        configGroups,
+        visibleConfigGroups,
+        currentVisibleTasks,
+        selectedTasks,
+        selectedGroups,
+        splitCollections,
+    } = model;
+
+    const workbench = document.createElement('div');
+    workbench.className = 'history-collections-workbench compact';
+    if (historyState.historyDragState.active) workbench.classList.add('dragging');
+    if (historyState.historyDragState.pending) workbench.classList.add('drop-pending');
+    if (historyState.historyCollectionDragState.active) workbench.classList.add('collection-reordering');
 
     const head = document.createElement('div');
     head.className = 'history-collections-head';
@@ -149,7 +372,6 @@ export function renderHistoryCollectionsWorkbench(list, visible) {
     ));
     const configList = document.createElement('div');
     configList.className = 'history-config-group-card-list';
-    const splitCollections = historyConfigGroupCollectionMap(visible);
     configPanel.appendChild(configList);
 
     const collectionPanel = document.createElement('section');
@@ -312,7 +534,7 @@ export function historyManagerVisibleTasks(baseTasks) {
     const smartSearch = historySmartSearchTerms();
     const collectionSearchTerms = historySearchTerms(historyState.historyCollectionSearch, smartSearch.collection);
     const configSearchTerms = historySearchTerms(historyState.historyConfigGroupSearch, smartSearch.config);
-    const collections = historyCollectionsForWorkbench(base);
+    const collections = getHistoryWorkbenchCollections(base);
     const selectedCollection = selectedHistoryCollectionForWorkbench(collections, collectionSearchTerms);
     const visibleGroups = (selectedCollection.groups || [])
         .filter((group) => historySearchTextMatches(historyConfigGroupSearchText(group), configSearchTerms));

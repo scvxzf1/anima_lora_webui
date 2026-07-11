@@ -14,7 +14,7 @@ import {
     startHistoryCollectionMouseDrag,
     startHistoryCollectionPointerDrag,
     startHistoryCollectionTouchDrag,
-} from '../anima-app/helpers/history-collection-drag-bridge.js?v=module-bootstrap-20260711-ir2';
+} from '../anima-app/helpers/history-collection-drag-bridge.js?v=module-bootstrap-20260711-ir6';
 import {
     applySelectedHistoryTasksToCollection,
     clearHistoryCollection,
@@ -22,12 +22,13 @@ import {
     createHistoryMoreActions,
     historyCompactGroupMetaParts,
     renameHistoryCollection,
-} from '../anima-app/helpers/history-collections-bridge.js?v=module-bootstrap-20260711-ir2';
-import { renderHistoryManager } from '../anima-app/helpers/history-list-bridge.js?v=module-bootstrap-20260711-ir2';
-import { getHistoryState } from '../anima-app/helpers/history-state-bridge.js?v=module-bootstrap-20260711-ir2';
+} from '../anima-app/helpers/history-collections-bridge.js?v=module-bootstrap-20260711-ir6';
+import { renderHistoryManager } from '../anima-app/helpers/history-list-bridge.js?v=module-bootstrap-20260711-ir6';
+import { selectHistoryCollectionInWorkbench } from '../anima-app/helpers/history-collections-bridge.js?v=module-bootstrap-20260711-ir6';
+import { getHistoryState } from '../anima-app/helpers/history-state-bridge.js?v=module-bootstrap-20260711-ir6';
 import {
     moveHistoryCollection,
-} from './workbench-order.js?v=module-bootstrap-20260711-ir2';
+} from './workbench-order.js?v=module-bootstrap-20260711-ir6';
 
 const historyState = getHistoryState();
 
@@ -88,15 +89,13 @@ export function createHistoryCollectionWorkbenchCard(collection, selectedTaskCou
         dropHistoryTasksToCollection(event, collection.value || '', collection.label);
     });
     card.addEventListener('click', () => {
-        historyState.selectedHistoryCollectionKey = collection.key;
-        renderHistoryManager();
+        selectHistoryCollectionInWorkbench(collection.key);
     });
     card.addEventListener('keydown', (event) => {
         if (event.target !== card) return;
         if (event.key !== 'Enter' && event.key !== ' ') return;
         event.preventDefault();
-        historyState.selectedHistoryCollectionKey = collection.key;
-        renderHistoryManager();
+        selectHistoryCollectionInWorkbench(collection.key);
     });
 
     const head = document.createElement('div');

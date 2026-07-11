@@ -2,17 +2,17 @@
  * Training history list/manager helpers.
  * Moved out of anima-app mechanical chunks.
  */
-import { renderContinueTrainingSource } from '../anima-app/helpers/training-source-bridge.js?v=module-bootstrap-20260711-ir2';
-import { historyManagerBaseFilteredTasks, historyManagerVisibleTasks, historyTaskIds, historyTaskIsArchived, renderHistoryBulkBar, renderHistoryCollectionsWorkbench, renderHistoryManagerStats, selectedHistoryTasks, syncHistorySelectionWithTasks } from '../anima-app/helpers/history-collections-bridge.js?v=module-bootstrap-20260711-ir2';
-import { createHistoryTaskItem, renderHistoryDetailDialog } from '../anima-app/helpers/history-task-actions-bridge.js?v=module-bootstrap-20260711-ir2';
-import { getHistoryState } from '../anima-app/helpers/history-state-bridge.js?v=module-bootstrap-20260711-ir2';
-import { appendLog } from '../anima-app/helpers/live-log-bridge.js?v=module-bootstrap-20260711-ir2';
+import { renderContinueTrainingSource } from '../anima-app/helpers/training-source-bridge.js?v=module-bootstrap-20260711-ir6';
+import { historyManagerBaseFilteredTasks, historyManagerVisibleTasks, historyTaskIds, historyTaskIsArchived, renderHistoryBulkBar, renderHistoryCollectionsWorkbench, renderHistoryManagerStats, selectedHistoryTasks, syncHistorySelectionWithTasks } from '../anima-app/helpers/history-collections-bridge.js?v=module-bootstrap-20260711-ir6';
+import { createHistoryTaskItem, renderHistoryDetailDialog } from '../anima-app/helpers/history-task-actions-bridge.js?v=module-bootstrap-20260711-ir6';
+import { getHistoryState } from '../anima-app/helpers/history-state-bridge.js?v=module-bootstrap-20260711-ir6';
+import { appendLog } from '../anima-app/helpers/live-log-bridge.js?v=module-bootstrap-20260711-ir6';
 import {
     renderPreviewTaskSelect,
     setPreviewStatus,
-} from '../anima-app/helpers/preview-view-bridge.js?v=module-bootstrap-20260711-ir2';
-import { api } from '../anima-app/helpers/runtime-bridge.js?v=module-bootstrap-20260711-ir2';
-import { getTrainingState } from '../anima-app/helpers/training-state-bridge.js?v=module-bootstrap-20260711-ir2';
+} from '../anima-app/helpers/preview-view-bridge.js?v=module-bootstrap-20260711-ir6';
+import { api } from '../anima-app/helpers/runtime-bridge.js?v=module-bootstrap-20260711-ir6';
+import { getTrainingState } from '../anima-app/helpers/training-state-bridge.js?v=module-bootstrap-20260711-ir6';
 
 const historyState = getHistoryState();
 const trainingState = getTrainingState();
@@ -187,6 +187,19 @@ export function renderTrainingHistoryList() {
         for (const task of recentTasks) {
             list.appendChild(createHistoryTaskItem(task));
         }
+        syncRecentHistorySidebarSelection();
+    }
+
+export function syncRecentHistorySidebarSelection() {
+        const list = document.getElementById('task-history-list');
+        if (!list) return;
+        const activeId = historyState.historyViewMode !== 'live'
+            ? String(historyState.viewingHistoryTaskId || '')
+            : '';
+        list.querySelectorAll('.task-history-item').forEach((card) => {
+            const taskId = String(card.dataset.taskId || '');
+            card.classList.toggle('active', Boolean(activeId) && taskId === activeId);
+        });
     }
 
 export function recentTrainingSidebarTasks() {

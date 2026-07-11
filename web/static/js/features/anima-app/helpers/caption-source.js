@@ -1,4 +1,4 @@
-import { CAPTION_SOURCE_MODE_OPTIONS } from '../../../config/catalog.js?v=module-bootstrap-20260711-ir2';
+import { CAPTION_SOURCE_MODE_OPTIONS } from '../../../config/catalog.js?v=module-bootstrap-20260711-ir6';
 
 export function normalizeCaptionSourceMode(value, preferJson = false) {
     const raw = String(value || '').trim().toLowerCase().replace(/-/g, '_');

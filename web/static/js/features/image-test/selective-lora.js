@@ -10,7 +10,7 @@ import {
     enabledBlocksForImageTestSelectiveLoraStrengths,
     normalizeImageTestSelectiveLoraBlockStrengths,
     normalizeImageTestSelectiveLoraPreset,
-} from './state.js?v=module-bootstrap-20260711-ir2';
+} from './state.js?v=module-bootstrap-20260711-ir6';
 
 const DEFAULT_LAYER_STRENGTH = 1.0;
 const LAYER_ROW_SELECTOR = '[data-image-test-layer-row]';

@@ -6,32 +6,57 @@ import {
     formatSystemTemperature,
     formatSystemVram,
     historySystemSummary,
-} from '../history-detail/system.js?v=module-bootstrap-20260711-ir2';
-import { ensurePreviewFeature } from '../anima-app/helpers/feature-ensurers.js?v=module-bootstrap-20260711-ir2';
+} from '../history-detail/system.js?v=module-bootstrap-20260711-ir6';
+import { ensurePreviewFeature } from '../anima-app/helpers/feature-ensurers.js?v=module-bootstrap-20260711-ir6';
 import {
     historyCollectionOptionSearchText,
     historyCollectionSelectOptions,
     historyTaskDisplayName,
     moveHistoryCollectionValue,
-} from '../anima-app/helpers/history-collections-bridge.js?v=module-bootstrap-20260711-ir2';
-import { clearResumeOptions, historyStateLabel, metricsWithProgressFallback, renderConfigGroupTimeline, renderHistoryPaths, renderResumePanelState } from '../anima-app/helpers/history-timeline-bridge.js?v=module-bootstrap-20260711-ir2';
-import { renderTrainingRunSummary } from '../anima-app/helpers/live-status-bridge.js?v=module-bootstrap-20260711-ir2';
-import { formatLr, lastValue, readConfigNumber } from '../live-training/index.js?v=module-bootstrap-20260711-ir2';
-import { getHistoryState } from '../anima-app/helpers/history-state-bridge.js?v=module-bootstrap-20260711-ir2';
-import { api } from '../anima-app/helpers/runtime-bridge.js?v=module-bootstrap-20260711-ir2';
-import { escapeHtml } from '../config-form/field-input.js?v=module-bootstrap-20260711-ir2';
-import { setEtaMetricText, setMetricText, setText, setTrainingDashboardHeadState, syncLossChartEmptyState, updateDashboardProgressIdleState, updateTrainingToolbarState } from '../live-training/dashboard-ui.js?v=module-bootstrap-20260711-ir2';
-import { ensureHistoryDetailFeature } from '../anima-app/helpers/history-detail-bridge.js?v=module-bootstrap-20260711-ir2';
-import { closeSharedHistoryTaskDialog, openSharedHistoryTaskDialog, sharedHistoryTaskDialogIsOpen, sharedHistoryTaskDialogParts } from '../anima-app/helpers/toml-selection-bridge.js?v=module-bootstrap-20260711-ir2';
-import { renderLogOutputLines, setLogStatus } from '../anima-app/helpers/live-log-bridge.js?v=module-bootstrap-20260711-ir2';
-import { showTrainingView } from '../anima-app/helpers/queue-view-bridge.js?v=module-bootstrap-20260711-ir2';
-import { loadTrainingHistoryList, renderHistoryManager, renderTrainingHistoryList } from '../anima-app/helpers/history-list-bridge.js?v=module-bootstrap-20260711-ir2';
-import { getTrainingState } from '../anima-app/helpers/training-state-bridge.js?v=module-bootstrap-20260711-ir2';
-import { getTomlState } from '../anima-app/helpers/toml-state-bridge.js?v=module-bootstrap-20260711-ir2';
+} from '../anima-app/helpers/history-collections-bridge.js?v=module-bootstrap-20260711-ir6';
+import { clearResumeOptions, historyStateLabel, metricsWithProgressFallback, renderConfigGroupTimeline, renderHistoryPaths, renderResumePanelState } from '../anima-app/helpers/history-timeline-bridge.js?v=module-bootstrap-20260711-ir6';
+import { renderTrainingRunSummary } from '../anima-app/helpers/live-status-bridge.js?v=module-bootstrap-20260711-ir6';
+import { formatLr, lastValue, readConfigNumber } from '../live-training/index.js?v=module-bootstrap-20260711-ir6';
+import { getHistoryState } from '../anima-app/helpers/history-state-bridge.js?v=module-bootstrap-20260711-ir6';
+import { api } from '../anima-app/helpers/runtime-bridge.js?v=module-bootstrap-20260711-ir6';
+import { escapeHtml } from '../config-form/field-input.js?v=module-bootstrap-20260711-ir6';
+import { setEtaMetricText, setMetricText, setText, setTrainingDashboardHeadState, syncLossChartEmptyState, updateDashboardProgressIdleState, updateTrainingToolbarState } from '../live-training/dashboard-ui.js?v=module-bootstrap-20260711-ir6';
+import { ensureHistoryDetailFeature } from '../anima-app/helpers/history-detail-bridge.js?v=module-bootstrap-20260711-ir6';
+import { closeSharedHistoryTaskDialog, openSharedHistoryTaskDialog, sharedHistoryTaskDialogIsOpen, sharedHistoryTaskDialogParts } from '../anima-app/helpers/toml-selection-bridge.js?v=module-bootstrap-20260711-ir6';
+import { renderLogOutputLines, setLogStatus } from '../anima-app/helpers/live-log-bridge.js?v=module-bootstrap-20260711-ir6';
+import { showTrainingView } from '../anima-app/helpers/queue-view-bridge.js?v=module-bootstrap-20260711-ir6';
+import { loadTrainingHistoryList, renderHistoryManager, renderTrainingHistoryList, syncRecentHistorySidebarSelection } from '../anima-app/helpers/history-list-bridge.js?v=module-bootstrap-20260711-ir6';
+import { getTrainingState } from '../anima-app/helpers/training-state-bridge.js?v=module-bootstrap-20260711-ir6';
+import { getTomlState } from '../anima-app/helpers/toml-state-bridge.js?v=module-bootstrap-20260711-ir6';
 
 const historyState = getHistoryState();
 const trainingState = getTrainingState();
 const tomlState = getTomlState();
+const SIDEBAR_HISTORY_CACHE_LIMIT = 8;
+const SIDEBAR_HISTORY_LOG_RENDER_LIMIT = 800;
+
+function rememberSidebarHistoryPayload(taskId, payload) {
+    const id = String(taskId || '').trim();
+    if (!id || !payload?.ok) return;
+    const cache = historyState.sidebarHistoryPayloadCache;
+    if (cache.has(id)) cache.delete(id);
+    cache.set(id, payload);
+    while (cache.size > SIDEBAR_HISTORY_CACHE_LIMIT) {
+        const oldest = cache.keys().next().value;
+        cache.delete(oldest);
+    }
+}
+
+function sidebarHistoryLogLines(logs) {
+    const lines = (logs || []).map((record) => `${record.kind === 'progress' ? '[进度] ' : ''}${record.line || ''}`);
+    if (lines.length <= SIDEBAR_HISTORY_LOG_RENDER_LIMIT) return lines;
+    const omitted = lines.length - SIDEBAR_HISTORY_LOG_RENDER_LIMIT;
+    return [
+        `[提示] 日志较多，侧栏仅渲染最近 ${SIDEBAR_HISTORY_LOG_RENDER_LIMIT} 行（已省略 ${omitted} 行）。完整日志可在历史详情中查看。`,
+        ...lines.slice(-SIDEBAR_HISTORY_LOG_RENDER_LIMIT),
+    ];
+}
+
 
 
 export function showHistoryCollectionSelectDialog(options) {
@@ -336,8 +361,30 @@ export async function loadHistoryTask(taskId, options = {}) {
 export async function openSidebarHistoryTask(taskId) {
     const id = String(taskId || '').trim();
     if (!id) return;
+    const requestId = (historyState.sidebarHistoryRequestId || 0) + 1;
+    historyState.sidebarHistoryRequestId = requestId;
+
+    // Paint selection immediately so rapid sidebar switching feels responsive.
+    showTrainingView('live');
+    closeHistoryDetailDialog();
+    historyState.historyViewMode = 'task';
+    historyState.viewingHistoryTaskId = id;
+    historyState.currentHistoryConfigGroup = null;
+    historyState.currentHistoryTimelineSelection = [];
+    const cached = historyState.sidebarHistoryPayloadCache.get(id);
+    if (cached?.task) {
+        historyState.currentHistoryTaskForResume = cached.task;
+    }
+    ensureHistoryDetailFeature().clearHistoryDetailState();
+    ensureHistoryDetailFeature().resetCurveHover();
+    syncRecentHistorySidebarSelection();
+    if (cached?.ok) {
+        renderHistoryTask(cached, { stickLogsToBottom: false });
+    }
+
     try {
         const payload = await api(`/api/training/history/${encodeURIComponent(id)}`);
+        if (requestId !== historyState.sidebarHistoryRequestId) return;
         if (!payload.ok) {
             await showHistoryTaskMessageDialog({
                 title: '读取历史任务失败',
@@ -346,18 +393,12 @@ export async function openSidebarHistoryTask(taskId) {
             });
             return;
         }
-        showTrainingView('live');
-        closeHistoryDetailDialog();
-        historyState.historyViewMode = 'task';
-        historyState.viewingHistoryTaskId = id;
-        historyState.currentHistoryConfigGroup = null;
-        historyState.currentHistoryTimelineSelection = [];
+        rememberSidebarHistoryPayload(id, payload);
         historyState.currentHistoryTaskForResume = payload.task || null;
-        ensureHistoryDetailFeature().clearHistoryDetailState();
-        ensureHistoryDetailFeature().resetCurveHover();
-        renderHistoryTask(payload);
-        renderTrainingHistoryList();
+        renderHistoryTask(payload, { stickLogsToBottom: true });
+        syncRecentHistorySidebarSelection();
     } catch (e) {
+        if (requestId !== historyState.sidebarHistoryRequestId) return;
         await showHistoryTaskMessageDialog({
             title: '读取历史任务失败',
             message: e.message,
@@ -457,7 +498,7 @@ export function historyLossChartPoints(lossPoints, task) {
     return out;
 }
 
-export function renderHistoryTask(payload) {
+export function renderHistoryTask(payload, options = {}) {
     const task = payload.task || {};
     historyState.currentHistoryTaskForResume = task;
     const banner = document.getElementById('history-view-banner');
@@ -542,9 +583,17 @@ export function renderHistoryTask(payload) {
     });
 
     const logEl = document.getElementById('log-output');
-    renderLogOutputLines(logs.map((record) => `${record.kind === 'progress' ? '[进度] ' : ''}${record.line || ''}`));
-    logEl.scrollTop = logEl.scrollHeight;
-    setLogStatus(`历史 · ${(payload.logs || []).length} 行`, 'warning');
+    const logLines = sidebarHistoryLogLines(logs);
+    renderLogOutputLines(logLines, { stickToBottom: options.stickLogsToBottom !== false });
+    if (options.stickLogsToBottom !== false && logEl) logEl.scrollTop = logEl.scrollHeight;
+    const totalLogs = (payload.logs || []).length;
+    const renderedLogs = Math.min(totalLogs, SIDEBAR_HISTORY_LOG_RENDER_LIMIT);
+    setLogStatus(
+        totalLogs > renderedLogs
+            ? `历史 · 渲染 ${renderedLogs}/${totalLogs} 行`
+            : `历史 · ${totalLogs} 行`,
+        'warning',
+    );
 
     const health = document.getElementById('training-health');
     health.className = 'training-health';

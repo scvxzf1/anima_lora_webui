@@ -2,7 +2,7 @@
  * Sample-prompt row builders and config field UI helpers.
  * Moved out of anima-app mechanical chunks.
  */
-import { formatCompactNumber } from '../history-detail/ui.js?v=module-bootstrap-20260711-ir2';
+import { formatCompactNumber } from '../history-detail/ui.js?v=module-bootstrap-20260711-ir6';
 import {
     EXTRA_FIELD_HELP_ZH,
     FIELD_HELP_ZH,
@@ -11,11 +11,11 @@ import {
     FORM_SECTION_DEFS,
     NETWORK_ARG_FIELD_MAP,
     help,
-} from '../../config/catalog.js?v=module-bootstrap-20260711-ir2';
-import { normalizeLoraAdapterKind, normalizePrecisionPreference } from '../anima-app/helpers/config-values.js?v=module-bootstrap-20260711-ir2';
-import { configureConfigFieldUiBridge } from '../anima-app/helpers/config-field-ui-bridge.js?v=module-bootstrap-20260711-ir2';
-import { getConfigState } from '../anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260711-ir2';
-import { handleFormFieldChange, markSamplePromptsEditorTouched } from '../config-form/form-fields.js?v=module-bootstrap-20260711-ir2';
+} from '../../config/catalog.js?v=module-bootstrap-20260711-ir6';
+import { normalizeLoraAdapterKind, normalizePrecisionPreference } from '../anima-app/helpers/config-values.js?v=module-bootstrap-20260711-ir6';
+import { configureConfigFieldUiBridge } from '../anima-app/helpers/config-field-ui-bridge.js?v=module-bootstrap-20260711-ir6';
+import { getConfigState } from '../anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260711-ir6';
+import { handleFormFieldChange, markSamplePromptsEditorTouched } from '../config-form/form-fields.js?v=module-bootstrap-20260711-ir6';
 
 const configState = getConfigState();
 
