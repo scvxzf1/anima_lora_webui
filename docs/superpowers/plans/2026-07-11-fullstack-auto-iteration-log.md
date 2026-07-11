@@ -243,3 +243,46 @@ focused C2: test_variant_guides_match_gui_methods_or_legacy_aliases PASS
 
 - 旧版“前端 68/D、仅 F1-F5”材料已被本轮加强版替代。
 - 若继续自动迭代，从 **IR1** 开工，不允许再只做评分空转。
+
+
+## IR2 实现轮结果 — 2026-07-11
+
+| 项 | 值 |
+|---|---|
+| 分支 | `feat/frontend-five-round-iteration` |
+| HEAD | `ac128ba8` |
+| 前端基线（IR1 后） | ~64 / D+（估） |
+| 本轮目标 | IR2：C3 命名分层、C4 快捷按钮 diff/门禁、T1 DOM contract |
+| 完成任务 | C3 文案分层；C4 quick-preset diff + 方法门禁；T1 critical DOM 契约 + node syntax smoke |
+| 测试门禁 | G0 12 passed；DOM 7；G1 24；G2 frontend live/queue 11；config focused resource 4 passed |
+| 结构快照 | features 19 / chunks 45 (14401 lines) / bridges 37 (1915 lines) / dom_ids 449 |
+| 熔断? | 否 |
+| 健康分（估） | ~69–70 / C-（待 IR3 正式复评确认） |
+| 下轮焦点 | IR3：E1 formatPathLabel、E2 bridge fail-fast、C1 provenance、C6 defaults |
+
+### 提交
+
+| Commit | 说明 |
+|---|---|
+| `e264f666` | C3：硬件预设 / 方法变体 / 快捷资源命名分层 |
+| `d48ee3d8` | C4：资源快捷 preset diff 预览 + 方法门禁 |
+| `ac128ba8` | T1：critical workflow DOM id 契约 + 可选 node smoke |
+
+### 验收证据
+
+```text
+G0: 12 passed
+DOM: 7 passed
+G1 subset: 24 passed
+G2 frontend live/queue: 11 passed
+config focused (resource_quick|quick_preset|resource_naming|progressive_disclosure|variant_guides): 4 passed
+C4 review: Spec ✅ / Quality Approved (Minor only)
+T1 review: Spec ✅ / Quality Approved (Minor only)
+```
+
+### 残留 Concerns
+
+- C4：disabled 按钮 click 监听基本无效；成功文案时态偏“将修改”；行为级纯函数测试仍薄。
+- T1：node smoke 仅语法；critical id 手写同步。
+- 既有：`tests/test_web_preflight_compat_matrix.py` collection ImportError 仍在，G4 全包勿当回归信号。
+- 正式评分卡复评放到 IR3 收口一并做。
