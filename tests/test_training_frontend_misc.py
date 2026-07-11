@@ -35,7 +35,7 @@ def test_config_toolbar_is_first_visible_config_row() -> None:
     assert "来自 configs/presets.toml" in toolbar_html
     assert ".config-run-preset" in css
     assert 'id="choice-guide"' not in html
-    assert "padding: 1rem 1.65rem 1.7rem;" in form_workspace_css
+    assert "padding: 0.55rem 1.2rem 1.15rem;" in form_workspace_css
     assert "align-items: center;" in toolbar_css
 
 
@@ -116,7 +116,7 @@ def test_config_actions_are_de_noised_and_sticky_controls_are_wired() -> None:
     sticky_css = _section(css, "#tab-config .config-sticky-actions", "#tab-config .config-sticky-title")
     config_left_css = _section(css, "#tab-config .config-left", "#tab-config .config-direct-editor")
     assert "width: var(--config-sticky-width, min(1040px, calc(100vw - 2rem)));" in sticky_css
-    assert "grid-template-columns: auto repeat(5, minmax(118px, 1fr));" in sticky_css
+    assert "grid-template-columns: auto repeat(5, minmax(88px, 1fr));" in sticky_css
     assert "left: var(--config-sticky-left, 1rem);" in sticky_css
     assert "position: fixed;" in sticky_css
     assert "position: sticky;" not in sticky_css
@@ -124,7 +124,7 @@ def test_config_actions_are_de_noised_and_sticky_controls_are_wired() -> None:
     assert "overflow-y: auto;" in config_left_css
     assert "overscroll-behavior: contain;" in config_left_css
     assert "padding-bottom: var(--config-sticky-safe-space);" in config_left_css
-    assert "min-height: 52px;" in _section(css, "#tab-config .config-sticky-tab", "#tab-config .config-sticky-tab:hover")
+    assert "min-height: calc(var(--control-height) + 0.1rem);" in _section(css, "#tab-config .config-sticky-tab", "#tab-config .config-sticky-tab:hover")
 
 
 def test_config_catalog_exposes_automagic_and_constant_with_warmup_options() -> None:
@@ -150,13 +150,13 @@ def test_config_workbench_manager_is_right_column() -> None:
     phone = _section(css, "@media (max-width: 520px)", "@media (max-width: 640px)")
 
     assert "左侧训练配置工作台 + 右侧配置预设管理" in html
-    assert "grid-template-columns: minmax(0, 1fr) clamp(260px, 24vw, 360px);" in layout
+    assert "grid-template-columns: minmax(0, 1fr) clamp(240px, 20vw, 300px);" in layout
     assert "grid-column: 2;" in manager
     assert "isolation: isolate;" in manager
-    assert "z-index: 60;" in manager
+    assert "z-index: 40;" in manager
     assert "overflow: visible;" in manager
-    assert "border-left: 1px solid var(--config-border-strong);" in manager
+    assert "border-left: 1px solid var(--config-border);" in manager
     assert "grid-column: 1;" in editor
-    assert "grid-template-columns: minmax(0, 1fr) minmax(260px, 300px);" in compact
+    assert "grid-template-columns: minmax(0, 1fr) minmax(220px, 260px);" in compact
     assert "grid-template-columns: 1fr;" in phone
 

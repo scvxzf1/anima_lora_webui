@@ -291,3 +291,8 @@
 - 本地 `main` 已 fast-forward 包含全部实现提交
 - 相对 `webui/main` ahead 14；未自动 push（需用户明确“推送到线上”）
 
+### Post-merge gate fix
+- Issue: `tests/test_training_frontend_misc.py` still asserted pre-reskin config chrome metrics
+- Fix: update layout/padding/sticky/sidebar contract assertions to instrument denser values
+- Result: `tests/test_training_frontend_misc.py` 4 passed
+
