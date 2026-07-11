@@ -1434,7 +1434,9 @@ def test_history_workbench_renders_items_in_chunks() -> None:
     assert "HISTORY_RENDER_CHUNK_SIZE" in helper
     assert "requestAnimationFrame" in helper
 
-    assert "renderItemsInChunks" in workbench
+    assert "fillHistoryWorkbenchCardLists" in workbench
+    fill_helper = _frontend_module_text("js/features/history-list/workbench-chunk-fill.js")
+    assert "renderItemsInChunks" in fill_helper
     assert "historyWorkbenchRenderSignal" in workbench
     assert "createHistoryConfigGroupWorkbenchCard" in workbench
     assert "createHistoryCollectionWorkbenchCard" in workbench
