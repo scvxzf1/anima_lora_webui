@@ -2269,3 +2269,18 @@ select.dataset-config-input {
     color: var(--text-dim);
     font-size: 0.72rem;
 }
+
+/* Task 11: dataset editor field floor (main fields only up/tokenized) */
+.dataset-editor input[type="text"],
+.dataset-editor input[type="number"],
+.dataset-editor input[type="search"],
+.dataset-editor select,
+.dataset-editor textarea {
+    min-height: var(--control-height);
+    font-size: var(--font-size-field);
+}
+.dataset-editor label,
+.dataset-editor .field-label {
+    font-size: max(var(--font-size-field-label), 0.72rem);
+}
+

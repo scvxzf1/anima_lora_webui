@@ -206,3 +206,10 @@
 - Tests: misc + dom + design_system + cache
 - Decision: continue
 
+### P3 (Task 11)
+- Goal: 数据集页列表/工具条/行字段接 primitives
+- Write set: index.html hooks, 12-datasets-forge.css, 10-config-dataset-editor.css, iteration log
+- Changes: page-shell/workbench/ui-sidebar/ui-toolbar; main field token floor
+- Cache: keep ds-p3
+- Decision: continue
+
