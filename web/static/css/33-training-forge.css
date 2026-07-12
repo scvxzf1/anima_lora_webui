@@ -1806,7 +1806,9 @@
 
 #tab-training .metric-item,
 #tab-training .metric-item.ui-stat {
-    display: grid;
+    /* Keep tall cards; ui-stat owns type scale, not layout mode. */
+    display: flex;
+    flex-direction: column;
     gap: 0.12rem;
     border-color: var(--training-border);
     background: var(--training-panel-soft);
