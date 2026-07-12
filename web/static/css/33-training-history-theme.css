@@ -29,6 +29,14 @@
     box-shadow: none;
 }
 
+/* history-board is a semantic mount; keep the manager area grid, do not adopt the generic 2-col pattern. */
+#tab-training .training-history-manager.history-board {
+    display: grid;
+    grid-template-columns: minmax(300px, 360px) minmax(0, 1fr);
+    gap: 0;
+    min-height: calc(100vh - 142px);
+}
+
 #tab-training .history-forge-eyebrow {
     display: block;
     color: var(--training-faint);
@@ -44,12 +52,13 @@
     align-self: start;
     display: grid;
     grid-template-columns: minmax(0, 1fr);
-    gap: 0.45rem;
+    gap: var(--space-2);
     margin: 0;
-    padding: 0.7rem 0.9rem 0.55rem;
+    padding: 0.62rem 0.85rem 0.5rem;
     border-right: 1px solid var(--training-border);
     border-bottom: 1px solid var(--training-border);
-    background: var(--training-sidebar-bg);
+    background: color-mix(in srgb, var(--training-sidebar-bg) 94%, var(--training-page-bg));
+    box-shadow: none;
 }
 
 #tab-training .history-manager-head h3 {
@@ -74,7 +83,7 @@
 }
 
 #tab-training .history-manager-actions .btn {
-    min-height: var(--control-height);
+    min-height: var(--control-height-md);
     font-weight: 700;
 }
 
@@ -83,12 +92,13 @@
     align-self: start;
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 0.35rem;
+    gap: var(--space-2);
     margin: 0;
-    padding: 0.55rem 0.9rem 0.55rem;
+    padding: 0.5rem 0.85rem;
     border-right: 1px solid var(--training-border);
     border-bottom: 1px solid var(--training-border);
-    background: var(--training-sidebar-bg);
+    background: color-mix(in srgb, var(--training-sidebar-bg) 94%, var(--training-page-bg));
+    box-shadow: none;
 }
 
 #tab-training .history-manager-stat {
@@ -96,10 +106,11 @@
     gap: 0.08rem;
     min-height: 3.15rem;
     padding: 0.38rem 0.48rem;
-    border-color: var(--training-border);
-    border-radius: 5px;
+    border: 1px solid var(--training-border);
+    border-radius: var(--radius-sm, 5px);
     background: var(--training-panel-soft);
     color: var(--training-text);
+    box-shadow: none;
     transition: border-color 0.16s ease, background 0.16s ease, box-shadow 0.16s ease;
 }
 
@@ -113,7 +124,7 @@
 
 #tab-training .history-manager-stat strong {
     color: inherit;
-    font-size: 1rem;
+    font-size: 1.05rem;
     line-height: 1;
 }
 
@@ -147,10 +158,19 @@
     gap: 0.35rem 0.4rem;
     align-items: end;
     margin: 0;
-    padding: 0.55rem 0.9rem;
+    padding: 0.5rem 0.85rem;
     border-right: 1px solid var(--training-border);
     border-bottom: 1px solid var(--training-border);
-    background: var(--training-sidebar-bg);
+    border-color: var(--training-border);
+    background: color-mix(in srgb, var(--training-sidebar-bg) 94%, var(--training-page-bg));
+    box-shadow: none;
+}
+
+#tab-training .history-manager-tools.history-board__tools,
+#tab-training .history-manager-tools.ui-sidebar {
+    border-color: var(--training-border);
+    background: color-mix(in srgb, var(--training-sidebar-bg) 94%, var(--training-page-bg));
+    box-shadow: none;
 }
 
 #tab-training .history-manager-search {
@@ -171,12 +191,13 @@
 
 #tab-training .history-manager-tools input,
 #tab-training .history-manager-tools select {
-    min-height: var(--control-height);
+    min-height: var(--control-height-md);
     border-color: var(--training-border);
     border-radius: 5px;
     background: var(--training-field-bg);
     color: var(--training-text);
     font-size: var(--font-size-field);
+    box-shadow: none;
 }
 
 #tab-training .history-manager-tools input:focus,
@@ -187,13 +208,28 @@
 
 #tab-training .history-bulk-bar {
     grid-area: bulk;
+    display: grid;
+    align-items: stretch;
+    flex-wrap: unset;
+    gap: 0.42rem;
     margin: 0;
-    padding: 0.5rem 0.9rem 0.55rem;
+    min-height: 0;
+    padding: 0.45rem 0.85rem 0.5rem;
     border: 0;
     border-right: 1px solid var(--training-border);
     border-bottom: 1px solid var(--training-border);
     border-radius: 0;
-    background: color-mix(in srgb, var(--training-panel-soft) 80%, transparent);
+    background: color-mix(in srgb, var(--training-panel-soft) 86%, var(--training-sidebar-bg));
+    box-shadow: none;
+}
+
+#tab-training .history-bulk-bar.ui-toolbar {
+    display: grid;
+    flex-wrap: unset;
+    min-height: 0;
+    border-bottom: 1px solid var(--training-border);
+    background: color-mix(in srgb, var(--training-panel-soft) 86%, var(--training-sidebar-bg));
+    box-shadow: none;
 }
 
 #tab-training .history-bulk-head {
@@ -202,12 +238,14 @@
 
 #tab-training .history-bulk-title strong {
     color: var(--training-text);
-    font-size: 0.8rem;
+    font-size: 0.82rem;
 }
 
 #tab-training .history-bulk-eyebrow {
     color: var(--training-faint);
     font-size: var(--font-size-meta);
+    font-weight: 700;
+    letter-spacing: 0;
     text-transform: uppercase;
 }
 
@@ -218,7 +256,7 @@
 }
 
 #tab-training .history-bulk-primary-actions .btn {
-    min-height: var(--control-height);
+    min-height: var(--control-height-md);
     font-weight: 700;
 }
 
@@ -238,8 +276,16 @@
     grid-area: content;
     align-self: stretch;
     min-height: 0;
-    padding: 0.75rem 0.95rem 1rem;
+    padding: var(--space-3) 0.95rem 1rem;
     background: var(--training-page-bg);
+    box-shadow: none;
+}
+
+/* history-board__main mounts on the table panel; avoid pattern padding double-stack. */
+#tab-training .history-table-panel.history-board__main {
+    min-width: 0;
+    padding: 0;
+    box-shadow: none;
 }
 
 #tab-training .history-table-panel.collections-mode {

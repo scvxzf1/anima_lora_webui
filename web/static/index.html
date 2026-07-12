@@ -17,7 +17,7 @@
             }
         })();
     </script>
-    <link rel="stylesheet" href="/static/style.css?v=frontend-chain-20260712-ds-p1">
+    <link rel="stylesheet" href="/static/style.css?v=frontend-chain-20260712-ds-p2">
 </head>
 <body>
     <header>
@@ -400,7 +400,7 @@
                         </div>
                         <div id="training-queue-manager-list" class="training-queue-manager-list"></div>
                     </section>
-                    <section id="training-history-manager" class="training-view-panel training-history-manager" hidden>
+                    <section id="training-history-manager" class="training-view-panel training-history-manager history-board" hidden>
                         <div class="history-manager-head">
                             <div>
                                 <span class="history-forge-eyebrow">HISTORY FORGE</span>
@@ -414,7 +414,7 @@
                             </div>
                         </div>
                         <div id="history-manager-stats" class="history-manager-stats" aria-label="历史任务统计"></div>
-                        <div class="history-manager-tools">
+                        <div class="history-manager-tools history-board__tools ui-sidebar">
                             <label class="history-manager-search history-manager-smart-search">
                                 <span>全局搜索</span>
                                 <input id="history-manager-search" type="search" placeholder="任务 / 配置 / 目录，支持 组:骨女 或 配置:lora">
@@ -473,7 +473,7 @@
                                 </select>
                             </label>
                         </div>
-                        <div id="history-bulk-bar" class="history-bulk-bar" hidden>
+                        <div id="history-bulk-bar" class="history-bulk-bar ui-toolbar" hidden>
                             <div class="history-bulk-head">
                                 <div class="history-bulk-title">
                                     <span class="history-bulk-eyebrow">MULTI SELECT</span>
@@ -491,7 +491,7 @@
                             </div>
                         </div>
                         <div class="history-manager-grid">
-                            <div class="history-table-panel">
+                            <div class="history-table-panel history-board__main">
                                 <div class="history-table-head">
                                     <label class="history-select-all">
                                         <input id="history-select-all" type="checkbox">

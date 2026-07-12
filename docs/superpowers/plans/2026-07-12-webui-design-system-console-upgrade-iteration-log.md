@@ -114,3 +114,29 @@
 - Tests: queue + dom 子集
 - Decision: continue
 
+### P2 (Task 7)
+- Goal: 历史管理台接入 history-board / ui-toolbar / ui-sidebar
+- Write set:
+  - web/static/index.html（仅历史 class 钩子 + cache）
+  - web/static/css/33-training-history-theme.css
+  - web/static/style.css cache `frontend-chain-20260712-ds-p2`
+  - iteration log
+- Changes:
+  - `#training-history-manager` 加 `history-board`
+  - tools 加 `history-board__tools` + `ui-sidebar`
+  - table panel 加 `history-board__main`
+  - bulk bar 加 `ui-toolbar`
+  - 主题 CSS 消费 control-height-md / space / meta；覆盖 generic history-board 两列 pattern，保留既有 head/stats/tools/bulk+content 区域网格
+  - 去掉 head/stats/tools/bulk 重阴影；输入高度走 `var(--control-height-md)`
+  - 主字段字号只升不降（stat strong / bulk title）
+- Supplemental review: 不改 DOM id / 不改 21-history-panels / 不改 JS 业务
+- Cross review: self PASS — pattern mount without IA break
+- Tests run: design_system + history + cache token (+ optional DOM)
+- Tests run:
+  - required: design_system + history + cache token → 21 passed, 1 failed
+  - optional: tests/test_training_frontend_dom.py → 8 passed
+- Results: GREEN for CSS/cache/DOM; history JS baseline FAIL known (`test_history_manager_frontend_hooks_are_present` expects selectedHistoryCollectionKey assignment not present in bootstrap)
+- High open: none
+- Medium open: 列表/拖拽降噪留给 Task 8；本地 --training-* 色板仍在
+- Decision: continue
+
