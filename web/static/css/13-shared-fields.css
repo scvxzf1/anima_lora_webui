@@ -586,3 +586,16 @@ input[type="checkbox"].field-input {
 .help-ps .help-heading {
     color: var(--accent);
 }
+
+/* Task 10: field token floor for design-system consumers */
+.ui-field__label {
+    font-size: var(--font-size-field-label);
+}
+.ui-field__control,
+.ui-field input,
+.ui-field select,
+.ui-field textarea {
+    min-height: var(--control-height);
+    font-size: var(--font-size-field);
+}
+

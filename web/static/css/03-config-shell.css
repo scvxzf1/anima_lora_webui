@@ -1155,3 +1155,17 @@
     border-radius: 4px;
     overflow-x: auto;
 }
+
+/* Task 10: shared config shell token floor */
+.config-toolbar.ui-toolbar {
+    gap: 0.75rem;
+}
+.config-toolbar label {
+    font-size: max(0.8rem, var(--font-size-field-label));
+}
+.config-toolbar select,
+.toml-header select {
+    min-height: var(--control-height);
+    font-size: max(0.8rem, var(--font-size-field));
+}
+

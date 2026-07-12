@@ -1517,3 +1517,53 @@
         grid-template-columns: 1fr;
     }
 }
+
+/* Task 10: design-system config mount (additive; keep contract selectors intact) */
+#tab-config.page-shell {
+    /* page-shell supplies surface/page defaults; forge palette still owns themed chrome */
+    color: var(--config-text);
+}
+
+#tab-config .config-forge-layout.workbench {
+    /* Config already uses main + right sidebar; pin that over generic workbench. */
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) clamp(240px, 20vw, 300px);
+    gap: 0;
+    align-items: stretch;
+    min-height: calc(100vh - var(--header-height, 59px));
+}
+
+#tab-config .config-preset-manager.ui-sidebar {
+    background: color-mix(in srgb, var(--config-sidebar-bg) 92%, var(--config-page-bg));
+    box-shadow: none;
+}
+
+#tab-config .config-toolbar.ui-toolbar {
+    /* ui-toolbar is semantic; forge keeps denser instrument row */
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    flex-wrap: wrap;
+    box-shadow: none;
+}
+
+#tab-config .config-toolbar select,
+#tab-config .config-toolbar .gpu-picker-toggle {
+    min-height: var(--control-height);
+    font-size: var(--font-size-field);
+}
+
+#tab-config .field-label,
+#tab-config .ui-field__label {
+    font-size: var(--font-size-field-label);
+}
+
+#tab-config .field-input,
+#tab-config .ui-field__control,
+#tab-config .ui-field input,
+#tab-config .ui-field select,
+#tab-config .ui-field textarea {
+    min-height: var(--control-height);
+    font-size: var(--font-size-field);
+}
+

@@ -195,3 +195,14 @@
 2. 数据集页列表/行字段（Task 11）
 3. 工具四页 + 残留 forge 硬编码清理 + final cache（Task 12）
 
+### P3 (Task 10)
+- Goal: 配置页回灌 workbench / ui-toolbar / ui-field
+- Write set: index.html class hooks, 11-config-forge.css, 03-config-shell.css, 13-shared-fields.css, style cache ds-p3, iteration log
+- Changes:
+  - `#tab-config` → page-shell；layout → workbench；manager → ui-sidebar；toolbar → ui-toolbar
+  - forge/shell 以 additive 规则消费系统，不改 misc 契约选择器文本
+  - 主字段高度/字号强制 token floor
+  - cache `ds-p2` → `ds-p3`
+- Tests: misc + dom + design_system + cache
+- Decision: continue
+

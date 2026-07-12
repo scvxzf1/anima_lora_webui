@@ -15,9 +15,10 @@ def test_config_toolbar_is_first_visible_config_row() -> None:
     css = STYLE_CSS.read_text(encoding="utf-8")
 
     editor_html = _section(html, '<section class="config-preset-editor">', '<section id="continue-training-source"')
-    toolbar_html = _section(html, '<div class="config-toolbar">', '<div id="gpu-picker" class="gpu-picker">')
+    toolbar_html = _section(html, '<div class="config-toolbar', '<div id="gpu-picker" class="gpu-picker">')
     form_workspace_css = _section(css, "#tab-config .config-form-workspace,", "#tab-config .config-toolbar {")
     toolbar_css = _section(css, "#tab-config .config-toolbar {", "#tab-config .config-toolbar label")
+    assert 'class="config-toolbar ui-toolbar"' in html or 'config-toolbar ui-toolbar' in toolbar_html
 
     assert "config-preset-header" not in editor_html
     assert "CONFIG FORGE" not in editor_html

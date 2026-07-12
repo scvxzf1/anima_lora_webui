@@ -17,7 +17,7 @@
             }
         })();
     </script>
-    <link rel="stylesheet" href="/static/style.css?v=frontend-chain-20260712-ds-p2">
+    <link rel="stylesheet" href="/static/style.css?v=frontend-chain-20260712-ds-p3">
 </head>
 <body>
     <header>
@@ -48,9 +48,9 @@
 
     <main>
         <!-- 配置 Tab：左侧训练配置工作台 + 右侧配置预设管理 -->
-        <section id="tab-config" class="tab-content active">
-            <div class="config-page-layout config-forge-layout">
-                <aside class="config-preset-manager" aria-label="配置预设管理">
+        <section id="tab-config" class="tab-content active page-shell">
+            <div class="config-page-layout config-forge-layout workbench">
+                <aside class="config-preset-manager ui-sidebar" aria-label="配置预设管理">
                     <div class="config-page-toolbar config-sidebar-project">
                         <div id="config-page-summary" class="config-page-summary">
                             <div class="config-page-summary-stat">
@@ -122,7 +122,7 @@
                 </aside>
                 <section class="config-preset-editor">
                     <div id="config-form-workspace" class="config-form-workspace">
-                        <div class="config-toolbar">
+                        <div class="config-toolbar ui-toolbar">
                             <div class="config-selection-state" hidden>
                                 <label>方法:
                                     <select id="method-select"></select>
