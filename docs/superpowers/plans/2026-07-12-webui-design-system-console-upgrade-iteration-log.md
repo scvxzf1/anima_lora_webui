@@ -85,3 +85,32 @@
 - Medium open: training page still uses local --training-* palette (expected; theme unification later)
 - Decision: continue
 
+### P1 (Task 6)
+- Goal: 队列侧栏密扫读，接入 system surface / meta / status 节奏
+- Write set:
+  - web/static/css/22-training-queue.css
+  - web/static/css/33-training-forge.css（仅队列/侧栏相关）
+  - iteration log
+- Changes:
+  - 侧栏背景消费 surface 混色（对齐 ui-sidebar），去掉重阴影
+  - 队列 panel / section / item 压密间距，标题改 section/meta 节奏
+  - 状态色改走 --status-running / success / error / warning / idle
+  - 队列 item 主标题字号只升不降；不碰 monitor 主指标
+  - cache 保持 ds-p1
+- Supplemental review: 不改 DOM id / index.html / JS / 用户数据
+- Cross review: self PASS — queue densified; main metrics selectors untouched
+- Tests run:
+  - required: tests/test_training_frontend_queue.py tests/test_training_frontend_dom.py → 12 passed
+- Results: GREEN
+- High open: none
+- Medium open: 侧栏仍保留本地 --training-* 色板（与 Task 5 一致，后续主题统一）
+- Decision: continue
+
+### P1-fix (Task 5 review follow-up)
+- Goal: 修复 metric-item grid/justify 垂直节奏
+- Write set: `33-training-forge.css`
+- Changes: `.metric-item` 恢复 `flex` 列布局 + `space-between`，保留高卡与 ui-stat 字号语义
+- Supplemental review: Task 5 Important 项
+- Tests: queue + dom 子集
+- Decision: continue
+
