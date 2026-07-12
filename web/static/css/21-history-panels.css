@@ -47,10 +47,11 @@
 }
 .history-collections-title strong {
     color: var(--text);
-    font-size: 0.92rem;
+    font-size: var(--font-size-section);
+    font-weight: 750;
 }
 .history-collections-workbench.compact .history-collections-title strong {
-    font-size: 0.82rem;
+    font-size: max(0.82rem, var(--font-size-section));
 }
 .history-collections-title span {
     color: var(--text-dim);
@@ -58,8 +59,8 @@
     line-height: 1.35;
 }
 .history-collections-workbench.compact .history-collections-title span {
-    font-size: 0.64rem;
-    line-height: 1.25;
+    font-size: var(--font-size-meta);
+    line-height: 1.3;
 }
 .history-collections-stats {
     display: grid;
@@ -88,7 +89,7 @@
     font-size: 0.92rem;
 }
 .history-collections-workbench.compact .history-collections-stats strong {
-    font-size: 0.78rem;
+    font-size: max(0.78rem, var(--font-size-meta));
 }
 .history-collections-stats span {
     color: var(--text-dim);
@@ -97,7 +98,7 @@
     margin-top: 0.1rem;
 }
 .history-collections-workbench.compact .history-collections-stats span {
-    font-size: 0.58rem;
+    font-size: var(--font-size-meta);
     margin-top: 0;
 }
 .history-collections-toolbar {
@@ -159,11 +160,14 @@
 }
 .history-collections-panel-title strong {
     color: var(--text);
-    font-size: 0.82rem;
+    font-size: var(--font-size-section);
+    font-weight: 750;
+    letter-spacing: 0;
 }
 .history-collections-panel-title span {
     color: var(--text-dim);
     font-size: var(--font-size-meta);
+    text-transform: uppercase;
 }
 .history-collection-card-list,
 .history-config-group-card-list {
@@ -321,7 +325,7 @@
 .history-collection-card-title strong,
 .history-config-group-card-main strong {
     color: var(--text);
-    font-size: 0.72rem;
+    font-size: max(0.78rem, var(--font-size-meta));
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -329,7 +333,7 @@
 .history-collection-card-title span,
 .history-config-group-card-main span {
     color: var(--text-dim);
-    font-size: 0.61rem;
+    font-size: var(--font-size-meta);
     line-height: 1.25;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -539,24 +543,27 @@
 .history-drag-handle {
     align-items: center;
     align-self: stretch;
-    background: var(--surface-raised);
+    background: color-mix(in srgb, var(--surface-panel) 88%, transparent);
     border: 1px solid var(--border-soft);
-    border-radius: 4px;
-    color: var(--text-dim);
+    border-radius: var(--radius-sm, 4px);
+    color: color-mix(in srgb, var(--text-dim) 82%, transparent);
     cursor: grab;
     display: inline-flex;
-    font-size: 0.78rem;
-    font-weight: 800;
+    font-size: var(--font-size-meta);
+    font-weight: 700;
     justify-content: center;
     line-height: 1;
-    min-height: 24px;
-    padding: 0 0.2rem;
+    min-height: 28px;
+    min-width: 28px;
+    padding: 0 0.22rem;
     user-select: none;
+    box-shadow: none;
 }
 .history-drag-handle:hover,
 .history-drag-handle:focus-visible {
-    border-color: var(--history-config-accent);
-    color: var(--history-config-accent);
+    border-color: color-mix(in srgb, var(--border) 70%, var(--text-dim));
+    color: var(--text);
+    background: var(--surface-raised);
 }
 .history-drag-handle:active {
     cursor: grabbing;
@@ -577,8 +584,8 @@
 .history-collection-drag-handle:hover,
 .history-collection-drag-handle:focus-visible,
 .history-collection-drag-handle.dragging {
-    border-color: var(--history-collection-accent);
-    color: var(--history-collection-accent);
+    border-color: color-mix(in srgb, var(--border) 65%, var(--text-dim));
+    color: var(--text);
 }
 .history-collection-pointer-drag-active,
 .history-collection-pointer-drag-active * {
@@ -3215,4 +3222,32 @@ body.history-detail-window-open {
 .history-config-group-card.is-expanded .history-config-group-toggle {
     border-color: color-mix(in srgb, var(--accent) 42%, var(--border));
     color: var(--accent);
+}
+
+/* Task 8: design-system quieting for history collection/config panels */
+.history-collections-panel,
+.history-collection-card,
+.history-config-group-card {
+    box-shadow: none;
+}
+.history-collections-panel-title strong,
+.history-collection-card-title strong {
+    color: var(--text);
+}
+.history-collections-workbench.compact .history-collections-title span,
+.history-collections-workbench.compact .history-collections-stats span,
+.history-collections-workbench.compact .history-collection-card-title span,
+.history-collections-workbench.compact .history-config-group-card-main span {
+    font-size: max(var(--font-size-meta), 0.72rem);
+}
+.history-drag-handle,
+.history-collection-drag-handle,
+.history-config-group-drag-handle {
+    opacity: 0.88;
+}
+.history-drag-handle:hover,
+.history-drag-handle:focus-visible,
+.history-collection-drag-handle:hover,
+.history-collection-drag-handle:focus-visible {
+    opacity: 1;
 }

@@ -140,3 +140,15 @@
 - Medium open: 列表/拖拽降噪留给 Task 8；本地 --training-* 色板仍在
 - Decision: continue
 
+### P2 (Task 8)
+- Goal: 历史列表面板/拖拽降噪
+- Write set: `21-history-panels.css` + iteration log
+- Changes:
+  - panel/collection 标题降到 section/meta 节奏，去高饱和抢主
+  - drag handle 可点、低对比、hover 提亮
+  - compact meta 字号抬到 meta 底线
+  - card 去重阴影
+- Supplemental review: 无 DOM id/JS/cache 变更
+- Tests: history + dom（允许 known JS baseline 1 fail）
+- Decision: continue
+
