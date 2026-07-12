@@ -224,3 +224,15 @@
 - Tests: G3 + design_system + dom/misc
 - Decision: complete branch pending merge review
 
+### Final whole-branch review (post-merge main)
+- Date: 2026-07-12
+- HEAD: 9c6729d2 on local main (ff merge from feat/webui-design-system-console-upgrade)
+- Gates on main: visual_tokens + design_system + dom + misc + queue + cache → **25 passed**
+- Whole-branch review verdict: **Approved for local main**
+- Critical/Important: none
+- Known non-blocking:
+  - history JS baseline `selectedHistoryCollectionKey`
+  - forge still overrides some patterns (mount + override architecture)
+  - residual chrome title densify / tiny meta outside main fields
+- Push webui/main: not performed
+
