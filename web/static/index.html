@@ -17,7 +17,7 @@
             }
         })();
     </script>
-    <link rel="stylesheet" href="/static/style.css?v=frontend-chain-20260712-ds-p0">
+    <link rel="stylesheet" href="/static/style.css?v=frontend-chain-20260712-ds-p1">
 </head>
 <body>
     <header>
@@ -295,8 +295,9 @@
         </section>
 
         <!-- 训练监控 Tab -->
-        <section id="tab-training" class="tab-content">
-            <div class="training-toolbar">
+        <section id="tab-training" class="tab-content page-shell">
+            <div class="monitor-board">
+                <div class="training-toolbar ui-toolbar">
                 <div class="training-info training-title-block">
                     <span class="training-forge-eyebrow">TRAINING FORGE</span>
                     <div class="training-title-row">
@@ -312,13 +313,13 @@
                     </span>
                 </div>
                 <div class="training-toolbar-nav" aria-label="训练视图导航">
-                    <div class="training-view-tabs" role="tablist" aria-label="训练视图">
-                        <button id="btn-live-training" class="training-view-tab active" type="button" role="tab" aria-selected="true" data-training-view="live">当前监控</button>
-                        <button id="btn-training-queue-view" class="training-view-tab" type="button" role="tab" aria-selected="false" data-training-view="queue">
+                    <div class="training-view-tabs ui-segmented" role="tablist" aria-label="训练视图">
+                        <button id="btn-live-training" class="training-view-tab ui-segmented__btn active" type="button" role="tab" aria-selected="true" data-training-view="live">当前监控</button>
+                        <button id="btn-training-queue-view" class="training-view-tab ui-segmented__btn" type="button" role="tab" aria-selected="false" data-training-view="queue">
                             队列管理
                             <span id="training-queue-tab-badge" class="training-view-badge" hidden></span>
                         </button>
-                        <button id="btn-training-history-view" class="training-view-tab" type="button" role="tab" aria-selected="false" data-training-view="history">历史任务</button>
+                        <button id="btn-training-history-view" class="training-view-tab ui-segmented__btn" type="button" role="tab" aria-selected="false" data-training-view="history">历史任务</button>
                     </div>
                 </div>
                 <div class="training-toolbar-actions" aria-label="训练操作">
@@ -546,25 +547,25 @@
                                 <span>核心训练读数</span>
                             </div>
                             <div class="metrics-grid metrics-grid-primary">
-                                <div class="metric-item metric-item-primary">
-                                    <span class="metric-label"><span class="metric-icon metric-icon-curve" aria-hidden="true"></span>Loss</span>
-                                    <span id="metric-loss" class="metric-value metric-empty">N/A</span>
+                                <div class="metric-item metric-item-primary ui-stat">
+                                    <span class="metric-label ui-stat__label"><span class="metric-icon metric-icon-curve" aria-hidden="true"></span>Loss</span>
+                                    <span id="metric-loss" class="metric-value ui-stat__value metric-empty">N/A</span>
                                 </div>
-                                <div class="metric-item metric-item-primary">
-                                    <span class="metric-label"><span class="metric-icon metric-icon-bolt" aria-hidden="true"></span>学习率</span>
-                                    <span id="metric-lr" class="metric-value metric-empty">N/A</span>
+                                <div class="metric-item metric-item-primary ui-stat">
+                                    <span class="metric-label ui-stat__label"><span class="metric-icon metric-icon-bolt" aria-hidden="true"></span>学习率</span>
+                                    <span id="metric-lr" class="metric-value ui-stat__value metric-empty">N/A</span>
                                 </div>
-                                <div class="metric-item metric-item-primary">
-                                    <span class="metric-label"><span class="metric-icon metric-icon-steps" aria-hidden="true"></span>步数</span>
-                                    <span id="metric-step" class="metric-value metric-empty">N/A</span>
+                                <div class="metric-item metric-item-primary ui-stat">
+                                    <span class="metric-label ui-stat__label"><span class="metric-icon metric-icon-steps" aria-hidden="true"></span>步数</span>
+                                    <span id="metric-step" class="metric-value ui-stat__value metric-empty">N/A</span>
                                 </div>
-                                <div class="metric-item">
-                                    <span class="metric-label"><span class="metric-icon metric-icon-gauge" aria-hidden="true"></span>速度</span>
-                                    <span id="metric-rate" class="metric-value metric-empty">N/A</span>
+                                <div class="metric-item ui-stat">
+                                    <span class="metric-label ui-stat__label"><span class="metric-icon metric-icon-gauge" aria-hidden="true"></span>速度</span>
+                                    <span id="metric-rate" class="metric-value ui-stat__value metric-empty">N/A</span>
                                 </div>
-                                <div class="metric-item metric-item-eta">
-                                    <span class="metric-label"><span class="metric-icon metric-icon-clock" aria-hidden="true"></span>预计完成</span>
-                                    <span id="metric-eta" class="metric-value metric-empty">待计算</span>
+                                <div class="metric-item metric-item-eta ui-stat">
+                                    <span class="metric-label ui-stat__label"><span class="metric-icon metric-icon-clock" aria-hidden="true"></span>预计完成</span>
+                                    <span id="metric-eta" class="metric-value ui-stat__value metric-empty">待计算</span>
                                 </div>
                             </div>
                             <div class="metrics-resource-band">
@@ -572,33 +573,33 @@
                                     <span>资源与活动</span>
                                 </div>
                                 <div class="metrics-grid metrics-grid-secondary">
-                                <div class="metric-item">
-                                    <span class="metric-label"><span class="metric-icon metric-icon-chip" aria-hidden="true"></span>最后 VRAM</span>
-                                    <span id="metric-vram" class="metric-value metric-empty">N/A</span>
+                                <div class="metric-item ui-stat">
+                                    <span class="metric-label ui-stat__label"><span class="metric-icon metric-icon-chip" aria-hidden="true"></span>最后 VRAM</span>
+                                    <span id="metric-vram" class="metric-value ui-stat__value metric-empty">N/A</span>
                                 </div>
-                                <div class="metric-item">
-                                    <span class="metric-label"><span class="metric-icon metric-icon-chip" aria-hidden="true"></span>峰值 VRAM</span>
-                                    <span id="metric-vram-peak" class="metric-value metric-empty">N/A</span>
+                                <div class="metric-item ui-stat">
+                                    <span class="metric-label ui-stat__label"><span class="metric-icon metric-icon-chip" aria-hidden="true"></span>峰值 VRAM</span>
+                                    <span id="metric-vram-peak" class="metric-value ui-stat__value metric-empty">N/A</span>
                                 </div>
-                                <div class="metric-item">
-                                    <span class="metric-label"><span class="metric-icon metric-icon-gpu" aria-hidden="true"></span>最后 GPU</span>
-                                    <span id="metric-gpu" class="metric-value metric-empty">N/A</span>
+                                <div class="metric-item ui-stat">
+                                    <span class="metric-label ui-stat__label"><span class="metric-icon metric-icon-gpu" aria-hidden="true"></span>最后 GPU</span>
+                                    <span id="metric-gpu" class="metric-value ui-stat__value metric-empty">N/A</span>
                                 </div>
-                                <div class="metric-item">
-                                    <span class="metric-label"><span class="metric-icon metric-icon-gpu" aria-hidden="true"></span>峰值 GPU</span>
-                                    <span id="metric-gpu-peak" class="metric-value metric-empty">N/A</span>
+                                <div class="metric-item ui-stat">
+                                    <span class="metric-label ui-stat__label"><span class="metric-icon metric-icon-gpu" aria-hidden="true"></span>峰值 GPU</span>
+                                    <span id="metric-gpu-peak" class="metric-value ui-stat__value metric-empty">N/A</span>
                                 </div>
-                                <div class="metric-item">
-                                    <span class="metric-label"><span class="metric-icon metric-icon-temp" aria-hidden="true"></span>最后温度</span>
-                                    <span id="metric-temp" class="metric-value metric-empty">N/A</span>
+                                <div class="metric-item ui-stat">
+                                    <span class="metric-label ui-stat__label"><span class="metric-icon metric-icon-temp" aria-hidden="true"></span>最后温度</span>
+                                    <span id="metric-temp" class="metric-value ui-stat__value metric-empty">N/A</span>
                                 </div>
-                                <div class="metric-item">
-                                    <span class="metric-label"><span class="metric-icon metric-icon-temp" aria-hidden="true"></span>峰值温度</span>
-                                    <span id="metric-temp-peak" class="metric-value metric-empty">N/A</span>
+                                <div class="metric-item ui-stat">
+                                    <span class="metric-label ui-stat__label"><span class="metric-icon metric-icon-temp" aria-hidden="true"></span>峰值温度</span>
+                                    <span id="metric-temp-peak" class="metric-value ui-stat__value metric-empty">N/A</span>
                                 </div>
-                                <div class="metric-item">
-                                    <span class="metric-label"><span class="metric-icon metric-icon-log" aria-hidden="true"></span>日志活动</span>
-                                    <span id="metric-log-age" class="metric-value metric-empty">N/A</span>
+                                <div class="metric-item ui-stat">
+                                    <span class="metric-label ui-stat__label"><span class="metric-icon metric-icon-log" aria-hidden="true"></span>日志活动</span>
+                                    <span id="metric-log-age" class="metric-value ui-stat__value metric-empty">N/A</span>
                                 </div>
                                 </div>
                             </div>
@@ -689,6 +690,7 @@
                     </div>
                     </section>
                 </div>
+            </div>
             </div>
         </section>
 

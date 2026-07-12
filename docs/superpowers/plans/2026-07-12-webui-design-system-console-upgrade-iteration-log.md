@@ -61,3 +61,27 @@
 - High open: none
 - Decision: continue
 
+### P1 (Task 5)
+- Goal: 训练监控页接入 monitor-board / ui-toolbar / ui-segmented / ui-stat
+- Write set:
+  - web/static/index.html（仅 class / 最小 monitor-board 包裹）
+  - web/static/css/20-training-core.css
+  - web/static/css/33-training-forge.css
+  - web/static/style.css cache `frontend-chain-20260712-ds-p1`
+  - iteration log
+- Changes:
+  - `#tab-training` 加 `page-shell`
+  - 工具条 + workspace 外包 `monitor-board`
+  - toolbar / view tabs / metrics 加系统 class
+  - 训练 CSS 消费 token 与 segmented 底刻度 active；主指标字号不降
+  - cache token 全量 bump 到 ds-p1
+- Supplemental review: 不改 DOM id / 不删配置项 / 不改 JS 业务
+- Cross review: self PASS — ids intact, additive classes only, main metric values not shrunk
+- Tests run:
+  - required suite: 17 passed (design_system + training DOM + cache token + queue)
+  - G0: 17 passed (visual_tokens + design_system + modules cache + DOM)
+- Results: GREEN
+- High open: none
+- Medium open: training page still uses local --training-* palette (expected; theme unification later)
+- Decision: continue
+

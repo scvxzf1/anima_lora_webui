@@ -1,5 +1,6 @@
 /* Training forge surface and training responsive rules. */
 /* Training forge surface, aligned with the dataset workspace. */
+#tab-training.page-shell,
 #tab-training {
     --training-page-bg: #111827;
     --training-sidebar-bg: #141d2e;
@@ -27,6 +28,7 @@
     color: var(--training-text);
 }
 
+:root[data-theme="light"] #tab-training.page-shell,
 :root[data-theme="light"] #tab-training {
     --training-page-bg: #f6f7ff;
     --training-sidebar-bg: #ffffff;
@@ -50,17 +52,27 @@
     --training-shadow-soft: 0 1px 0 rgba(255, 255, 255, 0.72), 0 10px 22px rgba(64, 65, 130, 0.08);
 }
 
-#tab-training .training-toolbar {
+#tab-training .training-toolbar,
+#tab-training .training-toolbar.ui-toolbar {
     display: flex;
     align-items: center;
     flex-wrap: wrap;
-    gap: 0.4rem 0.55rem;
+    gap: var(--space-2);
     margin: 0;
-    min-height: calc(var(--control-height) + 0.85rem);
+    min-height: calc(var(--control-height-md) + 0.85rem);
     padding: 0.42rem 0.85rem;
     border-bottom: 1px solid var(--training-border);
     background: var(--training-sidebar-bg);
     box-shadow: none;
+}
+
+/* monitor-board only provides the outer rhythm; page keeps existing workspace grid. */
+#tab-training .monitor-board {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    gap: 0;
+    min-width: 0;
+    min-height: calc(100vh - var(--header-height, 59px));
 }
 
 #tab-training .training-info {
@@ -178,17 +190,22 @@
     margin-left: auto;
 }
 
-#tab-training .training-view-tabs {
+#tab-training .training-view-tabs,
+#tab-training .training-view-tabs.ui-segmented {
     flex: 0 1 auto;
-    gap: 0.06rem;
-    border-color: color-mix(in srgb, var(--training-border) 76%, transparent);
+    gap: 0.12rem;
+    border: 1px solid color-mix(in srgb, var(--training-border) 76%, transparent);
+    border-radius: var(--radius-sm);
     background: color-mix(in srgb, var(--training-field-bg) 76%, transparent);
     padding: 0.12rem;
 }
 
-#tab-training .training-view-tab {
-    min-height: calc(var(--control-height) - 0.15rem);
+#tab-training .training-view-tab,
+#tab-training .training-view-tab.ui-segmented__btn {
+    min-height: var(--control-height-sm);
+    border: 0;
     border-radius: 4px;
+    background: transparent;
     color: var(--training-muted);
     padding-inline: 0.7rem;
     font-size: 0.8rem;
@@ -202,12 +219,17 @@
     font-weight: 700;
 }
 
-#tab-training .training-view-tab:hover {
+#tab-training .training-view-tab:hover,
+#tab-training .training-view-tab.ui-segmented__btn:hover {
     background: color-mix(in srgb, var(--training-accent) 10%, transparent);
     color: var(--training-text);
 }
 
-#tab-training .training-view-tab.active {
+/* Segmented bottom tick; never a solid primary fill. */
+#tab-training .training-view-tab.active,
+#tab-training .training-view-tab.is-active,
+#tab-training .training-view-tab.ui-segmented__btn.active,
+#tab-training .training-view-tab.ui-segmented__btn.is-active {
     background: transparent;
     color: var(--training-text);
     box-shadow: inset 0 -2px 0 var(--training-accent);
@@ -1692,9 +1714,10 @@
     text-transform: uppercase;
 }
 
-#tab-training .metrics-grid {
+#tab-training .metrics-grid,
+#tab-training .monitor-board__metrics {
     grid-template-columns: repeat(5, minmax(0, 1fr));
-    gap: 0.46rem;
+    gap: var(--space-2);
 }
 
 #tab-training .metrics-grid-primary {
@@ -1718,10 +1741,14 @@
     gap: 0.36rem;
 }
 
-#tab-training .metric-item {
+#tab-training .metric-item,
+#tab-training .metric-item.ui-stat {
+    display: grid;
+    gap: 0.12rem;
     border-color: var(--training-border);
     background: var(--training-panel-soft);
     min-height: 4.1rem;
+    min-width: 0;
     padding: 0.4rem 0.48rem;
     justify-content: space-between;
     position: relative;
@@ -1751,7 +1778,8 @@
     opacity: 0.18;
 }
 
-#tab-training .metric-label {
+#tab-training .metric-label,
+#tab-training .metric-label.ui-stat__label {
     align-items: center;
     color: var(--training-muted);
     display: flex;
@@ -1762,7 +1790,8 @@
     line-height: 1.2;
 }
 
-#tab-training .metric-value {
+#tab-training .metric-value,
+#tab-training .metric-value.ui-stat__value {
     color: var(--training-text);
     font-size: 1.28rem;
     font-weight: 800;
@@ -1770,12 +1799,15 @@
     line-height: 1.05;
 }
 
-#tab-training .metric-item-primary .metric-value {
+/* Primary metrics stay at least as large as system ui-stat. */
+#tab-training .metric-item-primary .metric-value,
+#tab-training .metric-item-primary .metric-value.ui-stat__value {
     font-size: 1.48rem;
 }
 
-#tab-training .metric-item-eta .metric-value {
-    font-size: 1.18rem;
+#tab-training .metric-item-eta .metric-value,
+#tab-training .metric-item-eta .metric-value.ui-stat__value {
+    font-size: 1.28rem;
 }
 
 #tab-training .metrics-grid-secondary .metric-item {
@@ -1784,11 +1816,13 @@
     background: color-mix(in srgb, var(--training-field-bg) 58%, var(--training-panel-soft));
 }
 
-#tab-training .metrics-grid-secondary .metric-value {
-    font-size: 0.9rem;
+#tab-training .metrics-grid-secondary .metric-value,
+#tab-training .metrics-grid-secondary .metric-value.ui-stat__value {
+    font-size: 0.98rem;
 }
 
-#tab-training .metrics-grid-secondary .metric-label {
+#tab-training .metrics-grid-secondary .metric-label,
+#tab-training .metrics-grid-secondary .metric-label.ui-stat__label {
     font-size: var(--font-size-meta);
 }
 
