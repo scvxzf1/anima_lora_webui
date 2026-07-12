@@ -1722,3 +1722,33 @@ body.history-task-dialog-fallback-open::before {
     min-height: var(--control-height);
     font-weight: 650;
 }
+
+/* Task 12: preview/settings design-system floor */
+#tab-settings.page-shell,
+#tab-preview.page-shell {
+    color: var(--text);
+}
+#tab-settings input[type="text"],
+#tab-settings input[type="number"],
+#tab-settings input[type="search"],
+#tab-settings select,
+#tab-settings textarea,
+#tab-preview input[type="text"],
+#tab-preview input[type="number"],
+#tab-preview select,
+#tab-preview textarea {
+    min-height: var(--control-height);
+    font-size: var(--font-size-field);
+}
+#tab-settings .preview-setting-field > span,
+#tab-preview .preview-setting-field > span,
+#tab-settings label,
+#tab-preview label {
+    font-size: max(var(--font-size-field-label), 0.72rem);
+}
+/* soft residual heavy shadows where safe */
+.global-settings-card,
+.preview-dialog {
+    box-shadow: var(--panel-shadow-soft, var(--shadow));
+}
+

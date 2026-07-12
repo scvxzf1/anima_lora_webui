@@ -490,3 +490,28 @@
 #tab-environment .environment-check-item.warn {
     box-shadow: inset 3px 0 0 currentColor;
 }
+
+/* Task 12: environment design-system mount */
+#tab-environment.page-shell {
+    color: var(--env-text, var(--text));
+}
+#tab-environment .environment-forge-layout.workbench {
+    /* keep existing env main+sidebar composition */
+    box-shadow: none;
+}
+#tab-environment .environment-check-toolbar.ui-toolbar {
+    box-shadow: none;
+}
+#tab-environment .environment-check-sidebar.ui-sidebar {
+    box-shadow: none;
+}
+#tab-environment .environment-check-summary-stat strong {
+    font-size: max(1rem, var(--font-size-section));
+}
+#tab-environment .environment-check-summary-stat small,
+#tab-environment .environment-check-card-label,
+#tab-environment .environment-check-eyebrow,
+#tab-environment .environment-check-breadcrumb {
+    font-size: var(--font-size-meta);
+}
+

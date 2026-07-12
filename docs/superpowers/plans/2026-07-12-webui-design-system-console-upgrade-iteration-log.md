@@ -213,3 +213,14 @@
 - Cache: keep ds-p3
 - Decision: continue
 
+### P3 Final (Task 12)
+- Goal: 工具四页回灌 + 最终收口
+- Write set: weight/env/image/preview-settings CSS + index hooks + cache `ds-final` + docs
+- Changes:
+  - weight/env/image/settings 挂 page-shell / workbench / ui-toolbar / ui-sidebar
+  - 主字段 token floor
+  - 部分重阴影改为 panel-shadow-soft / none
+  - cache `frontend-chain-20260712-ds-final`
+- Tests: G3 + design_system + dom/misc
+- Decision: complete branch pending merge review
+

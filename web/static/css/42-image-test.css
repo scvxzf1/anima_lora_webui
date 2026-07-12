@@ -1569,3 +1569,24 @@
 #tab-image-test .image-test-main {
     min-width: 0;
 }
+
+/* Task 12: image-test design-system mount */
+#tab-image-test.page-shell {
+    color: var(--image-test-text, var(--text));
+}
+#tab-image-test .image-test-layout.workbench {
+    box-shadow: none;
+}
+#tab-image-test input[type="text"],
+#tab-image-test input[type="number"],
+#tab-image-test input[type="search"],
+#tab-image-test select,
+#tab-image-test textarea {
+    min-height: var(--control-height);
+    font-size: var(--font-size-field);
+}
+#tab-image-test label,
+#tab-image-test .field-label {
+    font-size: max(var(--font-size-field-label), 0.72rem);
+}
+
