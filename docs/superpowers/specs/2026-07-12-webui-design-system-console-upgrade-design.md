@@ -1,6 +1,7 @@
 # WebUI 设计系统控制台升级设计
 
-状态：待实施  
+状态：P0–P2 已实施，P3 待回灌  
+实施进度注记：P0 设计系统底座 + P1 训练监控/队列 + P2 历史 board/面板降噪已合入本分支；P3 配置/数据集/工具四页回灌待做。  
 日期：2026-07-12  
 范围：Web 前端视觉再升级（设计系统优先，信息架构基本不动）  
 前置：`docs/superpowers/specs/2026-07-12-webui-instrument-panel-reskin-design.md` 已完成  

@@ -152,3 +152,46 @@
 - Tests: history + dom（允许 known JS baseline 1 fail）
 - Decision: continue
 
+### P0–P2 Checkpoint (Task 9)
+- Goal: 总回归 + 文档阶段收口
+- Write set: iteration log + design spec status note
+- Tests run (G3):
+  - `test_webui_visual_tokens.py`
+  - `test_webui_design_system.py`
+  - `test_training_frontend_dom.py`
+  - `test_training_frontend_misc.py`
+  - `test_frontend_css_import_cache_tokens_match_entrypoint`
+  - Result: **21 passed**
+- Known non-G3 baseline (history JS, not CSS):
+  - `test_history_manager_frontend_hooks_are_present` still fails on `selectedHistoryCollectionKey = collection.key`
+- Results: GREEN for design-system P0–P2 CSS path
+- High open: none
+- Medium open:
+  - training/history still use local `--training-*` palettes
+  - residual hard-coded tiny fonts remain in deep history panel chrome (partially floored in Task 8)
+  - config/dataset/tool tabs still page-forge heavy (P3)
+- Decision: continue to P3
+
+#### 系统 API 清单
+| Layer | API |
+|---|---|
+| Tokens extend | `--font-size-section`, surface/panel/meta extensions, status tokens bridge |
+| Primitives | `ui-btn` (+primary/highlight/danger), `ui-field`, `ui-segmented`/`__btn`, `ui-card`, `ui-toolbar`, `ui-sidebar`, `ui-stat`/`__value`/`__label`, `ui-sticky` |
+| Patterns | `page-shell`, `workbench`/`--sidebar-left`, `monitor-board`/`__metrics`/`__body`, `history-board`/`__tools`/`__main` |
+| Cache | `frontend-chain-20260712-ds-p2` |
+
+#### 训练/历史前后差异
+| 区域 | 前 | 后 |
+|---|---|---|
+| 训练壳 | forge 硬编码 toolbar/tabs/metrics | `page-shell` + `monitor-board` + `ui-toolbar` + `ui-segmented` + `ui-stat` |
+| 训练 tabs | 大块实心 active 易抢 primary | 底刻度 active |
+| 主指标字号 | 已较大但不统一 | primary 1.48 保留；ETA/secondary 只升不降；metric-item flex 节奏修复 |
+| 队列侧栏 | 重阴影/巨型标题 | surface densify + section/meta + status token |
+| 历史管理 | 区域网格但无 board 语义 | `history-board` 挂点 + tools/sidebar/toolbar；输入 `control-height-md` |
+| 历史列表 | 高饱和标题/拖拽对比偏抢 | panel title 降噪；drag handle 低对比可点；compact meta 底线 |
+
+#### P3 回灌顺序建议
+1. 配置页 `workbench` / `ui-toolbar` / `ui-field`（Task 10）
+2. 数据集页列表/行字段（Task 11）
+3. 工具四页 + 残留 forge 硬编码清理 + final cache（Task 12）
+
