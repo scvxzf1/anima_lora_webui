@@ -21,7 +21,13 @@ import pytest
 import toml
 
 from library.config import schema as config_schema
-from library.config.io import _flatten_toml, _render_merged_toml, load_method_preset
+from library.config.io import (
+    _flatten_toml,
+    _render_merged_toml,
+    load_method_preset,
+    load_preset_section,
+    list_presets,
+)
 from library.env import project_root
 from tests.conftest import iter_method_names
 
@@ -78,11 +84,14 @@ def test_schema_has_known_keys(populated_parser):
         "lokr_grouped_delta_backend",  # LoKr grouped-delta backend selector
         "lokr_use_einsum",  # LoKr decomposed einsum runtime path toggle
         "lokr_decompose_w2",  # LoKr w2 decomposition compatibility override
+        "lokr_full_factor",  # LoKr full Kronecker factors with normal scale
+        "lokr_allow_legacy_dim",  # resume-only legacy dim=114514 sentinel
     ):
         assert k in schema, f"expected {k!r} in populated schema"
 
 
 def test_choices_preserved(populated_parser):
+    assert "mem_efficient" in config_schema.get_schema()["attn_mode"].choices
     mp = config_schema.get_schema()["mixed_precision"]
     assert "bf16" in mp.choices
     assert "no" in mp.choices
@@ -107,6 +116,26 @@ def test_choices_preserved(populated_parser):
     assert sample_sampler.default == "euler"
     for option in ("euler", "er_sde", "lcm", "ddim", "dpmsolver++"):
         assert option in sample_sampler.choices
+
+
+
+def test_list_presets_includes_new_and_legacy_custom_layouts(tmp_path: Path):
+    configs = tmp_path / "configs"
+    (configs / "custom" / "presets").mkdir(parents=True)
+    (configs / "presets.toml").write_text("[default]\n", encoding="utf-8")
+    (configs / "custom" / "presets" / "V100.toml").write_text(
+        'attn_mode = "torch"\n', encoding="utf-8"
+    )
+    (configs / "custom" / "V100.toml").write_text(
+        'attn_mode = "flash"\n', encoding="utf-8"
+    )
+    (configs / "custom" / "legacy.toml").write_text(
+        'attn_mode = "torch"\n', encoding="utf-8"
+    )
+
+    assert list_presets(str(configs)) == ["V100", "default", "legacy"]
+    assert load_preset_section("V100", str(configs)) == {"attn_mode": "torch"}
+    assert load_preset_section("legacy", str(configs)) == {"attn_mode": "torch"}
 
 
 # ---------------------------------------------------------------------------

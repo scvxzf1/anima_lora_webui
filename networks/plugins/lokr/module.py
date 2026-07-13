@@ -73,9 +73,14 @@ class LoKrModule(BaseLoRAModule):
         lokr_grouped_delta_backward_backend=DEFAULT_LOKR_GROUPED_DELTA_BACKWARD_BACKEND,
         lokr_use_einsum=True,
         lokr_decompose_w2=False,
+        lokr_full_factor=False,
     ):
         if not isinstance(org_module, torch.nn.Linear):
             raise ValueError("LoKrModule only supports torch.nn.Linear modules")
+        if lokr_full_factor and lokr_decompose_w2:
+            raise ValueError(
+                "LoKR full_factor and lokr_decompose_w2 are mutually exclusive"
+            )
         super().__init__(
             lora_name,
             org_module,
@@ -90,6 +95,7 @@ class LoKrModule(BaseLoRAModule):
         in_features = int(org_module.in_features)
         out_features = int(org_module.out_features)
         self.lokr_use_einsum = bool(lokr_use_einsum)
+        self.lokr_full_factor = bool(lokr_full_factor)
 
         if self.lokr_use_einsum:
             self.out_a, self.out_b = _factorization(out_features, int(factor))
@@ -99,7 +105,9 @@ class LoKrModule(BaseLoRAModule):
             self.out_dim = self.out_b
 
             self.lokr_w1 = torch.nn.Parameter(torch.empty(self.out_a, self.in_a))
-            decompose_w2 = bool(lokr_decompose_w2)
+            # full_factor forces both Kronecker factors complete, independent of
+            # lora_dim. Without it, lokr_decompose_w2 may split the larger factor.
+            decompose_w2 = bool(lokr_decompose_w2) and not self.lokr_full_factor
             if decompose_w2:
                 self.lokr_w2_a = torch.nn.Parameter(torch.empty(self.out_b, lora_dim))
                 self.lokr_w2_b = torch.nn.Parameter(torch.empty(lora_dim, self.in_b))

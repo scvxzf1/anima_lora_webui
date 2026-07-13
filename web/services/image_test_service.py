@@ -37,7 +37,7 @@ from web.services.settings_service import display_path, resolve_image_test_save_
 ROOT = anima_home()
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
 ALLOWED_SAMPLERS = {"euler", "er_sde", "lcm"}
-ALLOWED_ATTN_MODES = {"flash", "torch", "sageattn", "flex", "xformers", "sdpa"}
+ALLOWED_ATTN_MODES = {"flash", "torch", "mem_efficient", "sageattn", "flex", "xformers", "sdpa"}
 ALLOWED_RUNTIME_DTYPES = set(RUNTIME_DTYPE_CHOICES)
 ALLOWED_TEXT_ENCODER_DTYPES = set(TEXT_ENCODER_DTYPE_CHOICES)
 MAX_LOG_LINES = 80

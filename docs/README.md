@@ -59,6 +59,7 @@
 
 | 文档 | 说明 |
 | --- | --- |
+| [methods/lokr.md](methods/lokr.md) | LoKr Kronecker 分解、全因子模式与旧哨兵迁移 |
 | [methods/hydra-lora.md](methods/hydra-lora.md) | HydraLoRA 多专家路由，配合 [structure/hydralora.md](structure/hydralora.md) 阅读 |
 | [methods/psoft-integrated-ortholora.md](methods/psoft-integrated-ortholora.md) | OrthoLoRA / Cayley 正交参数化，配合 [structure/ortholora.md](structure/ortholora.md) 阅读 |
 | [methods/timestep_mask.md](methods/timestep_mask.md) | T-LoRA 时间步 rank mask，配合 [structure/timestep-mask.md](structure/timestep-mask.md) 阅读 |

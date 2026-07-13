@@ -109,6 +109,8 @@ export const FIELD_LABEL_ZH = {
     lokr_factor: 'LoKr Factor',
     lokr_use_einsum: 'LoKr 结构化 einsum',
     lokr_decompose_w2: 'LoKr 轻量分解 W2',
+    lokr_full_factor: 'LoKr 全因子模式',
+    lokr_allow_legacy_dim: '允许旧 LoKr 哨兵 dim',
     lokr_factor_group_size: 'LoKr 分组',
     lokr_project_chunk_bytes: 'LoKr 张量切块阈值',
     use_glora: '启用 GLoRA',
@@ -218,7 +220,7 @@ export const FIELD_LABEL_ZH = {
 };
 
 export const FIELD_OPTIONS = {
-    attn_mode: ['torch', 'xformers', 'flash', 'sageattn', 'flex', 'sdpa'],
+    attn_mode: ['torch', 'mem_efficient', 'xformers', 'flash', 'sageattn', 'flex', 'sdpa'],
     compile_block_scope: ['resident', 'all'],
     compile_inductor_mode: ['default', 'reduce-overhead', 'max-autotune', 'max-autotune-no-cudagraphs'],
     block_swap_restore_mode: ['foreach', 'slab'],

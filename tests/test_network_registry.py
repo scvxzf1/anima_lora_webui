@@ -129,6 +129,8 @@ def test_lokr_kwargs_registered():
         "lokr_grouped_delta_backward_backend",
         "lokr_use_einsum",
         "lokr_decompose_w2",
+        "lokr_full_factor",
+        "lokr_allow_legacy_dim",
     }
     assert must_have.issubset(set(all_network_kwargs()))
     assert "lokr_factor" in set(NETWORK_REGISTRY["lokr"].kwarg_flags)
@@ -140,6 +142,8 @@ def test_lokr_kwargs_registered():
     )
     assert "lokr_use_einsum" in set(NETWORK_REGISTRY["lokr"].kwarg_flags)
     assert "lokr_decompose_w2" in set(NETWORK_REGISTRY["lokr"].kwarg_flags)
+    assert "lokr_full_factor" in set(NETWORK_REGISTRY["lokr"].kwarg_flags)
+    assert "lokr_allow_legacy_dim" in set(NETWORK_REGISTRY["lokr"].kwarg_flags)
 
 
 def test_lokr_module_kwargs_forward_grouped_delta_backend():
@@ -152,6 +156,7 @@ def test_lokr_module_kwargs_forward_grouped_delta_backend():
                 "lokr_grouped_delta_backend": "triton",
                 "lokr_use_einsum": "false",
                 "lokr_decompose_w2": "true",
+                "lokr_full_factor": "false",
             }
         ),
         is_unet=True,
@@ -167,6 +172,7 @@ def test_lokr_module_kwargs_forward_grouped_delta_backend():
     assert kwargs["lokr_grouped_delta_backend"] == "triton"
     assert kwargs["lokr_use_einsum"] is False
     assert kwargs["lokr_decompose_w2"] is True
+    assert kwargs["lokr_full_factor"] is False
 
 
 def test_lokr_module_kwargs_default_keeps_full_w2():
@@ -183,6 +189,7 @@ def test_lokr_module_kwargs_default_keeps_full_w2():
     assert kwargs["lokr_grouped_delta_backward_backend"] == "eager"
     assert kwargs["lokr_use_einsum"] is True
     assert kwargs["lokr_decompose_w2"] is False
+    assert kwargs["lokr_full_factor"] is False
 
 
 def test_dora_kwargs_registered():
@@ -1065,3 +1072,37 @@ def test_metadata_stamps_ss_network_spec(tmp_path: Path):
     )
     meta = _load_metadata(out)
     assert meta.get("ss_network_spec") == "lora"
+
+def test_lokr_full_factor_rejects_decompose_w2():
+    with pytest.raises(ValueError, match="lokr_full_factor=true conflicts"):
+        resolve_network_spec(
+            {
+                "use_lokr": "true",
+                "lokr_full_factor": "true",
+                "lokr_decompose_w2": "true",
+            }
+        )
+
+
+def test_lokr_legacy_dim_sentinel_requires_explicit_opt_in():
+    with pytest.raises(ValueError, match="network_dim=114514"):
+        resolve_network_spec(
+            {
+                "use_lokr": "true",
+                "network_dim": 114514,
+                "network_alpha": 32,
+            }
+        )
+
+
+def test_lokr_legacy_dim_sentinel_allowed_with_flag():
+    spec = resolve_network_spec(
+        {
+            "use_lokr": "true",
+            "network_dim": 114514,
+            "network_alpha": 32,
+            "lokr_allow_legacy_dim": "true",
+        }
+    )
+    assert spec.name == "lokr"
+

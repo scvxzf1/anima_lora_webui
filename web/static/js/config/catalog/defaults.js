@@ -48,6 +48,8 @@ export const FORM_UI_DEFAULTS = {
     lokr_factor: 8,
     lokr_use_einsum: true,
     lokr_decompose_w2: false,
+    lokr_full_factor: true,
+    lokr_allow_legacy_dim: false,
     lokr_factor_group_size: 8,
     lokr_project_chunk_bytes: 4194304,
     vera_projection_prng_key: 0,
@@ -231,6 +233,8 @@ export const CAPTION_SOURCE_MODE_OPTIONS = Object.freeze([
 export const NETWORK_ARG_FIELD_SPECS = [
     { family: 'lokr', key: 'lokr_use_einsum', arg: 'lokr_use_einsum', default: true, valueType: 'boolean' },
     { family: 'lokr', key: 'lokr_decompose_w2', arg: 'lokr_decompose_w2', default: false, valueType: 'boolean' },
+    { family: 'lokr', key: 'lokr_full_factor', arg: 'lokr_full_factor', default: true, valueType: 'boolean' },
+    { family: 'lokr', key: 'lokr_allow_legacy_dim', arg: 'lokr_allow_legacy_dim', default: false, valueType: 'boolean' },
     { family: 'lokr', key: 'lokr_factor_group_size', arg: 'lokr_factor_group_size', default: 8, valueType: 'integer' },
     { family: 'lokr', key: 'lokr_project_chunk_bytes', arg: 'lokr_project_chunk_bytes', default: 4194304, valueType: 'integer' },
     { family: 'soft_tokens', key: 'n_layers', arg: 'n_layers', default: 10, valueType: 'integer' },

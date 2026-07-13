@@ -126,6 +126,8 @@ export const FORM_SECTION_DEFS = [
         keys: [
             'lokr_use_einsum',
             'lokr_decompose_w2',
+            'lokr_full_factor',
+            'lokr_allow_legacy_dim',
             'lokr_factor_group_size',
             'lokr_project_chunk_bytes',
         ],
@@ -396,7 +398,7 @@ export const CONFIG_COMPACT_FIELD_GROUPS = {
         },
         {
             className: 'config-field-grid-4col',
-            keys: ['network_dim', 'network_alpha', 'lora_adapter_kind', 'dora_wd', 'lokr_factor', 'vera_projection_prng_key', 'vera_d_initial', 'vera_save_projection'],
+            keys: ['network_dim', 'network_alpha', 'lora_adapter_kind', 'dora_wd', 'lokr_factor', 'lokr_full_factor', 'vera_projection_prng_key', 'vera_d_initial', 'vera_save_projection'],
         },
     ],
     'config-group-steps': [
@@ -454,7 +456,7 @@ export const CONFIG_COMPACT_FIELD_GROUPS = {
     'config-group-lokr-optimization': [
         {
             className: 'config-field-grid-2col config-field-grid-inline-flags',
-            keys: ['lokr_use_einsum', 'lokr_decompose_w2'],
+            keys: ['lokr_use_einsum', 'lokr_decompose_w2', 'lokr_full_factor', 'lokr_allow_legacy_dim'],
         },
         {
             className: 'config-field-grid-2col',

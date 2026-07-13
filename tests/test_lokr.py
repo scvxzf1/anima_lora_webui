@@ -1084,3 +1084,51 @@ def test_lokr_peak_probe_records_delta_events(tmp_path):
     assert delta["block_idx"] == 3
     assert delta["block_phase"] == "mlp"
     assert delta["op_name"] == "mlp_layer1"
+
+
+def test_lokr_full_factor_keeps_full_w2_independent_of_lora_dim():
+    base = torch.nn.Linear(2048, 2048, bias=False)
+    m = LoKrModule(
+        "test",
+        base,
+        lora_dim=32,
+        alpha=32,
+        factor=8,
+        lokr_full_factor=True,
+        lokr_decompose_w2=False,
+    )
+    assert m.lokr_full_factor is True
+    assert m._use_decomposed_w2 is False
+    assert m.lokr_w1.shape == (8, 8)
+    assert m.lokr_w2.shape == (256, 256)
+    assert m.scale == 1.0
+
+
+def test_lokr_without_full_factor_can_decompose_w2():
+    base = torch.nn.Linear(2048, 2048, bias=False)
+    m = LoKrModule(
+        "test",
+        base,
+        lora_dim=32,
+        alpha=32,
+        factor=8,
+        lokr_full_factor=False,
+        lokr_decompose_w2=True,
+    )
+    assert m._use_decomposed_w2 is True
+    assert m.lokr_w2_a.shape == (256, 32)
+    assert m.lokr_w2_b.shape == (32, 256)
+
+
+def test_lokr_full_factor_and_decompose_w2_are_exclusive():
+    base = torch.nn.Linear(64, 64, bias=False)
+    with pytest.raises(ValueError, match="mutually exclusive"):
+        LoKrModule(
+            "test",
+            base,
+            lora_dim=4,
+            alpha=4,
+            factor=4,
+            lokr_full_factor=True,
+            lokr_decompose_w2=True,
+        )

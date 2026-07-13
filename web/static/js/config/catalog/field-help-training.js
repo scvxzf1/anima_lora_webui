@@ -1,4 +1,4 @@
-import { help } from './help-builder.js?v=module-bootstrap-20260711-ir6';
+import { help } from './help-builder.js?v=module-bootstrap-20260713-mem-lokr';
 
 export const FIELD_HELP_TRAINING_ZH = {    learning_rate: help(
         "学习率，决定每一步参数改动有多大。",
@@ -289,11 +289,11 @@ export const FIELD_HELP_TRAINING_ZH = {    learning_rate: help(
     ),
     attn_mode: help(
         "注意力计算使用的后端实现。",
-        "flash 通常更快、更省显存，但依赖显卡、CUDA 和 PyTorch 支持；flex 更偏兼容。",
+        "flash 通常更快、更省显存，但依赖显卡、CUDA 和 PyTorch 支持；mem_efficient 强制使用 PyTorch 省显存 SDPA；flex 更偏兼容。",
         ["选对后端能明显影响训练速度和显存占用。"],
         ["高性能后端首次启动或编译可能更慢。"],
         ["不兼容时可能启动失败、报 CUDA 错，或速度异常变慢。"],
-        "新手先用配置默认；flash 报错时再切到 flex。"
+        "新手先用配置默认；显存紧可试 mem_efficient；flash 报错时再切到 flex 或 torch。"
     ),
     gradient_checkpointing: help(
         "用更多计算换更低显存的训练开关。",

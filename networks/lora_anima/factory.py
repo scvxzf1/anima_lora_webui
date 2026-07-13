@@ -305,7 +305,14 @@ def create_network(
     neuron_dropout: Optional[float] = None,
     **kwargs,
 ):
-    spec = resolve_network_spec(kwargs)
+    # Top-level dim/alpha are not network kwargs, but some plugin validators
+    # (e.g. LoKR full-factor sentinel checks) need them for scale guidance.
+    validation_kwargs = dict(kwargs)
+    if "network_dim" not in validation_kwargs and network_dim is not None:
+        validation_kwargs["network_dim"] = network_dim
+    if "network_alpha" not in validation_kwargs and network_alpha is not None:
+        validation_kwargs["network_alpha"] = network_alpha
+    spec = resolve_network_spec(validation_kwargs)
 
     if str(kwargs.get("use_custom_down_autograd", "false")).strip().lower() in (
         "true",

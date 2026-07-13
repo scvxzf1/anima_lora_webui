@@ -327,12 +327,15 @@ def _display_path(path: str) -> str:
     return _posix(str(resolved))
 
 
+_CUSTOM_PRESET_SUBDIRS = ("custom/presets", "custom")
+
+
 def _resolve_preset(preset: str, configs_dir: str = "configs") -> tuple[dict, str, str]:
     """Resolve a preset name to ``(section, source_path, source_tag)``.
 
     Looks in ``configs/presets.toml`` first (built-in sections); falls back to
-    ``configs/custom/<preset>.toml`` (one file per user-created preset, flat
-    key=value with no section header — the filename is the preset name).
+    one-file-per-preset TOML under ``configs/custom/presets/`` and then the
+    legacy ``configs/custom/`` location.
     """
     configs_dir = str(resolve_under_home(configs_dir))
     presets_path = os.path.join(configs_dir, "presets.toml")
@@ -344,24 +347,30 @@ def _resolve_preset(preset: str, configs_dir: str = "configs") -> tuple[dict, st
             if not isinstance(section, dict):
                 raise ValueError(f"Preset '{preset}' in {presets_path} is not a table")
             return dict(section), presets_path, f"{_display_path(presets_path)}[{preset}]"
-    custom_path = os.path.join(configs_dir, "custom", f"{preset}.toml")
-    if os.path.exists(custom_path):
-        with open(custom_path, "r", encoding="utf-8") as f:
-            data = toml.load(f)
-        if not isinstance(data, dict):
-            raise ValueError(f"Custom preset {custom_path} is not a TOML table")
-        return data, custom_path, _display_path(custom_path)
+    custom_paths = [
+        os.path.join(configs_dir, subdir, f"{preset}.toml")
+        for subdir in _CUSTOM_PRESET_SUBDIRS
+    ]
+    for custom_path in custom_paths:
+        if os.path.exists(custom_path):
+            with open(custom_path, "r", encoding="utf-8") as f:
+                data = toml.load(f)
+            if not isinstance(data, dict):
+                raise ValueError(f"Custom preset {custom_path} is not a TOML table")
+            return data, custom_path, _display_path(custom_path)
     available: list[str] = []
     if os.path.exists(presets_path):
         with open(presets_path, "r", encoding="utf-8") as f:
             available.extend(sorted(toml.load(f)))
-    custom_dir = os.path.join(configs_dir, "custom")
-    if os.path.isdir(custom_dir):
-        available.extend(
-            sorted(n[:-5] for n in os.listdir(custom_dir) if n.endswith(".toml"))
-        )
+    for subdir in _CUSTOM_PRESET_SUBDIRS:
+        custom_dir = os.path.join(configs_dir, subdir)
+        if os.path.isdir(custom_dir):
+            available.extend(
+                sorted(n[:-5] for n in os.listdir(custom_dir) if n.endswith(".toml"))
+            )
+    custom_locations = " or ".join(custom_paths)
     raise KeyError(
-        f"Preset '{preset}' not found in {presets_path} or {custom_path}. "
+        f"Preset '{preset}' not found in {presets_path} or {custom_locations}. "
         f"Available: {sorted(set(available))}"
     )
 
@@ -370,6 +379,27 @@ def load_preset_section(preset: str, configs_dir: str = "configs") -> dict:
     """Load a named preset section from configs/presets.toml or configs/custom/."""
     section, _path, _tag = _resolve_preset(preset, configs_dir)
     return section
+
+
+def list_presets(configs_dir: str = "configs") -> list[str]:
+    """Every resolvable preset name, sorted.
+
+    The union of ``[<name>]`` table sections in ``configs/presets.toml`` and the
+    one-file-per-preset stems under ``configs/custom/presets/*.toml`` (plus the
+    legacy ``configs/custom/*.toml`` location) - i.e. exactly the set
+    :func:`_resolve_preset` can resolve.
+    """
+    configs_dir = str(resolve_under_home(configs_dir))
+    names: set[str] = set()
+    presets_path = os.path.join(configs_dir, "presets.toml")
+    if os.path.exists(presets_path):
+        with open(presets_path, "r", encoding="utf-8") as f:
+            names.update(k for k, v in toml.load(f).items() if isinstance(v, dict))
+    for subdir in _CUSTOM_PRESET_SUBDIRS:
+        custom_dir = os.path.join(configs_dir, subdir)
+        if os.path.isdir(custom_dir):
+            names.update(n[:-5] for n in os.listdir(custom_dir) if n.endswith(".toml"))
+    return sorted(names)
 
 
 def load_method_preset(

@@ -1,4 +1,4 @@
-import { help } from './help-builder.js?v=module-bootstrap-20260711-ir6';
+import { help } from './help-builder.js?v=module-bootstrap-20260713-mem-lokr';
 
 export const FIELD_HELP_METHOD_ZH = {
     network_dim: help(
@@ -144,6 +144,23 @@ export const FIELD_HELP_METHOD_ZH = {
         ["关闭后回到更传统的 custom LoKr 路径，主要用于兼容性排查。"],
         ["这个开关本身不决定权重大小；权重大小由“LoKr 轻量分解 W2”决定。"],
         "正式训练保持开启。"
+    ),
+
+    lokr_full_factor: help(
+        "显式声明 LoKr 全因子布局，并替代旧 network_dim=114514 哨兵。",
+        "anima_lora 默认已是完整 lokr_w2；这个开关主要负责正规化配置、写入元数据，并与 lokr_decompose_w2 互斥。",
+        ["新训练推荐开启，保持完整因子 + 正常 alpha/dim 缩放。"],
+        ["默认关闭 decompose 时，打开它不会突然改变参数量或训练动力学。"],
+        ["与 lokr_decompose_w2=true 互斥；不要再写 network_dim=114514。"],
+        "推荐：network_dim=network_alpha=32，lokr_full_factor=true，lokr_decompose_w2=false。"
+    ),
+    lokr_allow_legacy_dim: help(
+        "是否允许旧版 network_dim=114514 全因子哨兵。",
+        "只给历史状态续训用；它会把缩放压到 alpha/114514，新训练不要开。",
+        ["续训旧哨兵 checkpoint 时必须显式开启。"],
+        ["会保留被压扁的历史缩放。"],
+        ["新训练若误开，容易学不动。"],
+        "新训练请改用 lokr_full_factor=true。"
     ),
     lokr_decompose_w2: help(
         "是否把大的 lokr_w2 再拆成 lokr_w2_a/lokr_w2_b。",

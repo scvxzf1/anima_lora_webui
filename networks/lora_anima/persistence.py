@@ -20,10 +20,47 @@ from networks.lora_anima.loading import (
 
 
 def stamp_lora_save_metadata(
-    metadata: Dict[str, str], cfg: LoRANetworkCfg, spec: NetworkSpec
+    metadata: Dict[str, str],
+    cfg: LoRANetworkCfg,
+    spec: NetworkSpec,
+    network=None,
 ) -> None:
     if metadata:
         metadata["ss_network_spec"] = spec.name
+
+    if spec.name == "lokr":
+        metadata.setdefault("ss_network_dim", str(cfg.lora_dim))
+        metadata.setdefault("ss_network_alpha", str(cfg.alpha))
+        uses_full_factor_layout = None
+        if network is not None:
+            from networks.plugins.lokr.module import LoKrModule
+
+            lokr_modules = [
+                lora
+                for lora in getattr(network, "text_encoder_loras", [])
+                + getattr(network, "unet_loras", [])
+                if isinstance(lora, LoKrModule)
+            ]
+            if lokr_modules:
+                uses_full_factor_layout = all(
+                    (not getattr(lora, "_use_decomposed_w2", False))
+                    for lora in lokr_modules
+                )
+        if uses_full_factor_layout is None:
+            plugin_args = getattr(cfg, "plugin_args", {}) or {}
+            raw_full = plugin_args.get("lokr_full_factor", False)
+            if isinstance(raw_full, str):
+                uses_full_factor_layout = raw_full.strip().lower() in {
+                    "1",
+                    "true",
+                    "yes",
+                    "on",
+                }
+            else:
+                uses_full_factor_layout = bool(raw_full)
+        metadata["ss_lokr_full_factor"] = (
+            "true" if bool(uses_full_factor_layout) else "false"
+        )
 
     # Hard sigma-band partition lives in non-persistent buffers (`_expert_band`)
     # and a Python attr (`_sigma_band_partition`); nothing of it survives
@@ -170,7 +207,7 @@ def save_lora_network_weights(network, file, dtype, metadata) -> None:
     spec: NetworkSpec = getattr(network, "_network_spec", NETWORK_REGISTRY["lora"])
     if metadata is None:
         metadata = {}
-    stamp_lora_save_metadata(metadata, network.cfg, spec)
+    stamp_lora_save_metadata(metadata, network.cfg, spec, network=network)
 
     lora_save.save_network_weights(
         network.state_dict(),

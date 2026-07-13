@@ -127,6 +127,40 @@ __all__ = [
 ]
 
 
+def _validate_lokr_config(cfg: dict) -> list[str]:
+    """Extra LoKR rules that are not pure argparse choices."""
+    errors: list[str] = []
+    use_lokr = cfg.get("use_lokr")
+    if isinstance(use_lokr, str):
+        use_lokr = use_lokr.strip().lower() in {"1", "true", "yes", "on"}
+    if not use_lokr:
+        return errors
+    full_factor = cfg.get("lokr_full_factor")
+    if isinstance(full_factor, str):
+        full_factor = full_factor.strip().lower() in {"1", "true", "yes", "on"}
+    decompose_w2 = cfg.get("lokr_decompose_w2")
+    if isinstance(decompose_w2, str):
+        decompose_w2 = decompose_w2.strip().lower() in {"1", "true", "yes", "on"}
+    if full_factor and decompose_w2:
+        errors.append("lokr_full_factor=true conflicts with lokr_decompose_w2=true")
+    network_dim = cfg.get("network_dim")
+    try:
+        network_dim_i = int(network_dim) if network_dim is not None else None
+    except (TypeError, ValueError):
+        network_dim_i = None
+    allow_legacy = cfg.get("lokr_allow_legacy_dim")
+    if isinstance(allow_legacy, str):
+        allow_legacy = allow_legacy.strip().lower() in {"1", "true", "yes", "on"}
+    if network_dim_i == 114514 and not allow_legacy:
+        errors.append(
+            "LoKR network_dim=114514 is a deprecated full-factor sentinel "
+            "that suppresses training via alpha/dim. Use network_dim=32, "
+            "network_alpha=32, lokr_full_factor=true instead."
+        )
+    return errors
+
+
+
 def preflight_training_config(
     variant: str,
     preset: str,
@@ -213,6 +247,7 @@ def preflight_training_config(
         add=add,
     )
     schema_errors, schema_warnings = validate_config_mapping(cfg)
+    schema_errors.extend(_validate_lokr_config(cfg))
     for msg in schema_errors:
         add("error", "schema", msg)
     for msg in schema_warnings:

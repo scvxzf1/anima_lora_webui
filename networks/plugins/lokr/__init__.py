@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any, Mapping
 
 import torch
@@ -25,6 +26,8 @@ from ...registry_api import (
 )
 
 DEFAULT_LOKR_RUNTIME_BACKEND = DEFAULT_LOKR_GROUPED_DELTA_BACKEND
+
+logger = logging.getLogger(__name__)
 
 
 def _truthy(value: Any) -> bool:
@@ -60,8 +63,56 @@ def _validate(kwargs: Mapping[str, Any]) -> None:
             "use_moe_style, and use_chimera_hydra."
         )
 
+    lokr_full_factor = _truthy(kwargs.get("lokr_full_factor"))
+    decompose_w2 = _truthy(kwargs.get("lokr_decompose_w2"))
+    if lokr_full_factor and decompose_w2:
+        raise ValueError(
+            "lokr_full_factor=true conflicts with lokr_decompose_w2=true. "
+            "Full-factor LoKR cannot also decompose the second Kronecker factor."
+        )
+
+    # Historical full-factor sentinel from older forks. It also collapses the
+    # training scale to network_alpha / 114514, so new training must opt out.
+    network_dim = kwargs.get("network_dim", None)
+    try:
+        network_dim_i = int(network_dim) if network_dim is not None else None
+    except (TypeError, ValueError):
+        network_dim_i = None
+    if network_dim_i == 114514:
+        network_alpha = kwargs.get("network_alpha", 1.0)
+        try:
+            network_alpha_f = float(network_alpha)
+        except (TypeError, ValueError):
+            network_alpha_f = 1.0
+        legacy_scale = network_alpha_f / float(network_dim_i)
+        message = (
+            "LoKR network_dim=114514 is a deprecated full-factor sentinel. "
+            f"It also sets training scale=network_alpha/network_dim={legacy_scale:.8g}, "
+            "which suppresses adapter output and gradients. Use "
+            "network_dim=32, network_alpha=32, lokr_full_factor=true instead."
+        )
+        if not _truthy(kwargs.get("lokr_allow_legacy_dim")):
+            raise ValueError(
+                message
+                + " Set lokr_allow_legacy_dim=true only to resume an old state "
+                "without changing its historical scale."
+            )
+        logger.warning(
+            "%s Legacy compatibility was explicitly enabled; the suppressed "
+            "scale is preserved.",
+            message,
+        )
+
 
 def _module_kwargs(ctx: ModuleCreationContext) -> dict[str, Any]:
+    full_factor = _truthy(ctx.cfg.plugin_args.get("lokr_full_factor"))
+    if ctx.cfg.plugin_args.get("lokr_decompose_w2") is None:
+        decompose_w2 = False
+    else:
+        decompose_w2 = _truthy(ctx.cfg.plugin_args.get("lokr_decompose_w2"))
+    if full_factor:
+        # Explicit full-factor mode always keeps both Kronecker factors complete.
+        decompose_w2 = False
     return {
         "factor": int(ctx.cfg.plugin_args.get("lokr_factor", 8)),
         "lokr_factor_group_size": int(
@@ -86,11 +137,8 @@ def _module_kwargs(ctx: ModuleCreationContext) -> dict[str, Any]:
         "lokr_use_einsum": _bool_arg(
             ctx.cfg.plugin_args.get("lokr_use_einsum"), default=True
         ),
-        "lokr_decompose_w2": (
-            False
-            if ctx.cfg.plugin_args.get("lokr_decompose_w2") is None
-            else _truthy(ctx.cfg.plugin_args.get("lokr_decompose_w2"))
-        ),
+        "lokr_decompose_w2": decompose_w2,
+        "lokr_full_factor": full_factor,
     }
 
 
@@ -102,6 +150,12 @@ def _detect_from_weights(ctx: WeightDetectionContext) -> bool:
     except (TypeError, ValueError):
         network_dim = None
     ctx.state["lokr_network_dim_meta"] = network_dim
+    if "lokr_full_factor_stamp" not in ctx.state:
+        stamped = ctx.metadata.get("ss_lokr_full_factor")
+        if stamped is not None:
+            ctx.state["lokr_full_factor_stamp"] = (
+                str(stamped).strip().lower() == "true"
+            )
     if key.endswith(".lokr_w1"):
         ctx.state["has_lokr"] = True
         ctx.state.setdefault("lokr_module_names", set()).add(ctx.lora_name)
@@ -164,6 +218,19 @@ def _finish_weight_detection(
     plugin_args = {"lokr_factor": factor, "lokr_use_einsum": use_einsum}
     if state.get("lokr_has_decomposed_w2"):
         plugin_args["lokr_decompose_w2"] = True
+    stamped_full_factor = state.get("lokr_full_factor_stamp")
+    if stamped_full_factor is not None:
+        plugin_args["lokr_full_factor"] = bool(stamped_full_factor)
+        if stamped_full_factor and state.get("lokr_has_decomposed_w2"):
+            raise RuntimeError(
+                "LoKR checkpoint is stamped ss_lokr_full_factor=true but "
+                "contains decomposed factor keys."
+            )
+    else:
+        # Legacy full-factor checkpoints have no stamp. Full w2 factors and no
+        # decomposed keys are sufficient to reconstruct the intended layout.
+        if state.get("lokr_has_full_w2") and not state.get("lokr_has_decomposed_w2"):
+            plugin_args["lokr_full_factor"] = True
     return {
         "detected_spec": "lokr",
         "plugin_args": plugin_args,
@@ -193,6 +260,10 @@ register_network_spec(
             "lokr_grouped_delta_backward_backend",
             "lokr_use_einsum",
             "lokr_decompose_w2",
+            "lokr_full_factor",
+            # Escape hatch for resuming historical states that used network_dim
+            # as a full-factor sentinel and must preserve their old alpha/dim scale.
+            "lokr_allow_legacy_dim",
         ),
         selector=_selector,
         validate=_validate,

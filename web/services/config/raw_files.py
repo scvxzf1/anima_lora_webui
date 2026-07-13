@@ -360,11 +360,31 @@ def _remove_retired_top_level_fields(content: str) -> tuple[str, list[str]]:
     return tomlkit.dumps(doc), removed
 
 
+# 适配器专属字段：从非对应变体切回时前端会发 null，表示从 TOML 顶层删除。
+_ADAPTER_SCOPED_OPTIONAL_KEYS = frozenset(
+    {
+        "lokr_factor",
+        "lokr_use_einsum",
+        "lokr_decompose_w2",
+        "lokr_full_factor",
+        "lokr_allow_legacy_dim",
+        "lokr_factor_group_size",
+        "lokr_project_chunk_bytes",
+        "vera_projection_prng_key",
+        "vera_d_initial",
+        "vera_save_projection",
+    }
+)
+
+
 def _normalize_patch_value(key: str, value: Any) -> Any:
     if key == "output_name":
         if _is_blank_output_name(value):
             raise ValueError("output_name 不能为空")
         return str(value).strip()
+    if key in _ADAPTER_SCOPED_OPTIONAL_KEYS and value is None:
+        # 普通 LoRA 等变体不应保留 LoKr/VeRA 专属键。
+        return _DELETE_TOML_KEY
     if key in {"sample_every_n_epochs", "sample_every_n_steps", "max_train_epochs"}:
         if value in ("", None):
             # TOML 没有 null。WebUI 留空表示禁用该可选数值，
