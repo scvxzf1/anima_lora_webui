@@ -1867,10 +1867,13 @@ def test_config_form_keeps_dora_as_lora_addon_and_merges_exclusive_adapters() ->
     assert "'use_lokr'" in merged_fields
     assert "'use_vera'" in merged_fields
     assert "CONFIG_FORM_MERGED_FIELDS?.has?.(key)" in render_section
-    assert "ALWAYS_VISIBLE_NETWORK_ARG_FIELDS = new Set([" in source
-    assert "'lokr_use_einsum'," in source
-    assert "'lokr_decompose_w2'," in source
-    assert "if (NETWORK_ARG_FIELD_MAP.has(key)) return ALWAYS_VISIBLE_NETWORK_ARG_FIELDS.has(key);" in source
+    # network_args-only fields follow activeNetworkArgFamilies; the allowlist
+    # stays empty so they are not force-shown outside the active family.
+    config_form = _frontend_module_text(CONFIG_FORM_REL)
+    assert "const ALWAYS_VISIBLE_NETWORK_ARG_FIELDS = new Set();" in config_form
+    assert "if (NETWORK_ARG_FIELD_MAP.has(key))" in config_form
+    assert "if (ALWAYS_VISIBLE_NETWORK_ARG_FIELDS.has(key)) return true;" in config_form
+    assert "return isActiveNetworkArgFieldKey(key, config);" in config_form
     assert "function loraAdapterFlagsForKind" in config_values
     assert "values.use_glora = flags.use_glora" in source
     assert "values.use_loha = flags.use_loha" in source

@@ -157,6 +157,12 @@ export const VARIANT_GUIDE_ZH = {
         '更不容易 OOM；代价是训练明显变慢。这是方法变体，不是硬件 preset，也不是资源快捷按钮。',
         '默认配置爆显存时选。'
     ),
+    'lora-v100-stable': choiceHelp(
+        '方法变体：V100 稳定 LoRA',
+        '面向 Tesla V100 16GB 的 plain LoRA：fp16、torch SDPA、梯度检查点与 block swap，rank 默认 16。',
+        '优先稳定不炸显存；表达力和速度都比默认 lora 保守，也不依赖 bf16/flash-attn。',
+        '只有在 V100 或同类 pre-Ampere 卡上需要稳定起步时选。'
+    ),
     ortholora: choiceHelp(
         'OrthoLoRA',
         '普通 LoRA 加正交约束，保存时仍偏普通 LoRA 使用方式。',
