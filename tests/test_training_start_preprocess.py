@@ -233,7 +233,13 @@ def test_start_training_appends_network_weights_and_history_meta(tmp_path, monke
     assert meta["continue_from_weight_kind"] == "LoRA"
     snapshot = (tmp_path / "history" / "fake-task" / "config.snapshot.toml").read_text(encoding="utf-8")
     assert '# training_mode = "continue_lora"' in snapshot
-    assert str(weight.resolve()) in snapshot
+    path_line = next(
+        line
+        for line in snapshot.splitlines()
+        if line.startswith("# continue_from_weight_abs_path = ")
+    )
+    path_literal = path_line.split("=", 1)[1].strip()
+    assert toml.loads(f"value = {path_literal}")["value"] == str(weight.resolve())
 
 def test_start_training_aligns_accelerate_mixed_precision_from_config(tmp_path, monkeypatch):
     _write_runtime_config_tree(tmp_path)

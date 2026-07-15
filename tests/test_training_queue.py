@@ -932,7 +932,9 @@ def test_queue_retry_clones_frozen_runtime_config(tmp_path, monkeypatch):
     retry = payload["item"]
     assert retry["state"] == "queued"
     assert retry["retry_of"] == "q1"
-    assert retry["attempt"] == 2
+    assert retry["attempt"] == 1
+    assert retry["manual_retry"] is True
+    assert retry["retry_source"] == "manual"
     assert retry["history_task_ids"] == []
     assert retry["runtime_config_file"] != runtime["runtime_config_file"]
     retry_cfg = toml.loads(Path(retry["runtime_config_file"]).read_text(encoding="utf-8"))
