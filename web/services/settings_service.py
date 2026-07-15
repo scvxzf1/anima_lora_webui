@@ -9,6 +9,7 @@ import toml
 
 from library.env import anima_home, get_configs_root, get_training_history_root, get_training_queue_root
 from web.services._dynamic_path import DynamicPath
+from web.services.atomic_io import atomic_write_text
 
 ROOT = anima_home()
 
@@ -89,7 +90,7 @@ def save_training_policy(data: dict[str, Any]) -> dict[str, Any]:
         for key in _default_training_policy()
     }
     settings_file.parent.mkdir(parents=True, exist_ok=True)
-    settings_file.write_text(toml.dumps(raw), encoding="utf-8")
+    atomic_write_text(settings_file, toml.dumps(raw))
     return {"ok": True, **normalized}
 
 
@@ -222,7 +223,7 @@ def save_global_settings(data: dict[str, Any]) -> dict[str, Any]:
         **next_global,
     }
     target_settings_file.parent.mkdir(parents=True, exist_ok=True)
-    target_settings_file.write_text(toml.dumps(raw), encoding="utf-8")
+    atomic_write_text(target_settings_file, toml.dumps(raw))
 
     # 如果设置了路径覆盖，同时保存到项目根目录的专用配置文件
     path_overrides = {
@@ -523,7 +524,7 @@ def _save_path_overrides(path_values: dict[str, Any]) -> None:
             # 空值表示使用默认，从配置中删除
             raw["paths"].pop(key, None)
 
-    webui_paths_file.write_text(toml.dumps(raw), encoding="utf-8")
+    atomic_write_text(webui_paths_file, toml.dumps(raw))
 
 
 def _save_configs_root_override(configs_root: str) -> None:

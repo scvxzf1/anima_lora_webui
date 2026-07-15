@@ -6,6 +6,7 @@ from typing import Any
 
 import toml
 
+from web.services.atomic_io import atomic_write_text
 from web.services.config.file_group_paths import (
     _normalize_config_rel_path,
     _normalize_group_id,
@@ -89,13 +90,13 @@ def _load_user_locks() -> tuple[set[str], set[str]]:
 
 
 def _save_user_locks(file_locks: set[str], group_locks: set[str]) -> None:
-    _owner_attr("WEB_USER_LOCKS_FILE", WEB_USER_LOCKS_FILE).parent.mkdir(parents=True, exist_ok=True)
-    _owner_attr("WEB_USER_LOCKS_FILE", WEB_USER_LOCKS_FILE).write_text(
+    locks_file = _owner_attr("WEB_USER_LOCKS_FILE", WEB_USER_LOCKS_FILE)
+    atomic_write_text(
+        locks_file,
         toml.dumps({
             "locked": sorted(file_locks),
             "locked_groups": sorted(group_locks),
         }),
-        encoding="utf-8",
     )
 
 

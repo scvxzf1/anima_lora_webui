@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from library.env import get_configs_root, load_dotenv
+from web.services.atomic_io import atomic_write_text
 from web.services.config import file_groups as _file_groups
 from web.services.config import paths as _config_paths
 
@@ -189,7 +190,7 @@ def save_raw_file(
             return False, "; ".join(schema_errors), list(schema_warnings or [])
         schema_warnings = [str(item) for item in (schema_warnings or [])]
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(content, encoding="utf-8")
+    atomic_write_text(path, content)
     message = "保存成功"
     if schema_warnings:
         message = f"保存成功（警告: {'; '.join(schema_warnings)}）"
@@ -235,7 +236,7 @@ def patch_raw_file_values(
     if not ok or path is None:
         return False, msg, "", [], list(warnings or [])
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(next_content, encoding="utf-8")
+    atomic_write_text(path, next_content)
     return True, msg or "保存成功", next_content, changed, list(warnings or [])
 
 
@@ -298,7 +299,7 @@ def _prepare_raw_file_patch(
 
 def _restore_dataset_config_after_failed_train_patch(path: Path, existed: bool, previous_content: str) -> None:
     if existed:
-        path.write_text(previous_content, encoding="utf-8")
+        atomic_write_text(path, previous_content)
         return
     try:
         path.unlink()

@@ -277,7 +277,7 @@ async def force_abort_queue(self) -> dict[str, Any]:
         self._save_queue()
         await self._broadcast_queue()
         if active_process:
-            await self.stop()
+            await self._stop_unlocked()
             await self._broadcast_queue()
         stopped_running = 1 if active_process else 0
         canceled = canceled_waiting + canceled_stale_running + canceled_launching + stopped_running

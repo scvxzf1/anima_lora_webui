@@ -75,16 +75,26 @@ def test_metadata_module_imports_without_facade_cycle():
 
     assert result.returncode == 0, result.stderr or result.stdout
 
-def test_paths_module_imports_without_facade_cycle():
-    env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
+def test_paths_module_imports_without_facade_cycle(tmp_path):
+    root = (tmp_path / "anima-root").resolve()
+    configs = root / "configs"
+    configs.mkdir(parents=True)
+    env = {
+        **os.environ,
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "ANIMA_TEST_PATH_ROOT": str(root),
+    }
     script = (
-        "import sys; "
+        "import os, sys; "
         "from pathlib import Path; "
         "import web.services.config.paths as paths; "
-        "root = Path('/tmp/anima-root'); "
-        "configs = root / 'configs'; "
+        "root = Path(os.environ['ANIMA_TEST_PATH_ROOT']).resolve(); "
+        "configs = (root / 'configs').resolve(); "
+        "target = (configs / 'base.toml').resolve(); "
         "assert paths.normalize_config_rel_path('/configs/base.toml') == 'configs/base.toml'; "
-        "assert paths.safe_resolve('configs/base.toml', root=root, configs_dir=configs) == configs / 'base.toml'; "
+        "assert paths.safe_resolve('configs/base.toml', root=root, configs_dir=configs) == target; "
+        "assert paths.safe_resolve('configs/../outside.toml', root=root, configs_dir=configs) is None; "
+        "assert paths.safe_resolve(str(target), root=root, configs_dir=configs) == target; "
         "assert 'web.services.config_service' not in sys.modules; "
         "assert 'web.services.config._legacy' not in sys.modules"
     )

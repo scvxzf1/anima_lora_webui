@@ -12,6 +12,7 @@ from typing import Any
 import toml
 
 from library.env import expand_env_vars_in_obj, get_configs_root, load_dotenv
+from web.services.atomic_io import atomic_write_text
 from web.services.config import paths as _config_paths
 from web.services.config.dataset_rows import (
     _build_dataset_config_doc,
@@ -119,7 +120,7 @@ def _display_path(path: Path) -> str:
 
 def _restore_dataset_config_after_failed_train_patch(path: Path, existed: bool, previous_content: str) -> None:
     if existed:
-        path.write_text(previous_content, encoding="utf-8")
+        atomic_write_text(path, previous_content)
         return
     try:
         path.unlink()

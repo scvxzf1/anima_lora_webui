@@ -35,6 +35,7 @@ from web.services.training.live_utils import (
     _progress_event_key,
     _progress_event_wall_ts,
 )
+from web.services.training.task_lifecycle import cancel_run_tasks, track_run_task
 
 def get_status_snapshot(self) -> dict[str, Any]:
     last_log_id = self._log_records[-1]["id"] if self._log_records else 0
@@ -71,12 +72,14 @@ def get_status_snapshot(self) -> dict[str, Any]:
 
     return _json_safe_training_payload(snapshot)
 
-async def _read_output(self):
-    assert self.process and self.process.stdout
+async def _read_output(self, process=None, generation: int | None = None):
+    process = process or self.process
+    generation = self._run_generation if generation is None else generation
+    assert process and process.stdout
     try:
         buffer = ""
         while True:
-            raw = await self.process.stdout.read(OUTPUT_READ_SIZE)
+            raw = await process.stdout.read(OUTPUT_READ_SIZE)
             if not raw:
                 break
             decoded = raw.decode("utf-8", errors="replace")
@@ -85,20 +88,20 @@ async def _read_output(self):
             buffer = await self._drain_output_buffer(buffer)
         if buffer.strip():
             await self._handle_output_record(buffer)
-    except Exception:
-        pass
+    except asyncio.CancelledError:
+        raise
+    except Exception as exc:
+        if generation == self._run_generation:
+            self._remember_log("error", f"读取训练输出失败: {exc}")
 
-    rc = await self.process.wait()
+    rc = await process.wait()
+    if generation != self._run_generation or self.process is not process:
+        return
     job = self.current_job
     stop_requested = self._stop_requested
     pending_train = self._pending_train_after_preprocess
     queue_item_id = self._current_queue_item_id
     await self._ingest_progress_jsonl(final=True)
-    self.status = "idle"
-    self.current_job = ""
-    self._stop_requested = False
-    self._pending_train_after_preprocess = None
-    self._current_queue_item_id = ""
     state = "idle" if rc == 0 or stop_requested else "error"
     if stop_requested and job == "preprocess":
         msg = "预处理已停止"
@@ -124,15 +127,13 @@ async def _read_output(self):
         "task_id": self.current_task_id,
         "queue_item_id": queue_item_id,
     })
-    if (
+    start_pending = (
         job == "preprocess"
         and rc == 0
         and not stop_requested
         and pending_train is not None
-    ):
-        await self._start_pending_training(pending_train)
-        return
-    if queue_item_id:
+    )
+    if queue_item_id and not start_pending:
         queue_failed = (not stop_requested) and rc != 0
         if stop_requested:
             self._update_queue_item(queue_item_id, {
@@ -160,6 +161,28 @@ async def _read_output(self):
             })
         self._save_queue()
         await self._broadcast_queue()
+    await cancel_run_tasks(
+        self,
+        generation,
+        exclude=asyncio.current_task(),
+    )
+    if generation != self._run_generation or self.process is not process:
+        return
+    stop_in_progress = self._stopping or self._stop_requested
+    self.status = "idle"
+    self.current_job = ""
+    self._pending_train_after_preprocess = None
+    self._current_queue_item_id = ""
+    if stop_in_progress:
+        return
+    self._stop_requested = False
+    if start_pending:
+        track_run_task(
+            self,
+            self._start_pending_training(pending_train),
+            generation=generation,
+        )
+        return
     self._schedule_queue_dispatch()
 
 async def _drain_output_buffer(self, buffer: str) -> str:
@@ -249,11 +272,17 @@ def _remember_lr_change_log(self, metric: dict[str, Any]) -> dict[str, Any] | No
     ts = _float_or_none(metric.get("ts"))
     return self._remember_log("metric", f"[学习率] {step_text}{change_text}", ts=ts)
 
-async def _tail_progress_jsonl(self) -> None:
-    while self.status == "running" and self._progress_jsonl_path:
+async def _tail_progress_jsonl(self, generation: int | None = None) -> None:
+    generation = self._run_generation if generation is None else generation
+    while (
+        generation == self._run_generation
+        and self.status == "running"
+        and self._progress_jsonl_path
+    ):
         await self._ingest_progress_jsonl()
         await asyncio.sleep(1.0)
-    await self._ingest_progress_jsonl(final=True)
+    if generation == self._run_generation:
+        await self._ingest_progress_jsonl(final=True)
 
 async def _ingest_progress_jsonl(self, *, final: bool = False) -> None:
     path = self._progress_jsonl_path
@@ -454,13 +483,21 @@ def _extract_metrics_from_log(self, line: str) -> dict | None:
             break
     return metrics if found else None
 
-async def _monitor_system(self):
+async def _monitor_system(
+    self,
+    generation: int | None = None,
+    gpu_whitelist: tuple[int, ...] | None = None,
+):
+    generation = self._run_generation if generation is None else generation
+    gpu_whitelist = tuple(self.current_gpu_whitelist) if gpu_whitelist is None else gpu_whitelist
     # Sample immediately on launch, then keep a short cadence so the
     # dashboard "资源与活动" panel tracks preprocess/training GPU load.
-    while self.status == "running":
+    while generation == self._run_generation and self.status == "running":
         from web.services.training.gpu_async import get_gpu_stats
 
-        stats = await get_gpu_stats(self.current_gpu_whitelist)
+        stats = await get_gpu_stats(list(gpu_whitelist))
+        if generation != self._run_generation or self.status != "running":
+            return
         if stats:
             stats["last_output_at"] = self._last_output_at
             stats["ts"] = time.time()

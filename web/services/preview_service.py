@@ -12,6 +12,7 @@ from typing import Any
 import toml
 
 from web.services import settings_service
+from web.services.atomic_io import atomic_write_text
 from web.services.preview import common as _preview_common
 from web.services.preview import images as _preview_images
 from web.services.preview import weights as _preview_weights
@@ -143,6 +144,5 @@ def save_preview_settings(data: dict[str, Any]) -> dict[str, Any]:
     }
     raw = _load_raw_settings()
     raw["preview"] = next_settings
-    SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
-    SETTINGS_FILE.write_text(toml.dumps(raw), encoding="utf-8")
+    atomic_write_text(SETTINGS_FILE, toml.dumps(raw), encoding="utf-8")
     return {"ok": True, "message": "预览图路径设置已保存", **next_settings}

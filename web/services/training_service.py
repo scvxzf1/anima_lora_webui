@@ -91,6 +91,12 @@ class TrainingService:
             self._current_queue_item_id: str = ""
             self._queue_launching_item_id: str = ""
             self._queue_dispatch_task: asyncio.Task | None = None
+            self._run_generation: int = 0
+            self._stopping: bool = False
+            self._shutting_down: bool = False
+            self._job_tasks: dict[int, set[asyncio.Task[Any]]] = {}
+            self._output_task: asyncio.Task[Any] | None = None
+            self._output_task_generation: int = 0
             try:
                 from web.services.training.constants import apply_training_policy_to_facade
                 policy = apply_training_policy_to_facade()
@@ -139,6 +145,7 @@ class TrainingService:
         '_handle_progress_jsonl_event': 'live_monitor',
         '_ingest_progress_jsonl': 'live_monitor',
         '_launch_job': 'launcher',
+        '_stop_unlocked': 'launcher',
         '_maybe_note_error_hint': 'live_monitor',
         '_monitor_system': 'live_monitor',
         '_read_output': 'live_monitor',
@@ -169,6 +176,7 @@ class TrainingService:
         'start_preprocess': 'launcher',
         'start_queue_on_startup': 'queue',
         'stop': 'launcher',
+        'shutdown': 'launcher',
     }
     _SYNC_DELEGATES = {
         '_append_history_jsonl': 'history',

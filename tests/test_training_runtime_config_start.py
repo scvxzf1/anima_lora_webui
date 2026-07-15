@@ -175,6 +175,7 @@ def test_handle_start_uses_runtime_config_from_absolute_output_root(tmp_path, mo
     for path in (model_cache, dataset_cache / "resized", dataset_cache / "lora", training_output, source_dir):
         path.mkdir(parents=True)
     Image.new("RGB", (8, 8), color=(10, 20, 30)).save(dataset_cache / "resized" / "a.png")
+    Image.new("RGB", (8, 8), color=(10, 20, 30)).save(source_dir / "a.png")
     (tmp_path / "models").mkdir()
     (tmp_path / "models" / "anima.safetensors").write_bytes(b"model")
     (tmp_path / "models" / "qwen.safetensors").write_bytes(b"qwen")

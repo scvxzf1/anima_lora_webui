@@ -7,6 +7,7 @@ from typing import Any
 
 import tomlkit
 
+from web.services.atomic_io import atomic_write_text
 from web.services.config.file_group_locks import _is_user_group_locked
 from web.services.config.file_group_paths import (
     _config_group_path_list,
@@ -128,8 +129,8 @@ def _save_config_file_group_specs(specs: list[dict[str, Any]]) -> None:
             table.add("exclude", _config_group_path_list(spec.get("exclude")))
         group_array.append(table)
     doc.add("groups", group_array)
-    _owner_attr("WEB_FILE_GROUPS_FILE", WEB_FILE_GROUPS_FILE).parent.mkdir(parents=True, exist_ok=True)
-    _owner_attr("WEB_FILE_GROUPS_FILE", WEB_FILE_GROUPS_FILE).write_text(tomlkit.dumps(doc), encoding="utf-8")
+    specs_file = _owner_attr("WEB_FILE_GROUPS_FILE", WEB_FILE_GROUPS_FILE)
+    atomic_write_text(specs_file, tomlkit.dumps(doc))
 
 
 def _glob_config_files(pattern: str) -> list[str]:
