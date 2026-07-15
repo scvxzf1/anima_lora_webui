@@ -66,8 +66,8 @@ async def _on_shutdown(app: web.Application) -> None:
     if image_test_svc:
         await image_test_svc.shutdown()
     svc = app["training_service"]
-    if svc and svc.status == "running":
-        await svc.stop()
+    if svc:
+        await svc.shutdown()
 
 
 def main():

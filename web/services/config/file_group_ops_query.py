@@ -9,6 +9,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from web.services.atomic_io import atomic_write_text
 from web.services.config.file_group_locks import (
     _is_system_preset_path,
     _list_system_preset_files,
@@ -86,7 +87,7 @@ def restore_system_presets(files: list[str] | None = None) -> dict[str, Any]:
         backup_path = backup_root / _backup_relative_path(rel_path)
         backup_path.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(path, backup_path)
-        path.write_text(baseline, encoding="utf-8")
+        atomic_write_text(path, baseline)
         restored.append(rel_path)
 
     return {

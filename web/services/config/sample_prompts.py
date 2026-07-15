@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from library.env import get_configs_root
+from web.services.atomic_io import atomic_write_text
 from web.services.config import paths as _config_paths
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -122,7 +123,7 @@ def save_sample_prompts_file(
     ]
     path = _resolve_prompt_path(normalized)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text, encoding="utf-8")
+    atomic_write_text(path, text)
     return {
         "ok": True,
         "file": normalized,

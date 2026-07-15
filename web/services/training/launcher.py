@@ -10,9 +10,11 @@ Compatibility facade. Implementation lives in:
 from __future__ import annotations
 
 from web.services.training.launcher_job import (
+    _stop_unlocked,
     _ensure_launch_allowed,
     _launch_job,
     _write_terminal,
+    shutdown,
     stop,
 )
 from web.services.training.launcher_runtime import (
@@ -49,6 +51,8 @@ __all__ = [
     "_start_preprocess_unlocked",
     "_launch_job",
     "stop",
+    "_stop_unlocked",
+    "shutdown",
     "_start_pending_training",
     "_ensure_launch_allowed",
     "_write_terminal",

@@ -25,6 +25,9 @@ from web.services.training.launcher_runtime import (
     _root,
     _runtime_meta,
 )
+from web.services.training.task_lifecycle import cancel_run_tasks, track_run_task
+
+STOP_OUTPUT_TIMEOUT_SECONDS = 10.0
 
 
 async def _launch_job(
@@ -50,6 +53,9 @@ async def _launch_job(
     runtime_info: dict[str, str] | None = None,
     queue_item_id: str = "",
 ):
+    self._run_generation += 1
+    generation = self._run_generation
+    self._stopping = False
     self.status = "running"
     self._current_queue_item_id = str(queue_item_id or "")
     self.current_job = job
@@ -174,16 +180,61 @@ async def _launch_job(
     if self._current_queue_item_id:
         self._attach_history_task_to_queue_item(self._current_queue_item_id, self.current_task_id)
         await self._broadcast_queue()
-    asyncio.create_task(self._read_output())
-    asyncio.create_task(self._monitor_system())
+    process = self.process
+    track_run_task(
+        self,
+        self._read_output(process=process, generation=generation),
+        generation=generation,
+        output=True,
+    )
+    track_run_task(
+        self,
+        self._monitor_system(
+            generation=generation,
+            gpu_whitelist=tuple(self.current_gpu_whitelist),
+        ),
+        generation=generation,
+    )
     if self._progress_jsonl_path:
-        asyncio.create_task(self._tail_progress_jsonl())
+        track_run_task(
+            self,
+            self._tail_progress_jsonl(generation=generation),
+            generation=generation,
+        )
 
 async def stop(self):
-    if not self.process or self.process.returncode is not None:
+    async with self._launch_lock:
+        await _stop_unlocked(self)
+
+
+async def _stop_unlocked(self):
+    process = self.process
+    generation = self._run_generation
+    active_run_tasks = any(
+        not task.done()
+        for task in self._job_tasks.get(generation, ())
+    )
+    output_task = (
+        self._output_task
+        if self._output_task_generation == generation
+        else None
+    )
+    if (
+        (process is None or process.returncode is not None)
+        and (output_task is None or output_task.done())
+        and not active_run_tasks
+    ):
         self.status = "idle"
+        self._stopping = False
+        self._stop_requested = False
+        self._pending_train_after_preprocess = None
         return
+
+    self._stopping = True
+    self._stop_requested = True
+    self._pending_train_after_preprocess = None
     queue_item_id = self._current_queue_item_id
+    job = self.current_job
     if queue_item_id:
         self._queue_paused = True
         self._queue["paused"] = True
@@ -194,27 +245,43 @@ async def stop(self):
             "finished_at_text": _format_ts(time.time()),
         })
         self._save_queue()
-    try:
-        pid = self.process.pid
-        parent = psutil.Process(pid)
-        family = [parent] + parent.children(recursive=True)
-        for p in family:
-            try:
-                p.terminate()
-            except (psutil.NoSuchProcess, psutil.AccessDenied):
-                pass
-        _, alive = psutil.wait_procs(family, timeout=3.0)
-        for p in alive:
-            try:
-                p.kill()
-            except (psutil.NoSuchProcess, psutil.AccessDenied):
-                pass
-    except psutil.NoSuchProcess:
-        pass
-    job = self.current_job
-    self._stop_requested = True
-    self._pending_train_after_preprocess = None
+    if process is not None and process.returncode is None:
+        try:
+            pid = process.pid
+            parent = psutil.Process(pid)
+            family = [parent] + parent.children(recursive=True)
+            for p in family:
+                try:
+                    p.terminate()
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    pass
+            _, alive = psutil.wait_procs(family, timeout=3.0)
+            for p in alive:
+                try:
+                    p.kill()
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    pass
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            pass
+
+    if output_task is not None and not output_task.done():
+        try:
+            await asyncio.wait_for(
+                asyncio.shield(output_task),
+                timeout=STOP_OUTPUT_TIMEOUT_SECONDS,
+            )
+        except asyncio.TimeoutError:
+            self._remember_log("error", "等待训练输出任务退出超时，已强制清理后台任务")
+            await cancel_run_tasks(self, generation)
+        except Exception as exc:
+            self._remember_log("error", f"等待训练输出任务退出失败: {exc}")
+
+    if generation != self._run_generation:
+        return
+
+    await cancel_run_tasks(self, generation)
     self.status = "idle"
+    self._stopping = False
     message = "预处理已停止" if job == "preprocess" else "训练已停止"
     await self._broadcast({
         "type": "status",
@@ -231,10 +298,34 @@ async def stop(self):
     if queue_item_id:
         await self._broadcast_queue()
 
+
+async def shutdown(self) -> None:
+    self._shutting_down = True
+    wake_handle = self._queue_dispatch_wake_handle
+    if wake_handle is not None:
+        wake_handle.cancel()
+        self._queue_dispatch_wake_handle = None
+    dispatch_task = self._queue_dispatch_task
+    if dispatch_task is not None and dispatch_task is not asyncio.current_task():
+        if not dispatch_task.done():
+            dispatch_task.cancel()
+        await asyncio.gather(dispatch_task, return_exceptions=True)
+        if self._queue_dispatch_task is dispatch_task:
+            self._queue_dispatch_task = None
+    self._queue_launching_item_id = ""
+    async with self._launch_lock:
+        await _stop_unlocked(self)
+        await cancel_run_tasks(self)
+
 def _ensure_launch_allowed(self, queue_item_id: str = "") -> None:
     launching = self._queue_launching_item_id
     same_queue_item = launching and str(queue_item_id or "") == launching
-    if self.status == "running" or (launching and not same_queue_item):
+    if (
+        self.status == "running"
+        or self._stopping
+        or self._shutting_down
+        or (launching and not same_queue_item)
+    ):
         raise RuntimeError("已有任务在运行中")
 
 def _write_terminal(self, text: str) -> None:

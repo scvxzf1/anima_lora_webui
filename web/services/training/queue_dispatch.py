@@ -23,7 +23,12 @@ from web.services.training.runtime_state import (
 )
 
 def _schedule_queue_dispatch(self) -> None:
-    if self._queue_paused or self.status == "running" or self._queue_launching_item_id:
+    if (
+        getattr(self, "_shutting_down", False)
+        or self._queue_paused
+        or self.status == "running"
+        or self._queue_launching_item_id
+    ):
         return
     if self._queue_dispatch_task and not self._queue_dispatch_task.done():
         return
@@ -47,7 +52,12 @@ def _cancel_queue_dispatch_wake(self) -> None:
 
 def _schedule_queue_dispatch_wake(self, when: float) -> None:
     """Arm a single timer to re-dispatch when the earliest next_run_at is due."""
-    if self._queue_paused or self.status == "running" or self._queue_launching_item_id:
+    if (
+        getattr(self, "_shutting_down", False)
+        or self._queue_paused
+        or self.status == "running"
+        or self._queue_launching_item_id
+    ):
         return
     try:
         loop = asyncio.get_running_loop()
@@ -87,7 +97,12 @@ async def _dispatch_queue(self) -> None:
     queue_item_id = ""
     item: dict[str, Any] | None = None
     async with self._launch_lock:
-        if self._queue_paused or self.status == "running" or self._queue_launching_item_id:
+        if (
+            getattr(self, "_shutting_down", False)
+            or self._queue_paused
+            or self.status == "running"
+            or self._queue_launching_item_id
+        ):
             return
         now = time.time()
         item = next(
@@ -145,7 +160,7 @@ async def _dispatch_queue(self) -> None:
     if not failed and item is not None:
         try:
             async with self._launch_lock:
-                if item.get("state") != "running":
+                if getattr(self, "_shutting_down", False) or item.get("state") != "running":
                     return
                 await self._start_queue_item(item)
         except Exception as e:

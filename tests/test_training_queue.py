@@ -725,7 +725,7 @@ def test_queue_history_metadata_is_written_on_launch(tmp_path, monkeypatch):
     async def fake_create_subprocess_exec(*args, **kwargs):
         return object()
 
-    async def fake_background_task():
+    async def fake_background_task(*args, **kwargs):
         return None
 
     monkeypatch.setattr(training_service.asyncio, "create_subprocess_exec", fake_create_subprocess_exec)
