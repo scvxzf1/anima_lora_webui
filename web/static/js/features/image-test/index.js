@@ -7,11 +7,11 @@ import {
     resolveImageTestWeightPathRequest,
     startImageTestRequest,
     stopImageTestRequest,
-} from './api.js?v=module-bootstrap-20260711-ir6';
-import { createImageTestRenderer } from './render.js?v=module-bootstrap-20260711-ir6';
-import { createImageTestSelectiveLoraController } from './selective-lora.js?v=module-bootstrap-20260711-ir6';
-import { createImageTestState, IMAGE_TEST_DEFAULTS } from './state.js?v=module-bootstrap-20260711-ir6';
-import { createImageTestUiStorage } from './storage.js?v=module-bootstrap-20260711-ir6';
+} from './api.js?v=module-bootstrap-20260714-stage-dataset5';
+import { createImageTestRenderer } from './render.js?v=module-bootstrap-20260714-stage-dataset5';
+import { createImageTestSelectiveLoraController } from './selective-lora.js?v=module-bootstrap-20260714-stage-dataset5';
+import { createImageTestState, IMAGE_TEST_DEFAULTS } from './state.js?v=module-bootstrap-20260714-stage-dataset5';
+import { createImageTestUiStorage } from './storage.js?v=module-bootstrap-20260714-stage-dataset5';
 
 const IMAGE_TEST_IMAGE_LIMIT = 500;
 const IMAGE_TEST_STATUS_POLL_MS = 3000;

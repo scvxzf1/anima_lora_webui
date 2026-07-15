@@ -6,23 +6,23 @@ import {
     CONFIG_FORM_INTERNAL_KEYS,
     FORM_UI_DEFAULTS,
     NETWORK_ARG_FIELD_MAP,
-} from '../../../config/catalog.js?v=module-bootstrap-20260711-ir6';
-import { captionSourceModeLabel } from '../helpers/caption-source.js?v=module-bootstrap-20260711-ir6';
-import { collectChangedFormValues, configDraftValueChanged, isActiveNetworkArgFieldKey, networkArgFieldValueFromConfig, originalConfigFieldValue, readFieldInputValue } from '../helpers/config-form-bridge.js?v=module-bootstrap-20260711-ir6';
+} from '../../../config/catalog.js?v=module-bootstrap-20260714-stage-dataset5';
+import { captionSourceModeLabel } from '../helpers/caption-source.js?v=module-bootstrap-20260714-stage-dataset5';
+import { collectChangedFormValues, configDraftValueChanged, isActiveNetworkArgFieldKey, networkArgFieldValueFromConfig, originalConfigFieldValue, readFieldInputValue } from '../helpers/config-form-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
 import {
     normalizeDatasetDefaults,
     normalizeDatasetEditorRows,
     normalizeTriggerClone,
-} from '../helpers/dataset-values.js?v=module-bootstrap-20260711-ir6';
-import { formatFieldName } from '../helpers/config-field-display.js?v=module-bootstrap-20260711-ir6';
-import { showHistoryTaskConfirmDialog } from '../helpers/history-task-actions-bridge.js?v=module-bootstrap-20260711-ir6';
-import { loadTomlFile, saveTomlFile } from '../helpers/output-run-bridge.js?v=module-bootstrap-20260711-ir6';
-import { val } from '../helpers/runtime-bridge.js?v=module-bootstrap-20260711-ir6';
-import { getConfigState } from '../helpers/config-state-bridge.js?v=module-bootstrap-20260711-ir6';
-import { getDatasetState } from '../helpers/dataset-state-bridge.js?v=module-bootstrap-20260711-ir6';
-import { getTomlState } from '../helpers/toml-state-bridge.js?v=module-bootstrap-20260711-ir6';
-import { getTrainingState } from '../helpers/training-state-bridge.js?v=module-bootstrap-20260711-ir6';
-import { configureTomlSelectionBridge } from '../helpers/toml-selection-bridge.js?v=module-bootstrap-20260711-ir6';
+} from '../helpers/dataset-values.js?v=module-bootstrap-20260714-stage-dataset5';
+import { formatFieldName } from '../helpers/config-field-display.js?v=module-bootstrap-20260714-stage-dataset5';
+import { showHistoryTaskConfirmDialog } from '../helpers/history-task-actions-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { loadTomlFile, saveTomlFile } from '../helpers/output-run-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { val } from '../helpers/runtime-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { getConfigState } from '../helpers/config-state-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { getDatasetState } from '../helpers/dataset-state-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { getTomlState } from '../helpers/toml-state-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { getTrainingState } from '../helpers/training-state-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { configureTomlSelectionBridge } from '../helpers/toml-selection-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
 import {
     isTomlLocked,
     resetTomlSaveConfirm,
@@ -30,7 +30,7 @@ import {
     tomlFileDisplayName,
     tomlLockLabel,
     updateTomlActionState,
-} from '../helpers/toml-action-state-bridge.js?v=module-bootstrap-20260711-ir6';
+} from '../helpers/toml-action-state-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
 
 const configState = getConfigState();
 const datasetState = getDatasetState();
@@ -75,10 +75,20 @@ function currentConfigState() {
 
     export function hasUnsavedFormChanges(filePath = currentFormConfigFile() || tomlState.currentTomlFile) {
         const currentConfig = currentConfigState();
-        if (!filePath || currentTrainingSourceState().file !== filePath) return false;
+        if (!filePath) return false;
+        const activeFormFile = currentTrainingSourceState().file || tomlState.currentTomlFile || '';
+        // Stage-schedule / form drafts belong to the active form file. If the caller
+        // asks about another file, it is not "unsaved form changes" for that file.
+        if (activeFormFile && activeFormFile !== filePath) return false;
         if (!Object.keys(currentConfig).length) return false;
+        const draft = configState.configFormState?.draftValues;
+        const stageDraftDirty = Boolean(
+            draft?.has?.('stage_schedule')
+            || draft?.has?.('stage_schedule_enabled'),
+        );
         return datasetState.datasetEditorState.dirty
             || datasetState.selectedConfigDatasetFile !== (currentConfig.dataset_config || '')
+            || stageDraftDirty
             || Object.keys(collectChangedFormValues()).length > 0;
     }
 

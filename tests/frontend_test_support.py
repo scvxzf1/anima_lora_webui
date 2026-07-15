@@ -339,6 +339,7 @@ def _anima_app_container_text() -> str:
         STATIC_DIR / "js/features/config-form/stage-resolution-ui.js",
         STATIC_DIR / "js/features/config-form/stage-resolution-ui-widgets.js",
         STATIC_DIR / "js/features/config-form/stage-resolution-ui-dialog.js",
+        STATIC_DIR / "js/features/config-form/stage-resolution-ui-render.js",
         STATIC_DIR / "js/features/config-form/form-fields.js",
         STATIC_DIR / "js/features/config-form/form-fields-adapters.js",
         STATIC_DIR / "js/features/config-form/form-fields-sample.js",
@@ -536,5 +537,3 @@ def _legacy_globals_repo_scan_paths() -> list[Path]:
             add(path)
 
     return ordered
-
-

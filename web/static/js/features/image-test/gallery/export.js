@@ -1,4 +1,4 @@
-import { createZipDataBlob, downloadBlob as triggerBlobDownload } from '../../../shared/download.js?v=module-bootstrap-20260711-ir6';
+import { createZipDataBlob, downloadBlob as triggerBlobDownload } from '../../../shared/download.js?v=module-bootstrap-20260714-stage-dataset5';
 import {
     EXPORT_BACKGROUND,
     EXPORT_CELL_BACKGROUND,
@@ -7,7 +7,7 @@ import {
     EXPORT_MAX_EDGE,
     EXPORT_META,
     EXPORT_TEXT,
-} from './constants.js?v=module-bootstrap-20260711-ir6';
+} from './constants.js?v=module-bootstrap-20260714-stage-dataset5';
 import {
     imageDownloadName,
     imageKey,
@@ -16,7 +16,7 @@ import {
     normalizeZipEntryName,
     originalsZipFileName,
     trimExportLabel,
-} from './image-meta.js?v=module-bootstrap-20260711-ir6';
+} from './image-meta.js?v=module-bootstrap-20260714-stage-dataset5';
 
 export async function fetchImageBytes(image) {
     const response = await fetch(image.url, { credentials: 'same-origin' });

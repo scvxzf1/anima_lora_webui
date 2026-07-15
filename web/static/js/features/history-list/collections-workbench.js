@@ -1,8 +1,8 @@
 /**
  * History collections workbench rendering and filter/search helpers.
  */
-import { HISTORY_UNGROUPED_COLLECTION_KEY } from '../anima-app/helpers/app-constants.js?v=module-bootstrap-20260711-ir6';
-import { openHistoryNewCollectionPopover, renderHistoryDropPopover } from '../anima-app/helpers/history-collection-drag-bridge.js?v=module-bootstrap-20260711-ir6';
+import { HISTORY_UNGROUPED_COLLECTION_KEY } from '../anima-app/helpers/app-constants.js?v=module-bootstrap-20260714-stage-dataset5';
+import { openHistoryNewCollectionPopover, renderHistoryDropPopover } from '../anima-app/helpers/history-collection-drag-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
 import {
     applySelectedHistoryTasksToCollection,
     clearSelectedHistoryCollection,
@@ -35,7 +35,7 @@ import {
     sortHistoryManagerGroupTasks,
     sortedHistoryConfigGroups,
     syncHistoryFilterControls,
-} from '../anima-app/helpers/history-collections-bridge.js?v=module-bootstrap-20260711-ir6';
+} from '../anima-app/helpers/history-collections-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
 import {
     archiveHistoryTask,
     createHistoryActionButton,
@@ -45,17 +45,21 @@ import {
     groupSelectedHistoryTasks,
     isHistoryDetailDialogOpen,
     loadHistoryTask,
-} from '../anima-app/helpers/history-task-actions-bridge.js?v=module-bootstrap-20260711-ir6';
-import { historyStateLabel } from '../anima-app/helpers/history-timeline-bridge.js?v=module-bootstrap-20260711-ir6';
-import { renderHistoryManager } from '../anima-app/helpers/history-list-bridge.js?v=module-bootstrap-20260711-ir6';
-import { fillHistoryWorkbenchCardLists } from './workbench-chunk-fill.js?v=module-bootstrap-20260711-ir6';
-import { getHistoryState } from '../anima-app/helpers/history-state-bridge.js?v=module-bootstrap-20260711-ir6';
+} from '../anima-app/helpers/history-task-actions-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { historyStateLabel } from '../anima-app/helpers/history-timeline-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { renderHistoryManager } from '../anima-app/helpers/history-list-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { fillHistoryWorkbenchCardLists } from './workbench-chunk-fill.js?v=module-bootstrap-20260714-stage-dataset5';
+import { getHistoryState } from '../anima-app/helpers/history-state-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
 
 const historyState = getHistoryState();
 
 function historyConfigGroupExpandKey(group, collection = null) {
     const collectionPart = historyCollectionStorageKey(collection || historyState.selectedHistoryCollectionKey || '__all__');
     return `${collectionPart}::${configGroupKey(group)}`;
+}
+
+export function historyConfigGroupHasLiveTasks(group) {
+    return (group?.tasks || []).some((task) => task?.state === 'running' || task?.state === 'compiling');
 }
 
 export function isHistoryConfigGroupExpanded(group, collection = null) {
@@ -66,15 +70,41 @@ export function toggleHistoryConfigGroupExpanded(group, collection = null) {
     const key = historyConfigGroupExpandKey(group, collection);
     if (historyState.expandedHistoryConfigGroupKeys.has(key)) {
         historyState.expandedHistoryConfigGroupKeys.delete(key);
+        // Remember manual collapse so auto-expand does not immediately reopen this live group.
+        historyState.collapsedHistoryConfigGroupKeys.add(key);
     } else {
         historyState.expandedHistoryConfigGroupKeys.add(key);
+        historyState.collapsedHistoryConfigGroupKeys.delete(key);
     }
     refreshHistoryWorkbenchConfigPanel();
 }
 
+function ensureLiveHistoryConfigGroupsExpanded(groups, collection = null) {
+    for (const group of groups || []) {
+        if (!historyConfigGroupHasLiveTasks(group)) continue;
+        const key = historyConfigGroupExpandKey(group, collection);
+        if (historyState.collapsedHistoryConfigGroupKeys.has(key)) continue;
+        historyState.expandedHistoryConfigGroupKeys.add(key);
+    }
+}
+
 function workbenchCollectionsCacheKey(tasks) {
-    // Include collection membership so regrouped tasks invalidate the cache.
-    const ids = (tasks || []).map((task) => `${task?.id || ''}\u0002${task?.group || ''}`).join('\n');
+    // Include live-changing task fields so running jobs re-render with fresh
+    // state / log / metric counts instead of reusing stale collection objects.
+    const ids = (tasks || []).map((task) => [
+        task?.id || '',
+        task?.group || '',
+        task?.state || '',
+        task?.archived ? 1 : 0,
+        task?.job || '',
+        Number(task?.log_count || 0),
+        Number(task?.metric_count || 0),
+        Number(task?.started_at || 0),
+        Number(task?.finished_at || 0),
+        Number(task?.updated_at || 0),
+        String(task?.name || ''),
+        String(task?.message || ''),
+    ].join('\u0002')).join('\n');
     const order = (historyState.historyCollectionSettings.collection_order || []).join('\n');
     const groupOrder = JSON.stringify(historyState.historyCollectionSettings.config_group_order || {});
     const sort = historyState.historyManagerFilters?.sort || 'newest';
@@ -119,6 +149,7 @@ function buildHistoryWorkbenchModel(visible) {
         historySearchTextMatches(historyConfigGroupSearchText(group), configSearchTerms)
         || (configSearch && historyConfigGroupSearchText(group).includes(configSearch))
     );
+    ensureLiveHistoryConfigGroupsExpanded(visibleConfigGroups, selectedCollection);
     const currentVisibleTasks = uniqueHistoryTasks(visibleConfigGroups.flatMap((group) => group.tasks || []));
     historyState.historyCurrentVisibleTaskIds = historyTaskIds(currentVisibleTasks);
     const selectedTasks = currentVisibleTasks.filter(
@@ -660,6 +691,7 @@ export function historyTaskSortComparator(mode) {
 export function createHistoryManagerRow(task) {
     const row = document.createElement('article');
     row.className = 'history-manager-row';
+    row.dataset.historyTaskId = String(task.id || '');
     if (historyState.viewingHistoryTaskId === task.id && isHistoryDetailDialogOpen()) row.classList.add('active');
     if (historyTaskIsArchived(task)) row.classList.add('archived');
 
@@ -700,6 +732,7 @@ export function createHistoryManagerRow(task) {
 
     const state = document.createElement('div');
     state.className = ['history-row-state', task.state || 'unknown'].join(' ');
+    state.dataset.liveHistoryState = '1';
     state.textContent = [
         task.job === 'preprocess' ? '预处理' : '训练',
         historyStateLabel(task.state),
@@ -712,6 +745,7 @@ export function createHistoryManagerRow(task) {
 
     const data = document.createElement('div');
     data.className = 'history-row-data';
+    data.dataset.liveHistoryCounts = 'manager';
     data.textContent = `${task.metric_count || 0} loss / ${task.log_count || 0} log`;
 
     const actions = document.createElement('div');

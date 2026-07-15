@@ -260,3 +260,26 @@
         height: 240px;
     }
 }
+
+
+.stage-resolution-feedback {
+    margin: 8px 0 0;
+    padding: 10px 12px;
+    border-radius: 8px;
+    line-height: 1.45;
+}
+
+
+.stage-resolution-target {
+    margin: 8px 0 0;
+    padding: 8px 12px;
+    border-radius: 8px;
+    line-height: 1.4;
+}
+
+
+.stage-resolution-target-candidates {
+    margin-top: 4px;
+    opacity: 0.85;
+    font-size: 12px;
+}

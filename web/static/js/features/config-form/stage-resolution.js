@@ -7,6 +7,7 @@ export {
     clamp01,
     defaultStageScheduleStages,
     hydrateStageScheduleFromConfig,
+    hydrateStageScheduleFromDatasetPreset,
     listSubsetOptions,
     normalizeRawStages,
     normalizedStageResolutionStages,
@@ -18,7 +19,7 @@ export {
     stageResolutionStatus,
     stageSchedulePayload,
     toFraction,
-} from './stage-resolution-model.js?v=module-bootstrap-20260711-ir6';
+} from './stage-resolution-model.js?v=module-bootstrap-20260714-stage-dataset5';
 
 export {
     createOpenStageResolutionDialogButton,
@@ -30,7 +31,9 @@ export {
     drawStageResolutionChart,
     openStageResolutionDialog,
     renderStageResolutionDialog,
-} from './stage-resolution-ui.js?v=module-bootstrap-20260711-ir6';
+    resolveStageScheduleTargetFile,
+    listStageScheduleTargetCandidates,
+} from './stage-resolution-ui.js?v=module-bootstrap-20260714-stage-dataset5';
 
 // Compatibility exports used by old chunk imports / quick-preset panel co-location.
 export {
@@ -39,4 +42,4 @@ export {
     createResourceQuickPresetPanel,
     createNoDatasetRegularizationQuickPresetsButton,
     createNoDatasetRegularizationQuickPresetPanel,
-} from './stage-resolution-presets.js?v=module-bootstrap-20260711-ir6';
+} from './stage-resolution-presets.js?v=module-bootstrap-20260714-stage-dataset5';

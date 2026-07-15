@@ -22,12 +22,12 @@ export {
     moveFileNearList,
     configGroupDropIndex,
     fileGroupContainsRelatedTarget,
-} from './file-group-drag-core.js?v=module-bootstrap-20260711-ir9';
+} from './file-group-drag-core.js?v=module-bootstrap-20260714-stage-dataset5';
 
 export {
     setupFileGroupRowDropTarget,
     setupFileGroupListDropTarget,
     setupFileGroupHeaderDropTarget,
-} from './file-group-drag-targets.js?v=module-bootstrap-20260711-ir9';
+} from './file-group-drag-targets.js?v=module-bootstrap-20260714-stage-dataset5';
 
 // file-group-drag module end

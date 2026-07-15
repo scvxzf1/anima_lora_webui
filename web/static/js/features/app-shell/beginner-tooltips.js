@@ -14,7 +14,7 @@ export function installBeginnerTooltips() {
         'btn-sticky-config-required': '底部配置目录快捷入口，切换到模型路径和数据集必填项。',
         'btn-sticky-config-common': '底部配置目录快捷入口，切换到训练轮数、学习率和输出等常用项。',
         'btn-sticky-config-preview': '底部配置目录快捷入口，切换到训练中样张设置。',
-        'btn-sticky-config-optimization': '底部配置目录快捷入口，切换到显存、速度、block swap 和 LoKr 专用优化项。',
+        'btn-sticky-config-optimization': '底部配置目录快捷入口，切换到显存、速度、block swap 等优化项。',
         'btn-open-continue-lora-dialog': '选择已有 LoRA、LoHa、LoKr 或 GLoRA safetensors 权重作为权重热启动来源。',
         'btn-clear-continue-lora-source': '清除权重热启动来源，下一次启动会按从零训练。',
         'btn-inspect-continue-lora-path': '检查这个 safetensors 是否为 LoRA/LoHa/LoKr/GLoRA，并确认是否兼容当前变体。',

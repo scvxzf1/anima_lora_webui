@@ -2,24 +2,24 @@
  * Dataset editor row mutations and experimental scope helpers.
  * Extracted from anima-app chunk 13.
  */
-import { DEFAULT_TRIGGER_CLONE } from '../../config/catalog.js?v=module-bootstrap-20260711-ir6';
+import { DEFAULT_TRIGGER_CLONE } from '../../config/catalog.js?v=module-bootstrap-20260714-stage-dataset5';
 import {
     normalizeDatasetDefaults,
     normalizeDatasetEditorRows,
     normalizeNlTagMix,
     normalizeTriggerClone,
-} from '../anima-app/helpers/dataset-values.js?v=module-bootstrap-20260711-ir6';
+} from '../anima-app/helpers/dataset-values.js?v=module-bootstrap-20260714-stage-dataset5';
 import {
     datasetEditorStateForActivePanel,
     isDatasetTabActive,
     refreshDatasetEditorItems,
     renderDatasetEditor,
     renderDatasetPresetHeader,
-} from '../anima-app/helpers/dataset-render-bridge.js?v=module-bootstrap-20260711-ir6';
-import { setFieldInputValue } from '../config-form/field-input.js?v=module-bootstrap-20260711-ir6';
-import { updateTomlDirtyState } from '../anima-app/helpers/toml-selection-bridge.js?v=module-bootstrap-20260711-ir6';
-import { getDatasetState } from '../anima-app/helpers/dataset-state-bridge.js?v=module-bootstrap-20260711-ir6';
-import { updateStepEstimatePanel } from '../config-form/step-estimate.js?v=module-bootstrap-20260711-ir6';
+} from '../anima-app/helpers/dataset-render-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { setFieldInputValue } from '../config-form/field-input.js?v=module-bootstrap-20260714-stage-dataset5';
+import { updateTomlDirtyState } from '../anima-app/helpers/toml-selection-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { getDatasetState } from '../anima-app/helpers/dataset-state-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { updateStepEstimatePanel } from '../config-form/step-estimate.js?v=module-bootstrap-20260714-stage-dataset5';
 
 const datasetState = getDatasetState();
 

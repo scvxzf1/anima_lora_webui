@@ -1,28 +1,19 @@
 /**
  * Stage schedule widgets: summary, editor, table, and stage mutations.
  */
-import { getAppContext } from '../anima-app/helpers/app-context-bridge.js?v=module-bootstrap-20260711-ir6';
-import { getConfigState } from '../anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260711-ir6';
-import { setTomlStatus } from '../anima-app/helpers/toml-action-state-bridge.js?v=module-bootstrap-20260711-ir6';
+import { getConfigState } from '../anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { setTomlStatus } from '../anima-app/helpers/toml-action-state-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
 import {
-    STAGE_COLORS,
     clamp01,
     defaultStageScheduleStages,
-    hydrateStageScheduleFromConfig,
     listSubsetOptions,
     normalizedStageResolutionStages,
     pctLabel,
-    pickDatasetRows,
-    readTotalSteps,
-    resolveStageScheduleSource,
-    stageResolutionMetrics,
     stageResolutionStatus,
-    stageSchedulePayload,
     toFraction,
-    normalizeRawStages,
-} from './stage-resolution-model.js?v=module-bootstrap-20260711-ir6';
+} from './stage-resolution-model.js?v=module-bootstrap-20260714-stage-dataset5';
+import { requestStageResolutionRender } from './stage-resolution-ui-render.js?v=module-bootstrap-20260714-stage-dataset5';
 
-const ctx = getAppContext();
 const configState = getConfigState();
 const stageResolutionState = configState.stageResolutionState;
 
@@ -59,7 +50,7 @@ function createStageResolutionEnableControl(enabled) {
     input.checked = enabled;
     input.addEventListener('change', (event) => {
         stageResolutionState.enabled = Boolean(event.target.checked);
-        renderStageResolutionDialog();
+        requestStageResolutionRender();
     });
     const copy = document.createElement('span');
     const strong = document.createElement('strong');
@@ -79,7 +70,7 @@ export function createStageResolutionChartPanel() {
     const header = document.createElement('div');
     header.className = 'stage-resolution-panel-head';
     const title = document.createElement('div');
-    title.innerHTML = '<strong>时间轴课表</strong><span>色带宽度 = 进度百分比；段数可变（2/3/N）。</span>';
+    title.innerHTML = '<strong>步数区间时间轴</strong><span>色带宽度 = 进度百分比；段数可变（2/3/N）。</span>';
     const actions = document.createElement('div');
     actions.className = 'stage-resolution-actions';
     const addBtn = document.createElement('button');
@@ -121,7 +112,7 @@ export function createStageResolutionEditor(stage, metrics) {
     const head = document.createElement('div');
     head.className = 'stage-resolution-panel-head';
     const title = document.createElement('div');
-    title.innerHTML = '<strong>当前阶段</strong><span>绑定数据集子集，编辑起止 %。</span>';
+    title.innerHTML = '<strong>当前阶段</strong><span>绑定数据集子集，编辑起止 % 与步数区间。</span>';
     head.appendChild(title);
     aside.appendChild(head);
     if (!stage) return aside;
@@ -219,7 +210,7 @@ export function createStageResolutionTable(stages) {
     const head = document.createElement('div');
     head.className = 'stage-resolution-panel-head';
     const title = document.createElement('div');
-    title.innerHTML = '<strong>阶段表</strong><span>每行绑定一个子集；N 可变。</span>';
+    title.innerHTML = '<strong>阶段步数区间</strong><span>每行绑定一个子集；N 可变。</span>';
     head.appendChild(title);
     const tableWrap = document.createElement('div');
     tableWrap.className = 'stage-resolution-table-wrap';
@@ -301,20 +292,59 @@ function updateSelectedStageResolutionField(event) {
     updateStageResolutionStage(stageResolutionState.selectedIndex, { [key]: value });
 }
 
-function updateStageResolutionStage(index, patch) {
-    const stages = normalizedStageResolutionStages();
+export function syncStageResolutionEditorInputs() {
+    const fields = document.querySelectorAll('#stage-resolution-dialog [data-stage-field]');
+    for (const field of fields) {
+        const key = field.dataset.stageField;
+        if (!key) continue;
+        let value = field.value;
+        if (key === 'subset_index') value = Math.max(0, Math.round(Number(value) || 0));
+        if (key === 'start_pct' || key === 'end_pct') value = toFraction(Number(value));
+        updateStageResolutionStage(stageResolutionState.selectedIndex, { [key]: value }, { render: false });
+    }
+}
+
+function updateStageResolutionStage(index, patch, options = {}) {
+    const stages = normalizedStageResolutionStages().map((stage) => ({ ...stage }));
     if (!stages[index]) return;
     const next = { ...stages[index], ...patch };
-    // Keep adjacent seams when editing end/start.
-    if ('end_pct' in patch && stages[index + 1]) {
-        stages[index + 1] = { ...stages[index + 1], start_pct: next.end_pct };
+
+    // Keep adjacent seams when editing end/start, without collapsing ranges.
+    if ('end_pct' in patch) {
+        const minEnd = stages[index].start_pct + 0.001;
+        const maxEnd = index < stages.length - 1 ? 1 - 0.001 * (stages.length - 1 - index) : 1;
+        next.end_pct = clamp01(Math.max(minEnd, Math.min(maxEnd, next.end_pct)));
+        if (stages[index + 1]) {
+            stages[index + 1] = {
+                ...stages[index + 1],
+                start_pct: next.end_pct,
+            };
+            if (!(stages[index + 1].end_pct > stages[index + 1].start_pct + 1e-9)) {
+                stages[index + 1].end_pct = Math.min(1, stages[index + 1].start_pct + 0.001);
+            }
+        }
     }
-    if ('start_pct' in patch && stages[index - 1]) {
-        stages[index - 1] = { ...stages[index - 1], end_pct: next.start_pct };
+    if ('start_pct' in patch) {
+        const minStart = index === 0 ? 0 : 0.001 * index;
+        const maxStart = stages[index].end_pct - 0.001;
+        next.start_pct = clamp01(Math.max(minStart, Math.min(maxStart, next.start_pct)));
+        if (stages[index - 1]) {
+            stages[index - 1] = {
+                ...stages[index - 1],
+                end_pct: next.start_pct,
+            };
+            if (!(stages[index - 1].end_pct > stages[index - 1].start_pct + 1e-9)) {
+                stages[index - 1].start_pct = Math.max(0, stages[index - 1].end_pct - 0.001);
+            }
+        }
     }
+
     stages[index] = next;
+    // Ensure first/last still cover 0..1 after clamp.
+    stages[0].start_pct = 0;
+    stages[stages.length - 1].end_pct = 1;
     stageResolutionState.stages = stages;
-    renderStageResolutionDialog();
+    if (options.render !== false) requestStageResolutionRender();
 }
 
 function applyStageTemplate(count) {
@@ -331,66 +361,98 @@ function applyStageTemplate(count) {
     }
     stageResolutionState.stages = stages;
     stageResolutionState.selectedIndex = 0;
-    renderStageResolutionDialog();
+    requestStageResolutionRender();
 }
 
 function addStageResolutionPoint() {
-    const stages = normalizedStageResolutionStages();
+    const stages = normalizedStageResolutionStages().map((stage) => ({ ...stage }));
     const last = stages[stages.length - 1];
     if (!last) {
         stageResolutionState.stages = defaultStageScheduleStages();
-        renderStageResolutionDialog();
+        requestStageResolutionRender();
         return;
     }
-    const mid = (last.start_pct + last.end_pct) / 2;
+    if (stages.length >= 12) {
+        setTomlStatus('error', '最多支持 12 个阶段');
+        return;
+    }
+    const span = last.end_pct - last.start_pct;
+    if (span <= 0.002) {
+        setTomlStatus('error', '最后一段太短，无法再拆分；请先拉大区间或均分当前段');
+        return;
+    }
+    const mid = last.start_pct + span / 2;
     last.end_pct = mid;
+    // 新段默认按“第 N 个阶段 -> 第 N 个子集”绑定，避免连续新增时全复制上一段。
+    // 子集不够时夹到最后一个可用子集；用户仍可在下拉框里手动改。
+    const options = listSubsetOptions();
+    const maxSubsetIndex = Math.max(0, options.length - 1);
+    const nextSubsetIndex = Math.min(stages.length, maxSubsetIndex);
     stages.push({
         name: `阶段${stages.length + 1}`,
-        subset_index: last.subset_index,
+        subset_index: nextSubsetIndex,
         start_pct: mid,
         end_pct: 1,
     });
     stageResolutionState.stages = stages;
     stageResolutionState.selectedIndex = stages.length - 1;
-    renderStageResolutionDialog();
+    requestStageResolutionRender();
 }
 
 function deleteStageResolutionPoint(index) {
-    const stages = normalizedStageResolutionStages();
+    const stages = normalizedStageResolutionStages().map((stage) => ({ ...stage }));
     if (stages.length <= 1) return;
-    stages.splice(index, 1);
+    const removed = stages.splice(index, 1)[0];
+    if (!stages.length) return;
+
+    // Absorb the deleted range into a neighbor instead of leaving gaps.
+    if (index > 0 && stages[index - 1]) {
+        stages[index - 1].end_pct = Math.max(stages[index - 1].end_pct, removed.end_pct);
+    } else if (stages[0]) {
+        stages[0].start_pct = Math.min(stages[0].start_pct, removed.start_pct);
+    }
+
     stages[0].start_pct = 0;
     stages[stages.length - 1].end_pct = 1;
-    // Re-equalize seams lightly.
     for (let i = 1; i < stages.length; i += 1) {
-        if (stages[i].start_pct < stages[i - 1].end_pct) {
-            stages[i].start_pct = stages[i - 1].end_pct;
+        stages[i].start_pct = stages[i - 1].end_pct;
+        if (!(stages[i].end_pct > stages[i].start_pct + 1e-9)) {
+            const remaining = stages.length - i;
+            stages[i].end_pct = Math.min(1, stages[i].start_pct + Math.max(0.001, (1 - stages[i].start_pct) / remaining));
         }
     }
+    stages[stages.length - 1].end_pct = 1;
+
     stageResolutionState.stages = stages;
     stageResolutionState.selectedIndex = Math.max(0, Math.min(index, stages.length - 1));
-    renderStageResolutionDialog();
+    requestStageResolutionRender();
 }
 
 function moveStageResolutionPoint(index, direction) {
-    const stages = normalizedStageResolutionStages();
+    const stages = normalizedStageResolutionStages().map((stage) => ({ ...stage }));
     const nextIndex = index + direction;
     if (nextIndex < 0 || nextIndex >= stages.length) return;
-    [stages[index], stages[nextIndex]] = [stages[nextIndex], stages[index]];
-    // After reorder, redistribute equal slices to keep a valid cover.
-    const n = stages.length;
-    stages.forEach((stage, i) => {
-        stage.start_pct = i / n;
-        stage.end_pct = (i + 1) / n;
-    });
+
+    // Swap bound subset/name only; keep the current step ranges in place.
+    const left = stages[Math.min(index, nextIndex)];
+    const right = stages[Math.max(index, nextIndex)];
+    const leftMeta = {
+        name: left.name,
+        subset_index: left.subset_index,
+    };
+    left.name = right.name;
+    left.subset_index = right.subset_index;
+    right.name = leftMeta.name;
+    right.subset_index = leftMeta.subset_index;
+
     stageResolutionState.stages = stages;
     stageResolutionState.selectedIndex = nextIndex;
-    renderStageResolutionDialog();
+    requestStageResolutionRender();
 }
 
 function selectStageResolutionPoint(index) {
     stageResolutionState.selectedIndex = index;
-    renderStageResolutionDialog();
+    requestStageResolutionRender();
 }
 
 export function selectStageResolutionPointFromCanvas(event) {

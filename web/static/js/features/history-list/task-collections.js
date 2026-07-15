@@ -1,13 +1,13 @@
 /**
  * History task collection labels, grouping, bulk actions, and filters.
  */
-import { HISTORY_UNGROUPED_COLLECTION_KEY } from '../anima-app/helpers/app-constants.js?v=module-bootstrap-20260711-ir6';
-import { setHistoryDropFeedback } from '../anima-app/helpers/history-collection-drag-bridge.js?v=module-bootstrap-20260711-ir6';
+import { HISTORY_UNGROUPED_COLLECTION_KEY } from '../anima-app/helpers/app-constants.js?v=module-bootstrap-20260714-stage-dataset5';
+import { setHistoryDropFeedback } from '../anima-app/helpers/history-collection-drag-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
 import {
     ensureHistoryCollectionOrderValue,
     historyCollectionStorageKey,
     historyTaskCollectionValue,
-} from '../anima-app/helpers/history-collections-bridge.js?v=module-bootstrap-20260711-ir6';
+} from '../anima-app/helpers/history-collections-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
 import {
     applyHistoryTaskIdsBatchAction,
     createHistoryActionButton,
@@ -15,12 +15,12 @@ import {
     loadConfigGroupTimeline,
     showHistoryCollectionSelectDialog,
     showHistoryTaskConfirmDialog,
-} from '../anima-app/helpers/history-task-actions-bridge.js?v=module-bootstrap-20260711-ir6';
-import { configGroupLabel } from '../anima-app/helpers/history-timeline-bridge.js?v=module-bootstrap-20260711-ir6';
-import { showTrainingView } from '../anima-app/helpers/queue-view-bridge.js?v=module-bootstrap-20260711-ir6';
-import { openHistoryConfigGroupPreview } from '../anima-app/helpers/preview-view-bridge.js?v=module-bootstrap-20260711-ir6';
-import { renderHistoryManager, saveHistoryCollectionSettings, normalizeHistoryCollectionSettings, uniqueStringList, normalizeHistoryConfigGroupOrder } from '../anima-app/helpers/history-list-bridge.js?v=module-bootstrap-20260711-ir6';
-import { getHistoryState } from '../anima-app/helpers/history-state-bridge.js?v=module-bootstrap-20260711-ir6';
+} from '../anima-app/helpers/history-task-actions-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { configGroupLabel } from '../anima-app/helpers/history-timeline-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { showTrainingView } from '../anima-app/helpers/queue-view-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { openHistoryConfigGroupPreview } from '../anima-app/helpers/preview-view-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { renderHistoryManager, saveHistoryCollectionSettings, normalizeHistoryCollectionSettings, uniqueStringList, normalizeHistoryConfigGroupOrder } from '../anima-app/helpers/history-list-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { getHistoryState } from '../anima-app/helpers/history-state-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
 
 const historyState = getHistoryState();
 
@@ -66,6 +66,7 @@ export function toggleHistoryTaskSelection(tasks) {
 export function historyManagerGroupMetaParts(tasks, extra = []) {
     const trainingCount = tasks.filter((task) => task.job === 'training').length;
     const preprocessCount = tasks.filter((task) => task.job === 'preprocess').length;
+    const runningCount = tasks.filter((task) => task.state === 'running' || task.state === 'compiling').length;
     const errorCount = tasks.filter((task) => ['error', 'interrupted'].includes(task.state)).length;
     const archivedCount = tasks.filter(historyTaskIsArchived).length;
     const queueCount = tasks.filter((task) => task.from_queue || task.queue_item_id).length;
@@ -73,6 +74,7 @@ export function historyManagerGroupMetaParts(tasks, extra = []) {
         `${tasks.length} 条任务`,
         trainingCount ? `${trainingCount} 次训练` : '',
         preprocessCount ? `${preprocessCount} 个预处理` : '',
+        runningCount ? `${runningCount} 个运行中` : '',
         errorCount ? `${errorCount} 个异常/中断` : '',
         archivedCount ? `${archivedCount} 个归档` : '',
         queueCount ? `${queueCount} 个队列来源` : '',
@@ -83,6 +85,7 @@ export function historyManagerGroupMetaParts(tasks, extra = []) {
 export function historyCompactGroupMetaParts(tasks, extra = []) {
     const trainingCount = tasks.filter((task) => task.job === 'training').length;
     const preprocessCount = tasks.filter((task) => task.job === 'preprocess').length;
+    const runningCount = tasks.filter((task) => task.state === 'running' || task.state === 'compiling').length;
     const errorCount = tasks.filter((task) => ['error', 'interrupted'].includes(task.state)).length;
     const archivedCount = tasks.filter(historyTaskIsArchived).length;
     const queueCount = tasks.filter((task) => task.from_queue || task.queue_item_id).length;
@@ -90,6 +93,7 @@ export function historyCompactGroupMetaParts(tasks, extra = []) {
         `${tasks.length} 条`,
         trainingCount ? `${trainingCount} 训` : '',
         preprocessCount ? `${preprocessCount} 预` : '',
+        runningCount ? `${runningCount} 运行中` : '',
         errorCount ? `${errorCount} 异常` : '',
         archivedCount ? `${archivedCount} 归档` : '',
         queueCount ? `${queueCount} 队列` : '',

@@ -1,9 +1,9 @@
 /**
  * Dataset experimental/advanced dialog for the currently selected subset.
  */
-import { getDatasetState } from '../anima-app/helpers/dataset-state-bridge.js?v=module-bootstrap-20260711-ir6';
-import { normalizeDatasetDefaults } from '../anima-app/helpers/dataset-values.js?v=module-bootstrap-20260711-ir6';
-import { createDatasetExperimentalFeaturesEditor } from './row.js?v=module-bootstrap-20260711-ir6';
+import { getDatasetState } from '../anima-app/helpers/dataset-state-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { normalizeDatasetDefaults } from '../anima-app/helpers/dataset-values.js?v=module-bootstrap-20260714-stage-dataset5';
+import { createDatasetExperimentalFeaturesEditor } from './row.js?v=module-bootstrap-20260714-stage-dataset5';
 
 const datasetState = getDatasetState();
 

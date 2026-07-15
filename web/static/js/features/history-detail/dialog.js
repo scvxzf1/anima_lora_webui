@@ -1,11 +1,11 @@
-import { fetchHistoryTask } from './api.js?v=module-bootstrap-20260711-ir6';
-import { createHistoryAnalysisRenderer } from './analysis.js?v=module-bootstrap-20260711-ir6';
-import { createHistoryConfigFilesRenderer } from './config-files.js?v=module-bootstrap-20260711-ir6';
-import { createHistoryLogsRenderer } from './logs.js?v=module-bootstrap-20260711-ir6';
-import { createHistoryOverviewRenderer } from './overview.js?v=module-bootstrap-20260711-ir6';
-import { createHistoryResumeFeature } from './resume/index.js?v=module-bootstrap-20260711-ir6';
-import { HISTORY_DETAIL_TABS, normalizeHistoryDetailTab, setHistoryDetailTab } from './state.js?v=module-bootstrap-20260711-ir6';
-import { createHistoryDetailWorkspace } from './workspace.js?v=module-bootstrap-20260711-ir6';
+import { fetchHistoryTask } from './api.js?v=module-bootstrap-20260714-stage-dataset5';
+import { createHistoryAnalysisRenderer } from './analysis.js?v=module-bootstrap-20260714-stage-dataset5';
+import { createHistoryConfigFilesRenderer } from './config-files.js?v=module-bootstrap-20260714-stage-dataset5';
+import { createHistoryLogsRenderer } from './logs.js?v=module-bootstrap-20260714-stage-dataset5';
+import { createHistoryOverviewRenderer } from './overview.js?v=module-bootstrap-20260714-stage-dataset5';
+import { createHistoryResumeFeature } from './resume/index.js?v=module-bootstrap-20260714-stage-dataset5';
+import { HISTORY_DETAIL_TABS, normalizeHistoryDetailTab, setHistoryDetailTab } from './state.js?v=module-bootstrap-20260714-stage-dataset5';
+import { createHistoryDetailWorkspace } from './workspace.js?v=module-bootstrap-20260714-stage-dataset5';
 
 export function createHistoryDetailDialog({ ctx, state, deps }) {
     const slots = {};

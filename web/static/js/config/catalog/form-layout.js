@@ -57,6 +57,20 @@ export const FORM_SECTION_DEFS = [
         ],
     },
     {
+        title: 'LoKr 专用优化',
+        description: 'LoKr 16G / Kronecker adapter 的专用显存与吞吐调优；普通 LoRA 不需要手动调整。',
+        open: false,
+        className: 'config-group-lokr-optimization',
+        keys: [
+            'lokr_use_einsum',
+            'lokr_decompose_w2',
+            'lokr_full_factor',
+            'lokr_allow_legacy_dim',
+            'lokr_factor_group_size',
+            'lokr_project_chunk_bytes',
+        ],
+    },
+    {
         title: '数据集设置',
         description: '选择已保存的数据集预设；路径和分桶蓝图在“数据集”页维护。',
         open: true,
@@ -116,20 +130,6 @@ export const FORM_SECTION_DEFS = [
             'compile_block_scope',
             'compile_inductor_mode',
             'use_custom_down_autograd',
-        ],
-    },
-    {
-        title: 'LoKr 专用优化',
-        description: 'LoKr 16G / Kronecker adapter 的专用显存与吞吐调优；普通 LoRA 不需要手动调整。',
-        open: false,
-        className: 'config-group-lokr-optimization',
-        keys: [
-            'lokr_use_einsum',
-            'lokr_decompose_w2',
-            'lokr_full_factor',
-            'lokr_allow_legacy_dim',
-            'lokr_factor_group_size',
-            'lokr_project_chunk_bytes',
         ],
     },
     {
@@ -351,7 +351,7 @@ export const FORM_CATEGORY_DEFS = [
         id: 'common',
         title: '常用',
         description: '训练时长、学习率和输出。',
-        sections: ['常用训练设置', '步数与训练量'],
+        sections: ['常用训练设置', '步数与训练量', 'LoKr 专用优化'],
     },
     {
         id: 'preview',
@@ -363,7 +363,7 @@ export const FORM_CATEGORY_DEFS = [
         id: 'optimization',
         title: '优化',
         description: '显存、速度、诊断和编译。',
-        sections: ['显存与速度优化', 'LoKr 专用优化', '数据加载与 VAE 资源', '实验性功能', '无数据集正则化'],
+        sections: ['显存与速度优化', '数据加载与 VAE 资源', '实验性功能', '无数据集正则化'],
     },
     {
         id: 'advanced',

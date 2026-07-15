@@ -17,7 +17,7 @@
             }
         })();
     </script>
-    <link rel="stylesheet" href="/static/style.css?v=frontend-chain-20260712-ds-final">
+    <link rel="stylesheet" href="/static/style.css?v=frontend-chain-20260713-log-append">
 </head>
 <body>
     <header>
@@ -1934,8 +1934,8 @@
         <form method="dialog">
             <div class="preview-dialog-header">
                 <div>
-                    <h2 id="stage-resolution-dialog-title">分阶段调度课表</h2>
-                    <p>按总训练步数百分比切换数据集子集。请先完成各子集预处理缓存；段数可变（2/3/N）。</p>
+                    <h2 id="stage-resolution-dialog-title">分阶段调度</h2>
+                    <p>按总训练步数百分比设置各阶段步数区间，并切换对应数据集子集。修改后请点“写入并保存配置”才会落盘；仅写草稿时刷新会丢失。</p>
                 </div>
                 <button class="btn btn-small" value="close" type="submit">关闭</button>
             </div>
@@ -1943,6 +1943,6 @@
         </form>
     </dialog>
 
-    <script type="module" src="/static/app.js?v=module-bootstrap-20260711-ir6"></script>
+    <script type="module" src="/static/app.js?v=module-bootstrap-20260714-stage-dataset5"></script>
 </body>
 </html>

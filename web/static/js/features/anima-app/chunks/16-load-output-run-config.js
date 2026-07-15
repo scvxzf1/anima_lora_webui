@@ -2,21 +2,21 @@
  * Mechanical split from the former monolithic app closure.
  * Keep this module focused; move newly edited behavior into domain modules.
  */
-import { applySelectedDatasetPresetToCurrentConfig } from '../helpers/dataset-preset-actions-bridge.js?v=module-bootstrap-20260711-ir6';
-import { collectChangedFormValues, prepareFormPatchValues, saveDatasetEditor } from '../helpers/config-form-bridge.js?v=module-bootstrap-20260711-ir6';
-import { configureOutputRunBridge } from '../helpers/output-run-bridge.js?v=module-bootstrap-20260711-ir6';
-import { loadTomlFileList, switchTomlManagerMode, updateConfigPageSummary } from '../helpers/toml-manager-bridge.js?v=module-bootstrap-20260711-ir6';
-import { handleDeletedTomlSelection, isMissingTomlFileResponse } from '../helpers/toml-actions-bridge.js?v=module-bootstrap-20260711-ir6';
-import { rememberSelectionSnapshot } from './13-update-dataset-editor-rows-setting-value.js?v=module-bootstrap-20260711-ir6';
-import { loadConfig } from '../helpers/app-shell-startup-bridge.js?v=module-bootstrap-20260711-ir6';
-import { getAppContext } from '../helpers/app-context-bridge.js?v=module-bootstrap-20260711-ir6';
-import { confirmDiscardTomlChanges, currentFormConfigFile, currentTomlEditorContentForFile, handlePendingConfigSwitch, hasPendingConfigChanges, hasUnsavedFormChanges, isTomlDirty, setBadge, updateTomlDirtyState, updateTomlSelectionUI } from '../helpers/toml-selection-bridge.js?v=module-bootstrap-20260711-ir6';
-import { getDatasetState } from '../helpers/dataset-state-bridge.js?v=module-bootstrap-20260711-ir6';
-import { getTomlState } from '../helpers/toml-state-bridge.js?v=module-bootstrap-20260711-ir6';
-import { getTrainingState } from '../helpers/training-state-bridge.js?v=module-bootstrap-20260711-ir6';
-import { api, val } from '../helpers/runtime-bridge.js?v=module-bootstrap-20260711-ir6';
-import { saveAsTargetGroups } from '../helpers/toml-io-bridge.js?v=module-bootstrap-20260711-ir6';
-import { summarizeDirtyDiff } from '../../config-form/field-presentation.js?v=module-bootstrap-20260711-ir6';
+import { applySelectedDatasetPresetToCurrentConfig } from '../helpers/dataset-preset-actions-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { collectChangedFormValues, prepareFormPatchValues, saveDatasetEditor } from '../helpers/config-form-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { configureOutputRunBridge } from '../helpers/output-run-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { loadTomlFileList, switchTomlManagerMode, updateConfigPageSummary } from '../helpers/toml-manager-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { handleDeletedTomlSelection, isMissingTomlFileResponse } from '../helpers/toml-actions-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { rememberSelectionSnapshot } from './13-update-dataset-editor-rows-setting-value.js?v=module-bootstrap-20260714-stage-dataset5';
+import { loadConfig } from '../helpers/app-shell-startup-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { getAppContext } from '../helpers/app-context-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { confirmDiscardTomlChanges, currentFormConfigFile, currentTomlEditorContentForFile, handlePendingConfigSwitch, hasPendingConfigChanges, hasUnsavedFormChanges, isTomlDirty, setBadge, updateTomlDirtyState, updateTomlSelectionUI } from '../helpers/toml-selection-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { getDatasetState } from '../helpers/dataset-state-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { getTomlState } from '../helpers/toml-state-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { getTrainingState } from '../helpers/training-state-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { api, val } from '../helpers/runtime-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { saveAsTargetGroups } from '../helpers/toml-io-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { summarizeDirtyDiff } from '../../config-form/field-presentation.js?v=module-bootstrap-20260714-stage-dataset5';
 import {
     applyTomlLockState,
     applyTomlToConfig,
@@ -27,7 +27,7 @@ import {
     setTomlStatus,
     tomlFileDisplayName,
     updateTomlActionState,
-} from '../helpers/toml-action-state-bridge.js?v=module-bootstrap-20260711-ir6';
+} from '../helpers/toml-action-state-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
 
 const ctx = getAppContext();
 const datasetState = getDatasetState();

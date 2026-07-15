@@ -1952,6 +1952,11 @@
     scrollbar-color: rgba(20, 184, 166, 0.42) rgba(15, 23, 42, 0.6);
 }
 
+#tab-training .log-line {
+    display: block;
+    min-height: 1.55em;
+}
+
 #tab-training .log-line.info {
     color: #95f0c5;
 }

@@ -2,7 +2,7 @@
  * File-group drop target wiring (row/list/header).
  * Same-list reorder: always resolve by pointer Y, then submit full DOM order.
  */
-import { getDatasetState } from '../anima-app/helpers/dataset-state-bridge.js?v=module-bootstrap-20260711-ir6';
+import { getDatasetState } from '../anima-app/helpers/dataset-state-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
 import {
     clearFileGroupDropTarget,
     eventTargetClosest,
@@ -12,7 +12,7 @@ import {
     moveFileNearList,
     originClosest,
     registerFileGroupDropTarget,
-} from './file-group-drag-core.js?v=module-bootstrap-20260711-ir9';
+} from './file-group-drag-core.js?v=module-bootstrap-20260714-stage-dataset5';
 
 const datasetState = getDatasetState();
 

@@ -1,18 +1,18 @@
 /**
  * Config form field rows, live change handling, and field input factory.
  */
-import { updateChoiceGuide } from './choice-guide-ui.js?v=module-bootstrap-20260711-ir6';
-import { updateStepEstimatePanel } from './step-estimate.js?v=module-bootstrap-20260711-ir6';
-import { valuesEqual } from '../anima-app/helpers/form-values.js?v=module-bootstrap-20260711-ir6';
-import { collectLiveCompatIssues, formatLiveCompatStatus } from './live-compat.js?v=module-bootstrap-20260711-ir6';
-import { setTomlStatus } from '../anima-app/helpers/toml-action-state-bridge.js?v=module-bootstrap-20260711-ir6';
-import { buildFieldPresentation, fieldSourceBadgeLabel } from './field-presentation.js?v=module-bootstrap-20260711-ir6';
-import { isTruthy } from '../anima-app/helpers/config-values.js?v=module-bootstrap-20260711-ir6';
-import { getConfigState } from '../anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260711-ir6';
+import { updateChoiceGuide } from './choice-guide-ui.js?v=module-bootstrap-20260714-stage-dataset5';
+import { updateStepEstimatePanel } from './step-estimate.js?v=module-bootstrap-20260714-stage-dataset5';
+import { valuesEqual } from '../anima-app/helpers/form-values.js?v=module-bootstrap-20260714-stage-dataset5';
+import { collectLiveCompatIssues, formatLiveCompatStatus } from './live-compat.js?v=module-bootstrap-20260714-stage-dataset5';
+import { setTomlStatus } from '../anima-app/helpers/toml-action-state-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { buildFieldPresentation, fieldSourceBadgeLabel } from './field-presentation.js?v=module-bootstrap-20260714-stage-dataset5';
+import { isTruthy } from '../anima-app/helpers/config-values.js?v=module-bootstrap-20260714-stage-dataset5';
+import { getConfigState } from '../anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
 import {
     formatFieldName,
     shouldRenderSelectInput,
-} from '../anima-app/helpers/config-field-display.js?v=module-bootstrap-20260711-ir6';
+} from '../anima-app/helpers/config-field-display.js?v=module-bootstrap-20260714-stage-dataset5';
 import {
     allowsNegativeNumberField,
     createHelpContent,
@@ -20,14 +20,14 @@ import {
     fieldValueTypeForKey,
     isIntegerNumericField,
     isNumericField,
-} from '../anima-app/helpers/config-field-ui-bridge.js?v=module-bootstrap-20260711-ir6';
+} from '../anima-app/helpers/config-field-ui-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
 import {
     CONFIG_FORM_INTERNAL_KEYS,
     FIELD_OPTIONS,
     FORM_UI_DEFAULTS,
     help,
-} from '../../config/catalog.js?v=module-bootstrap-20260711-ir6';
-import { LOSS_WEIGHTING_DEPENDENT_FIELDS } from '../anima-app/helpers/app-constants.js?v=module-bootstrap-20260711-ir6';
+} from '../../config/catalog.js?v=module-bootstrap-20260714-stage-dataset5';
+import { LOSS_WEIGHTING_DEPENDENT_FIELDS } from '../anima-app/helpers/app-constants.js?v=module-bootstrap-20260714-stage-dataset5';
 import {
     applyLossWeightingFieldInputState,
     collectNetworkArgsFromForm,
@@ -43,14 +43,15 @@ import {
     updateLoKrFieldState,
     updateLossWeightingFieldState,
     updateVeRAFieldState,
-} from '../anima-app/helpers/config-form-bridge.js?v=module-bootstrap-20260711-ir6';
-import { updateTomlDirtyState } from '../anima-app/helpers/toml-selection-bridge.js?v=module-bootstrap-20260711-ir6';
+} from '../anima-app/helpers/config-form-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { updateTomlDirtyState } from '../anima-app/helpers/toml-selection-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { renderConfigForm } from '../anima-app/helpers/app-shell-startup-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
 import {
     createSamplePromptAddButton,
     createSamplePromptTextModeButton,
     createSamplePromptsEditor,
     createSamplePromptsPathInput,
-} from './form-fields-sample.js?v=module-bootstrap-20260711-ir6';
+} from './form-fields-sample.js?v=module-bootstrap-20260714-stage-dataset5';
 
 let updateNoDatasetRegularizationModePanelCallback = () => {};
 const configState = getConfigState();
@@ -207,6 +208,23 @@ function focusConfigFieldInput(input) {
 export function handleFormFieldChange(event) {
     applyPreprocessMemoryProfileSelection(event);
     syncConfigDraftFromForm();
+    // 切换 lora_adapter_kind 时立刻重绘，隐藏/显示 LoKr/VeRA/DoRA 专属字段。
+    if (event?.target?.dataset?.key === 'lora_adapter_kind') {
+        try {
+            renderConfigForm(liveConfigFromForm());
+        } catch {
+            updateLoKrFieldState();
+            updateVeRAFieldState();
+            updateDoRAFieldState();
+        }
+        updateTomlDirtyState();
+        updateStepEstimatePanel();
+        updateLossWeightingFieldState();
+        updateNoDatasetRegularizationModePanelCallback();
+        updateChoiceGuideFromLiveForm();
+        updateLiveCompatWarningsFromForm();
+        return;
+    }
     updateTomlDirtyState();
     updateStepEstimatePanel();
     updateLoKrFieldState();

@@ -1,4 +1,4 @@
-import { previewSourceLabel } from './state.js?v=module-bootstrap-20260711-ir6';
+import { previewSourceLabel } from './state.js?v=module-bootstrap-20260714-stage-dataset5';
 
 const HISTORY_PREVIEW_EAGER_IMAGE_LIMIT = 16;
 

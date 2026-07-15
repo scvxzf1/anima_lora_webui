@@ -2,17 +2,17 @@
  * Continue-training LoRA weight hotstart helpers.
  * Extracted from anima-app chunk 06.
  */
-import { historyTaskDisplayName } from '../anima-app/helpers/history-collections-bridge.js?v=module-bootstrap-20260711-ir6';
+import { historyTaskDisplayName } from '../anima-app/helpers/history-collections-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
 import {
     setTomlStatus,
     updateTomlActionState,
-} from '../anima-app/helpers/toml-action-state-bridge.js?v=module-bootstrap-20260711-ir6';
-import { getHistoryState } from '../anima-app/helpers/history-state-bridge.js?v=module-bootstrap-20260711-ir6';
-import { loadTrainingHistoryList } from '../anima-app/helpers/history-list-bridge.js?v=module-bootstrap-20260711-ir6';
-import { api, val } from '../anima-app/helpers/runtime-bridge.js?v=module-bootstrap-20260711-ir6';
-import { getTomlState } from '../anima-app/helpers/toml-state-bridge.js?v=module-bootstrap-20260711-ir6';
-import { getTrainingState } from '../anima-app/helpers/training-state-bridge.js?v=module-bootstrap-20260711-ir6';
-import { currentTrainingConfigFile } from '../anima-app/helpers/preflight-dialog-bridge.js?v=module-bootstrap-20260711-ir6';
+} from '../anima-app/helpers/toml-action-state-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { getHistoryState } from '../anima-app/helpers/history-state-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { loadTrainingHistoryList } from '../anima-app/helpers/history-list-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { api, val } from '../anima-app/helpers/runtime-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { getTomlState } from '../anima-app/helpers/toml-state-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { getTrainingState } from '../anima-app/helpers/training-state-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { currentTrainingConfigFile } from '../anima-app/helpers/preflight-dialog-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
 
 const historyState = getHistoryState();
 const tomlState = getTomlState();

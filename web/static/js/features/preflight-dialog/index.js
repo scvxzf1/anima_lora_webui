@@ -2,35 +2,35 @@
  * Preflight dialog + preprocess launch helpers.
  * Moved out of anima-app mechanical chunks.
  */
-import { isLiveRunningState } from '../live-training/index.js?v=module-bootstrap-20260711-ir6';
+import { isLiveRunningState } from '../live-training/index.js?v=module-bootstrap-20260714-stage-dataset5';
 import {
     FIELD_LABEL_ZH,
-} from '../../config/catalog.js?v=module-bootstrap-20260711-ir6';
+} from '../../config/catalog.js?v=module-bootstrap-20260714-stage-dataset5';
 import {
     continueTrainingRequestPayload,
     ensureTrainingSourceReadyForLaunch,
     trainingSourceLaunchBlockReason,
-} from '../anima-app/helpers/training-source-bridge.js?v=module-bootstrap-20260711-ir6';
+} from '../anima-app/helpers/training-source-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
 import {
     chooseTrainingLaunchMode,
     enqueueTrainingFromConfig,
     enterLiveTrainingForNewRun,
-} from '../anima-app/helpers/training-launch-bridge.js?v=module-bootstrap-20260711-ir6';
-import { showAppConfirmDialog } from '../anima-app/helpers/toml-selection-bridge.js?v=module-bootstrap-20260711-ir6';
+} from '../anima-app/helpers/training-launch-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { showAppConfirmDialog } from '../anima-app/helpers/toml-selection-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
 import {
     markTrainingActivity,
     updateStatus,
-} from '../anima-app/helpers/live-status-bridge.js?v=module-bootstrap-20260711-ir6';
-import { api, val } from '../anima-app/helpers/runtime-bridge.js?v=module-bootstrap-20260711-ir6';
-import { getGpuPicker } from '../anima-app/helpers/app-shell-startup-bridge.js?v=module-bootstrap-20260711-ir6';
-import { outputRunRuntimeFile } from '../output-run/runtime-file.js?v=module-bootstrap-20260711-ir6';
-import { loadTrainingQueue, updateTrainingQueueFromPayload } from '../anima-app/helpers/queue-view-bridge.js?v=module-bootstrap-20260711-ir6';
-import { scheduleStatusPoll } from '../anima-app/helpers/status-polling-bridge.js?v=module-bootstrap-20260711-ir6';
-import { loadTrainingHistoryList } from '../anima-app/helpers/history-list-bridge.js?v=module-bootstrap-20260711-ir6';
-import { configurePreflightDialogBridge } from '../anima-app/helpers/preflight-dialog-bridge.js?v=module-bootstrap-20260711-ir6';
-import { appendLog, setTrainingHealthNotice } from '../anima-app/helpers/live-log-bridge.js?v=module-bootstrap-20260711-ir6';
-import { getTomlState } from '../anima-app/helpers/toml-state-bridge.js?v=module-bootstrap-20260711-ir6';
-import { getTrainingState } from '../anima-app/helpers/training-state-bridge.js?v=module-bootstrap-20260711-ir6';
+} from '../anima-app/helpers/live-status-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { api, val } from '../anima-app/helpers/runtime-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { getGpuPicker } from '../anima-app/helpers/app-shell-startup-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { outputRunRuntimeFile } from '../output-run/runtime-file.js?v=module-bootstrap-20260714-stage-dataset5';
+import { loadTrainingQueue, updateTrainingQueueFromPayload } from '../anima-app/helpers/queue-view-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { scheduleStatusPoll } from '../anima-app/helpers/status-polling-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { loadTrainingHistoryList } from '../anima-app/helpers/history-list-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { configurePreflightDialogBridge } from '../anima-app/helpers/preflight-dialog-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { appendLog, setTrainingHealthNotice } from '../anima-app/helpers/live-log-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { getTomlState } from '../anima-app/helpers/toml-state-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { getTrainingState } from '../anima-app/helpers/training-state-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
 
 const tomlState = getTomlState();
 const trainingState = getTrainingState();

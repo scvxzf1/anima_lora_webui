@@ -1,4 +1,4 @@
-import { renderItemsInChunks } from './chunked-render.js?v=module-bootstrap-20260711-ir6';
+import { renderItemsInChunks } from './chunked-render.js?v=module-bootstrap-20260714-stage-dataset5';
 
 /**
  * Fill config-group and collection card lists with cancelable chunked append.

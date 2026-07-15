@@ -686,3 +686,10 @@
     background: color-mix(in srgb, var(--training-accent) 8%, var(--training-field-bg));
     color: var(--training-accent);
 }
+#tab-training .history-config-group-collapse-summary.is-live,
+#tab-training .history-config-group-card.is-live:not(.is-expanded) .history-config-group-collapse-summary {
+    border-style: solid;
+    border-color: color-mix(in srgb, var(--training-accent) 46%, var(--training-border));
+    background: color-mix(in srgb, var(--training-accent) 10%, var(--training-field-bg));
+    color: color-mix(in srgb, var(--training-accent) 86%, var(--training-text, var(--text)));
+}

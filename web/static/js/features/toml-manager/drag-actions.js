@@ -1,17 +1,17 @@
 /**
  * TOML group export/queue action helpers.
  */
-import { showHistoryTaskDialog } from '../anima-app/helpers/history-task-actions-bridge.js?v=module-bootstrap-20260711-ir6';
-import { enqueueTrainingQueueBatchRequest, isCliOnlySpdSource, showPreflightDialog } from '../anima-app/helpers/training-launch-bridge.js?v=module-bootstrap-20260711-ir6';
+import { showHistoryTaskDialog } from '../anima-app/helpers/history-task-actions-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { enqueueTrainingQueueBatchRequest, isCliOnlySpdSource, showPreflightDialog } from '../anima-app/helpers/training-launch-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
 import {
     setTomlStatus,
-} from '../anima-app/helpers/toml-action-state-bridge.js?v=module-bootstrap-20260711-ir6';
-import { val } from '../anima-app/helpers/runtime-bridge.js?v=module-bootstrap-20260711-ir6';
-import { createTomlZipBlob, downloadBlob } from '../anima-app/helpers/toml-io-bridge.js?v=module-bootstrap-20260711-ir6';
-import { renderPreflightPending, showPreflightRequestError } from '../anima-app/helpers/preflight-dialog-bridge.js?v=module-bootstrap-20260711-ir6';
-import { appendLog } from '../anima-app/helpers/live-log-bridge.js?v=module-bootstrap-20260711-ir6';
-import { showTrainingView, updateTrainingQueueFromPayload } from '../anima-app/helpers/queue-view-bridge.js?v=module-bootstrap-20260711-ir6';
-import { getTomlState } from '../anima-app/helpers/toml-state-bridge.js?v=module-bootstrap-20260711-ir6';
+} from '../anima-app/helpers/toml-action-state-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { val } from '../anima-app/helpers/runtime-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { createTomlZipBlob, downloadBlob } from '../anima-app/helpers/toml-io-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { renderPreflightPending, showPreflightRequestError } from '../anima-app/helpers/preflight-dialog-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { appendLog } from '../anima-app/helpers/live-log-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { showTrainingView, updateTrainingQueueFromPayload } from '../anima-app/helpers/queue-view-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { getTomlState } from '../anima-app/helpers/toml-state-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
 
 const tomlState = getTomlState();
 

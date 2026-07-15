@@ -7,31 +7,31 @@ import {
     PRESET_GUIDE_ZH,
     VARIANT_GUIDE_ZH,
     choiceHelp,
-} from '../../config/catalog.js?v=module-bootstrap-20260711-ir6';
+} from '../../config/catalog.js?v=module-bootstrap-20260714-stage-dataset5';
 import {
     isTruthy,
     precisionPreferenceFromConfig,
-} from '../anima-app/helpers/config-values.js?v=module-bootstrap-20260711-ir6';
+} from '../anima-app/helpers/config-values.js?v=module-bootstrap-20260714-stage-dataset5';
 import {
     choiceLine,
     defaultMethodGuide,
     defaultPresetGuide,
     defaultVariantGuide,
-} from '../anima-app/helpers/choice-guide.js?v=module-bootstrap-20260711-ir6';
+} from '../anima-app/helpers/choice-guide.js?v=module-bootstrap-20260714-stage-dataset5';
 import {
     compactList,
     flagDetail,
     valueDetail,
-} from '../anima-app/helpers/config-field-display.js?v=module-bootstrap-20260711-ir6';
-import { getAppShellState } from '../anima-app/helpers/app-shell-state-bridge.js?v=module-bootstrap-20260711-ir6';
+} from '../anima-app/helpers/config-field-display.js?v=module-bootstrap-20260714-stage-dataset5';
+import { getAppShellState } from '../anima-app/helpers/app-shell-state-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
 import {
     setCurrentTrainingSourceFromVariant,
-} from '../training-source/source-state.js?v=module-bootstrap-20260711-ir6';
-import { activeMethodKey } from './method-key.js?v=module-bootstrap-20260711-ir6';
-import { handlePendingConfigSwitch } from '../anima-app/helpers/toml-selection-bridge.js?v=module-bootstrap-20260711-ir6';
-import { getConfigState } from '../anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260711-ir6';
-import { getTrainingState } from '../anima-app/helpers/training-state-bridge.js?v=module-bootstrap-20260711-ir6';
-import { val } from '../anima-app/helpers/runtime-bridge.js?v=module-bootstrap-20260711-ir6';
+} from '../training-source/source-state.js?v=module-bootstrap-20260714-stage-dataset5';
+import { activeMethodKey } from './method-key.js?v=module-bootstrap-20260714-stage-dataset5';
+import { handlePendingConfigSwitch } from '../anima-app/helpers/toml-selection-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { getConfigState } from '../anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { getTrainingState } from '../anima-app/helpers/training-state-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { val } from '../anima-app/helpers/runtime-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
 
 const appShellState = getAppShellState();
 const configState = getConfigState();

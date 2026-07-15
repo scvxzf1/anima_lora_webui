@@ -121,7 +121,10 @@ def test_config_actions_are_de_noised_and_sticky_controls_are_wired() -> None:
     assert "left: var(--config-sticky-left, 1rem);" in sticky_css
     assert "position: fixed;" in sticky_css
     assert "position: sticky;" not in sticky_css
+    assert "height: var(--config-left-max-height);" in config_left_css
     assert "max-height: var(--config-left-max-height);" in config_left_css
+    assert "min-height: 180px;" in config_left_css
+    assert "box-sizing: border-box;" in config_left_css
     assert "overflow-y: auto;" in config_left_css
     assert "overscroll-behavior: contain;" in config_left_css
     assert "padding-bottom: var(--config-sticky-safe-space);" in config_left_css

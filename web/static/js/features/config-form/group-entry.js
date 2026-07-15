@@ -5,28 +5,27 @@
 import {
     createNoDatasetRegularizationAdvancedFields,
     createNoDatasetRegularizationModePanel,
-} from './no-dataset-regularization.js?v=module-bootstrap-20260711-ir6';
+} from './no-dataset-regularization.js?v=module-bootstrap-20260714-stage-dataset5';
 import {
     ADVANCED_CATEGORY_DEFAULT_OPEN_GROUPS,
     FORM_CATEGORY_DEFS,
     FORM_CATEGORY_SECTION_MAP,
     STICKY_CONFIG_CATEGORY_IDS,
-} from '../../config/catalog.js?v=module-bootstrap-20260711-ir6';
-import { reloadCurrentConfig, renderConfigForm, syncConfigDraftFromForm } from '../anima-app/helpers/app-shell-startup-bridge.js?v=module-bootstrap-20260711-ir6';
-import { getConfigState } from '../anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260711-ir6';
-import { formatFieldName } from '../anima-app/helpers/config-field-display.js?v=module-bootstrap-20260711-ir6';
-import { updateChangedFieldMarks } from '../anima-app/helpers/toml-selection-bridge.js?v=module-bootstrap-20260711-ir6';
-import { createStepEstimatePanel, scheduleStepEstimatePanelRefresh } from './step-estimate.js?v=module-bootstrap-20260711-ir6';
+} from '../../config/catalog.js?v=module-bootstrap-20260714-stage-dataset5';
+import { reloadCurrentConfig, renderConfigForm, syncConfigDraftFromForm } from '../anima-app/helpers/app-shell-startup-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { getConfigState } from '../anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { formatFieldName } from '../anima-app/helpers/config-field-display.js?v=module-bootstrap-20260714-stage-dataset5';
+import { updateChangedFieldMarks } from '../anima-app/helpers/toml-selection-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { createStepEstimatePanel, scheduleStepEstimatePanelRefresh } from './step-estimate.js?v=module-bootstrap-20260714-stage-dataset5';
 import {
     createFillGlobalModelPathsButton,
     createNoDatasetRegularizationQuickPresetPanel,
     createNoDatasetRegularizationQuickPresetsButton,
     createResourceQuickPresetPanel,
     createResourceQuickPresetsButton,
-    createStageScheduleInlineSummary,
-} from './stage-resolution.js?v=module-bootstrap-20260711-ir6';
-import { appendFieldRows } from './field-rows.js?v=module-bootstrap-20260711-ir6';
-import { createConfigDatasetPicker } from './dataset-picker.js?v=module-bootstrap-20260711-ir6';
+} from './stage-resolution.js?v=module-bootstrap-20260714-stage-dataset5';
+import { appendFieldRows } from './field-rows.js?v=module-bootstrap-20260714-stage-dataset5';
+import { createConfigDatasetPicker } from './dataset-picker.js?v=module-bootstrap-20260714-stage-dataset5';
 
 const configState = getConfigState();
 const configFormState = configState.configFormState;
@@ -186,14 +185,14 @@ export function updateConfigStickyPlacement() {
     const barRect = bar.getBoundingClientRect();
     const barStyle = window.getComputedStyle(bar);
     const bottomOffset = Number.parseFloat(barStyle.bottom) || 20;
-    // Keep the scroller bottom above the sticky directory bar, and leave
-    // extra padding so the last fields can scroll fully into view.
-    const barReserve = Math.ceil(barRect.height + bottomOffset + 20);
-    const safeSpace = barReserve + 36;
+    // 滚动区底边停在悬浮栏上方；底部内容垫高按栏高 * 1.3，避免最后一项被盖住。
+    const barHeight = Math.max(Math.ceil(barRect.height), 48);
+    const barReserve = Math.ceil((barHeight + bottomOffset + 20) * 1.3);
+    const safeSpace = Math.ceil((barHeight + bottomOffset + 56) * 1.3);
     const scrollerRect = scroller.getBoundingClientRect();
-    const availableHeight = Math.max(180, window.innerHeight - scrollerRect.top - barReserve);
+    const availableHeight = Math.max(180, Math.floor(window.innerHeight - scrollerRect.top - barReserve));
     workspace.style.setProperty('--config-sticky-safe-space', `${safeSpace}px`);
-    workspace.style.setProperty('--config-left-max-height', `${Math.round(availableHeight)}px`);
+    workspace.style.setProperty('--config-left-max-height', `${availableHeight}px`);
 }
 
     function createConfigFormControls(allGroups, renderedGroups, searchText) {
@@ -439,8 +438,7 @@ export function updateConfigStickyPlacement() {
         section.appendChild(header);
         if (extraClass === 'config-group-data') {
             content.appendChild(createConfigDatasetPicker());
-            // 只读课表摘要；主编辑入口在数据集页顶栏。
-            content.appendChild(createStageScheduleInlineSummary());
+            // 分阶段调度入口只保留在数据集页顶栏，配置页不再显示课表摘要卡片。
         }
         if (extraClass === 'config-group-resource') {
             content.appendChild(createResourceQuickPresetPanel());

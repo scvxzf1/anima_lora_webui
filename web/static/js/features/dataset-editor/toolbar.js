@@ -1,9 +1,9 @@
 /**
  * Dataset editor top toolbar: experimental + stage-schedule entries.
  */
-import { getDatasetState } from '../anima-app/helpers/dataset-state-bridge.js?v=module-bootstrap-20260711-ir6';
-import { openStageResolutionDialog } from '../config-form/stage-resolution.js?v=module-bootstrap-20260711-ir6';
-import { openDatasetExperimentalDialog } from './experimental-dialog.js?v=module-bootstrap-20260711-ir6';
+import { getDatasetState } from '../anima-app/helpers/dataset-state-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { openStageResolutionDialog } from '../config-form/stage-resolution.js?v=module-bootstrap-20260714-stage-dataset5';
+import { openDatasetExperimentalDialog } from './experimental-dialog.js?v=module-bootstrap-20260714-stage-dataset5';
 
 const datasetState = getDatasetState();
 
@@ -35,7 +35,17 @@ export function createDatasetEditorToolbarActions() {
     stageBtn.type = 'button';
     stageBtn.className = 'btn btn-small';
     stageBtn.textContent = '分阶段调度';
-    stageBtn.title = '按总训练步数百分比切换数据集子集（写入当前训练配置草稿）';
+    const datasetTabActive = Boolean(document.getElementById('tab-datasets')?.classList.contains('active'));
+    const activeState = datasetTabActive
+        ? (datasetState.datasetPresetState || {})
+        : (datasetState.datasetEditorState || {});
+    const targetFile = String(activeState.selectedFile || activeState.dataset_config || '').trim();
+    stageBtn.disabled = Boolean(activeState.loading) || !targetFile;
+    stageBtn.title = activeState.loading
+        ? '当前数据集配置正在读取，请稍候'
+        : (targetFile
+            ? `按总训练步数百分比切换数据集子集（写入 ${targetFile}）`
+            : '请先选中或保存一个数据集配置');
     stageBtn.addEventListener('click', () => openStageResolutionDialog());
 
     // 调用方还会追加「添加数据集」按钮；这里只返回双入口容器片段。

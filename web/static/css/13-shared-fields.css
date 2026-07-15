@@ -34,18 +34,15 @@
     background: color-mix(in srgb, var(--panel-border, #3a4154) 35%, transparent);
     vertical-align: middle;
 }
+/* 仅“已改”保留角标；配置/默认来源不再着色展示 */
 .field-source-badge[data-source="draft"],
 .field-source-badge.is-dirty {
     color: #f0c674;
     background: color-mix(in srgb, #f0c674 18%, transparent);
 }
-.field-source-badge[data-source="ui_default"] {
-    color: #7aa2f7;
-    background: color-mix(in srgb, #7aa2f7 16%, transparent);
-}
+.field-source-badge[data-source="ui_default"],
 .field-source-badge[data-source="config"] {
-    color: #9ece6a;
-    background: color-mix(in srgb, #9ece6a 14%, transparent);
+    display: none;
 }
 
 .field-row-changed {

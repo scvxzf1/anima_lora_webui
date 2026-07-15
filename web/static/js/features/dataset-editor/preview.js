@@ -2,14 +2,14 @@
  * Dataset subset preview dialog and image loading.
  * Extracted from former chunk 12 / row-fields.
  */
-import { setDatasetPresetStatus } from '../anima-app/helpers/dataset-preset-actions-bridge.js?v=module-bootstrap-20260711-ir6';
+import { setDatasetPresetStatus } from '../anima-app/helpers/dataset-preset-actions-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
 import {
     datasetPreviewImageToPreviewImage,
     datasetPreviewValidationText,
-} from '../anima-app/helpers/dataset-preview.js?v=module-bootstrap-20260711-ir6';
-import { getDatasetState } from '../anima-app/helpers/dataset-state-bridge.js?v=module-bootstrap-20260711-ir6';
-import { datasetPresetApi } from '../anima-app/helpers/runtime-bridge.js?v=module-bootstrap-20260711-ir6';
-import { openPreviewDialog, createPreviewDetailRow, copyText } from '../anima-app/helpers/preview-view-bridge.js?v=module-bootstrap-20260711-ir6';
+} from '../anima-app/helpers/dataset-preview.js?v=module-bootstrap-20260714-stage-dataset5';
+import { getDatasetState } from '../anima-app/helpers/dataset-state-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { datasetPresetApi } from '../anima-app/helpers/runtime-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { openPreviewDialog, createPreviewDetailRow, copyText } from '../anima-app/helpers/preview-view-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
 
 const datasetState = getDatasetState();
 

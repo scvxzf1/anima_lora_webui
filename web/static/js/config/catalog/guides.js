@@ -1,4 +1,4 @@
-import { choiceHelp } from './help-builder.js?v=module-bootstrap-20260711-ir6';
+import { choiceHelp } from './help-builder.js?v=module-bootstrap-20260714-stage-dataset5';
 
 export const METHOD_GUIDE_ZH = {
     lora: choiceHelp(

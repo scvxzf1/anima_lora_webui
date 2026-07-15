@@ -1,4 +1,4 @@
-import { help } from './help-builder.js?v=module-bootstrap-20260713-mem-lokr';
+import { help } from './help-builder.js?v=module-bootstrap-20260714-stage-dataset5';
 
 export const FIELD_HELP_METHOD_ZH = {
     network_dim: help(

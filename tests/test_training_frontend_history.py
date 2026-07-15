@@ -150,6 +150,66 @@ def test_manual_history_refresh_announces_and_deduplicates_requests() -> None:
     assert "on('btn-history-manager-refresh', 'click', () => loadTrainingHistoryList({ announce: true }));" in listener_source
 
 
+def test_live_status_merges_current_history_task_without_full_history_fetch() -> None:
+    if not shutil.which("node"):
+        pytest.skip("node is required for live history merge checks")
+    script = r"""
+import { configureHistoryStateBridge } from './web/static/js/features/anima-app/helpers/history-state-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { configureTrainingStateBridge } from './web/static/js/features/anima-app/helpers/training-state-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+
+const historyState = {
+    historyTasks: [{
+        id: 'task-1',
+        state: 'compiling',
+        job: 'training',
+        variant: 'old',
+        log_count: 5,
+        metric_count: 3,
+    }],
+};
+configureHistoryStateBridge(historyState);
+configureTrainingStateBridge({});
+const { mergeLiveTrainingHistoryTask } = await import(
+    './web/static/js/features/history-list/list.js?live-history-merge-test'
+);
+
+const merged = mergeLiveTrainingHistoryTask({
+    task_id: 'task-1',
+    status: 'running',
+    variant: 'lora',
+    run_dir: 'output/runs/task-1',
+    last_output_at: 1234,
+    last_log_id: 9,
+    log_count: 9,
+    metric_count: 2,
+});
+const missing = mergeLiveTrainingHistoryTask({ task_id: 'missing', status: 'running' });
+console.log(JSON.stringify({ merged, missing, tasks: historyState.historyTasks }));
+"""
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", script],
+        cwd=Path(__file__).resolve().parents[1],
+        text=True,
+        capture_output=True,
+        timeout=20,
+    )
+
+    assert result.returncode == 0, result.stderr or result.stdout
+    payload = json.loads(result.stdout)
+    assert payload["merged"] is True
+    assert payload["missing"] is False
+    assert payload["tasks"] == [{
+        "id": "task-1",
+        "state": "running",
+        "job": "training",
+        "variant": "lora",
+        "log_count": 9,
+        "metric_count": 3,
+        "run_dir": "output/runs/task-1",
+        "updated_at": 1234,
+    }]
+
+
 def test_history_list_imports_preview_helpers_for_refresh() -> None:
     """Regression: loadTrainingHistoryList must not throw on renderPreviewTaskSelect."""
     history_source = _frontend_module_text("js/features/history-list/list.js")
@@ -441,7 +501,8 @@ def test_history_manager_frontend_hooks_are_present() -> None:
     assert "搜索或新建集合" in source
     assert "未分类" in source
     assert "selectedHistoryCollectionKey === collection.key ? '' : collection.key" not in source
-    assert "selectedHistoryCollectionKey = collection.key" in source
+    assert "selectHistoryCollectionInWorkbench(collection.key)" in source
+    assert "historyState.selectedHistoryCollectionKey = key" in source
     assert "collection.is_ungrouped ? '未分类' : '移入'" in collection_card_section
     assert "if (selectedTaskCount > 0) actions.append(joinSelectedBtn);" in collection_card_section
     assert "加入目标" in source
@@ -712,10 +773,12 @@ def test_history_manager_frontend_hooks_are_present() -> None:
     assert "logRenderToken" in source
     assert "LOG_RENDER_BATCH_SIZE" in source
     assert "scheduleLogRenderBatch(() => appendBatch(end))" in source
-    assert "renderLogOutputLines(lines, { stickToBottom: true })" in log_append_section
+    assert "appendLogOutputLines(pending, { stickToBottom })" in log_append_section
+    assert "isLogNearBottom(el)" in log_append_section
     assert "scheduleLogFlush" in log_append_section
     assert "requestAnimationFrame" in log_append_section
     assert "MAX_LOG_LINES" in log_append_section
+    assert "appendLogOutputLines" in source
     assert "lastLrText" not in source
     assert "recordLearningRateChange" not in source
     assert "announceLr" not in source
@@ -1417,7 +1480,8 @@ def test_history_detail_config_files_are_tool_ready() -> None:
         "js/features/config-form/form-fields-ui.js",
         "js/features/dataset-editor/row-settings-basic.js",
         "js/features/sample-prompts/row-ui.js",
-        "js/features/anima-app/chunks/18-delete-dataset-preset-group.js",
+        "js/features/config-form/config-value-collector.js",
+        "js/features/config-form/adapter-field-state.js",
         "js/features/anima-app/chunks/19-current-sample-prompt-text.js",
         "js/features/anima-app/chunks/21-update-toml-selection-ui.js",
         "js/features/anima-app/chunks/22-update-toml-action-state.js",
@@ -1483,6 +1547,7 @@ def test_history_collection_switch_uses_partial_refresh() -> None:
     open_section = _section(collection_card, "export function createHistoryCollectionWorkbenchCard", "const head = document.createElement('div');")
 
     assert "expandedHistoryConfigGroupKeys: new Set()" in history_state
+    assert "collapsedHistoryConfigGroupKeys: new Set()" in history_state
     assert "historyWorkbenchCollectionsCache: null" in history_state
     assert "export function selectHistoryCollectionInWorkbench" in workbench
     assert "export function refreshHistoryWorkbenchConfigPanel" in workbench
@@ -1494,6 +1559,27 @@ def test_history_collection_switch_uses_partial_refresh() -> None:
     assert "createHistoryManagerGroupButton(" in config_card
     assert "history-config-group-collapse-summary" in config_card
     assert "isHistoryConfigGroupExpanded(group, options.collection)" in config_card
+    assert "ensureLiveHistoryConfigGroupsExpanded" in workbench
+    assert "historyConfigGroupHasLiveTasks" in workbench
+    assert "监控中 · ${liveLabel}" in config_card
+    assert "card.classList.toggle('is-live', hasLiveTasks)" in config_card
+
+
+def test_history_workbench_cache_key_includes_live_task_fields() -> None:
+    """Running task counters must bust the workbench collection cache so the history tab re-renders."""
+    workbench = _frontend_module_text("js/features/history-list/collections-workbench.js")
+    cache_section = _section(workbench, "function workbenchCollectionsCacheKey", "function getHistoryWorkbenchCollections")
+    for token in (
+        "task?.state || ''",
+        "Number(task?.log_count || 0)",
+        "Number(task?.metric_count || 0)",
+        "Number(task?.updated_at || 0)",
+        "ensureLiveHistoryConfigGroupsExpanded",
+        "collapsedHistoryConfigGroupKeys",
+    ):
+        assert token in workbench
+    assert "Number(task?.log_count || 0)" in cache_section
+    assert "task?.state || ''" in cache_section
 
 
 def test_sidebar_history_switch_avoids_full_list_rerender() -> None:
@@ -1600,4 +1686,3 @@ console.log(JSON.stringify({ leaves, frames, chunk: HISTORY_RENDER_CHUNK_SIZE })
     payload = json.loads(proc.stdout)
     assert payload["leaves"] == 50
     assert payload["frames"] >= 1
-

@@ -175,6 +175,32 @@ export const RETIRED_CONFIG_FORM_FIELDS = new Set([
 export const METHOD_SCOPED_CONFIG_FORM_FIELDS = new Map([
     ['weight_decay', new Set(['spd'])],
 ]);
+/** 仅在对应 lora_adapter_kind 下展示/写回的顶层字段。 */
+export const LORA_ADAPTER_SCOPED_FIELDS = Object.freeze({
+    lokr: Object.freeze([
+        'lokr_factor',
+        'lokr_use_einsum',
+        'lokr_decompose_w2',
+        'lokr_full_factor',
+        'lokr_allow_legacy_dim',
+        'lokr_factor_group_size',
+        'lokr_project_chunk_bytes',
+    ]),
+    vera: Object.freeze([
+        'vera_projection_prng_key',
+        'vera_d_initial',
+        'vera_save_projection',
+    ]),
+    // DoRA 仅普通 LoRA；其余适配器不展示。
+    lora: Object.freeze(['dora_wd']),
+});
+export const LOKR_SCOPED_FIELD_KEYS = new Set(LORA_ADAPTER_SCOPED_FIELDS.lokr);
+export const VERA_SCOPED_FIELD_KEYS = new Set(LORA_ADAPTER_SCOPED_FIELDS.vera);
+export const ALL_LORA_ADAPTER_SCOPED_FIELD_KEYS = new Set([
+    ...LORA_ADAPTER_SCOPED_FIELDS.lokr,
+    ...LORA_ADAPTER_SCOPED_FIELDS.vera,
+    ...LORA_ADAPTER_SCOPED_FIELDS.lora,
+]);
 export const DATASET_EDITOR_COMPAT_FIELDS = new Set([
     'source_image_dir',
     'resized_image_dir',

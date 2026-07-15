@@ -9,8 +9,8 @@ export {
     updateDatasetDefault,
     updateDatasetEditorRow,
     updateDatasetEditorRowSettingValue,
-} from '../../dataset-editor/row-fields.js?v=module-bootstrap-20260711-ir6';
+} from '../../dataset-editor/row-fields.js?v=module-bootstrap-20260714-stage-dataset5';
 export {
     loadDatasetPreviewImages,
     openDatasetPreview,
-} from '../../dataset-editor/preview.js?v=module-bootstrap-20260711-ir6';
+} from '../../dataset-editor/preview.js?v=module-bootstrap-20260714-stage-dataset5';

@@ -2,7 +2,7 @@
  * Config form draft/render helpers.
  * Moved out of anima-app mechanical chunks.
  */
-import { applyLoraAdapterDraft, applyOptimizerCompatibilityPatch } from './form-fields.js?v=module-bootstrap-20260711-ir6';
+import { applyLoraAdapterDraft, applyOptimizerCompatibilityPatch } from './form-fields.js?v=module-bootstrap-20260714-stage-dataset5';
 import {
     CHIMERA_UI_DEFAULT_FIELDS,
     CONFIG_FORM_INTERNAL_KEYS,
@@ -12,13 +12,15 @@ import {
     FORM_SECTION_DEFS,
     FORM_UI_DEFAULTS,
     IP_ADAPTER_UI_DEFAULT_FIELDS,
+    LOKR_SCOPED_FIELD_KEYS,
     METHOD_SCOPED_CONFIG_FORM_FIELDS,
     NETWORK_ARG_FIELD_MAP,
     NETWORK_ARG_FIELD_SPECS,
     RETIRED_CONFIG_FORM_FIELDS,
     SOFT_TOKENS_UI_DEFAULT_FIELDS,
     SPD_UI_DEFAULT_FIELDS,
-} from '../../config/catalog.js?v=module-bootstrap-20260711-ir6';
+    VERA_SCOPED_FIELD_KEYS,
+} from '../../config/catalog.js?v=module-bootstrap-20260714-stage-dataset5';
 import {
     isTruthy,
     loraAdapterFlagsMatchConfig,
@@ -26,7 +28,8 @@ import {
     normalizeLoraAdapterKind,
     normalizePrecisionPreference,
     precisionPreferenceFromConfig,
-} from '../anima-app/helpers/config-values.js?v=module-bootstrap-20260711-ir6';
+} from '../anima-app/helpers/config-values.js?v=module-bootstrap-20260714-stage-dataset5';
+import { readLiveLoraAdapterKind } from './form-fields-adapters.js?v=module-bootstrap-20260714-stage-dataset5';
 import {
     configureConfigFormBridge,
     networkArgFieldValueFromConfig,
@@ -36,17 +39,18 @@ import {
     updateLoKrFieldState,
     updateLossWeightingFieldState,
     updateVeRAFieldState,
-} from '../anima-app/helpers/config-form-bridge.js?v=module-bootstrap-20260711-ir6';
-import { coerceNetworkArgValue, parseNetworkArgEntry } from '../anima-app/helpers/network-args.js?v=module-bootstrap-20260711-ir6';
-import { parseArrayValue, valuesEqual } from '../anima-app/helpers/form-values.js?v=module-bootstrap-20260711-ir6';
-import { activeMethodKey } from './method-key.js?v=module-bootstrap-20260711-ir6';
-import { appendConfigGroupsByCategory, createConfigGroupEntry } from './group-entry.js?v=module-bootstrap-20260711-ir6';
-import { getConfigState } from '../anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260711-ir6';
-import { currentSamplePromptText } from '../anima-app/helpers/sample-prompts-bridge.js?v=module-bootstrap-20260711-ir6';
+} from '../anima-app/helpers/config-form-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { coerceNetworkArgValue, parseNetworkArgEntry } from '../anima-app/helpers/network-args.js?v=module-bootstrap-20260714-stage-dataset5';
+import { parseArrayValue, valuesEqual } from '../anima-app/helpers/form-values.js?v=module-bootstrap-20260714-stage-dataset5';
+import { activeMethodKey } from './method-key.js?v=module-bootstrap-20260714-stage-dataset5';
+import { appendConfigGroupsByCategory, createConfigGroupEntry } from './group-entry.js?v=module-bootstrap-20260714-stage-dataset5';
+import { getConfigState } from '../anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { currentSamplePromptText } from '../anima-app/helpers/sample-prompts-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
 
 const configState = getConfigState();
 const configFormState = configState.configFormState;
-const ALWAYS_VISIBLE_NETWORK_ARG_FIELDS = new Set(['lokr_use_einsum', 'lokr_decompose_w2', 'lokr_factor_group_size', 'lokr_project_chunk_bytes']);
+// network_args 专属字段按 activeNetworkArgFamilies 暴露，不再无条件常显。
+const ALWAYS_VISIBLE_NETWORK_ARG_FIELDS = new Set();
 
 function currentConfigState() { return configState.currentConfig || {}; }
 
@@ -213,12 +217,38 @@ function currentConfigState() { return configState.currentConfig || {}; }
         return activeMethodKey(config) === section.method;
     }
 
+    export function resolveLiveLoraAdapterKind(config = currentConfigState()) {
+        // 优先读表单 draft / DOM，保证切换 lora_adapter_kind 后立刻反映。
+        try {
+            return readLiveLoraAdapterKind();
+        } catch {
+            return loraAdapterKindFromConfig(config);
+        }
+    }
+
+    export function isLoraAdapterScopedFieldActive(key, config = currentConfigState()) {
+        if (LOKR_SCOPED_FIELD_KEYS.has(key)) {
+            return resolveLiveLoraAdapterKind(config) === 'lokr';
+        }
+        if (VERA_SCOPED_FIELD_KEYS.has(key)) {
+            return resolveLiveLoraAdapterKind(config) === 'vera';
+        }
+        if (key === 'dora_wd') {
+            return resolveLiveLoraAdapterKind(config) === 'lora';
+        }
+        return true;
+    }
+
     export function shouldSkipConfigFormField(key, config = currentConfigState()) {
         if (key === 'stage_schedule' || key === 'stage_schedule_enabled') return true;
         if (CONFIG_FORM_MERGED_FIELDS?.has?.(key)) return true;
         if (DEPRECATED_CONFIG_FORM_FIELDS.has(key)) return true;
         if (RETIRED_CONFIG_FORM_FIELDS.has(key)) return true;
         if (key === 'mixed_precision' || key === 'full_fp16' || key === 'full_bf16') return true;
+        // 即使 config 里残留了 lokr_factor / vera_*，非对应适配器也不展示。
+        if (LOKR_SCOPED_FIELD_KEYS.has(key) || VERA_SCOPED_FIELD_KEYS.has(key) || key === 'dora_wd') {
+            if (!isLoraAdapterScopedFieldActive(key, config)) return true;
+        }
         const scopedFamilies = METHOD_SCOPED_CONFIG_FORM_FIELDS.get(key);
         if (!scopedFamilies) return false;
         return !scopedFamilies.has(activeMethodKey(config));
@@ -226,7 +256,13 @@ function currentConfigState() { return configState.currentConfig || {}; }
 
     export function shouldExposeUiDefaultField(key, config, fieldsByKey = {}) {
         if (key in fieldsByKey) return true;
-        if (NETWORK_ARG_FIELD_MAP.has(key)) return ALWAYS_VISIBLE_NETWORK_ARG_FIELDS.has(key);
+        if (NETWORK_ARG_FIELD_MAP.has(key)) {
+            if (ALWAYS_VISIBLE_NETWORK_ARG_FIELDS.has(key)) return true;
+            return isActiveNetworkArgFieldKey(key, config);
+        }
+        if (LOKR_SCOPED_FIELD_KEYS.has(key) || VERA_SCOPED_FIELD_KEYS.has(key) || key === 'dora_wd') {
+            return isLoraAdapterScopedFieldActive(key, config);
+        }
         const family = activeMethodKey(config);
         if (SPD_UI_DEFAULT_FIELDS.has(key)) return family === 'spd';
         if (CHIMERA_UI_DEFAULT_FIELDS.has(key)) return family === 'chimera';
@@ -261,18 +297,18 @@ function currentConfigState() { return configState.currentConfig || {}; }
 
     export function activeNetworkArgSpecs(config = currentConfigState()) {
         const families = activeNetworkArgFamilies(config);
-        const argMap = parseNetworkArgMap(config?.network_args);
-        return NETWORK_ARG_FIELD_SPECS.filter((spec) =>
-            families.has(spec.family) || argMap.has(spec.arg)
-        );
+        // 仅按当前适配器/方法家族暴露；残留 network_args 不再把无关字段拉回表单。
+        return NETWORK_ARG_FIELD_SPECS.filter((spec) => families.has(spec.family));
     }
 
     export function activeNetworkArgFamilies(config = currentConfigState()) {
         const families = new Set();
         const moduleName = String(config?.network_module || '');
         const method = activeMethodKey(config);
+        const adapterKind = resolveLiveLoraAdapterKind(config);
         if (method === 'soft_tokens' || moduleName.includes('soft_tokens')) families.add('soft_tokens');
-        if (method === 'lokr' || isTruthy(config?.use_lokr)) families.add('lokr');
+        // LoKr network_args 仅在当前适配器结构为 lokr 时生效。
+        if (adapterKind === 'lokr' || method === 'lokr') families.add('lokr');
         if (method === 'ip_adapter' || isTruthy(config?.use_ip_adapter) || moduleName.includes('ip_adapter')) {
             families.add('ip_adapter');
         }

@@ -15,7 +15,7 @@ import {
     startHistoryConfigGroupMouseDrag,
     startHistoryConfigGroupPointerDrag,
     startHistoryConfigGroupTouchDrag,
-} from '../anima-app/helpers/history-collection-drag-bridge.js?v=module-bootstrap-20260711-ir6';
+} from '../anima-app/helpers/history-collection-drag-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
 import {
     clearHistoryCollectionForTasks,
     commonHistoryCollectionValue,
@@ -44,7 +44,7 @@ import {
     setHistoryCollectionForTasks,
     setHistoryCollectionForTasksDirect,
     toggleHistoryTaskSelection,
-} from '../anima-app/helpers/history-collections-bridge.js?v=module-bootstrap-20260711-ir6';
+} from '../anima-app/helpers/history-collections-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
 import {
     archiveHistoryTask,
     createHistoryActionButton,
@@ -52,14 +52,14 @@ import {
     createHistoryTaskPreviewButton,
     deleteHistoryTask,
     loadHistoryTask,
-} from '../anima-app/helpers/history-task-actions-bridge.js?v=module-bootstrap-20260711-ir6';
-import { historyStateLabel } from '../anima-app/helpers/history-timeline-bridge.js?v=module-bootstrap-20260711-ir6';
-import { getHistoryState } from '../anima-app/helpers/history-state-bridge.js?v=module-bootstrap-20260711-ir6';
+} from '../anima-app/helpers/history-task-actions-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { historyStateLabel } from '../anima-app/helpers/history-timeline-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { getHistoryState } from '../anima-app/helpers/history-state-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
 import {
     historyCollectionNamesForTasks,
     historyCollectionStorageKey,
     moveHistoryConfigGroup,
-} from './workbench-order.js?v=module-bootstrap-20260711-ir6';
+} from './workbench-order.js?v=module-bootstrap-20260714-stage-dataset5';
 
 const historyState = getHistoryState();
 
@@ -137,6 +137,7 @@ export function createHistoryConfigGroupWorkbenchCard(group, splitCollections, o
     if ((group.tasks || []).length === 1) {
         const task = group.tasks[0];
         card.classList.add('single-task');
+        card.dataset.historyTaskId = String(task.id || '');
 
         const main = document.createElement('button');
         main.type = 'button';
@@ -150,6 +151,7 @@ export function createHistoryConfigGroupWorkbenchCard(group, splitCollections, o
         title.title = title.textContent;
         const state = document.createElement('span');
         state.className = ['history-row-state', task.state || 'unknown'].join(' ');
+        state.dataset.liveHistoryState = '1';
         state.textContent = [
             task.job === 'preprocess' ? '预处理' : '训练',
             historyStateLabel(task.state),
@@ -266,8 +268,11 @@ export function createHistoryConfigGroupWorkbenchCard(group, splitCollections, o
     ]));
 
     const expanded = isHistoryConfigGroupExpanded(group, options.collection);
+    const hasLiveTasks = (group.tasks || []).some((task) => task?.state === 'running' || task?.state === 'compiling');
     card.classList.toggle('is-expanded', expanded);
+    card.classList.toggle('is-live', hasLiveTasks);
     card.dataset.expanded = expanded ? '1' : '0';
+    card.dataset.live = hasLiveTasks ? '1' : '0';
 
     const toggle = createHistoryManagerGroupButton(
         expanded ? '收起' : '展开',
@@ -293,7 +298,25 @@ export function createHistoryConfigGroupWorkbenchCard(group, splitCollections, o
     } else {
         const summary = document.createElement('div');
         summary.className = 'history-config-group-collapse-summary';
-        summary.textContent = `已折叠 ${group.tasks.length} 条任务 · 点击“展开”查看`;
+        const liveTasks = (group.tasks || []).filter((task) => task?.state === 'running' || task?.state === 'compiling');
+        if (liveTasks.length) {
+            const live = liveTasks[0];
+            const liveLabel = live.state === 'compiling' ? '编译中' : '运行中';
+            const liveName = historyTaskDisplayName(live) || historyGroupDisplayLabel(group);
+            const dataText = `${live.metric_count || 0} loss / ${live.log_count || 0} log`;
+            summary.classList.add('is-live');
+            summary.dataset.historyTaskId = String(live.id || '');
+            summary.dataset.liveHistorySummary = '1';
+            summary.dataset.liveHistoryGroupSize = String(group.tasks.length);
+            summary.textContent = [
+                `监控中 · ${liveLabel}`,
+                liveName,
+                dataText,
+                `共 ${group.tasks.length} 条 · 点击展开`,
+            ].filter(Boolean).join(' · ');
+        } else {
+            summary.textContent = `已折叠 ${group.tasks.length} 条任务 · 点击“展开”查看`;
+        }
         summary.title = summary.textContent;
         summary.addEventListener('click', (event) => {
             event.preventDefault();
@@ -304,4 +327,3 @@ export function createHistoryConfigGroupWorkbenchCard(group, splitCollections, o
     }
     return card;
 }
-

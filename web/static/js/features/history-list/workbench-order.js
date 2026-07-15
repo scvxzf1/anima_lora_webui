@@ -1,7 +1,7 @@
 /**
  * History workbench ordering and collection grouping helpers.
  */
-import { HISTORY_UNGROUPED_COLLECTION_KEY } from '../anima-app/helpers/app-constants.js?v=module-bootstrap-20260711-ir6';
+import { HISTORY_UNGROUPED_COLLECTION_KEY } from '../anima-app/helpers/app-constants.js?v=module-bootstrap-20260714-stage-dataset5';
 import {
     configGroupKey,
     groupHistoryTasks,
@@ -10,9 +10,9 @@ import {
     historyTaskCollectionKey,
     historyTaskCollectionLabel,
     historyTaskSortComparator,
-} from '../anima-app/helpers/history-collections-bridge.js?v=module-bootstrap-20260711-ir6';
-import { saveHistoryCollectionSettings, uniqueStringList } from '../anima-app/helpers/history-list-bridge.js?v=module-bootstrap-20260711-ir6';
-import { getHistoryState } from '../anima-app/helpers/history-state-bridge.js?v=module-bootstrap-20260711-ir6';
+} from '../anima-app/helpers/history-collections-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { saveHistoryCollectionSettings, uniqueStringList } from '../anima-app/helpers/history-list-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { getHistoryState } from '../anima-app/helpers/history-state-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
 
 const historyState = getHistoryState();
 
@@ -185,4 +185,3 @@ export function sortHistoryManagerGroupTasks(group) {
 export function historyTaskCollectionValue(task) {
     return String(task?.group || '').trim();
 }
-

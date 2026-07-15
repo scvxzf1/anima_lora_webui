@@ -1,10 +1,10 @@
 /**
  * Stage schedule model and pure helpers.
  */
-import { getAppContext } from '../anima-app/helpers/app-context-bridge.js?v=module-bootstrap-20260711-ir6';
-import { getConfigState } from '../anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260711-ir6';
-import { getDatasetState } from '../anima-app/helpers/dataset-state-bridge.js?v=module-bootstrap-20260711-ir6';
-import { setTomlStatus } from '../anima-app/helpers/toml-action-state-bridge.js?v=module-bootstrap-20260711-ir6';
+import { getAppContext } from '../anima-app/helpers/app-context-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { getConfigState } from '../anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { getDatasetState } from '../anima-app/helpers/dataset-state-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { setTomlStatus } from '../anima-app/helpers/toml-action-state-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
 
 const ctx = getAppContext();
 const configState = getConfigState();
@@ -38,9 +38,21 @@ export function readTotalSteps() {
     return steps > 0 ? steps : 0;
 }
 
+export function activeStageScheduleDatasetState(datasetState = getDatasetState()) {
+    const datasetTabActive = Boolean(
+        typeof document !== 'undefined'
+        && document.getElementById('tab-datasets')?.classList.contains('active'),
+    );
+    return datasetTabActive
+        ? (datasetState.datasetPresetState || {})
+        : (datasetState.datasetEditorState || {});
+}
+
 export function pickDatasetRows(datasetState) {
-    // Prefer the active panel's non-empty row list. Empty arrays are truthy in JS,
-    // so a naive `a || b` would hide multi-row presets behind an empty editor state.
+    const active = activeStageScheduleDatasetState(datasetState);
+    if (Array.isArray(active.datasets) && active.datasets.length) return active.datasets;
+    // During initial rendering the active state may not be hydrated yet. Fall back
+    // to the other panel, but never let an empty array mask a populated one.
     const candidates = [
         datasetState.datasetPresetState?.datasets,
         datasetState.datasetEditorState?.datasets,
@@ -70,23 +82,44 @@ export function listSubsetOptions() {
     });
 }
 
-export function defaultStageScheduleStages() {
+export function defaultStageScheduleStages(options = listSubsetOptions()) {
+    const subsetCount = Math.max(1, Array.isArray(options) ? options.length : 0);
     return [
         { name: '阶段1', subset_index: 0, start_pct: 0, end_pct: 0.5 },
-        { name: '阶段2', subset_index: 1, start_pct: 0.5, end_pct: 1 },
+        { name: '阶段2', subset_index: Math.min(1, subsetCount - 1), start_pct: 0.5, end_pct: 1 },
     ];
 }
 
 export function resolveStageScheduleSource(config = configState.currentConfig || {}) {
     const draft = configState.configFormState?.draftValues;
     const hasDraft = (key) => Boolean(draft?.has?.(key));
+    if (hasDraft('stage_schedule_enabled') || hasDraft('stage_schedule')) {
+        return {
+            stage_schedule_enabled: hasDraft('stage_schedule_enabled')
+                ? draft.get('stage_schedule_enabled')
+                : config.stage_schedule_enabled,
+            stage_schedule: hasDraft('stage_schedule')
+                ? draft.get('stage_schedule')
+                : config.stage_schedule,
+        };
+    }
+    // The active dataset configuration owns stage_schedule.
+    const datasetState = getDatasetState();
+    const activeDataset = activeStageScheduleDatasetState(datasetState);
+    if (
+        activeDataset.selectedFile
+        || activeDataset.dataset_config
+        || Array.isArray(activeDataset.stage_schedule)
+        || activeDataset.stage_schedule_enabled != null
+    ) {
+        return {
+            stage_schedule_enabled: activeDataset.stage_schedule_enabled,
+            stage_schedule: activeDataset.stage_schedule,
+        };
+    }
     return {
-        stage_schedule_enabled: hasDraft('stage_schedule_enabled')
-            ? draft.get('stage_schedule_enabled')
-            : config.stage_schedule_enabled,
-        stage_schedule: hasDraft('stage_schedule')
-            ? draft.get('stage_schedule')
-            : config.stage_schedule,
+        stage_schedule_enabled: config.stage_schedule_enabled,
+        stage_schedule: config.stage_schedule,
     };
 }
 
@@ -99,6 +132,28 @@ export function hydrateStageScheduleFromConfig(config = {}) {
     stageResolutionState.stages = stages;
     stageResolutionState.selectedIndex = 0;
     stageResolutionState._hydratedFromConfig = true;
+}
+
+export function hydrateStageScheduleFromDatasetPreset(preset = {}, options = {}) {
+    const enabled = Boolean(preset?.stage_schedule_enabled);
+    let stages = normalizeRawStages(preset?.stage_schedule);
+    if (!stages.length) stages = defaultStageScheduleStages();
+    stageResolutionState.enabled = enabled;
+    stageResolutionState.stages = stages;
+    stageResolutionState.selectedIndex = 0;
+    stageResolutionState._hydratedFromConfig = true;
+    // Mirror into currentConfig for summaries; only touch draft when requested.
+    if (configState.currentConfig && typeof configState.currentConfig === 'object') {
+        configState.currentConfig.stage_schedule_enabled = enabled;
+        configState.currentConfig.stage_schedule = stages;
+    }
+    if (options.touchDraft) {
+        const draft = configState.configFormState?.draftValues;
+        if (draft && typeof draft.set === 'function') {
+            draft.set('stage_schedule_enabled', enabled);
+            draft.set('stage_schedule', stages);
+        }
+    }
 }
 
 export function normalizeRawStages(raw) {
@@ -166,7 +221,7 @@ export function stageResolutionMetrics() {
         const warnings = [];
         if (!(stage.end_pct > stage.start_pct + 1e-9)) problems.push('区间为空');
         if (!optionByIndex.has(stage.subset_index) && options.length) {
-            warnings.push('子集索引可能超出当前数据集');
+            problems.push('子集索引超出当前数据集');
         }
         if (index > 0) {
             const prev = stages[index - 1];

@@ -1,16 +1,16 @@
 /**
  * TOML group list rendering and file/group row UI.
  */
-import { readTomlGroupState, writeTomlGroupState } from './group-state.js?v=module-bootstrap-20260711-ir6';
+import { readTomlGroupState, writeTomlGroupState } from './group-state.js?v=module-bootstrap-20260714-stage-dataset5';
 import {
     createFileGroupDragHandle,
     setupFileGroupHeaderDropTarget,
     setupFileGroupListDropTarget,
     setupFileGroupRowDropTarget,
-} from './file-group-drag.js?v=module-bootstrap-20260711-ir9';
-import { setupConfigGroupDropTarget } from './config-group-drop.js?v=module-bootstrap-20260711-ir9';
-import { updateConfigPageSummary } from '../anima-app/helpers/toml-manager-bridge.js?v=module-bootstrap-20260711-ir6';
-import { canDeleteTomlGroup, deleteTomlGroup, deleteTomlGroupButtonTitle } from '../anima-app/helpers/toml-actions-bridge.js?v=module-bootstrap-20260711-ir6';
+} from './file-group-drag.js?v=module-bootstrap-20260714-stage-dataset5';
+import { setupConfigGroupDropTarget } from './config-group-drop.js?v=module-bootstrap-20260714-stage-dataset5';
+import { updateConfigPageSummary } from '../anima-app/helpers/toml-manager-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { canDeleteTomlGroup, deleteTomlGroup, deleteTomlGroupButtonTitle } from '../anima-app/helpers/toml-actions-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
 import {
     createTomlGroup,
     renameTomlGroup,
@@ -18,18 +18,18 @@ import {
     tomlFileDisplayName,
     tomlLockLabel,
     toggleTomlGroupLock,
-} from '../anima-app/helpers/toml-action-state-bridge.js?v=module-bootstrap-20260711-ir6';
-import { hasPendingConfigChanges, updateTomlSelectionUI } from '../anima-app/helpers/toml-selection-bridge.js?v=module-bootstrap-20260711-ir6';
-import { shouldShowTomlGroup } from '../anima-app/helpers/toml-io-bridge.js?v=module-bootstrap-20260711-ir6';
-import { selectAndApplyTomlFile } from '../anima-app/helpers/output-run-bridge.js?v=module-bootstrap-20260711-ir6';
-import { getTomlState } from '../anima-app/helpers/toml-state-bridge.js?v=module-bootstrap-20260711-ir6';
-import { getTrainingState } from '../anima-app/helpers/training-state-bridge.js?v=module-bootstrap-20260711-ir6';
+} from '../anima-app/helpers/toml-action-state-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { hasPendingConfigChanges, updateTomlSelectionUI } from '../anima-app/helpers/toml-selection-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { shouldShowTomlGroup } from '../anima-app/helpers/toml-io-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { selectAndApplyTomlFile } from '../anima-app/helpers/output-run-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { getTomlState } from '../anima-app/helpers/toml-state-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { getTrainingState } from '../anima-app/helpers/training-state-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
 import {
     createTomlGroupDragHandle,
     isTomlFileDraggable,
     tomlFileDragOptions,
     tomlGroupDragOptions,
-} from './drag-core.js?v=module-bootstrap-20260711-ir6';
+} from './drag-core.js?v=module-bootstrap-20260714-stage-dataset5';
 import {
     createTomlGroupActionButton,
     enqueueTomlGroupToQueue,
@@ -37,7 +37,7 @@ import {
     exportableTomlGroupFiles,
     queueableTomlGroupFiles,
     runTomlGroupAction,
-} from './drag-actions.js?v=module-bootstrap-20260711-ir6';
+} from './drag-actions.js?v=module-bootstrap-20260714-stage-dataset5';
 
 const tomlState = getTomlState();
 const trainingState = getTrainingState();

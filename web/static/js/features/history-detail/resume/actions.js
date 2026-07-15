@@ -3,13 +3,13 @@ import {
     fetchResumeOptions,
     inspectContinueLoraWeight,
     postResumeTraining,
-} from '../api.js?v=module-bootstrap-20260711-ir6';
+} from '../api.js?v=module-bootstrap-20260714-stage-dataset5';
 import {
     clearResumeState,
     selectedHistoryManagerResumeCheckpointFromState,
     selectedResumeCheckpointFromState,
     setResumeLoadingForTask as setResumeLoadingForTaskState,
-} from './state.js?v=module-bootstrap-20260711-ir6';
+} from './state.js?v=module-bootstrap-20260714-stage-dataset5';
 
 export function createHistoryResumeActions({ ctx, state, deps, slots, renderResumePanelState }) {
     function setResumeLoadingForTask(taskId) {

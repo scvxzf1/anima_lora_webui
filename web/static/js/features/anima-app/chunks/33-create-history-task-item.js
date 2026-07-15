@@ -12,13 +12,13 @@ import {
     historyTaskIds,
     historyTaskIsArchived,
     selectedHistoryTasks,
-} from '../helpers/history-collections-bridge.js?v=module-bootstrap-20260711-ir6';
-import { clearHistoryManagerDetail, configureHistoryTaskActionsBridge, isHistoryDetailDialogOpen, loadConfigGroupTimeline, loadHistoryTask, openSidebarHistoryTask, renderHistoryManagerDetail, showHistoryCollectionSelectDialog, showHistoryTaskConfirmDialog, showHistoryTaskDialog, showHistoryTaskMessageDialog } from '../helpers/history-task-actions-bridge.js?v=module-bootstrap-20260711-ir6';
-import { isHistoryReviewMode } from '../helpers/history-detail-bridge.js?v=module-bootstrap-20260711-ir6';
-import { historyStateLabel } from '../helpers/history-timeline-bridge.js?v=module-bootstrap-20260711-ir6';
-import { loadTrainingHistoryList, uniqueStringList } from '../helpers/history-list-bridge.js?v=module-bootstrap-20260711-ir6';
-import { api } from '../helpers/runtime-bridge.js?v=module-bootstrap-20260711-ir6';
-import { getHistoryState } from '../helpers/history-state-bridge.js?v=module-bootstrap-20260711-ir6';
+} from '../helpers/history-collections-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { clearHistoryManagerDetail, configureHistoryTaskActionsBridge, isHistoryDetailDialogOpen, loadConfigGroupTimeline, loadHistoryTask, openSidebarHistoryTask, renderHistoryManagerDetail, showHistoryCollectionSelectDialog, showHistoryTaskConfirmDialog, showHistoryTaskDialog, showHistoryTaskMessageDialog } from '../helpers/history-task-actions-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { isHistoryReviewMode } from '../helpers/history-detail-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { historyStateLabel } from '../helpers/history-timeline-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { loadTrainingHistoryList, uniqueStringList } from '../helpers/history-list-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { api } from '../helpers/runtime-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { getHistoryState } from '../helpers/history-state-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
 
 const historyState = getHistoryState();
 
@@ -26,6 +26,7 @@ const historyState = getHistoryState();
         const card = document.createElement('article');
         card.className = 'task-history-item';
         card.dataset.taskId = String(task.id || '');
+        card.dataset.historyTaskId = String(task.id || '');
         if (task.id === historyState.viewingHistoryTaskId && isHistoryReviewMode()) card.classList.add('active');
         const archived = historyTaskIsArchived(task);
         if (archived) card.classList.add('archived');
@@ -72,6 +73,7 @@ const historyState = getHistoryState();
         }
         const counts = document.createElement('em');
         counts.className = 'task-history-counts';
+        counts.dataset.liveHistoryCounts = 'sidebar';
         counts.textContent = `${task.metric_count || 0} loss点 / ${task.log_count || 0} 日志`;
         main.append(title, meta, paths, counts);
 

@@ -4,15 +4,15 @@
  */
 import {
     GLOBAL_MODEL_PATH_FIELDS,
-} from '../../config/catalog.js?v=module-bootstrap-20260711-ir6';
-import { SELECTIVE_CHECKPOINT_STRENGTH } from '../anima-app/helpers/app-constants.js?v=module-bootstrap-20260711-ir6';
-import { getAppShellState } from '../anima-app/helpers/app-shell-state-bridge.js?v=module-bootstrap-20260711-ir6';
-import { originalConfigFieldValue, readFieldInputValue } from '../anima-app/helpers/config-form-bridge.js?v=module-bootstrap-20260711-ir6';
-import { getConfigState } from '../anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260711-ir6';
-import { handleFormFieldChange } from './form-fields.js?v=module-bootstrap-20260711-ir6';
-import { setTomlStatus } from '../anima-app/helpers/toml-action-state-bridge.js?v=module-bootstrap-20260711-ir6';
-import { loadGlobalSettings, getGlobalModelPathOverrides } from '../anima-app/helpers/global-settings-bridge.js?v=module-bootstrap-20260711-ir6';
-import { showAppConfirmDialog } from '../anima-app/helpers/toml-selection-bridge.js?v=module-bootstrap-20260711-ir6';
+} from '../../config/catalog.js?v=module-bootstrap-20260714-stage-dataset5';
+import { SELECTIVE_CHECKPOINT_STRENGTH } from '../anima-app/helpers/app-constants.js?v=module-bootstrap-20260714-stage-dataset5';
+import { getAppShellState } from '../anima-app/helpers/app-shell-state-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { originalConfigFieldValue, readFieldInputValue } from '../anima-app/helpers/config-form-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { getConfigState } from '../anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { handleFormFieldChange } from './form-fields.js?v=module-bootstrap-20260714-stage-dataset5';
+import { setTomlStatus } from '../anima-app/helpers/toml-action-state-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { loadGlobalSettings, getGlobalModelPathOverrides } from '../anima-app/helpers/global-settings-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { showAppConfirmDialog } from '../anima-app/helpers/toml-selection-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
 
 const appShellState = getAppShellState();
 const configState = getConfigState();

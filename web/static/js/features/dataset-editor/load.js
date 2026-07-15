@@ -2,35 +2,36 @@
  * Dataset editor / preset loaders.
  * Extracted from anima-app chunk 03.
  */
-import { HIDDEN_DATASET_PRESET_FILES } from '../anima-app/helpers/app-constants.js?v=module-bootstrap-20260711-ir6';
-import { getConfigState } from '../anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260711-ir6';
-import { getDatasetState } from '../anima-app/helpers/dataset-state-bridge.js?v=module-bootstrap-20260711-ir6';
+import { HIDDEN_DATASET_PRESET_FILES } from '../anima-app/helpers/app-constants.js?v=module-bootstrap-20260714-stage-dataset5';
+import { getConfigState } from '../anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { getDatasetState } from '../anima-app/helpers/dataset-state-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
 import {
     normalizeDatasetDefaults,
     normalizeDatasetEditorRows,
-} from '../anima-app/helpers/dataset-values.js?v=module-bootstrap-20260711-ir6';
+} from '../anima-app/helpers/dataset-values.js?v=module-bootstrap-20260714-stage-dataset5';
 import {
     datasetPresetSummaryByFile,
     orderDatasetPresetsForGroups,
     selectedDatasetConfigOverride,
     sortDatasetPresetGroups,
-} from '../anima-app/helpers/dataset-presets.js?v=module-bootstrap-20260711-ir6';
+} from '../anima-app/helpers/dataset-presets.js?v=module-bootstrap-20260714-stage-dataset5';
 import {
     renderConfigDatasetPickerDialog,
     renderDatasetEditor,
     renderDatasetPresetHeader,
     renderDatasetPresetList,
     isDatasetTabActive,
-} from '../anima-app/helpers/dataset-render-bridge.js?v=module-bootstrap-20260711-ir6';
-import { isCliOnlySpdSource } from '../anima-app/helpers/training-launch-bridge.js?v=module-bootstrap-20260711-ir6';
-import { confirmUnsavedDiscard } from '../anima-app/helpers/toml-selection-bridge.js?v=module-bootstrap-20260711-ir6';
-import { api, datasetPresetApi, val } from '../anima-app/helpers/runtime-bridge.js?v=module-bootstrap-20260711-ir6';
-import { getTrainingState } from '../anima-app/helpers/training-state-bridge.js?v=module-bootstrap-20260711-ir6';
-import { currentTrainingConfigFile } from '../anima-app/helpers/preflight-dialog-bridge.js?v=module-bootstrap-20260711-ir6';
+} from '../anima-app/helpers/dataset-render-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { isCliOnlySpdSource } from '../anima-app/helpers/training-launch-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { confirmUnsavedDiscard } from '../anima-app/helpers/toml-selection-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { api, datasetPresetApi, val } from '../anima-app/helpers/runtime-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { getTrainingState } from '../anima-app/helpers/training-state-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { currentTrainingConfigFile } from '../anima-app/helpers/preflight-dialog-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
 import {
     isConfigDatasetPickerDialogOpen,
     renderConfigDatasetPicker,
-} from '../config-form/dataset-picker.js?v=module-bootstrap-20260711-ir6';
+} from '../config-form/dataset-picker.js?v=module-bootstrap-20260714-stage-dataset5';
+import { hydrateStageScheduleFromDatasetPreset } from '../config-form/stage-resolution-model.js?v=module-bootstrap-20260714-stage-dataset5';
 
 const configState = getConfigState();
 const datasetState = getDatasetState();
@@ -46,6 +47,13 @@ function currentDatasetEditorState() {
 
 function currentDatasetPresetState() {
     return datasetState.datasetPresetState || {};
+}
+
+function clearStageScheduleFormDraft() {
+    const draft = configState.configFormState?.draftValues;
+    if (!draft || typeof draft.delete !== 'function') return;
+    draft.delete('stage_schedule_enabled');
+    draft.delete('stage_schedule');
 }
 
 export async function loadDatasetEditor(parentSeq = configState.configLoadSeq) {
@@ -87,8 +95,14 @@ export async function loadDatasetEditor(parentSeq = configState.configLoadSeq) {
             dataset_config: data.dataset_config || '',
             datasets: normalizeDatasetEditorRows(data.datasets || []),
             defaults: normalizeDatasetDefaults(data.defaults || {}),
+            stage_schedule_enabled: Boolean(data.stage_schedule_enabled),
+            stage_schedule: Array.isArray(data.stage_schedule) ? data.stage_schedule : [],
             error: '',
         };
+        if (!isDatasetTabActive()) {
+            clearStageScheduleFormDraft();
+            hydrateStageScheduleFromDatasetPreset(datasetState.datasetEditorState);
+        }
     } catch (e) {
         if (parentSeq !== configState.configLoadSeq || requestSeq !== datasetState.datasetLoadSeq) return;
         datasetState.datasetEditorState = {
@@ -188,17 +202,24 @@ export async function loadDatasetPreset(file) {
         renderDatasetPresetList();
         return;
     }
-    datasetPresetState.selectedFile = file;
-    datasetPresetState.loading = true;
-    datasetPresetState.error = '';
+    const previousState = datasetPresetState;
+    const requestSeq = (Number(datasetState.datasetPresetReadSeq) || 0) + 1;
+    datasetState.datasetPresetReadSeq = requestSeq;
+    datasetState.datasetPresetState = {
+        ...previousState,
+        selectedFile: file,
+        loading: true,
+        error: '',
+    };
     renderDatasetPresetList();
     renderDatasetPresetHeader();
     renderDatasetEditor();
     try {
         const data = await datasetPresetApi(`/api/config/dataset-presets/read?file=${encodeURIComponent(file)}`);
+        if (requestSeq !== datasetState.datasetPresetReadSeq) return;
         if (!data.ok) throw new Error(data.error || '读取数据集预设失败');
         datasetState.datasetPresetState = {
-            ...datasetPresetState,
+            ...currentDatasetPresetState(),
             loading: false,
             dirty: false,
             isNew: false,
@@ -208,10 +229,15 @@ export async function loadDatasetPreset(file) {
             readonly: Boolean(data.readonly || data.meta?.locked),
             error: '',
             status: '',
+            stage_schedule_enabled: Boolean(data.stage_schedule_enabled),
+            stage_schedule: Array.isArray(data.stage_schedule) ? data.stage_schedule : [],
         };
+        clearStageScheduleFormDraft();
+        hydrateStageScheduleFromDatasetPreset(datasetState.datasetPresetState);
     } catch (e) {
+        if (requestSeq !== datasetState.datasetPresetReadSeq) return;
         datasetState.datasetPresetState = {
-            ...datasetPresetState,
+            ...previousState,
             loading: false,
             error: e.message || '读取数据集预设失败',
         };

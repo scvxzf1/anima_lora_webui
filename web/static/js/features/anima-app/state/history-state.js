@@ -27,6 +27,7 @@ export function createHistoryState() {
         historyConfigGroupSearch: '',
         selectedHistoryCollectionKey: 'collection:__ungrouped__',
         expandedHistoryConfigGroupKeys: new Set(),
+        collapsedHistoryConfigGroupKeys: new Set(),
         historyWorkbenchCollectionsCache: null,
         historyCurrentVisibleTaskIds: [],
         historyDragState: {

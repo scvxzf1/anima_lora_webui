@@ -21,6 +21,11 @@ export function connectWebSocket(...args) { return requireLiveLogHandler('connec
 export function handleWsMessage(...args) { return requireLiveLogHandler('handleWsMessage')(...args); }
 export function appendLog(...args) { return requireLiveLogHandler('appendLog')(...args); }
 export function appendLogRecord(...args) { return requireLiveLogHandler('appendLogRecord')(...args); }
+export function isLogNearBottom(...args) { return requireLiveLogHandler('isLogNearBottom')(...args); }
+export function ensureLogOutputLines(...args) { return requireLiveLogHandler('ensureLogOutputLines')(...args); }
+export function createLogLineNode(...args) { return requireLiveLogHandler('createLogLineNode')(...args); }
+export function removeLeadingLogLines(...args) { return requireLiveLogHandler('removeLeadingLogLines')(...args); }
+export function appendLogOutputLines(...args) { return requireLiveLogHandler('appendLogOutputLines')(...args); }
 export function renderLogOutputLines(...args) { return requireLiveLogHandler('renderLogOutputLines')(...args); }
 export function currentLogOutputLines(...args) { return requireLiveLogHandler('currentLogOutputLines')(...args); }
 export function resetLogOutputLines(...args) { return requireLiveLogHandler('resetLogOutputLines')(...args); }

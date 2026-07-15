@@ -1,4 +1,4 @@
-import { historyDetailLimitNotice } from './system.js?v=module-bootstrap-20260711-ir6';
+import { historyDetailLimitNotice } from './system.js?v=module-bootstrap-20260714-stage-dataset5';
 
 const HISTORY_LOG_RENDER_BATCH_SIZE = 200;
 

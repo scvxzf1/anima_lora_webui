@@ -2,17 +2,18 @@
  * Training history list/manager helpers.
  * Moved out of anima-app mechanical chunks.
  */
-import { renderContinueTrainingSource } from '../anima-app/helpers/training-source-bridge.js?v=module-bootstrap-20260711-ir6';
-import { historyManagerBaseFilteredTasks, historyManagerVisibleTasks, historyTaskIds, historyTaskIsArchived, renderHistoryBulkBar, renderHistoryCollectionsWorkbench, renderHistoryManagerStats, selectedHistoryTasks, syncHistorySelectionWithTasks } from '../anima-app/helpers/history-collections-bridge.js?v=module-bootstrap-20260711-ir6';
-import { createHistoryTaskItem, renderHistoryDetailDialog } from '../anima-app/helpers/history-task-actions-bridge.js?v=module-bootstrap-20260711-ir6';
-import { getHistoryState } from '../anima-app/helpers/history-state-bridge.js?v=module-bootstrap-20260711-ir6';
-import { appendLog } from '../anima-app/helpers/live-log-bridge.js?v=module-bootstrap-20260711-ir6';
+import { renderContinueTrainingSource } from '../anima-app/helpers/training-source-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { historyManagerBaseFilteredTasks, historyManagerVisibleTasks, historyTaskDisplayName, historyTaskIds, historyTaskIsArchived, renderHistoryBulkBar, renderHistoryCollectionsWorkbench, renderHistoryManagerStats, selectedHistoryTasks, syncHistorySelectionWithTasks } from '../anima-app/helpers/history-collections-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { createHistoryTaskItem, renderHistoryDetailDialog } from '../anima-app/helpers/history-task-actions-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { getHistoryState } from '../anima-app/helpers/history-state-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { historyStateLabel } from '../anima-app/helpers/history-timeline-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { appendLog } from '../anima-app/helpers/live-log-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
 import {
     renderPreviewTaskSelect,
     setPreviewStatus,
-} from '../anima-app/helpers/preview-view-bridge.js?v=module-bootstrap-20260711-ir6';
-import { api } from '../anima-app/helpers/runtime-bridge.js?v=module-bootstrap-20260711-ir6';
-import { getTrainingState } from '../anima-app/helpers/training-state-bridge.js?v=module-bootstrap-20260711-ir6';
+} from '../anima-app/helpers/preview-view-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { api } from '../anima-app/helpers/runtime-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { getTrainingState } from '../anima-app/helpers/training-state-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
 
 const historyState = getHistoryState();
 const trainingState = getTrainingState();
@@ -170,6 +171,78 @@ export function normalizeHistoryConfigGroupOrder(value) {
         return out;
     }
 
+export function mergeLiveTrainingHistoryTask(status = {}) {
+        const taskId = String(status.task_id || '').trim();
+        if (!taskId || !Array.isArray(historyState.historyTasks)) return false;
+        const taskIndex = historyState.historyTasks.findIndex((task) => String(task?.id || '') === taskId);
+        if (taskIndex < 0) return false;
+        const current = historyState.historyTasks[taskIndex] || {};
+        const patch = liveTrainingHistoryTaskPatch(status, current);
+        const nextTask = { ...current, ...patch };
+        historyState.historyTasks[taskIndex] = nextTask;
+        patchLiveTrainingHistoryTaskDom(nextTask);
+        return true;
+    }
+
+function liveTrainingHistoryTaskPatch(status, current) {
+        const patch = {};
+        const state = String(status.status || '').trim();
+        if (state) patch.state = state;
+        for (const key of [
+            'variant', 'preset', 'methods_subdir', 'job', 'output_dir', 'sample_dir',
+            'run_dir', 'runtime_config_file', 'original_config_file', 'dataset_config_file',
+            'model_cache_dir', 'dataset_cache_dir', 'training_output_dir', 'logs_dir',
+        ]) {
+            const value = status[key];
+            if (value !== undefined && value !== null && value !== '') patch[key] = value;
+        }
+        const lastOutputAt = Number(status.last_output_at);
+        if (Number.isFinite(lastOutputAt) && lastOutputAt > 0) patch.updated_at = lastOutputAt;
+        const logCount = Number(status.log_count ?? status.last_log_id);
+        const metricCount = Number(status.metric_count);
+        if (Number.isFinite(logCount)) patch.log_count = Math.max(Number(current.log_count || 0), logCount);
+        if (Number.isFinite(metricCount)) patch.metric_count = Math.max(Number(current.metric_count || 0), metricCount);
+        return patch;
+    }
+
+function patchLiveTrainingHistoryTaskDom(task) {
+        if (typeof document === 'undefined' || typeof document.querySelectorAll !== 'function') return;
+        const taskId = String(task.id || '');
+        const roots = [...document.querySelectorAll('[data-history-task-id]')]
+            .filter((node) => String(node.dataset.historyTaskId || '') === taskId);
+        const stateText = [
+            task.job === 'preprocess' ? '预处理' : '训练',
+            historyStateLabel(task.state),
+            historyTaskIsArchived(task) ? '已归档' : '',
+        ].filter(Boolean).join(' · ');
+        for (const root of roots) {
+            for (const node of root.querySelectorAll('[data-live-history-state]')) {
+                node.className = ['history-row-state', task.state || 'unknown'].join(' ');
+                node.textContent = stateText;
+            }
+            for (const node of root.querySelectorAll('[data-live-history-counts]')) {
+                const sidebar = node.dataset.liveHistoryCounts === 'sidebar';
+                node.textContent = sidebar
+                    ? `${task.metric_count || 0} loss点 / ${task.log_count || 0} 日志`
+                    : `${task.metric_count || 0} loss / ${task.log_count || 0} log`;
+            }
+            const summary = root.matches('[data-live-history-summary]')
+                ? root
+                : root.querySelector('[data-live-history-summary]');
+            if (summary) {
+                const label = task.state === 'compiling' ? '编译中' : '运行中';
+                const groupSize = Number(summary.dataset.liveHistoryGroupSize || 1);
+                summary.textContent = [
+                    `监控中 · ${label}`,
+                    historyTaskDisplayName(task),
+                    `${task.metric_count || 0} loss / ${task.log_count || 0} log`,
+                    `共 ${groupSize} 条 · 点击展开`,
+                ].filter(Boolean).join(' · ');
+                summary.title = summary.textContent;
+            }
+        }
+    }
+
 export function renderTrainingHistoryList() {
         const list = document.getElementById('task-history-list');
         if (!list) return;
@@ -271,4 +344,3 @@ export function resetTrainingExpandedStateOnLeave() {
             renderHistoryManager();
         }
     }
-

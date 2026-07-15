@@ -2,15 +2,15 @@
  * Config-form step estimate panel and API loaders.
  * Extracted from anima-app chunk 03.
  */
-import { getConfigState } from '../anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260711-ir6';
-import { selectedDatasetConfigOverride } from '../anima-app/helpers/dataset-presets.js?v=module-bootstrap-20260711-ir6';
-import { readLiveNumber, readNonnegativeLiveNumber, readOptionalLiveNumber } from '../anima-app/helpers/live-form-values.js?v=module-bootstrap-20260711-ir6';
-import { isCliOnlySpdSource } from '../anima-app/helpers/training-launch-bridge.js?v=module-bootstrap-20260711-ir6';
-import { api, val } from '../anima-app/helpers/runtime-bridge.js?v=module-bootstrap-20260711-ir6';
-import { getTrainingState } from '../anima-app/helpers/training-state-bridge.js?v=module-bootstrap-20260711-ir6';
-import { currentTrainingConfigFile } from '../anima-app/helpers/preflight-dialog-bridge.js?v=module-bootstrap-20260711-ir6';
-import { escapeHtml } from './field-input.js?v=module-bootstrap-20260711-ir6';
-import { setText } from '../live-training/dashboard-ui.js?v=module-bootstrap-20260711-ir6';
+import { getConfigState } from '../anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { selectedDatasetConfigOverride } from '../anima-app/helpers/dataset-presets.js?v=module-bootstrap-20260714-stage-dataset5';
+import { readLiveNumber, readNonnegativeLiveNumber, readOptionalLiveNumber } from '../anima-app/helpers/live-form-values.js?v=module-bootstrap-20260714-stage-dataset5';
+import { isCliOnlySpdSource } from '../anima-app/helpers/training-launch-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { api, val } from '../anima-app/helpers/runtime-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { getTrainingState } from '../anima-app/helpers/training-state-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { currentTrainingConfigFile } from '../anima-app/helpers/preflight-dialog-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { escapeHtml } from './field-input.js?v=module-bootstrap-20260714-stage-dataset5';
+import { setText } from '../live-training/dashboard-ui.js?v=module-bootstrap-20260714-stage-dataset5';
 
 const configState = getConfigState();
 const trainingState = getTrainingState();

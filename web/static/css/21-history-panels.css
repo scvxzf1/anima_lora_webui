@@ -3219,6 +3219,19 @@ body.history-detail-window-open {
     border-color: color-mix(in srgb, var(--accent) 48%, var(--border));
     background: color-mix(in srgb, var(--accent) 8%, var(--history-row-bg, var(--bg-card)));
 }
+.history-config-group-collapse-summary.is-live,
+.history-config-group-card.is-live:not(.is-expanded) .history-config-group-collapse-summary {
+    color: color-mix(in srgb, var(--accent) 82%, var(--text));
+    border-style: solid;
+    border-color: color-mix(in srgb, var(--accent) 42%, var(--border));
+    background: color-mix(in srgb, var(--accent) 10%, var(--history-row-bg, var(--bg-card)));
+}
+.history-config-group-card.is-live .history-config-group-card-main strong::after {
+    content: ' · 监控中';
+    color: var(--accent);
+    font-weight: 600;
+    font-size: 0.72em;
+}
 .history-config-group-card.is-expanded .history-config-group-toggle {
     border-color: color-mix(in srgb, var(--accent) 42%, var(--border));
     color: var(--accent);

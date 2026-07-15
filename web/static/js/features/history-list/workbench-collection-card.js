@@ -14,7 +14,7 @@ import {
     startHistoryCollectionMouseDrag,
     startHistoryCollectionPointerDrag,
     startHistoryCollectionTouchDrag,
-} from '../anima-app/helpers/history-collection-drag-bridge.js?v=module-bootstrap-20260711-ir6';
+} from '../anima-app/helpers/history-collection-drag-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
 import {
     applySelectedHistoryTasksToCollection,
     clearHistoryCollection,
@@ -22,13 +22,13 @@ import {
     createHistoryMoreActions,
     historyCompactGroupMetaParts,
     renameHistoryCollection,
-} from '../anima-app/helpers/history-collections-bridge.js?v=module-bootstrap-20260711-ir6';
-import { renderHistoryManager } from '../anima-app/helpers/history-list-bridge.js?v=module-bootstrap-20260711-ir6';
-import { selectHistoryCollectionInWorkbench } from '../anima-app/helpers/history-collections-bridge.js?v=module-bootstrap-20260711-ir6';
-import { getHistoryState } from '../anima-app/helpers/history-state-bridge.js?v=module-bootstrap-20260711-ir6';
+} from '../anima-app/helpers/history-collections-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { renderHistoryManager } from '../anima-app/helpers/history-list-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { selectHistoryCollectionInWorkbench } from '../anima-app/helpers/history-collections-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { getHistoryState } from '../anima-app/helpers/history-state-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
 import {
     moveHistoryCollection,
-} from './workbench-order.js?v=module-bootstrap-20260711-ir6';
+} from './workbench-order.js?v=module-bootstrap-20260714-stage-dataset5';
 
 const historyState = getHistoryState();
 
@@ -178,4 +178,3 @@ export function createHistoryCollectionWorkbenchCard(collection, selectedTaskCou
     card.appendChild(head);
     return card;
 }
-

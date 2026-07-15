@@ -6,14 +6,14 @@ import {
     svgLine,
     svgPolyline,
     svgText,
-} from '../ui.js?v=module-bootstrap-20260711-ir6';
+} from '../ui.js?v=module-bootstrap-20260714-stage-dataset5';
 import {
     formatHistoryCurveAxisValue,
     historyCurveMetricRange,
     historyCurveMetricVisible,
     historyCurveStatsWithHover,
     historyCurveVisibleSegments,
-} from './data.js?v=module-bootstrap-20260711-ir6';
+} from './data.js?v=module-bootstrap-20260714-stage-dataset5';
 
 export function createHistoryCurveChart({
     historyCurveState,

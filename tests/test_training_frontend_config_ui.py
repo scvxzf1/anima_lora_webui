@@ -16,9 +16,16 @@ CHUNK02_REL = "js/features/anima-app/chunks/02-ensure-history-detail-feature.js"
 CHUNK15_REL = "js/features/anima-app/chunks/15-append-sample-prompt-row.js"
 SAMPLE_PROMPT_ROW_UI_REL = "js/features/sample-prompts/row-ui.js"
 TOML_MANAGER_MODE_REL = "js/features/toml-manager/mode.js"
+CHUNK18_REL = "js/features/anima-app/chunks/18-delete-dataset-preset-group.js"
+CONFIG_VALUE_COLLECTOR_REL = "js/features/config-form/config-value-collector.js"
+ADAPTER_FIELD_STATE_REL = "js/features/config-form/adapter-field-state.js"
 
 def _chunk15_compat_text() -> str:
     return _frontend_feature_text(CHUNK15_REL, SAMPLE_PROMPT_ROW_UI_REL, TOML_MANAGER_MODE_REL)
+
+def _chunk18_compat_text() -> str:
+    """Chunk 18 facade plus config-form domain implementations."""
+    return _frontend_feature_text(CHUNK18_REL, CONFIG_VALUE_COLLECTOR_REL, ADAPTER_FIELD_STATE_REL)
 
 CHUNK31_REL = "js/features/anima-app/chunks/31-create-history-collection-workbench-card.js"
 HISTORY_WORKBENCH_CARDS_REL = "js/features/history-list/workbench-cards.js"
@@ -112,12 +119,15 @@ def test_config_form_bridge_reaches_split_form_chunks() -> None:
             "originalConfigFieldValue",
             "syncConfigDraftFromForm",
         ),
-        "js/features/anima-app/chunks/18-delete-dataset-preset-group.js": (
-            "configDraftValueChanged",
+        "js/features/config-form/config-value-collector.js": (
             "displayConfigFieldValue",
             "isActiveNetworkArgFieldKey",
             "originalConfigFieldValue",
             "syncConfigDraftFromForm",
+        ),
+        "js/features/config-form/adapter-field-state.js": (
+            "configDraftValueChanged",
+            "originalConfigFieldValue",
         ),
         "js/features/anima-app/chunks/21-update-toml-selection-ui.js": (
             "configDraftValueChanged",
@@ -138,6 +148,22 @@ def test_config_form_bridge_reaches_split_form_chunks() -> None:
         )
 
 
+def test_chunk18_delegates_form_collection_and_adapter_state_to_config_form() -> None:
+    chunk = _frontend_module_text(CHUNK18_REL)
+    collector = _frontend_module_text(CONFIG_VALUE_COLLECTOR_REL)
+    adapter_state = _frontend_module_text(ADAPTER_FIELD_STATE_REL)
+
+    assert "../../config-form/config-value-collector.js" in chunk
+    assert "../../config-form/adapter-field-state.js" in chunk
+    assert "export function collectChangedFormValues" not in chunk
+    assert "export function updateDoRAFieldState" not in chunk
+    assert "export function collectChangedFormValues" in collector
+    assert "export function collectNetworkArgsFromForm" in collector
+    assert "export function updateDoRAFieldState" in adapter_state
+    assert "export function updateLossWeightingFieldState" in adapter_state
+    assert len(chunk.splitlines()) < 600
+
+
 def test_state_bucket_bridges_reach_hotspot_chunks() -> None:
     index_source = _frontend_module_text("js/features/anima-app/index.js")
     scope_source = _frontend_module_text("js/features/anima-app/chunks/01-scope-state.js")
@@ -154,7 +180,7 @@ def test_state_bucket_bridges_reach_hotspot_chunks() -> None:
     dataset_guide_source = _frontend_feature_text("js/features/anima-app/chunks/13-update-dataset-editor-rows-setting-value.js", "js/features/config-form/choice-guide-ui.js", "js/features/dataset-editor/mutations.js", "js/features/training-source/source-state.js", "js/features/config-form/field-input.js", "js/features/config-form/method-key.js")
     form_fields_source = _frontend_feature_text("js/features/anima-app/chunks/14-lora-adapter-kind-from-config.js", "js/features/config-form/form-fields.js", "js/features/config-form/form-fields-adapters.js", "js/features/config-form/form-fields-sample.js", "js/features/config-form/form-fields-ui.js")
     dataset_apply_source = _frontend_module_text("js/features/anima-app/chunks/17-apply-selected-dataset-preset-to-current-config.js")
-    config_form_patch_source = _frontend_module_text("js/features/anima-app/chunks/18-delete-dataset-preset-group.js")
+    config_form_patch_source = _chunk18_compat_text()
     toml_manager_source = _chunk15_compat_text()
     output_run_source = _frontend_module_text("js/features/anima-app/chunks/16-load-output-run-config.js")
     sample_prompts_source = _frontend_module_text("js/features/anima-app/chunks/19-current-sample-prompt-text.js")
@@ -1154,8 +1180,8 @@ globalThis.updateLogStatusText = () => {};
 globalThis.loadTrainingQueue = async () => {};
 globalThis.loadTrainingHistoryList = async () => {};
 
-const { configureRuntimeBridge } = await import('./web/static/js/features/anima-app/helpers/runtime-bridge.js?v=module-bootstrap-20260711-ir2');
-const { configureHistoryDetailBridge } = await import('./web/static/js/features/anima-app/helpers/history-detail-bridge.js?v=module-bootstrap-20260711-ir2');
+const { configureRuntimeBridge } = await import('./web/static/js/features/anima-app/helpers/runtime-bridge.js?v=module-bootstrap-20260714-stage-dataset5');
+const { configureHistoryDetailBridge } = await import('./web/static/js/features/anima-app/helpers/history-detail-bridge.js?v=module-bootstrap-20260714-stage-dataset5');
 configureHistoryDetailBridge({
     isHistoryReviewMode: () => false,
 });
@@ -1230,12 +1256,18 @@ def test_status_poll_refreshes_training_sidebar_summaries() -> None:
     assert "trainingSidebarSummaryLastTaskId" in polling_source
     assert "trainingSidebarSummaryLastStatus" in polling_source
     assert "trainingSidebarSummaryRefreshPromise" in polling_source
+    assert "mergeLiveTrainingHistoryTask" in polling_source
     assert "refreshTrainingSidebarSummariesFromPoll(status);" in poll_section
     assert poll_section.index("updateStatus({") < poll_section.index("refreshTrainingSidebarSummariesFromPoll(status);")
     assert "const historyTasks = readHistoryTasks();" in refresh_section
     assert "Array.isArray(historyTasks)" in refresh_section
     assert "&& historyTasks.some((task) => String(task.id || '') === taskId)" in refresh_section
-    assert "now - trainingSidebarSummaryLastRefreshAt >= 15000" in refresh_section
+    assert "mergeLiveTrainingHistoryTask(status);" in refresh_section
+    assert "const queueStale = now - trainingSidebarSummaryLastRefreshAt >= 15000;" in refresh_section
+    assert "const shouldRefreshHistory" in refresh_section
+    assert "transitionedToTerminal" in refresh_section
+    assert "historyViewOpen && live" not in refresh_section
+    assert "live && stale" not in refresh_section
     assert "loadTrainingQueue()" in refresh_section
     assert "loadTrainingHistoryList()" in refresh_section
 
@@ -1295,7 +1327,7 @@ def test_config_form_uses_navigation_search_and_progressive_disclosure() -> None
     category_defs = _section(source, "const FORM_CATEGORY_DEFS = [", "const FORM_CATEGORY_SECTION_MAP")
     render_section = _section(source, "function renderConfigForm", "function shouldRenderConfigSection")
     order_section = _section(source, "function appendConfigGroupsByCategory", "function createGroup")
-    collect_impl = _frontend_module_text("js/features/anima-app/chunks/18-delete-dataset-preset-group.js")
+    collect_impl = _chunk18_compat_text()
     collect_section = _section(collect_impl, "function collectChangedFormValues", "function networkArgInputChanged")
     load_steps = _section(step_estimate_source, "async function loadStepEstimate", "async function loadDatasetEditor")
     defaults = _section(source, "const FORM_UI_DEFAULTS = {", "const OPTIONAL_EMPTY_FIELDS")
@@ -1356,7 +1388,7 @@ def test_config_form_uses_navigation_search_and_progressive_disclosure() -> None
     assert "configFormState.draftValues.entries()" in collect_section
     assert "const rawNetworkArgsChanged = 'network_args' in values;" in collect_section
     assert "{ skipUnchangedInputs: rawNetworkArgsChanged }" in collect_section
-    assert "applyLoraAdapterPatch(values)" in collect_section
+    assert "applyLoraAdapterPatch(values, { stripInactive: Boolean(options.persistDefaultFields) })" in collect_section
     assert "const container = document.getElementById('choice-guide');" in source
     assert "if (!container) return;" in source
     assert "function updateChangedFieldMarks" in source
@@ -1527,7 +1559,7 @@ def test_config_form_uses_navigation_search_and_progressive_disclosure() -> None
     assert "grid-template-rows: auto;" in inline_flag_css
 
     primary_section = _section(source, "title: '常用训练设置'", "title: '步数与训练量'")
-    resource_section = _section(source, "title: '显存与速度优化'", "title: 'LoKr 专用优化'")
+    resource_section = _section(source, "title: '显存与速度优化'", "title: '数据加载与 VAE 资源'")
     optimization_section = _section(source, "title: '显存与速度优化'", "title: '缓存与预处理'")
     experimental_section = _section(source, "title: '实验性功能'", "title: '无数据集正则化'")
     no_dataset_reg_section = _section(source, "title: '无数据集正则化'", "title: '缓存与预处理'")
@@ -1552,9 +1584,11 @@ def test_config_form_uses_navigation_search_and_progressive_disclosure() -> None
     assert "'peak_probe_max_steps'," in optimization_section
     assert "'peak_probe_level'," in optimization_section
     assert "'lr_warmup_steps'," in optimization_section
-    assert "'lokr_factor_group_size'," in optimization_section
-    assert "'lokr_project_chunk_bytes'," in optimization_section
-    assert "sections: ['显存与速度优化', 'LoKr 专用优化', '数据加载与 VAE 资源', '实验性功能', '无数据集正则化']" in category_defs
+    lokr_section = _section(source, "title: 'LoKr 专用优化'", "title: '数据集设置'")
+    assert "'lokr_factor_group_size'," in lokr_section
+    assert "'lokr_project_chunk_bytes'," in lokr_section
+    assert "sections: ['常用训练设置', '步数与训练量', 'LoKr 专用优化']" in category_defs
+    assert "sections: ['显存与速度优化', '数据加载与 VAE 资源', '实验性功能', '无数据集正则化']" in category_defs
     assert category_defs.index("数据加载与 VAE 资源") < category_defs.index("实验性功能")
     assert category_defs.index("实验性功能") < category_defs.index("无数据集正则化")
     assert "notice: '建议：正式训练保持默认。'" in experimental_section
@@ -1681,7 +1715,7 @@ def test_precision_preference_ui_maps_to_training_precision_fields() -> None:
     helper_source = _frontend_module_text("js/features/anima-app/helpers/config-values.js")
     form_helper_source = _frontend_feature_text("js/features/anima-app/chunks/14-lora-adapter-kind-from-config.js", "js/features/config-form/form-fields.js", "js/features/config-form/form-fields-adapters.js", "js/features/config-form/form-fields-sample.js", "js/features/config-form/form-fields-ui.js")
     option_source = _chunk15_compat_text()
-    patch_source = _frontend_module_text("js/features/anima-app/chunks/18-delete-dataset-preset-group.js")
+    patch_source = _chunk18_compat_text()
     guide_source = _frontend_feature_text("js/features/anima-app/chunks/13-update-dataset-editor-rows-setting-value.js", "js/features/config-form/choice-guide-ui.js")
 
     assert "function normalizePrecisionPreference" in helper_source
@@ -1731,7 +1765,7 @@ def test_precision_preference_persists_even_when_matching_ui_default() -> None:
 
 
 def test_preprocess_precision_preference_is_persisted_when_missing_from_current_config() -> None:
-    source = _frontend_module_text("js/features/anima-app/chunks/18-delete-dataset-preset-group.js")
+    source = _chunk18_compat_text()
     collect_section = _section(source, "function collectChangedFormValues", "function networkArgInputChanged")
 
     assert "options.persistDefaultFields" in collect_section
@@ -1773,7 +1807,7 @@ def test_soft_tokens_advanced_fields_match_training_defaults() -> None:
 
 def test_network_args_raw_editor_keeps_unmodified_split_controls_from_overwriting() -> None:
     source = APP_JS.read_text(encoding="utf-8")
-    collect_impl = _frontend_module_text("js/features/anima-app/chunks/18-delete-dataset-preset-group.js")
+    collect_impl = _chunk18_compat_text()
     form_fields = _frontend_feature_text(
         "js/features/anima-app/chunks/14-lora-adapter-kind-from-config.js",
         "js/features/config-form/form-fields.js", "js/features/config-form/form-fields-adapters.js", "js/features/config-form/form-fields-sample.js", "js/features/config-form/form-fields-ui.js",
@@ -1797,7 +1831,7 @@ def test_config_form_keeps_dora_as_lora_addon_and_merges_exclusive_adapters() ->
         "js/features/anima-app/chunks/14-lora-adapter-kind-from-config.js",
         "js/features/config-form/form-fields.js", "js/features/config-form/form-fields-adapters.js", "js/features/config-form/form-fields-sample.js", "js/features/config-form/form-fields-ui.js",
     )
-    collect_impl = _frontend_module_text("js/features/anima-app/chunks/18-delete-dataset-preset-group.js")
+    collect_impl = _chunk18_compat_text()
     defaults = _section(source, "const FORM_UI_DEFAULTS = {", "const OPTIONAL_EMPTY_FIELDS")
     network_arg_specs = _section(source, "const NETWORK_ARG_FIELD_SPECS = [", "const NETWORK_ARG_FIELD_MAP")
     layout = _section(source, "const FORM_SECTION_DEFS = [", "const STICKY_CONFIG_CATEGORY_IDS")
@@ -1822,7 +1856,7 @@ def test_config_form_keeps_dora_as_lora_addon_and_merges_exclusive_adapters() ->
     assert "'use_lokr'" not in layout
     assert "'use_glora'" not in layout
     assert "'use_vera'" not in layout
-    assert "keys: ['network_dim', 'network_alpha', 'lora_adapter_kind', 'dora_wd', 'lokr_factor', 'vera_projection_prng_key', 'vera_d_initial', 'vera_save_projection']" in source
+    assert "keys: ['network_dim', 'network_alpha', 'lora_adapter_kind', 'dora_wd', 'lokr_factor', 'lokr_full_factor', 'vera_projection_prng_key', 'vera_d_initial', 'vera_save_projection']" in source
     assert "{ family: 'lokr', key: 'lokr_factor_group_size', arg: 'lokr_factor_group_size', default: 8, valueType: 'integer' }" in network_arg_specs
     assert "{ family: 'lokr', key: 'lokr_project_chunk_bytes', arg: 'lokr_project_chunk_bytes', default: 4194304, valueType: 'integer' }" in network_arg_specs
     assert "{ family: 'lokr', key: 'lokr_use_einsum', arg: 'lokr_use_einsum', default: true, valueType: 'boolean' }" in network_arg_specs
@@ -2010,7 +2044,7 @@ def test_weight_hotstart_audit_keeps_pending_state_until_refresh_finishes() -> N
 
 def test_optional_number_fields_can_be_cleared() -> None:
     source = APP_JS.read_text(encoding="utf-8")
-    form_values_source = _frontend_module_text("js/features/anima-app/chunks/18-delete-dataset-preset-group.js")
+    form_values_source = _chunk18_compat_text()
     optional_numbers = _section(source, "const OPTIONAL_EMPTY_NUMBER_FIELDS = new Set([", "const FORM_UI_PERSIST_DEFAULT_FIELDS")
     reader = _section(form_values_source, "function readFieldInputValue", "function readLoKrEnabled")
 
@@ -2275,6 +2309,7 @@ def test_balanced_16g_block_swap_fields_are_visible() -> None:
     guides = _frontend_module_text("js/config/catalog/guides.js")
 
     optimization_section = _section(form_layout, "title: '显存与速度优化'", "title: '缓存与预处理'")
+    lokr_section = _section(form_layout, "title: 'LoKr 专用优化'", "title: '数据集设置'")
 
     for key in (
         "blocks_to_swap",
@@ -2291,13 +2326,19 @@ def test_balanced_16g_block_swap_fields_are_visible() -> None:
         "preprocess_vae_cache_batch_size",
         "preprocess_text_cache_batch_size",
         "lr_warmup_steps",
+        "disable_block_swap_for_eval",
+    ):
+        assert f"'{key}'," in optimization_section
+
+    for key in (
         "lokr_factor_group_size",
         "lokr_project_chunk_bytes",
         "lokr_use_einsum",
         "lokr_decompose_w2",
-        "disable_block_swap_for_eval",
+        "lokr_full_factor",
+        "lokr_allow_legacy_dim",
     ):
-        assert f"'{key}'," in optimization_section
+        assert f"'{key}'," in lokr_section
 
     assert "block_swap_profile_jsonl: '块交换 Profile'" in labels_options
     assert "compile_block_scope: '编译块范围'" in labels_options
@@ -2669,7 +2710,7 @@ def test_dataset_preset_manager_is_isolated_from_config_page() -> None:
 
 
 def test_config_dataset_editor_save_syncs_picker_selection_and_summary() -> None:
-    source = _frontend_module_text("js/features/anima-app/chunks/18-delete-dataset-preset-group.js")
+    source = _chunk18_compat_text()
     save_editor = _section(source, "export async function saveDatasetEditor(options = {})", "export function collectChangedFormValues")
 
     assert "const nextDatasetConfig = nextDatasetEditorState.dataset_config || '';" in save_editor
@@ -3002,6 +3043,7 @@ def test_dataset_editor_drag_has_browser_fallbacks() -> None:
 def test_dataset_page_toolbar_hosts_experimental_and_stage_entries() -> None:
     """数据集页顶栏承载实验性 + 分阶段入口；配置页不再当主编辑面。"""
     toolbar = _frontend_module_text("js/features/dataset-editor/toolbar.js")
+    editor_panel = _frontend_module_text("js/features/dataset-editor/dataset-editor-panel.js")
     editor_chunk = _frontend_feature_text(
         "js/features/anima-app/chunks/09-setup-config-group-drop-target.js",
         "js/features/toml-manager/config-group-drop.js",
@@ -3013,6 +3055,8 @@ def test_dataset_page_toolbar_hosts_experimental_and_stage_entries() -> None:
     assert "createDatasetEditorToolbarActions" in toolbar
     assert "createDatasetEditorToolbarActions" in editor_chunk
     assert "btn-dataset-open-stage-schedule" in editor_chunk or "createDatasetEditorToolbarActions" in editor_chunk
+    assert "renderDatasetPresetHeader" in editor_panel
+    assert "dataset-render-bridge.js" in editor_panel
 
 
 def test_stage_schedule_primary_entry_moves_to_dataset_page() -> None:
@@ -3025,16 +3069,17 @@ def test_stage_schedule_primary_entry_moves_to_dataset_page() -> None:
     stage_ui = _frontend_feature_text("js/features/config-form/stage-resolution.js", "js/features/config-form/stage-resolution-model.js", "js/features/config-form/stage-resolution-ui.js", "js/features/config-form/stage-resolution-ui-widgets.js", "js/features/config-form/stage-resolution-ui-dialog.js")
 
     assert "createOpenStageResolutionDialogButton" not in group_entry
-    assert "createStageScheduleInlineSummary" in group_entry
+    assert "createStageScheduleInlineSummary" not in group_entry
+    assert "createConfigDatasetPicker" in group_entry
     assert "btn-dataset-open-stage-schedule" in toolbar
-    assert "Always re-sync from draft || currentConfig" in stage_ui
+    assert "hydrateStageScheduleFromDatasetPreset" in stage_ui or "Always re-sync" in stage_ui
     assert "key === 'stage_schedule' || key === 'stage_schedule_enabled'" in _frontend_module_text(
         "js/features/config-form/index.js"
     )
 
 
 def test_stage_schedule_dialog_is_wired_from_dataset_group() -> None:
-    """分阶段 dialog 由数据集顶栏打开，字段仍写训练配置 stage_schedule*。"""
+    """分阶段 dialog 由数据集顶栏打开，字段绑定数据集配置 stage_schedule*。"""
     html = INDEX_HTML.read_text(encoding="utf-8")
     toolbar = _frontend_module_text("js/features/dataset-editor/toolbar.js")
     stage_ui = _frontend_feature_text("js/features/config-form/stage-resolution.js", "js/features/config-form/stage-resolution-model.js", "js/features/config-form/stage-resolution-ui.js", "js/features/config-form/stage-resolution-ui-widgets.js", "js/features/config-form/stage-resolution-ui-dialog.js")
@@ -3055,6 +3100,88 @@ def test_stage_schedule_subset_options_prefer_nonempty_dataset_rows() -> None:
     assert "Array.isArray(rows) && rows.length" in stage_ui
     # Prefer source_dir for human labels when present.
     assert "source_dir || row?.image_dir" in stage_ui or "source_dir || row.image_dir" in stage_ui
+
+
+def test_stage_schedule_defaults_follow_subset_count_and_block_out_of_range() -> None:
+    """单子集默认阶段不得绑定 subset 1，任何越界都必须计入阻断错误。"""
+    model = _frontend_module_text("js/features/config-form/stage-resolution-model.js")
+    default_block = model.split("export function defaultStageScheduleStages", 1)[1].split(
+        "export function resolveStageScheduleSource", 1
+    )[0]
+    metrics_block = model.split("export function stageResolutionMetrics", 1)[1].split(
+        "export function stageResolutionStatus", 1
+    )[0]
+
+    assert "options = listSubsetOptions()" in default_block
+    assert "subsetCount" in default_block
+    assert "Math.min(1, subsetCount - 1)" in default_block
+    assert "subset_index: 1" not in default_block
+    assert "problems.push('子集索引超出当前数据集')" in metrics_block
+    assert "warnings.push('子集索引可能超出当前数据集')" not in metrics_block
+
+
+
+
+def test_stage_schedule_dialog_title_uses_step_ranges_not_curriculum_wording() -> None:
+    """数据集分阶段对话框标题改为「分阶段调度」，强调步数区间，去掉课表措辞。"""
+    html = INDEX_HTML.read_text(encoding="utf-8")
+    stage_ui = _frontend_feature_text(
+        "js/features/config-form/stage-resolution.js",
+        "js/features/config-form/stage-resolution-model.js",
+        "js/features/config-form/stage-resolution-ui.js",
+        "js/features/config-form/stage-resolution-ui-widgets.js",
+        "js/features/config-form/stage-resolution-ui-dialog.js",
+        "js/features/config-form/stage-resolution-ui-render.js",
+    )
+    assert 'id="stage-resolution-dialog-title">分阶段调度<' in html
+    assert "分阶段调度课表" not in html
+    assert "步数区间时间轴" in stage_ui
+    assert "阶段步数区间" in stage_ui
+    assert "时间轴课表" not in stage_ui
+    assert "编辑课表" not in stage_ui
+    assert "编辑步数区间" in stage_ui
+
+
+
+
+def test_stage_schedule_apply_requires_save_and_shows_feedback() -> None:
+    """分阶段调度必须明确区分草稿/落盘，并提供写入并保存按钮。"""
+    stage_ui = _frontend_feature_text(
+        "js/features/config-form/stage-resolution.js",
+        "js/features/config-form/stage-resolution-model.js",
+        "js/features/config-form/stage-resolution-ui.js",
+        "js/features/config-form/stage-resolution-ui-widgets.js",
+        "js/features/config-form/stage-resolution-ui-dialog.js",
+        "js/features/config-form/stage-resolution-ui-render.js",
+    )
+    assert "仅写入草稿" in stage_ui
+    assert "写入并保存配置" in stage_ui
+    assert "刷新页面会丢失" in stage_ui or "刷新会丢失" in stage_ui
+    assert "/api/config/dataset-presets" in stage_ui
+    assert "resolveStageScheduleTargetFile" in stage_ui
+    assert "syncStageResolutionEditorInputs" in stage_ui
+    assert stage_ui.index("syncStageResolutionEditorInputs();") < stage_ui.index("const metrics = stageResolutionMetrics();", stage_ui.index("async function applyStageScheduleToDraft"))
+    assert "未选中数据集预设" in stage_ui or "写入并保存配置" in stage_ui
+    # 分阶段调度只写数据集配置，不回退到训练 TOML PATCH。
+    assert "/api/config/raw/patch-preview" not in stage_ui
+    assert "saveFormPatchToToml" not in stage_ui
+    assert "stage-resolution-feedback" in stage_ui
+    assert "应用到配置草稿" not in stage_ui
+
+
+def test_stage_schedule_widgets_rerender_via_host_not_missing_import() -> None:
+    """widgets 通过 render host 回刷 dialog，避免未导入 renderStageResolutionDialog 运行时炸掉。"""
+    widgets = _frontend_module_text("js/features/config-form/stage-resolution-ui-widgets.js")
+    dialog = _frontend_module_text("js/features/config-form/stage-resolution-ui-dialog.js")
+    render_host = _frontend_module_text("js/features/config-form/stage-resolution-ui-render.js")
+    assert "requestStageResolutionRender" in widgets
+    assert "renderStageResolutionDialog()" not in widgets
+    assert "registerStageResolutionRenderer(renderStageResolutionDialog)" in dialog
+    assert "export function requestStageResolutionRender" in render_host
+    assert "export function registerStageResolutionRenderer" in render_host
+    # move 只交换绑定，不强制均分覆盖用户区间
+    assert "Swap bound subset/name only" in widgets or "subset_index = right.subset_index" in widgets
+    assert "redistribute equal slices" not in widgets
 
 
 def test_stage_schedule_ui_is_variable_n_not_hardcoded_three() -> None:
@@ -3257,3 +3384,62 @@ console.log(JSON.stringify({
     assert payload["okCount"] == 0
     assert "live 兼容" in payload["formatted"]
 
+
+
+def test_unsaved_form_changes_include_stage_schedule_draft() -> None:
+    """分阶段草稿必须算作未保存修改，避免刷新/切换时静默丢失。"""
+    selection = _frontend_module_text("js/features/anima-app/chunks/21-update-toml-selection-ui.js")
+    collect = _chunk18_compat_text()
+    assert "stage_schedule" in selection
+    assert "stageDraftDirty" in selection or "stage_schedule_enabled" in selection
+    assert "key === 'stage_schedule' || key === 'stage_schedule_enabled'" in collect
+
+
+def test_stage_schedule_target_is_strictly_bound_to_active_dataset_config() -> None:
+    """分阶段调度只写当前数据集配置，不落到训练 TOML。"""
+    stage_ui = _frontend_feature_text(
+        "js/features/config-form/stage-resolution.js",
+        "js/features/config-form/stage-resolution-model.js",
+        "js/features/config-form/stage-resolution-ui.js",
+        "js/features/config-form/stage-resolution-ui-widgets.js",
+        "js/features/config-form/stage-resolution-ui-dialog.js",
+        "js/features/config-form/stage-resolution-ui-render.js",
+    )
+    assert "listStageScheduleTargetCandidates" in stage_ui
+    assert "resolveStageScheduleTargetFile" in stage_ui
+    assert "preferWritable" in stage_ui
+    assert "isStageScheduleFileWritable" in stage_ui
+    assert "/datasets/" in stage_ui
+    assert "activeStageScheduleDatasetState" in stage_ui
+    assert "activeDataset.selectedFile" in stage_ui
+    assert "activeDataset.dataset_config" in stage_ui
+    assert "绑定数据集配置" in stage_ui or "数据集配置目标" in stage_ui
+    assert "datasetPresetApi('/api/config/dataset-presets'" in stage_ui
+    assert "datasetPresetApi('/api/config/dataset-presets/save-as'" in stage_ui
+    assert "configs/imported/" not in stage_ui
+    assert "hydrateStageScheduleFromDatasetPreset" in stage_ui
+
+
+def test_dataset_loader_hydrates_schedule_from_the_loaded_dataset_file() -> None:
+    """数据集预设和训练配置关联的 dataset_config 都要回填分阶段调度。"""
+    loader = _frontend_module_text("js/features/dataset-editor/load.js")
+    model = _frontend_module_text("js/features/config-form/stage-resolution-model.js")
+    assert "stage_schedule_enabled: Boolean(data.stage_schedule_enabled)" in loader
+    assert "stage_schedule: Array.isArray(data.stage_schedule)" in loader
+    assert "hydrateStageScheduleFromDatasetPreset(datasetState.datasetEditorState)" in loader
+    assert "hydrateStageScheduleFromDatasetPreset(datasetState.datasetPresetState)" in loader
+    assert "clearStageScheduleFormDraft" in loader
+    assert "activeStageScheduleDatasetState" in model
+
+
+def test_dataset_schedule_editor_blocks_stale_or_loading_preset_state() -> None:
+    """快速切换预设时，旧请求不能覆盖新预设，加载中也不能打开调度保存旧行。"""
+    loader = _frontend_module_text("js/features/dataset-editor/load.js")
+    toolbar = _frontend_module_text("js/features/dataset-editor/toolbar.js")
+    dialog = _frontend_module_text("js/features/config-form/stage-resolution-ui-dialog.js")
+    assert "datasetPresetReadSeq" in loader
+    assert "requestSeq !== datasetState.datasetPresetReadSeq" in loader
+    assert "const previousState = datasetPresetState" in loader
+    assert "...previousState" in loader
+    assert "stageBtn.disabled = Boolean(activeState.loading) || !targetFile" in toolbar
+    assert "if (activeDataset?.loading)" in dialog

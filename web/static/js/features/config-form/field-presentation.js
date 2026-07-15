@@ -51,10 +51,8 @@ export function buildFieldPresentation(key, options = {}) {
 
 export function fieldSourceBadgeLabel(presentation) {
     if (!presentation) return '';
+    // 仅保留“已改”提示；配置/默认来源不再用彩色标签占位，避免表单噪声。
     if (presentation.isDirty) return '已改';
-    // Keep labels distinct: color alone is not enough for provenance.
-    if (presentation.source === 'ui_default') return '默认';
-    if (presentation.source === 'config') return '配置';
     return '';
 }
 

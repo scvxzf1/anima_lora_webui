@@ -2,28 +2,29 @@
  * Live training log stream / websocket helpers.
  * Moved out of anima-app mechanical chunks.
  */
-import { isLiveRunningState, parseMetricsFromProgressLine } from '../live-training/index.js?v=module-bootstrap-20260711-ir6';
+import { isLiveRunningState, parseMetricsFromProgressLine } from '../live-training/index.js?v=module-bootstrap-20260714-stage-dataset5';
 import {
     MAX_LOG_LINES,
-} from '../../config/catalog.js?v=module-bootstrap-20260711-ir6';
+} from '../../config/catalog.js?v=module-bootstrap-20260714-stage-dataset5';
 import {
     markTrainingActivity,
     updateMetrics,
     updateProgress,
     updateStatus,
     updateSystem,
-} from '../anima-app/helpers/live-status-bridge.js?v=module-bootstrap-20260711-ir6';
-import { api } from '../anima-app/helpers/runtime-bridge.js?v=module-bootstrap-20260711-ir6';
-import { showAppConfirmDialog } from '../anima-app/helpers/toml-selection-bridge.js?v=module-bootstrap-20260711-ir6';
-import { isHistoryReviewMode } from '../anima-app/helpers/history-detail-bridge.js?v=module-bootstrap-20260711-ir6';
-import { renderResumePanelState } from '../anima-app/helpers/history-timeline-bridge.js?v=module-bootstrap-20260711-ir6';
-import { loadTrainingQueue, updateTrainingQueueFromPayload } from '../anima-app/helpers/queue-view-bridge.js?v=module-bootstrap-20260711-ir6';
-import { loadTrainingHistoryList } from '../anima-app/helpers/history-list-bridge.js?v=module-bootstrap-20260711-ir6';
-import { pollStatus, scheduleStatusPoll } from '../anima-app/helpers/status-polling-bridge.js?v=module-bootstrap-20260711-ir6';
-import { configureLiveLogBridge } from '../anima-app/helpers/live-log-bridge.js?v=module-bootstrap-20260711-ir6';
-import { getTrainingState } from '../anima-app/helpers/training-state-bridge.js?v=module-bootstrap-20260711-ir6';
+} from '../anima-app/helpers/live-status-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { api } from '../anima-app/helpers/runtime-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { showAppConfirmDialog } from '../anima-app/helpers/toml-selection-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { isHistoryReviewMode } from '../anima-app/helpers/history-detail-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { renderResumePanelState } from '../anima-app/helpers/history-timeline-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { loadTrainingQueue, updateTrainingQueueFromPayload } from '../anima-app/helpers/queue-view-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { loadTrainingHistoryList } from '../anima-app/helpers/history-list-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { pollStatus, scheduleStatusPoll } from '../anima-app/helpers/status-polling-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { configureLiveLogBridge } from '../anima-app/helpers/live-log-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { getTrainingState } from '../anima-app/helpers/training-state-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
 
 const LOG_RENDER_BATCH_SIZE = 250;
+const LOG_STICK_BOTTOM_THRESHOLD_PX = 48;
 const trainingState = getTrainingState();
 const trainingRuntime = trainingState.trainingRuntime;
 
@@ -136,6 +137,83 @@ const trainingRuntime = trainingState.trainingRuntime;
         scheduleLogFlush();
     }
 
+    export function isLogNearBottom(el, thresholdPx = LOG_STICK_BOTTOM_THRESHOLD_PX) {
+        if (!el) return true;
+        const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
+        return distance <= Math.max(0, Number(thresholdPx) || 0);
+    }
+
+    export function ensureLogOutputLines() {
+        if (!Array.isArray(trainingRuntime.logOutputLines)) {
+            trainingRuntime.logOutputLines = currentLogOutputLines();
+        }
+        return trainingRuntime.logOutputLines;
+    }
+
+    export function createLogLineNode(line) {
+        const span = document.createElement('span');
+        span.className = `log-line ${logLineTone(line)}`;
+        span.textContent = line;
+        return span;
+    }
+
+    export function removeLeadingLogLines(el, count) {
+        if (!el || count <= 0) return;
+        let remaining = count;
+        while (remaining > 0 && el.firstChild) {
+            // 当前每行是一个 block span；兼容清理历史残留换行文本节点。
+            if (el.firstChild.nodeType === 1) {
+                el.removeChild(el.firstChild);
+                remaining -= 1;
+                continue;
+            }
+            el.removeChild(el.firstChild);
+        }
+    }
+
+    export function appendLogOutputLines(lines, options = {}) {
+        const el = document.getElementById('log-output');
+        if (!el) return;
+        const pending = (lines || [])
+            .map((line) => String(line || ''))
+            .filter((line) => line.length);
+        if (!pending.length) return;
+
+        const stickToBottom = options.stickToBottom == null
+            ? isLogNearBottom(el)
+            : Boolean(options.stickToBottom);
+        const existing = ensureLogOutputLines();
+        const overflow = Math.max(0, existing.length + pending.length - MAX_LOG_LINES);
+
+        // 有进行中的分批全量渲染时，直接改成最终全量渲染，避免新旧路径交错。
+        if ((trainingRuntime.logRenderPendingCount || 0) > 0) {
+            const merged = [...existing, ...pending].slice(-MAX_LOG_LINES);
+            renderLogOutputLines(merged, { stickToBottom });
+            return;
+        }
+
+        if (overflow > 0) {
+            const previousScrollHeight = el.scrollHeight;
+            const previousScrollTop = el.scrollTop;
+            existing.splice(0, overflow);
+            removeLeadingLogLines(el, overflow);
+            if (!stickToBottom) {
+                const removedHeight = previousScrollHeight - el.scrollHeight;
+                el.scrollTop = Math.max(0, previousScrollTop - removedHeight);
+            }
+        }
+
+        const fragment = document.createDocumentFragment();
+        for (const line of pending) {
+            existing.push(line);
+            fragment.appendChild(createLogLineNode(line));
+        }
+        el.appendChild(fragment);
+        trainingRuntime.logOutputLines = existing;
+        trainingRuntime.logLineCount = existing.length;
+        if (stickToBottom) el.scrollTop = el.scrollHeight;
+    }
+
     export function renderLogOutputLines(lines, options = {}) {
         const el = document.getElementById('log-output');
         if (!el) return;
@@ -146,24 +224,24 @@ const trainingRuntime = trainingState.trainingRuntime;
         trainingRuntime.logRenderToken = (trainingRuntime.logRenderToken || 0) + 1;
         const token = trainingRuntime.logRenderToken;
         const stickToBottom = Boolean(options.stickToBottom);
+        trainingRuntime.logRenderPendingCount = 1;
         el.textContent = '';
 
         const appendBatch = (start = 0) => {
+            // 旧批次被新的全量渲染取代时，不要清掉新渲染的 pending 状态。
             if (token !== trainingRuntime.logRenderToken) return;
             const end = Math.min(start + LOG_RENDER_BATCH_SIZE, normalized.length);
             const fragment = document.createDocumentFragment();
             for (let index = start; index < end; index += 1) {
-                const line = normalized[index];
-                const span = document.createElement('span');
-                span.className = `log-line ${logLineTone(line)}`;
-                span.textContent = line;
-                fragment.append(span, document.createTextNode('\n'));
+                fragment.appendChild(createLogLineNode(normalized[index]));
             }
             el.appendChild(fragment);
             if (stickToBottom) el.scrollTop = el.scrollHeight;
             if (end < normalized.length) {
                 scheduleLogRenderBatch(() => appendBatch(end));
+                return;
             }
+            trainingRuntime.logRenderPendingCount = 0;
         };
 
         appendBatch();
@@ -173,12 +251,17 @@ const trainingRuntime = trainingState.trainingRuntime;
         if (Array.isArray(trainingRuntime.logOutputLines)) return [...trainingRuntime.logOutputLines];
         const el = document.getElementById('log-output');
         if (!el) return [];
+        const childLines = Array.from(el.children || [])
+            .map((node) => String(node.textContent || ''))
+            .filter((line) => line.length);
+        if (childLines.length) return childLines;
         return el.textContent.split('\n').filter(Boolean);
     }
 
     export function resetLogOutputLines() {
         trainingRuntime.logOutputLines = [];
         trainingRuntime.logRenderToken = (trainingRuntime.logRenderToken || 0) + 1;
+        trainingRuntime.logRenderPendingCount = 0;
         const el = document.getElementById('log-output');
         if (el) el.textContent = '';
     }
@@ -219,13 +302,12 @@ const trainingRuntime = trainingState.trainingRuntime;
     export function flushLogBuffer() {
         trainingRuntime.logFlushPending = false;
         if (!trainingRuntime.logBuffer.length) return;
-        const el = document.getElementById('log-output');
-        const nextLines = [...currentLogOutputLines(), ...trainingRuntime.logBuffer];
+        const pending = trainingRuntime.logBuffer.filter(Boolean);
         trainingRuntime.logBuffer = [];
-        const lines = nextLines.filter(Boolean).slice(-MAX_LOG_LINES);
-        renderLogOutputLines(lines, { stickToBottom: true });
-        trainingRuntime.logLineCount = lines.length;
-        el.scrollTop = el.scrollHeight;
+        if (!pending.length) return;
+        const el = document.getElementById('log-output');
+        const stickToBottom = isLogNearBottom(el);
+        appendLogOutputLines(pending, { stickToBottom });
         updateLogStatusText();
     }
 
@@ -302,6 +384,11 @@ configureLiveLogBridge({
     handleWsMessage,
     appendLog,
     appendLogRecord,
+    isLogNearBottom,
+    ensureLogOutputLines,
+    createLogLineNode,
+    removeLeadingLogLines,
+    appendLogOutputLines,
     renderLogOutputLines,
     currentLogOutputLines,
     resetLogOutputLines,

@@ -1,13 +1,13 @@
 /** Gallery controller wiring for image-test feature. */
-import { createGalleryExport } from './export.js?v=module-bootstrap-20260711-ir6';
-import { createLoadMoreApi, findGroupSection } from './load-more.js?v=module-bootstrap-20260711-ir6';
-import { createVirtualWindowApi } from './virtual-window.js?v=module-bootstrap-20260711-ir6';
-import { createSelectionApi } from './selection.js?v=module-bootstrap-20260711-ir6';
-import { createCardsApi } from './cards.js?v=module-bootstrap-20260711-ir6';
-import { createHistoryGroupsApi } from './history-groups.js?v=module-bootstrap-20260711-ir6';
-import { imageKey } from './image-meta.js?v=module-bootstrap-20260711-ir6';
-import { normalizeImageTestHistoryRange } from '../state.js?v=module-bootstrap-20260711-ir6';
-import { DEFAULT_FILTER_VALUE } from './constants.js?v=module-bootstrap-20260711-ir6';
+import { createGalleryExport } from './export.js?v=module-bootstrap-20260714-stage-dataset5';
+import { createLoadMoreApi, findGroupSection } from './load-more.js?v=module-bootstrap-20260714-stage-dataset5';
+import { createVirtualWindowApi } from './virtual-window.js?v=module-bootstrap-20260714-stage-dataset5';
+import { createSelectionApi } from './selection.js?v=module-bootstrap-20260714-stage-dataset5';
+import { createCardsApi } from './cards.js?v=module-bootstrap-20260714-stage-dataset5';
+import { createHistoryGroupsApi } from './history-groups.js?v=module-bootstrap-20260714-stage-dataset5';
+import { imageKey } from './image-meta.js?v=module-bootstrap-20260714-stage-dataset5';
+import { normalizeImageTestHistoryRange } from '../state.js?v=module-bootstrap-20260714-stage-dataset5';
+import { DEFAULT_FILTER_VALUE } from './constants.js?v=module-bootstrap-20260714-stage-dataset5';
 
 export function createInitialGalleryState(initialFilterValue = DEFAULT_FILTER_VALUE) {
     return {

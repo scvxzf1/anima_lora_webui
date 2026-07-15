@@ -1,5 +1,5 @@
-import { historyDetailEmptyText, historyDetailSection } from '../ui.js?v=module-bootstrap-20260711-ir6';
-import { createHistoryCurveChart } from './chart.js?v=module-bootstrap-20260711-ir6';
+import { historyDetailEmptyText, historyDetailSection } from '../ui.js?v=module-bootstrap-20260714-stage-dataset5';
+import { createHistoryCurveChart } from './chart.js?v=module-bootstrap-20260714-stage-dataset5';
 import {
     createHistoryCurveMetrics,
     historyCurveDisplayPoints,
@@ -7,9 +7,9 @@ import {
     historyCurvePoints,
     historyCurveSmoothPoints,
     historyCurveStats,
-} from './data.js?v=module-bootstrap-20260711-ir6';
-import { createHistoryCurveHover } from './hover.js?v=module-bootstrap-20260711-ir6';
-import { createHistoryCurveToolbar } from './toolbar.js?v=module-bootstrap-20260711-ir6';
+} from './data.js?v=module-bootstrap-20260714-stage-dataset5';
+import { createHistoryCurveHover } from './hover.js?v=module-bootstrap-20260714-stage-dataset5';
+import { createHistoryCurveToolbar } from './toolbar.js?v=module-bootstrap-20260714-stage-dataset5';
 
 export function createHistoryCurveRenderer({ state, deps, renderHistoryDetailContent, renderHistoryDetailSystem }) {
     const { curve: historyCurveState } = state;

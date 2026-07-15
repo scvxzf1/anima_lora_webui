@@ -6,16 +6,16 @@ export {
     strongerSelectiveCheckpointValue,
     resourceQuickCurrentValue,
     fillGlobalModelPathsIntoConfigForm,
-} from '../../config-form/resource-values.js?v=module-bootstrap-20260711-ir6';
+} from '../../config-form/resource-values.js?v=module-bootstrap-20260714-stage-dataset5';
 export {
     appendFieldRows,
-} from '../../config-form/field-rows.js?v=module-bootstrap-20260711-ir6';
+} from '../../config-form/field-rows.js?v=module-bootstrap-20260714-stage-dataset5';
 export {
     createConfigDatasetPicker,
     renderConfigDatasetPicker,
     isConfigDatasetPickerDialogOpen,
     closeConfigDatasetPickerDialog,
-} from '../../config-form/dataset-picker.js?v=module-bootstrap-20260711-ir6';
+} from '../../config-form/dataset-picker.js?v=module-bootstrap-20260714-stage-dataset5';
 export {
     clearContinueTrainingSource,
     openContinueLoraDialog,
@@ -23,4 +23,4 @@ export {
     requestContinueLoraInspection,
     selectContinueLoraWeight,
     refreshContinueTrainingSourceCompatibility,
-} from '../../training-source/continue-lora.js?v=module-bootstrap-20260711-ir6';
+} from '../../training-source/continue-lora.js?v=module-bootstrap-20260714-stage-dataset5';

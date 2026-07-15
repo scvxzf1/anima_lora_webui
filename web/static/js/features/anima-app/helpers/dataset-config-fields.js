@@ -1,4 +1,4 @@
-import { FIELD_LABEL_ZH } from '../../../config/catalog.js?v=module-bootstrap-20260711-ir6';
+import { FIELD_LABEL_ZH } from '../../../config/catalog.js?v=module-bootstrap-20260714-stage-dataset5';
 
 export function datasetConfigLabel(key) {
     const labels = {

@@ -2,14 +2,14 @@
  * Live training status polling bridge.
  * Moved out of anima-app mechanical chunks.
  */
-import { isLiveRunningState } from './index.js?v=module-bootstrap-20260711-ir6';
+import { isLiveRunningState } from './index.js?v=module-bootstrap-20260714-stage-dataset5';
 import {
     updateMetrics,
     updateProgress,
     updateStatus,
     updateSystem,
-} from '../anima-app/helpers/live-status-bridge.js?v=module-bootstrap-20260711-ir6';
-import { isHistoryReviewMode } from '../anima-app/helpers/history-detail-bridge.js?v=module-bootstrap-20260711-ir6';
+} from '../anima-app/helpers/live-status-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { isHistoryReviewMode } from '../anima-app/helpers/history-detail-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
 import {
     appendLog,
     replayMetricsHistory,
@@ -17,11 +17,11 @@ import {
     setLogStatus,
     setTrainingHealthNotice,
     updateLogStatusText,
-} from '../anima-app/helpers/live-log-bridge.js?v=module-bootstrap-20260711-ir6';
-import { getHistoryState } from '../anima-app/helpers/history-state-bridge.js?v=module-bootstrap-20260711-ir6';
-import { loadTrainingQueue } from '../anima-app/helpers/queue-view-bridge.js?v=module-bootstrap-20260711-ir6';
-import { loadTrainingHistoryList } from '../anima-app/helpers/history-list-bridge.js?v=module-bootstrap-20260711-ir6';
-import { api } from '../anima-app/helpers/runtime-bridge.js?v=module-bootstrap-20260711-ir6';
+} from '../anima-app/helpers/live-log-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { getHistoryState } from '../anima-app/helpers/history-state-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { loadTrainingQueue } from '../anima-app/helpers/queue-view-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { loadTrainingHistoryList, mergeLiveTrainingHistoryTask } from '../anima-app/helpers/history-list-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { api } from '../anima-app/helpers/runtime-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
 
 export function createStatusPollingBridge(target = globalThis) {
     // Keep polling bookkeeping inside the bridge while old callers still use global function names.
@@ -35,6 +35,21 @@ export function createStatusPollingBridge(target = globalThis) {
             return getHistoryState().historyTasks;
         } catch {
             return target.historyTasks;
+        }
+    }
+
+    function safeIsHistoryReviewMode() {
+        try {
+            if (typeof isHistoryReviewMode === 'function') {
+                return Boolean(isHistoryReviewMode());
+            }
+        } catch {
+            // Bridge may be unconfigured in isolated fixtures; treat as live mode.
+        }
+        try {
+            return Boolean(target.isHistoryReviewMode?.());
+        } catch {
+            return false;
         }
     }
 
@@ -69,7 +84,9 @@ export function createStatusPollingBridge(target = globalThis) {
         }
         if (target.trainingStatusPollPromise) return target.trainingStatusPollPromise;
         target.trainingStatusPollPromise = (async () => {
-            if (isHistoryReviewMode()) return;
+            // History manager still needs live task/list refresh; only skip live dashboard
+            // updates when reviewing a historical task from the live monitor panel.
+            const historyOnlyRefresh = safeIsHistoryReviewMode();
             try {
                 const status = await api('/api/training/status');
                 if (status.ok === false) throw new Error(status.error || '读取训练状态失败');
@@ -79,36 +96,42 @@ export function createStatusPollingBridge(target = globalThis) {
                     target.trainingStatusPollFailures = 0;
                     updateLogStatusText();
                 }
-                updateStatus({
-                    state: status.status,
-                    variant: status.variant,
-                    preset: status.preset,
-                    methods_subdir: status.methods_subdir,
-                    job: status.job,
-                    last_output_at: status.last_output_at,
-                    last_log_id: status.last_log_id,
-                    last_log_line: status.last_log_line,
-                    error_hint: status.error_hint,
-                    anomaly_message: status.anomaly_message || '',
-                    output_dir: status.output_dir,
-                    sample_dir: status.sample_dir,
-                    sample_config: status.sample_config,
-                    run_dir: status.run_dir,
-                    runtime_config_file: status.runtime_config_file,
-                    original_config_file: status.original_config_file,
-                    dataset_config_file: status.dataset_config_file,
-                    model_cache_dir: status.model_cache_dir,
-                    dataset_cache_dir: status.dataset_cache_dir,
-                    training_output_dir: status.training_output_dir,
-                    logs_dir: status.logs_dir,
-                });
-                applyStatusSnapshotFallbacks(status);
+                if (!historyOnlyRefresh) {
+                    updateStatus({
+                        state: status.status,
+                        variant: status.variant,
+                        preset: status.preset,
+                        methods_subdir: status.methods_subdir,
+                        job: status.job,
+                        last_output_at: status.last_output_at,
+                        last_log_id: status.last_log_id,
+                        last_log_line: status.last_log_line,
+                        error_hint: status.error_hint,
+                        anomaly_message: status.anomaly_message || '',
+                        output_dir: status.output_dir,
+                        sample_dir: status.sample_dir,
+                        sample_config: status.sample_config,
+                        run_dir: status.run_dir,
+                        runtime_config_file: status.runtime_config_file,
+                        original_config_file: status.original_config_file,
+                        dataset_config_file: status.dataset_config_file,
+                        model_cache_dir: status.model_cache_dir,
+                        dataset_cache_dir: status.dataset_cache_dir,
+                        training_output_dir: status.training_output_dir,
+                        logs_dir: status.logs_dir,
+                    });
+                    applyStatusSnapshotFallbacks(status);
+                }
+                // Always refresh queue/history summaries so the history workbench can
+                // show the currently monitored running task while that tab is open.
                 refreshTrainingSidebarSummariesFromPoll(status);
-                const shouldReplayRecoveredArtifacts = shouldReplayRecoveredLiveArtifacts(status);
-                if (shouldReplayRecoveredArtifacts && (status.last_log_id || 0) > (target.trainingRuntime?.lastLogId || 0)) {
-                    await replayTrainingLogs();
-                } else if (shouldReplayRecoveredArtifacts && (forceReplayMetrics || isLiveRunningState(target.trainingRuntime?.state))) {
-                    await replayMetricsHistory();
+                if (!historyOnlyRefresh) {
+                    const shouldReplayRecoveredArtifacts = shouldReplayRecoveredLiveArtifacts(status);
+                    if (shouldReplayRecoveredArtifacts && (status.last_log_id || 0) > (target.trainingRuntime?.lastLogId || 0)) {
+                        await replayTrainingLogs();
+                    } else if (shouldReplayRecoveredArtifacts && (forceReplayMetrics || isLiveRunningState(target.trainingRuntime?.state))) {
+                        await replayMetricsHistory();
+                    }
                 }
                 return status;
             } catch (e) {
@@ -133,23 +156,44 @@ export function createStatusPollingBridge(target = globalThis) {
         const taskId = String(status.task_id || '').trim();
         const state = String(status.status || '').trim();
         const live = isLiveRunningState(state);
+        const previousTaskId = trainingSidebarSummaryLastTaskId;
+        const previousStatus = trainingSidebarSummaryLastStatus;
         const historyTasks = readHistoryTasks();
         const knownTask = taskId && Array.isArray(historyTasks)
             && historyTasks.some((task) => String(task.id || '') === taskId);
-        const taskChanged = taskId && taskId !== trainingSidebarSummaryLastTaskId;
-        const statusChanged = taskId && state && state !== trainingSidebarSummaryLastStatus;
+        const taskChanged = Boolean(taskId && taskId !== previousTaskId);
+        const statusChanged = Boolean(taskId && state && state !== previousStatus);
+        const transitionedToTerminal = Boolean(
+            taskId
+            && taskId === previousTaskId
+            && isLiveRunningState(previousStatus)
+            && !live
+            && state,
+        );
+        if (live && knownTask) {
+            try {
+                mergeLiveTrainingHistoryTask(status);
+            } catch {
+                // History feature can be absent in isolated fixtures; the next full refresh repairs state.
+            }
+        }
         const now = Date.now();
-        const stale = now - trainingSidebarSummaryLastRefreshAt >= 15000;
-        const shouldRefresh = taskChanged || statusChanged || (taskId && !knownTask) || (live && stale);
-        if (!shouldRefresh) return trainingSidebarSummaryRefreshPromise;
+        const queueStale = now - trainingSidebarSummaryLastRefreshAt >= 15000;
+        const shouldRefreshHistory = (
+            taskChanged
+            || (taskId && !knownTask)
+            || transitionedToTerminal
+        );
+        const shouldRefreshQueue = taskChanged || statusChanged || queueStale;
+        if (!shouldRefreshHistory && !shouldRefreshQueue) return trainingSidebarSummaryRefreshPromise;
         if (trainingSidebarSummaryRefreshPromise) return trainingSidebarSummaryRefreshPromise;
         trainingSidebarSummaryLastTaskId = taskId || trainingSidebarSummaryLastTaskId;
         trainingSidebarSummaryLastStatus = state || trainingSidebarSummaryLastStatus;
-        trainingSidebarSummaryLastRefreshAt = now;
-        trainingSidebarSummaryRefreshPromise = Promise.all([
-            loadTrainingQueue(),
-            loadTrainingHistoryList(),
-        ]).catch((e) => {
+        if (shouldRefreshQueue) trainingSidebarSummaryLastRefreshAt = now;
+        const refreshes = [];
+        if (shouldRefreshQueue) refreshes.push(loadTrainingQueue());
+        if (shouldRefreshHistory) refreshes.push(loadTrainingHistoryList());
+        trainingSidebarSummaryRefreshPromise = Promise.all(refreshes).catch((e) => {
             appendLog(`[状态] 刷新训练侧栏失败: ${e.message}`);
         }).finally(() => {
             trainingSidebarSummaryRefreshPromise = null;
