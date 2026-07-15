@@ -43,7 +43,6 @@ dependencies = [
     "flash-attn @ https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.9.17/flash_attn-2.8.3+cu130torch2.12-cp313-cp313-linux_x86_64.whl ; sys_platform == 'linux'",
     "flash-attn @ https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.9.25/flash_attn-2.8.3+cu130torch2.12-cp313-cp313-win_amd64.whl ; sys_platform == 'win32'",
     "triton-windows>=3.7.0,<3.8.0 ; sys_platform == 'win32'",
-    "pyside6>=6.11.0",
     "ruff>=0.15.9",
     "matplotlib",
     "torchsde>=0.2.6",
@@ -67,7 +66,6 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-gui = ["PySide6>=6.7"]
 dev = [
     "pytest>=8.0",
     "pytest-xdist>=3.6",
@@ -124,7 +122,7 @@ reportUnsupportedDunderAll = "none"
 # (`bench` / `scripts` / `preprocess`) are also installed so cross-tree imports
 # (`from bench._common import …`, `from scripts.dcw.haar import …`) resolve via
 # the editable finder instead of per-file `sys.path.insert` shims — and any tool
-# runs as `python -m bench.spd.foo`. `gui` stays CLI-only (not importable).
+# runs as `python -m bench.spd.foo`.
 [tool.setuptools.packages.find]
 include = ["anima_lora*", "library*", "networks*", "bench*", "scripts*", "preprocess*"]
 

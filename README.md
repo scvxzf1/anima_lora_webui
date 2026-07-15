@@ -16,7 +16,7 @@
 
 常用入口：
 
-- 新手部署和 WebUI 使用：[docs/guidelines/指南书.md](docs/guidelines/指南书.md)
+- 新手部署和 WebUI 使用：[Linux 部署启动](#linux-部署启动)、[Windows 部署启动](#windows-部署启动)
 - Linux 部署：[docs/guidelines/linux-deployment.zh.md](docs/guidelines/linux-deployment.zh.md)
 - 训练参考：[docs/guidelines/training.md](docs/guidelines/training.md)
 - 推理参考：[docs/guidelines/inference.md](docs/guidelines/inference.md)

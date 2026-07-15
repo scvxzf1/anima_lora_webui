@@ -6,8 +6,8 @@ because PIDs get reused. Route every spawn / kill / liveness check through
 psutil so the same code works on Linux and Windows (the daemon must run on
 both — ``python tasks.py daemon`` is the Windows alias for ``make daemon``).
 
-This is the ``Popen``-flavored sibling of ``gui/process.py`` (which is
-``QProcess``-bound): same snapshot-then-terminate-then-kill tree walk.
+The implementation uses a snapshot-then-terminate-then-kill tree walk so
+parent and worker processes are handled consistently.
 """
 
 from __future__ import annotations

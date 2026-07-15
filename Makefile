@@ -24,7 +24,7 @@ help:
 
 # FORCE has no recipe, so it's always considered out-of-date — used as a
 # dependency of the catch-all so make doesn't skip targets that share a name
-# with an existing file/dir (e.g. `preprocess`, `gui`).
+# with an existing file/dir (for example `preprocess`).
 FORCE:
 
 # Stop GNU Make's implicit "remake the Makefile" check from going through the

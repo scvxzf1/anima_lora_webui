@@ -81,7 +81,8 @@ Next steps:
   cd $DIR
   hf auth login            # authenticate for gated model downloads
   make download-models     # DiT + Qwen3 text encoder + VAE into models/
-  make gui                 # or:  make lora   (CLI training)
+  python tasks.py web --host 127.0.0.1 --port 20102
+  # then open http://127.0.0.1:20102/ in a browser
 
 Update later with:  make update
 EOF

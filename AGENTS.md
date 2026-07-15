@@ -63,7 +63,6 @@
   `scripts/experimental_tasks/`、配置、文档和测试。
 - 常用启动：
   - WebUI：`.venv/bin/python tasks.py web --host 127.0.0.1 --port 20102`
-  - GUI：`.venv/bin/python tasks.py gui`
   - 单元测试：`timeout 60 .venv/bin/python -m pytest tests/<test_file>.py`
   - 全量单测入口：`timeout 60 .venv/bin/python tasks.py test-unit`
   - 合并配置查看：`.venv/bin/python tasks.py print-config METHOD=<name> PRESET=<name>`
@@ -74,7 +73,7 @@
   - `python tasks.py preprocess`
   - 默认训练图片放在 `image_dataset/`，同名 `.txt` caption sidecar 也放这里。
 - 命令面速记：
-  - 稳定训练/服务：`lora`、`lora-gui`、`web`、`gui`、`daemon*`、`preprocess*`、
+  - 稳定训练/服务：`lora`、`lora-gui`、`web`、`daemon*`、`preprocess*`、
     `caption-index`、`preprocess-tagger`、`tagger`、`test-tagger`
   - 稳定推理/工具：`test`、`test-mod`、`test-hydra`、`test-merge`、`test-dcw`、
     `test-dcw-v4`、`merge`、`distill-mod`、`export-logs`、`vendor-sync`、
@@ -142,7 +141,6 @@
 - `scripts/tasks/`：稳定命令实现。
 - `scripts/experimental_tasks/`：实验命令实现。
 - `web/`：aiohttp WebUI 后端和静态前端。
-- `gui/`：PySide6 GUI，和 WebUI 是不同前端。
 - `preprocess/`：CLI 预处理脚本，底层编排通常在 `library/preprocess/`。
 - `custom_nodes/`：ComfyUI 节点；发布副本通过 `_vendor/` 同步。
 - `configs/`：base、presets、methods、gui-methods、datasets、Web 设置、历史和队列。
@@ -218,7 +216,7 @@ configs/base.toml
   -> CLI args
 ```
 
-- 默认 `methods_subdir="methods"`；WebUI/GUI 友好变体使用 `configs/gui-methods/`。
+- 默认 `methods_subdir="methods"`；WebUI 友好变体使用历史命名目录 `configs/gui-methods/`。
 - `configs/base.toml` 包含共享基础路径、optimizer、compile flag 和默认数据集蓝图。
 - `configs/presets.toml` 放硬件/采样 profile，不要把硬件 profile 复制进方法配置。
 - `configs/methods/` 放算法 family 配置。
@@ -311,7 +309,7 @@ VAE -> cache -> free
 DiT -> attach network -> training loop
 ```
 
-不要把 DiT 提前加载到预处理阶段。WebUI、task runner、daemon 和 GUI 启动训练时也要保持
+不要把 DiT 提前加载到预处理阶段。WebUI、task runner 和 daemon 启动训练时也要保持
 这个顺序。
 
 ### Compile After Apply
@@ -390,7 +388,7 @@ T-LoRA mask 是共享 buffer，每个 denoising step 更新一次。
 
 ## 前端实现约束
 
-构建或修改 WebUI / GUI 前端时，必须避免生成臃肿的石山代码。
+构建或修改 WebUI 前端时，必须避免生成臃肿的石山代码。
 
 - 新增前端业务代码默认尽量控制在 1000 行以内；需求复杂、无法合理控制时，先说明原因、
   拆分方案和预计代码规模。
@@ -475,7 +473,7 @@ T-LoRA mask 是共享 buffer，每个 denoising step 更新一次。
 训练：
 
 - 入口是 `train.py`，可复用逻辑通常在 `library/training/`。
-- 新 CLI 参数要检查 `library/training/cli_args.py`、config schema、WebUI/GUI、README/docs。
+- 新 CLI 参数要检查 `library/training/cli_args.py`、config schema、WebUI、README/docs。
 - WebUI/daemon 启动训练还要查 `library/runtime/launch.py`、`scripts/tasks/_common.py`、
   `web/services/training_service.py` 和 `web/services/training/*`。
 - 涉及 GPU、accelerate、compile 时，测试不要依赖真实大模型；优先小 fixture 或 monkeypatch。
@@ -550,7 +548,7 @@ T-LoRA mask 是共享 buffer，每个 denoising step 更新一次。
 - 可运行但实验中的能力：`docs/experimental/`。
 - 原理、数学、架构图解：`docs/structure/`。
 - 配置、路径、环境变量和外置配置：`docs/configuration/`。
-- WebUI / GUI 独立功能说明：`docs/features/`。
+- WebUI 独立功能说明：`docs/features/`。
 - 实验结论、失败路径、审计报告：`docs/findings/`。
 - compile、kernel、显存和性能优化记录：`docs/optimizations/`。
 - 活跃或半活跃提案：`docs/proposal/`。

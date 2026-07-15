@@ -30,7 +30,7 @@ curl -LsSf https://github.com/sorryhyun/anima_lora/releases/latest/download/inst
 irm https://github.com/sorryhyun/anima_lora/releases/latest/download/install.ps1 | iex
 ```
 
-`./anima_lora/`에 설치됩니다 (`ANIMA_DIR`로 경로 변경). Windows에서는 바탕화면에 **"Anima LoRA GUI"** 바로가기도 생성됩니다. 바로가기를 누르면 GUI상에서 모델 다운로드가 가능합니다.
+`./anima_lora/`에 설치됩니다 (`ANIMA_DIR`로 경로 변경). 설치 후 `python tasks.py web --host 127.0.0.1 --port 20102`를 실행하고 브라우저에서 `http://127.0.0.1:20102/`를 여세요.
 
 <details>
 <summary><b>더 안전한 설치</b> — 실행 전 스크립트 확인 &amp; 검증</summary>
@@ -166,7 +166,7 @@ uv sync                   # Python 3.13 with pre-built flash attention 2
 hf auth login
 make download-models      # DiT + Qwen3 TE + QwenImage VAE (+ SAM3 / MIT / PE, 마스킹 및 이미지 조건화용)를 models/로
 # 학습 이미지를 image_dataset/에 배치 (.txt 캡션 사이드카 함께)
-make gui                  # 추천 — 설정 에디터 + 데이터셋 브라우저 + 학습 모니터
+python tasks.py web --host 127.0.0.1 --port 20102
 ```
 
 > **Anima는 범용 pip 패키지가 아니라 uv-lock된 애플리케이션 환경으로 배포됩니다.** `pyproject.toml`은 `python ==3.13.*`, 특정 torch / flash-attn wheel URL, `index-strategy = "unsafe-best-match"`를 고정하며 — 이는 메인테이너가 검증한 known-good 빌드입니다. 커밋된 `uv.lock`을 기준으로 `uv sync`로 설치하세요. `pyproject.toml`을 `pip install`하지 마세요(pip는 uv의 index 전략이나 prebuilt flash-attn wheel을 따르지 않습니다).

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from web.services.config.form_metadata import BASIC_FIELDS, FIELD_HELP, FORM_GROUPS
+
 from library.preprocess.captions import (
     CAPTION_SOURCE_AUTO,
     CAPTION_SOURCE_CAPTIONS_JSON,
@@ -190,21 +192,14 @@ USER_LOCKABLE_GROUPS = frozenset({
 
 
 def get_field_help() -> dict[str, dict[str, str]]:
-    try:
-        from gui.explanations import FIELD_HELP
-
-        return FIELD_HELP
-    except ImportError:
-        return {}
+    return FIELD_HELP
 
 
 def get_groups() -> dict[str, list[str]]:
-    try:
-        from gui import _BASIC, _GROUPS
-
-        return {"groups": {k: sorted(v) for k, v in _GROUPS.items()}, "basic": sorted(_BASIC)}
-    except ImportError:
-        return {"groups": {}, "basic": []}
+    return {
+        "groups": {name: sorted(fields) for name, fields in FORM_GROUPS.items()},
+        "basic": sorted(BASIC_FIELDS),
+    }
 
 
 __all__ = [

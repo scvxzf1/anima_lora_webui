@@ -77,7 +77,7 @@ def main():
 
     parser = argparse.ArgumentParser(description="Anima LoRA Web UI")
     parser.add_argument("--port", type=int, default=20102)
-    parser.add_argument("--host", default="0.0.0.0")
+    parser.add_argument("--host", default="127.0.0.1")
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")

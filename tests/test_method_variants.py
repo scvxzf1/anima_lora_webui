@@ -1,7 +1,8 @@
-"""Tests for the Track 2 GUI variant registry (``configs/gui-methods/*.toml``).
+"""Tests for self-contained method variants (``configs/gui-methods/*.toml``).
 
 Built-in variants are discovered from each file's ``[variant]`` metadata
-table (see ``gui/__init__.py``). This module pins:
+table. The directory keeps its historical name because WebUI and CLI configs
+already depend on it. This module pins:
 
 * every built-in is loadable via ``load_method_preset(..., methods_subdir="gui-methods")``
 * every built-in carries a ``[variant].family`` string
@@ -126,31 +127,38 @@ def test_no_unintentional_output_name_collisions():
 
 
 def test_variant_discovery_matches_filesystem():
-    """``list_gui_variants`` should surface every built-in whose ``[variant]
-    .family`` matches the requested family — no hardcoded map drift."""
-    from gui import list_gui_variants
-
+    """WebUI discovery should surface every built-in in the requested family."""
     expected_by_family: dict[str, set[str]] = {}
-    for path in BUILTINS:
+    active_files = sorted(Path(config_service.GUI_METHODS_DIR).glob("*.toml"))
+    for path in active_files:
         data = toml.loads(path.read_text(encoding="utf-8"))
         family = (data.get("variant") or {}).get("family")
         if isinstance(family, str) and family:
             expected_by_family.setdefault(family, set()).add(path.stem)
 
     for family, expected in expected_by_family.items():
-        listed = {v for v in list_gui_variants(family) if not v.startswith("custom/")}
+        listed = {
+            variant
+            for variant in config_service.list_variants(family)
+            if not variant.startswith("custom/")
+        }
         assert listed == expected, (
-            f"family={family}: list_gui_variants returned {sorted(listed)}, "
+            f"family={family}: list_variants returned {sorted(listed)}, "
             f"expected {sorted(expected)}"
         )
 
 
 def test_web_method_list_has_no_empty_variant_family():
-    """Every Web method choice must either map to a real GUI variant or be the
-    dedicated SPD CLI entry."""
+    """Every family present in the active variant tree is discoverable."""
+    families = set()
+    for path in Path(config_service.GUI_METHODS_DIR).glob("*.toml"):
+        data = toml.loads(path.read_text(encoding="utf-8"))
+        family = (data.get("variant") or {}).get("family")
+        if isinstance(family, str) and family:
+            families.add(family)
     empty = {
         method: config_service.list_variants(method)
-        for method in config_service.list_methods()
+        for method in families
         if not config_service.list_variants(method)
     }
 

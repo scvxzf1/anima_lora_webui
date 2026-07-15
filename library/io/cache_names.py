@@ -7,12 +7,9 @@ Deliberately stdlib-only at import time — no torch / numpy / safetensors — s
 lightweight consumers share the exact naming and counting rules instead of
 hand-copying drift-prone string literals.
 
-The PySide6 GUI is the motivating consumer: ``gui/CLAUDE.md`` forbids pulling a
-torch-importing module into the GUI (it adds seconds to startup), so the GUI used
-to keep its own private copy of these suffixes — which drifted when ``pe_spatial``
-became the default REPA encoder and the GUI still only knew ``pe``. Centralizing
-the rules here lets ``library.io.cache`` / ``library.preprocess`` (torch-coupled)
-and the GUI (torch-free) agree on one definition.
+This module remains deliberately torch-free so lightweight tooling can inspect
+cache directories without importing the training stack. Centralizing the rules
+also prevents preprocess and runtime consumers from drifting on suffix changes.
 """
 
 from __future__ import annotations
@@ -73,8 +70,8 @@ def count_preprocess_caches(
     ``path_pattern`` filter does. ``pe_encoder`` selects the PE variant counted
     (defaults to ``pe_spatial`` — the default ``repa_encoder``).
 
-    Kept here, next to the suffix definitions, so every consumer (the GUI
-    included) shares one by-name classifier instead of re-deriving the rules.
+    Kept here, next to the suffix definitions, so every consumer shares one
+    by-name classifier instead of re-deriving the rules.
     """
     out = {"latents": 0, "te": 0, "pe": 0}
     cache_dir = Path(cache_dir)
@@ -83,7 +80,7 @@ def count_preprocess_caches(
     paths = [p for p in cache_dir.rglob("*") if p.is_file()]
     if path_pattern and path_pattern != "*":
         # Lazy import: keeps this module a stdlib-only leaf at import time (the
-        # GUI imports it just for suffixes); path_filter is itself torch-free.
+        # lightweight tools import it just for suffixes); path_filter is torch-free.
         from library.datasets.path_filter import filter_paths_by_glob
 
         keep = filter_paths_by_glob(

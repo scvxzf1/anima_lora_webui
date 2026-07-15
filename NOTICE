@@ -1,7 +1,7 @@
 anima_lora
 Copyright (c) 2026 Seunghyun Ji
 
-This repository (training pipeline, inference code, GUI, and utilities) is
+This repository (training pipeline, inference code, WebUI, and utilities) is
 licensed under the MIT License. See LICENSE for the full text.
 
 --------------------------------------------------------------------------------

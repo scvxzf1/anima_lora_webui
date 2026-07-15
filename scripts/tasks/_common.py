@@ -280,7 +280,7 @@ def _has_console() -> bool:
     """True if this process is attached to a Windows console (or is non-Windows).
 
     Used to decide whether to suppress new console popups for child processes.
-    A pythonw.exe-launched process (e.g. desktop GUI shortcut) has no console.
+    A pythonw.exe-launched process has no console.
     """
     if sys.platform != "win32":
         return True
@@ -305,8 +305,8 @@ def run(cmd: list[str], **kwargs):
 
     Prepends the venv's Scripts/bin directory to PATH (in both the child env
     and our own lookup) so venv-installed CLIs (``accelerate``, ``hf``, ...)
-    resolve even when this process was started via a desktop shortcut that
-    invokes ``pythonw.exe`` directly, bypassing venv activation.
+    resolve even when this process was started via ``pythonw.exe`` directly,
+    bypassing venv activation.
 
     On Windows, ``subprocess.run`` uses the parent's PATH to locate the exe —
     setting ``env["PATH"]`` only affects the *child's* environment, not the

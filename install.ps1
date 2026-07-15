@@ -17,31 +17,6 @@ $Dir     = if ($env:ANIMA_DIR) { $env:ANIMA_DIR } else { 'anima_lora' }
 
 function Say($m)  { Write-Host "==> $m" -ForegroundColor Cyan }
 function Die($m)  { Write-Host "error: $m" -ForegroundColor Red; exit 1 }
-function Warn($m) { Write-Host "warning: $m" -ForegroundColor Yellow }
-
-# 0. neutralize an active Conda env (GH #21) ---------------------------------
-# With `conda activate base` live, conda's Library\bin sits on PATH. uv builds
-# its own .venv with the correct PySide6 DLLs, but at GUI launch Windows loads
-# conda's mismatched Qt DLLs first and PySide6 dies with
-#   ImportError: DLL load failed while importing QtCore
-# We strip conda dirs from PATH and clear CONDA_* for THIS install session so
-# `uv sync` and the GUI launch below are clean, then warn the user to
-# `conda deactivate` before relaunching later (their shell still has it active).
-$CondaActive = $env:CONDA_PREFIX -or $env:CONDA_DEFAULT_ENV
-if ($CondaActive) {
-  Warn "an active Conda environment was detected (CONDA_PREFIX=$env:CONDA_PREFIX)."
-  Say  'neutralizing Conda on PATH for this install session'
-  $condaRoots = @($env:CONDA_PREFIX, $env:CONDA_ROOT, $env:_CONDA_ROOT) |
-    Where-Object { $_ } | ForEach-Object { $_.TrimEnd('\') }
-  $env:Path = ($env:Path -split ';' | Where-Object {
-    $p = $_.TrimEnd('\')
-    if (-not $p) { return $false }
-    foreach ($r in $condaRoots) { if ($p -like "$r*") { return $false } }
-    # Catch conda dirs even when the roots env vars are unset.
-    return ($p -notmatch '(?i)\\(ana|mini)conda[^\\]*\\' -and $p -notmatch '(?i)\\condabin')
-  }) -join ';'
-  Remove-Item Env:CONDA_PREFIX,Env:CONDA_DEFAULT_ENV,Env:CONDA_SHLVL,Env:CONDA_PROMPT_MODIFIER -ErrorAction SilentlyContinue
-}
 
 # 1. uv ----------------------------------------------------------------------
 if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
@@ -157,45 +132,27 @@ trampoline .exe files. To fix:
   Die 'dependency install incomplete'
 }
 
-# 6. desktop shortcut (best-effort — never abort the install over this) ------
-Say 'creating desktop shortcut (Anima LoRA GUI)'
-try {
-  uv run python tasks.py gui-shortcut
-  if ($LASTEXITCODE -ne 0) { throw "gui-shortcut exited $LASTEXITCODE" }
-} catch {
-  Say 'desktop shortcut skipped; create it later with: uv run python tasks.py gui-shortcut'
-}
-
 Write-Host ""
 Write-Host "[OK] installed to $Dir\" -ForegroundColor Green
 Write-Host @"
 
-The GUI is opening now. To finish setup from inside it:
-  - authenticate for gated downloads (run 'hf auth login' in a terminal once)
-  - use the Models dialog to fetch the DiT + Qwen3 text encoder + VAE
+The WebUI is opening at http://127.0.0.1:20102/.
+To finish setup:
+  - authenticate for gated downloads:  uv run hf auth login
+  - download the default models:       uv run python tasks.py download-models
 
-Re-launch later from the "Anima LoRA GUI" desktop shortcut,
-or run:  cd $Dir; python tasks.py gui
+Re-launch later with:
+  cd $Dir; uv run python tasks.py web --host 127.0.0.1 --port 20102
 
 Update later with:  python tasks.py update
 "@
 
-if ($CondaActive) {
-  Write-Host @"
-
-NOTE: a Conda environment was active. This installer ran clean by ignoring it,
-but a NEW terminal with Conda active will fail to launch the GUI
-('DLL load failed while importing QtCore'). Run 'conda deactivate' first,
-or launch from the desktop shortcut (which does not inherit Conda's PATH).
-"@ -ForegroundColor Yellow
-}
-
-# 7. launch the GUI (best-effort, detached — never abort a finished install) -
-# Start-Process so the installer returns immediately with the message above
-# visible; a launch failure on a headless box just falls back to the shortcut.
-Say 'launching the Anima LoRA GUI'
+# 6. launch the WebUI (best-effort, detached) --------------------------------
+Say 'launching the Anima LoRA WebUI'
 try {
-  Start-Process -FilePath 'uv' -ArgumentList 'run', 'python', 'tasks.py', 'gui' -WorkingDirectory (Resolve-Path '.').Path
+  Start-Process -FilePath 'uv' -ArgumentList 'run', 'python', 'tasks.py', 'web', '--host', '127.0.0.1', '--port', '20102' -WorkingDirectory (Resolve-Path '.').Path
+  Start-Sleep -Seconds 2
+  Start-Process 'http://127.0.0.1:20102/'
 } catch {
-  Say 'GUI launch skipped; start it later with: python tasks.py gui'
+  Say 'WebUI launch skipped; start it later with: uv run python tasks.py web --host 127.0.0.1 --port 20102'
 }
