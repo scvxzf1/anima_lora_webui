@@ -1,5 +1,8 @@
 # FeRA — frequency-energy constrained routing
 
+状态：实验
+适用版本：当前 main；可运行边界以 `tasks.py --help` 和实时源码为准
+
 Port of Yin et al., *FeRA: Frequency-Energy Constrained Routing for Effective Diffusion Adaptation Fine-Tuning* (arXiv:2511.17979). DiT runs frozen; every adapted Linear is replaced by a small MoE of **independent rank-r experts**, and a **single global router** consumes the spectral state of the current latent `z_t` and emits one `(B, num_experts)` gate that every adapted layer reuses for that step.
 
 Reference: `FeRA/` in the repo root (paper authors' code: `FeRA/fera/{layer,model,utils,config}.py`).
@@ -96,7 +99,7 @@ The three-axis surface (plan2.md §three-axis-config) covers both points in the 
 | `train.py` | At the per-step σ/FEI hook block: computes FEI features from `noisy_model_input` and calls `network.set_fei(_fei)` when the cfg has `route_per_layer=False, router_source="fei"`. |
 | FeRA GUI preset TOML | Historical entry; this file is not shipped right now. |
 | `configs/methods/lora.toml` | Current LoRA-family stack — ships OrthoLoRA + T-LoRA + Hydra shared-A with `router_source="input"`. |
-| `bench/fera/` | Diagnostic probes: `probe_fei.py` (3-bucket inference probe), `probe_fei_dataset.py` (training-distribution σ_low sweep), `probe_fei_3band_dataset.py`, `probe_closed_loop.py`, `refactor_lowdim_forward.py`, `expressivity_analysis.py`. Pre-network-module work that settled the 2-band collapse and σ_low rule. |
+| Historical `bench/fera/` harness | Diagnostic probes that settled the 2-band collapse and σ_low rule. The scripts were intentionally retired in commit `90b8792b`; the measured results needed by users are summarized in this document. |
 
 ## Parameter count
 
@@ -123,7 +126,7 @@ Far heavier than vanilla LoRA at the same rank because the per-expert `(down, up
 | `use_ortho` | `true` | PSOFT-style Cayley parameterization on each expert. Drops trainable params ~3 OOM. |
 | `fera_num_bands` | 3 | Paper default. Drop to 2 for Anima's bench-validated bimodal split (see [[project_fera_probe_2band_decision]]). |
 | `fei_feature_dim` | 2 | Router input width. Set to `num_bands` for the raw simplex, or 2 for the `(e_low, e_high)` low-dim projection. |
-| `fei_sigma_low_div` | 4.0 | `σ_low = min(H_lat, W_lat) / fei_sigma_low_div`. Default picked from the 2026-05-13 dataset sweep (`bench/fera/results/20260513-1649-dataset-sweep/`) — `div=4` yields the highest router std(e_low) at low/mid t on real training latents. NOT the paper's pixel-domain `min(H, W)/128` (that's SD2-512-specific). |
+| `fei_sigma_low_div` | 4.0 | `σ_low = min(H_lat, W_lat) / fei_sigma_low_div`. Default picked from the historical 2026-05-13 dataset sweep (`20260513-1649-dataset-sweep`) — `div=4` yields the highest router std(e_low) at low/mid t on real training latents. NOT the paper's pixel-domain `min(H, W)/128` (that's SD2-512-specific). |
 | `router_tau` | 0.7 | Softmax temperature. Lower → sharper expert specialization. |
 | `router_hidden_dim` | 64 | Router MLP hidden width. |
 | `network_router_lr_scale` | 10 | Router LR = `network_router_lr_scale × unet_lr`. |
@@ -135,7 +138,7 @@ Far heavier than vanilla LoRA at the same rank because the per-expert `(down, up
 
 ## σ_low rule (why not the paper's κ)
 
-The paper picks DoG kernel scale `κ = min(H, W) / 128` — a pixel-domain constant tuned for SD2 at 512×512. Anima trains under constant-token bucketing (`H_lat · W_lat ≈ 4096`) at varied aspect ratios, so a fixed pixel σ would land on different fractions of the latent grid per bucket. Bench probes (`bench/fera/results/20260512-1814-fera-pilot/`, `…20260512-1827-fera-midwide/`) validated the latent-domain rule on inference trajectories; the 2026-05-13 dataset sweep (`bench/fera/probe_fei_dataset.py`, results under `…20260513-1649-dataset-sweep/`) then picked `div=4` over `div=8` for real training-distribution router signal:
+The paper picks DoG kernel scale `κ = min(H, W) / 128` — a pixel-domain constant tuned for SD2 at 512×512. Anima trains under constant-token bucketing (`H_lat · W_lat ≈ 4096`) at varied aspect ratios, so a fixed pixel σ would land on different fractions of the latent grid per bucket. Historical inference runs `20260512-1814-fera-pilot` / `20260512-1827-fera-midwide` validated the latent-domain rule; the 2026-05-13 dataset sweep `20260513-1649-dataset-sweep` then picked `div=4` over `div=8` for real training-distribution router signal. The original harness was retired in commit `90b8792b`:
 
 ```
 σ_low = min(H_lat, W_lat) / fei_sigma_low_div     (default fei_sigma_low_div = 4.0)
@@ -270,9 +273,9 @@ The bet is that the global router on latent spectral state captures *per-prompt*
 - `configs/methods/lora.toml` — current LoRA-family stack and the template to copy for a local FeRA config.
 - `library/runtime/fei.py` — DoG kernels + FEI computation, shared across both cells.
 - `library/training/losses.py::_fera_fecl_loss` — FECL handler.
-- `bench/fera/` — diagnostic probes; see [[project_fera_probe_2band_decision]] for the σ_low / num_bands findings.
-- `FeRA/` — paper authors' reference implementation (read-only, for diffing).
-- `plan2.md` — plan for retiring `networks/methods/fera.py` into `lora_anima` via three-axis cfg (commit `1dca212`).
+- Historical `bench/fera/` probes — retired in commit `90b8792b`; the σ_low / num_bands findings are summarized above.
+- Paper authors' FeRA reference implementation — external reference, not bundled in this repository.
+- Commit `1dca212` — retired the former standalone `networks/methods/fera.py` path into the LoRA-family three-axis configuration.
 
 ## Citation
 

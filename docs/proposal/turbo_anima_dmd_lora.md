@@ -1,5 +1,8 @@
 # Turbo Anima — Decoupled DMD distillation with co-LoRA student + fake
 
+状态：半活跃提案
+适用版本：设计记录；可运行入口以 `exp-turbo` 为准
+
 A proposal to distill the 28-step Anima teacher (CFG=4) into a 4–8 step
 generator via Decoupled DMD (Liu et al., arXiv:2511.22677, "CFG Augmentation
 as the Spear, Distribution Matching as the Shield"), using **LoRA for both

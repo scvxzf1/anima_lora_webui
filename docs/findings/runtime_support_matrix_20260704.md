@@ -1,5 +1,8 @@
 # Runtime 支持矩阵审计：compile / checkpoint / block swap
 
+状态：研究记录 / 阶段快照
+适用版本：以文中日期、提交和运行环境为准；不作为当前 main 操作说明
+
 日期：2026-07-04
 
 范围：只读审计训练入口、runtime harness、Web preflight 和现有测试覆盖。未运行真实训练。

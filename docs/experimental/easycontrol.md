@@ -1,5 +1,8 @@
 # EasyControl
 
+状态：实验
+适用版本：当前 main；可运行边界以 `tasks.py --help` 和实时源码为准
+
 EasyControl-style image conditioning for Anima. Trains per-block cond LoRA on
 `self_attn` (q/k/v/o) and FFN (layer1/layer2), plus a per-block scalar additive
 logit bias `b_cond` on the cond softmax positions. The reference image is

@@ -1,5 +1,8 @@
 # Soft Tokens — per-layer × per-t learnable text tokens (SoftREPA)
 
+状态：实验
+适用版本：当前 main；可运行边界以 `tasks.py --help` 和实时源码为准
+
 Per-layer, time-indexed soft tokens in T5-compatible space. DiT is frozen. ~1M trainable params at default config (n_layers=10, K=4, D=1024, n_t_buckets=100). Each of the first `n_layers` DiT blocks gets its own learned (K, D) token bank plus a per-(t-bucket, layer) D-vector offset, spliced into `crossattn_emb` for that block alone. Trained with plain FM.
 
 Reference: Lee et al., *Aligning Text to Image in Diffusion Models is Easier Than You Think* (arXiv:2503.08250, NeurIPS 2025) — "SoftREPA". The base recipe adopts only the parameterization (per-layer × per-t soft tokens), trained under plain FM; the paper's InfoNCE contrastive objective was originally skipped because at Anima's training batch size (B=1) there are no in-batch negatives, and the paper itself reported SD3 FID regression at paper-strength contrastive. An **optional, B=1-adapted contrastive objective** is now available (off by default) — it builds negatives by swapping a cached text embedding off disk instead of using batch peers. See §"Contrastive objective" below and [soft_tokens_contrastive.md](../proposal/soft_tokens_contrastive.md).

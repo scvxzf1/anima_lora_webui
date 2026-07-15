@@ -1,5 +1,8 @@
 # `per_channel_scaling` calibration is content-agnostic on Anima
 
+状态：研究记录 / 阶段快照
+适用版本：以文中日期、提交和运行环境为准；不作为当前 main 操作说明
+
 This records an A/B result showing that the per-input-channel activation
 profile `channel_stats.safetensors` captures — the thing `per_channel_scaling`
 rescales LoRA inputs against — is **driven by the model's weights/architecture,

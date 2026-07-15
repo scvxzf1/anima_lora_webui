@@ -1,5 +1,8 @@
 # R4 — WebUI 维护与 UX 审计（静态）
 
+状态：历史审计快照
+适用版本：2026-06-22 审计时点；不作为当前 main 操作说明
+
 **声明:** 未做浏览器点测；依据 `web/static/*`、`web/routes/*`、`tests/test_training_frontend_state.py`。
 
 ## 1. 前端模块图

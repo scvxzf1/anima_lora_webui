@@ -1,5 +1,8 @@
 # Adapter-aware Checkpoint 可行性探索文档
 
+状态：半活跃提案
+适用版本：当前 main 的可行性探索；尚非默认能力
+
 ## 核心结论
 
 Adapter-aware checkpoint 在本项目中**可行，且值得作为实验型显存优化方向推进**；但它应先定位为“选择性激活重计算策略”，不要一开始就默认替换现有 checkpoint 方案。

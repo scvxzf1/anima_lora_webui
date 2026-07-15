@@ -1,5 +1,8 @@
 # ChimeraHydra — dual-A additive routing for timestep-aware MoE
 
+状态：实验
+适用版本：当前 main；可运行边界以 `tasks.py --help` 和实时源码为准
+
 历史提案已归档或缺失，当前以本文和
 [structure/chimera-hydra.md](../structure/chimera-hydra.md) 为准。
 

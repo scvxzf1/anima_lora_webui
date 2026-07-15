@@ -1,5 +1,8 @@
 # postfix_residual — per-image inversion as a *probe* of the residual manifold
 
+状态：半活跃提案
+适用版本：设计记录；当前仅保留 `exp-invert-directedit` 探针
+
 Sibling proposal to [`postfix_residual_for_directedit.md`](postfix_residual_for_directedit.md).
 Same decomposition `ψ_src = T5(tags) + postfix(image)`, but a different
 question. The companion proposal asks **how to deliver** an image-conditional

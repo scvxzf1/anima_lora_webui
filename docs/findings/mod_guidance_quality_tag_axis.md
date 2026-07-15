@@ -1,5 +1,8 @@
 # Mod guidance: why duplicated/aligned tags degrade, and the quality-tag direction structure
 
+状态：研究记录 / 阶段快照
+适用版本：以文中日期、提交和运行环境为准；不作为当前 main 操作说明
+
 This records why putting a tag in **both** the positive prompt and the
 mod-guidance steering prompt (or even just in the positive prompt while
 steering is on) degrades quality, plus a map of how booru "quality" tags sit in

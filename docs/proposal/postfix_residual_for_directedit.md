@@ -1,5 +1,8 @@
 # postfix_residual — image-conditional postfix as DirectEdit's ψ_src residual carrier
 
+状态：半活跃提案
+适用版本：设计记录；尚非当前稳定入口
+
 Companion to the historical img2emb / orthogonal-postfix trail. Those earlier
 proposal files are archived or missing in the current tree; this document is
 the active reference here. Different question, same neighbourhood. img2emb asks

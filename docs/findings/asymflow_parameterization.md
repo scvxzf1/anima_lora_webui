@@ -1,5 +1,8 @@
 # AsymFlow asymmetric parameterization — assessed, not worth reviving for Anima
 
+状态：研究记录 / 阶段快照
+适用版本：以文中日期、提交和运行环境为准；不作为当前 main 操作说明
+
 This records why **AsymFlow's headline contribution — the rank-asymmetric velocity
 parameterization `u_A = Pε − x_0`** — was never ported into Anima, and whether it is
 worth reviving. Short version: the parameterization is a remedy for a *high-dimensional

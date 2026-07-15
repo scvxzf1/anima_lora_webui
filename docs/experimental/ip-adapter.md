@@ -1,5 +1,8 @@
 # IP-Adapter
 
+状态：实验
+适用版本：当前 main；可运行边界以 `tasks.py --help` 和实时源码为准
+
 Decoupled image cross-attention. A reference image is encoded by a frozen vision tower (PE-Core-L14-336 by default), reduced to K=16 compact tokens by a learned Perceiver resampler, then projected per DiT block into parallel `to_k_ip` / `to_v_ip` matrices. The patched cross-attention adds `scale * SDPA(text_q, ip_k, ip_v)` to the existing text cross-attention output. Matches the reference IP-Adapter (Ye et al. 2023) — a single global `scale`, no per-block learnable gate.
 
 DiT is **frozen** — only the resampler and the per-block KV projections train. ~150M trainable params total at the default config (`K=16`, 28 blocks, hidden=2048).

@@ -26,6 +26,10 @@
 | [specs/2026-07-11-backend-residual-optimization-design.md](specs/2026-07-11-backend-residual-optimization-design.md) | 后端残留优化设计 |
 | [specs/2026-07-11-backend-round-c-product-decisions-design.md](specs/2026-07-11-backend-round-c-product-decisions-design.md) | 后端 C 轮产品决策设计 |
 | [specs/2026-07-11-dataset-page-stage-schedule-ia-design.md](specs/2026-07-11-dataset-page-stage-schedule-ia-design.md) | 数据集页阶段/排期信息架构设计 |
+| [specs/2026-07-11-preprocess-cache-reuse-design.md](specs/2026-07-11-preprocess-cache-reuse-design.md) | 预处理缓存复用设计 |
+| [specs/2026-07-12-fp16-training-parity-design.md](specs/2026-07-12-fp16-training-parity-design.md) | FP16 训练一致性设计 |
+| [specs/2026-07-12-webui-design-system-console-upgrade-design.md](specs/2026-07-12-webui-design-system-console-upgrade-design.md) | WebUI 设计系统控制台升级设计 |
+| [specs/2026-07-12-webui-instrument-panel-reskin-design.md](specs/2026-07-12-webui-instrument-panel-reskin-design.md) | WebUI 仪表面板重绘设计 |
 
 ## Plans
 
@@ -40,6 +44,13 @@
 | [plans/2026-07-11-backend-round-c-product-decisions.md](plans/2026-07-11-backend-round-c-product-decisions.md) | 后端 C 轮产品决策执行计划 |
 | [plans/2026-07-11-dataset-page-stage-schedule-ia.md](plans/2026-07-11-dataset-page-stage-schedule-ia.md) | 数据集页阶段/排期信息架构执行计划 |
 | [plans/2026-07-11-networks-cycle-break.md](plans/2026-07-11-networks-cycle-break.md) | networks 循环依赖打断计划 |
+| [plans/2026-07-11-preprocess-cache-reuse.md](plans/2026-07-11-preprocess-cache-reuse.md) | 预处理缓存复用执行计划 |
+| [plans/2026-07-12-fp16-training-parity.md](plans/2026-07-12-fp16-training-parity.md) | FP16 训练一致性执行计划 |
+| [plans/2026-07-12-webui-design-system-console-upgrade.md](plans/2026-07-12-webui-design-system-console-upgrade.md) | WebUI 设计系统控制台升级执行计划 |
+| [plans/2026-07-12-webui-design-system-console-upgrade-iteration-log.md](plans/2026-07-12-webui-design-system-console-upgrade-iteration-log.md) | WebUI 设计系统升级迭代日志 |
+| [plans/2026-07-12-webui-instrument-panel-reskin.md](plans/2026-07-12-webui-instrument-panel-reskin.md) | WebUI 仪表面板重绘执行计划 |
+| [plans/2026-07-12-webui-instrument-panel-reskin-iteration-log.md](plans/2026-07-12-webui-instrument-panel-reskin-iteration-log.md) | WebUI 仪表面板重绘迭代日志 |
+| [plans/2026-07-12-webui-instrument-panel-reskin-final-review.md](plans/2026-07-12-webui-instrument-panel-reskin-final-review.md) | WebUI 仪表面板重绘最终评审 |
 
 ## 维护规则
 

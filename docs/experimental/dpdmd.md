@@ -1,5 +1,8 @@
 # DP-DMD (Turbo Anima) — diversity-preserved few-step distillation
 
+状态：实验
+适用版本：当前 main；可运行边界以 `tasks.py --help` 和实时源码为准
+
 Distills the CFG=4 Anima teacher into a **few-step LoRA student** via
 **Diversity-Preserved Distribution Matching Distillation** (Wu, Li, Zhang, Ma —
 arXiv:2602.03139). The output is a **plain standard LoRA** — there is no

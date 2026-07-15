@@ -1,5 +1,8 @@
 # SPD — Spectral Progressive Diffusion (training-free multi-resolution inference)
 
+状态：实验
+适用版本：当前 main；可运行边界以 `tasks.py --help` 和实时源码为准
+
 Port of Xiao et al., *Spectral Progressive Diffusion* (arXiv:2605.18736, [project page](https://howardxiao.ca/speed/)). Grow the spatial resolution along the denoising trajectory: run the early, noise-dominated steps at **low resolution**, then inject high-frequency detail via **spectral noise expansion** only once finer frequencies emerge from noise. Because the latent power spectrum decays as a power law (`P_ω ∝ |ω|^{-β}`, **β ≈ 2.26** on Anima — `bench/spd/`), high frequencies carry far less signal and are cheap to defer.
 
 Two paths: **Case A** is training-free — the bare DiT, or any existing LoRA checkpoint, runs the multi-resolution trajectory through the standard inference path with no training. **Case B** is a trajectory-adapter fine-tune (a plain LoRA trained on the SPD velocity targets) so the model *sees* the multi-resolution trajectory; it is now implemented and trained (see [Fine-tune (Case B)](#fine-tune-case-b) below).
@@ -77,7 +80,7 @@ From the Phase-2 schedule sweep (`bench/spd/README.md`, 832×1216, 2 seeds, with
 
 A **single, late** handoff matches a 2-stage ramp in quality while being simpler and faster (fewer HF injections). SPD-on-Anima also runs consistently **sharper / higher-contrast** than baseline — a behavioral signature, not a transparent speedup.
 
-**Caveat:** even tuned (×1.73 max), standalone SPD is slower than the Spectrum node we already ship (~×3.75). The real open question is **SPD ∘ Spectrum** (orthogonal: token-reduction vs block-skipping) and **SPD vs Turbo at matched quality** — both untested. The speed/quality bench (`bench/spd/bench_speed_quality.py`) is the remaining Phase-3 TODO.
+**Caveat:** even tuned (×1.73 max), standalone SPD is slower than the Spectrum node we already ship (~×3.75). The real open question is **SPD ∘ Spectrum** (orthogonal: token-reduction vs block-skipping) and **SPD vs Turbo at matched quality** — both untested. A future Phase-3 speed/quality harness is still TODO; no `bench/spd/bench_speed_quality.py` script is currently shipped.
 
 ## Why it works on Anima — precondition history
 

@@ -419,7 +419,6 @@ Consequences of the plain-LoRA bake (the load-bearing constraint):
 
 ---
 
-*(A schematic for `docs/structure_images/dpdmd.png` — the three-role frozen-DiT
-diagram plus the diversity-anchor / DMD step split — is still to be drawn; the ASCII
-diagram in §3 is the interim reference. The retired CA-era schematic lives at
-`docs/structure_images/dmd2_decoupled.png`.)*
+*The current schematic is `docs/structure_images/dpdmd.png`; the ASCII diagram
+in §3 remains the detailed interim reference. The older CA-era
+`dmd2_decoupled.png` asset was retired and is not shipped in the current tree.*

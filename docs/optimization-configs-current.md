@@ -6,7 +6,7 @@
 
 - 配置链：`configs/base.toml`、`configs/presets.toml`、`configs/methods/*.toml`、`configs/gui-methods/*.toml`。
 - 任务入口：`tasks.py`、`scripts/tasks/`、`scripts/experimental_tasks/`。
-- WebUI/GUI：`web/static/js/config/catalog/*`、`web/static/js/features/anima-app/chunks/01-scope-state.js`、`gui/`。
+- WebUI：`web/static/js/config/catalog/*`、`web/static/js/features/anima-app/chunks/01-scope-state.js`。
 - 维护说明：`CLAUDE.md`、`docs/structure/anima-optimizations.md`、`docs/findings/*blockswap*`、`docs/findings/*lokr*`、Anima skill references。
 - 排除范围：`configs/imported/`、`configs/web-training-history/`、`configs/web-training-queue/`、`output/`、`models/`、`post_image_dataset/` 等用户数据或运行产物。
 
@@ -24,8 +24,8 @@ configs/base.toml
 | 配置名 | 所在位置 | 作用 | 默认值/候选值 | 适用场景 | 风险或副作用 | UI 暴露 |
 | --- | --- | --- | --- | --- | --- | --- |
 | `preset` | `configs/presets.toml`、`train.py --preset`、`tasks.py PRESET=...` | 选择硬件/采样覆盖项 | `default`、`low_vram`、`low_vram_blockswap`、`balanced_16g`、`graft`、`half`、`quarter`、`tenth`、`debug` | 快速切换显存档或试跑采样比例 | 方法配置会覆盖同名键，需看最终 merge 结果 | 是，预设下拉和 guide |
-| `method` | `configs/methods/*.toml`、`train.py --method` | 选择算法 family 配置 | `lora`、`chimera`、`ip_adapter`、`easycontrol`、`soft_tokens`、`turbo`、`spd`、`byg`、`colorize` | CLI/任务入口训练 | family 文件可能包含多组内部开关，非自包含变体 | 部分 |
-| `methods_subdir` | `train.py --methods_subdir`、`scripts/tasks/training.py` | 在 `methods` 与 `gui-methods` 间切换 | 默认 `methods`；GUI 训练用 `gui-methods` | WebUI/GUI 自包含变体训练 | 选错目录会找不到配置或跑错变体 | 间接暴露 |
+| `method` | `configs/methods/*.toml`、`train.py --method` | 选择算法 family 配置 | `lora`、`register`、`chimera`、`ip_adapter`、`easycontrol`、`soft_tokens`、`turbo`、`spd`、`byg`、`colorize` | CLI/任务入口训练 | family 文件可能包含多组内部开关，非自包含变体 | 部分 |
+| `methods_subdir` | `train.py --methods_subdir`、`scripts/tasks/training.py` | 在 `methods` 与 `gui-methods` 间切换 | 默认 `methods`；WebUI 训练用历史命名目录 `gui-methods` | WebUI 自包含变体训练 | 选错目录会找不到配置或跑错变体 | 间接暴露 |
 | `config_file` | `train.py --config_file`、Web runtime config | 直接加载 TOML 配置 | 任意 TOML 路径 | WebUI 生成 runtime 配置、CLI 复现 | 路径或内容错误会绕过预期方法/预设选择 | WebUI 内部 |
 | `print-config` | `tasks.py print-config`、`train.py --print-config` | 输出最终合并配置和来源 | `METHOD=<name>`、`PRESET=<name>` | 排查覆盖关系 | 只打印不训练 | CLI |
 | `base_config` | `library/config/schema.py` | TOML 父配置递归合并 | 默认无 | 复用大块配置 | 嵌套过深会增加来源理解成本 | 否 |
@@ -83,7 +83,7 @@ configs/base.toml
 | `torch_compile` | `configs/base.toml`、`presets.toml`、WebUI catalog | 启用 PyTorch compile blocks | base `true`；`low_vram_blockswap=false`；`balanced_16g=true` | 长训提速、Anima native bucket 编译路径 | 首次启动慢；与 CUDAGraph block swap 模式存在兼容限制 | 是 |
 | `compile_inductor_mode` | `train.py`、WebUI catalog | Inductor mode | 默认 `None/default`；候选 `default`、`reduce-overhead`、`max-autotune`、`max-autotune-no-cudagraphs` | 编译性能消融 | block swap 会避开 CUDAGraph 模式；收益依环境 | 是 |
 | `attn_mode` | `configs/base.toml`、方法配置、WebUI catalog | 注意力后端 | base `flash`；候选 `torch`、`xformers`、`flash`、`sageattn`、`flex`、`sdpa` | 性能/兼容性切换 | 高性能后端依赖 CUDA/PyTorch/显卡支持 | 是 |
-| `use_custom_down_autograd` | `configs/base.toml`、WebUI catalog、LoKr playbook | 自定义 LoRA/LoKr 反向路径 | base `true` | 降低 LoRA/LoKr 临时峰值或提升吞吐 | 底层 autograd 优化，异常时需排查 | 是 |
+| `use_custom_down_autograd` | `configs/base.toml`、WebUI catalog、LoKr playbook | 自定义 LoRA/LoKr 反向路径 | base `false` | 降低 LoRA/LoKr 临时峰值或提升吞吐的显式实验开关 | 底层 autograd 优化，异常时需回退到 `false` 排查 | 是 |
 
 ## 训练质量和稳定性配置
 
@@ -116,7 +116,7 @@ configs/base.toml
 | `channel_scaling_alpha` | `lora.toml`、Chimera、Turbo/SPD network | 通道缩放强度 | 常见 `0.5` | LoRA/实验方法通道缩放 | 与方法实现耦合 | 是 |
 | `use_moe_style` | `lora.toml`、Hydra GUI | Hydra/FeRA MoE 结构 | 候选 `false`、`shared_A`、`independent_A`；Hydra 多为 `shared_A` | 专家路由类 adapter | 显存、速度、推理兼容性复杂度上升 | 是 |
 | `route_per_layer` | `lora.toml`、Hydra GUI、WebUI catalog | 是否逐层路由 | LoRA method 当前 `true`；Hydra GUI `true` | MoE 路由细粒度 | 路由统计和调参复杂 | 是 |
-| `router_source` | `lora.toml`、Hydra GUI、WebUI catalog | 路由信号来源 | 候选 `fei`、`sigma`、`input`、`none`；LoRA method `input`；Hydra GUI `sigma` | Hydra/FeRA 消融 | 信号来源不同，结果不可直接混比 | 是 |
+| `router_source` | `lora.toml`、Hydra GUI、WebUI catalog | 路由信号来源 | 候选 `none`、`input`、`sigma`、`fei`、`crossattn_emb`；LoRA method `input`；Hydra GUI `sigma` | Hydra/FeRA/文本全局路由消融 | `crossattn_emb` 只适用于 network-level 全局路由；信号来源不同，结果不可直接混比 | 是 |
 | `num_experts` | `lora.toml`、Hydra GUI、WebUI catalog | 专家数 | LoRA method `4`；Hydra GUI `6` | MoE 容量 | 专家越多显存/速度成本越高，可能利用不均 | 是 |
 | `balance_loss_weight` / `balance_loss_warmup_ratio` | LoRA/Hydra/Chimera 配置 | 专家均衡 loss | LoRA `1e-7`/`0.4`；Chimera `1.0`/`0.1` | 防止专家坍缩 | loss 过强可能干扰主任务 | 是 |
 | `router_targets` | LoRA/Hydra/Chimera 配置 | 路由作用层正则 | 常见 `cross_attn.output_proj` 与 `mlp.layer[12]`；Hydra 8GB 仅 MLP | 控制 MoE 插入范围 | regex 错误会影响训练层覆盖 | 是 |
@@ -133,11 +133,11 @@ configs/base.toml
 | `use_easycontrol` / Easy 参数 | `configs/methods/easycontrol.toml`、`gui-methods/easycontrol.toml`、WebUI catalog | 图像 self-attn/FFN 条件控制 | GUI `network_dim=16`；`cond_token_count=4096`；`b_cond_init=-10` | 图像控制训练 | 专用数据集和缓存目录；条件 token 多会占显存 | 是 |
 | `network_args` | IP/Easy/Soft Tokens/LoKr 等方法、WebUI network arg specs | 方法额外参数透传 | `key=value` 字符串数组 | 方法内部调参 | 格式错误或未知参数会启动失败 | 部分 |
 
-## WebUI 和 GUI 暴露面
+## WebUI 暴露面
 
 | 配置名 | 所在位置 | 作用 | 默认值/候选值 | 适用场景 | 风险或副作用 | UI 暴露 |
 | --- | --- | --- | --- | --- | --- | --- |
-| GUI 变体文件 | `configs/gui-methods/*.toml` | 每个变体一个自包含训练配置 | 当前有 `lora`、`lora-8gb`、`tlora`、`tlora-8gb`、`ortholora`、`hydralora`、`hydralora-8gb`、`reft`、`lokr`、`loha`、`glora`、`vera`、`chimera_hydra`、`ip_adapter`、`easycontrol`、`soft_tokens`、`lora_signal_probe` | WebUI/GUI 选择训练方法 | 变体文件会覆盖 preset 同名键 | 是 |
+| 自包含变体文件 | `configs/gui-methods/*.toml` | 每个变体一个自包含训练配置；目录名为历史兼容名称 | 当前有 `chimera_hydra`、`easycontrol`、`glora`、`hydralora`、`hydralora-8gb`、`ip_adapter`、`loha`、`lokr`、`lora`、`lora-8gb`、`lora-v100-stable`、`lora_signal_probe`、`mfu_rokkotsu_cached`、`mfu_rokkotsu_plain_lora_ckpt`、`ortholora`、`reft`、`soft_tokens`、`tlora`、`tlora-8gb`、`tlora_ortho_reft`、`vera` | WebUI 选择训练方法 | 变体文件会覆盖 preset 同名键；`mfu_*` 和 `lora_signal_probe` 为维护/诊断变体，不是新手默认入口 | 是 |
 | 表单分类 `optimization` | `web/static/js/config/catalog/form-layout.js` | 将优化字段集中到“优化”页签 | 包含显存与速度、LoKr 专用、数据加载与 VAE、实验性功能 | 用户查找关键开关 | 表单默认值与最终 merge 值需要看当前配置 | 是 |
 | 资源快捷按钮 `全 GPU` | `01-scope-state.js` | 关闭 block swap/probe/offload，保持 compile | `blocks_to_swap=0`、`torch_compile=true` | 显存充足、最快路径 | 显存不足会 OOM | 是 |
 | 资源快捷按钮 `Balanced 16G` | `01-scope-state.js`、`configs/presets.toml[balanced_16g]` | 普通 LoRA 16GB block swap 档 | `blocks_to_swap=12`、`bf16`、`profile=off`、`gradient_checkpointing=false` | 16GB 普通 LoRA 优先档 | 不等同 LoKr 稳定档；需要诊断时手动打开 profile | 是 |
@@ -145,7 +145,6 @@ configs/base.toml
 | 资源快捷按钮 `更省显存` | `01-scope-state.js` | 增加 block swap 数 | `blocks_to_swap=16`、`profile=off` | 16GB 普通 LoRA 更省显存 | 比 Balanced 更慢 | 是 |
 | 资源快捷按钮 `LoKr 16G` | `01-scope-state.js`、LoKr playbook | LoKr 专用救场 | `blocks_to_swap=23`、`lokr_factor_group_size=8`、`memory_probe=auto`、`profile=off` | LoKr 16GB 首次试跑 | 余量很薄；仍可能需 allocator 环境变量；需要 block swap 归因时手动开 profile | 是 |
 | 资源快捷按钮 `OOM 兜底` | `01-scope-state.js` | block swap + selective checkpoint | `blocks_to_swap=12`、`selective_checkpoint=mlp_only`、`profile=off` | 普通路径仍 OOM | 会变慢；不适合作为 LoKr 首选 fallback | 是 |
-| PySide6 GUI 配置页 | `gui/tabs/config_tab.py`、`gui/__init__.py` | 读取 `gui-methods` 变体并隐式合并 preset | 隐式 preset 为 `default` | 桌面 GUI 编辑变体 | 保存会写回变体文件，不再区分 preset/variant | 是 |
 | Web 全局设置 | `configs/web-ui-settings.toml`、`web/services/settings_service.py` | 输出根目录和全局模型路径 | `output_root=output/runs`；模型路径键为 DiT/Qwen3/VAE | WebUI runtime 输出和路径复用 | 文档不应固化本机绝对路径 | 是 |
 
 ## 实验方法配置

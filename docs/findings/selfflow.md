@@ -1,5 +1,8 @@
 # Self-Flow rep-loss — falsified on the frozen Anima backbone
 
+状态：研究记录 / 阶段快照
+适用版本：以文中日期、提交和运行环境为准；不作为当前 main 操作说明
+
 This records why **Self-Flow's representation-distillation objective** was not
 ported into Anima's LoRA fine-tuning pipeline. The short version: the method
 exploits an information gap between clean-noised and heavy-noised views of a

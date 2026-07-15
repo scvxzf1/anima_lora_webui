@@ -1,8 +1,9 @@
 # Embedding Inversion (historical)
 
 > Current status: the old `make invert`, `make invert-ref`, `exp-test-ref`,
-> `archive/inversion/invert_embedding.py`, and inference `--prefix_weight`
-> paths are not active commands in this tree. The runnable inversion-related
+> the former `archive/inversion/invert_embedding.py` prototype, and inference
+> `--prefix_weight` paths are not active commands in this tree. The archive
+> prototype was removed in commit `03791a0a`. The runnable inversion-related
 > probe is now:
 >
 > ```bash
@@ -227,7 +228,7 @@ Single `.safetensors` holding one tensor:
 
 | Key | Shape | Dtype | Notes |
 |---|---|---|---|
-| `prefix_embeds` | `[K, D]` | bf16 | Same key/schema as `networks/methods/postfix.py` prefix-mode checkpoints |
+| `prefix_embeds` | `[K, D]` | bf16 | Historical prefix-mode checkpoint schema; the former `networks/methods/postfix.py` implementation was removed in commit `3f1bc4a5` |
 
 Metadata includes `ss_network_module`, `ss_mode=prefix`, `ss_num_postfix_tokens=K`, `ss_embed_dim=D`, plus inversion-specific fields (`ss_reference_image`, `ss_template`, `ss_placeholder_char_offset`, `ss_best_loss`, `ss_steps`, `ss_lr`, `ss_seed`).
 

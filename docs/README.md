@@ -8,12 +8,13 @@
 
 | 你想做什么 | 先看 |
 | --- | --- |
-| 从零安装并启动 WebUI | [guidelines/指南书.md](guidelines/指南书.md)、[guidelines/linux-deployment.zh.md](guidelines/linux-deployment.zh.md) |
+| 从零安装并启动 WebUI | [../README.md](../README.md#linux-部署启动)、[guidelines/linux-deployment.zh.md](guidelines/linux-deployment.zh.md) |
+| 使用 WebUI 与命令行全流程 | [../README.md](../README.md#启动后怎么用)、[guidelines/training.md](guidelines/training.md) |
 | 学会训练和选方法 | [guidelines/training.md](guidelines/training.md) |
 | 学会推理、DCW、Spectrum | [guidelines/inference.md](guidelines/inference.md) |
 | 理解模型和训练结构 | [structure/anima.md](structure/anima.md)、[structure/anima-optimizations.md](structure/anima-optimizations.md) |
 | 查配置、外置配置和路径规则 | [configuration/README.md](configuration/README.md) |
-| 查 WebUI / GUI 独立功能 | [features/README.md](features/README.md) |
+| 查 WebUI 独立功能 | [features/README.md](features/README.md) |
 | 快速审核当前分支前端健康度 | [features/frontend-health-scorecard.md](features/frontend-health-scorecard.md)、[superpowers/specs/2026-07-11-five-round-auto-iteration-protocol.md](superpowers/specs/2026-07-11-five-round-auto-iteration-protocol.md) |
 | 查实验结论、审计和运行报告 | [findings/README.md](findings/README.md) |
 | 查仍可能推进的提案 | [proposal/README.md](proposal/README.md) |
@@ -25,17 +26,25 @@
 
 | 分区 | 放什么 | 规则 |
 | --- | --- | --- |
-| `guidelines/` | 用户操作指南 | 中文主路径优先，翻译文档可滞后但不能成为唯一事实来源 |
+| `guidelines/` | 用户操作指南 | 中文主路径优先；WebUI 以根 README/Linux 部署指南为准；旧多语种《指南书》仅作历史参考 |
 | `methods/` | 稳定或已接入能力 | 偏“怎么用、怎么配置、运行时行为是什么” |
 | `experimental/` | 可运行但仍实验的能力 | 顶部或正文要说清楚实验边界和占位能力 |
 | `structure/` | 原理、数学、架构 | 和 `methods/` / `experimental/` 配套阅读 |
 | `configuration/` | 配置、路径、环境变量 | 配置字段和路径规则变更时同步更新 |
-| `features/` | UI 或产品功能 | WebUI / GUI 独立功能说明放这里 |
+| `features/` | UI 或产品功能 | WebUI 独立功能说明放这里 |
 | `findings/` | 审计、实验结论、失败路径 | 不作为新用户主路径，用分区索引归档上下文 |
 | `optimizations/` | compile、kernel、显存、性能 | 只记录当前仍有维护价值的优化说明 |
 | `proposal/` | 活跃或半活跃提案 | 完成、过期或只服务旧合并工作的提案移到 `_archive/docs/proposal/` |
+| `superpowers/` | 当前迭代的 spec / plan 施工区 | 不作为用户主路径，完成后迁入 findings/正式文档或归档 |
 
 所有 `docs/` 下新增 Markdown 必须从本页或一个分区索引可达。
+
+文档结构、内部链接、章节锚点、代码围栏、分区索引、生命周期标记和部分
+“当前配置事实”由以下定向测试守护：
+
+```bash
+timeout 60 .venv/bin/python -m pytest tests/test_documentation_integrity.py -q
+```
 
 ## Guidelines
 
@@ -43,19 +52,22 @@
 
 | 文档 | 说明 |
 | --- | --- |
-| [guidelines/指南书.md](guidelines/指南书.md) | 中文综合指南，覆盖安装、数据集、WebUI、训练、推理和 ComfyUI 部署 |
+| [guidelines/README.md](guidelines/README.md) | Guidelines 分区索引 |
+| [guidelines/指南书.md](guidelines/指南书.md) | 历史中文 GUI/CLI 综合指南；桌面 GUI 命令已移除，当前入口以根 README 为准 |
 | [guidelines/linux-deployment.zh.md](guidelines/linux-deployment.zh.md) | Linux 部署与启动指南 |
 | [guidelines/git-sync-policy.md](guidelines/git-sync-policy.md) | 本地 `main` 与线上 `webui/main` 的同步规则 |
 | [guidelines/training.md](guidelines/training.md) | 训练参考：LoRA 变体、caption shuffle、masked loss、数据集配置 |
 | [guidelines/inference.md](guidelines/inference.md) | 推理参考：推理命令、DCW、Spectrum、prompt 文件 |
 | [guidelines/difference_between_comfy.md](guidelines/difference_between_comfy.md) | anima_lora 与 ComfyUI 核心实现差异 |
-| [guidelines/guidebook.md](guidelines/guidebook.md) | 英文综合指南 |
-| [guidelines/ガイドブック.md](guidelines/ガイドブック.md) | 日文综合指南 |
-| [guidelines/가이드북.md](guidelines/가이드북.md) | 韩文综合指南 |
+| [guidelines/guidebook.md](guidelines/guidebook.md) | 历史英文 GUI/CLI 综合指南 |
+| [guidelines/ガイドブック.md](guidelines/ガイドブック.md) | 历史日文 GUI/CLI 综合指南 |
+| [guidelines/가이드북.md](guidelines/가이드북.md) | 历史韩文 GUI/CLI 综合指南 |
 
 ## Methods
 
 这一组是稳定或已接入能力的使用说明。
+
+分区索引：[methods/README.md](methods/README.md)。
 
 | 文档 | 说明 |
 | --- | --- |
@@ -78,6 +90,8 @@ Postfix 当前用户入口在 [guidelines/training.md#postfix](guidelines/traini
 
 这一组是可运行但仍在实验、调参或验证阶段的方法。
 
+分区索引：[experimental/README.md](experimental/README.md)。
+
 | 文档 | 说明 |
 | --- | --- |
 | [experimental/anima_tagger.md](experimental/anima_tagger.md) | Anima Tagger，多标签 tagger 与 DirectEdit 文本入口 |
@@ -97,6 +111,8 @@ Postfix 当前用户入口在 [guidelines/training.md#postfix](guidelines/traini
 ## Structure
 
 这一组解释原理、数学和实现结构。
+
+分区索引：[structure/README.md](structure/README.md)。
 
 | 文档 | 说明 |
 | --- | --- |
@@ -122,7 +138,6 @@ Postfix 当前用户入口在 [guidelines/training.md#postfix](guidelines/traini
 | --- | --- |
 | [configuration/README.md](configuration/README.md) | 配置文档分区索引 |
 | [configuration/external-configs.md](configuration/external-configs.md) | `ANIMA_CONFIGS_ROOT` 和 WebUI 外置配置根目录说明 |
-| [configuration/implementation-report.md](configuration/implementation-report.md) | 外置配置实现报告 |
 | [features/README.md](features/README.md) | 功能文档分区索引 |
 | [features/config-workbench.md](features/config-workbench.md) | 配置工作台：预设、表单、启动与续接 |
 | [features/dataset-editor.md](features/dataset-editor.md) | 数据集蓝图编辑器 |
@@ -141,6 +156,7 @@ Postfix 当前用户入口在 [guidelines/training.md#postfix](guidelines/traini
 | --- | --- |
 | [findings/README.md](findings/README.md) | 审计、实验结论、失败路径、运行报告索引 |
 | [proposal/README.md](proposal/README.md) | 活跃或半活跃提案索引 |
+| [superpowers/README.md](superpowers/README.md) | 当前迭代规格、执行计划和迭代日志索引 |
 | [archive-index.md](archive-index.md) | 已归档历史文档索引 |
 
 ## Optimizations

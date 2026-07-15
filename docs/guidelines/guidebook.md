@@ -1,5 +1,11 @@
 # Anima LoRA Guidebook
 
+> **Status: historical.** This document preserves the retired PySide6 desktop
+> GUI workflow. `python tasks.py gui`, `make gui`, and `gui-shortcut` are no
+> longer available. Start the WebUI with
+> `python tasks.py web --host 127.0.0.1 --port 20102` and follow the root
+> [README](../../README.md) for current setup instructions.
+
 This document is a comprehensive English guide for using the **Anima LoRA** training/inference pipeline from start to finish. It covers everything from CUDA driver installation to dataset preparation, training, inference, and ComfyUI deployment. This guide is written for Windows beginners; for WSL, Linux, and training optimization topics, please refer to other documents.
 
 ---

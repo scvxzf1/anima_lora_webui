@@ -25,6 +25,7 @@ ReFT under one routing surface:
 use_moe_style    = false | "shared_A" | "independent_A"
 route_per_layer  = true | false
 router_source    = "none" | "input" | "sigma" | "fei"
+                 | "crossattn_emb"
 ```
 
 The shipped `configs/methods/lora.toml` default is not plain LoRA: it enables
@@ -164,7 +165,7 @@ keep_tokens = 3
 resolution = 1024
 batch_size = 1
 enable_bucket = true
-validation_split_num = 16
+validation_split_num = 0
 validation_seed = 42
 
   [[datasets.subsets]]
@@ -189,11 +190,16 @@ validation count stays exact.
 
 ## Validation
 
-Default val signal is **paired CMMD²** (PE-Core MMD between paired
-samples) — set by `use_cmmd = true` and sized by `validation_split_num`
-(integer count) or `validation_split` (fraction). With CMMD off, val falls
-back to the legacy per-σ FM-MSE pass; that signal hasn't correlated with
-sample quality on Anima, so prefer CMMD unless VRAM forces the swap.
+Validation is **disabled by default** in `configs/base.toml`
+(`validation_split_num = 0`, no positive `validation_split`), and the shipped
+GUI variants explicitly set `use_cmmd = false`. The default `methods/lora.toml`
+method overrides the held-out count to `8`, but still inherits
+`use_cmmd = false`, so that CLI path uses the legacy per-σ FM-MSE validation.
+
+To enable paired CMMD² (PE-Core MMD between paired samples), set
+`use_cmmd = true` and configure either `validation_split_num` (integer count)
+or `validation_split` (fraction). CMMD adds sampling and PE-encoder cost; with
+CMMD disabled, a positive validation split uses FM-MSE instead.
 
 ## Multi-GPU (removed)
 

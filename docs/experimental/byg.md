@@ -1,5 +1,8 @@
 # BYG Experimental Training
 
+状态：实验
+适用版本：当前 main；可运行边界以 `tasks.py --help` 和实时源码为准
+
 BYG is currently wired as an experimental training path; dedicated source-concat inference is still a placeholder.
 
 ## Status

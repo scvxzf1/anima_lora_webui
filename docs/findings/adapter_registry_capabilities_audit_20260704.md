@@ -1,5 +1,8 @@
 # Adapter Registry 能力边界审计
 
+状态：研究记录 / 阶段快照
+适用版本：以文中日期、提交和运行环境为准；不作为当前 main 操作说明
+
 日期：2026-07-04
 
 范围：只读审计 `networks/registry.py`、LoRA family factory/save、插件注册、推理加载、merge 和 Web 续训服务。未修改代码，未运行真实推理。

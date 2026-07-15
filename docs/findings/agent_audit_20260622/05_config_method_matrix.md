@@ -1,5 +1,8 @@
 # R5 — 配置/方法能力矩阵（2026-06-22 快照）
 
+状态：历史审计快照
+适用版本：2026-06-22 审计时点；不作为当前 main 操作说明
+
 ## Preset 速查（configs/presets.toml）
 | preset | blocks_to_swap | gradient_checkpointing | torch_compile | 备注 |
 |--------|----------------|------------------------|---------------|------|

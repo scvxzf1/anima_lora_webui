@@ -1,5 +1,8 @@
 # Postfix
 
+状态：兼容入口 / 历史能力
+适用版本：当前 main；旧训练入口已移除，以 `docs/guidelines/training.md#postfix` 为准
+
 这是 Postfix 的兼容入口页。
 
 旧版 Postfix 训练和推理命令已经不在当前 `tasks.py` 命令表里。现在还保留的

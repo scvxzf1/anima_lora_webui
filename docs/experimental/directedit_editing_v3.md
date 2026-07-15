@@ -1,5 +1,8 @@
 # DirectEdit (v3) — flow-inversion image editing on Anima
 
+状态：实验
+适用版本：当前 main；可运行边界以 `tasks.py --help` 和实时源码为准
+
 The v2 proposal is historical; its content trail is archived or missing in
 the current tree. This doc covers what's actually wired and runnable.
 The Anima Tagger arm ("phase v3.0") is documented separately in
@@ -16,7 +19,7 @@ The Anima Tagger arm ("phase v3.0") is documented separately in
 | `make exp-test-directedit` / `exp-test-directedit-dry` driver | **wired** |
 | `comfyui-anima-directedit` ComfyUI node (stock MODEL/CLIP/VAE sockets) | **wired**, 0.2.0 took caption inputs as plain STRINGs (no embedded tagger / dispatcher) |
 | Mask blending (paper Eq. 12) | **stub** — `--mask` accepted but ignored |
-| Embedding inversion fallback (v2.1) | **deferred** — `archive/inversion/` not yet promoted |
+| Embedding inversion fallback (v2.1) | **historical/deferred** — the former `archive/inversion/` implementation was removed in commit `03791a0a`; it is not available in the current tree |
 
 ## Method recap
 
@@ -270,13 +273,13 @@ only the tagger node's vendor needs them.
 
 ### v2.1 — embedding inversion as a premium fallback
 
-`archive/inversion/invert_embedding.py` already does per-image gradient
-descent on ψ_src to minimize FM loss through the frozen DiT — ground-truth
-quality at the cost of minutes per image. Not yet wired into the edit
-pipeline. Intended use: a `--psi_src_mode invert` flag in
-`scripts/edit.py` for users willing to wait for max fidelity.
-
-Move-out-of-archive needed; otherwise no new code.
+The former `archive/inversion/invert_embedding.py` prototype performed
+per-image gradient descent on ψ_src to minimize FM loss through the frozen DiT,
+but that historical script was removed in commit `03791a0a` and was never
+wired into the current edit pipeline. Reintroducing this mode would require a
+fresh implementation and validation; it is not merely a move from an archive
+directory. A future surface could use `--psi_src_mode invert` in
+`scripts/edit.py` for users willing to pay minutes per image.
 
 ### v2.2 — img2emb
 

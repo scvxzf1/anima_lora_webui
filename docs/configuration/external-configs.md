@@ -1,5 +1,9 @@
 # 配置目录外置功能
 
+状态：稳定
+适用版本：当前 main
+相关代码：`library/env.py`、`web/services/settings_service.py`
+
 ## 概述
 
 anima_lora 现在支持将配置目录外置到独立位置，便于：
@@ -10,7 +14,18 @@ anima_lora 现在支持将配置目录外置到独立位置，便于：
 
 ## 配置方式
 
-### 方法 1：环境变量（推荐）
+### 方法 1：WebUI 全局设置（推荐）
+
+在 WebUI 的“全局设置”页面配置：
+
+1. 打开“路径与默认模型”。
+2. 在“配置目录路径”中设置“配置根目录”。
+3. 保存设置。
+
+该值会写入项目根目录的 `.anima-webui-settings.toml [paths]`，这是本机
+配置文件，已被 `.gitignore` 忽略。
+
+### 方法 2：环境变量
 
 创建 `.env` 文件（项目根目录）：
 
@@ -18,13 +33,6 @@ anima_lora 现在支持将配置目录外置到独立位置，便于：
 # 配置根目录（包含 base.toml, methods/, datasets/, web-training-history/, web-training-queue/ 等）
 ANIMA_CONFIGS_ROOT=/path/to/configs
 ```
-
-### 方法 2：WebUI 全局设置
-
-在 WebUI 的"全局设置"页面配置：
-1. 打开"路径与默认模型"部分
-2. 在"配置目录路径"卡片中设置"配置根目录"
-3. 保存设置
 
 ## 路径解析规则
 
@@ -47,9 +55,6 @@ ANIMA_CONFIGS_ROOT=$HOME/.local/share/anima/configs
 ```bash
 # .env
 ANIMA_CONFIGS_ROOT=/mnt/data/anima/configs
-```bash
-# .env
-ANIMA_CONFIGS_ROOT=/mnt/data/anima/configs
 ```
 
 ### 示例 3：容器化部署
@@ -68,11 +73,13 @@ services:
     environment:
       ANIMA_CONFIGS_ROOT: /etc/anima/configs
     volumes:
-      - ./configs:/etc/anima/configs:ro
-
-volumes:
-  configs:
+      # 配置根还包含历史、队列和 WebUI 设置，默认需要可写。
+      - ./configs:/etc/anima/configs
 ```
+
+如果必须把方法配置挂载为只读，请另外通过
+`ANIMA_TRAINING_HISTORY_ROOT` 和 `ANIMA_TRAINING_QUEUE_ROOT` 指向可写目录，
+并确认 WebUI 不需要在该配置根下保存或导入 TOML。
 
 ## 默认行为
 
@@ -85,9 +92,13 @@ volumes:
 ## 环境变量优先级
 
 配置解析优先级（从高到低）：
-1. `ANIMA_CONFIGS_ROOT` 环境变量
-2. WebUI 全局设置中的 `configs_root`
+1. 项目根 `.anima-webui-settings.toml [paths].configs_root`
+2. `ANIMA_CONFIGS_ROOT` 环境变量
 3. 默认 `configs/` 目录
+
+> 如果 WebUI 中已保存 `configs_root`，后来仅修改 `ANIMA_CONFIGS_ROOT` 不会覆盖
+> 该本机设置。需在 WebUI 中更改/恢复默认，或手动调整
+> `.anima-webui-settings.toml`。
 
 ## 迁移指南
 
@@ -146,7 +157,8 @@ A: 不会。外置是通过环境变量切换路径，不会自动删除任何�
 
 ## 性能影响
 
-路径解析在模块初始化时执行一次，运行时没有额外性能开销。
+路径通过轻量的动态路径封装获取，便于 WebUI 保存全局设置后切换配置根。
+相对于配置 IO 和训练开销，该路径解析开销可忽略。
 
 ## 安全性
 
@@ -163,6 +175,7 @@ A: 不会。外置是通过环境变量切换路径，不会自动删除任何�
 - `web/services/settings_service.py` - 全局设置管理
 - `web/services/training_service.py` - 训练服务路径
 - `.env.example` - 环境变量模板
+- `.anima-webui-settings.toml.example` - WebUI 本机路径覆盖模板
 
 ### 测试覆盖
 

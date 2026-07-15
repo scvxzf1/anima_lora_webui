@@ -1,7 +1,11 @@
 # 配置目录外置实施报告
 
-**日期**: 2024-06-24
-**任务**: 将 configs 目录迁移到 `/home/scv/nvme0n1p1/训练器相关/anima-配置`
+状态：历史实施快照 / 已归档
+适用版本：2026-06-24 当时实现；当前行为以 `docs/configuration/external-configs.md` 和实时源码为准
+归档说明：本报告记录一次本机迁移，不是可复制的部署清单。
+
+**日期**: 2026-06-24
+**任务**: 将 configs 目录迁移到 `<external-configs-root>`
 
 ## 实施概要
 
@@ -38,15 +42,15 @@
 
 **实际配置**:
 ```bash
-ANIMA_CONFIGS_ROOT=/home/scv/nvme0n1p1/训练器相关/anima-配置
+ANIMA_CONFIGS_ROOT=<external-configs-root>
 ```
 
 ### 3. 数据迁移
 
 **迁移步骤**:
-1. 将 `configs/` 完整复制到 `/home/scv/nvme0n1p1/训练器相关/anima-配置/`
+1. 将 `configs/` 完整复制到 `<external-configs-root>/`
 2. 备份原 configs 目录为 `configs.backup/`
-3. 创建符号链接 `configs -> /home/scv/nvme0n1p1/训练器相关/anima-配置`
+3. 创建符号链接 `configs -> <external-configs-root>`
 
 **迁移统计**:
 - 总大小: 45MB
@@ -110,9 +114,9 @@ ANIMA_CONFIGS_ROOT=/home/scv/nvme0n1p1/训练器相关/anima-配置
 
 ### 功能验证
 
-- ✅ 配置根目录正确指向: `/home/scv/nvme0n1p1/训练器相关/anima-配置`
-- ✅ 训练历史目录正确指向: `/home/scv/nvme0n1p1/训练器相关/anima-配置/web-training-history`
-- ✅ 训练队列目录正确指向: `/home/scv/nvme0n1p1/训练器相关/anima-配置/web-training-queue`
+- ✅ 配置根目录正确指向: `<external-configs-root>`
+- ✅ 训练历史目录正确指向: `<external-configs-root>/web-training-history`
+- ✅ 训练队列目录正确指向: `<external-configs-root>/web-training-queue`
 - ✅ 所有关键文件存在且可访问
 - ✅ settings_service 正确加载外置配置
 - ✅ training_service 正确使用外置路径
@@ -140,10 +144,10 @@ ANIMA_CONFIGS_ROOT=/home/scv/nvme0n1p1/训练器相关/anima-配置
 - ✅ 基础路径解析
 - ✅ 文档和测试
 
-### Phase 2 (未来)
-- ⏳ WebUI 全局设置界面配置
-- ⏳ 前端显示实际使用路径
-- ⏳ 配置验证和健康检查
+### Phase 2（当时规划，后续已完成）
+- ✅ WebUI 全局设置界面配置
+- ✅ 前端显示并保存实际使用路径
+- ✅ 配置验证和环境健康检查
 
 ### Phase 3 (可选)
 - ⏳ 配置迁移工具
@@ -167,7 +171,7 @@ ANIMA_CONFIGS_ROOT=/home/scv/nvme0n1p1/训练器相关/anima-配置
 - `test_config_migration.py` (80 lines)
 
 ### 迁移的目录
-- `configs/` → `/home/scv/nvme0n1p1/训练器相关/anima-配置/`
+- `configs/` → `<external-configs-root>/`
 - `configs/` (symlink) → 外置目录
 
 ## 总结
