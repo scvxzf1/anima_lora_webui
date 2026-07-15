@@ -37,6 +37,7 @@ from web.services.training.live_utils import (
 )
 
 def get_status_snapshot(self) -> dict[str, Any]:
+    last_log_id = self._log_records[-1]["id"] if self._log_records else 0
     snapshot = {
         "status": self.status,
         "variant": self.current_variant,
@@ -50,7 +51,9 @@ def get_status_snapshot(self) -> dict[str, Any]:
         "task_id": self.current_task_id,
         "last_output_at": self._last_output_at,
         "last_log_line": self._last_log_line,
-        "last_log_id": self._log_records[-1]["id"] if self._log_records else 0,
+        "last_log_id": last_log_id,
+        "log_count": self._current_history_log_count,
+        "metric_count": len(self._metrics_history),
         "latest_progress": dict(self._latest_progress or {}),
         "latest_metric": dict(self._metrics_history[-1]) if self._metrics_history else {},
         "latest_system": dict(self._latest_system_stats or {}),
@@ -368,6 +371,8 @@ def _remember_log(self, kind: str, line: str, ts: float | None = None) -> dict[s
     self._next_log_id += 1
     self._log_records.append(record)
     self._append_history_jsonl("logs.jsonl", record)
+    if self.current_task_dir:
+        self._current_history_log_count += 1
     if kind != "progress":
         self._last_log_line = line
     return record

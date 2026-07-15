@@ -74,6 +74,7 @@ class TrainingService:
             self._last_lr_log_text: str = ""
             self._log_records: deque[dict[str, Any]] = deque(maxlen=MAX_LOG_RECORDS)
             self._next_log_id = 1
+            self._current_history_log_count = 0
             self._metric_seen_keys: set[tuple[Any, ...]] = set()
             self._progress_jsonl_path: Path | None = None
             self._progress_jsonl_offset = 0

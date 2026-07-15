@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
+from library.training.stage_schedule import active_subset_indices_for_step
+
 from tests import training_resume_test_support as _training_resume_support
 
 globals().update(
@@ -26,10 +30,17 @@ def test_web_runtime_trigger_clone_materializes_extra_subset(tmp_path, monkeypat
         "nested/sample.png": ["1girl, solo, forest, moonlight"],
     }
     (source_root / "captions.json").write_text(json.dumps(captions, ensure_ascii=False), encoding="utf-8")
+    second_source = tmp_path / "image_dataset" / "second"
+    second_source.mkdir(parents=True)
+    Image.new("RGB", (8, 8), color=(10, 80, 40)).save(second_source / "second.png")
+    (second_source / "second.txt").write_text("second character", encoding="utf-8")
 
     (tmp_path / "configs" / "datasets" / "522.toml").write_text(
         "\n".join(
             [
+                "stage_schedule_enabled = true",
+                'stage_schedule = [{name = "mixed", subset_index = 0, start_pct = 0.0, end_pct = 0.5}, {name = "second", subset_index = 1, start_pct = 0.5, end_pct = 1.0}]',
+                "",
                 "[[datasets]]",
                 'caption_source_mode = "captions_json"',
                 "",
@@ -39,6 +50,14 @@ def test_web_runtime_trigger_clone_materializes_extra_subset(tmp_path, monkeypat
                 "recursive = true",
                 'custom_attributes = {source_dir = "image_dataset/mixed", nl_tag_mix = {enabled = true, tag_ratio = 1.0}, trigger_clone = {enabled = true, prompt = "my_character", num_repeats = 3}}',
                 "num_repeats = 5",
+                "",
+                "[[datasets]]",
+                "",
+                "[[datasets.subsets]]",
+                'image_dir = "old/second_resized"',
+                'cache_dir = "old/second_lora"',
+                'custom_attributes = {source_dir = "image_dataset/second"}',
+                "num_repeats = 2",
             ]
         ),
         encoding="utf-8",
@@ -77,7 +96,7 @@ def test_web_runtime_trigger_clone_materializes_extra_subset(tmp_path, monkeypat
     assert manifest["total"] == 2
 
     dataset_cfg = toml.loads((run_dir / "dataset.runtime.toml").read_text(encoding="utf-8"))
-    assert len(dataset_cfg["datasets"]) == 2
+    assert len(dataset_cfg["datasets"]) == 3
     original_subset = dataset_cfg["datasets"][0]["subsets"][0]
     clone_dataset = dataset_cfg["datasets"][1]
     clone_subset = clone_dataset["subsets"][0]
@@ -90,6 +109,14 @@ def test_web_runtime_trigger_clone_materializes_extra_subset(tmp_path, monkeypat
     assert clone_dataset["prefer_json_caption"] is False
     assert "trigger_clone" not in original_subset["custom_attributes"]
     assert runtime["dataset_dirs"][1]["source_dir"].endswith("dataset-01/trigger-clone-source")
+    assert runtime["dataset_dirs"][2]["source_dir"] == "image_dataset/second"
+
+    runtime_cfg = toml.loads((run_dir / "config.runtime.toml").read_text(encoding="utf-8"))
+    assert runtime_cfg["stage_schedule_target_groups"] == [[0, 1], [2]]
+    runtime_cfg["max_train_steps"] = 100
+    args = SimpleNamespace(**runtime_cfg)
+    assert active_subset_indices_for_step(args, 0) == {0, 1}
+    assert active_subset_indices_for_step(args, 50) == {2}
 
 def test_clone_runtime_dataset_rows_preserves_trigger_clone_materialized_dirs(tmp_path):
     old_group = tmp_path / "old" / "dataset_cache" / "dataset-01"
@@ -122,4 +149,3 @@ def test_clone_runtime_dataset_rows_preserves_trigger_clone_materialized_dirs(tm
     assert cloned[0]["source_dir"].endswith("dataset-01/trigger-clone-source")
     assert cloned[0]["image_dir"].endswith("dataset-01/trigger-clone-resized")
     assert cloned[0]["cache_dir"].endswith("dataset-01/trigger-clone-lora")
-

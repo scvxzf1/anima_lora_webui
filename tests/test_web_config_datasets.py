@@ -2103,3 +2103,227 @@ def _write_step_estimate_dataset(root: Path, dataset_path: Path) -> None:
         encoding="utf-8",
     )
 
+
+
+def test_dataset_config_doc_roundtrips_stage_schedule():
+    """数据集 TOML 应能保存并读回 stage_schedule*。"""
+    doc = config_service._build_dataset_config_doc(
+        [{
+            "source_dir": "image_dataset/source",
+            "image_dir": "post_image_dataset/resized",
+            "cache_dir": "post_image_dataset/lora",
+            "num_repeats": 1,
+            "settings": {"resolution": 1024, "batch_size": 1},
+        }],
+        {
+            "caption_extension": ".txt",
+            "keep_tokens": 3,
+            "stage_schedule_enabled": True,
+            "stage_schedule": [
+                {"name": "low", "subset_index": 0, "start_pct": 0.0, "end_pct": 0.4},
+                {"name": "high", "subset_index": 0, "start_pct": 0.4, "end_pct": 1.0},
+            ],
+        },
+    )
+    data = toml.loads(doc)
+    assert data["stage_schedule_enabled"] is True
+    assert len(data["stage_schedule"]) == 2
+    assert data["stage_schedule"][0]["name"] == "low"
+    assert data["stage_schedule"][1]["end_pct"] == 1.0
+
+
+def test_save_dataset_preset_roundtrips_stage_schedule(tmp_path: Path, monkeypatch):
+    configs = tmp_path / "configs"
+    (configs / "datasets").mkdir(parents=True)
+    _patch_config_service_paths(monkeypatch, tmp_path)
+
+    saved = config_service.save_dataset_preset(
+        "configs/datasets/stage_demo.toml",
+        [{
+            "source_dir": "image_dataset/source",
+            "image_dir": "post_image_dataset/resized",
+            "cache_dir": "post_image_dataset/lora",
+            "num_repeats": 1,
+            "settings": {"resolution": 1024},
+        }],
+        defaults={"resolution": 1024},
+        overwrite=True,
+        stage_schedule_enabled=True,
+        stage_schedule=[
+            {"name": "a", "subset_index": 0, "start_pct": 0, "end_pct": 0.5},
+            {"name": "b", "subset_index": 0, "start_pct": 0.5, "end_pct": 1},
+        ],
+    )
+    assert saved["ok"]
+    assert saved["stage_schedule_enabled"] is True
+    loaded = config_service.load_dataset_preset("configs/datasets/stage_demo.toml")
+    assert loaded["stage_schedule_enabled"] is True
+    assert len(loaded["stage_schedule"]) == 2
+    text = (configs / "datasets" / "stage_demo.toml").read_text(encoding="utf-8")
+    assert "stage_schedule_enabled = true" in text.lower()
+    assert "stage_schedule" in text
+
+
+def test_dataset_preset_route_rejects_invalid_stage_schedule_without_overwrite(
+    tmp_path: Path,
+    monkeypatch,
+):
+    configs, _dataset_path = _write_minimal_config_tree(tmp_path)
+    _patch_config_service_paths(monkeypatch, tmp_path)
+    rel_path = "configs/datasets/stage_route.toml"
+    rows = [{
+        "source_dir": "image_dataset/source",
+        "image_dir": "post_image_dataset/resized",
+        "cache_dir": "post_image_dataset/lora",
+        "num_repeats": 1,
+    }]
+    valid_response = asyncio.run(config_routes.handle_dataset_preset_put(_JsonRequest({
+        "file": rel_path,
+        "datasets": rows,
+        "stage_schedule_enabled": True,
+        "stage_schedule": [
+            {"name": "first", "subset_index": 0, "start_pct": 0.0, "end_pct": 0.5},
+            {"name": "second", "subset_index": 0, "start_pct": 0.5, "end_pct": 1.0},
+        ],
+    })))
+    assert valid_response.status == 200
+    preset_path = configs / "datasets" / "stage_route.toml"
+    valid_content = preset_path.read_text(encoding="utf-8")
+
+    invalid_response = asyncio.run(config_routes.handle_dataset_preset_put(_JsonRequest({
+        "file": rel_path,
+        "datasets": rows,
+        "stage_schedule_enabled": True,
+        "stage_schedule": [
+            {"name": "gap-a", "subset_index": 0, "start_pct": 0.0, "end_pct": 0.4},
+            {"name": "gap-b", "subset_index": 0, "start_pct": 0.6, "end_pct": 1.0},
+        ],
+    })))
+
+    assert invalid_response.status == 400
+    body = json.loads(invalid_response.text)
+    assert "stage_schedule invalid" in body["error"]
+    assert "未贴齐" in body["error"]
+    assert preset_path.read_text(encoding="utf-8") == valid_content
+
+
+def test_dataset_editor_loads_stage_schedule_from_linked_dataset_file(tmp_path: Path, monkeypatch):
+    configs, dataset_path = _write_minimal_config_tree(tmp_path)
+    dataset_path.write_text(
+        "\n".join(
+            [
+                "stage_schedule_enabled = true",
+                'stage_schedule = [{name = "first", subset_index = 0, start_pct = 0.0, end_pct = 1.0}]',
+                "",
+                "[[datasets]]",
+                "resolution = 1024",
+                "",
+                "[[datasets.subsets]]",
+                'image_dir = "post_image_dataset/resized"',
+                'cache_dir = "post_image_dataset/lora"',
+                'custom_attributes = {source_dir = "image_dataset/source"}',
+            ]
+        ),
+        encoding="utf-8",
+    )
+    _patch_config_service_paths(monkeypatch, tmp_path)
+
+    loaded = config_service.load_dataset_editor(
+        "lora",
+        "default",
+        "imported",
+        config_file="configs/imported/lora.toml",
+    )
+
+    assert loaded["dataset_config"] == "configs/datasets/lora.toml"
+    assert loaded["stage_schedule_enabled"] is True
+    assert loaded["stage_schedule"][0]["name"] == "first"
+
+
+def test_dataset_editor_save_preserves_dataset_owned_stage_schedule(tmp_path: Path, monkeypatch):
+    configs, dataset_path = _write_minimal_config_tree(tmp_path)
+    dataset_path.write_text(
+        "\n".join(
+            [
+                "stage_schedule_enabled = true",
+                'stage_schedule = [{name = "dataset", subset_index = 0, start_pct = 0.0, end_pct = 1.0}]',
+                "",
+                "[[datasets]]",
+                "resolution = 1024",
+                "",
+                "[[datasets.subsets]]",
+                'image_dir = "post_image_dataset/old_resized"',
+                'cache_dir = "post_image_dataset/old_cache"',
+                'custom_attributes = {source_dir = "image_dataset/old"}',
+            ]
+        ),
+        encoding="utf-8",
+    )
+    (configs / "imported" / "lora.toml").write_text(
+        "\n".join(
+            [
+                'dataset_config = "configs/datasets/lora.toml"',
+                "stage_schedule_enabled = false",
+                'stage_schedule = [{name = "legacy-training", subset_index = 0, start_pct = 0.0, end_pct = 1.0}]',
+            ]
+        ),
+        encoding="utf-8",
+    )
+    _patch_config_service_paths(monkeypatch, tmp_path)
+
+    saved = config_service.save_dataset_editor(
+        "lora",
+        "default",
+        "imported",
+        [{
+            "source_dir": "image_dataset/new",
+            "image_dir": "post_image_dataset/new_resized",
+            "cache_dir": "post_image_dataset/new_cache",
+            "num_repeats": 1,
+        }],
+        train_file="configs/imported/lora.toml",
+    )
+
+    persisted = toml.loads(dataset_path.read_text(encoding="utf-8"))
+    assert saved["stage_schedule_enabled"] is True
+    assert saved["stage_schedule"][0]["name"] == "dataset"
+    assert persisted["stage_schedule_enabled"] is True
+    assert persisted["stage_schedule"][0]["name"] == "dataset"
+
+
+def test_merge_stage_schedule_from_dataset_config_prefers_dataset_file(tmp_path: Path, monkeypatch):
+    configs = tmp_path / "configs"
+    (configs / "datasets").mkdir(parents=True)
+    dataset_path = configs / "datasets" / "with_stage.toml"
+    dataset_path.write_text(
+        (
+            "[general]\n"
+            "caption_extension = \".txt\"\n"
+            "keep_tokens = 3\n"
+            "stage_schedule_enabled = true\n"
+            "stage_schedule = [\n"
+            "  { name = \"low\", subset_index = 0, start_pct = 0.0, end_pct = 0.3 },\n"
+            "  { name = \"high\", subset_index = 0, start_pct = 0.3, end_pct = 1.0 },\n"
+            "]\n\n"
+            "[[datasets]]\n"
+            "resolution = 1024\n"
+            "batch_size = 1\n\n"
+            "[[datasets.subsets]]\n"
+            "image_dir = \"post_image_dataset/resized\"\n"
+            "cache_dir = \"post_image_dataset/lora\"\n"
+            "num_repeats = 1\n"
+            "custom_attributes = {source_dir = \"image_dataset/source\"}\n"
+        ),
+        encoding="utf-8",
+    )
+    _patch_config_service_paths(monkeypatch, tmp_path)
+    from web.services.config.dataset_rows import merge_stage_schedule_from_dataset_config
+
+    merged = merge_stage_schedule_from_dataset_config({
+        "dataset_config": "configs/datasets/with_stage.toml",
+        "stage_schedule_enabled": False,
+        "stage_schedule": [{"name": "legacy", "subset_index": 0, "start_pct": 0, "end_pct": 1}],
+    })
+    assert merged["stage_schedule_enabled"] is True
+    assert merged["stage_schedule"][0]["name"] == "low"
+    assert merged["stage_schedule"][1]["start_pct"] == 0.3

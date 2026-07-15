@@ -313,6 +313,8 @@ def _normalize_dataset_defaults(raw: dict[str, Any]) -> dict[str, Any]:
     out["enable_bucket"] = str(raw.get("enable_bucket", True)).lower() not in {"0", "false", "no", "off"}
     out["min_bucket_reso"] = _positive_int(raw.get("min_bucket_reso"), 256)
     out["max_bucket_reso"] = _positive_int(raw.get("max_bucket_reso"), 1024)
+    if out["max_bucket_reso"] < out["resolution"]:
+        out["max_bucket_reso"] = out["resolution"]
     out["bucket_reso_steps"] = _positive_int(raw.get("bucket_reso_steps"), 64)
     out["bucket_no_upscale"] = str(raw.get("bucket_no_upscale", False)).lower() in {"1", "true", "yes", "on"}
     if raw.get("validation_split_num") not in (None, ""):
@@ -341,6 +343,12 @@ def _normalize_preprocess_dataset_settings(raw: dict[str, Any]) -> dict[str, Any
         out["min_bucket_reso"] = _positive_int(raw.get("min_bucket_reso"), 256)
     if "max_bucket_reso" in raw:
         out["max_bucket_reso"] = _positive_int(raw.get("max_bucket_reso"), 1024)
+    if (
+        "resolution" in out
+        and "max_bucket_reso" in out
+        and out["max_bucket_reso"] < out["resolution"]
+    ):
+        out["max_bucket_reso"] = out["resolution"]
     if "bucket_reso_steps" in raw:
         out["bucket_reso_steps"] = _positive_int(raw.get("bucket_reso_steps"), 64)
     if "bucket_no_upscale" in raw:
@@ -389,6 +397,124 @@ def _preprocess_settings_for_runtime_attrs(row_cfg: dict[str, Any]) -> dict[str,
     normalized = _normalize_dataset_defaults(row_cfg)
     return {key: normalized[key] for key in PREPROCESS_DATASET_SETTING_ORDER if key in normalized}
 
+
+def _normalize_stage_schedule_list(raw: Any) -> list[dict[str, Any]]:
+    """Normalize stage_schedule payloads for dataset / training configs."""
+    if raw is None or raw == "":
+        return []
+    if isinstance(raw, str):
+        import json
+
+        try:
+            raw = json.loads(raw)
+        except json.JSONDecodeError:
+            return []
+    if isinstance(raw, dict):
+        raw = raw.get("stages", [raw])
+    if not isinstance(raw, list):
+        return []
+    stages: list[dict[str, Any]] = []
+    for index, item in enumerate(raw):
+        if not isinstance(item, dict):
+            continue
+        start = item.get("start_pct", item.get("startPct", 0))
+        end = item.get("end_pct", item.get("endPct", 1))
+        try:
+            start_f = float(start)
+            end_f = float(end)
+        except (TypeError, ValueError):
+            start_f, end_f = 0.0, 1.0
+        if start_f > 1.0 or end_f > 1.0:
+            start_f /= 100.0
+            end_f /= 100.0
+        subset_raw = item.get("subset_index", item.get("subsetIndex", item.get("dataset_index", index)))
+        try:
+            subset_i = int(subset_raw)
+        except (TypeError, ValueError):
+            subset_i = index
+        stages.append(
+            {
+                "name": str(item.get("name") or f"阶段{index + 1}").strip() or f"阶段{index + 1}",
+                "subset_index": max(0, subset_i),
+                "start_pct": max(0.0, min(1.0, start_f)),
+                "end_pct": max(0.0, min(1.0, end_f)),
+            }
+        )
+    return stages
+
+
+def _stage_schedule_fields_from_dataset_data(data: dict[str, Any] | None) -> dict[str, Any]:
+    """Extract stage_schedule* from a dataset TOML mapping.
+
+    Prefers top-level keys, then ``[general]``. Only returns keys that exist.
+    """
+    if not isinstance(data, dict):
+        return {}
+    sources: list[dict[str, Any]] = [data]
+    general = data.get("general")
+    if isinstance(general, dict):
+        sources.append(general)
+    out: dict[str, Any] = {}
+    for src in sources:
+        if "stage_schedule_enabled" in src and "stage_schedule_enabled" not in out:
+            out["stage_schedule_enabled"] = _bool_value(src.get("stage_schedule_enabled"), False)
+        if "stage_schedule" in src and "stage_schedule" not in out:
+            out["stage_schedule"] = _normalize_stage_schedule_list(src.get("stage_schedule"))
+    return out
+
+
+def merge_stage_schedule_from_dataset_config(cfg: dict[str, Any] | None) -> dict[str, Any]:
+    """Overlay stage_schedule* from the linked dataset_config onto training cfg.
+
+    Dataset ownership wins when the dataset file defines the keys. Training-only
+    legacy schedules remain when the dataset file has no stage fields.
+    """
+    if not isinstance(cfg, dict):
+        return {}
+    merged = dict(cfg)
+    try:
+        from web.services.config.dataset_editor import _dataset_config_path_from_cfg as _path_from_cfg
+    except Exception:
+        return merged
+    dataset_path = _path_from_cfg(merged)
+    if dataset_path is None or not dataset_path.exists():
+        return merged
+    try:
+        data = tomlkit.parse(dataset_path.read_text(encoding="utf-8"))
+        # tomlkit document behaves like mapping
+        payload = dict(data)
+        if "general" in data and isinstance(data.get("general"), dict):
+            payload["general"] = dict(data.get("general") or {})
+    except Exception:
+        try:
+            import toml as _toml
+
+            payload = _toml.loads(dataset_path.read_text(encoding="utf-8"))
+        except Exception:
+            return merged
+    fields = _stage_schedule_fields_from_dataset_data(payload if isinstance(payload, dict) else {})
+    if not fields:
+        return merged
+    if "stage_schedule_enabled" in fields:
+        merged["stage_schedule_enabled"] = bool(fields["stage_schedule_enabled"])
+    if "stage_schedule" in fields:
+        merged["stage_schedule"] = list(fields["stage_schedule"])
+    return merged
+
+
+def _toml_stage_schedule_array(stages: list[dict[str, Any]]):
+    arr = tomlkit.array()
+    arr.multiline(True)
+    for stage in stages:
+        item = tomlkit.inline_table()
+        item["name"] = str(stage.get("name") or "阶段")
+        item["subset_index"] = int(stage.get("subset_index") or 0)
+        item["start_pct"] = float(stage.get("start_pct") or 0.0)
+        item["end_pct"] = float(stage.get("end_pct") or 1.0)
+        arr.append(item)
+    return arr
+
+
 def _build_dataset_config_doc(
     clean_rows: list[dict[str, Any]],
     cfg: dict[str, Any],
@@ -404,6 +530,14 @@ def _build_dataset_config_doc(
     general.add("caption_extension", str(cfg.get("caption_extension") or ".txt"))
     general.add("keep_tokens", _nonnegative_int(cfg.get("keep_tokens"), 3))
     doc.add("general", general)
+
+    # Stage schedule is owned by the dataset config (WebUI 分阶段调度).
+    # Keep keys top-level so training runtime/preflight can merge them cleanly.
+    if "stage_schedule_enabled" in cfg:
+        doc.add("stage_schedule_enabled", bool(cfg.get("stage_schedule_enabled")))
+    if "stage_schedule" in cfg and cfg.get("stage_schedule") is not None:
+        stages = _normalize_stage_schedule_list(cfg.get("stage_schedule"))
+        doc.add("stage_schedule", _toml_stage_schedule_array(stages))
 
     datasets = tomlkit.aot()
     for row in clean_rows:
@@ -531,4 +665,3 @@ def _safe_file_stem(value: str) -> str:
 
 def _normalize_path_pattern(value: Any) -> str:
     return str(value or "*").strip() or "*"
-

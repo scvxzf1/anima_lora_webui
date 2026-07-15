@@ -312,6 +312,18 @@ async def _start_pending_training(self, pending: dict[str, Any]) -> None:
         )
         if not preflight.get("ok", False):
             errors = preflight.get("summary", {}).get("errors", 0)
+            details = []
+            for item in preflight.get("errors") or []:
+                if not isinstance(item, dict):
+                    continue
+                msg = str(item.get("message") or "").strip()
+                if not msg:
+                    continue
+                path = str(item.get("path") or "").strip()
+                details.append(f"{msg} ({path})" if path else msg)
+            detail_text = "；".join(details[:3])
+            if detail_text:
+                raise RuntimeError(f"预处理后仍有 {errors} 个预检测错误：{detail_text}")
             raise RuntimeError(f"预处理后仍有 {errors} 个预检测错误")
         await self.start(
             pending["variant"],

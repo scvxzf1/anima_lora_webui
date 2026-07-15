@@ -75,6 +75,7 @@ async def _launch_job(
     self._stop_requested = False
     self.current_task_id = ""
     self.current_task_dir = None
+    self._current_history_log_count = 0
     if job != "preprocess":
         self._pending_train_after_preprocess = None
     self._last_output_at = time.time()

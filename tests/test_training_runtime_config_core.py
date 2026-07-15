@@ -293,6 +293,9 @@ def test_absolute_output_root_runtime_config_allowed_in_preflight(tmp_path, monk
 
 def test_status_snapshot_includes_runtime_info():
     svc = TrainingService(web.Application())
+    svc._log_records.append({"id": 7, "kind": "log", "line": "latest", "ts": 1.0})
+    svc._current_history_log_count = 3
+    svc._metrics_history = [{"loss": 0.2}, {"loss": 0.1}]
     svc.current_runtime_info = {
         "run_dir": "output/runs/522-20260523-114514",
         "runtime_config_file": "output/runs/522-20260523-114514/config.runtime.toml",
@@ -309,4 +312,18 @@ def test_status_snapshot_includes_runtime_info():
     assert snapshot["run_dir"] == "output/runs/522-20260523-114514"
     assert snapshot["runtime_config_file"].endswith("config.runtime.toml")
     assert snapshot["dataset_cache_dir"].endswith("dataset_cache")
+    assert snapshot["log_count"] == 3
+    assert snapshot["metric_count"] == 2
 
+
+def test_status_snapshot_log_count_tracks_current_history_task(tmp_path: Path):
+    svc = TrainingService(web.Application())
+    svc.current_task_dir = tmp_path
+
+    svc._remember_log("status", "one")
+    svc._remember_log("log", "two")
+
+    snapshot = svc.get_status_snapshot()
+    assert snapshot["last_log_id"] == 2
+    assert snapshot["log_count"] == 2
+    assert len((tmp_path / "logs.jsonl").read_text(encoding="utf-8").splitlines()) == 2

@@ -314,6 +314,19 @@ def populate_schema(
             source="manual",
         ),
     )
+    CONFIG_SCHEMA.setdefault(
+        "stage_schedule_target_groups",
+        ConfigKey(
+            name="stage_schedule_target_groups",
+            type="list",
+            default=None,
+            help=(
+                "Internal Web runtime mapping from source dataset rows to "
+                "materialized DatasetGroup member indices."
+            ),
+            source="manual",
+        ),
+    )
     for _key, _default, _help in (
         (
             "preprocess_memory_profile",

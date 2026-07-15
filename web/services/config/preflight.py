@@ -31,10 +31,12 @@ from web.services.config.preflight_compat import (
     training_sample_sampler_status,
 )
 from web.services.config.preflight_stage_schedule import check_stage_schedule
+from web.services.config.dataset_rows import merge_stage_schedule_from_dataset_config
 from web.services.config.schema_gate import validate_config_mapping
 from web.services.config.preflight_dataset_checks import (
     _check_cache_sidecar_pattern,
     _check_cache_sidecars,
+    _check_dataset_bucket_settings,
     _check_dataset_paths,
     _check_dataset_source_paths,
     _check_training_images,
@@ -122,6 +124,7 @@ __all__ = [
     "apply_global_model_path_defaults",
     "_check_training_images",
     "_check_dataset_source_paths",
+    "_check_dataset_bucket_settings",
     "_check_dataset_paths",
     "_check_cache_sidecars",
 ]
@@ -169,6 +172,7 @@ def preflight_training_config(
     config_file: str | None = None,
 ) -> dict[str, Any]:
     cfg = _load_training_config_for_web_run(variant, preset, methods_subdir, config_file=config_file)
+    cfg = merge_stage_schedule_from_dataset_config(cfg)
     checks: list[dict[str, str]] = []
     errors: list[dict[str, str]] = []
     warnings: list[dict[str, str]] = []
@@ -239,6 +243,7 @@ def preflight_training_config(
         check_file("dataset_config", "数据集配置", (".toml",))
 
     _check_dataset_source_paths(cfg, add)
+    _check_dataset_bucket_settings(cfg, add)
     _check_dataset_paths(cfg, add, check_runtime_dirs=runtime_config)
     _check_training_sample_config(cfg, add)
     check_stage_schedule(

@@ -227,6 +227,7 @@ def build_loop_state(
     num_train_epochs,
     epoch_to_start,
     initial_step,
+    resume_global_step,
     metadata,
 ) -> LoopState:
     """Build :class:`LoopState`. Mirrors the pre-loop setup that used to sit
@@ -302,7 +303,7 @@ def build_loop_state(
     # and consume per-epoch skip credit so dataloader.skip_first_batches has
     # the right offset on the first epoch only. Runs before the dtype log so
     # the log order matches the original train() body.
-    global_step = 0
+    global_step = max(0, int(resume_global_step or 0))
     if initial_step > 0:
         global_step = initial_step // args.gradient_accumulation_steps
         for skip_epoch in range(epoch_to_start):
@@ -507,18 +508,18 @@ def _maybe_apply_stage_schedule(state: LoopState, *, force: bool = False) -> Non
             "Ensure snapshot_full_image_data ran before the first stage filter."
         )
 
-    # Rebuild DataLoader so workers and __len__ see the new indices.
-    # accelerator.prepare is not re-run; stage switch is single-process-local
-    # dataset membership only (batch content still goes through the prepared
-    # path via the same collate_fn).
+    # Rebuild DataLoader so workers and __len__ see the new indices, then pass
+    # it through Accelerate again. A vanilla replacement loader leaves cached
+    # batch tensors on CPU while the model/loss live on the accelerator device.
     kwargs = dict(state.dataloader_kwargs)
     # Avoid inheriting a dead iterator / stale length under persistent workers.
     kwargs["persistent_workers"] = False
-    state.train_dataloader = torch.utils.data.DataLoader(
+    raw_dataloader = torch.utils.data.DataLoader(
         state.train_dataset_group,
         shuffle=True,
         **kwargs,
     )
+    state.train_dataloader = state.accelerator.prepare_data_loader(raw_dataloader)
     state.stage_index = next_index
     stage = stages[next_index]
     log_stage_switch(
@@ -544,6 +545,14 @@ def _run_epoch_steps(trainer, state: LoopState, epoch: int) -> None:
     """
     args = state.args
     accelerator = state.accelerator
+    stage_updates_per_epoch = int(
+        getattr(args, "_stage_num_update_steps_per_epoch", 0) or 0
+    )
+    epoch_end_step = (
+        min(int(args.max_train_steps), (epoch + 1) * stage_updates_per_epoch)
+        if stage_updates_per_epoch > 0
+        else None
+    )
 
     skipped_dataloader = None
     if state.initial_step > 0:
@@ -553,11 +562,14 @@ def _run_epoch_steps(trainer, state: LoopState, epoch: int) -> None:
         state.initial_step = 1
 
     step = -1
-    while state.global_step < args.max_train_steps:
+    while state.global_step < args.max_train_steps and (
+        epoch_end_step is None or state.global_step < epoch_end_step
+    ):
         _maybe_apply_stage_schedule(state)
         loader = skipped_dataloader or state.train_dataloader
         skipped_dataloader = None
         stage_at_start = state.stage_index
+        pass_start_step = state.global_step
         for batch in loader:
             step += 1
             state.current_step.value = state.global_step
@@ -608,6 +620,19 @@ def _run_epoch_steps(trainer, state: LoopState, epoch: int) -> None:
                     break
         else:
             # Exhausted current loader without mid-epoch stage change.
+            if (
+                stage_updates_per_epoch > 0
+                and epoch_end_step is not None
+                and state.global_step < epoch_end_step
+            ):
+                if state.global_step == pass_start_step:
+                    raise RuntimeError(
+                        "stage schedule dataloader yielded no optimizer updates; "
+                        "refusing to recycle an empty loader indefinitely"
+                    )
+                # A stage can be smaller than one full staged-data epoch.
+                # Recycle it until the full epoch step budget is consumed.
+                continue
             return
 
 

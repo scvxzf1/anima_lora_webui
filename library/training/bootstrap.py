@@ -568,37 +568,37 @@ class TrainingBootstrap:
         if n_workers > 0:
             dataloader_kwargs["prefetch_factor"] = args.dataloader_prefetch_factor
 
-        # Curriculum: pin the first stage's subset before measuring loader length
-        # so max_train_epochs→steps is not dominated by the full multi-subset set.
+        # Curriculum: retain the full dataset's epoch budget, then pin the
+        # first stage before constructing the loader that training consumes.
         from library.training.stage_schedule import (
             active_subset_indices_for_step,
             apply_active_subsets_to_dataset,
-            count_stage_targets,
+            full_dataset_updates_per_epoch,
             parse_stage_specs,
             snapshot_full_image_data,
             stage_schedule_enabled,
+            stage_target_count,
             validate_stage_specs,
         )
 
+        stage_updates_per_epoch = 0
         if stage_schedule_enabled(args):
             stages = parse_stage_specs(getattr(args, "stage_schedule", None))
-            subset_count = count_stage_targets(train_dataset_group)
+            subset_count = stage_target_count(args, train_dataset_group)
             problems = validate_stage_specs(stages, subset_count=subset_count)
             if problems:
                 raise ValueError(
                     "stage_schedule invalid: " + "; ".join(problems)
                 )
-            # Prefer an explicit max_train_steps when staging; epochs are ambiguous.
-            if args.max_train_epochs is not None and not (
-                getattr(args, "max_train_steps", 0) or 0
-            ):
-                accelerator.print(
-                    "[stage] max_train_epochs set without max_train_steps — "
-                    "steps will be derived from the first stage's dataset length only."
-                )
             # Snapshot the full multi-subset map BEFORE the first stage filter.
             # Filtering first would freeze stage-0 as the only recoverable set.
             snapshot_full_image_data(train_dataset_group, force=True)
+            stage_updates_per_epoch = full_dataset_updates_per_epoch(
+                len(train_dataset_group),
+                num_processes=accelerator.num_processes,
+                gradient_accumulation_steps=args.gradient_accumulation_steps,
+            )
+            args._stage_num_update_steps_per_epoch = stage_updates_per_epoch
             active0 = active_subset_indices_for_step(args, 0)
             if not apply_active_subsets_to_dataset(train_dataset_group, active0):
                 raise ValueError(
@@ -619,14 +619,21 @@ class TrainingBootstrap:
         )
 
         if args.max_train_epochs is not None:
-            args.max_train_steps = args.max_train_epochs * math.ceil(
+            updates_per_epoch = stage_updates_per_epoch or math.ceil(
                 len(train_dataloader)
                 / accelerator.num_processes
                 / args.gradient_accumulation_steps
             )
+            args.max_train_steps = args.max_train_epochs * updates_per_epoch
             accelerator.print(
                 f"override steps. steps for {args.max_train_epochs} epochs is"
             )
+            if stage_updates_per_epoch:
+                accelerator.print(
+                    "[stage] full staged dataset budget: "
+                    f"{stage_updates_per_epoch} updates/epoch, "
+                    f"{args.max_train_steps} total updates"
+                )
 
         train_dataset_group.set_max_train_steps(args.max_train_steps)
         # Stash for loop-time stage switches (DataLoader rebuild).

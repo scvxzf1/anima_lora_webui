@@ -78,6 +78,7 @@ _PREFLIGHT_SHIM_NAMES = (
     "apply_global_model_path_defaults",
     "_check_training_images",
     "_check_dataset_source_paths",
+    "_check_dataset_bucket_settings",
     "_check_dataset_paths",
     "_check_cache_sidecars",
 )
@@ -447,4 +448,3 @@ _RAW_FILES_SHIM_NAMES = (
     "_normalize_saved_raw_config_content_with_changed_keys",
     "_is_blank_output_name",
 )
-

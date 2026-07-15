@@ -452,9 +452,9 @@ def run_training_session(trainer, args) -> None:
         phase="setup",
     )
 
-    num_update_steps_per_epoch = math.ceil(
-        len(train_dataloader) / args.gradient_accumulation_steps
-    )
+    num_update_steps_per_epoch = int(
+        getattr(args, "_stage_num_update_steps_per_epoch", 0) or 0
+    ) or math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
     num_train_epochs = math.ceil(args.max_train_steps / num_update_steps_per_epoch)
 
     # Structured progress sink (Phase 0): a JSONL event stream next to the
@@ -555,6 +555,9 @@ def run_training_session(trainer, args) -> None:
         steps_from_state=saver.steps_from_state,
         batches_per_epoch=len(train_dataloader),
         num_processes=accelerator.num_processes,
+        updates_per_epoch=int(
+            getattr(args, "_stage_num_update_steps_per_epoch", 0) or 0
+        ) or None,
     )
     initial_step = resume_plan.initial_step
     epoch_to_start = resume_plan.epoch_to_start
@@ -604,6 +607,7 @@ def run_training_session(trainer, args) -> None:
         num_train_epochs=num_train_epochs,
         epoch_to_start=epoch_to_start,
         initial_step=initial_step,
+        resume_global_step=resume_plan.global_step,
         metadata=metadata,
     )
     loop_state.train_dataset_group = stage_dataset
@@ -651,4 +655,3 @@ def run_training_session(trainer, args) -> None:
             save_state_on_train_end(args, accelerator)
 
         saver.cleanup_resumable()
-

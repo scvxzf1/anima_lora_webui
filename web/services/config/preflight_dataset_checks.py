@@ -115,13 +115,22 @@ def _check_dataset_source_paths(cfg: dict[str, Any], add) -> None:
             add("error", key, f"{label} 不存在", source)
         elif not source.is_dir():
             add("error", key, f"{label} 不是目录", source)
-        elif trigger_clone["enabled"] and _count_source_images(
+        elif _count_source_images(
             source,
             DATASET_IMAGE_EXTS,
             recursive=recursive,
             path_pattern=path_pattern,
         ) <= 0:
-            add("error", f"{key}_trigger_clone_images", f"{label} 中没有可克隆的训练图片", source)
+            # Directory may still contain only caches (.npz/.safetensors). That is not a source dataset.
+            if trigger_clone["enabled"]:
+                add("error", f"{key}_trigger_clone_images", f"{label} 中没有可克隆的训练图片", source)
+            else:
+                add(
+                    "error",
+                    f"{key}_images",
+                    f"{label} 中没有可训练图片（常见原因：指到了缓存目录，或只有 .npz/.safetensors）",
+                    source,
+                )
         elif _nl_tag_mix_enabled(row):
             settings = row.get("settings") if isinstance(row.get("settings"), dict) else {}
             caption_extension = str(settings.get("caption_extension") or cfg.get("caption_extension") or ".txt")
@@ -215,3 +224,50 @@ def _check_cache_sidecar_pattern(
             add("ok", item_key, f"第 {idx} 组找到 {count} 个{label}", cache_dir)
         else:
             add("warning", item_key, f"第 {idx} 组{missing_message}", cache_dir)
+
+
+def _check_dataset_bucket_settings(cfg: dict[str, Any], add) -> None:
+    """Catch impossible preprocess bucket params before launch.
+
+    BucketManager asserts max_bucket_reso >= resolution. Leaving the UI default
+    max_bucket_reso=1024 while raising resolution (e.g. 1536) used to hard-crash
+    resize mid-preprocess.
+    """
+    rows = _dataset_rows_for_estimate(cfg)
+    if not rows:
+        return
+    for idx, row in enumerate(rows, start=1):
+        settings = row.get("settings") if isinstance(row.get("settings"), dict) else {}
+        if not settings:
+            continue
+        try:
+            resolution = int(settings.get("resolution") or 0)
+        except (TypeError, ValueError):
+            resolution = 0
+        try:
+            min_bucket = int(settings.get("min_bucket_reso") or 0)
+        except (TypeError, ValueError):
+            min_bucket = 0
+        try:
+            max_bucket = int(settings.get("max_bucket_reso") or 0)
+        except (TypeError, ValueError):
+            max_bucket = 0
+        if resolution <= 0:
+            continue
+        key = "dataset_bucket" if idx == 1 else f"dataset_{idx}_bucket"
+        label = "数据集" if idx == 1 else f"第 {idx} 组数据集"
+        if max_bucket > 0 and max_bucket < resolution:
+            add(
+                "error",
+                key,
+                (
+                    f"{label} 的 max_bucket_reso={max_bucket} 小于 resolution={resolution}；"
+                    "预处理会失败。请把 max_bucket_reso 调到 ≥ resolution（通常直接填 resolution）"
+                ),
+            )
+        if min_bucket > 0 and max_bucket > 0 and max_bucket < min_bucket:
+            add(
+                "error",
+                f"{key}_minmax",
+                f"{label} 的 max_bucket_reso={max_bucket} 小于 min_bucket_reso={min_bucket}",
+            )

@@ -409,3 +409,72 @@ def test_plan_resume_start_skip_until_initial_step_scales_by_grad_accum():
     assert plan.initial_step == 12
     assert plan.epoch_to_start == 3
 
+
+def test_plan_resume_start_stage_uses_full_update_budget():
+    args = SimpleNamespace(
+        initial_epoch=None,
+        initial_step=None,
+        gradient_accumulation_steps=2,
+        max_train_steps=200,
+        skip_until_initial_step=False,
+        resume="state-dir",
+    )
+
+    plan = plan_resume_start(
+        args,
+        steps_from_state=50,
+        batches_per_epoch=10,
+        num_processes=1,
+        updates_per_epoch=100,
+    )
+
+    assert args.skip_until_initial_step is True
+    assert plan.initial_step == 0
+    assert plan.epoch_to_start == 0
+    assert plan.global_step == 50
+
+
+def test_plan_resume_start_stage_exact_epoch_boundary():
+    args = SimpleNamespace(
+        initial_epoch=None,
+        initial_step=None,
+        gradient_accumulation_steps=1,
+        max_train_steps=300,
+        skip_until_initial_step=True,
+        resume="state-dir",
+    )
+
+    plan = plan_resume_start(
+        args,
+        steps_from_state=100,
+        batches_per_epoch=10,
+        num_processes=2,
+        updates_per_epoch=100,
+    )
+
+    assert plan.initial_step == 0
+    assert plan.epoch_to_start == 1
+    assert plan.global_step == 100
+
+
+def test_plan_resume_start_stage_initial_epoch_keeps_progress_aligned():
+    args = SimpleNamespace(
+        initial_epoch=3,
+        initial_step=None,
+        gradient_accumulation_steps=2,
+        max_train_steps=400,
+        skip_until_initial_step=False,
+        resume=None,
+    )
+
+    plan = plan_resume_start(
+        args,
+        steps_from_state=None,
+        batches_per_epoch=10,
+        num_processes=1,
+        updates_per_epoch=100,
+    )
+
+    assert plan.initial_step == 0
+    assert plan.epoch_to_start == 2
+    assert plan.global_step == 200

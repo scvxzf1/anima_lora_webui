@@ -344,3 +344,30 @@ def test_backup_caption_sidecars_missing_source_is_warning_only(tmp_path: Path) 
     assert stats.images_seen == 0
     assert stats.failed == 0
     assert warnings and "source directory does not exist" in warnings[0]
+
+
+def test_resize_to_buckets_auto_raises_max_bucket_below_resolution(tmp_path: Path) -> None:
+    """resolution > max_bucket_reso used to assert in BucketManager; auto-lift instead."""
+    from library.preprocess import resize_to_buckets
+
+    src = tmp_path / "src"
+    dst = tmp_path / "dst"
+    _write_image(src / "portrait.png", (1200, 1600))
+
+    stats, bucket_counts = resize_to_buckets(
+        src,
+        dst,
+        resolution=1536,
+        min_bucket_reso=256,
+        max_bucket_reso=1024,  # invalid relative to resolution; must not crash
+        min_pixels=0,
+        workers=1,
+        verbose=False,
+    )
+
+    assert stats.written == 1
+    assert bucket_counts
+    bucket = next(iter(bucket_counts))
+    assert max(bucket) <= 1536 or min(bucket) <= 1536
+    with Image.open(dst / "portrait.png") as image:
+        assert image.size == bucket

@@ -15,10 +15,26 @@ switching only rebuilds bucket indices / member membership (no preprocess).
 from __future__ import annotations
 
 import logging
+import math
 from dataclasses import dataclass
 from typing import Any, Iterable, Mapping, Optional, Sequence
 
 logger = logging.getLogger(__name__)
+
+STAGE_TARGET_GROUPS_KEY = "stage_schedule_target_groups"
+
+
+def full_dataset_updates_per_epoch(
+    full_batch_count: int,
+    *,
+    num_processes: int = 1,
+    gradient_accumulation_steps: int = 1,
+) -> int:
+    """Return optimizer updates represented by one full staged-data epoch."""
+    batches = max(0, int(full_batch_count or 0))
+    processes = max(1, int(num_processes or 1))
+    accumulation = max(1, int(gradient_accumulation_steps or 1))
+    return math.ceil(batches / processes / accumulation)
 
 
 @dataclass(frozen=True)
@@ -174,13 +190,47 @@ def stage_schedule_enabled(args: Any) -> bool:
     return len(stages) > 0
 
 
+def normalize_stage_target_groups(raw: Any) -> list[tuple[int, ...]]:
+    """Normalize runtime member groups for source dataset row indices."""
+    if not isinstance(raw, Sequence) or isinstance(raw, (str, bytes, bytearray)):
+        return []
+    groups: list[tuple[int, ...]] = []
+    for item in raw:
+        values = item if isinstance(item, Sequence) and not isinstance(
+            item, (str, bytes, bytearray)
+        ) else [item]
+        members: list[int] = []
+        for value in values:
+            member = _as_int(value, -1)
+            if member >= 0 and member not in members:
+                members.append(member)
+        if not members:
+            return []
+        groups.append(tuple(members))
+    return groups
+
+
+def stage_target_count(args: Any, dataset: Any) -> int:
+    """Return source-row target count, honoring Web runtime member groups."""
+    groups = normalize_stage_target_groups(
+        getattr(args, STAGE_TARGET_GROUPS_KEY, None)
+    )
+    return len(groups) if groups else count_stage_targets(dataset)
+
+
 def active_subset_indices_for_progress(args: Any, progress: float) -> Optional[set[int]]:
     """Return active subset indices, or None when schedule is off."""
     if not stage_schedule_enabled(args):
         return None
     stages = parse_stage_specs(getattr(args, "stage_schedule", None))
     idx = resolve_stage_index(stages, progress)
-    return {int(stages[idx].subset_index)}
+    target_index = int(stages[idx].subset_index)
+    groups = normalize_stage_target_groups(
+        getattr(args, STAGE_TARGET_GROUPS_KEY, None)
+    )
+    if groups and 0 <= target_index < len(groups):
+        return set(groups[target_index])
+    return {target_index}
 
 
 def active_subset_indices_for_step(args: Any, global_step: int) -> Optional[set[int]]:
@@ -196,6 +246,14 @@ def attach_stage_schedule_from_config(args: Any, config: Mapping[str, Any] | Non
         args.stage_schedule_enabled = bool(config.get("stage_schedule_enabled"))
     if "stage_schedule" in config:
         args.stage_schedule = normalize_stage_dicts(config.get("stage_schedule"))
+    if STAGE_TARGET_GROUPS_KEY in config:
+        setattr(
+            args,
+            STAGE_TARGET_GROUPS_KEY,
+            [list(group) for group in normalize_stage_target_groups(
+                config.get(STAGE_TARGET_GROUPS_KEY)
+            )],
+        )
 
 
 def snapshot_full_image_data(dataset: Any, *, force: bool = False) -> None:
@@ -258,14 +316,15 @@ def _empty_leaf_dataset(member: Any) -> None:
         member.buckets_indices = []
     if hasattr(member, "_length"):
         member._length = 0
-    make_buckets = getattr(member, "make_buckets", None)
-    if callable(make_buckets):
-        try:
-            make_buckets(
-                constant_token_buckets=bool(getattr(member, "_constant_token_buckets", True))
-            )
-        except TypeError:
-            make_buckets()
+    # Do not call make_buckets() for an empty member. The production bucket
+    # manager retains its old buckets unless it is reset first, which would
+    # resurrect stale indices pointing at images removed from image_data.
+    if hasattr(member, "bucket_manager"):
+        member.bucket_manager = None
+    if hasattr(member, "bucket_info"):
+        member.bucket_info = {"buckets": {}, "mean_img_ar_error": 0}
+    if hasattr(member, "_largest_bucket_index"):
+        member._largest_bucket_index = None
 
 
 def apply_active_subsets_to_dataset(dataset: Any, active_subset_indices: Optional[Iterable[int]]) -> bool:

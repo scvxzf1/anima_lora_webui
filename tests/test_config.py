@@ -75,6 +75,7 @@ def test_schema_has_known_keys(populated_parser):
         "preprocess_text_cache_batch_size",
         "preprocess_precision_preference",
         "base_config",  # manual extra
+        "stage_schedule_target_groups",  # internal Web runtime mapping
         "use_moe_style",  # network-module allowlist (three-axis routing)
         "lora_fp32_compute",  # LoRA family rank-path fp32 fallback
         "down_init",  # plain LoRA down-projection init policy
@@ -88,6 +89,16 @@ def test_schema_has_known_keys(populated_parser):
         "lokr_allow_legacy_dim",  # resume-only legacy dim=114514 sentinel
     ):
         assert k in schema, f"expected {k!r} in populated schema"
+
+
+def test_schema_accepts_stage_schedule_target_groups(populated_parser):
+    flattened = _flatten_toml(
+        {"stage_schedule_target_groups": [[0, 1], [2]]},
+        source="config.runtime.toml",
+        strict=True,
+    )
+
+    assert flattened["stage_schedule_target_groups"] == [[0, 1], [2]]
 
 
 def test_choices_preserved(populated_parser):
@@ -253,6 +264,81 @@ def test_dataset_config_ignores_legacy_preprocess_only_keys():
         "bucket_reso_steps": 64,
         "bucket_no_upscale": False,
     }
+
+
+def test_dataset_config_ignores_top_level_stage_schedule_fields():
+    from library.config.loader import ConfigSanitizer
+
+    user_config = {
+        "stage_schedule_enabled": True,
+        "stage_schedule": [
+            {
+                "name": "low",
+                "subset_index": 0,
+                "start_pct": 0.0,
+                "end_pct": 1.0,
+            }
+        ],
+        "stage_schedule_target_groups": [[0, 1]],
+        "general": {"caption_extension": ".txt"},
+        "datasets": [
+            {
+                "batch_size": 1,
+                "subsets": [
+                    {
+                        "image_dir": "post_image_dataset/resized",
+                        "cache_dir": "post_image_dataset/lora",
+                    }
+                ],
+            }
+        ],
+    }
+
+    sanitized = ConfigSanitizer(support_dropout=True).sanitize_user_config(user_config)
+
+    assert "stage_schedule_enabled" not in sanitized
+    assert "stage_schedule" not in sanitized
+    assert "stage_schedule_target_groups" not in sanitized
+    assert sanitized["general"]["caption_extension"] == ".txt"
+    assert sanitized["datasets"][0]["batch_size"] == 1
+    assert sanitized["datasets"][0]["subsets"][0]["cache_dir"] == "post_image_dataset/lora"
+
+
+def test_dataset_config_ignores_general_stage_schedule_fields_without_mutation():
+    from library.config.loader import ConfigSanitizer
+
+    user_config = {
+        "general": {
+            "caption_extension": ".txt",
+            "stage_schedule_enabled": True,
+            "stage_schedule": [
+                {
+                    "name": "general-stage",
+                    "subset_index": 0,
+                    "start_pct": 0.0,
+                    "end_pct": 1.0,
+                }
+            ],
+            "stage_schedule_target_groups": [[0, 1]],
+        },
+        "datasets": [
+            {
+                "subsets": [
+                    {
+                        "image_dir": "post_image_dataset/resized",
+                        "cache_dir": "post_image_dataset/lora",
+                    }
+                ]
+            }
+        ],
+    }
+
+    sanitized = ConfigSanitizer(support_dropout=True).sanitize_user_config(user_config)
+
+    assert sanitized["general"] == {"caption_extension": ".txt"}
+    assert user_config["general"]["stage_schedule_enabled"] is True
+    assert user_config["general"]["stage_schedule"][0]["name"] == "general-stage"
+    assert user_config["general"]["stage_schedule_target_groups"] == [[0, 1]]
 
 
 def test_dataset_preprocess_resolution_drives_training_bucket_params():

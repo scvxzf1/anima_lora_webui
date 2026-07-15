@@ -28,6 +28,8 @@ from web.services.config.dataset_preset_paths import (
 )
 from web.services.config.dataset_rows import (
     _build_dataset_config_doc,
+    _stage_schedule_fields_from_dataset_data,
+    _normalize_stage_schedule_list,
     _dataset_defaults_from_config,
     _dataset_rows_from_config,
     _dataset_summary_from_rows,
@@ -40,6 +42,7 @@ from web.services.config.dataset_rows import (
     _normalize_path_pattern,
     _safe_file_stem,
 )
+from web.services.config.preflight_stage_schedule import validate_stage_schedule_or_raise
 from web.services.config.metadata import (
     DATASET_IMAGE_EXTS,
     DATASET_PREVIEW_LIMIT,
@@ -148,7 +151,7 @@ def _dataset_preset_summary(rel_path: str) -> dict[str, Any]:
         path = _safe_resolve(normalized)
         if path is None or not path.exists():
             raise ValueError("数据集预设不存在")
-        _content, rows, defaults = _load_dataset_preset_content_rows_defaults(path)
+        _content, rows, defaults, _stage = _load_dataset_preset_content_rows_defaults(path)
     except Exception as e:
         return {"ok": False, "error": str(e), "dataset_count": 0}
     return _dataset_summary_from_rows(rows, defaults)
@@ -331,8 +334,8 @@ def load_dataset_preset(rel_path: str) -> dict[str, Any]:
     path = _safe_resolve(normalized)
     if path is None or not path.exists():
         raise ValueError("数据集预设不存在")
-    content, rows, defaults = _load_dataset_preset_content_rows_defaults(path)
-    return {
+    content, rows, defaults, stage_fields = _load_dataset_preset_content_rows_defaults(path)
+    payload = {
         "ok": True,
         "file": normalized,
         "name": Path(normalized).stem,
@@ -343,14 +346,19 @@ def load_dataset_preset(rel_path: str) -> dict[str, Any]:
         "meta": get_config_file_meta(normalized),
         "summary": _dataset_summary_from_rows(rows, defaults),
     }
+    payload.update(stage_fields)
+    return payload
 
 
-def _load_dataset_preset_content_rows_defaults(path: Path) -> tuple[str, list[dict[str, Any]], dict[str, Any]]:
+def _load_dataset_preset_content_rows_defaults(
+    path: Path,
+) -> tuple[str, list[dict[str, Any]], dict[str, Any], dict[str, Any]]:
     content = path.read_text(encoding="utf-8")
     data = toml.loads(content)
     rows = _dataset_rows_from_config(data, {})
     defaults = _dataset_defaults_from_config(data)
-    return content, rows, defaults
+    stage_fields = _stage_schedule_fields_from_dataset_data(data)
+    return content, rows, defaults, stage_fields
 
 
 def save_dataset_preset(
@@ -359,6 +367,9 @@ def save_dataset_preset(
     defaults: dict[str, Any] | None = None,
     *,
     overwrite: bool = True,
+    stage_schedule_enabled: Any = None,
+    stage_schedule: Any = None,
+    preserve_existing_stage: bool = True,
 ) -> dict[str, Any]:
     _sync_from_facade()
     normalized = _normalize_dataset_preset_path(rel_path, must_exist=False)
@@ -375,6 +386,22 @@ def save_dataset_preset(
         raise ValueError("请至少填写一个数据集路径")
     _ensure_training_dataset_rows(clean_rows)
     cfg = _normalize_dataset_defaults(defaults or {})
+    # Preserve existing stage schedule when caller omits the keys.
+    existing_stage: dict[str, Any] = {}
+    if preserve_existing_stage and path.exists():
+        try:
+            existing_stage = _stage_schedule_fields_from_dataset_data(toml.loads(path.read_text(encoding="utf-8")))
+        except Exception:
+            existing_stage = {}
+    if stage_schedule_enabled is not None:
+        cfg["stage_schedule_enabled"] = bool(stage_schedule_enabled)
+    elif "stage_schedule_enabled" in existing_stage:
+        cfg["stage_schedule_enabled"] = bool(existing_stage["stage_schedule_enabled"])
+    if stage_schedule is not None:
+        cfg["stage_schedule"] = _normalize_stage_schedule_list(stage_schedule)
+    elif "stage_schedule" in existing_stage:
+        cfg["stage_schedule"] = list(existing_stage["stage_schedule"])
+    validate_stage_schedule_or_raise(cfg, dataset_rows=clean_rows)
     content = _build_dataset_config_doc(clean_rows, cfg)
     ok, msg, _warnings = save_raw_file(normalized, content, overwrite=overwrite)
     if not ok:
@@ -386,24 +413,40 @@ def save_dataset_preset(
         len(clean_rows),
         clean_rows[0].get("source_dir") if clean_rows else "",
     )
-    return {
+    saved_defaults = _normalize_dataset_defaults(cfg)
+    result = {
         "ok": True,
         "message": f"已保存数据集预设 {Path(normalized).name}",
         "file": normalized,
         "datasets": clean_rows,
-        "defaults": _normalize_dataset_defaults(cfg),
+        "defaults": saved_defaults,
         "content": content,
-        "summary": _dataset_summary_from_rows(clean_rows, _normalize_dataset_defaults(cfg)),
+        "summary": _dataset_summary_from_rows(clean_rows, saved_defaults),
     }
+    if "stage_schedule_enabled" in cfg:
+        result["stage_schedule_enabled"] = bool(cfg.get("stage_schedule_enabled"))
+    if "stage_schedule" in cfg:
+        result["stage_schedule"] = _normalize_stage_schedule_list(cfg.get("stage_schedule"))
+    return result
 
 
 def save_dataset_preset_as(
     name: str,
     rows: list[dict[str, Any]],
     defaults: dict[str, Any] | None = None,
+    *,
+    stage_schedule_enabled: Any = None,
+    stage_schedule: Any = None,
 ) -> dict[str, Any]:
     stem = _safe_file_stem(name)
-    return save_dataset_preset(f"configs/datasets/{stem}.toml", rows, defaults, overwrite=False)
+    return save_dataset_preset(
+        f"configs/datasets/{stem}.toml",
+        rows,
+        defaults,
+        overwrite=False,
+        stage_schedule_enabled=stage_schedule_enabled,
+        stage_schedule=stage_schedule,
+    )
 
 
 def import_dataset_preset(
@@ -426,7 +469,16 @@ def import_dataset_preset(
     if not rows or any(not str(row.get("source_dir") or "").strip() for row in rows):
         raise ValueError("导入失败，未找到可用的数据集路径")
     defaults = _dataset_defaults_from_config(data)
-    return save_dataset_preset(f"configs/datasets/{stem}.toml", rows, defaults, overwrite=overwrite)
+    stage_fields = _stage_schedule_fields_from_dataset_data(data)
+    return save_dataset_preset(
+        f"configs/datasets/{stem}.toml",
+        rows,
+        defaults,
+        overwrite=overwrite,
+        stage_schedule_enabled=stage_fields.get("stage_schedule_enabled"),
+        stage_schedule=stage_fields.get("stage_schedule"),
+        preserve_existing_stage=False,
+    )
 
 
 def delete_dataset_preset(rel_path: str) -> dict[str, Any]:
@@ -469,6 +521,12 @@ def apply_dataset_preset_to_training_config(
         "lora_cache_dir": first["cache_dir"],
         "prior_loss_weight": compatibility_defaults["prior_loss_weight"],
     }
+    # Bind stage schedule from dataset preset into the training config so runtime
+    # and preflight still see the schedule after apply.
+    if "stage_schedule_enabled" in preset:
+        values["stage_schedule_enabled"] = bool(preset.get("stage_schedule_enabled"))
+    if "stage_schedule" in preset:
+        values["stage_schedule"] = _normalize_stage_schedule_list(preset.get("stage_schedule"))
     ok, msg, _path, next_content, changed, _warnings = _prepare_raw_file_patch(train_rel, values, content=train_content)
     if not ok:
         raise ValueError(msg)
@@ -603,5 +661,3 @@ def resolve_dataset_preview_image(
     if not path.exists() or not path.is_file():
         raise FileNotFoundError("图片不存在")
     return path
-
-

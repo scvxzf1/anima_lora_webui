@@ -174,6 +174,21 @@ def resize_to_buckets(
     """
     dst.mkdir(parents=True, exist_ok=True)
 
+    # BucketManager requires max_bucket_reso >= resolution (max_reso edge).
+    # Dataset UI often leaves max_bucket_reso at 1024 while resolution is raised.
+    resolution = max(1, int(resolution or 1024))
+    min_bucket_reso = max(1, int(min_bucket_reso or 1))
+    max_bucket_reso = max(1, int(max_bucket_reso or resolution))
+    if max_bucket_reso < resolution:
+        if verbose:
+            print(
+                f"max_bucket_reso={max_bucket_reso} < resolution={resolution}; "
+                f"auto-raising max_bucket_reso to {resolution}"
+            )
+        max_bucket_reso = resolution
+    if max_bucket_reso < min_bucket_reso:
+        max_bucket_reso = min_bucket_reso
+
     bucket_args = (
         (resolution, resolution),
         min_bucket_reso,

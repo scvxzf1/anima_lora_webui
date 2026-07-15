@@ -35,6 +35,7 @@ class ResumeStartPlan:
     initial_step: int
     epoch_to_start: int
     steps_from_state: Optional[int] = None
+    global_step: int = 0
 
 
 def default_if_none(value, default):
@@ -439,10 +440,12 @@ def plan_resume_start(
     steps_from_state: Optional[int],
     batches_per_epoch: int,
     num_processes: int,
+    updates_per_epoch: Optional[int] = None,
 ) -> ResumeStartPlan:
     """Resolve resume/initial-step counters without mutating checkpoint state."""
     steps_from_state_out = steps_from_state
-    initial_steps_per_epoch = math.ceil(
+    staged_updates_per_epoch = max(0, int(updates_per_epoch or 0))
+    initial_steps_per_epoch = staged_updates_per_epoch or math.ceil(
         batches_per_epoch / num_processes / args.gradient_accumulation_steps
     )
     skip_batches_per_epoch = math.ceil(
@@ -484,8 +487,15 @@ def plan_resume_start(
         )
 
     epoch_to_start = 0
+    resume_global_step = 0
     if initial_step > 0:
-        if args.skip_until_initial_step:
+        if staged_updates_per_epoch:
+            epoch_to_start = initial_step // staged_updates_per_epoch
+            resume_global_step = initial_step
+            # Stage loaders are rebuilt from current global progress. Replaying
+            # a stage0-sized batch skip here can exhaust the loader forever.
+            initial_step = 0
+        elif args.skip_until_initial_step:
             if not args.resume:
                 logger.info(
                     "initial_step is specified but not resuming. lr scheduler will be started from the beginning"
@@ -501,6 +511,7 @@ def plan_resume_start(
         initial_step=initial_step,
         epoch_to_start=epoch_to_start,
         steps_from_state=steps_from_state_out,
+        global_step=resume_global_step,
     )
 
 

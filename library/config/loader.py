@@ -143,6 +143,14 @@ class Blueprint:
 
 
 class ConfigSanitizer:
+    DATASET_ORCHESTRATION_KEYS = frozenset(
+        {
+            "stage_schedule_enabled",
+            "stage_schedule",
+            "stage_schedule_target_groups",
+        }
+    )
+
     # @curry
     @staticmethod
     def __validate_and_convert_twodim(klass, value: Sequence) -> Tuple:
@@ -348,11 +356,37 @@ class ConfigSanitizer:
         cleaned["datasets"] = cleaned_datasets
         return cleaned
 
+    @classmethod
+    def strip_dataset_orchestration_keys(cls, user_config: dict) -> dict:
+        """Ignore Web/runtime orchestration fields outside the dataset blueprint."""
+        ignored_top = cls.DATASET_ORCHESTRATION_KEYS.intersection(user_config)
+        general = user_config.get("general")
+        ignored_general = (
+            cls.DATASET_ORCHESTRATION_KEYS.intersection(general)
+            if isinstance(general, dict)
+            else set()
+        )
+        ignored = ignored_top | ignored_general
+        if not ignored:
+            return user_config
+        logger.info(
+            "Ignoring dataset orchestration config key(s): %s",
+            ", ".join(sorted(ignored)),
+        )
+        cleaned = {
+            key: value for key, value in user_config.items() if key not in ignored_top
+        }
+        if ignored_general:
+            cleaned["general"] = {
+                key: value for key, value in general.items() if key not in ignored_general
+            }
+        return cleaned
+
     def sanitize_user_config(self, user_config: dict) -> dict:
         try:
-            return self.user_config_validator(
-                self.strip_preprocess_only_dataset_keys(user_config)
-            )
+            cleaned = self.strip_dataset_orchestration_keys(user_config)
+            cleaned = self.strip_preprocess_only_dataset_keys(cleaned)
+            return self.user_config_validator(cleaned)
         except MultipleInvalid:
             logger.error("Invalid user config")
             raise

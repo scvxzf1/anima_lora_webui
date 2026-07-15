@@ -295,6 +295,56 @@ def test_raw_patch_writes_non_blank_sample_schedule_fields_as_int(tmp_path: Path
     assert parsed["sample_every_n_steps"] == 500
 
 
+def test_raw_patch_deletes_inactive_adapter_scoped_fields(tmp_path: Path, monkeypatch):
+    """切回普通 LoRA 时，null 应删除 LoKr/VeRA 专属顶层键，避免残留生效。"""
+    configs, _dataset_path = _write_minimal_config_tree(tmp_path)
+    _patch_config_service_paths(monkeypatch, tmp_path)
+    train_rel = "configs/imported/lora.toml"
+    (configs / "imported" / "lora.toml").write_text(
+        "\n".join(
+            [
+                'output_name = "anima"',
+                "use_lokr = false",
+                "lokr_factor = 16",
+                "lokr_factor_group_size = 8",
+                "vera_projection_prng_key = 2",
+                "vera_d_initial = 0.2",
+                "vera_save_projection = true",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    ok, msg, content, changed, _warnings = config_service.patch_raw_file_values(
+        train_rel,
+        {
+            "lokr_factor": None,
+            "lokr_factor_group_size": None,
+            "vera_projection_prng_key": None,
+            "vera_d_initial": None,
+            "vera_save_projection": None,
+        },
+    )
+
+    assert ok is True, msg
+    assert "lokr_factor" not in content
+    assert "lokr_factor_group_size" not in content
+    assert "vera_projection_prng_key" not in content
+    assert "vera_d_initial" not in content
+    assert "vera_save_projection" not in content
+    assert 'output_name = "anima"' in content
+    saved = toml.loads((configs / "imported" / "lora.toml").read_text(encoding="utf-8"))
+    assert saved == {"output_name": "anima", "use_lokr": False}
+    assert set(changed) >= {
+        "lokr_factor",
+        "lokr_factor_group_size",
+        "vera_projection_prng_key",
+        "vera_d_initial",
+        "vera_save_projection",
+    }
+
+
 def test_raw_patch_clears_optional_max_train_epochs_field(tmp_path: Path, monkeypatch):
     configs, _dataset_path = _write_minimal_config_tree(tmp_path)
     _patch_config_service_paths(monkeypatch, tmp_path)

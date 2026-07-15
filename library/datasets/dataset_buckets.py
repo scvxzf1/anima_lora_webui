@@ -274,6 +274,12 @@ class DatasetBucketsMixin:
         random.seed(self.seed + self.current_epoch)
 
         random.shuffle(self.buckets_indices)
+        # Stage scheduling intentionally empties inactive DatasetGroup members
+        # and clears their stale bucket manager. Epoch propagation still visits
+        # every member, so an empty member must be a valid no-op here.
+        if self.bucket_manager is None:
+            self._largest_bucket_index = None
+            return
         self.bucket_manager.shuffle()
         self._largest_bucket_first()
 
@@ -303,4 +309,3 @@ class DatasetBucketsMixin:
                 if i:
                     self.buckets_indices.insert(0, self.buckets_indices.pop(i))
                 return
-

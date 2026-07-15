@@ -33,6 +33,8 @@ from web.services.training.runtime_paths import (
 from web.services.training import runtime_datasets as _runtime_datasets
 from web.services.training.runtime_state import _write_runtime_run_meta
 from web.services.config.preflight_stage_schedule import validate_stage_schedule_or_raise
+from web.services.config.dataset_rows import merge_stage_schedule_from_dataset_config
+from library.training.stage_schedule import STAGE_TARGET_GROUPS_KEY
 
 _bool_value_for_row = _runtime_datasets._bool_value_for_row
 _prepare_runtime_nl_tag_mix_source = _runtime_datasets._prepare_runtime_nl_tag_mix_source
@@ -111,6 +113,7 @@ def _prepare_web_runtime_config(
         if source_cfg:
             cfg.update(source_cfg)
     cfg = apply_global_model_path_defaults(cfg, fallback=fallback_cfg)
+    cfg = merge_stage_schedule_from_dataset_config(cfg)
     source_rows = _dataset_rows_for_estimate(cfg)
     if not source_rows:
         raise ValueError("请先配置至少一个数据集路径")
@@ -118,12 +121,14 @@ def _prepare_web_runtime_config(
     validate_stage_schedule_or_raise(cfg, dataset_rows=source_rows)
 
     runtime_rows: list[dict[str, Any]] = []
+    stage_target_groups: list[list[int]] = []
     dataset_cache_bindings: list[dict[str, Any]] = []
     dataset_cache_dir = layout["dataset_cache_dir"]
     from library.cache_pool.store import default_pool_root
     pool_root = default_pool_root()
     run_id = run_dir.name
     for index, row in enumerate(source_rows, start=1):
+        stage_members = [len(runtime_rows)]
         group_dir = dataset_cache_dir / f"dataset-{index:02d}"
         group_dir.mkdir(parents=True, exist_ok=True)
         source_dir = str(
@@ -181,6 +186,8 @@ def _prepare_web_runtime_config(
                 "path_pattern": _normalize_path_pattern(row.get("path_pattern")),
                 "settings": clone_settings,
             })
+            stage_members.append(len(runtime_rows) - 1)
+        stage_target_groups.append(stage_members)
 
     original_config_path = run_dir / "config.original.toml"
     if source_path is not None:
@@ -190,6 +197,8 @@ def _prepare_web_runtime_config(
 
     dataset_config_path = run_dir / "dataset.runtime.toml"
     runtime_cfg = dict(cfg)
+    if bool(runtime_cfg.get("stage_schedule_enabled")):
+        runtime_cfg[STAGE_TARGET_GROUPS_KEY] = stage_target_groups
     dataset_doc = _build_dataset_config_doc(
         runtime_rows,
         runtime_cfg,

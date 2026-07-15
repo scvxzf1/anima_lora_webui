@@ -15,6 +15,8 @@ from library.env import expand_env_vars_in_obj, get_configs_root, load_dotenv
 from web.services.config import paths as _config_paths
 from web.services.config.dataset_rows import (
     _build_dataset_config_doc,
+    _stage_schedule_fields_from_dataset_data,
+    _normalize_stage_schedule_list,
     _dataset_defaults_from_config,
     _dataset_rows_from_config,
     _dataset_summary_from_rows,
@@ -27,6 +29,7 @@ from web.services.config.dataset_rows import (
     _safe_file_stem,
     _single_dataset_config_from_cfg,
 )
+from web.services.config.preflight_stage_schedule import validate_stage_schedule_or_raise
 from web.services.config.file_groups import _lock_reason_message
 from web.services.settings_service import resolve_output_root
 
@@ -150,12 +153,14 @@ def load_dataset_editor(
     else:
         data = _single_dataset_config_from_cfg(cfg)
     rows = _dataset_rows_from_config(data, cfg)
-    return {
+    result = {
         "ok": True,
         "dataset_config": _display_path(dataset_path) if dataset_path else "",
         "datasets": rows,
         "defaults": _dataset_defaults_from_config(data),
     }
+    result.update(_stage_schedule_fields_from_dataset_data(data))
+    return result
 
 def save_dataset_editor(
     variant: str,
@@ -225,6 +230,26 @@ def save_dataset_editor(
         doc_cfg.update(_normalize_dataset_defaults(defaults))
     doc_cfg = apply_auto_data_dirs(doc_cfg)
 
+    # Preserve stage schedule owned by the dataset config unless caller overrides.
+    if dataset_path.exists():
+        try:
+            import toml as _toml
+            existing_stage = _stage_schedule_fields_from_dataset_data(
+                _toml.loads(dataset_path.read_text(encoding="utf-8"))
+            )
+        except Exception:
+            existing_stage = {}
+        if "stage_schedule_enabled" in existing_stage:
+            doc_cfg["stage_schedule_enabled"] = existing_stage["stage_schedule_enabled"]
+        if "stage_schedule" in existing_stage:
+            doc_cfg["stage_schedule"] = list(existing_stage["stage_schedule"])
+    if config_values:
+        if "stage_schedule_enabled" in config_values:
+            doc_cfg["stage_schedule_enabled"] = bool(config_values.get("stage_schedule_enabled"))
+        if "stage_schedule" in config_values:
+            doc_cfg["stage_schedule"] = _normalize_stage_schedule_list(config_values.get("stage_schedule"))
+    validate_stage_schedule_or_raise(doc_cfg, dataset_rows=clean_rows)
+
     dataset_doc = _build_dataset_config_doc(
         clean_rows,
         doc_cfg,
@@ -242,7 +267,7 @@ def save_dataset_editor(
             raise ValueError(msg)
 
     saved_defaults = _normalize_dataset_defaults(doc_cfg)
-    return {
+    result = {
         "ok": True,
         "message": f"已保存 {len(clean_rows)} 个数据集路径",
         "dataset_config": dataset_rel,
@@ -251,6 +276,11 @@ def save_dataset_editor(
         "summary": _dataset_summary_from_rows(clean_rows, saved_defaults),
         "train_content": next_content,
     }
+    if "stage_schedule_enabled" in doc_cfg:
+        result["stage_schedule_enabled"] = bool(doc_cfg.get("stage_schedule_enabled"))
+    if "stage_schedule" in doc_cfg:
+        result["stage_schedule"] = _normalize_stage_schedule_list(doc_cfg.get("stage_schedule"))
+    return result
 
 def _dataset_config_path_from_cfg(cfg: dict[str, Any]) -> Path | None:
     rel_path = str(cfg.get("dataset_config") or "").strip()
@@ -307,4 +337,3 @@ def _training_config_rel_path(variant: str, methods_subdir: str) -> str:
     if not path.exists():
         return ""
     return _display_path(path)
-

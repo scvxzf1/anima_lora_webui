@@ -48,6 +48,11 @@ def test_config_metadata_exports_remain_available_from_legacy_facade():
     assert config_service.get_groups is config_metadata.get_groups
     assert legacy_config.get_groups is config_metadata.get_groups
 
+    assert config_metadata.get_field_help()["network_dim"]["en"]
+    groups = config_metadata.get_groups()
+    assert "Architecture" in groups["groups"]
+    assert "learning_rate" in groups["basic"]
+
 def test_metadata_module_imports_without_facade_cycle():
     env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
     script = (
@@ -465,4 +470,3 @@ class _JsonRequest:
 class _QueryRequest:
     def __init__(self, query: dict[str, str] | None = None) -> None:
         self.query = query or {}
-

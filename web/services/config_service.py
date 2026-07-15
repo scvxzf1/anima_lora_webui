@@ -234,6 +234,7 @@ from web.services.config.output_runs import (  # noqa: E402,F401
 )
 from web.services.config.preflight import (  # noqa: E402,F401
     _check_cache_sidecars,
+    _check_dataset_bucket_settings,
     _check_dataset_paths,
     _check_dataset_source_paths,
     _check_training_images,

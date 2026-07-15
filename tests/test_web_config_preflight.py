@@ -307,6 +307,7 @@ def test_preflight_helpers_remain_available_from_legacy_module():
         "apply_global_model_path_defaults",
         "_check_training_images",
         "_check_dataset_source_paths",
+        "_check_dataset_bucket_settings",
         "_check_dataset_paths",
         "_check_cache_sidecars",
     )
@@ -722,6 +723,83 @@ def test_preflight_checks_manual_network_weights_before_launch(tmp_path: Path, m
     assert result["ok"] is False
     assert weight_checks[-1]["level"] == "error"
     assert "LoKr 权重需要当前变体为 lokr" in weight_checks[-1]["message"]
+
+
+
+
+def test_preflight_rejects_max_bucket_below_resolution(tmp_path: Path, monkeypatch):
+    """resolution > max_bucket_reso 应在启动前报错，避免预处理中途 assert。"""
+    configs, dataset_path = _write_minimal_config_tree(tmp_path)
+    source_dir = tmp_path / "image_dataset" / "hires"
+    source_dir.mkdir(parents=True)
+    Image.new("RGB", (64, 64), color=(10, 20, 30)).save(source_dir / "sample.png")
+    dataset_path.write_text(
+        "\n".join(
+            [
+                "[[datasets]]",
+                "resolution = 1536",
+                "min_bucket_reso = 256",
+                "max_bucket_reso = 1024",
+                "enable_bucket = true",
+                "",
+                "[[datasets.subsets]]",
+                'image_dir = "post_image_dataset/hires_resized"',
+                'cache_dir = "post_image_dataset/hires_lora"',
+                'custom_attributes = {source_dir = "image_dataset/hires"}',
+            ]
+        ),
+        encoding="utf-8",
+    )
+    _patch_config_service_paths(monkeypatch, tmp_path)
+
+    result = config_service.preflight_training_config(
+        "lora",
+        "default",
+        "imported",
+        config_file="configs/imported/lora.toml",
+    )
+
+    bucket_checks = [item for item in result["checks"] if item["key"] in {"dataset_bucket", "dataset_1_bucket"} or item["key"].endswith("_bucket")]
+    assert result["ok"] is False
+    assert any("max_bucket_reso" in item.get("message", "") for item in result.get("errors") or [])
+    assert bucket_checks
+    assert bucket_checks[-1]["level"] == "error"
+
+
+def test_preflight_rejects_source_dir_with_only_cache_sidecars(tmp_path: Path, monkeypatch):
+    """源目录只有 latent/text 缓存、没有图片时，应在预处理前直接报错。"""
+    configs, dataset_path = _write_minimal_config_tree(tmp_path)
+    source_dir = tmp_path / "image_dataset" / "cache_only"
+    source_dir.mkdir(parents=True)
+    (source_dir / "sample_0896x1152_anima.npz").write_bytes(b"npz")
+    (source_dir / "sample_anima_te.safetensors").write_bytes(b"te")
+    dataset_path.write_text(
+        "\n".join(
+            [
+                "[[datasets]]",
+                "",
+                "[[datasets.subsets]]",
+                'image_dir = "post_image_dataset/cache_only_resized"',
+                'cache_dir = "post_image_dataset/cache_only_lora"',
+                'custom_attributes = {source_dir = "image_dataset/cache_only"}',
+            ]
+        ),
+        encoding="utf-8",
+    )
+    _patch_config_service_paths(monkeypatch, tmp_path)
+
+    result = config_service.preflight_training_config(
+        "lora",
+        "default",
+        "imported",
+        config_file="configs/imported/lora.toml",
+    )
+
+    image_checks = [item for item in result["checks"] if item["key"] == "source_image_dir_images"]
+    assert result["ok"] is False
+    assert image_checks
+    assert image_checks[-1]["level"] == "error"
+    assert "没有可训练图片" in image_checks[-1]["message"]
 
 
 def test_preflight_nl_tag_mix_accepts_single_captioned_directory(tmp_path: Path, monkeypatch):
@@ -1323,4 +1401,3 @@ def test_preflight_warns_unknown_config_key(tmp_path: Path, monkeypatch):
     warnings = [c for c in result["checks"] if c.get("level") == "warning" and c.get("key") == "schema"]
     assert warnings
     assert any("custom_unknown_key" in c.get("message", "") for c in warnings)
-

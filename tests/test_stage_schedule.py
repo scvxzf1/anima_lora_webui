@@ -4,16 +4,32 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import pytest
+
 from library.training.stage_schedule import (
     StageSpec,
     active_subset_indices_for_step,
+    attach_stage_schedule_from_config,
+    full_dataset_updates_per_epoch,
     normalize_stage_dicts,
+    normalize_stage_target_groups,
     parse_stage_specs,
     progress_from_steps,
     resolve_stage_index,
     stage_schedule_enabled,
+    stage_target_count,
     validate_stage_specs,
 )
+
+
+def test_full_dataset_epoch_budget_matches_web_estimate():
+    assert full_dataset_updates_per_epoch(420) == 420
+    assert full_dataset_updates_per_epoch(
+        420,
+        num_processes=2,
+        gradient_accumulation_steps=2,
+    ) == 105
+    assert 6 * full_dataset_updates_per_epoch(420) == 2520
 
 
 def test_normalize_accepts_percent_0_100_and_fraction():
@@ -93,6 +109,46 @@ def test_active_subset_for_step():
     assert active_subset_indices_for_step(args, 299) == {0}
     assert active_subset_indices_for_step(args, 300) == {2}
     assert progress_from_steps(300, 1000) == 0.3
+
+
+def test_runtime_target_groups_keep_trigger_clone_with_source_row():
+    args = SimpleNamespace(
+        stage_schedule_enabled=True,
+        max_train_steps=100,
+        stage_schedule=[
+            {"subset_index": 0, "start_pct": 0.0, "end_pct": 0.5},
+            {"subset_index": 1, "start_pct": 0.5, "end_pct": 1.0},
+        ],
+        stage_schedule_target_groups=[[0, 1], [2]],
+    )
+
+    assert normalize_stage_target_groups(args.stage_schedule_target_groups) == [
+        (0, 1),
+        (2,),
+    ]
+    assert stage_target_count(args, object()) == 2
+    assert active_subset_indices_for_step(args, 0) == {0, 1}
+    assert active_subset_indices_for_step(args, 50) == {2}
+
+
+def test_attach_stage_schedule_copies_runtime_target_groups():
+    args = SimpleNamespace()
+
+    attach_stage_schedule_from_config(
+        args,
+        {
+            "stage_schedule_enabled": True,
+            "stage_schedule": [
+                {"subset_index": 0, "start_pct": 0.0, "end_pct": 1.0}
+            ],
+            "stage_schedule_target_groups": [[0, 1]],
+        },
+    )
+
+    assert args.stage_schedule_enabled is True
+    assert args.stage_schedule_target_groups == [[0, 1]]
+    runtime_args = SimpleNamespace(**vars(args), max_train_steps=10)
+    assert active_subset_indices_for_step(runtime_args, 0) == {0, 1}
 
 
 def test_disabled_when_flag_off():
@@ -390,3 +446,211 @@ def test_group_member_switch_updates_concat_length():
     assert len(m2) == 0
     assert len(group) == 1
     assert set(group.image_data) == {"b1"}
+
+
+def test_empty_group_members_do_not_reuse_stale_bucket_indices():
+    """Inactive members must stay length zero even with a populated bucket manager."""
+    from library.training.stage_schedule import (
+        apply_active_subsets_to_dataset,
+        snapshot_full_image_data,
+    )
+
+    class _StaleBucketMember(_FakeGroupMember):
+        def __init__(self, name: str, keys: list[str]):
+            super().__init__(name, keys)
+            self.bucket_manager = SimpleNamespace(buckets=[list(keys)])
+            self.bucket_info = {"buckets": {0: {"count": len(keys)}}}
+            self._largest_bucket_index = 0
+            self.make_buckets_calls = 0
+
+        def __len__(self):
+            return int(getattr(self, "_length", 0) or 0)
+
+        def make_buckets(self, constant_token_buckets: bool = False):
+            self.make_buckets_calls += 1
+            if not self.image_data and self.bucket_manager is not None:
+                self.buckets_indices = list(self.bucket_manager.buckets[0])
+                self._length = len(self.buckets_indices)
+                return
+            super().make_buckets(constant_token_buckets=constant_token_buckets)
+
+    class _LenGroup(_FakeDatasetGroup):
+        def refresh_concat_state(self):
+            super().refresh_concat_state()
+            total = 0
+            self.cumulative_sizes = []
+            for ds in self.datasets:
+                total += len(ds)
+                self.cumulative_sizes.append(total)
+
+        def __len__(self):
+            return self.cumulative_sizes[-1] if self.cumulative_sizes else 0
+
+    inactive = _StaleBucketMember("res1024", ["a1", "a2"])
+    active = _StaleBucketMember("res512", ["b1"])
+    group = _LenGroup([inactive, active])
+    snapshot_full_image_data(group, force=True)
+
+    assert apply_active_subsets_to_dataset(group, {1}) is True
+    assert inactive.image_data == {}
+    assert inactive.buckets_indices == []
+    assert inactive.bucket_manager is None
+    assert inactive._largest_bucket_index is None
+    assert inactive.make_buckets_calls == 0
+    assert len(inactive) == 0
+    assert len(group) == 1
+
+
+def test_empty_stage_member_bucket_shuffle_is_noop():
+    """Epoch propagation must tolerate inactive members without a bucket manager."""
+    from library.datasets.dataset_buckets import DatasetBucketsMixin
+
+    member = DatasetBucketsMixin()
+    member.seed = 42
+    member.current_epoch = 1
+    member.buckets_indices = []
+    member.bucket_manager = None
+    member._largest_bucket_index = 3
+
+    member.shuffle_buckets()
+
+    assert member.buckets_indices == []
+    assert member.bucket_manager is None
+    assert member._largest_bucket_index is None
+
+
+def test_stage_switch_prepares_rebuilt_dataloader_with_accelerator(monkeypatch):
+    """Rebuilt stage loaders must retain Accelerate device placement/sharding."""
+    from library.training import loop as training_loop
+
+    raw_loader = object()
+    prepared_loader = object()
+
+    class _Accelerator:
+        def __init__(self):
+            self.prepared = []
+
+        def prepare_data_loader(self, loader):
+            self.prepared.append(loader)
+            return prepared_loader
+
+        def print(self, *_args, **_kwargs):
+            return None
+
+    monkeypatch.setattr(
+        training_loop,
+        "apply_active_subsets_to_dataset",
+        lambda _dataset, _active: True,
+    )
+    monkeypatch.setattr(
+        training_loop.torch.utils.data,
+        "DataLoader",
+        lambda *_args, **_kwargs: raw_loader,
+    )
+
+    accelerator = _Accelerator()
+    state = SimpleNamespace(
+        args=SimpleNamespace(
+            stage_schedule_enabled=True,
+            stage_schedule=[
+                {
+                    "name": "first",
+                    "subset_index": 0,
+                    "start_pct": 0.0,
+                    "end_pct": 1.0,
+                }
+            ],
+            max_train_steps=10,
+        ),
+        accelerator=accelerator,
+        train_dataset_group=object(),
+        dataloader_kwargs={"batch_size": 1},
+        train_dataloader=object(),
+        global_step=0,
+        stage_index=-1,
+    )
+
+    training_loop._maybe_apply_stage_schedule(state, force=True)
+
+    assert accelerator.prepared == [raw_loader]
+    assert state.train_dataloader is prepared_loader
+    assert state.stage_index == 0
+
+
+def test_stage_epoch_recycles_short_loader_to_full_dataset_budget(monkeypatch):
+    """A short active stage must still consume the full staged epoch budget."""
+    from library.training import loop as training_loop
+
+    calls = {"steps": 0}
+    monkeypatch.setattr(training_loop, "_maybe_apply_stage_schedule", lambda *_a, **_k: None)
+    monkeypatch.setattr(training_loop, "_profiler_step_begin", lambda *_a, **_k: None)
+    monkeypatch.setattr(training_loop, "_profiler_step_end", lambda *_a, **_k: None)
+    monkeypatch.setattr(
+        training_loop,
+        "_run_step",
+        lambda *_a, **_k: calls.__setitem__("steps", calls["steps"] + 1) or 0.0,
+    )
+    monkeypatch.setattr(
+        training_loop,
+        "_maybe_scale_norm",
+        lambda *_a, **_k: (False, None, None, None),
+    )
+    for name in (
+        "_record_recent_step_seconds",
+        "_sample_at_step",
+        "_log_step",
+        "_maybe_run_step_validation",
+    ):
+        monkeypatch.setattr(training_loop, name, lambda *_a, **_k: None)
+
+    state = SimpleNamespace(
+        args=SimpleNamespace(
+            max_train_steps=3,
+            _stage_num_update_steps_per_epoch=3,
+            stage_schedule_enabled=True,
+            stage_schedule=[
+                {
+                    "name": "only",
+                    "subset_index": 0,
+                    "start_pct": 0.0,
+                    "end_pct": 1.0,
+                }
+            ],
+        ),
+        accelerator=SimpleNamespace(sync_gradients=True),
+        initial_step=0,
+        train_dataloader=[object()],
+        train_dataset_group=object(),
+        stage_index=0,
+        current_step=SimpleNamespace(value=0),
+        global_step=0,
+        progress_bar=SimpleNamespace(update=lambda *_a, **_k: None),
+        saver=SimpleNamespace(maybe_save_step=lambda *_a, **_k: None),
+        network=object(),
+        optimizer_train_fn=lambda: None,
+    )
+
+    training_loop._run_epoch_steps(object(), state, epoch=0)
+
+    assert calls["steps"] == 3
+    assert state.global_step == 3
+
+
+def test_stage_epoch_rejects_empty_loader_instead_of_recycling_forever(monkeypatch):
+    from library.training import loop as training_loop
+
+    monkeypatch.setattr(training_loop, "_maybe_apply_stage_schedule", lambda *_a, **_k: None)
+    state = SimpleNamespace(
+        args=SimpleNamespace(
+            max_train_steps=100,
+            _stage_num_update_steps_per_epoch=100,
+        ),
+        accelerator=SimpleNamespace(),
+        initial_step=0,
+        train_dataloader=[],
+        stage_index=0,
+        global_step=50,
+    )
+
+    with pytest.raises(RuntimeError, match="no optimizer updates"):
+        training_loop._run_epoch_steps(object(), state, epoch=0)

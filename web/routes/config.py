@@ -272,6 +272,8 @@ async def handle_dataset_preset_put(request: web.Request) -> web.Response:
             datasets,
             defaults if isinstance(defaults, dict) else {},
             overwrite=bool(overwrite),
+            stage_schedule_enabled=data.get("stage_schedule_enabled"),
+            stage_schedule=data.get("stage_schedule"),
         ))
     except Exception as e:
         return web.json_response({"ok": False, "error": str(e)}, status=400)
@@ -288,6 +290,8 @@ async def handle_dataset_preset_save_as(request: web.Request) -> web.Response:
             str(data.get("name") or data.get("file") or ""),
             datasets,
             defaults if isinstance(defaults, dict) else {},
+            stage_schedule_enabled=data.get("stage_schedule_enabled"),
+            stage_schedule=data.get("stage_schedule"),
         ))
     except Exception as e:
         return web.json_response({"ok": False, "error": str(e)}, status=400)
