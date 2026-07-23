@@ -130,9 +130,11 @@ changing tokenizer or padding.
 
 ## Masked loss (SAM / MIT)
 
-Exclude regions like text bubbles from the training loss. `masked_loss = true`
-is on by default in `base.toml`; turn it off in the method TOML if a run
-shouldn't use masks even when the mask dir exists.
+Exclude regions like text bubbles from the training loss. `masked_loss = true` is on by
+default in `base.toml`. 注意：只把它设为 `false` 并不能覆盖 batch 已经携带的
+`alpha_masks`；当前 loss 路径在任一 alpha mask 存在时仍会应用 mask。要做真正的
+整图训练，数据集行还必须不提供 mask（若全局 mask 目录存在，显式设
+`mask_dir = ""` 以阻止自动探测）。
 
 ```bash
 make mask        # SAM3 + MIT (via tempdir) → post_image_dataset/masks/

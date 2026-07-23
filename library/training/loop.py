@@ -47,6 +47,7 @@ from library.training.contexts import TrainCtx, ValCtx
 from library.training.method_adapter import StepCtx
 from library.training.metrics import MetricContext, collect_metrics
 from library.training.validation import run_validation
+from library.training.adaptive_personalization import metrics as personalization_metrics
 
 logger = logging.getLogger(__name__)
 
@@ -682,6 +683,7 @@ def _run_step(trainer, state: LoopState, batch) -> torch.Tensor:
             torch.cuda.nvtx.range_push("forward")
         _probe_step(memory_probe, state, "before_forward")
         try:
+            trainer._state.personalization_observer["global_step"] = state.global_step
             loss = trainer.process_batch(state.train_ctx, batch, is_train=True)
         except Exception as exc:
             _probe_step(memory_probe, state, "forward_exception", **_probe_exception_fields(exc))
@@ -921,6 +923,11 @@ def _log_step(
     logs["avr_loss"] = avr_loss
     logs.update(memory_logs)
     logs.update(_current_stage_fields(state))
+    logs.update(
+        personalization_metrics(
+            getattr(getattr(trainer, "_state", None), "personalization_observer", {})
+        )
+    )
     _unwrapped_net = state.accelerator.unwrap_model(state.network)
     # Refresh router_H only on log cadence — get_router_entropy → full
     # get_router_stats compute (with D2H syncs) is wasted if the only

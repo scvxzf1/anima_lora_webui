@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 import torch
 
 from library.anima import models as anima_models
@@ -24,6 +22,17 @@ from library.training.prior_preservation import (
     inverted_mask_prior_enabled,
 )
 from library.training.contexts import TrainCtx
+from library.training.adaptive_personalization import (
+    dynamic_denoise_weights,
+    observer_enabled,
+    record_error,
+    should_probe,
+    update_observation,
+)
+from library.training.synchronous_affine import (
+    affine_probabilities,
+    apply_synchronous_affine,
+)
 
 
 def compute_noise_pred_and_target(
@@ -46,25 +55,14 @@ def compute_noise_pred_and_target(
     # Reset per-step adapter aux so stale tensors from a prior step can't
     # leak into the loss composer.
     trainer._state.extras_for_step = {}
+    observer_probe = is_train and observer_enabled(args) and should_probe(
+        trainer._state.personalization_observer, args
+    )
 
     # Sample noise
     if latents.ndim == 5:  # Fallback for 5D latents (old cache)
         latents = latents.squeeze(2)  # [B, C, 1, H, W] -> [B, C, H, W]
 
-    # Method-adapter pre-forward priming. IP-Adapter encodes the reference
-    # image and primes per-block K/V; EasyControl runs the cond pre-pass
-    # and primes per-block (K_c, V_c). Both run on the 4D latent layout
-    # the patched DiT forward expects. The patched cross-attn / self-attn
-    # closures consume the primed tensors during attention.
-    if trainer._adapters:
-        step_ctx = StepCtx(
-            args=args,
-            accelerator=accelerator,
-            network=network,
-            weight_dtype=weight_dtype,
-        )
-        for adapter in trainer._adapters:
-            adapter.prime_for_forward(step_ctx, batch, latents, is_train=is_train)
     noise = torch.randn_like(latents)
 
     # Draw noisy input + timesteps via the sampler registry (M1).
@@ -82,6 +80,27 @@ def compute_noise_pred_and_target(
     noisy_model_input = sampler_out.noisy_input
     timesteps = sampler_out.timesteps  # [0,1]-scaled, float32
     sigmas = sampler_out.sigmas
+
+    affine_p = affine_probabilities(
+        trainer._state.personalization_observer, args, timesteps
+    )
+    if is_train and affine_p is not None:
+        latents, noise, noisy_model_input, affine_fraction = apply_synchronous_affine(
+            latents, noise, noisy_model_input, batch, affine_p, args
+        )
+        trainer._state.personalization_observer["last_affine_fraction"] = affine_fraction
+
+    # Method-adapter pre-forward priming must see the same transformed latent
+    # and conditioning image that the DiT forward will consume.
+    if trainer._adapters:
+        step_ctx = StepCtx(
+            args=args,
+            accelerator=accelerator,
+            network=network,
+            weight_dtype=weight_dtype,
+        )
+        for adapter in trainer._adapters:
+            adapter.prime_for_forward(step_ctx, batch, latents, is_train=is_train)
 
     # Per-step network conditioning: timestep masks, σ/FEI routers, balance-loss warmup.
     trainer._hydra_warmup_step = apply_router_conditioning(
@@ -287,6 +306,30 @@ def compute_noise_pred_and_target(
                     "prior_pred": prior_pred.detach(),
                 }
 
+            if observer_probe:
+                try:
+                    observer_aux = trainer._state.extras_for_step.get(
+                        "inverted_mask_prior"
+                    )
+                    observer_pred = (
+                        observer_aux.get("prior_pred") if observer_aux else None
+                    )
+                    if observer_pred is None:
+                        observer_pred = run_prior_preservation_forward(
+                            anima_call=anima,
+                            network=network,
+                            noisy_model_input=noisy_model_input,
+                            timesteps=timesteps,
+                            crossattn_emb=crossattn_emb,
+                            padding_mask=padding_mask,
+                            forward_kwargs=kw,
+                        )
+                    trainer._state.extras_for_step["personalization_observer"] = {
+                        "base_pred": observer_pred.detach()
+                    }
+                except Exception as exc:
+                    record_error(trainer._state.personalization_observer, exc)
+
             # Functional MSE loss against a sampled stochastic inversion run.
             # The captures dict is populated by trainer-owned forward hooks
             # on cross_attn.output_proj at ``trainer._func_blocks``.
@@ -337,6 +380,20 @@ def compute_noise_pred_and_target(
     # Rectified flow target: noise - latents
     target = noise - latents
 
+    observer_aux = trainer._state.extras_for_step.get("personalization_observer")
+    if observer_probe and observer_aux is not None:
+        try:
+            update_observation(
+                trainer._state.personalization_observer,
+                args,
+                timesteps=timesteps,
+                adapter_pred=model_pred,
+                base_pred=observer_aux["base_pred"],
+                target=target,
+            )
+        except Exception as exc:
+            record_error(trainer._state.personalization_observer, exc)
+
     # Loss weighting
     weighting = anima_train_utils.compute_loss_weighting_for_anima(
         weighting_scheme=args.weighting_scheme,
@@ -345,9 +402,18 @@ def compute_noise_pred_and_target(
         p2_gamma=getattr(args, "p2_gamma", 1.0),
         p2_k=getattr(args, "p2_k", 1.0),
     )
+    dynamic_weight = dynamic_denoise_weights(
+        trainer._state.personalization_observer, args, timesteps
+    )
+    if dynamic_weight is not None:
+        dynamic_weight = dynamic_weight.reshape(
+            dynamic_weight.shape[0], *([1] * (weighting.ndim - 1))
+        )
+        weighting = weighting * dynamic_weight.to(
+            device=weighting.device, dtype=weighting.dtype
+        )
 
     return model_pred, target, timesteps, weighting
 
 def _is_train_text_encoder(trainer, args) -> bool:
     return trainer.is_train_text_encoder(args)
-

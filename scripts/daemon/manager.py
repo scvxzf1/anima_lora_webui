@@ -89,15 +89,31 @@ class JobManager:
 
     def shutdown(self, *, kill_jobs: bool) -> None:
         """Stop accepting work and unblock the worker. With ``kill_jobs`` the
-        active job tree is torn down and the GPU freed before the daemon exits.
+        active job tree is torn down, queued jobs are cancelled/persisted as
+        stopped, and the GPU is freed before the daemon exits.
         """
         with self._lock:
             self._stopping = True
             self._kill_on_shutdown = kill_jobs
             current = self._current_running_locked()
+            queued: list[Job] = []
+            if kill_jobs:
+                # Cancel every still-queued job *before* the worker exits so a
+                # later daemon restart cannot re-enqueue them from job.json.
+                for job in self._jobs.values():
+                    if job.state == STATE_QUEUED:
+                        job.stop_requested = True
+                        queued.append(job)
         if kill_jobs and current is not None:
             current.stop_requested = True
             self._kill_job_tree(current)
+        if kill_jobs:
+            for job in queued:
+                self._finalize(
+                    job,
+                    STATE_STOPPED,
+                    detail="discarded on daemon terminate",
+                )
         self._queue.put(_SENTINEL)  # wake the worker so it can exit
 
     # ----- submission / query -----

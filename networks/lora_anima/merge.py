@@ -25,7 +25,27 @@ def unfuse_weights(network) -> None:
 
 
 def is_mergeable(network) -> bool:
-    return network.cfg.num_registers == 0
+    """True only for adapters that collapse into a static Linear delta.
+
+    Register tokens, ReFT hooks, MoE/routing layouts, and Chimera dual-pool
+    routers all need live forward hooks and must not claim bakeability.
+    """
+    cfg = network.cfg
+    if int(getattr(cfg, "num_registers", 0) or 0) != 0:
+        return False
+    if bool(getattr(cfg, "add_reft", False)):
+        return False
+    if bool(getattr(cfg, "use_chimera_hydra", False)):
+        return False
+    use_moe_style = getattr(cfg, "use_moe_style", False)
+    if use_moe_style not in (False, None, "", "false", "False"):
+        return False
+    router_source = str(getattr(cfg, "router_source", "none") or "none")
+    if router_source not in ("", "none"):
+        return False
+    if bool(getattr(cfg, "route_per_layer", False)):
+        return False
+    return True
 
 
 def merge_lora_weights(network, text_encoders, unet, weights_sd, dtype=None, device=None):

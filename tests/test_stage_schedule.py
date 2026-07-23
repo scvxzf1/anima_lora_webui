@@ -369,6 +369,36 @@ def test_apply_active_dataset_members_for_multi_dataset_group():
     assert set(group.image_data) == {"a1", "a2", "b1", "c1", "c2", "c3"}
 
 
+def test_region_to_full_stage_switch_keeps_distinct_member_contracts():
+    """Region/full rows may share images but must remain distinct stage members."""
+    from library.training.stage_schedule import (
+        apply_active_subsets_to_dataset,
+        snapshot_full_image_data,
+    )
+
+    region = _FakeGroupMember("region-cache", ["same-image"])
+    full = _FakeGroupMember("full-cache", ["same-image"])
+    region.subsets[0].mask_dir = "post_image_dataset/masks"
+    region.subsets[0].alpha_mask = True
+    region.subsets[0].cache_dir = "post_image_dataset/lora_region"
+    full.subsets[0].mask_dir = ""
+    full.subsets[0].alpha_mask = False
+    full.subsets[0].cache_dir = "post_image_dataset/lora_full"
+    group = _FakeDatasetGroup([region, full])
+    snapshot_full_image_data(group, force=True)
+
+    assert apply_active_subsets_to_dataset(group, {0}) is True
+    assert region.num_train_images == 1
+    assert full.num_train_images == 0
+    assert region.subsets[0].cache_dir != full.subsets[0].cache_dir
+
+    assert apply_active_subsets_to_dataset(group, {1}) is True
+    assert region.num_train_images == 0
+    assert full.num_train_images == 1
+    assert full.subsets[0].mask_dir == ""
+    assert full.subsets[0].alpha_mask is False
+
+
 def test_count_stage_targets_for_dataset_group_members():
     """Validation budget should use member count for multi-[[datasets]] groups."""
     from library.training.stage_schedule import count_stage_targets

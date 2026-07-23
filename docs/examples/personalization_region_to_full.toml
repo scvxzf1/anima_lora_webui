@@ -1,0 +1,46 @@
+# Copy this template into a user-owned training config after preparing both
+# cache directories. It is intentionally not a shipped default method.
+
+masked_loss = true
+inverted_mask_prior_weight = 0.05
+prior_preservation_weight = 0.05
+
+stage_schedule_enabled = true
+
+[[stage_schedule]]
+name = "region"
+subset_index = 0
+start_pct = 0.0
+end_pct = 0.35
+
+[[stage_schedule]]
+name = "full"
+subset_index = 1
+start_pct = 0.35
+end_pct = 1.0
+
+[general]
+caption_extension = ".txt"
+
+[[datasets]]
+batch_size = 1
+
+  [[datasets.subsets]]
+  image_dir = "post_image_dataset/resized"
+  cache_dir = "post_image_dataset/lora_region"
+  mask_dir = "post_image_dataset/masks"
+  alpha_mask = true
+  recursive = true
+  num_repeats = 1
+
+[[datasets]]
+batch_size = 1
+
+  [[datasets.subsets]]
+  image_dir = "post_image_dataset/resized"
+  cache_dir = "post_image_dataset/lora_full"
+  # Empty string prevents the automatic global mask-directory fallback.
+  mask_dir = ""
+  alpha_mask = false
+  recursive = true
+  num_repeats = 1

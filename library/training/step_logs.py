@@ -8,6 +8,7 @@ from __future__ import annotations
 import argparse
 
 from library.training.optimizers import is_prodigy_plus_schedulefree_type
+from library.training.adaptive_personalization import metrics as personalization_metrics
 
 
 def generate_step_logs(
@@ -47,6 +48,11 @@ def generate_step_logs(
         logs["prior_preservation/weight"] = float(args.prior_preservation_weight)
     if float(getattr(args, "inverted_mask_prior_weight", 0.0) or 0.0) > 0.0:
         logs["inverted_mask_prior/weight"] = float(args.inverted_mask_prior_weight)
+    logs.update(
+        personalization_metrics(
+            getattr(getattr(trainer, "_state", None), "personalization_observer", {})
+        )
+    )
 
     def prodigy_plus_effective_lr(group):
         d = group.get("d")
@@ -109,4 +115,3 @@ def generate_step_logs(
                     logs[f"lr/d*lr/group{i}"] = effective_lr
 
     return logs
-

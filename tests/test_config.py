@@ -694,3 +694,47 @@ def test_render_header_includes_method_and_preset(populated_parser):
     preset_idx = rendered.index("configs/presets.toml[low_vram]")
     method_idx = rendered.index("configs/methods/lora.toml")
     assert base_idx < preset_idx < method_idx
+
+
+def test_base_config_cycle_is_rejected(tmp_path, monkeypatch):
+    from library.config import io as config_io
+    from library import env as env_mod
+
+    monkeypatch.setattr(env_mod, "get_configs_root", lambda: tmp_path)
+    a = tmp_path / "a.toml"
+    b = tmp_path / "b.toml"
+    a.write_text('base_config = "b.toml"\nnetwork_dim = 8\n', encoding="utf-8")
+    b.write_text('base_config = "a.toml"\nnetwork_alpha = 1.0\n', encoding="utf-8")
+
+    with pytest.raises(ValueError, match="cycle"):
+        config_io._load_toml_with_base(str(a))
+
+
+def test_base_config_rejects_path_escape(tmp_path, monkeypatch):
+    from library.config import io as config_io
+    from library import env as env_mod
+
+    monkeypatch.setattr(env_mod, "get_configs_root", lambda: tmp_path)
+    child = tmp_path / "child.toml"
+    outside = tmp_path.parent / "outside.toml"
+    outside.write_text("network_dim = 4\n", encoding="utf-8")
+    child.write_text('base_config = "../outside.toml"\n', encoding="utf-8")
+
+    with pytest.raises(ValueError, match=r"\.\.|escapes"):
+        config_io._load_toml_with_base(str(child))
+
+
+def test_base_config_merges_within_root(tmp_path, monkeypatch):
+    from library.config import io as config_io
+    from library import env as env_mod
+
+    monkeypatch.setattr(env_mod, "get_configs_root", lambda: tmp_path)
+    base = tmp_path / "base.toml"
+    child = tmp_path / "child.toml"
+    base.write_text("network_dim = 4\nnetwork_alpha = 1.0\n", encoding="utf-8")
+    child.write_text('base_config = "base.toml"\nnetwork_dim = 16\n', encoding="utf-8")
+
+    merged = config_io._load_toml_with_base(str(child))
+    assert merged["network_dim"] == 16
+    assert merged["network_alpha"] == 1.0
+

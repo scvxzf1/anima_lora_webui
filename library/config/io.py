@@ -278,19 +278,78 @@ def load_path_overrides(
     return out
 
 
-def _load_toml_with_base(path: str, *, strict: bool = False) -> dict:
-    """Load a TOML file and recursively resolve its 'base_config' reference."""
-    with open(path, "r", encoding="utf-8") as f:
+_BASE_CONFIG_MAX_DEPTH = 16
+
+
+def _load_toml_with_base(
+    path: str,
+    *,
+    strict: bool = False,
+    _stack: Optional[tuple[str, ...]] = None,
+    _depth: int = 0,
+) -> dict:
+    """Load a TOML file and recursively resolve its 'base_config' reference.
+
+    Guards against cycles, runaway depth, and ``base_config`` paths that escape
+    the configs root (absolute or ``..``-bearing relatives).
+    """
+    from library.env import get_configs_root
+
+    resolved = str(pathlib.Path(path).expanduser().resolve())
+    stack = _stack or ()
+    if resolved in stack:
+        chain = " -> ".join([*stack, resolved])
+        raise ValueError(f"base_config cycle detected: {chain}")
+    if _depth >= _BASE_CONFIG_MAX_DEPTH:
+        raise ValueError(
+            f"base_config nesting exceeds max depth {_BASE_CONFIG_MAX_DEPTH} "
+            f"while loading {resolved}"
+        )
+
+    with open(resolved, "r", encoding="utf-8") as f:
         config_dict = toml.load(f)
     base_ref = config_dict.pop("base_config", None)
     if base_ref is None:
-        return _flatten_toml(config_dict, source=path, strict=strict)
-    if not os.path.isabs(base_ref):
-        base_ref = os.path.join(os.path.dirname(path), base_ref)
-    logger.info(f"Loading base config from {base_ref}...")
-    base_dict = _load_toml_with_base(base_ref, strict=strict)
+        return _flatten_toml(config_dict, source=resolved, strict=strict)
+
+    base_ref_str = str(base_ref).strip()
+    if not base_ref_str:
+        raise ValueError(f"base_config in {resolved} is empty")
+    if os.path.isabs(base_ref_str) or base_ref_str.startswith("~"):
+        base_path = pathlib.Path(base_ref_str).expanduser().resolve()
+    else:
+        # Reject path traversal before resolve so "a/../../etc/passwd" cannot
+        # leave the configs root even when intermediate parents exist.
+        parts = pathlib.PurePosixPath(base_ref_str.replace("\\", "/")).parts
+        if ".." in parts:
+            raise ValueError(
+                f"base_config path must not contain '..': {base_ref_str!r} "
+                f"(from {resolved})"
+            )
+        base_path = (pathlib.Path(resolved).parent / base_ref_str).resolve()
+
+    configs_root = get_configs_root().resolve()
+    try:
+        base_path.relative_to(configs_root)
+    except ValueError as exc:
+        raise ValueError(
+            f"base_config path {base_path} escapes configs root {configs_root} "
+            f"(from {resolved})"
+        ) from exc
+    if not base_path.is_file():
+        raise FileNotFoundError(
+            f"base_config not found: {base_path} (from {resolved})"
+        )
+
+    logger.info(f"Loading base config from {base_path}...")
+    base_dict = _load_toml_with_base(
+        str(base_path),
+        strict=strict,
+        _stack=stack + (resolved,),
+        _depth=_depth + 1,
+    )
     merged = dict(base_dict)
-    merged.update(_flatten_toml(config_dict, source=path, strict=strict))
+    merged.update(_flatten_toml(config_dict, source=resolved, strict=strict))
     return merged
 
 

@@ -80,6 +80,9 @@ class RuntimeState:
     # trainable DiT with ``network.set_multiplier(0)`` — see the VR block in
     # ``get_noise_pred_and_target``.
     vr: dict = field(default_factory=lambda: {"lambda_ema": None})
+    # Observation-only APT-style per-timestep-bin state. It never changes the
+    # objective until a later strategy explicitly consumes these metrics.
+    personalization_observer: dict = field(default_factory=dict)
     # T5("") crossattn sidecar (shape ``(1, S, 1024)`` bf16 on device).
     # Populated by ``_ensure_uncond_crossattn`` when caption dropout is
     # enabled; consumed by ``prepare_text_conds`` so dropped rows match

@@ -232,6 +232,51 @@ def test_stop_running_job(daemon):
     assert _wait_until(lambda: not psutil.pid_exists(pid), timeout=5)
 
 
+def test_shutdown_kill_jobs_discards_queued(tmp_path, monkeypatch):
+    """daemon-terminate must cancel queued jobs on disk, not just kill the active one.
+
+    Otherwise a later daemon restart re-enqueues leftover STATE_QUEUED records
+    and revives work the user thought was discarded.
+    """
+    monkeypatch.setattr(config, "STATE_DIR", tmp_path)
+    monkeypatch.setattr(config, "JOBS_DIR", tmp_path / "jobs")
+    monkeypatch.setattr(JobManager, "_build_cmd", _fake_build_cmd)
+    monkeypatch.setattr(gpu, "gpu_pids", lambda: set())
+
+    mgr = JobManager()
+    mgr.start()
+    try:
+        running = mgr.submit(
+            method="lora",
+            preset="default",
+            methods_subdir=None,
+            overrides={"duration": 60.0},
+            extra=[],
+        )
+        queued = mgr.submit(
+            method="lora",
+            preset="default",
+            methods_subdir=None,
+            overrides={"duration": 1.0},
+            extra=[],
+        )
+        assert _wait_until(lambda: mgr.get(running.id).state == jobs.STATE_RUNNING, timeout=10)
+
+        mgr.shutdown(kill_jobs=True)
+        assert _wait_until(
+            lambda: mgr.get(running.id).state in jobs.TERMINAL_STATES, timeout=10
+        )
+        assert mgr.get(queued.id).state == jobs.STATE_STOPPED
+        assert mgr.get(queued.id).status_detail == "discarded on daemon terminate"
+        # Disk must also reflect stopped so reconcile cannot re-enqueue.
+        reloaded = jobs.load_all()
+        assert reloaded[queued.id].state == jobs.STATE_STOPPED
+    finally:
+        if mgr._worker.is_alive():
+            mgr._queue.put("__stop__")
+            mgr._worker.join(timeout=5)
+
+
 def test_reconcile_orphan_requeue_adopt(tmp_path, monkeypatch):
     """Boot sweep: dead `running` → orphaned error; `queued` → re-enqueued;
     live `running` → adopted for monitoring."""

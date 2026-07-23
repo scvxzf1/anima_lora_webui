@@ -162,3 +162,58 @@ def test_repa_pool_trims_register_tail():
 
     with pytest.raises(RuntimeError, match="Block/patch-grid mismatch"):
         pool_dit_tokens_to_grid(captured, (32, 32), 2, 8, 8)
+
+
+def test_is_mergeable_rejects_dynamic_adapters():
+    from types import SimpleNamespace
+
+    from networks.lora_anima import merge as merge_ops
+
+    plain = SimpleNamespace(
+        cfg=SimpleNamespace(
+            num_registers=0,
+            add_reft=False,
+            use_chimera_hydra=False,
+            use_moe_style=False,
+            router_source="none",
+            route_per_layer=False,
+        )
+    )
+    assert merge_ops.is_mergeable(plain)
+
+    moe = SimpleNamespace(
+        cfg=SimpleNamespace(
+            num_registers=0,
+            add_reft=False,
+            use_chimera_hydra=False,
+            use_moe_style="shared_A",
+            router_source="none",
+            route_per_layer=False,
+        )
+    )
+    assert not merge_ops.is_mergeable(moe)
+
+    reft = SimpleNamespace(
+        cfg=SimpleNamespace(
+            num_registers=0,
+            add_reft=True,
+            use_chimera_hydra=False,
+            use_moe_style=False,
+            router_source="none",
+            route_per_layer=False,
+        )
+    )
+    assert not merge_ops.is_mergeable(reft)
+
+    routed = SimpleNamespace(
+        cfg=SimpleNamespace(
+            num_registers=0,
+            add_reft=False,
+            use_chimera_hydra=False,
+            use_moe_style=False,
+            router_source="fei",
+            route_per_layer=False,
+        )
+    )
+    assert not merge_ops.is_mergeable(routed)
+

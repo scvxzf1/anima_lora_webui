@@ -312,6 +312,28 @@ def update_anima_metadata(metadata: dict[str, Any], args) -> None:
     metadata["ss_inverted_mask_prior_weight"] = str(
         getattr(args, "inverted_mask_prior_weight", 0.0)
     )
+    metadata["ss_mask_loss_normalize"] = str(
+        getattr(args, "mask_loss_normalize", "none")
+    )
+    metadata["ss_foreground_loss_weight"] = str(
+        getattr(args, "foreground_loss_weight", 1.0)
+    )
+    for key in (
+        "adaptive_personalization_observe",
+        "adaptive_personalization_timestep_bins",
+        "adaptive_personalization_ema_decay",
+        "adaptive_personalization_probe_every_n_steps",
+        "adaptive_personalization_gamma_scale",
+        "adaptive_personalization_loss_weighting",
+        "adaptive_personalization_min_bin_samples",
+        "adaptive_personalization_denoise_weight_min",
+        "adaptive_personalization_affine",
+        "adaptive_personalization_affine_probability_max",
+        "adaptive_personalization_affine_rotation_deg",
+        "adaptive_personalization_affine_translation",
+        "adaptive_personalization_affine_scale_delta",
+    ):
+        metadata[f"ss_{key}"] = str(getattr(args, key, None))
     metadata["ss_timestep_sampling"] = args.timestep_sampling
     metadata["ss_sigmoid_scale"] = args.sigmoid_scale
     metadata["ss_discrete_flow_shift"] = args.discrete_flow_shift

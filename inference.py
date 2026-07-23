@@ -1043,6 +1043,11 @@ def main():
             logger.info(f"Loaded latent from {latent_path}. Shape: {latents.shape}")
 
             if latents.ndim == 5:  # [BCTHW]
+                if latents.shape[0] != 1:
+                    raise ValueError(
+                        f"Latent batch size must be 1 for decode path, got "
+                        f"shape {tuple(latents.shape)} from {latent_path}"
+                    )
                 latents = latents.squeeze(0)  # [CTHW]
 
             latents_list.append(latents)

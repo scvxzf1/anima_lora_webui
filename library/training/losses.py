@@ -31,6 +31,8 @@ from typing import Callable, Optional
 import torch
 import torch.nn.functional as F
 
+from library.training.mask_loss import apply_mask, reduce_masked_loss
+
 
 def add_custom_train_arguments(
     parser: argparse.ArgumentParser, support_weighted_captions: bool = True
@@ -125,6 +127,31 @@ def add_custom_train_arguments(
         ),
     )
     parser.add_argument(
+        "--adaptive_personalization_observe",
+        action="store_true",
+        help="Observe base-vs-adapter loss by timestep bin; does not alter training.",
+    )
+    parser.add_argument("--adaptive_personalization_timestep_bins", type=int, default=10)
+    parser.add_argument("--adaptive_personalization_ema_decay", type=float, default=0.95)
+    parser.add_argument("--adaptive_personalization_probe_every_n_steps", type=int, default=4)
+    parser.add_argument("--adaptive_personalization_gamma_scale", type=float, default=1.0)
+    parser.add_argument(
+        "--adaptive_personalization_loss_weighting",
+        action="store_true",
+        help="Apply 1-gamma timestep-bin weights after observer warmup.",
+    )
+    parser.add_argument("--adaptive_personalization_min_bin_samples", type=int, default=16)
+    parser.add_argument("--adaptive_personalization_denoise_weight_min", type=float, default=0.25)
+    parser.add_argument(
+        "--adaptive_personalization_affine",
+        action="store_true",
+        help="Apply gamma-driven synchronous affine augmentation after observation warmup.",
+    )
+    parser.add_argument("--adaptive_personalization_affine_probability_max", type=float, default=0.5)
+    parser.add_argument("--adaptive_personalization_affine_rotation_deg", type=float, default=10.0)
+    parser.add_argument("--adaptive_personalization_affine_translation", type=float, default=0.05)
+    parser.add_argument("--adaptive_personalization_affine_scale_delta", type=float, default=0.05)
+    parser.add_argument(
         "--p2_gamma",
         type=float,
         default=1.0,
@@ -146,23 +173,7 @@ def add_custom_train_arguments(
 
 
 def apply_masked_loss(loss, batch) -> torch.FloatTensor:
-    if "conditioning_images" in batch:
-        mask_image = (
-            batch["conditioning_images"].to(dtype=loss.dtype)[:, 0].unsqueeze(1)
-        )  # use R channel
-        mask_image = mask_image / 2 + 0.5
-    elif "alpha_masks" in batch and batch["alpha_masks"] is not None:
-        mask_image = (
-            batch["alpha_masks"].to(dtype=loss.dtype).unsqueeze(1)
-        )  # add channel dimension
-    else:
-        return loss
-
-    mask_image = torch.nn.functional.interpolate(
-        mask_image, size=loss.shape[2:], mode="area"
-    )
-    loss = loss * mask_image
-    return loss
+    return apply_mask(loss, batch)
 
 
 def apply_inverted_masked_loss(loss, batch) -> torch.FloatTensor:
@@ -313,10 +324,24 @@ def _flow_match_loss(ctx: LossContext) -> torch.Tensor:
     if ctx.args.masked_loss or (
         "alpha_masks" in ctx.batch and ctx.batch["alpha_masks"] is not None
     ):
-        loss = apply_masked_loss(loss, ctx.batch)
+        return _reduce_loss_with_mask(ctx, loss)
     loss = loss.mean(dim=list(range(1, loss.ndim)))
     loss = loss * ctx.loss_weights
     return loss
+
+
+def _reduce_loss_with_mask(ctx: LossContext, loss: torch.Tensor) -> torch.Tensor:
+    """Reduce a masked spatial loss using the configured compatibility mode."""
+    foreground_weight = getattr(ctx.args, "foreground_loss_weight", 1.0)
+    if foreground_weight is None:
+        foreground_weight = 1.0
+    reduced = reduce_masked_loss(
+        loss,
+        ctx.batch,
+        normalize=str(getattr(ctx.args, "mask_loss_normalize", "none") or "none"),
+        foreground_weight=float(foreground_weight),
+    )
+    return reduced * ctx.loss_weights
 
 
 def _flow_matching_vr_loss(ctx: LossContext) -> torch.Tensor:
@@ -371,7 +396,7 @@ def _flow_matching_vr_loss(ctx: LossContext) -> torch.Tensor:
     if ctx.args.masked_loss or (
         "alpha_masks" in ctx.batch and ctx.batch["alpha_masks"] is not None
     ):
-        loss = apply_masked_loss(loss, ctx.batch)
+        return weight * _reduce_loss_with_mask(ctx, loss)
     loss = loss.mean(dim=list(range(1, loss.ndim)))
     loss = loss * ctx.loss_weights
     return weight * loss
@@ -400,7 +425,7 @@ def _velocity_direction_loss(ctx: LossContext) -> torch.Tensor:
     if ctx.args.masked_loss or (
         "alpha_masks" in ctx.batch and ctx.batch["alpha_masks"] is not None
     ):
-        loss = apply_masked_loss(loss, ctx.batch)
+        return weight * _reduce_loss_with_mask(ctx, loss)
     loss = loss.mean(dim=list(range(1, loss.ndim)))
     loss = loss * ctx.loss_weights
     return weight * loss

@@ -30,6 +30,7 @@ from library.datasets import (
 from library.runtime.accelerator import patch_accelerator_for_fp16_training
 from library.training.optimizers import get_optimizer, get_optimizer_train_eval_fn
 from library.training.schedulers import get_scheduler_fix
+from library.training.stage_schedule import attach_stage_schedule_from_config
 from networks import all_network_kwargs
 
 logger = logging.getLogger(__name__)
@@ -234,6 +235,11 @@ class TrainingBootstrap:
                             }
                         ]
                     }
+
+            # Dataset blueprints intentionally strip runtime orchestration
+            # keys, so copy curriculum settings onto argparse before the
+            # blueprint is sanitized/generated.
+            attach_stage_schedule_from_config(args, user_config)
 
             sample_ratio = getattr(args, "sample_ratio", None)
             if sample_ratio is not None:

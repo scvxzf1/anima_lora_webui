@@ -31,6 +31,23 @@ from library.datasets.subsets import ImageInfo
 logger = logging.getLogger(__name__)
 
 
+def alpha_mask_required_for_cache(info: ImageInfo, subset: Any) -> bool:
+    """Return whether an NPZ must contain an alpha mask for this image.
+
+    A separate ``mask_dir`` is loaded and preloaded by the dataset bucket
+    stage. In that mode the mask is authoritative outside the latent cache;
+    requiring an ``alpha_mask`` NPZ key would reject valid dual-cache
+    region/full curricula after preprocessing.
+    """
+    if not bool(getattr(subset, "alpha_mask", False)):
+        return False
+    external_mask = bool(getattr(subset, "mask_dir", None)) and bool(
+        getattr(info, "mask_path", None)
+        or getattr(info, "preloaded_alpha_mask", None) is not None
+    )
+    return not external_mask
+
+
 class DatasetCacheMixin:
     """Mixin for VAE latent and text-encoder output caching."""
 
@@ -77,7 +94,7 @@ class DatasetCacheMixin:
                 info.bucket_reso,
                 npz_path,
                 subset.flip_aug,
-                subset.alpha_mask,
+                alpha_mask_required_for_cache(info, subset),
             ):
                 return False
         return True
@@ -189,7 +206,7 @@ class DatasetCacheMixin:
                         info.bucket_reso,
                         info.latents_npz,
                         subset.flip_aug,
-                        subset.alpha_mask,
+                        alpha_mask_required_for_cache(info, subset),
                     )
                     if cache_available:  # do not add to batch
                         continue
@@ -509,4 +526,3 @@ class DatasetCacheMixin:
         logger.info("caching text encoder outputs...")
         # Note: SD/SDXL/SD3 specific batch caching functions are not included in this stripped version.
         # Anima uses new_cache_text_encoder_outputs with caching strategy instead.
-

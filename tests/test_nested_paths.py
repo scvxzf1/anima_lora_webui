@@ -200,6 +200,46 @@ def test_resolve_default_mask_dir_priority(
     assert _resolve_default_mask_dir() == "post_image_dataset/masks"
 
 
+def test_empty_mask_dir_disables_default_auto_resolution(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from library.datasets.subsets import DreamBoothSubset
+
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "post_image_dataset" / "masks").mkdir(parents=True)
+    subset = DreamBoothSubset(
+        image_dir=str(tmp_path),
+        is_reg=False,
+        class_tokens=None,
+        caption_extension=".txt",
+        cache_info=False,
+        alpha_mask=False,
+        num_repeats=1,
+        sample_ratio=1.0,
+        caption_separator=",",
+        keep_tokens=0,
+        keep_tokens_separator=None,
+        secondary_separator=None,
+        enable_wildcard=False,
+        color_aug=False,
+        flip_aug=False,
+        face_crop_aug_range=None,
+        random_crop=False,
+        caption_dropout_rate=0.0,
+        caption_dropout_every_n_epochs=0,
+        caption_tag_dropout_rate=0.0,
+        caption_prefix=None,
+        caption_suffix=None,
+        token_warmup_min=1,
+        token_warmup_step=0,
+        mask_dir="",
+        cache_dir=str(tmp_path / "full-cache"),
+    )
+
+    assert subset.mask_dir == ""
+    assert subset.alpha_mask is False
+
+
 # ---------------------------------------------------------------------------
 # merge_masks.py (driver-level)
 # ---------------------------------------------------------------------------

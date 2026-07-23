@@ -826,6 +826,18 @@ def add_masked_loss_arguments(parser: argparse.ArgumentParser):
     parser.add_argument(
         "--masked_loss", action="store_true", help="apply mask for calculating loss."
     )
+    parser.add_argument(
+        "--mask_loss_normalize",
+        choices=("none", "foreground_mean"),
+        default="none",
+        help="Spatial mask reduction: legacy full-latent mean or foreground-area mean.",
+    )
+    parser.add_argument(
+        "--foreground_loss_weight",
+        type=float,
+        default=1.0,
+        help="Multiplier applied after foreground_mean reduction.",
+    )
 
 
 def add_dit_training_arguments(parser: argparse.ArgumentParser):

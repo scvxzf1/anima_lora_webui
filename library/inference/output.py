@@ -60,6 +60,10 @@ def decode_latent(
     vae.to("cpu")
 
     logger.info(f"Decoded. Pixel shape {pixels.shape}")
+    if pixels.shape[0] != 1:
+        raise ValueError(
+            f"decode_latent expects batch size 1, got pixel shape {tuple(pixels.shape)}"
+        )
     return pixels[0]  # remove batch dimension
 
 
