@@ -1534,7 +1534,7 @@ select.dataset-config-input {
     color: var(--text);
     font-size: 0.96rem;
     font-weight: 800;
-    line-height: 1.2;
+    line-height: 1;
     white-space: nowrap;
 }
 
@@ -1563,30 +1563,37 @@ select.dataset-config-input {
 
 .dataset-row-badge {
     display: inline-flex;
-    align-items: baseline;
+    align-items: center;
+    justify-content: center;
     gap: 0.3rem;
     min-height: 30px;
-    padding: 0.22rem 0.5rem;
+    height: 30px;
+    padding: 0 0.5rem;
     border: 1px solid var(--border-soft);
     border-radius: 4px;
     background: var(--bg-input);
     color: var(--text);
     white-space: nowrap;
+    line-height: 1;
 }
 
 .dataset-row-badge small {
+    display: inline-flex;
+    align-items: center;
     color: var(--text-dim);
     font-size: 0.78rem;
     font-weight: 800;
-    line-height: 1.1;
+    line-height: 1;
     text-transform: uppercase;
 }
 
 .dataset-row-badge strong {
+    display: inline-flex;
+    align-items: center;
     color: var(--text);
-    font-size: 0.9rem;
-    font-weight: 800;
-    line-height: 1.1;
+    font-size: 0.72rem;
+    font-weight: 500;
+    line-height: 1;
 }
 
 .dataset-row-paths {
