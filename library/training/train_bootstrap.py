@@ -105,6 +105,51 @@ def decode_deferred_samples_safely(
         logger.error(f"Failed to decode deferred sample images during cleanup: {exc}")
 
 
+def resolve_sample_prompts_path(value: str | None) -> str | None:
+    """Resolve a sample_prompts path against cwd, configs root, or project root.
+
+    Runtime configs often keep portable ``configs/sample-prompts/...`` strings.
+    When configs are externalized via ``get_configs_root()``, a bare
+    ``os.path.isfile`` check against the process cwd fails and the path string
+    would otherwise be treated as an inline prompt.
+    """
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    if os.path.isfile(raw):
+        return raw
+    expanded = os.path.expanduser(raw)
+    if expanded != raw and os.path.isfile(expanded):
+        return expanded
+
+    normalized = raw.replace("\\", "/").lstrip("./")
+    if normalized == "configs" or normalized.startswith("configs/"):
+        try:
+            from library.env import get_configs_root
+        except Exception:  # noqa: BLE001 - best-effort path resolve
+            get_configs_root = None  # type: ignore[assignment]
+        if get_configs_root is not None:
+            rel = "" if normalized == "configs" else normalized[len("configs/") :]
+            candidate = get_configs_root() / rel
+            try:
+                if candidate.is_file():
+                    return str(candidate)
+            except OSError:
+                pass
+
+    try:
+        from library.env import project_root
+    except Exception:  # noqa: BLE001 - best-effort path resolve
+        return None
+    try:
+        candidate = project_root() / raw
+        if candidate.is_file():
+            return str(candidate)
+    except OSError:
+        return None
+    return None
+
+
 def normalize_sample_args(args):
     """Normalize inline sample prompts and disabled sample cadence."""
     for knob in ("sample_every_n_epochs", "sample_every_n_steps"):
@@ -119,7 +164,11 @@ def normalize_sample_args(args):
     if isinstance(value, (list, tuple)):
         lines = [str(item).strip() for item in value]
     elif isinstance(value, str):
-        if os.path.isfile(value):
+        resolved = resolve_sample_prompts_path(value)
+        if resolved is not None:
+            if resolved != value:
+                logger.info(f"Resolved sample_prompts path: {value} -> {resolved}")
+            args.sample_prompts = resolved
             return
         lines = [line.strip() for line in value.splitlines()]
     else:
