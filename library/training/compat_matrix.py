@@ -216,6 +216,41 @@ def check_training_compat(config: Mapping[str, Any] | object) -> TrainingCompatR
             "in-graph; blocks_to_swap remains independent.",
         )
 
+    base_compute = str(_get(config, "base_compute", "bf16") or "bf16").strip().lower()
+    block_swap_transfer_dtype = str(
+        _get(config, "block_swap_transfer_dtype", "bf16") or "bf16"
+    ).strip().lower()
+    convrot_active = base_compute in {
+        "w8a16_convrot",
+        "w8a8_convrot",
+        "w8a16",
+        "w8a8",
+    }
+    if convrot_active and block_swap_transfer_dtype in {"int8", "int8_linear", "i8"}:
+        out.error(
+            "convrot_block_swap_int8_mutex",
+            "base_compute",
+            "base_compute ConvRot paths are mutually exclusive with "
+            "block_swap_transfer_dtype=int8 (double dequant / confused semantics). "
+            "Use block_swap_transfer_dtype=bf16 when enabling ConvRot.",
+        )
+    if base_compute not in {
+        "bf16",
+        "fp16",
+        "none",
+        "off",
+        "w8a16_convrot",
+        "w8a8_convrot",
+        "w8a16",
+        "w8a8",
+    }:
+        out.error(
+            "invalid_base_compute",
+            "base_compute",
+            f"unknown base_compute={base_compute!r}; expected bf16 | "
+            "w8a16_convrot | w8a8_convrot",
+        )
+
     if block_swap_enabled:
         if torch_compile and dynamo_backend == "cudagraphs":
             out.warning(

@@ -5,6 +5,9 @@
 
 日期：2026-07-03
 
+> 后续方向：若目标是 **ConvRot 旋转 + 训练期 W8A16/W8A8**（而非本页的 per-channel 存储/block-swap 传输），见
+> [`../experimental/convrot_int8_training.md`](../experimental/convrot_int8_training.md)。两条路径不要混用同一开关。
+
 ## 结论
 
 `int8 + per-output-channel fp32 scale` 值得继续推进。当前已经完成四层证据：

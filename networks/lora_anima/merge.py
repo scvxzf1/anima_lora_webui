@@ -12,8 +12,27 @@ def _all_loras(network):
     return network.text_encoder_loras + network.unet_loras
 
 
+def _network_has_convrot_base(network) -> bool:
+    for lora in _all_loras(network):
+        if getattr(lora, "_convrot_mode", None) is not None:
+            return True
+        if getattr(lora, "_convrot_quantized_weight", None) is not None:
+            return True
+    return False
+
+
+def _raise_if_convrot_merge(network, *, context: str) -> None:
+    if _network_has_convrot_base(network):
+        raise RuntimeError(
+            f"{context}: refused for ConvRot base path. "
+            "Merge/fuse assumes high-precision writable Linear.weight. "
+            "Train with base_compute=bf16 or dequantize the base before merge."
+        )
+
+
 def fuse_weights(network) -> None:
     """Merge all LoRA deltas into base model weights for zero-overhead inference."""
+    _raise_if_convrot_merge(network, context="fuse_weights")
     for lora in _all_loras(network):
         lora.fuse_weight()
 
@@ -30,6 +49,8 @@ def is_mergeable(network) -> bool:
     Register tokens, ReFT hooks, MoE/routing layouts, and Chimera dual-pool
     routers all need live forward hooks and must not claim bakeability.
     """
+    if _network_has_convrot_base(network):
+        return False
     cfg = network.cfg
     if int(getattr(cfg, "num_registers", 0) or 0) != 0:
         return False
@@ -49,6 +70,7 @@ def is_mergeable(network) -> bool:
 
 
 def merge_lora_weights(network, text_encoders, unet, weights_sd, dtype=None, device=None):
+    _raise_if_convrot_merge(network, context="merge_lora_weights")
     apply_text_encoder = apply_unet = False
     for key in weights_sd.keys():
         if key.startswith(network.LORA_PREFIX_TEXT_ENCODER):
@@ -103,6 +125,7 @@ def restore_weights(network) -> None:
 
 
 def pre_calculation(network) -> None:
+    _raise_if_convrot_merge(network, context="pre_calculation")
     with torch.no_grad():
         for lora in _all_loras(network):
             org_module = lora.org_module_ref[0]

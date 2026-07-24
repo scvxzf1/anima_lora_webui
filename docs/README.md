@@ -97,6 +97,7 @@ Postfix 当前用户入口在 [guidelines/training.md#postfix](guidelines/traini
 | [experimental/anima_tagger.md](experimental/anima_tagger.md) | Anima Tagger，多标签 tagger 与 DirectEdit 文本入口 |
 | [experimental/byg.md](experimental/byg.md) | BYG unpaired instruction-editing：训练可用，专用推理仍是占位 |
 | [experimental/chimera-hydra.md](experimental/chimera-hydra.md) | ChimeraHydra 双池 MoE，配合 [structure/chimera-hydra.md](structure/chimera-hydra.md) 阅读 |
+| [experimental/convrot_int8_training.md](experimental/convrot_int8_training.md) | ConvRot int8 训练（W8A16/W8A8）；可运行实验、默认关闭；后续优化见 [proposal/convrot_w8a_optimization_roadmap.md](proposal/convrot_w8a_optimization_roadmap.md) |
 | [experimental/directedit_editing_v3.md](experimental/directedit_editing_v3.md) | DirectEdit v3，flow-inversion 图像编辑 |
 | [experimental/dpdmd.md](experimental/dpdmd.md) | DP-DMD / Turbo Anima 少步蒸馏，配合 [structure/dpdmd.md](structure/dpdmd.md) 阅读 |
 | [experimental/easycontrol.md](experimental/easycontrol.md) | EasyControl 图像条件控制 |

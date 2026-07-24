@@ -13,6 +13,7 @@
 | [anima_tagger.md](anima_tagger.md) | Anima Tagger，多标签 tagger 与 DirectEdit 文本入口 |
 | [byg.md](byg.md) | BYG unpaired instruction-editing：训练可用，专用推理仍是占位 |
 | [chimera-hydra.md](chimera-hydra.md) | ChimeraHydra 双池 MoE，配合 [../structure/chimera-hydra.md](../structure/chimera-hydra.md) 阅读 |
+| [convrot_int8_training.md](convrot_int8_training.md) | ConvRot int8 训练（W8A16/W8A8）；**可运行实验、默认关闭**；规格见 [../proposal/convrot_w8a_training_plan.md](../proposal/convrot_w8a_training_plan.md)；后续优化见 [../proposal/convrot_w8a_optimization_roadmap.md](../proposal/convrot_w8a_optimization_roadmap.md) |
 | [directedit_editing_v3.md](directedit_editing_v3.md) | DirectEdit v3，flow-inversion 图像编辑 |
 | [dpdmd.md](dpdmd.md) | DP-DMD / Turbo Anima 少步蒸馏，配合 [../structure/dpdmd.md](../structure/dpdmd.md) 阅读 |
 | [easycontrol.md](easycontrol.md) | EasyControl 图像条件控制 |

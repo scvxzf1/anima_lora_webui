@@ -160,6 +160,84 @@ class TrainingBootstrap:
         return True
 
     @staticmethod
+    def maybe_apply_convrot_base(args, network, *, unet=None) -> bool:
+        """Optionally patch LoRA org_forward with ConvRot W8A* base path.
+
+        Runs only when ``base_compute`` is ``w8a16_convrot`` / ``w8a8_convrot``.
+        Must execute after ``network.apply_to`` (org_forward capture) and before
+        ``compile_blocks``. Default ``base_compute=bf16`` is a pure no-op.
+        """
+        from library.runtime.convrot.checks import (
+            assert_convrot_block_swap_mutex,
+            convrot_mode_from_base_compute,
+            normalize_base_compute,
+        )
+        from library.runtime.convrot.apply import apply_convrot_to_lora_network
+
+        base_compute = normalize_base_compute(
+            getattr(args, "base_compute", "bf16")
+        )
+        # Keep normalized value on args for metadata / logging.
+        try:
+            args.base_compute = base_compute
+        except Exception:
+            pass
+        mode = convrot_mode_from_base_compute(base_compute)
+        if mode is None:
+            return False
+
+        assert_convrot_block_swap_mutex(
+            base_compute=base_compute,
+            block_swap_transfer_dtype=getattr(
+                args, "block_swap_transfer_dtype", "bf16"
+            ),
+        )
+
+        # Phase 1: refuse DoRA / dora_wd network args early with a clear error.
+        net_args = getattr(args, "network_args", None) or []
+        joined = " ".join(str(a) for a in net_args).lower()
+        if "dora_wd" in joined or "use_dora=true" in joined or "dora=true" in joined:
+            raise ValueError(
+                "base_compute ConvRot is not supported with DoRA "
+                "(dora_wd / use_dora). Use plain LoRA or disable ConvRot."
+            )
+
+        group_size = int(getattr(args, "convrot_group_size", 256) or 256)
+        scope = str(getattr(args, "convrot_scope", "mlp") or "mlp")
+        weight_source = str(
+            getattr(args, "convrot_weight_source", "online_from_bf16")
+            or "online_from_bf16"
+        )
+        prequant_path = getattr(args, "convrot_prequant_path", None) or None
+
+        result = apply_convrot_to_lora_network(
+            network,
+            mode=mode,  # type: ignore[arg-type]
+            scope=scope,
+            group_size=group_size,
+            weight_source=weight_source,
+            prequant_path=prequant_path,
+            unet=unet,
+        )
+        # Stash for optional metadata consumers.
+        try:
+            args._convrot_apply_result = result
+        except Exception:
+            pass
+        logger.info(
+            "[convrot] applied mode=%s scope=%s group=%s source=%s "
+            "patched=%d skipped=%d prequant=%s",
+            mode,
+            scope,
+            result.group_size,
+            weight_source,
+            result.patched_count,
+            result.skipped_count,
+            prequant_path,
+        )
+        return True
+
+    @staticmethod
     def should_auto_enable_lora_fp32_compute(args, accelerator, net_kwargs: dict) -> bool:
         if "lora_fp32_compute" in net_kwargs:
             return False
@@ -425,6 +503,10 @@ class TrainingBootstrap:
                 "Sublayer matmuls still run fp16 under autocast; bf16/fp32 "
                 "runs are unaffected."
             )
+
+        # Optional ConvRot W8A* base path — MUST run after org_forward capture
+        # (apply_to/load/grad-ckpt/fp32 residual) and before compile_blocks.
+        self.maybe_apply_convrot_base(args, network, unet=unet)
 
         # Native-shape flattening + per-block torch.compile. COMPILE LAST:
         # after adapter monkey-patches, optional weight load, and checkpoint

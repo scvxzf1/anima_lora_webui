@@ -1,0 +1,234 @@
+"""Unit tests for apply_convrot_to_lora_network."""
+
+from __future__ import annotations
+
+import pytest
+import torch
+from torch import nn
+
+from library.runtime.convrot.apply import apply_convrot_to_lora_network
+from library.runtime.convrot.checks import (
+    assert_convrot_block_swap_mutex,
+    normalize_base_compute,
+)
+from library.runtime.convrot.metadata import (
+    metadata_indicates_convrot,
+    raise_if_merge_with_convrot,
+    stamp_convrot_metadata,
+)
+
+
+class _FakeLoRAModule(nn.Module):
+    def __init__(self, name: str, linear: nn.Linear, *, dora: bool = False) -> None:
+        super().__init__()
+        self.lora_name = f"lora_unet_{name.replace('.', '_')}"
+        self.original_name = name
+        self.org_module_ref = [linear]
+        self.org_forward = linear.forward
+        self.lora_down = nn.Linear(linear.in_features, 4, bias=False)
+        self.lora_up = nn.Linear(4, linear.out_features, bias=False)
+        if dora:
+            self.dora_scale = nn.Parameter(torch.ones(linear.out_features))
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.org_forward(x) + self.lora_up(self.lora_down(x))
+
+
+class _FakeDoRA(nn.Module):
+    """Name-based DoRA detection."""
+
+    def __init__(self, name: str, linear: nn.Linear) -> None:
+        super().__init__()
+        self.lora_name = f"lora_unet_{name.replace('.', '_')}"
+        self.original_name = name
+        self.org_module_ref = [linear]
+        self.org_forward = linear.forward
+        self.lora_down = nn.Linear(linear.in_features, 4, bias=False)
+        self.magnitude = nn.Parameter(torch.ones(linear.out_features))
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.org_forward(x)
+
+
+class _FakeLoRANetwork(nn.Module):
+    def __init__(self, loras: list[nn.Module]) -> None:
+        super().__init__()
+        self.unet_loras = nn.ModuleList(loras)
+
+
+def _frozen_linear(in_f: int, out_f: int) -> nn.Linear:
+    linear = nn.Linear(in_f, out_f, bias=False)
+    linear.weight.requires_grad_(False)
+    return linear
+
+
+def test_apply_convrot_patches_mlp_scope_only() -> None:
+    torch.manual_seed(0)
+    mlp = _frozen_linear(32, 64)
+    attn = _frozen_linear(32, 32)
+    network = _FakeLoRANetwork(
+        [
+            _FakeLoRAModule("blocks.0.mlp.layer1", mlp),
+            _FakeLoRAModule("blocks.0.self_attn.output_proj", attn),
+        ]
+    )
+    x = torch.randn(3, 32)
+    expected = network.unet_loras[0].org_forward(x)
+
+    result = apply_convrot_to_lora_network(
+        network, mode="w8a16", scope="mlp", group_size=16
+    )
+    actual = network.unet_loras[0].org_forward(x)
+
+    assert result.patched_count == 1
+    assert result.patches[0].name == "blocks.0.mlp.layer1"
+    assert hasattr(network.unet_loras[0], "_convrot_quantized_weight")
+    assert not hasattr(network.unet_loras[1], "_convrot_quantized_weight")
+    rel = (actual - expected).norm() / expected.norm().clamp_min(1e-8)
+    assert rel.item() < 0.05
+
+
+def test_apply_convrot_dry_run_does_not_mutate() -> None:
+    mlp = _frozen_linear(32, 32)
+    network = _FakeLoRANetwork([_FakeLoRAModule("blocks.0.mlp.layer1", mlp)])
+    result = apply_convrot_to_lora_network(
+        network, mode="w8a16", scope="mlp", group_size=16, dry_run=True
+    )
+    assert result.patched_count == 1
+    assert not hasattr(network.unet_loras[0], "_convrot_quantized_weight")
+
+
+def test_apply_convrot_skips_adaln_and_trainable() -> None:
+    adaln = _frozen_linear(32, 32)
+    trainable = nn.Linear(32, 32, bias=False)
+    network = _FakeLoRANetwork(
+        [
+            _FakeLoRAModule("blocks.0.adaln_up_mlp", adaln),
+            _FakeLoRAModule("blocks.0.mlp.layer1", trainable),
+        ]
+    )
+    with pytest.raises(RuntimeError, match="patched=0"):
+        apply_convrot_to_lora_network(
+            network, mode="w8a16", scope="mlp", group_size=16
+        )
+
+
+def test_apply_convrot_skips_missing_org_module_ref() -> None:
+    mlp = _frozen_linear(32, 32)
+    lora = _FakeLoRAModule("blocks.0.mlp.layer1", mlp)
+    del lora.org_module_ref
+    lora.org_forward = lambda x: x  # no __self__ Linear
+    network = _FakeLoRANetwork([lora])
+    result = apply_convrot_to_lora_network(
+        network,
+        mode="w8a16",
+        scope="mlp",
+        group_size=16,
+        dry_run=True,
+        allow_zero_patches=True,
+    )
+    assert result.patched_count == 0
+    assert result.skipped_count == 1
+    assert result.skipped[0].skipped_reason == "no_org_module_ref"
+
+
+def test_apply_convrot_rejects_dora() -> None:
+    mlp = _frozen_linear(32, 32)
+    network = _FakeLoRANetwork([_FakeDoRA("blocks.0.mlp.layer1", mlp)])
+    result = apply_convrot_to_lora_network(
+        network,
+        mode="w8a16",
+        scope="mlp",
+        group_size=16,
+        dry_run=True,
+        allow_zero_patches=True,
+    )
+    assert result.patched_count == 0
+    assert result.skipped[0].skipped_reason == "dora_unsupported"
+
+
+def test_apply_convrot_w8a8_mode() -> None:
+    torch.manual_seed(4)
+    mlp = _frozen_linear(32, 16)
+    network = _FakeLoRANetwork([_FakeLoRAModule("blocks.0.mlp.layer2", mlp)])
+    result = apply_convrot_to_lora_network(
+        network, mode="w8a8", scope="mlp", group_size=16
+    )
+    assert result.mode == "w8a8"
+    x = torch.randn(2, 32)
+    y = network.unet_loras[0].org_forward(x)
+    assert y.shape == (2, 16)
+    assert torch.isfinite(y).all()
+
+
+def test_apply_convrot_buffers_do_not_collide_with_int8_names() -> None:
+    mlp = _frozen_linear(32, 32)
+    lora = _FakeLoRAModule("blocks.0.mlp.layer1", mlp)
+    lora.register_buffer("_int8_base_quantized_weight", torch.zeros(1, dtype=torch.int8))
+    network = _FakeLoRANetwork([lora])
+    apply_convrot_to_lora_network(network, mode="w8a16", scope="mlp", group_size=16)
+    assert hasattr(lora, "_int8_base_quantized_weight")
+    assert hasattr(lora, "_convrot_quantized_weight")
+
+
+def test_apply_convrot_raises_if_compiled_flag() -> None:
+    mlp = _frozen_linear(32, 32)
+    network = _FakeLoRANetwork([_FakeLoRAModule("blocks.0.mlp.layer1", mlp)])
+    network._anima_blocks_compiled = True
+    with pytest.raises(RuntimeError, match="already compiled"):
+        apply_convrot_to_lora_network(
+            network, mode="w8a16", scope="mlp", group_size=16
+        )
+
+
+def test_normalize_and_mutex() -> None:
+    assert normalize_base_compute("W8A16_CONVROT") == "w8a16_convrot"
+    assert normalize_base_compute("bf16") == "bf16"
+    with pytest.raises(ValueError):
+        normalize_base_compute("int8")
+    assert_convrot_block_swap_mutex(
+        base_compute="w8a16_convrot", block_swap_transfer_dtype="bf16"
+    )
+    with pytest.raises(ValueError, match="mutually exclusive"):
+        assert_convrot_block_swap_mutex(
+            base_compute="w8a16_convrot", block_swap_transfer_dtype="int8"
+        )
+
+
+def test_metadata_stamp_and_merge_reject() -> None:
+    meta: dict = {}
+    stamp_convrot_metadata(
+        meta,
+        base_compute="w8a16_convrot",
+        group_size=256,
+        scope="mlp",
+        weight_source="online_from_bf16",
+    )
+    assert metadata_indicates_convrot(meta)
+    with pytest.raises(RuntimeError, match="refused for ConvRot"):
+        raise_if_merge_with_convrot(meta)
+    raise_if_merge_with_convrot({"ss_base_compute": "bf16"})  # no raise
+
+
+def test_lora_residual_stays_in_original_space() -> None:
+    """lora_delta(x) must not be forced through RHT; only org_forward is rotated."""
+    torch.manual_seed(5)
+    base = _frozen_linear(32, 32)
+    lora = _FakeLoRAModule("blocks.0.mlp.layer1", base)
+    # Make delta deterministic and large relative to quant noise.
+    with torch.no_grad():
+        lora.lora_down.weight.zero_()
+        lora.lora_up.weight.zero_()
+        lora.lora_down.weight[0, 0] = 1.0
+        lora.lora_up.weight[0, 0] = 2.0
+    network = _FakeLoRANetwork([lora])
+    x = torch.zeros(1, 32)
+    x[0, 0] = 1.0
+    y_before = lora(x)
+    apply_convrot_to_lora_network(network, mode="w8a16", scope="mlp", group_size=16)
+    y_after = lora(x)
+    # Delta component is still lora_up(lora_down(x)) in original space.
+    delta = lora.lora_up(lora.lora_down(x))
+    base_out = lora.org_forward(x)
+    assert torch.allclose(y_after, base_out + delta, atol=1e-5)
+    assert y_after.shape == y_before.shape

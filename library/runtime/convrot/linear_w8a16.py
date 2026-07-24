@@ -1,0 +1,141 @@
+"""W8A16 ConvRot Linear: rotated int8 weights, bf16/fp16 activations."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+import torch
+from torch import nn
+from torch.nn import functional as F
+
+from library.runtime.convrot.fused import fused_enabled, fused_w8a16_forward
+from library.runtime.convrot.quant import dequantize_weight, rotate_and_quantize_weight
+from library.runtime.convrot.rht import assert_group_divides, group_rht
+
+
+@dataclass(frozen=True)
+class ConvRotWeightPayload:
+    quantized_weight: torch.Tensor  # int8 [out, in]
+    scale: torch.Tensor  # float32 [out]
+    group_size: int
+    in_features: int
+    out_features: int
+
+
+class ConvRotW8A16Linear(nn.Module):
+    """Frozen Linear with group-RHT + int8 weight storage and W8A16 forward.
+
+    Default path uses fused dense-RHT + dequant ``F.linear`` (see ``fused.py``).
+    Output lives in the original feature space because Hadamard is orthogonal.
+    """
+
+    def __init__(
+        self,
+        quantized_weight: torch.Tensor,
+        scale: torch.Tensor,
+        *,
+        group_size: int,
+    ) -> None:
+        super().__init__()
+        if quantized_weight.dtype is not torch.int8:
+            raise TypeError("quantized_weight must be torch.int8")
+        if quantized_weight.dim() != 2:
+            raise ValueError("quantized_weight must be 2D")
+        if scale.shape != (quantized_weight.shape[0],):
+            raise ValueError("scale must have one value per output channel")
+        assert_group_divides(int(quantized_weight.shape[1]), group_size)
+        self.group_size = int(group_size)
+        self.register_buffer("quantized_weight", quantized_weight.contiguous())
+        self.register_buffer("scale", scale.to(torch.float32).contiguous())
+
+    @classmethod
+    def from_linear(
+        cls,
+        linear: nn.Linear,
+        *,
+        group_size: int = 256,
+    ) -> "ConvRotW8A16Linear":
+        if linear.bias is not None:
+            raise ValueError("ConvRotW8A16Linear only supports bias=False Linear modules")
+        if linear.weight.requires_grad:
+            raise ValueError("ConvRotW8A16Linear only supports frozen Linear weights")
+        assert_group_divides(int(linear.in_features), group_size)
+        q, scale = rotate_and_quantize_weight(linear.weight.detach(), group_size)
+        return cls(q, scale, group_size=group_size)
+
+    @property
+    def in_features(self) -> int:
+        return int(self.quantized_weight.shape[1])
+
+    @property
+    def out_features(self) -> int:
+        return int(self.quantized_weight.shape[0])
+
+    def dequantized_weight(self, *, dtype: torch.dtype | None = None) -> torch.Tensor:
+        return dequantize_weight(self.quantized_weight, self.scale, dtype=dtype)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return w8a16_forward_from_buffers(
+            x,
+            self.quantized_weight,
+            self.scale,
+            group_size=self.group_size,
+        )
+
+
+def build_w8a16_payload_from_linear(
+    linear: nn.Linear,
+    *,
+    group_size: int,
+) -> ConvRotWeightPayload:
+    if linear.bias is not None:
+        raise ValueError("ConvRot only supports bias=False Linear modules")
+    if linear.weight.requires_grad:
+        raise ValueError("ConvRot only supports frozen Linear weights")
+    assert_group_divides(int(linear.in_features), group_size)
+    q, scale = rotate_and_quantize_weight(linear.weight.detach(), group_size)
+    return ConvRotWeightPayload(
+        quantized_weight=q.contiguous(),
+        scale=scale.to(torch.float32).contiguous(),
+        group_size=int(group_size),
+        in_features=int(linear.in_features),
+        out_features=int(linear.out_features),
+    )
+
+
+def w8a16_forward_from_buffers(
+    x: torch.Tensor,
+    quantized_weight: torch.Tensor,
+    scale: torch.Tensor,
+    *,
+    group_size: int,
+    hadamard: torch.Tensor | None = None,
+) -> torch.Tensor:
+    """Functional W8A16 path used by LoRA ``org_forward`` closures.
+
+    When ``hadamard is None`` and fused mode is on (default), uses the fused
+    autograd path (dense RHT + dequant linear by default). Passing an explicit
+    ``hadamard`` forces the non-fused dense path for equivalence tests.
+    """
+    assert_group_divides(int(quantized_weight.shape[1]), group_size)
+    if hadamard is None and fused_enabled():
+        return fused_w8a16_forward(
+            x,
+            quantized_weight,
+            scale,
+            group_size=group_size,
+        )
+    # RHT in float32; dequant linear prefers bf16/fp16 TC (matches fused path).
+    x_rot = group_rht(x.to(torch.float32), group_size, hadamard=hadamard)
+    compute_dtype = (
+        x.dtype
+        if x.is_floating_point() and x.dtype in (torch.float16, torch.bfloat16)
+        else torch.bfloat16
+        if x.device.type == "cuda"
+        else torch.float32
+    )
+    weight = dequantize_weight(quantized_weight, scale, dtype=compute_dtype).to(
+        device=x.device, dtype=compute_dtype
+    )
+    y = F.linear(x_rot.to(dtype=compute_dtype), weight, None)
+    return y.to(dtype=x.dtype) if x.is_floating_point() else y

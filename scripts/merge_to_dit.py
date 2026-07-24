@@ -119,6 +119,16 @@ def read_safetensors_metadata(path: Path) -> dict[str, str]:
 
 def scan_non_bakeable_metadata(metadata: dict[str, str]) -> dict[str, int]:
     """Return non-bakeable adapter kinds proven by metadata stamps."""
+    base_compute = str(metadata.get("ss_base_compute") or "bf16").strip().lower()
+    if base_compute in {"w8a16_convrot", "w8a8_convrot", "w8a16", "w8a8"}:
+        return {
+            "ConvRot base_compute (requires dequant/high-precision base before bake)": 1
+        }
+    mode = str(metadata.get("ss_convrot_mode") or "").strip().lower()
+    if mode in {"w8a16", "w8a8"}:
+        return {
+            "ConvRot base_compute (requires dequant/high-precision base before bake)": 1
+        }
     spec = str(metadata.get("ss_network_spec") or "").strip().lower()
     if spec in _NON_BAKEABLE_METADATA_SPECS:
         return {_NON_BAKEABLE_METADATA_SPECS[spec]: 1}

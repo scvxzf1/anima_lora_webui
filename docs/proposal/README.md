@@ -19,6 +19,8 @@
 | [soft_tokens_contrastive.md](soft_tokens_contrastive.md) | 兼容入口 | Soft Tokens contrastive 方向记录 |
 | [soft_tokens_softrank.md](soft_tokens_softrank.md) | 兼容入口 | Soft Tokens soft-rank 方向记录 |
 | [personalization-region-curriculum.md](personalization-region-curriculum.md) | 半活跃 | 区域→整图课程、先验保持与 APT 风格自适应正则化的可行性及实施计划 |
+| [convrot_w8a_training_plan.md](convrot_w8a_training_plan.md) | 提案 / 核心已实现（实验默认关闭） | ConvRot 战略 C：W8A16→W8A8 训练路径规格 + 落地状态 |
+| [convrot_w8a_optimization_roadmap.md](convrot_w8a_optimization_roadmap.md) | 提案 / 半活跃（P0-A/A2/C/D 完成） | ConvRot 优化路线图；regular Hadamard opt-in；默认仍 sylvester；Triton 未达门槛 |
 
 ## 归档规则
 

@@ -338,6 +338,21 @@ def update_anima_metadata(metadata: dict[str, Any], args) -> None:
     metadata["ss_sigmoid_scale"] = args.sigmoid_scale
     metadata["ss_discrete_flow_shift"] = args.discrete_flow_shift
 
+    # Optional ConvRot W8A* training base path (default bf16 → still stamp for clarity).
+    base_compute = str(getattr(args, "base_compute", "bf16") or "bf16")
+    metadata["ss_base_compute"] = base_compute
+    if base_compute.strip().lower() not in {"bf16", "fp16", "none", "off", ""}:
+        metadata["ss_convrot_group_size"] = str(
+            getattr(args, "convrot_group_size", 256)
+        )
+        metadata["ss_convrot_scope"] = str(getattr(args, "convrot_scope", "mlp"))
+        metadata["ss_convrot_weight_source"] = str(
+            getattr(args, "convrot_weight_source", "online_from_bf16")
+        )
+        mode = base_compute.strip().lower().removesuffix("_convrot")
+        if mode in {"w8a16", "w8a8"}:
+            metadata["ss_convrot_mode"] = mode
+
 
 def add_model_hash_metadata(metadata: dict[str, Any], args) -> None:
     """Add model name/hash and VAE name/hash entries to *metadata* in place."""

@@ -143,6 +143,27 @@ def test_trainer_raises_shared_matrix_errors() -> None:
         train.AnimaTrainer().assert_extra_args(args, _CacheableDataset(), None)
 
 
+def test_matrix_rejects_convrot_with_block_swap_int8() -> None:
+    result = check_training_compat(
+        {
+            "base_compute": "w8a16_convrot",
+            "block_swap_transfer_dtype": "int8",
+        }
+    )
+    assert "convrot_block_swap_int8_mutex" in _codes(result.errors)
+
+
+def test_matrix_accepts_convrot_with_bf16_transfer() -> None:
+    result = check_training_compat(
+        {
+            "base_compute": "w8a16_convrot",
+            "block_swap_transfer_dtype": "bf16",
+        }
+    )
+    assert "convrot_block_swap_int8_mutex" not in _codes(result.errors)
+    assert "invalid_base_compute" not in _codes(result.errors)
+
+
 class _CacheableDataset:
     datasets: list[object] = []
 

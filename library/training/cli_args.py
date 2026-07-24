@@ -916,7 +916,62 @@ def add_dit_training_arguments(parser: argparse.ArgumentParser):
             "Transfer/storage dtype for frozen DiT block-swap CPU masters. "
             "bf16 keeps the current path; fp8_e4m3 is experimental and only "
             "quantizes frozen base weights while restoring them to the execution dtype. "
-            "int8 is a narrower experiment for selected frozen MLP/attention Linear weights."
+            "int8 is a narrower experiment for selected frozen MLP/attention Linear weights. "
+            "Mutually exclusive with --base_compute w8a16_convrot/w8a8_convrot."
+        ),
+    )
+    parser.add_argument(
+        "--base_compute",
+        type=str,
+        default="bf16",
+        choices=["bf16", "w8a16_convrot", "w8a8_convrot"],
+        help=(
+            "[EXPERIMENTAL] Frozen DiT base Linear compute path. "
+            "bf16 is the default high-precision path. "
+            "w8a16_convrot applies group Regular Hadamard (ConvRot) + int8 "
+            "weights with bf16/fp16 activations on selected scope (default mlp). "
+            "w8a8_convrot additionally fake-quants activations (default off). "
+            "Not the same as --block_swap_transfer_dtype int8."
+        ),
+    )
+    parser.add_argument(
+        "--convrot_group_size",
+        type=int,
+        default=256,
+        choices=[64, 256, 1024],
+        help="[EXPERIMENTAL] ConvRot group size for RHT (must divide in_features).",
+    )
+    parser.add_argument(
+        "--convrot_scope",
+        type=str,
+        default="mlp",
+        help=(
+            "[EXPERIMENTAL] ConvRot module scope, same syntax as int8 linear scope: "
+            "mlp / attention / all / self_attn_qkv / comma combinations."
+        ),
+    )
+    parser.add_argument(
+        "--convrot_weight_source",
+        type=str,
+        default="online_from_bf16",
+        choices=["online_from_bf16", "prequant_checkpoint"],
+        help=(
+            "[EXPERIMENTAL] ConvRot weight source. online_from_bf16 rotates and "
+            "quantizes the loaded bf16 frozen base online. prequant_checkpoint "
+            "loads rotated int8 weights + per-out scales from "
+            "--convrot_prequant_path (native anima_lora_convrot_prequant_v1 "
+            "or {name}.weight + {name}.weight_scale pairs)."
+        ),
+    )
+    parser.add_argument(
+        "--convrot_prequant_path",
+        type=str,
+        default=None,
+        help=(
+            "[EXPERIMENTAL] Safetensors/pt path for "
+            "convrot_weight_source=prequant_checkpoint. Export with "
+            "scripts/experiments/convrot_export_prequant.py. Removes apply-time "
+            "online weight RHT+quant only; activation RHT still runs each step."
         ),
     )
     parser.add_argument(
