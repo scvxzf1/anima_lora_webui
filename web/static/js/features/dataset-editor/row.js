@@ -74,8 +74,10 @@ export function createDatasetEditorRow(row, index, item = null) {
         mark.className = 'dataset-row-mark';
         mark.textContent = '{}';
         const title = document.createElement('strong');
+        title.className = 'dataset-row-title-text';
         title.textContent = `SUBSET ${index + 1} · 数据集组`;
         const subtitle = document.createElement('span');
+        subtitle.className = 'dataset-row-meta';
         const settings = normalizeDatasetDefaults(row.settings || datasetEditorStateForActivePanel().defaults || {});
         const mix = normalizeNlTagMix(row.nl_tag_mix);
         const triggerClone = normalizeTriggerClone(row.trigger_clone);
@@ -90,9 +92,11 @@ export function createDatasetEditorRow(row, index, item = null) {
             mix.enabled ? nlTagMixSummary(mix) : '',
             triggerClone.enabled ? `触发克隆 x${triggerClone.num_repeats}` : '',
             ].filter(Boolean).join(' · ');
+        subtitle.title = subtitle.textContent;
             const dragHandle = createDatasetEditorDragHandle(index, item);
-            titleLine.append(mark, title);
-            titleBox.append(titleLine, subtitle);
+            // Keep mark / title / summary meta on one horizontal line.
+            titleLine.append(mark, title, subtitle);
+            titleBox.append(titleLine);
         const headActions = document.createElement('div');
         headActions.className = 'dataset-row-head-actions';
         const badges = document.createElement('div');

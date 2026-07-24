@@ -1509,25 +1509,55 @@ select.dataset-config-input {
 
 .dataset-row-head {
     display: flex;
-    align-items: flex-start;
+    align-items: center;
     justify-content: space-between;
-    gap: 0.5rem;
+    gap: 0.65rem;
     min-width: 0;
 }
 
 .dataset-row-title {
+    flex: 1 1 auto;
     min-width: 0;
+}
+
+.dataset-row-title-line {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    min-width: 0;
+    width: 100%;
+    flex-wrap: nowrap;
+}
+
+.dataset-row-title-text {
+    flex: 0 0 auto;
+    color: var(--text);
+    font-size: 0.96rem;
+    font-weight: 800;
+    line-height: 1.2;
+    white-space: nowrap;
+}
+
+.dataset-row-meta {
+    flex: 1 1 auto;
+    min-width: 0;
+    color: var(--text-dim);
+    font-size: 0.86rem;
+    font-weight: 600;
+    line-height: 1.2;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .dataset-row-head strong {
     color: var(--text);
-    font-size: 0.78rem;
+    font-size: 0.96rem;
 }
 
 .dataset-row-head span {
     color: var(--text-dim);
-    font-size: 0.68rem;
-    overflow-wrap: anywhere;
+    font-size: 0.86rem;
 }
 
 .dataset-row-head-actions {
@@ -1535,6 +1565,7 @@ select.dataset-config-input {
     flex: 0 0 auto;
     gap: 0.35rem;
     justify-content: flex-end;
+    align-items: center;
 }
 
 .dataset-row-paths {
