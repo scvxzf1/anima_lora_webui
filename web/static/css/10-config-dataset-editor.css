@@ -1478,9 +1478,33 @@ select.dataset-config-input {
 .dataset-row-head,
 .dataset-row-paths,
 .dataset-caption-source,
-.dataset-nl-tag-mix,
+.dataset-main-policy-row,
 .dataset-row-settings {
     grid-column: 1 / -1;
+}
+
+/* Direct child of dataset-editor-row only; never force full-span inside policy row. */
+.dataset-editor-row > .dataset-nl-tag-mix {
+    grid-column: 1 / -1;
+}
+
+.dataset-main-policy-row {
+    display: grid;
+    gap: 0;
+    align-items: stretch;
+    min-width: 0;
+}
+
+.dataset-main-policy-controls {
+    display: grid;
+    grid-template-columns: minmax(0, 1.55fr) minmax(0, 0.95fr) minmax(0, 0.85fr);
+    gap: 0.45rem;
+    align-items: start;
+    min-width: 0;
+}
+
+.dataset-main-policy-controls > * {
+    min-width: 0;
 }
 
 .dataset-row-head {
@@ -1562,21 +1586,38 @@ select.dataset-config-input {
 
 .dataset-experimental-title-row,
 .dataset-inline-title-row {
-    display: inline-flex;
+    display: flex;
     align-items: center;
     gap: 0.35rem;
     min-width: 0;
+    flex-wrap: nowrap;
 }
 
 .dataset-inline-title-row > :first-child,
 .dataset-experimental-title-row > :first-child {
     min-width: 0;
+    flex: 1 1 auto;
+}
+
+.dataset-inline-title-row .dataset-inline-help-toggle,
+.dataset-inline-title-row .info-toggle,
+.dataset-experimental-title-row .dataset-inline-help-toggle,
+.dataset-experimental-title-row .info-toggle {
+    flex: 0 0 auto;
+    align-self: center;
 }
 
 .dataset-inline-help {
     grid-column: 1 / -1;
     margin-top: 0;
     padding-top: 0;
+}
+
+.dataset-main-policy-row .dataset-is-reg-toggle-panel > .dataset-inline-help,
+.dataset-main-policy-row .dataset-nl-tag-mix > .dataset-inline-help {
+    width: 100%;
+    min-width: 0;
+    margin-top: 0.28rem;
 }
 
 .dataset-experimental-notice {
@@ -1657,14 +1698,9 @@ select.dataset-config-input {
     grid-template-columns: minmax(320px, 0.82fr) minmax(360px, 1.18fr);
 }
 
-.dataset-advanced-training-rules .dataset-trigger-clone {
-    grid-column: 1 / -1;
-}
-
 .dataset-advanced-section .dataset-experimental-scope,
 .dataset-advanced-section .dataset-path-filter-advanced,
 .dataset-advanced-section .dataset-trigger-clone,
-.dataset-advanced-section .dataset-is-reg-advanced,
 .dataset-advanced-section .dataset-caption-extension-advanced {
     min-height: 0;
     box-shadow: none;
@@ -1750,7 +1786,6 @@ select.dataset-config-input {
 .dataset-experimental-body .dataset-json-switch,
 .dataset-experimental-body .dataset-path-filter-advanced,
 .dataset-experimental-body .dataset-trigger-clone,
-.dataset-experimental-body .dataset-is-reg-advanced,
 .dataset-experimental-body .dataset-caption-extension-advanced {
     min-height: 0;
 }
@@ -1917,77 +1952,202 @@ select.dataset-config-input {
     background: var(--surface-raised);
 }
 
-.dataset-is-reg-advanced {
+.dataset-main-policy-row .dataset-is-reg-toggle-panel,
+.dataset-main-policy-row .dataset-prior-loss-weight-panel,
+.dataset-main-policy-row .dataset-nl-tag-mix {
     display: grid;
-    grid-template-columns: minmax(180px, 0.78fr) minmax(220px, 1.05fr);
-    gap: 0.45rem 0.65rem;
-    align-items: start;
-    padding: 0.5rem;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+    align-content: start;
+    min-width: 0;
+    min-height: 0;
+    padding: 0.28rem 0.45rem;
     border: 1px solid var(--border-soft);
     border-radius: 4px;
     background: var(--surface-raised);
 }
 
-.dataset-is-reg-copy {
+.dataset-main-policy-row .dataset-nl-tag-controls,
+.dataset-main-policy-row .dataset-is-reg-controls,
+.dataset-main-policy-row .dataset-is-reg-weight-field {
     display: grid;
-    gap: 0.1rem;
+    align-items: center;
+    gap: 0.35rem;
     min-width: 0;
+    min-height: var(--control-height, 30px);
+    height: var(--control-height, 30px);
+    max-height: var(--control-height, 30px);
 }
 
-.dataset-is-reg-copy strong {
+.dataset-main-policy-row .dataset-nl-tag-controls {
+    grid-template-columns: minmax(0, 1.15fr) minmax(64px, 0.85fr) 48px minmax(72px, auto);
+}
+
+.dataset-main-policy-row .dataset-is-reg-controls {
+    grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.dataset-main-policy-row .dataset-is-reg-weight-field {
+    grid-template-columns: minmax(0, 1fr) minmax(64px, 84px);
+}
+
+.dataset-main-policy-row .dataset-nl-tag-toggle,
+.dataset-main-policy-row .dataset-is-reg-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.28rem;
+    min-width: 0;
+    max-width: 100%;
+    height: 100%;
+    min-height: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
     color: var(--text);
     font-size: 0.72rem;
-    line-height: 1.25;
+    font-weight: 700;
+    line-height: 1.1;
+    white-space: nowrap;
+    overflow: hidden;
+    cursor: pointer;
 }
 
-.dataset-is-reg-copy span {
-    color: var(--text-dim);
-    font-size: 0.66rem;
-    line-height: 1.35;
-    overflow-wrap: anywhere;
+.dataset-main-policy-row .dataset-nl-tag-toggle strong,
+.dataset-main-policy-row .dataset-is-reg-toggle span,
+.dataset-main-policy-row .dataset-is-reg-weight-label,
+.dataset-main-policy-row .dataset-nl-tag-ratio span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--text);
+    font-size: 0.72rem;
+    font-weight: 700;
+    line-height: 1.1;
 }
 
-.dataset-is-reg-actions {
+.dataset-main-policy-row .dataset-nl-tag-toggle input,
+.dataset-main-policy-row .dataset-is-reg-toggle input {
+    width: 14px;
+    height: 14px;
+    margin: 0;
+    flex: 0 0 auto;
+}
+
+.dataset-main-policy-row .dataset-nl-tag-toggle .dataset-inline-help-toggle,
+.dataset-main-policy-row .dataset-is-reg-controls .dataset-inline-help-toggle {
+    flex: 0 0 auto;
+    width: 18px;
+    height: 18px;
+    min-width: 18px;
+    padding: 0;
+    line-height: 1;
+}
+
+.dataset-main-policy-row .dataset-nl-tag-ratio {
     display: grid;
-    grid-template-columns: auto auto;
-    gap: 0.5rem;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 0.28rem;
     align-items: center;
-    justify-content: end;
+    min-width: 0;
+    height: 100%;
+}
+
+.dataset-main-policy-row .dataset-nl-tag-ratio span {
+    font-weight: 600;
+    color: var(--text-dim);
+}
+
+.dataset-main-policy-row .dataset-nl-tag-ratio input {
+    width: 100%;
+    min-width: 0;
+    height: 16px;
+    margin: 0;
+    accent-color: var(--accent);
+}
+
+.dataset-main-policy-row .dataset-nl-tag-number,
+.dataset-main-policy-row .dataset-is-reg-weight-input {
+    width: 100%;
+    max-width: none;
+    height: var(--control-height, 30px);
+    min-height: var(--control-height, 30px);
+    padding: 0 0.3rem;
+    border: 1px solid var(--border-soft);
+    border-radius: 3px;
+    background: var(--bg-input);
+    color: var(--text);
+    font-size: 0.78rem;
+    font-weight: 600;
+    line-height: 1;
+}
+
+.dataset-main-policy-row .dataset-nl-tag-summary {
+    justify-self: stretch;
+    align-self: center;
+    min-width: 0;
+    max-width: 100%;
+    height: 22px;
+    padding: 0 0.4rem;
+    border: 1px solid var(--border-soft);
+    border-radius: 999px;
+    color: var(--text);
+    background: var(--bg-input);
+    font-size: 0.68rem;
+    font-weight: 700;
+    line-height: 20px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    text-align: center;
+}
+
+.dataset-main-policy-row .dataset-nl-tag-mix.enabled {
+    border-color: rgba(102, 187, 106, 0.56);
+    background: linear-gradient(135deg, rgba(102, 187, 106, 0.1), var(--surface-raised) 72%);
+}
+
+.dataset-main-policy-row .dataset-is-reg-toggle:has(input:checked) {
+    color: var(--accent);
 }
 
 .dataset-is-reg-toggle {
     display: inline-flex;
     align-items: center;
     gap: 0.28rem;
-    min-height: 32px;
-    padding: 0.2rem 0.55rem;
-    border: 1px solid var(--border-soft);
-    border-radius: 999px;
-    color: var(--text-dim);
-    background: var(--bg-input);
-    font-size: 0.76rem;
+    min-height: 0;
+    width: fit-content;
+    max-width: 100%;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    color: var(--text);
+    background: transparent;
+    font-size: 0.72rem;
     font-weight: 700;
     cursor: pointer;
-    transition: border-color 160ms ease, background 160ms ease, color 160ms ease;
-}
-
-.dataset-is-reg-toggle:has(input:checked) {
-    border-color: var(--accent);
-    color: var(--accent);
-    background: var(--surface-tint);
 }
 
 .dataset-is-reg-toggle input {
     width: 13px;
     height: 13px;
     margin: 0;
+    flex: 0 0 auto;
     accent-color: var(--accent);
+}
+
+.dataset-is-reg-toggle span {
+    min-width: 0;
 }
 
 .dataset-is-reg-weight-field {
     display: grid;
     gap: 0.22rem;
+    align-content: start;
     cursor: default;
+    min-width: 0;
 }
 
 .dataset-is-reg-weight-label {
@@ -1998,7 +2158,8 @@ select.dataset-config-input {
 }
 
 .dataset-is-reg-weight-input {
-    width: 108px;
+    width: 100%;
+    max-width: none;
     height: 32px;
     padding: 0 0.35rem;
     border: 1px solid var(--border-soft);
@@ -2063,15 +2224,31 @@ select.dataset-config-input {
     font-size: 0.84rem;
 }
 
+.dataset-main-policy-row .dataset-nl-tag-mix {
+    min-width: 0;
+    grid-column: auto;
+    /* Override the legacy multi-line nl/tag panel layout. */
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+    padding: 0.28rem 0.45rem;
+}
+
 .dataset-nl-tag-mix {
     display: grid;
-    grid-template-columns: minmax(210px, 0.75fr) minmax(260px, 1.45fr) 82px auto;
-    gap: 0.45rem;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
     align-items: center;
-    padding: 0.5rem;
+    padding: 0.28rem 0.45rem;
     border: 1px solid var(--border-soft);
     border-radius: 4px;
     background: var(--surface-raised);
+}
+
+/* Fallback for any non-policy nl/tag instance that still uses the old children layout. */
+.dataset-nl-tag-mix:not(:has(.dataset-nl-tag-controls)) {
+    grid-template-columns: minmax(0, 1fr) minmax(120px, 1.2fr) 72px auto;
+    gap: 0.4rem;
+    padding: 0.5rem;
 }
 
 .dataset-nl-tag-mix.enabled {

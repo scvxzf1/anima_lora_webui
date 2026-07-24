@@ -1,15 +1,9 @@
 /**
  * Dataset editor inline help helpers and small advanced-field panels.
  */
-import { help } from '../../config/catalog.js?v=module-bootstrap-20260714-stage-dataset5';
-import { createHelpContent } from '../anima-app/helpers/config-field-ui-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
 import { getDatasetState } from '../anima-app/helpers/dataset-state-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
 import { isDatasetTabActive } from '../anima-app/helpers/dataset-render-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
 import { currentTrainingConfigFile } from '../anima-app/helpers/preflight-dialog-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
-import {
-    updateDatasetEditorRow,
-    updateDatasetEditorRowSettingValue,
-} from './row-fields.js?v=module-bootstrap-20260714-stage-dataset5';
 
 const datasetState = getDatasetState();
 
@@ -223,10 +217,9 @@ function createDatasetExperimentalAdvancedBody(row, index, overviewHelp, deps) {
         ),
         createDatasetAdvancedSection(
             '训练行为与策略',
-            '影响数据集权重、生效范围和运行时生成的训练副本。',
+            '影响数据集生效范围和运行时生成的训练副本。',
             [
                 createDatasetExperimentalScopePicker(index),
-                createDatasetIsRegEditor(row, index),
                 createDatasetTriggerCloneEditor(row, index),
             ],
             'dataset-advanced-training-rules',
@@ -268,76 +261,6 @@ function bindDatasetExperimentalOpenState(panel, index) {
     });
 }
 
-function createDatasetIsRegEditor(row, index) {
-    const panel = document.createElement('div');
-    panel.className = 'dataset-is-reg-advanced';
-    panel.dataset.index = String(index);
-
-    const copy = document.createElement('div');
-    copy.className = 'dataset-is-reg-copy';
-    const titleRow = document.createElement('div');
-    titleRow.className = 'dataset-inline-title-row';
-    const title = document.createElement('strong');
-    title.textContent = '正则化训练 / Regularization';
-    const helpDiv = createDatasetInlineHelp('dataset-is-reg-help');
-    const helpBtn = createDatasetInlineHelpButton(helpDiv, '查看正则化训练说明');
-    titleRow.append(title, helpBtn);
-    copy.appendChild(titleRow);
-
-    const actions = document.createElement('div');
-    actions.className = 'dataset-is-reg-actions';
-
-    const toggleLabel = document.createElement('label');
-    toggleLabel.className = 'dataset-is-reg-toggle';
-    const checkbox = document.createElement('input');
-    checkbox.type = 'checkbox';
-    checkbox.checked = row.is_reg === true;
-    checkbox.setAttribute('aria-label', '标记为正则化数据集');
-    checkbox.addEventListener('change', () => {
-        updateDatasetEditorRow(index, 'is_reg', checkbox.checked);
-    });
-    const toggleText = document.createElement('span');
-    toggleText.textContent = '标记为正则化数据集';
-    toggleText.title = '勾选后该组图片作为正则化样本。';
-    toggleLabel.append(checkbox, toggleText);
-
-    const weightField = document.createElement('label');
-    weightField.className = 'dataset-is-reg-weight-field';
-    const weightLabel = document.createElement('span');
-    weightLabel.className = 'dataset-is-reg-weight-label';
-    weightLabel.textContent = '正则化损失权重';
-    weightLabel.title = '正则化图像的损失值乘以此系数。';
-    const weightInput = document.createElement('input');
-    weightInput.type = 'number';
-    weightInput.min = '0';
-    weightInput.step = '0.1';
-    const currentWeight = Number(row.settings?.prior_loss_weight ?? 1.0);
-    weightInput.value = String(Number.isFinite(currentWeight) ? Math.max(0, currentWeight) : 1.0);
-    weightInput.className = 'dataset-is-reg-weight-input';
-    weightInput.title = '损失权重系数，配合“标记为正则化数据集”使用。';
-    weightInput.addEventListener('input', () => {
-        const nextWeight = Number(weightInput.value);
-        updateDatasetEditorRowSettingValue(
-            index,
-            'prior_loss_weight',
-            Number.isFinite(nextWeight) ? Math.max(0, nextWeight) : 1.0,
-        );
-    });
-    weightField.append(weightLabel, weightInput);
-
-    actions.append(toggleLabel, weightField);
-
-    attachDatasetInlineHelp(
-        helpBtn,
-        helpDiv,
-        () => createHelpContent('prior_loss_weight', weightInput.value),
-        panel,
-    );
-
-    panel.append(copy, actions, helpDiv);
-    return panel;
-}
-
 export {
     attachDatasetInlineHelp,
     bindDatasetExperimentalOpenState,
@@ -345,7 +268,6 @@ export {
     createDatasetExperimentalAdvancedBody,
     createDatasetInlineHelp,
     createDatasetInlineHelpButton,
-    createDatasetIsRegEditor,
     datasetExperimentalOpenState,
     datasetLocalHelpSpec,
 };

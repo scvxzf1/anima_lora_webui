@@ -19,7 +19,11 @@ import {
     normalizeTriggerClone,
 } from '../anima-app/helpers/dataset-values.js?v=module-bootstrap-20260714-stage-dataset5';
 import { datasetEditorStateForActivePanel, isDatasetTabActive, refreshDatasetEditorItem, renderDatasetEditor } from '../anima-app/helpers/dataset-render-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
-import { createDatasetRowSettingInput, updateDatasetEditorRow } from './row-fields.js?v=module-bootstrap-20260714-stage-dataset5';
+import {
+    createDatasetRowSettingInput,
+    updateDatasetEditorRow,
+    updateDatasetEditorRowSettingValue,
+} from './row-fields.js?v=module-bootstrap-20260714-stage-dataset5';
 import {
     datasetExperimentalScopeIndices,
     setDatasetExperimentalScopeIndices,
@@ -41,6 +45,9 @@ export function createDatasetNlTagMixEditor(row, index) {
         panel.dataset.index = String(index);
         const helpDiv = createDatasetInlineHelp('dataset-inline-help dataset-nl-tag-help');
 
+        const controls = document.createElement('div');
+        controls.className = 'dataset-nl-tag-controls';
+
         const toggle = document.createElement('label');
         toggle.className = 'dataset-nl-tag-toggle';
         const checkbox = document.createElement('input');
@@ -53,20 +60,16 @@ export function createDatasetNlTagMixEditor(row, index) {
                 tag_ratio: mix.tag_ratio,
             }, { render: 'item' });
         });
-        const toggleText = document.createElement('span');
-        const toggleTitleRow = document.createElement('div');
-        toggleTitleRow.className = 'dataset-inline-title-row';
         const toggleTitle = document.createElement('strong');
         toggleTitle.textContent = 'captions格式nl/tag权重调整';
+        toggleTitle.title = 'captions格式nl/tag权重调整';
         const helpBtn = createDatasetInlineHelpButton(helpDiv, '查看 nl/tag 权重说明');
-        toggleTitleRow.append(toggleTitle, helpBtn);
-        toggleText.appendChild(toggleTitleRow);
-        toggle.append(checkbox, toggleText);
+        toggle.append(checkbox, toggleTitle, helpBtn);
 
         const ratio = document.createElement('label');
         ratio.className = 'dataset-nl-tag-ratio';
         const ratioHead = document.createElement('span');
-        ratioHead.textContent = 'tag 占比';
+        ratioHead.textContent = 'tag';
         const ratioInput = document.createElement('input');
         ratioInput.type = 'range';
         ratioInput.min = '0';
@@ -74,6 +77,7 @@ export function createDatasetNlTagMixEditor(row, index) {
         ratioInput.step = '5';
         ratioInput.value = String(Math.round(mix.tag_ratio * 100));
         ratioInput.disabled = !mix.enabled;
+        ratioInput.setAttribute('aria-label', 'tag 占比');
         ratioInput.addEventListener('input', () => {
             ratioNumber.value = ratioInput.value;
             const nextMix = {
@@ -114,11 +118,98 @@ export function createDatasetNlTagMixEditor(row, index) {
         summary.className = 'dataset-nl-tag-summary';
         summary.value = nlTagMixSummary(mix);
         summary.textContent = nlTagMixSummary(mix);
+        summary.title = summary.value;
 
         attachDatasetInlineHelp(helpBtn, helpDiv, datasetLocalHelpSpec('nlTagMix'), panel);
 
-        panel.append(toggle, ratio, ratioNumber, summary, helpDiv);
+        controls.append(toggle, ratio, ratioNumber, summary);
+        panel.append(controls, helpDiv);
         return panel;
+    }
+
+export function createDatasetIsRegToggleEditor(row, index) {
+        const panel = document.createElement('div');
+        panel.className = 'dataset-is-reg-toggle-panel';
+        panel.dataset.index = String(index);
+        const helpDiv = createDatasetInlineHelp('dataset-is-reg-help');
+        const helpBtn = createDatasetInlineHelpButton(helpDiv, '查看正则化训练说明');
+
+        const controls = document.createElement('div');
+        controls.className = 'dataset-is-reg-controls';
+
+        const toggleLabel = document.createElement('label');
+        toggleLabel.className = 'dataset-is-reg-toggle';
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.checked = row.is_reg === true;
+        checkbox.setAttribute('aria-label', '标记为正则化数据集');
+        checkbox.addEventListener('change', () => {
+            updateDatasetEditorRow(index, 'is_reg', checkbox.checked);
+        });
+        const toggleText = document.createElement('span');
+        toggleText.textContent = '标记为正则化数据集';
+        toggleText.title = '勾选后该组图片作为正则化样本。';
+        toggleLabel.append(checkbox, toggleText);
+
+        attachDatasetInlineHelp(
+            helpBtn,
+            helpDiv,
+            () => createHelpContent('prior_loss_weight', row.settings?.prior_loss_weight ?? 1.0),
+            panel,
+        );
+
+        controls.append(toggleLabel, helpBtn);
+        panel.append(controls, helpDiv);
+        return panel;
+    }
+
+export function createDatasetPriorLossWeightEditor(row, index) {
+        const panel = document.createElement('div');
+        panel.className = 'dataset-prior-loss-weight-panel';
+        panel.dataset.index = String(index);
+
+        const weightField = document.createElement('label');
+        weightField.className = 'dataset-is-reg-weight-field';
+        const weightLabel = document.createElement('span');
+        weightLabel.className = 'dataset-is-reg-weight-label';
+        weightLabel.textContent = '正则化损失权重';
+        weightLabel.title = '正则化图像的损失值乘以此系数。';
+        const weightInput = document.createElement('input');
+        weightInput.type = 'number';
+        weightInput.min = '0';
+        weightInput.step = '0.1';
+        const currentWeight = Number(row.settings?.prior_loss_weight ?? 1.0);
+        weightInput.value = String(Number.isFinite(currentWeight) ? Math.max(0, currentWeight) : 1.0);
+        weightInput.className = 'dataset-is-reg-weight-input';
+        weightInput.title = '损失权重系数，配合“标记为正则化数据集”使用。';
+        weightInput.setAttribute('aria-label', '正则化损失权重');
+        weightInput.addEventListener('input', () => {
+            const nextWeight = Number(weightInput.value);
+            updateDatasetEditorRowSettingValue(
+                index,
+                'prior_loss_weight',
+                Number.isFinite(nextWeight) ? Math.max(0, nextWeight) : 1.0,
+            );
+        });
+        weightField.append(weightLabel, weightInput);
+        panel.append(weightField);
+        return panel;
+    }
+
+export function createDatasetMainPolicyRow(row, index) {
+        const policyRow = document.createElement('div');
+        policyRow.className = 'dataset-main-policy-row';
+        policyRow.dataset.index = String(index);
+
+        const controls = document.createElement('div');
+        controls.className = 'dataset-main-policy-controls';
+        controls.append(
+            createDatasetNlTagMixEditor(row, index),
+            createDatasetIsRegToggleEditor(row, index),
+            createDatasetPriorLossWeightEditor(row, index),
+        );
+        policyRow.append(controls);
+        return policyRow;
     }
 
 export function createDatasetExperimentalScopePicker(index) {

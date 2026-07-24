@@ -12,6 +12,9 @@ export {
 
 export {
     createDatasetNlTagMixEditor,
+    createDatasetIsRegToggleEditor,
+    createDatasetPriorLossWeightEditor,
+    createDatasetMainPolicyRow,
     createDatasetExperimentalScopePicker,
     createDatasetTriggerCloneEditor,
 } from './row-settings-experimental.js?v=module-bootstrap-20260714-stage-dataset5';

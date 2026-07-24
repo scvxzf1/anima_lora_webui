@@ -40,7 +40,7 @@ import {
     createDatasetAdvancedSettingsEditor,
     createDatasetCaptionExtensionEditor,
     createDatasetExperimentalScopePicker,
-    createDatasetNlTagMixEditor,
+    createDatasetMainPolicyRow,
     createDatasetPathFilterEditor,
     createDatasetRepeatSettingField,
     createDatasetRowSettingsEditor,
@@ -140,7 +140,7 @@ export function createDatasetEditorRow(row, index, item = null) {
         wrap.appendChild(paths);
 
         wrap.appendChild(createDatasetRowCaptionSourceModeEditor(settings, index));
-        wrap.appendChild(createDatasetNlTagMixEditor(row, index));
+        wrap.appendChild(createDatasetMainPolicyRow(row, index));
         wrap.appendChild(createDatasetRowSettingsEditor(row, index));
 
         const remove = document.createElement('button');
@@ -167,8 +167,7 @@ export function createDatasetExperimentalFeaturesEditor(row, index) {
         const defaultOpen = clone.enabled
             || row.recursive === false
             || pathPattern !== '*'
-            || (settings.caption_extension && settings.caption_extension !== '.txt')
-            || row.is_reg === true;
+            || (settings.caption_extension && settings.caption_extension !== '.txt');
         panel.open = datasetExperimentalOpenState(index, defaultOpen);
         bindDatasetExperimentalOpenState(panel, index);
 

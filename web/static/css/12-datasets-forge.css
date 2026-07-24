@@ -766,7 +766,7 @@
 
 #tab-datasets .dataset-row-paths,
 #tab-datasets .dataset-caption-source,
-#tab-datasets .dataset-nl-tag-mix,
+#tab-datasets .dataset-main-policy-row,
 #tab-datasets .dataset-row-settings,
 #tab-datasets .dataset-row-bottom-actions {
     margin: 0 0.7rem 0.5rem;
@@ -805,11 +805,12 @@
 
 #tab-datasets .dataset-caption-source,
 #tab-datasets .dataset-nl-tag-mix,
+#tab-datasets .dataset-is-reg-toggle-panel,
+#tab-datasets .dataset-prior-loss-weight-panel,
 #tab-datasets .dataset-row-settings,
 #tab-datasets .dataset-advanced-section,
 #tab-datasets .dataset-experimental-scope,
 #tab-datasets .dataset-path-filter-advanced,
-#tab-datasets .dataset-is-reg-advanced,
 #tab-datasets .dataset-trigger-clone,
 #tab-datasets .dataset-caption-extension-advanced {
     border-color: var(--dataset-border);
@@ -830,6 +831,7 @@
 #tab-datasets .dataset-caption-source-title-row strong,
 #tab-datasets .dataset-nl-tag-toggle strong,
 #tab-datasets .dataset-inline-title-row strong,
+#tab-datasets .dataset-is-reg-toggle-panel strong,
 #tab-datasets .dataset-path-filter-recursive strong,
 #tab-datasets .dataset-path-filter-pattern span,
 #tab-datasets .dataset-trigger-clone-toggle strong,
@@ -837,8 +839,7 @@
 #tab-datasets .dataset-experimental-title-row strong,
 #tab-datasets .dataset-caption-extension-title-row strong,
 #tab-datasets .dataset-advanced-section-head strong,
-#tab-datasets .dataset-experimental-scope-copy strong,
-#tab-datasets .dataset-is-reg-copy strong {
+#tab-datasets .dataset-experimental-scope-copy strong {
     color: var(--dataset-muted);
     font-size: 0.8rem;
     line-height: 1.25;
@@ -852,8 +853,7 @@
 #tab-datasets .dataset-caption-extension-copy small,
 #tab-datasets .dataset-experimental-notice,
 #tab-datasets .dataset-advanced-section-head span,
-#tab-datasets .dataset-experimental-scope-copy span,
-#tab-datasets .dataset-is-reg-copy span {
+#tab-datasets .dataset-experimental-scope-copy span {
     color: var(--dataset-muted);
     font-size: 0.74rem;
     line-height: 1.4;
@@ -961,8 +961,62 @@
     color: var(--dataset-muted);
 }
 
+#tab-datasets .dataset-main-policy-row {
+    gap: 0;
+}
+
+#tab-datasets .dataset-main-policy-controls {
+    grid-template-columns: minmax(0, 1.55fr) minmax(0, 0.95fr) minmax(0, 0.85fr);
+    gap: 0.5rem;
+    align-items: start;
+}
+
+#tab-datasets .dataset-main-policy-controls > * {
+    min-width: 0;
+}
+
+#tab-datasets .dataset-main-policy-row .dataset-nl-tag-mix,
+#tab-datasets .dataset-main-policy-row .dataset-is-reg-toggle-panel,
+#tab-datasets .dataset-main-policy-row .dataset-prior-loss-weight-panel {
+    padding: 0.28rem 0.5rem;
+    border-radius: 5px;
+}
+
+#tab-datasets .dataset-main-policy-row .dataset-nl-tag-controls {
+    grid-template-columns: minmax(0, 1.2fr) minmax(72px, 0.95fr) 52px minmax(84px, auto);
+    height: var(--control-height);
+    min-height: var(--control-height);
+    max-height: var(--control-height);
+}
+
+#tab-datasets .dataset-main-policy-row .dataset-is-reg-controls,
+#tab-datasets .dataset-main-policy-row .dataset-is-reg-weight-field {
+    height: var(--control-height);
+    min-height: var(--control-height);
+    max-height: var(--control-height);
+}
+
+#tab-datasets .dataset-main-policy-row .dataset-nl-tag-number,
+#tab-datasets .dataset-main-policy-row .dataset-is-reg-weight-input {
+    height: var(--control-height);
+    min-height: var(--control-height);
+    max-height: var(--control-height);
+    font-size: 0.8rem;
+}
+
+#tab-datasets .dataset-main-policy-row .dataset-nl-tag-summary {
+    height: calc(var(--control-height) - 8px);
+    line-height: calc(var(--control-height) - 10px);
+    font-size: 0.7rem;
+}
+
 #tab-datasets .dataset-nl-tag-mix {
-    grid-template-columns: minmax(210px, 0.72fr) minmax(320px, 1.65fr) 86px auto;
+    grid-template-columns: minmax(0, 1fr);
+    padding: 0.28rem 0.5rem;
+}
+
+#tab-datasets .dataset-nl-tag-mix:not(:has(.dataset-nl-tag-controls)) {
+    grid-template-columns: minmax(0, 1fr) minmax(120px, 1.2fr) 72px auto;
     padding: 0.58rem;
 }
 
@@ -1041,7 +1095,6 @@
 
 #tab-datasets .dataset-advanced-section .dataset-experimental-scope,
 #tab-datasets .dataset-advanced-section .dataset-path-filter-advanced,
-#tab-datasets .dataset-advanced-section .dataset-is-reg-advanced,
 #tab-datasets .dataset-advanced-section .dataset-trigger-clone,
 #tab-datasets .dataset-advanced-section .dataset-caption-extension-advanced {
     border-color: var(--dataset-border);
@@ -1054,13 +1107,14 @@
     padding: 0.62rem;
 }
 
-#tab-datasets .dataset-is-reg-advanced {
-    grid-template-columns: minmax(190px, 0.78fr) minmax(260px, 1.05fr);
+#tab-datasets .dataset-is-reg-toggle-panel,
+#tab-datasets .dataset-prior-loss-weight-panel {
     padding: 0.62rem;
 }
 
-#tab-datasets .dataset-is-reg-actions {
-    justify-content: end;
+#tab-datasets .dataset-main-policy-row .dataset-is-reg-toggle-panel,
+#tab-datasets .dataset-main-policy-row .dataset-prior-loss-weight-panel {
+    padding: 0.28rem 0.5rem;
 }
 
 #tab-datasets .dataset-is-reg-toggle {
@@ -1069,8 +1123,16 @@
     font-size: 0.82rem;
 }
 
+#tab-datasets .dataset-main-policy-row .dataset-is-reg-toggle {
+    min-height: 0;
+    padding-inline: 0;
+    font-size: 0.72rem;
+    background: transparent;
+    border: 0;
+}
+
 #tab-datasets .dataset-is-reg-weight-field {
-    min-width: 120px;
+    min-width: 0;
 }
 
 #tab-datasets .dataset-is-reg-weight-label,
@@ -1081,8 +1143,14 @@
     font-size: 0.78rem;
 }
 
+#tab-datasets .dataset-main-policy-row .dataset-is-reg-weight-label,
+#tab-datasets .dataset-main-policy-row .dataset-nl-tag-ratio span {
+    font-size: 0.72rem;
+}
+
 #tab-datasets .dataset-is-reg-weight-input {
-    width: 118px;
+    width: 100%;
+    max-width: none;
 }
 
 #tab-datasets .dataset-trigger-clone {
@@ -1303,10 +1371,18 @@
     #tab-datasets .dataset-nl-tag-mix,
     #tab-datasets .dataset-advanced-grid,
     #tab-datasets .dataset-path-filter-advanced,
-    #tab-datasets .dataset-is-reg-advanced,
     #tab-datasets .dataset-trigger-clone,
     #tab-datasets .dataset-caption-extension-advanced {
         grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    /* Keep the three policy columns; only collapse below 640px. */
+    #tab-datasets .dataset-main-policy-controls {
+        grid-template-columns: minmax(0, 1.55fr) minmax(0, 0.95fr) minmax(0, 0.85fr);
+    }
+
+    #tab-datasets .dataset-main-policy-row .dataset-nl-tag-mix {
+        grid-column: auto;
     }
 
     #tab-datasets .dataset-path-field[data-key="source_dir"] {
@@ -1342,11 +1418,15 @@
     #tab-datasets .dataset-preset-meta,
     #tab-datasets .dataset-defaults-list,
     #tab-datasets .dataset-caption-source-options,
+    #tab-datasets .dataset-main-policy-row,
+    #tab-datasets .dataset-main-policy-controls,
+    #tab-datasets .dataset-main-policy-row .dataset-nl-tag-controls,
+    #tab-datasets .dataset-main-policy-row .dataset-is-reg-controls,
+    #tab-datasets .dataset-main-policy-row .dataset-is-reg-weight-field,
     #tab-datasets .dataset-row-settings,
     #tab-datasets .dataset-nl-tag-mix,
     #tab-datasets .dataset-advanced-grid,
     #tab-datasets .dataset-path-filter-advanced,
-    #tab-datasets .dataset-is-reg-advanced,
     #tab-datasets .dataset-trigger-clone,
     #tab-datasets .dataset-caption-extension-advanced,
     #tab-datasets .dataset-experimental-scope {
@@ -1390,7 +1470,7 @@
 
     #tab-datasets .dataset-row-paths,
     #tab-datasets .dataset-caption-source,
-    #tab-datasets .dataset-nl-tag-mix,
+    #tab-datasets .dataset-main-policy-row,
     #tab-datasets .dataset-row-settings,
     #tab-datasets .dataset-row-bottom-actions {
         margin-inline: 0.7rem;

@@ -18,6 +18,11 @@
     .dataset-trigger-clone,
     .dataset-nl-tag-mix,
     .dataset-row-settings { grid-template-columns: 1fr 1fr; }
+    /* Keep main policy as three columns until the narrow breakpoint. */
+    .dataset-main-policy-controls {
+        grid-template-columns: minmax(0, 1.55fr) minmax(0, 0.95fr) minmax(0, 0.85fr);
+    }
+    .dataset-main-policy-row .dataset-nl-tag-mix { grid-column: auto; }
     .dataset-advanced-data-rules .dataset-advanced-grid,
     .dataset-advanced-training-rules .dataset-advanced-grid { grid-template-columns: minmax(0, 1fr); }
     .dataset-experimental-body { grid-template-columns: minmax(0, 1fr); }
@@ -445,7 +450,11 @@
     .dataset-advanced-grid,
     .dataset-experimental-scope,
     .dataset-path-filter-advanced,
-    .dataset-is-reg-advanced,
+    .dataset-main-policy-row,
+    .dataset-main-policy-controls,
+    .dataset-main-policy-row .dataset-nl-tag-controls,
+    .dataset-main-policy-row .dataset-is-reg-controls,
+    .dataset-main-policy-row .dataset-is-reg-weight-field,
     .dataset-caption-extension-advanced,
     .dataset-trigger-clone,
     .dataset-nl-tag-mix,

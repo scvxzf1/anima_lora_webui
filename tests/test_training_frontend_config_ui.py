@@ -2812,10 +2812,29 @@ def test_dataset_json_caption_switch_ui_is_wired() -> None:
     experimental_factory = _section(source, "function createDatasetExperimentalFeaturesEditor", "function createDatasetRowSettingsEditor")
     notice_factory = _section(source, "function createDatasetExperimentalNotice", "function createDatasetExperimentalAdvancedBody")
     advanced_body_factory = _section(source, "function createDatasetExperimentalAdvancedBody", "function datasetExperimentalOpenKey")
-    inline_help_factory = _section(source, "function datasetExperimentalOpenKey", "function createDatasetIsRegEditor")
-    is_reg_factory = _section(source, "function createDatasetIsRegEditor", "export {")
+    inline_help_source = _frontend_module_text("js/features/dataset-editor/inline-help.js")
+    inline_help_factory = _section(inline_help_source, "function datasetExperimentalOpenKey", "export {")
+    is_reg_toggle_factory = _section(
+        dataset_editor_row_source,
+        "function createDatasetIsRegToggleEditor",
+        "function createDatasetPriorLossWeightEditor",
+    )
+    prior_weight_factory = _section(
+        dataset_editor_row_source,
+        "function createDatasetPriorLossWeightEditor",
+        "function createDatasetMainPolicyRow",
+    )
+    policy_row_factory = _section(
+        dataset_editor_row_source,
+        "function createDatasetMainPolicyRow",
+        "function createDatasetExperimentalScopePicker",
+    )
     caption_extension_factory = _section(source, "function createDatasetCaptionExtensionEditor", "function createDatasetNlTagMixEditor")
-    mix_factory = _section(source, "function createDatasetNlTagMixEditor", "function createDatasetExperimentalScopePicker")
+    mix_factory = _section(
+        dataset_editor_row_source,
+        "function createDatasetNlTagMixEditor",
+        "function createDatasetIsRegToggleEditor",
+    )
     help_specs = _section(source, "function datasetLocalHelpSpec", "function createDatasetHelpNode")
     caption_source_factory = _section(source, "function createDatasetRowCaptionSourceModeEditor", "function createDatasetRowSettingInput")
     normalize_factory = dataset_values_source
@@ -2840,15 +2859,22 @@ def test_dataset_json_caption_switch_ui_is_wired() -> None:
     assert "createDatasetExperimentalFeaturesEditor(row, index)" not in item_factory
     assert "createDatasetExperimentalFeaturesEditor(row, index)" in _frontend_module_text("js/features/dataset-editor/experimental-dialog.js")
     assert "createDatasetRowCaptionSourceModeEditor(settings, index)" in row_factory
-    assert "createDatasetNlTagMixEditor(row, index)" in row_factory
+    assert "createDatasetMainPolicyRow(row, index)" in row_factory
+    assert "createDatasetNlTagMixEditor(row, index)" in policy_row_factory
+    assert "createDatasetIsRegToggleEditor(row, index)" in policy_row_factory
+    assert "createDatasetPriorLossWeightEditor(row, index)" in policy_row_factory
     assert "实验性/高级/旧功能" in experimental_factory
     assert "dataset-experimental-features" in experimental_factory
     assert "createDatasetExperimentalAdvancedBody(row, index, overviewHelp, {" in experimental_factory
     assert "createDatasetExperimentalScopePicker(index)" in advanced_body_factory
     assert "createDatasetTriggerCloneEditor(row, index)" in advanced_body_factory
     assert "createDatasetCaptionExtensionEditor(row, index)" in advanced_body_factory
+    assert "createDatasetIsRegToggleEditor(row, index)" not in advanced_body_factory
+    assert "createDatasetPriorLossWeightEditor(row, index)" not in advanced_body_factory
+    assert "createDatasetIsRegEditor" not in advanced_body_factory
     assert "数据与路径规则" in advanced_body_factory
     assert "训练行为与策略" in advanced_body_factory
+    assert "影响数据集生效范围和运行时生成的训练副本。" in advanced_body_factory
     assert "dataset-experimental-notice" in notice_factory
     assert "dataset-advanced-data-rules" in advanced_body_factory
     assert "dataset-advanced-training-rules" in advanced_body_factory
@@ -2860,6 +2886,7 @@ def test_dataset_json_caption_switch_ui_is_wired() -> None:
     assert "detailBtn" in experimental_factory
     assert "datasetExperimentalOpenState(index, defaultOpen)" in experimental_factory
     assert "bindDatasetExperimentalOpenState(panel, index)" in experimental_factory
+    assert "|| row.is_reg === true" not in experimental_factory
     assert "captureDatasetExperimentalOpenStates(panel);" in source
     assert "datasetExperimentalOpenStates.set" in inline_help_factory
     assert "panel.addEventListener('toggle'" in inline_help_factory
@@ -2891,6 +2918,9 @@ def test_dataset_json_caption_switch_ui_is_wired() -> None:
     assert ".dataset-caption-extension-help" in css
     assert ".dataset-trigger-clone" in css
     assert ".dataset-trigger-clone-summary" in css
+    assert ".dataset-main-policy-row" in css
+    assert ".dataset-is-reg-toggle-panel" in css
+    assert ".dataset-prior-loss-weight-panel" in css
 
     trigger_clone_factory = dataset_editor_row_source[
         dataset_editor_row_source.index("function createDatasetTriggerCloneEditor"):
@@ -2903,10 +2933,14 @@ def test_dataset_json_caption_switch_ui_is_wired() -> None:
     assert "原始数据集不会被修改" in help_specs
     assert "updateDatasetEditorRowTriggerClone(index" in trigger_clone_factory
 
-    assert "正则化训练 / Regularization" in is_reg_factory
-    assert "正则化损失权重" in is_reg_factory
-    assert "Number.isFinite(nextWeight)" in is_reg_factory
-    assert "parseFloat(weightInput.value) || 1.0" not in is_reg_factory
+    assert "正则化训练 / Regularization" not in is_reg_toggle_factory
+    assert "标记为正则化数据集" in is_reg_toggle_factory
+    assert "正则化损失权重" in prior_weight_factory
+    assert "Number.isFinite(nextWeight)" in prior_weight_factory
+    assert "parseFloat(weightInput.value) || 1.0" not in prior_weight_factory
+    assert "dataset-main-policy-controls" in policy_row_factory
+    assert "dataset-nl-tag-controls" in mix_factory
+    assert "dataset-is-reg-controls" in is_reg_toggle_factory
     assert "is_reg: row.is_reg" in payload_factory
     assert "settings: normalizeDatasetDefaults(row.settings || {})" in payload_factory
     assert "文本标注扩展名 / caption_extension" in caption_extension_factory
@@ -2966,7 +3000,12 @@ def test_dataset_json_caption_switch_ui_is_wired() -> None:
     assert "function updateDatasetEditorRowTriggerClone" in source
     assert ".dataset-nl-tag-mix" in css
     assert ".dataset-nl-tag-summary" in css
-    assert "grid-template-columns: minmax(210px, 0.72fr) minmax(320px, 1.65fr) 86px auto;" in css
+    assert "grid-template-columns: minmax(0, 1.55fr) minmax(0, 0.95fr) minmax(0, 0.85fr);" in css
+    assert ".dataset-main-policy-controls" in css
+    assert ".dataset-editor-row > .dataset-nl-tag-mix" in css
+    assert "grid-column: auto;" in css
+    assert "max-height: var(--control-height, 30px);" in css
+    assert "grid-template-columns: minmax(0, 1fr);" in css
     assert "grid-template-columns: repeat(auto-fit, minmax(154px, 1fr));" in css
     assert "grid-template-columns: repeat(4, minmax(118px, 1fr));" in css
     assert ".dataset-repeat-setting-field" in css
