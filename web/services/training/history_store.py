@@ -7,6 +7,7 @@ implementation is split into smaller modules.
 
 from __future__ import annotations
 
+import json
 import shutil
 import time
 from pathlib import Path
@@ -308,7 +309,7 @@ def _history_summary(meta: dict[str, Any], task_dir: Path) -> dict[str, Any]:
     if not out["name"]:
         out["name"] = _default_preprocess_history_name(out)
     out["log_count"] = _history_jsonl_count(out, "log_count", task_dir / "logs.jsonl")
-    out["metric_count"] = _history_jsonl_count(out, "metric_count", task_dir / "metrics.jsonl")
+    out["metric_count"] = _history_metric_count(out, task_dir)
     return out
 
 
@@ -531,6 +532,52 @@ def _history_jsonl_count(meta: dict[str, Any], key: str, path: Path) -> int:
         if count is not None and count >= 0:
             return count
     return _count_jsonl(path)
+
+
+def _history_metric_count(meta: dict[str, Any], task_dir: Path) -> int:
+    """Prefer metrics.jsonl, fall back to progress.jsonl step events.
+
+    CLI / debug runs often only write ``progress.jsonl``; without this fallback
+    the history list shows ``0 loss`` even though detail charts can render.
+    """
+    metrics_path = task_dir / "metrics.jsonl"
+    count = _history_jsonl_count(meta, "metric_count", metrics_path)
+    if count > 0:
+        return count
+    # Ignore a stale explicit 0 when progress has real step metrics.
+    progress_path = task_dir / "progress.jsonl"
+    progress_count = _count_progress_metric_events(progress_path)
+    if progress_count > 0:
+        return progress_count
+    return count
+
+
+def _count_progress_metric_events(progress_path: Path) -> int:
+    if not _path_exists(progress_path) or not progress_path.is_file():
+        return 0
+    count = 0
+    try:
+        with progress_path.open("r", encoding="utf-8") as handle:
+            for raw in handle:
+                line = raw.strip()
+                if not line:
+                    continue
+                try:
+                    event = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if not isinstance(event, dict):
+                    continue
+                if str(event.get("ev") or "") not in {"step", "val"}:
+                    continue
+                if any(
+                    key in event
+                    for key in ("loss", "loss/average", "loss/current", "lr", "lr/unet", "cmmd")
+                ):
+                    count += 1
+    except OSError:
+        return 0
+    return count
 
 
 def _safe_history_summary(meta: dict[str, Any], task_dir: Path) -> dict[str, Any] | None:
