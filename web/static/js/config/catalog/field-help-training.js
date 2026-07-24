@@ -328,6 +328,30 @@ export const FIELD_HELP_TRAINING_ZH = {    learning_rate: help(
         ["旧卡没有 bf16 训练支持时，不需要因为这个字段改成 fp16；训练精度请看上面的“精度倾向”。"],
         "保持 bf16；只有做 FP8 交换传输消融时再改为 fp8_e4m3。"
     ),
+    base_compute: help(
+        "冻结 DiT 底模 Linear 的计算路径（实验）。",
+        "bf16 是默认高精度路径。w8a16_convrot / w8a8_convrot 对选定 scope（默认 mlp）做 group Regular Hadamard + int8 权重，用于省显存；不保证比 bf16 更快。与 block_swap_transfer_dtype=int8 互斥。",
+        ["W8A* 可降低冻结底模权重显存占用（本机 3080 约 −0.5–0.6 GB）。"],
+        ["step 时间通常仍高于 bf16；W8A8 对梯度更敏感。"],
+        ["正式训练保持 bf16。开启后请先做短训对照，不要默认用于生产长训。"],
+        "默认 bf16；只有显存吃紧且接受实验风险时再选 w8a16_convrot。"
+    ),
+    convrot_group_size: help(
+        "ConvRot 分组大小（RHT 的 group size）。",
+        "必须整除 in_features。可选 64 / 256 / 1024。默认 256 与当前 sylvester 路径兼容；论文更偏 4 的幂，质量 opt-in 可试 64。",
+        ["较小 group 有时改善 outlier / 梯度对齐。"],
+        ["过小可能增加开销；过大可能放大量化误差。"],
+        ["仅 base_compute 为 w8a*_convrot 时生效。"],
+        "默认 256；质量对照时可试 64。"
+    ),
+    convrot_scope: help(
+        "ConvRot 作用到哪些 Linear 模块。",
+        "WebUI MVP 固定为 mlp（FFN 大层）。attention / all 等高级 scope 请用 CLI。",
+        ["只 patch 大 MLP 层通常性价比最高。"],
+        ["扩大 scope 会增加量化误差面和 apply 成本。"],
+        ["仅 base_compute 为 w8a*_convrot 时生效。"],
+        "保持 mlp。"
+    ),
     block_swap_restore_mode: help(
         "块交换 restore 阶段如何把 frozen base 权重恢复回 GPU。",
         "foreach 是当前默认正式路径；slab 会把同一 slot 的多个小 weight 恢复合并成更少的大 H2D，减少小 kernel / 小 copy 调度。",

@@ -209,7 +209,11 @@ export function handleFormFieldChange(event) {
     applyPreprocessMemoryProfileSelection(event);
     syncConfigDraftFromForm();
     // 切换 lora_adapter_kind 时立刻重绘，隐藏/显示 LoKr/VeRA/DoRA 专属字段。
-    if (event?.target?.dataset?.key === 'lora_adapter_kind') {
+    // 切换 base_compute 时立刻重绘，隐藏/显示 ConvRot group_size/scope。
+    if (
+        event?.target?.dataset?.key === 'lora_adapter_kind'
+        || event?.target?.dataset?.key === 'base_compute'
+    ) {
         try {
             renderConfigForm(liveConfigFromForm());
         } catch {

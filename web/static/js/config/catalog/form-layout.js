@@ -105,6 +105,10 @@ export const FORM_SECTION_DEFS = [
             'block_swap_restore_mode',
             'selective_checkpoint',
             'selective_checkpoint_blocks',
+            // ConvRot 实验：冻结 DiT base 的 W8A* 路径；默认 bf16。
+            'base_compute',
+            'convrot_group_size',
+            'convrot_scope',
             'block_swap_profile_jsonl',
             'memory_probe_jsonl',
             'memory_probe_max_steps',
@@ -423,6 +427,10 @@ export const CONFIG_COMPACT_FIELD_GROUPS = {
         {
             className: 'config-field-grid-5col',
             keys: ['blocks_to_swap', 'block_swap_transfer_dtype', 'block_swap_restore_mode', 'selective_checkpoint', 'selective_checkpoint_blocks'],
+        },
+        {
+            className: 'config-field-grid-3col',
+            keys: ['base_compute', 'convrot_group_size', 'convrot_scope'],
         },
         {
             className: 'config-field-grid-3col',

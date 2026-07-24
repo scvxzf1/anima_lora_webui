@@ -239,6 +239,12 @@ function currentConfigState() { return configState.currentConfig || {}; }
         return true;
     }
 
+    export function isConvrotScopedFieldActive(key, config = currentConfigState()) {
+        if (key !== 'convrot_group_size' && key !== 'convrot_scope') return true;
+        const baseCompute = String(config?.base_compute ?? 'bf16').trim().toLowerCase() || 'bf16';
+        return baseCompute === 'w8a16_convrot' || baseCompute === 'w8a8_convrot';
+    }
+
     export function shouldSkipConfigFormField(key, config = currentConfigState()) {
         if (key === 'stage_schedule' || key === 'stage_schedule_enabled') return true;
         if (CONFIG_FORM_MERGED_FIELDS?.has?.(key)) return true;
@@ -248,6 +254,9 @@ function currentConfigState() { return configState.currentConfig || {}; }
         // 即使 config 里残留了 lokr_factor / vera_*，非对应适配器也不展示。
         if (LOKR_SCOPED_FIELD_KEYS.has(key) || VERA_SCOPED_FIELD_KEYS.has(key) || key === 'dora_wd') {
             if (!isLoraAdapterScopedFieldActive(key, config)) return true;
+        }
+        if (key === 'convrot_group_size' || key === 'convrot_scope') {
+            if (!isConvrotScopedFieldActive(key, config)) return true;
         }
         const scopedFamilies = METHOD_SCOPED_CONFIG_FORM_FIELDS.get(key);
         if (!scopedFamilies) return false;
@@ -262,6 +271,9 @@ function currentConfigState() { return configState.currentConfig || {}; }
         }
         if (LOKR_SCOPED_FIELD_KEYS.has(key) || VERA_SCOPED_FIELD_KEYS.has(key) || key === 'dora_wd') {
             return isLoraAdapterScopedFieldActive(key, config);
+        }
+        if (key === 'convrot_group_size' || key === 'convrot_scope') {
+            return isConvrotScopedFieldActive(key, config);
         }
         const family = activeMethodKey(config);
         if (SPD_UI_DEFAULT_FIELDS.has(key)) return family === 'spd';

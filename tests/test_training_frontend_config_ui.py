@@ -1577,6 +1577,13 @@ def test_config_form_uses_navigation_search_and_progressive_disclosure() -> None
     assert "'gradient_checkpointing'," in optimization_section
     assert "'block_swap_transfer_dtype'," in optimization_section
     assert "'block_swap_restore_mode'," in optimization_section
+    assert "'base_compute'," in optimization_section
+    assert "'convrot_group_size'," in optimization_section
+    assert "'convrot_scope'," in optimization_section
+    assert optimization_section.index("'block_swap_restore_mode',") < optimization_section.index("'base_compute',")
+    assert optimization_section.index("'base_compute',") < optimization_section.index("'convrot_group_size',")
+    assert optimization_section.index("'convrot_group_size',") < optimization_section.index("'convrot_scope',")
+    assert optimization_section.index("'convrot_scope',") < optimization_section.index("'block_swap_profile_jsonl',")
     assert "'compile_block_scope'," in optimization_section
     assert "'memory_probe_jsonl'," in optimization_section
     assert "'memory_probe_max_steps'," in optimization_section
@@ -1642,6 +1649,19 @@ def test_config_form_uses_navigation_search_and_progressive_disclosure() -> None
     assert "只在遮罩外区域做先验保留" in catalog_help_training
     assert "block_swap_transfer_dtype: '块交换传输精度'" in source
     assert "block_swap_transfer_dtype: ['bf16', 'fp8_e4m3']" in source
+    assert "base_compute: '底模计算路径'" in source
+    assert "convrot_group_size: 'ConvRot 组大小'" in source
+    assert "convrot_scope: 'ConvRot 作用范围'" in source
+    assert "base_compute: ['bf16', 'w8a16_convrot', 'w8a8_convrot']" in source
+    assert "convrot_group_size: [64, 256, 1024]" in source
+    assert "convrot_scope: ['mlp']" in source
+    assert "base_compute: 'bf16'" in catalog_defaults
+    assert "convrot_group_size: 256" in catalog_defaults
+    assert "convrot_scope: 'mlp'" in catalog_defaults
+    assert "冻结 DiT 底模 Linear 的计算路径" in catalog_help_training
+    assert "ConvRot 分组大小" in catalog_help_training
+    assert "WebUI MVP 固定为 mlp" in catalog_help_training
+    assert "isConvrotScopedFieldActive" in source
     assert "block_swap_restore_mode: '块交换恢复路径'" in source
     assert "block_swap_restore_mode: ['foreach', 'slab']" in source
     assert "compile_block_scope: '编译块范围'" in source
@@ -1666,6 +1686,7 @@ def test_config_form_uses_navigation_search_and_progressive_disclosure() -> None
     assert "lokr_project_chunk_bytes: 'LoKr 张量切块阈值'" in source
     assert "lokr_project_chunk_bytes: [1048576, 2097152, 4194304, 8388608, 16777216]" in source
     assert "keys: ['blocks_to_swap', 'block_swap_transfer_dtype', 'block_swap_restore_mode', 'selective_checkpoint', 'selective_checkpoint_blocks']" in resource_compact
+    assert "keys: ['base_compute', 'convrot_group_size', 'convrot_scope']" in resource_compact
     assert "keys: ['block_swap_profile_jsonl', 'memory_probe_jsonl', 'memory_probe_max_steps']" in resource_compact
     assert "keys: ['peak_probe_jsonl', 'peak_probe_max_steps', 'peak_probe_level']" in resource_compact
     assert "keys: ['preprocess_vae_cache_batch_size', 'preprocess_text_cache_batch_size', 'preprocess_memory_profile', 'reuse_dataset_cache_copy', 'reuse_vae_latents', 'reuse_text_encoder_cache', 'cache_fingerprint_mode', 'force_rebuild_preprocess_cache']" in resource_compact
@@ -3379,6 +3400,7 @@ def test_live_compat_warnings_mirror_key_conflict_codes() -> None:
     assert "export function formatLiveCompatStatus" in source
     assert "selective_full_gradient_checkpointing" in source
     assert "block_swap_soft_tokens" in source
+    assert "convrot_block_swap_int8_mutex" in source
     assert "不替代" in source or "Does NOT replace" in source or "preflight" in source
 
     assert "collectLiveCompatIssues" in field_change
@@ -3386,6 +3408,7 @@ def test_live_compat_warnings_mirror_key_conflict_codes() -> None:
     assert "setTomlStatus" in field_change
     assert "live 兼容" in field_change
     assert "wasLiveCompat" in field_change or "includes('live 兼容')" in field_change or 'includes("live 兼容")' in field_change
+    assert "base_compute" in field_change
 
     if not shutil.which("node"):
         return
@@ -3400,14 +3423,20 @@ const soft = collectLiveCompatIssues({
   blocks_to_swap: 8,
   network_module: 'networks.methods.soft_tokens',
 });
+const convrot = collectLiveCompatIssues({
+  base_compute: 'w8a16_convrot',
+  block_swap_transfer_dtype: 'int8',
+});
 const ok = collectLiveCompatIssues({
   selective_checkpoint: 'off',
   gradient_checkpointing: true,
   blocks_to_swap: 0,
+  base_compute: 'bf16',
 });
 console.log(JSON.stringify({
   selectiveCodes: selective.map((i) => i.code),
   softCodes: soft.map((i) => i.code),
+  convrotCodes: convrot.map((i) => i.code),
   okCount: ok.length,
   formatted: formatLiveCompatStatus(selective),
 }));
@@ -3423,6 +3452,7 @@ console.log(JSON.stringify({
     payload = json.loads(proc.stdout)
     assert "selective_full_gradient_checkpointing" in payload["selectiveCodes"]
     assert "block_swap_soft_tokens" in payload["softCodes"]
+    assert "convrot_block_swap_int8_mutex" in payload["convrotCodes"]
     assert payload["okCount"] == 0
     assert "live 兼容" in payload["formatted"]
 

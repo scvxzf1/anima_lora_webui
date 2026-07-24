@@ -71,6 +71,19 @@ export function collectLiveCompatIssues(config = {}) {
         });
     }
 
+    const baseCompute = String(config.base_compute ?? 'bf16').trim().toLowerCase() || 'bf16';
+    const convrotActive = baseCompute === 'w8a16_convrot' || baseCompute === 'w8a8_convrot';
+    const transferDtype = String(config.block_swap_transfer_dtype ?? 'bf16').trim().toLowerCase() || 'bf16';
+    if (convrotActive && (transferDtype === 'int8' || transferDtype === 'int8_linear' || transferDtype === 'i8')) {
+        issues.push({
+            code: 'convrot_block_swap_int8_mutex',
+            key: 'base_compute',
+            severity: 'error',
+            message:
+                'live 兼容：base_compute 的 ConvRot 路径与 block_swap_transfer_dtype=int8 互斥（preflight 仍会正式校验）。',
+        });
+    }
+
     return issues;
 }
 
