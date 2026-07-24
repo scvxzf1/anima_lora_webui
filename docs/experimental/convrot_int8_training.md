@@ -1,8 +1,8 @@
 # ConvRot int8 训练探索（W8A16 / W8A8）
 
-状态：实验 / **可运行（默认关闭）**  
-适用版本：当前 main（2026-07-24 起接入）  
-日期：2026-07-24（研究） / 2026-07-24（M1–M5 实现接入）  
+状态：实验 / **可运行（默认关闭）**
+适用版本：当前 main（2026-07-24 起接入）
+日期：2026-07-24（研究） / 2026-07-24（M1–M5 实现接入）
 入口命令：
 
 ```bash
@@ -46,12 +46,12 @@ python tasks.py lora ... --base_compute w8a16_convrot \
 - 探针：`scripts/experiments/convrot_{equivalence,checkpoint,short_train,mem_speed,step_profile,export_prequant}_probe.py`（export 脚本名见上）
 - 非 ConvRot 对照：`library/runtime/int8_linear.py`、`block_swap_transfer_dtype=int8`
 
-相关 findings：[`../findings/anima_int8_base_linear_audit.md`](../findings/anima_int8_base_linear_audit.md)、[`../methods/channel_scaling.md`](../methods/channel_scaling.md)、`bench/channel_stats/`  
-落地规格：[`../proposal/convrot_w8a_training_plan.md`](../proposal/convrot_w8a_training_plan.md)  
+相关 findings：[`../findings/anima_int8_base_linear_audit.md`](../findings/anima_int8_base_linear_audit.md)、[`../methods/channel_scaling.md`](../methods/channel_scaling.md)、`bench/channel_stats/`
+落地规格：[`../proposal/convrot_w8a_training_plan.md`](../proposal/convrot_w8a_training_plan.md)
 后续优化：[`../proposal/convrot_w8a_optimization_roadmap.md`](../proposal/convrot_w8a_optimization_roadmap.md)
 
-> **一句话：** ConvRot 训练路径已按战略 C 自建接入；默认 `base_compute=bf16`。  
-> **不要**把 `int8_linear` 裸 rowwise 存储或 block-swap int8 传输当成 ConvRot。  
+> **一句话：** ConvRot 训练路径已按战略 C 自建接入；默认 `base_compute=bf16`。
+> **不要**把 `int8_linear` 裸 rowwise 存储或 block-swap int8 传输当成 ConvRot。
 > **不要**与 `--block_swap_transfer_dtype int8` 同时开启。
 
 ---
@@ -64,7 +64,7 @@ python tasks.py lora ... --base_compute w8a16_convrot \
 | M2 训练 apply | ✅ | `apply_convrot_to_lora_network` + bootstrap 薄钩 + CLI + 与 block-swap int8 互斥 |
 | M3 质量 gate | ✅ | toy + full-checkpoint + 20-step short-train（W8A16/W8A8 均已跑） |
 | M4 W8A8 | ✅ | 真 int8 GEMM（`torch._int_mm`，形状不支持时 float 回退）+ STE |
-| M5 产品化钩子 | ✅ 最小集 | metadata stamp、merge 拒绝、DoRA 拒绝、skip 日志；WebUI 未做 |
+| M5 产品化钩子 | ✅ 最小集 + WebUI MVP | metadata stamp、merge 拒绝、DoRA 拒绝、skip 日志；WebUI：`base_compute` / `convrot_group_size` / `convrot_scope=mlp`（配置页 → 显存与速度优化） |
 | 显存优化 | ✅ | quant 后默认释放 base `Linear.weight`（meta 占位，去掉双份 bf16） |
 | 融合路径 | ✅ | 单 `autograd.Function` 融合 RHT+quant+GEMM；默认 **dense RHT + dequant**（见 §F） |
 | P0-A step profile | ✅ | `torch.profiler` 三 case 饼图（见 §G）；**不**满足 Triton 门槛 |
@@ -117,8 +117,8 @@ JSON：`output/tests/convrot_ckpt_w8a16_seeds012.json`、`output/tests/convrot_c
 
 ### C. Short-train sample 对照（20 steps，seed=0）
 
-JSON：`output/tests/convrot_short_train/short_train_w8a16_seed0.json`、`short_train_w8a8_seed0.json`  
-图：`sample_bf16_seed0.png`、`sample_w8a16_seed0.png`、`sample_w8a8_seed0.png`  
+JSON：`output/tests/convrot_short_train/short_train_w8a16_seed0.json`、`short_train_w8a8_seed0.json`
+图：`sample_bf16_seed0.png`、`sample_w8a16_seed0.png`、`sample_w8a8_seed0.png`
 并排：`sample_bf16_vs_w8a16_seed0.png`、`sample_bf16_vs_w8a8_seed0.png`、`sample_bf16_w8a16_w8a8_seed0.png`
 
 | 路径 | first → last loss | last_loss rel vs bf16 | per-step mean rel | sample pixel rel vs bf16 | peak GB（优化前） |
@@ -160,7 +160,7 @@ JSON：`output/tests/convrot_short_train/short_train_w8a16_seed0.json`、`short_
 
 #### E.3 Mem/speed 对照（free-base 后，8/6 step microbench）
 
-脚本：`scripts/experiments/convrot_mem_speed_probe.py`  
+脚本：`scripts/experiments/convrot_mem_speed_probe.py`
 JSON：`output/tests/convrot_mem_speed.json`
 
 | case | peak GB | alloc after apply GB | sec/step | meta bases | freed MiB |
@@ -224,12 +224,13 @@ JSON：
 3. 真正的吞吐跃迁仍需 **Triton 真融合 kernel** 或 prequant checkpoint 去掉 online rotate 热路径。
 4. 数值：dense 与 FWHT 相对误差 <1e-6；fused vs legacy dequant 路径 <1e-4（unit tests）。
 
-**尚未做：** 完整 ComfyUI MixedPrecisionOps INT8-ConvRot 布局自动适配（仅 best-effort 键名）；Triton 真融合 kernel；完整 `train.py`/WebUI 长训；Hydra 等变体 `org_module_ref` 全覆盖。
+**尚未做：** 完整 ComfyUI MixedPrecisionOps INT8-ConvRot 布局自动适配（仅 best-effort 键名）；Triton 真融合 kernel；完整 `train.py` 长训；WebUI 高级项（prequant / Hadamard / kernel env）；Hydra 等变体 `org_module_ref` 全覆盖。
+**WebUI MVP：** 配置页 → 优化 →「显存与速度优化」：`base_compute` / `convrot_group_size` / `convrot_scope=mlp`（默认 bf16）。
 
 ### G. P0-A：单 step CUDA profiler（2026-07-24）
 
-脚本：`scripts/experiments/convrot_step_profile_probe.py`  
-JSON：`output/tests/convrot_step_profile.json`  
+脚本：`scripts/experiments/convrot_step_profile_probe.py`
+JSON：`output/tests/convrot_step_profile.json`
 环境：RTX 3080 / torch 2.12.0+cu130；默认 dense RHT + dequant fused；warmup=2；capture 1 train step + 3-step wall microbench。
 
 #### G.1 端到端
@@ -255,8 +256,8 @@ JSON：`output/tests/convrot_step_profile.json`
 
 显式标记事件（top）：
 
-- W8A16：`convrot::gemm_dequant_linear` ≈ **941 ms**（单 step self）；RHT 仅 ~1.4%  
-- W8A8：`convrot::gemm_int8` / `_int_mm` 可见；act quant ~2.6%；RHT 仍小  
+- W8A16：`convrot::gemm_dequant_linear` ≈ **941 ms**（单 step self）；RHT 仅 ~1.4%
+- W8A8：`convrot::gemm_int8` / `_int_mm` 可见；act quant ~2.6%；RHT 仍小
 
 说明：profiler 的 `self` 时间会把部分 matmul 记在 `aten::mm`（gemm_generic）下；`convrot::*` 是注入的 `record_function` 边界，用于归因 ConvRot 路径，不是与 wall 秒严格一一对应。
 
@@ -274,13 +275,13 @@ wall_ratio ≈ 1.77×
 
 解读：
 
-1. **Triton 真融合门槛未满足**（ConvRot 链 <50% CUDA self）。  
-2. **W8A16 慢的主因** 更像 **dequant 后走 fp32 `F.linear`**（top kernel 出现 `ampere_sgemm_*` / cutlass sgemm），而 bf16 路径吃 `bf16` Tensor Core gemm。  
-3. **RHT 本身不是主税**（~1–2%）；继续优化 FWHT/融合 RHT ROI 低。  
-4. **下一刀建议（按 ROI）**：  
-   - **已做（P0-A2）**：W8A16 dequant/`F.linear` 改用 bf16/fp16 计算 dtype（见 §G.4）  
-   - **已做（P0-C）**：prequant 加载/导出（见 §H；去掉 apply 期 online weight quant）  
-   - 仍 **不要** 默认 int8pack / FWHT；Triton 门槛仍未达  
+1. **Triton 真融合门槛未满足**（ConvRot 链 <50% CUDA self）。
+2. **W8A16 慢的主因** 更像 **dequant 后走 fp32 `F.linear`**（top kernel 出现 `ampere_sgemm_*` / cutlass sgemm），而 bf16 路径吃 `bf16` Tensor Core gemm。
+3. **RHT 本身不是主税**（~1–2%）；继续优化 FWHT/融合 RHT ROI 低。
+4. **下一刀建议（按 ROI）**：
+   - **已做（P0-A2）**：W8A16 dequant/`F.linear` 改用 bf16/fp16 计算 dtype（见 §G.4）
+   - **已做（P0-C）**：prequant 加载/导出（见 §H；去掉 apply 期 online weight quant）
+   - 仍 **不要** 默认 int8pack / FWHT；Triton 门槛仍未达
 
 #### G.4 P0-A2 落地：W8A16 保持 bf16 计算（同日续）
 
@@ -351,7 +352,7 @@ python tasks.py lora ... --base_compute w8a16_convrot \
 
 #### H.5 Mem/speed 热测（2026-07-25，RTX 3080，6 steps）
 
-JSON：`output/tests/convrot_mem_speed_prequant.json`  
+JSON：`output/tests/convrot_mem_speed_prequant.json`
 prequant 文件：`output/tests/convrot_prequant_mlp_g256.safetensors`（56 layers, g=256）
 
 | case | peak GB | sec/step | apply wall | vs bf16 step | 备注 |
@@ -364,9 +365,9 @@ prequant 文件：`output/tests/convrot_prequant_mlp_g256.safetensors`（56 laye
 
 解读：
 
-1. **稳态 step time：prequant ≈ online**（W8A16 2.05 vs 2.03；W8A8 2.50 vs 2.49）——符合「act RHT 仍在、权重 quant 只发生一次」的设计。  
-2. **apply 时间：prequant 更慢**（读 safetensors + 设备拷贝 ≈0.35–0.39 s vs online RHT+quant ≈0.11–0.18 s）；只影响启动，不影响每 step。  
-3. **peak 显存：与 free-base online 相同**（仍低于 bf16）。  
+1. **稳态 step time：prequant ≈ online**（W8A16 2.05 vs 2.03；W8A8 2.50 vs 2.49）——符合「act RHT 仍在、权重 quant 只发生一次」的设计。
+2. **apply 时间：prequant 更慢**（读 safetensors + 设备拷贝 ≈0.35–0.39 s vs online RHT+quant ≈0.11–0.18 s）；只影响启动，不影响每 step。
+3. **peak 显存：与 free-base online 相同**（仍低于 bf16）。
 4. **因此 P0-C 的 KPI 是「可复现加载 / 去掉 apply 期 quant / 与社区权重接口」**，不是 step 加速；当初验收以 unit 为主是因为路线图已写明「不承诺 step 大加速」。
 
 ### I. P0-D：regular Hadamard 质量对齐（2026-07-25）
@@ -378,8 +379,8 @@ prequant 文件：`output/tests/convrot_prequant_mlp_g256.safetensors`（56 laye
 | **sylvester**（默认） | \(2^k\) | \(=n\)（全 1 列） | `ANIMA_CONVROT_HADAMARD=sylvester` |
 | **regular**（论文） | \(4^k\)（4/16/64/256/1024…） | \(=\sqrt{n}\)（最小） | `ANIMA_CONVROT_HADAMARD=regular` |
 
-- regular：`H_4` 基 + Kronecker `H_{4^{k+1}}=H_{4^k}⊗H_4`（ConvRot Thm 3.3）  
-- FWHT **仅**等价 sylvester；regular 强制 dense matmul  
+- regular：`H_4` 基 + Kronecker `H_{4^{k+1}}=H_{4^k}⊗H_4`（ConvRot Thm 3.3）
+- FWHT **仅**等价 sylvester；regular 强制 dense matmul
 - **默认不改**：仍 sylvester + group=256（兼容已有 prequant / 探针基线）
 
 #### I.1 Checkpoint multi-seed（W8A16，seeds 0–2，strict grad≤5%）
@@ -397,12 +398,12 @@ W8A8 regular g=256：seed0 **grad_rel≈4.1**（异常大，seed1/2 正常）→
 
 #### I.2 解读与默认策略
 
-1. **输出 / loss**：所有配置全 seed 远低于阈值。  
-2. **seed0 grad** 仍是最难 seed；regular **不保证**全面碾压 sylvester。  
-3. **regular g=64** 在本矩阵里 **seed0 首次过 5%**，grad_max 也最低（~5.1%），但 seed2 略超；值得作为 **质量 opt-in**。  
-4. regular g 越大（256→1024）seed0 grad **变差**（本机）——与「更大旋转窗更好」的朴素预期相反，需更多 seed 才下强结论。  
-5. **默认保持 sylvester + g=256**；实验可：  
-   `ANIMA_CONVROT_HADAMARD=regular` + `--convrot_group_size 64`。  
+1. **输出 / loss**：所有配置全 seed 远低于阈值。
+2. **seed0 grad** 仍是最难 seed；regular **不保证**全面碾压 sylvester。
+3. **regular g=64** 在本矩阵里 **seed0 首次过 5%**，grad_max 也最低（~5.1%），但 seed2 略超；值得作为 **质量 opt-in**。
+4. regular g 越大（256→1024）seed0 grad **变差**（本机）——与「更大旋转窗更好」的朴素预期相反，需更多 seed 才下强结论。
+5. **默认保持 sylvester + g=256**；实验可：
+   `ANIMA_CONVROT_HADAMARD=regular` + `--convrot_group_size 64`。
 6. 若已导出 prequant，切换 hadamard/group **必须重导出**（旋转域不同）。
 
 ### Phase 1 支持面
@@ -500,11 +501,11 @@ x (bf16)
 - ComfyUI **v0.27.0**：native **int8 ConvRot** 加载；含 int8 上 apply LoRA / requant 修复（**服务推理**，不是 `train.py`）。
 - ComfyUI PR **#14859**：`convrot_w4a4` layout，`convrot_groupsize` 默认 256。
 - Anima 推理加速示例：[ComfyUI-AnimaTurbo](https://github.com/TheLegendOfKitty/ComfyUI-AnimaTurbo)（shared rotated act cache、warp-FHT quantize、fuse QKV）。
-- 转换工具方向：[`convert_to_quant`](https://github.com/silveroxides/convert_to_quant) 一类  
+- 转换工具方向：[`convert_to_quant`](https://github.com/silveroxides/convert_to_quant) 一类
   `--int8 --scaling_mode row --convrot --convrot-group-size {64,256,1024} --comfy_quant`。
 - 公开 Anima 权重示例：[obsxrver/ComfyUI-Native-INT8_ConvRot](https://huggingface.co/obsxrver/ComfyUI-Native-INT8_ConvRot) 中的 `anima-preview3-base-int8-ConvRot`。
 
-**没有**公开的「冻结 base ConvRot + LoRA 训练」fused kernel。  
+**没有**公开的「冻结 base ConvRot + LoRA 训练」fused kernel。
 训练第一期可用 **可微 / STE 的 fake path** 验数值；速度第二期再接 Triton / comfy-kitchen 类 kernel。
 
 ---
@@ -528,8 +529,8 @@ x (bf16)
 
 对抗校验中被驳回或不可靠的表述（勿写入默认承诺）：
 
-- 某社交帖对 FLUX Whole W8A8 的具体 VRAM 数字（如固定 16.30 GiB / −32.3%）  
-- HSWQ 营销向 SSIM / 体积数字（未过校验）  
+- 某社交帖对 FLUX Whole W8A8 的具体 VRAM 数字（如固定 16.30 GiB / −32.3%）
+- HSWQ 营销向 SSIM / 体积数字（未过校验）
 - SpinQuant「相对 QuaRot 45.1%」一类原句营销表述（未过校验）
 
 ---
@@ -538,19 +539,19 @@ x (bf16)
 
 ### 已证实（高置信）
 
-1. ConvRot 是 DiT 向 rotation **PTQ**；主证据在推理 W4A4 / W8A8。  
-2. 运行时：旋转量化权重存盘 + 激活在线旋转动态量化。  
-3. Comfy 生态成熟于 **load / forward / serialize**，不是 training loop。  
-4. QLoRA ≠ 训练期 W8A8 GEMM。  
-5. Anima **推理** INT8 ConvRot 质量显著优于裸 INT8 Row（社区 latent 基准）。  
+1. ConvRot 是 DiT 向 rotation **PTQ**；主证据在推理 W4A4 / W8A8。
+2. 运行时：旋转量化权重存盘 + 激活在线旋转动态量化。
+3. Comfy 生态成熟于 **load / forward / serialize**，不是 training loop。
+4. QLoRA ≠ 训练期 W8A8 GEMM。
+5. Anima **推理** INT8 ConvRot 质量显著优于裸 INT8 Row（社区 latent 基准）。
 6. Anima `model_channels=2048`、`mlp_ratio=4 → 8192`，**64 / 256 / 1024 均可整除**，group size 约束友好。
 
 ### 未证实 / 工程缺口
 
-1. **没有主源**给出 ConvRot vs rowwise 在 **LoRA 训练 loss / 画质** 上的对照实验。  
-2. **W8A16 训练**不是生态标准选项，需本仓定义。  
-3. LoRA 与 **group 旋转边界**、**requant 后权重域** 在训练侧未标准化。  
-4. Anima 特有约束需单独验证：5D latent、max-padded TE sink、FEI / Hydra router、`compile_blocks` after `apply_to`。  
+1. **没有主源**给出 ConvRot vs rowwise 在 **LoRA 训练 loss / 画质** 上的对照实验。
+2. **W8A16 训练**不是生态标准选项，需本仓定义。
+3. LoRA 与 **group 旋转边界**、**requant 后权重域** 在训练侧未标准化。
+4. Anima 特有约束需单独验证：5D latent、max-padded TE sink、FEI / Hydra router、`compile_blocks` after `apply_to`。
 5. AdaLN / modulation / final layer 应排除在 int8 候选外（论文与社区 arch filter 一致）。
 
 ### 与本仓现状对照
@@ -573,35 +574,35 @@ x (bf16)
 
 **Phase 0 — 对齐（可选）**
 
-- 用 `convert_to_quant` 或公开 `anima-*-int8-ConvRot` 做推理数值对齐。  
+- 用 `convert_to_quant` 或公开 `anima-*-int8-ConvRot` 做推理数值对齐。
 - 确认 group size、layer 排除（AdaLN / final）与 Comfy 布局一致。
 
 **Phase 1 — W8A16 训练（优先）**
 
-- 冻结 base 候选 Linear：`RHT + int8 weight`。  
-- 激活保持 bf16 → W8A16 GEMM（或 dequant 权重 × bf16 act 作为数值 baseline）。  
+- 冻结 base 候选 Linear：`RHT + int8 weight`。
+- 激活保持 bf16 → W8A16 GEMM（或 dequant 权重 × bf16 act 作为数值 baseline）。
 - LoRA 在 **原空间 / dequant 后** 残差相加：
 
 ```text
 y = base_w8a16(x) + lora(x)
 ```
 
-- STE 或 stop-grad 穿过 frozen quant 权重；adapter 正常反传。  
+- STE 或 stop-grad 穿过 frozen quant 权重；adapter 正常反传。
 - scope：先 `mlp`，再 attention projection；排除 AdaLN / modulation / final。
 
 **Phase 2 — W8A8 训练**
 
-- 同 group RHT 后对 act **动态 quant**。  
-- int8×int8 GEMM + dequant。  
-- 独立 gate：output L2、adapter grad、短训 sample。  
+- 同 group RHT 后对 act **动态 quant**。
+- int8×int8 GEMM + dequant。
+- 独立 gate：output L2、adapter grad、短训 sample。
 - 默认 **off**，仅实验开关。
 
 ### 第一期明确不做
 
-- 把现有 `Int8FrozenLinear` 贴牌成 ConvRot。  
-- 只改 `block_swap_transfer_dtype=int8` 当训练质量方案。  
-- 默认写入 `configs/base.toml`。  
-- 全层含 AdaLN 一起 int8。  
+- 把现有 `Int8FrozenLinear` 贴牌成 ConvRot。
+- 只改 `block_swap_transfer_dtype=int8` 当训练质量方案。
+- 默认写入 `configs/base.toml`。
+- 全层含 AdaLN 一起 int8。
 - 把 Comfy 推理 quant 权重格式直接当训练图。
 
 ### 配置草图（尚未实现）
@@ -616,10 +617,10 @@ convrot_weight_source = "online_from_bf16" | "prequant_checkpoint"
 
 ### 集成触点（实现时）
 
-1. `network.apply_to` + `load_weights` **之后**，`compile_blocks` **之前** patch base / `org_forward`。  
-2. 不可 `replace Linear` 破坏 LoRA monkey-patch 链（对齐现有 `patch_lora_frozen_base_forwards_with_int8` 的思路，但换成 ConvRot 算子）。  
-3. 保存：默认只存 adapter；base quant 状态写 metadata（例如 `ss_base_compute=...`）；merge 默认拒绝或需先 dequant。  
-4. 测试：RHT 正交/可逆、shape、STE 梯度、toy bf16 vs W8A16、可选加载公开 Anima INT8-ConvRot 做推理对齐。  
+1. `network.apply_to` + `load_weights` **之后**，`compile_blocks` **之前** patch base / `org_forward`。
+2. 不可 `replace Linear` 破坏 LoRA monkey-patch 链（对齐现有 `patch_lora_frozen_base_forwards_with_int8` 的思路，但换成 ConvRot 算子）。
+3. 保存：默认只存 adapter；base quant 状态写 metadata（例如 `ss_base_compute=...`）；merge 默认拒绝或需先 dequant。
+4. 测试：RHT 正交/可逆、shape、STE 梯度、toy bf16 vs W8A16、可选加载公开 Anima INT8-ConvRot 做推理对齐。
 5. 评估必须以 **adapter grad + 短训 sample** 为准，不能只看权重反量化 L2（旧 int8_linear audit 不够）。
 
 ### 三条战略（按投入）
@@ -636,22 +637,22 @@ convrot_weight_source = "online_from_bf16" | "prequant_checkpoint"
 
 ## 7. 开放问题
 
-1. 第一期是否只实现 W8A16，接口预留 W8A8？（建议：接口齐、实现先 W8A16）  
-2. 权重来源：在线从 bf16 做 RHT+quant，还是加载社区 `*-int8-ConvRot.safetensors`？  
-3. 成功标准：短训 sample 接近 bf16 LoRA，还是显存 / 速度 KPI？  
-4. 范围：仅 LoRA family，还是 Hydra / T-LoRA / FEI 全开？（router 与 online act rotate 共存需单独设计）  
+1. 第一期是否只实现 W8A16，接口预留 W8A8？（建议：接口齐、实现先 W8A16）
+2. 权重来源：在线从 bf16 做 RHT+quant，还是加载社区 `*-int8-ConvRot.safetensors`？
+3. 成功标准：短训 sample 接近 bf16 LoRA，还是显存 / 速度 KPI？
+4. 范围：仅 LoRA family，还是 Hydra / T-LoRA / FEI 全开？（router 与 online act rotate 共存需单独设计）
 5. 是否存在开源 **训练期** W8A16/W8A8 GEMM + STE 穿过 ConvRot 冻结权重的实现，及其在 V100/A100 级上的实测收益？
 
 ---
 
-## 8. 建议的实现顺序（未开工）
+## 8. 实现顺序（历史清单；核心路径已落地）
 
-1. 确认 Phase 1 范围与权重来源。  
-2. 模块：`library/runtime/convrot/`（RHT、quantize、W8A16/W8A8 Linear wrapper）——避免把大块逻辑堆进 `train.py`。  
-3. 训练钩子：`apply_to` 之后 patch frozen base / `org_forward`。  
-4. 配置 / CLI / 可选 WebUI 实验项（默认 `bf16`，UI 标明实验）。  
-5. 测试：unit + small-batch equivalence + 可选公开权重推理对齐。  
-6. 文档：本页从「研究记录」升级为「可运行实验」时，补入口命令与 gate 结果；稳定后再考虑迁 `docs/methods/`。
+1. [x] 确认 Phase 1 范围与权重来源。
+2. [x] 模块：`library/runtime/convrot/`（RHT、quantize、W8A16/W8A8 Linear wrapper）。
+3. [x] 训练钩子：`apply_to` 之后 patch frozen base / `org_forward`。
+4. [x] 配置 / CLI / WebUI MVP 实验项（默认 `bf16`，UI 标明实验）。
+5. [x] 测试：unit + probe gate；公开权重推理对齐仍为 best-effort。
+6. [~] 文档：本页为可运行实验说明；稳定后再考虑迁 `docs/methods/`。
 
 **当前默认不做**：改训练默认配置、长训、下载大模型、推送。
 
@@ -659,12 +660,12 @@ convrot_weight_source = "online_from_bf16" | "prequant_checkpoint"
 
 ## 9. 主要来源
 
-- [arXiv:2512.03673 ConvRot](https://arxiv.org/abs/2512.03673)  
-- [FLUX.1-dev-ConvRot 模型卡](https://huggingface.co/SearchingMan/FLUX.1-dev-ConvRot)  
-- [ComfyUI v0.27.0](https://github.com/Comfy-Org/ComfyUI/releases/tag/v0.27.0) / [PR #14859](https://github.com/Comfy-Org/ComfyUI/pull/14859)  
-- [Anima INT8 ConvRot 权重](https://huggingface.co/obsxrver/ComfyUI-Native-INT8_ConvRot)  
-- [INT8 质量基准（含 Anima）](https://github.com/BobJohnson24/ComfyUI-INT8-Fast/blob/main/Metrics.md)  
-- [convert_to_quant](https://github.com/silveroxides/convert_to_quant)  
-- [ComfyUI-AnimaTurbo](https://github.com/TheLegendOfKitty/ComfyUI-AnimaTurbo)  
-- [QLoRA](https://arxiv.org/abs/2305.14314) / [SmoothQuant](https://arxiv.org/abs/2211.10438) / [QuaRot](https://arxiv.org/abs/2404.00456) / [SpinQuant](https://arxiv.org/abs/2405.16406)  
+- [arXiv:2512.03673 ConvRot](https://arxiv.org/abs/2512.03673)
+- [FLUX.1-dev-ConvRot 模型卡](https://huggingface.co/SearchingMan/FLUX.1-dev-ConvRot)
+- [ComfyUI v0.27.0](https://github.com/Comfy-Org/ComfyUI/releases/tag/v0.27.0) / [PR #14859](https://github.com/Comfy-Org/ComfyUI/pull/14859)
+- [Anima INT8 ConvRot 权重](https://huggingface.co/obsxrver/ComfyUI-Native-INT8_ConvRot)
+- [INT8 质量基准（含 Anima）](https://github.com/BobJohnson24/ComfyUI-INT8-Fast/blob/main/Metrics.md)
+- [convert_to_quant](https://github.com/silveroxides/convert_to_quant)
+- [ComfyUI-AnimaTurbo](https://github.com/TheLegendOfKitty/ComfyUI-AnimaTurbo)
+- [QLoRA](https://arxiv.org/abs/2305.14314) / [SmoothQuant](https://arxiv.org/abs/2211.10438) / [QuaRot](https://arxiv.org/abs/2404.00456) / [SpinQuant](https://arxiv.org/abs/2405.16406)
 - 本仓：[`../findings/anima_int8_base_linear_audit.md`](../findings/anima_int8_base_linear_audit.md)、`library/runtime/int8_linear.py`、`bench/channel_stats/`

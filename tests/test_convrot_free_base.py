@@ -92,3 +92,38 @@ def test_dry_run_does_not_free_base_weights() -> None:
     assert result.patched_count == 1
     assert result.freed_modules == 0
     assert not is_base_weight_freed(linear)
+
+
+def test_freed_linear_survives_module_to_and_parent_to() -> None:
+    """Regression: free-base meta weights must not break accelerator.prepare.
+
+    Hot-test crash was:
+    ``NotImplementedError: Cannot copy out of meta tensor`` inside
+    ``model.to(self.device)`` after ConvRot freed 56 mlp weights.
+    """
+    linear = nn.Linear(32, 16, bias=False)
+    linear.weight.requires_grad_(False)
+    free_linear_weight_storage(linear)
+    assert linear.weight.device.type == "meta"
+
+    # Direct .to on the freed module.
+    linear.to("cpu")
+    assert linear.weight.device.type == "meta"
+
+    # Parent walk (same path Accelerate uses for unet.to / prepare_model).
+    class _UNet(nn.Module):
+        def __init__(self, child: nn.Module) -> None:
+            super().__init__()
+            self.mlp = nn.Module()
+            self.mlp.layer1 = child  # type: ignore[attr-defined]
+
+    unet = _UNet(linear)
+    unet.to("cpu")
+    unet.to(dtype=torch.float16)
+    assert linear.weight.device.type == "meta"
+    # dtype cast is also skipped for meta; shape preserved
+    assert tuple(linear.weight.shape) == (16, 32)
+
+    if torch.cuda.is_available():
+        unet.to("cuda")
+        assert linear.weight.device.type == "meta"

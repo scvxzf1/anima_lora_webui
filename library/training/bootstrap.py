@@ -210,6 +210,22 @@ class TrainingBootstrap:
         )
         prequant_path = getattr(args, "convrot_prequant_path", None) or None
 
+        # ConvRot quantizes frozen base weights only. In the normal training
+        # bootstrap, unet.requires_grad_(False) runs later in
+        # prepare_models_for_accelerator — after this hook. Freeze base here so
+        # online quant does not skip every Linear with requires_grad=True.
+        # (LoRA params live on ``network`` and are re-enabled later.)
+        if unet is not None:
+            unet.requires_grad_(False)
+        else:
+            # Fallback when callers omit unet: freeze org_module_ref bases.
+            for lora in getattr(network, "unet_loras", None) or []:
+                refs = getattr(lora, "org_module_ref", None) or []
+                for base in refs:
+                    weight = getattr(base, "weight", None)
+                    if weight is not None and bool(getattr(weight, "requires_grad", False)):
+                        weight.requires_grad_(False)
+
         result = apply_convrot_to_lora_network(
             network,
             mode=mode,  # type: ignore[arg-type]

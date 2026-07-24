@@ -1,8 +1,8 @@
 # ConvRot W8A 训练路径正式规格书（战略 C）
 
-状态：提案 / **核心已实现（实验默认关闭）**  
-适用版本：当前 main（设计冻结 + 2026-07-24 落地）  
-日期：2026-07-24  
+状态：提案 / **核心已实现（实验默认关闭）**
+适用版本：当前 main（设计冻结 + 2026-07-24 落地）
+日期：2026-07-24
 入口命令：
 
 ```bash
@@ -26,7 +26,7 @@ python tasks.py lora ... --base_compute w8a16_convrot   # 显式开启
 - adapter 侧预缩放：[`../methods/channel_scaling.md`](../methods/channel_scaling.md)
 - outlier 证据：`bench/channel_stats/`
 
-> **一句话：** 在 DiT 冻结 base 上自建 **group-wise Regular Hadamard（ConvRot）+ W8A16 / W8A8** 训练路径，挂在现有 LoRA `org_forward` 补丁缝上。  
+> **一句话：** 在 DiT 冻结 base 上自建 **group-wise Regular Hadamard（ConvRot）+ W8A16 / W8A8** 训练路径，挂在现有 LoRA `org_forward` 补丁缝上。
 > **默认 `base_compute=bf16`**；开启后不要与 block-swap int8 传输混淆。
 
 ---
@@ -139,10 +139,10 @@ y = base_w8a*(x) + lora_delta(x)
 
 ### 4.3 回归不变量（任何 MR 必须）
 
-1. 未设置 `base_compute` / 默认 bf16：行为与现 main 一致。  
-2. AdaLN / final / embedder 从未被 patch。  
-3. `compile_blocks` 仅在 patch 之后执行。  
-4. 保存的 adapter safetensors 不含 base quant payload（除非显式设计导出工具）。  
+1. 未设置 `base_compute` / 默认 bf16：行为与现 main 一致。
+2. AdaLN / final / embedder 从未被 patch。
+3. `compile_blocks` 仅在 patch 之后执行。
+4. 保存的 adapter safetensors 不含 base quant payload（除非显式设计导出工具）。
 5. merge 对 ConvRot base 默认拒绝或要求 dequant 路径。
 
 ---
@@ -161,20 +161,21 @@ y = base_w8a*(x) + lora_delta(x)
 
 ### 5.2 CLI
 
-- 挂在 `library/training/cli_args.py` 实验参数组。  
-- 用户文档写：`python tasks.py lora ... --base_compute w8a16_convrot`。  
+- 挂在 `library/training/cli_args.py` 实验参数组。
+- 用户文档写：`python tasks.py lora ... --base_compute w8a16_convrot`。
 - **禁止**与 `--block_swap_transfer_dtype int8` 共用别名或互相覆盖。
 
-### 5.3 WebUI（可延后）
+### 5.3 WebUI（MVP 已落地）
 
-- Phase 1 **可不做** WebUI。  
-- 若做：放在配置 → **实验 / 优化** 折叠；默认关闭；文案标明「实验、非默认、与 block-swap int8 无关」。  
-- 状态条建议：`base_compute`、group size、scope、已 patch 层数。
+- 位置：**配置** Tab → 分类「优化」→ 区块「显存与速度优化」→ block swap 簇下方。
+- 字段：`base_compute`（始终可见，默认 `bf16`）、`convrot_group_size` / `convrot_scope`（仅非 bf16 时展开；scope 固定 `mlp`）。
+- 文案标明实验、非默认；live 兼容提示与 `block_swap_transfer_dtype=int8` 互斥。
+- 未暴露：prequant 路径、Hadamard 种类、kernel env（仍用 CLI / 环境变量）。
 
 ### 5.4 UI / 日志文案（中文）
 
-- 开关标题：`ConvRot 冻结 base（W8A16）`  
-- 帮助：在冻结 DiT Linear 上对权重做分组 Hadamard 旋转后再 int8 存储/计算，用于缓解裸 int8 在 DiT 上的 outlier 问题；默认关闭；不等于 block-swap 传输压缩。  
+- 开关标题：`ConvRot 冻结 base（W8A16）`
+- 帮助：在冻结 DiT Linear 上对权重做分组 Hadamard 旋转后再 int8 存储/计算，用于缓解裸 int8 在 DiT 上的 outlier 问题；默认关闭；不等于 block-swap 传输压缩。
 - 启动日志：`[convrot] mode=w8a16 scope=mlp group=256 patched=N skipped=M`
 
 ---
@@ -248,7 +249,7 @@ setup_optimizer → accelerator.prepare → train loop
 
 `library/runtime/harness.py::build_anima` 编码同一 compile-last 不变量。若推理侧需要加载 W8A* 训练出的 adapter：
 
-- 默认 **不需要** base ConvRot（adapter 在原空间）；  
+- 默认 **不需要** base ConvRot（adapter 在原空间）；
 - 若要做 Phase 0 社区权重对齐，用独立 loader，**不要**塞进默认 `build_anima`。
 
 ### 7.3 monkey-patch 语义（硬约束）
@@ -262,8 +263,8 @@ lora.forward(x):
   return lora.org_forward(x) + lora_delta(x)
 ```
 
-ConvRot **只替换 `lora.org_forward`**。  
-**禁止**在 `apply_to` 之后 `setattr` 替换 child `nn.Linear`（会绕过 LoRA 链）。  
+ConvRot **只替换 `lora.org_forward`**。
+**禁止**在 `apply_to` 之后 `setattr` 替换 child `nn.Linear`（会绕过 LoRA 链）。
 `replace_frozen_base_linears_with_int8` 仅允许无 adapter 的探针场景。
 
 ---
@@ -278,20 +279,20 @@ ConvRot **只替换 `lora.org_forward`**。
 | Hydra / Ortho / StackedExperts / FeRA 等 | 常无（`apply_to` 后 `org_module` 已 del） | **默认跳过或后续工单** |
 | ReFT | 包 Block.forward，非 Linear | **不在 scope** |
 
-**Phase 1 默认支持面：** plain `LoRAModule`（`configs/methods/lora.toml` / gui `lora`）。  
+**Phase 1 默认支持面：** plain `LoRAModule`（`configs/methods/lora.toml` / gui `lora`）。
 **后续：** 统一在 `apply_to` 时保留 `org_module_ref`，或从 `org_forward.__self__` 安全取 Linear。
 
 ### 8.2 DoRA
 
 DoRA 直接读 `org_module_ref[0].weight`。仅改 `org_forward` 可能导致 magnitude 路径与 quant base 不一致。
 
-- Phase 1：**排除 DoRA** 或检测到 DoRA 时拒绝启用 `base_compute=*_convrot` 并给出明确错误。  
+- Phase 1：**排除 DoRA** 或检测到 DoRA 时拒绝启用 `base_compute=*_convrot` 并给出明确错误。
 - 后续：DoRA 读 dequant 权重或禁用 quant 路径上的 DoRA。
 
 ### 8.3 fuse / merge / bake
 
-- `fuse_weight` / `merge_to` / `tasks.py merge` 默认假设高精度可写 `weight`。  
-- ConvRot 开启时：merge **拒绝**或要求先 dequant 回 bf16 再折叠。  
+- `fuse_weight` / `merge_to` / `tasks.py merge` 默认假设高精度可写 `weight`。
+- ConvRot 开启时：merge **拒绝**或要求先 dequant 回 bf16 再折叠。
 - 文档与 `metadata.py` 必须同步。
 
 ### 8.4 block-swap int8
@@ -314,12 +315,12 @@ Phase 1 W8A16 可与 FEI Hydra 共存（若该变体能拿到 base 句柄）；W
 
 ### 8.6 channel_scaling
 
-- 只缩放 **adapter 输入**（`inv_scale` + `lora_down`），**不是** base int8 GEMM 预处理。  
+- 只缩放 **adapter 输入**（`inv_scale` + `lora_down`），**不是** base int8 GEMM 预处理。
 - 允许与 ConvRot 共存，但文档写清：二者坐标系不同，**禁止**实现成“双重旋转”。
 
 ### 8.7 5D latent
 
-- DiT 边界：`unsqueeze(2)` / `squeeze(2)`；Linear 只看最后一维 D。  
+- DiT 边界：`unsqueeze(2)` / `squeeze(2)`；Linear 只看最后一维 D。
 - ConvRot 不改变 `in_features`；FEI 仍在 unsqueeze 前 4D 计算。
 
 ### 8.8 torch.compile
@@ -337,9 +338,9 @@ Phase 1 W8A16 可与 FEI Hydra 共存（若该变体能拿到 base 句柄）；W
 
 ### 9.1 Group RHT
 
-- 输入：最后一维可被 `group_size` 整除的向量/矩阵维。  
-- 对 **in-feature** 维按 group 做 Regular Hadamard（正交、可逆、`R^{-1}=R^T` 在适当归一化下）。  
-- 复杂度：group-wise \(\mathcal{O}(K)\) 宣称（相对全维 \(\mathcal{O}(K^2)\)）。  
+- 输入：最后一维可被 `group_size` 整除的向量/矩阵维。
+- 对 **in-feature** 维按 group 做 Regular Hadamard（正交、可逆、`R^{-1}=R^T` 在适当归一化下）。
+- 复杂度：group-wise \(\mathcal{O}(K)\) 宣称（相对全维 \(\mathcal{O}(K^2)\)）。
 - 实现：`rht.py`；单测覆盖正交、可逆、batch shape、非整数除报错。
 
 ### 9.2 权重量化（旋转后）
@@ -350,7 +351,7 @@ scale_i = amax(|W_rot|_{i,:}) / 127
 W_q = round(W_rot / scale).clamp(-127, 127).to(int8)
 ```
 
-- per-**output-channel** absmax（与现 `quantize_weight_per_channel` 同形，但输入是旋转后权重）。  
+- per-**output-channel** absmax（与现 `quantize_weight_per_channel` 同形，但输入是旋转后权重）。
 - bias 必须为 `None`；`requires_grad` 必须为 `False`。
 
 ### 9.3 W8A16 forward（Phase 1）
@@ -380,23 +381,23 @@ y = F.linear(x_rot, W_hat)           # 或等价 matmul
 x → RHT → dynamic absmax quant → int8×int8 GEMM(W_q) → dequant → y
 ```
 
-- 默认 off。  
-- 第一实现允许 fake int8 matmul；接口与 buffer 布局按真 GEMM 预留。  
+- 默认 off。
+- 第一实现允许 fake int8 matmul；接口与 buffer 布局按真 GEMM 预留。
 - 独立 gate；初期建议 `torch_compile=false` 或限制 backend。
 
 ### 9.5 Scope 白名单 / 黑名单
 
 **可候选（与 `int8_linear` 一致）：**
 
-- MLP：`mlp.layer1`、`mlp.layer2`  
+- MLP：`mlp.layer1`、`mlp.layer2`
 - Attention：`self_attn.{qkv,q,k,v,kv,output}_proj`、`cross_attn.{q,k,v,kv,output}_proj`
 
 **硬排除：**
 
-- 一切 `adaln_*` / `*_modulation*`  
-- `final_layer.*`  
-- `x_embedder` / `t_embedder` / `pooled_text_proj` / `llm_adapter`  
-- 任意 trainable / `bias is not None`  
+- 一切 `adaln_*` / `*_modulation*`
+- `final_layer.*`
+- `x_embedder` / `t_embedder` / `pooled_text_proj` / `llm_adapter`
+- 任意 trainable / `bias is not None`
 - LoRA / router / FEI / guidance 参数
 
 **Phase 1 默认 scope：`mlp`。**
@@ -407,7 +408,7 @@ x → RHT → dynamic absmax quant → int8×int8 GEMM(W_q) → dequant → y
 y = base_convrot(x) + lora_delta(x)
 ```
 
-- `lora_delta` 始终在**原特征空间**计算（`lora_down(x)` 等）。  
+- `lora_delta` 始终在**原特征空间**计算（`lora_down(x)` 等）。
 - **不要**对 `lora_down` 输入强制 RHT，除非整条 adapter 路径重新定义（本规格禁止）。
 
 ---
@@ -430,13 +431,13 @@ def apply_convrot_to_lora_network(
 
 行为：
 
-1. 若检测到已 `compile_blocks`，**raise**。  
-2. 遍历 `network.unet_loras`（及明确支持的变体列表）。  
-3. 用 `original_name` + `classify_frozen_linear_module` 过滤。  
-4. 解析 base Linear：优先 `org_module_ref[0]`；无 ref 则按策略跳过并计入 `skipped`（Phase 1 不静默成功）。  
-5. 校验 `in_features % group_size == 0`、bias=None、frozen。  
-6. `online_from_bf16`：RHT → quant → `register_buffer` 到 lora（名 `_convrot_*`，避免与 `_int8_base_*` 冲突）。  
-7. 设置 `lora.org_forward = <closure>`。  
+1. 若检测到已 `compile_blocks`，**raise**。
+2. 遍历 `network.unet_loras`（及明确支持的变体列表）。
+3. 用 `original_name` + `classify_frozen_linear_module` 过滤。
+4. 解析 base Linear：优先 `org_module_ref[0]`；无 ref 则按策略跳过并计入 `skipped`（Phase 1 不静默成功）。
+5. 校验 `in_features % group_size == 0`、bias=None、frozen。
+6. `online_from_bf16`：RHT → quant → `register_buffer` 到 lora（名 `_convrot_*`，避免与 `_int8_base_*` 冲突）。
+7. 设置 `lora.org_forward = <closure>`。
 8. 返回 patch 清单；调用方打日志。
 
 **与 `patch_lora_frozen_base_forwards_with_int8` 的关系：** 控制流可镜像；**算子与 buffer 命名必须独立**；禁止内部调用旧 int8 quant 后假装已旋转。
@@ -475,7 +476,7 @@ def apply_convrot_to_lora_network(
 
 ### 12.3 手动 / 授权后
 
-- 短训 sample：同 seed / 同 prompt / bf16 vs W8A16。  
+- 短训 sample：同 seed / 同 prompt / bf16 vs W8A16。
 - 不默认跑全量训练或下载。
 
 ### 12.4 建议 pytest 入口（实现后）
@@ -527,7 +528,7 @@ timeout 60 .venv/bin/python -m pytest tests/test_convrot_rht.py tests/test_convr
 
 1. [x] 无 ref 跳过计入日志；0 patch raise
 2. [x] DoRA 拒绝
-3. [ ] WebUI 实验项（延后）
+3. [x] WebUI 实验项 MVP：`base_compute` / `convrot_group_size` / `convrot_scope=mlp`（配置页 → 显存与速度优化；默认 bf16）
 4. [x] merge 拒绝 + metadata stamp
 5. [ ] 稳定后迁 `docs/methods/`
 
@@ -586,14 +587,14 @@ timeout 60 .venv/bin/python -m pytest tests/test_convrot_rht.py tests/test_convr
 
 实现 MR 自检：
 
-- [ ] 新逻辑在 `library/runtime/convrot/`，bootstrap 仅薄调用  
-- [ ] 单函数 &lt;100 行优先；超限拆 helper  
-- [ ] 未改 `configs/base.toml` 默认  
-- [ ] 未把 int8_linear 改名贴牌  
-- [ ] 有 unit tests；有 dry_run  
-- [ ] 文档：本规格 + experimental 入口/状态同步  
-- [ ] `git diff --check` 干净  
-- [ ] 未触碰用户数据目录 / 未擅自下载大模型  
+- [ ] 新逻辑在 `library/runtime/convrot/`，bootstrap 仅薄调用
+- [ ] 单函数 &lt;100 行优先；超限拆 helper
+- [ ] 未改 `configs/base.toml` 默认
+- [ ] 未把 int8_linear 改名贴牌
+- [ ] 有 unit tests；有 dry_run
+- [ ] 文档：本规格 + experimental 入口/状态同步
+- [ ] `git diff --check` 干净
+- [ ] 未触碰用户数据目录 / 未擅自下载大模型
 
 贡献等级：**Tier 1.5**（效率/数值/现有算法扩展）；W8A8 真 kernel 可升 **Tier 2**。
 
@@ -601,12 +602,12 @@ timeout 60 .venv/bin/python -m pytest tests/test_convrot_rht.py tests/test_convr
 
 ## 18. 主要来源
 
-- [arXiv:2512.03673 ConvRot](https://arxiv.org/abs/2512.03673)  
-- [ComfyUI v0.27.0](https://github.com/Comfy-Org/ComfyUI/releases/tag/v0.27.0) / [PR #14859](https://github.com/Comfy-Org/ComfyUI/pull/14859)  
-- [Anima INT8 ConvRot 权重](https://huggingface.co/obsxrver/ComfyUI-Native-INT8_ConvRot)  
-- [INT8 质量基准（含 Anima）](https://github.com/BobJohnson24/ComfyUI-INT8-Fast/blob/main/Metrics.md)  
-- [convert_to_quant](https://github.com/silveroxides/convert_to_quant)  
-- [QLoRA](https://arxiv.org/abs/2305.14314) / [SmoothQuant](https://arxiv.org/abs/2211.10438) / [QuaRot](https://arxiv.org/abs/2404.00456)  
+- [arXiv:2512.03673 ConvRot](https://arxiv.org/abs/2512.03673)
+- [ComfyUI v0.27.0](https://github.com/Comfy-Org/ComfyUI/releases/tag/v0.27.0) / [PR #14859](https://github.com/Comfy-Org/ComfyUI/pull/14859)
+- [Anima INT8 ConvRot 权重](https://huggingface.co/obsxrver/ComfyUI-Native-INT8_ConvRot)
+- [INT8 质量基准（含 Anima）](https://github.com/BobJohnson24/ComfyUI-INT8-Fast/blob/main/Metrics.md)
+- [convert_to_quant](https://github.com/silveroxides/convert_to_quant)
+- [QLoRA](https://arxiv.org/abs/2305.14314) / [SmoothQuant](https://arxiv.org/abs/2211.10438) / [QuaRot](https://arxiv.org/abs/2404.00456)
 - 本仓：`docs/experimental/convrot_int8_training.md`、`docs/findings/anima_int8_base_linear_audit.md`、`library/runtime/int8_linear.py`、`library/training/bootstrap.py`、`bench/channel_stats/`
 
 ---

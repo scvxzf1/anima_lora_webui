@@ -91,3 +91,35 @@ def test_maybe_apply_convrot_base_rejects_dora_network_args() -> None:
             ),
             network,
         )
+
+
+def test_maybe_apply_convrot_base_freezes_unet_before_quant() -> None:
+    """Mirrors real bootstrap: base Linear still requires_grad until late freeze.
+
+    Regression for hot-test failure where patched=0 because ConvRot ran before
+    ``unet.requires_grad_(False)`` in prepare_models_for_accelerator.
+    """
+    linear = nn.Linear(32, 32, bias=False)
+    assert linear.weight.requires_grad is True
+    unet = nn.Module()
+    unet.linear = linear
+    network = _FakeNetwork([_FakeLoRAModule("blocks.0.mlp.layer1", linear)])
+    args = _args(base_compute="w8a16_convrot")
+    applied = TrainingBootstrap.maybe_apply_convrot_base(args, network, unet=unet)
+    assert applied is True
+    assert linear.weight.requires_grad is False
+    assert hasattr(network.unet_loras[0], "_convrot_quantized_weight")
+
+
+def test_maybe_apply_convrot_base_freezes_org_refs_when_unet_missing() -> None:
+    linear = nn.Linear(32, 32, bias=False)
+    assert linear.weight.requires_grad is True
+    network = _FakeNetwork([_FakeLoRAModule("blocks.0.mlp.layer1", linear)])
+    applied = TrainingBootstrap.maybe_apply_convrot_base(
+        _args(base_compute="w8a16_convrot"),
+        network,
+        unet=None,
+    )
+    assert applied is True
+    assert linear.weight.requires_grad is False
+    assert hasattr(network.unet_loras[0], "_convrot_quantized_weight")

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Iterable
+from typing import Any, Callable, Iterable
 
 import torch
 from torch import nn
@@ -12,10 +12,38 @@ _ATTR_FREED = "_convrot_weight_freed"
 _ATTR_FREED_BYTES = "_convrot_weight_freed_bytes"
 _ATTR_SHAPE = "_convrot_orig_weight_shape"
 _ATTR_DTYPE = "_convrot_orig_weight_dtype"
+_ATTR_META_SAFE_APPLY = "_convrot_meta_safe_apply"
 
 
 def is_base_weight_freed(linear: nn.Module) -> bool:
     return bool(getattr(linear, _ATTR_FREED, False))
+
+
+def _install_meta_safe_apply(linear: nn.Module) -> None:
+    """Make ``Module.to`` / ``accelerator.prepare`` skip meta weight tensors.
+
+    After free-base, ``linear.weight`` lives on ``device=meta``. A later
+    ``unet.to(device)`` / ``accelerator.prepare(unet)`` walks every Parameter
+    and raises ``NotImplementedError: Cannot copy out of meta tensor``. Patch
+    this module's ``_apply`` so meta tensors stay put while real tensors still
+    move/cast. Idempotent.
+    """
+    if bool(getattr(linear, _ATTR_META_SAFE_APPLY, False)):
+        return
+    original_apply: Callable = linear._apply
+
+    def _meta_safe_apply(fn, recurse=True):  # type: ignore[no-untyped-def]
+        def _skip_meta(tensor):  # type: ignore[no-untyped-def]
+            if torch.is_tensor(tensor) and getattr(tensor, "device", None) is not None:
+                if tensor.device.type == "meta":
+                    return tensor
+            return fn(tensor)
+
+        return original_apply(_skip_meta, recurse=recurse)
+
+    # Bind as an instance method so parent Module._apply recursion hits it.
+    linear._apply = _meta_safe_apply  # type: ignore[method-assign]
+    setattr(linear, _ATTR_META_SAFE_APPLY, True)
 
 
 def free_linear_weight_storage(linear: nn.Linear) -> int:
@@ -25,15 +53,20 @@ def free_linear_weight_storage(linear: nn.Linear) -> int:
     structure stays intact. Accidental calls to the original ``nn.Linear.forward``
     will fail loudly on meta tensors — ConvRot always replaces ``org_forward``.
 
+    Also installs a meta-safe ``_apply`` so later ``.to()`` / Accelerate prepare
+    does not try to materialize the freed weight.
+
     Returns approximate bytes previously occupied by the dense weight.
     """
     if not isinstance(linear, nn.Linear):
         raise TypeError(f"expected nn.Linear, got {type(linear).__name__}")
     if is_base_weight_freed(linear):
+        _install_meta_safe_apply(linear)
         return 0
     weight = linear.weight
     if weight.device.type == "meta":
         setattr(linear, _ATTR_FREED, True)
+        _install_meta_safe_apply(linear)
         return 0
     nbytes = int(weight.numel()) * int(weight.element_size())
     shape = tuple(int(d) for d in weight.shape)
@@ -44,6 +77,7 @@ def free_linear_weight_storage(linear: nn.Linear) -> int:
     setattr(linear, _ATTR_FREED_BYTES, nbytes)
     setattr(linear, _ATTR_SHAPE, shape)
     setattr(linear, _ATTR_DTYPE, dtype)
+    _install_meta_safe_apply(linear)
     return nbytes
 
 
