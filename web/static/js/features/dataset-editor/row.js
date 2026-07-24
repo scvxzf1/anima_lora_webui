@@ -12,15 +12,13 @@ import {
 } from './inline-help.js?v=module-bootstrap-20260714-stage-dataset5';
 import { createDatasetEditorDragHandle } from './item-drag.js?v=module-bootstrap-20260714-stage-dataset5';
 import { CAPTION_SOURCE_MODE_OPTIONS, help } from '../../config/catalog.js?v=module-bootstrap-20260714-stage-dataset5';
-import { captionSourceModeLabel, normalizeCaptionSourceMode } from '../anima-app/helpers/caption-source.js?v=module-bootstrap-20260714-stage-dataset5';
+import { normalizeCaptionSourceMode } from '../anima-app/helpers/caption-source.js?v=module-bootstrap-20260714-stage-dataset5';
 import { createHelpContent } from '../anima-app/helpers/config-field-ui-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
 import { datasetConfigLabel, datasetConfigValue } from '../anima-app/helpers/dataset-config-fields.js?v=module-bootstrap-20260714-stage-dataset5';
 import { getDatasetState } from '../anima-app/helpers/dataset-state-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
 import {
-    nlTagMixSummary,
     normalizeDatasetDefaults,
     normalizeDatasetEditorRows,
-    normalizeNlTagMix,
     normalizeTriggerClone,
 } from '../anima-app/helpers/dataset-values.js?v=module-bootstrap-20260714-stage-dataset5';
 import { datasetPreviewValidationText } from '../anima-app/helpers/dataset-preview.js?v=module-bootstrap-20260714-stage-dataset5';
@@ -76,27 +74,11 @@ export function createDatasetEditorRow(row, index, item = null) {
         const title = document.createElement('strong');
         title.className = 'dataset-row-title-text';
         title.textContent = `SUBSET ${index + 1} · 数据集组`;
-        const subtitle = document.createElement('span');
-        subtitle.className = 'dataset-row-meta';
         const settings = normalizeDatasetDefaults(row.settings || datasetEditorStateForActivePanel().defaults || {});
-        const mix = normalizeNlTagMix(row.nl_tag_mix);
-        const triggerClone = normalizeTriggerClone(row.trigger_clone);
-        const pathPattern = String(row.path_pattern || '*').trim() || '*';
-        subtitle.textContent = [
-            `${settings.resolution}px`,
-            `桶 ${settings.min_bucket_reso}-${settings.max_bucket_reso}/${settings.bucket_reso_steps}`,
-            `重复 ${row.num_repeats || 1}`,
-            row.recursive === false ? '递归关闭' : '',
-            pathPattern !== '*' ? `筛选 ${pathPattern}` : '',
-            captionSourceModeLabel(settings.caption_source_mode),
-            mix.enabled ? nlTagMixSummary(mix) : '',
-            triggerClone.enabled ? `触发克隆 x${triggerClone.num_repeats}` : '',
-            ].filter(Boolean).join(' · ');
-        subtitle.title = subtitle.textContent;
-            const dragHandle = createDatasetEditorDragHandle(index, item);
-            // Keep mark / title / summary meta on one horizontal line.
-            titleLine.append(mark, title, subtitle);
-            titleBox.append(titleLine);
+        const dragHandle = createDatasetEditorDragHandle(index, item);
+        // Left side keeps only mark + title; summary details live in right badges.
+        titleLine.append(mark, title);
+        titleBox.append(titleLine);
         const headActions = document.createElement('div');
         headActions.className = 'dataset-row-head-actions';
         const badges = document.createElement('div');

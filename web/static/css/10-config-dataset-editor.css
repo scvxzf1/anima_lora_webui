@@ -1538,26 +1538,9 @@ select.dataset-config-input {
     white-space: nowrap;
 }
 
-.dataset-row-meta {
-    flex: 1 1 auto;
-    min-width: 0;
-    color: var(--text-dim);
-    font-size: 0.86rem;
-    font-weight: 600;
-    line-height: 1.2;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
 .dataset-row-head strong {
     color: var(--text);
     font-size: 0.96rem;
-}
-
-.dataset-row-head span {
-    color: var(--text-dim);
-    font-size: 0.86rem;
 }
 
 .dataset-row-head-actions {
@@ -1566,6 +1549,44 @@ select.dataset-config-input {
     gap: 0.35rem;
     justify-content: flex-end;
     align-items: center;
+    min-width: 0;
+}
+
+.dataset-row-badges {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 0.3rem;
+    justify-content: flex-end;
+    align-items: center;
+    min-width: 0;
+}
+
+.dataset-row-badge {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.3rem;
+    min-height: 30px;
+    padding: 0.22rem 0.5rem;
+    border: 1px solid var(--border-soft);
+    border-radius: 4px;
+    background: var(--bg-input);
+    color: var(--text);
+    white-space: nowrap;
+}
+
+.dataset-row-badge small {
+    color: var(--text-dim);
+    font-size: 0.78rem;
+    font-weight: 800;
+    line-height: 1.1;
+    text-transform: uppercase;
+}
+
+.dataset-row-badge strong {
+    color: var(--text);
+    font-size: 0.9rem;
+    font-weight: 800;
+    line-height: 1.1;
 }
 
 .dataset-row-paths {

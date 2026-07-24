@@ -2971,12 +2971,15 @@ def test_dataset_json_caption_switch_ui_is_wired() -> None:
     assert "'caption_extension'" in caption_extension_factory
     assert "createHelpContent('caption_extension'" in caption_extension_factory
 
-    assert "normalizeNlTagMix(row.nl_tag_mix)" in row_factory
-    assert "nlTagMixSummary(mix)" in row_factory
+    assert "normalizeNlTagMix(row.nl_tag_mix)" not in row_factory
+    assert "nlTagMixSummary(mix)" not in row_factory
+    assert "dataset-row-meta" not in row_factory
     assert "const bucketText = settings.enable_bucket" in row_factory
     assert "const validationText = datasetPreviewValidationText(settings)" in row_factory
     assert "['桶', bucketText]" in row_factory
     assert "['验证', validationText]" in row_factory
+    assert "dataset-row-badges" in row_factory
+    assert "dataset-row-badge" in row_factory
     assert "createDatasetRepeatSettingField(row, index)" in source
     assert "panel.appendChild(createDatasetRepeatSettingField(row, index));" in source
     assert "bottomActions.append(remove);" in row_factory
