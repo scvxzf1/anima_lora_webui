@@ -287,3 +287,4 @@ JSON 证据：
 | 2026-07-25 | **P1.5 dtype 交通税**：dequant 目标 dtype、RHT/GEMM 去强制 fp32、hadamard bf16 buffer、scale `mul_`；热测 W8A16 **1.05× / 4.14GB**（`convrot_mem_speed_p15.json`） |
 | 2026-07-25 | **P1.6/1.7**：W8A8 kn 布局、bwd 免完整 dequant、共享 Hadamard；热测相对 P1.5 **中性**（`p16`/`p17.json`） |
 | 2026-07-25 | **P1.8 + compile 热测**：dequant scratch 默认关；`--torch-compile` 下 W8A16 **1.036× / 4.11GB**（`convrot_mem_speed_compile_p18.json`）；step profile tax~8% |
+| 2026-07-25 | **质量复测 + scope=all**：ckpt W8A16 仍 2/3、W8A8 3/3；scope=all free W8A16 **3.44GB / 1.08×**（compile 3.43GB / 1.08×） |

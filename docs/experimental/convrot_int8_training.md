@@ -483,6 +483,38 @@ JSON：`output/tests/convrot_mem_speed_compile_p18.json`
 
 **结论：** 训练常用 compile 路径上 W8A16 已逼近 bf16（+3.6%），显存仍省 ~0.8 GB。W8A8 在 compile 下仍 ~1.45×，主税在 int8 GEMM/act quant，非 dtype 交通。
 
+### G.10 质量复测 + scope=all 显存（2026-07-25，P1.5–1.8 后）
+
+#### 质量（相对历史 2/3 gate 模式，**非回归**）
+
+| 探针 | 结果 |
+| --- | --- |
+| toy equivalence W8A16 seeds 0–2 | out≤0.9% / grad≤0.7% **PASS** |
+| toy equivalence W8A8 seeds 0–2 | out≤1.3% / grad≤0.9% **PASS** |
+| full-ckpt W8A16 mlp syl@256 | **2/3** PASS（seed2 grad 6.6% >5%；seed0/1 OK）— 与历史 `seeds012` / `syl_g256` 同型 |
+| full-ckpt W8A8 mlp | **3/3** PASS（优于历史 2/3） |
+| full-ckpt W8A16 **scope=all** | **2/3** PASS（seed0 grad 7.2% >5%） |
+
+JSON：`output/tests/convrot_ckpt_w8a16_p18.json`、`convrot_ckpt_w8a8_p18.json`、`convrot_ckpt_w8a16_scope_all.json`
+
+#### scope=all 热测（eager / compile）
+
+| 路径 | peak GB | sec/step | ×同 scope bf16 | patched | freed |
+| --- | --- | --- | --- | --- | --- |
+| bf16 LoRA@all | 5.03 | 1.57 | 1.00 | 0 | 0 |
+| **W8A16 free@all** | **3.44** | 1.70 | **1.08** | 196 | **3360 MB** |
+| W8A8 free@all | 3.69 | 2.80 | 1.78 | 196 | 3360 MB |
+| bf16@all + compile | 5.00 | 1.20 | 1.00 | 0 | 0 |
+| **W8A16@all + compile** | **3.43** | 1.30 | **1.08** | 196 | 3360 MB |
+
+JSON：`output/tests/convrot_mem_speed_scope_all.json`、`convrot_mem_speed_scope_all_compile.json`
+
+**产品叙事：**
+
+- **速度优先 / 默认：** `scope=mlp` + compile → W8A16 **~1.04×**，peak ~4.1 GB。  
+- **显存优先：** `scope=all`（mlp+attn）+ free_base → peak **~3.4 GB**（再省 ~0.7 GB vs mlp-only），step ~1.08× 同 scope bf16；质量门仍是历史同型 2/3。  
+- W8A8 仍不作为速度默认；scope=all 时更慢。
+
 ### H. P0-C：prequant_checkpoint 加载（2026-07-25）
 
 实现：`library/runtime/convrot/prequant.py` + `apply.py` 接线；导出：`scripts/experiments/convrot_export_prequant.py`。
