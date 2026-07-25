@@ -155,6 +155,10 @@ def test_apply_convrot_w8a8_mode() -> None:
         network, mode="w8a8", scope="mlp", group_size=16
     )
     assert result.mode == "w8a8"
+    # P1.6: W8A8 stores contiguous [K,N] (= weight.T) for torch._int_mm.
+    q = network.unet_loras[0]._convrot_quantized_weight
+    assert tuple(q.shape) == (32, 16)
+    assert getattr(network.unet_loras[0], "_convrot_weight_layout") == "kn"
     x = torch.randn(2, 32)
     y = network.unet_loras[0].org_forward(x)
     assert y.shape == (2, 16)

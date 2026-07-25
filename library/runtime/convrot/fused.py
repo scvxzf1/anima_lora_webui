@@ -167,10 +167,18 @@ class _FusedW8A16Fn(torch.autograd.Function):
         w_q, w_scale = ctx.saved_tensors
         hadamard = getattr(ctx, "hadamard", None)
         dtype = getattr(ctx, "compute_dtype", torch.float32)
-        w_hat = dequantize_weight(w_q, w_scale, dtype=dtype)
-        if w_hat.device != grad_y.device:
-            w_hat = w_hat.to(device=grad_y.device)
-        grad_rot = grad_y.to(dtype=dtype) @ w_hat
+        # grad_rot = (grad_y * scale) @ W_q  — avoids full [N,K] dequant temp.
+        # W[n,k] = W_q[n,k] * scale[n]  ⇒  gy @ W = (gy * scale) @ W_q
+        gy = grad_y.to(dtype=dtype)
+        scale = w_scale.to(device=gy.device, dtype=dtype)
+        if scale.dim() == 1:
+            gy = gy * scale  # broadcast over last dim N
+        else:
+            gy = gy * scale.reshape(1, -1)
+        w = w_q.to(dtype=dtype)
+        if w.device != gy.device:
+            w = w.to(device=gy.device)
+        grad_rot = gy @ w
         # RHT is involutory; stay in compute_dtype (no fp32 hop).
         grad_x = _rotate_acts(grad_rot, ctx.group_size, hadamard=hadamard)
         if ctx.x_dtype != grad_x.dtype:
@@ -180,18 +188,29 @@ class _FusedW8A16Fn(torch.autograd.Function):
 
 class _FusedW8A8Fn(torch.autograd.Function):
     @staticmethod
-    def forward(ctx, x, w_q, w_scale, group_size: int, hadamard: torch.Tensor | None):
+    def forward(
+        ctx,
+        x,
+        w_q,
+        w_scale,
+        group_size: int,
+        hadamard: torch.Tensor | None,
+        weight_layout: str,
+    ):
         # RHT in act TC dtype; absmax quant still promotes to fp32 internally.
+        # ``weight_layout``: "nk" classic [N,K]; "kn" pre-transposed for _int_mm.
         compute_dtype = _resolve_compute_dtype(x)
         x_work = x.to(dtype=compute_dtype) if x.dtype != compute_dtype else x
         x_rot = _rotate_acts(x_work, int(group_size), hadamard=hadamard)
+        layout = "kn" if weight_layout == "kn" else "nk"
         with torch.profiler.record_function("convrot::act_quant"):
             x_q, x_scale = quantize_activation_absmax_int8(x_rot)
         with torch.profiler.record_function("convrot::gemm_int8"):
-            y = int8_mm_scaled(x_q, x_scale, w_q, w_scale)
+            y = int8_mm_scaled(x_q, x_scale, w_q, w_scale, weight_layout=layout)
         ctx.group_size = int(group_size)
         ctx.hadamard = hadamard
         ctx.compute_dtype = compute_dtype
+        ctx.weight_layout = layout
         ctx.save_for_backward(w_q, w_scale)
         ctx.x_dtype = x.dtype
         return y
@@ -200,12 +219,25 @@ class _FusedW8A8Fn(torch.autograd.Function):
     def backward(ctx, grad_y):
         w_q, w_scale = ctx.saved_tensors
         hadamard = getattr(ctx, "hadamard", None)
-        # Keep bwd dequant in fp32 for STE stability (act quant is already coarse).
-        w_hat = dequantize_weight(w_q, w_scale, dtype=torch.float32)
-        if w_hat.device != grad_y.device:
-            w_hat = w_hat.to(device=grad_y.device)
-        grad_rot = grad_y.to(torch.float32) @ w_hat
-        # Rotate back in compute_dtype when possible to cut traffic.
+        layout = getattr(ctx, "weight_layout", "nk")
+        # Keep bwd accumulate in fp32 for STE stability.
+        # kn: grad_rot = (gy * scale) @ w_kn.T
+        # nk: grad_rot = (gy * scale) @ w_nk
+        # Avoids materializing full dequant W [N,K].
+        gy = grad_y.to(torch.float32)
+        scale = w_scale.to(device=gy.device, dtype=torch.float32)
+        if scale.dim() == 1:
+            gy = gy * scale
+        else:
+            gy = gy * scale.reshape(1, -1)
+        w = w_q.to(torch.float32)
+        if w.device != gy.device:
+            w = w.to(device=gy.device)
+        if layout == "kn":
+            # w is [K,N]; need [N,K] as right factor → w.T
+            grad_rot = gy @ w.transpose(0, 1)
+        else:
+            grad_rot = gy @ w
         compute_dtype = getattr(ctx, "compute_dtype", torch.float32)
         if compute_dtype in (torch.float16, torch.bfloat16):
             grad_rot_c = grad_rot.to(dtype=compute_dtype)
@@ -214,7 +246,7 @@ class _FusedW8A8Fn(torch.autograd.Function):
             grad_x = _rotate_acts(grad_rot, ctx.group_size, hadamard=hadamard)
         if ctx.x_dtype != grad_x.dtype:
             grad_x = grad_x.to(dtype=ctx.x_dtype)
-        return grad_x, None, None, None, None
+        return grad_x, None, None, None, None, None
 
 
 def fused_w8a16_forward(
@@ -246,14 +278,27 @@ def fused_w8a8_forward(
     *,
     group_size: int,
     hadamard: torch.Tensor | None = None,
+    weight_layout: str = "nk",
 ) -> torch.Tensor:
-    assert_group_divides(int(quantized_weight.shape[1]), group_size)
+    """W8A8 fused path.
+
+    ``weight_layout``:
+      * ``nk`` — classic Linear ``[out, in]`` (default, tests / modules)
+      * ``kn`` — pre-transposed ``[in, out]`` stored by apply (P1.6 hot path)
+    """
+    layout = "kn" if weight_layout == "kn" else "nk"
+    if layout == "kn":
+        # [K, N] → K is dim 0
+        assert_group_divides(int(quantized_weight.shape[0]), group_size)
+    else:
+        assert_group_divides(int(quantized_weight.shape[1]), group_size)
     y = _FusedW8A8Fn.apply(
         x,
         quantized_weight.to(device=x.device),
         scale.to(device=x.device, dtype=torch.float32),
         int(group_size),
         hadamard.to(device=x.device) if hadamard is not None else None,
+        layout,
     )
     if x.is_floating_point() and y.dtype != x.dtype:
         return y.to(dtype=x.dtype)

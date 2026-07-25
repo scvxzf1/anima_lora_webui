@@ -41,6 +41,9 @@ _BUFFER_HADAMARD = "_convrot_hadamard"
 _ATTR_GROUP = "_convrot_group_size"
 _ATTR_MODE = "_convrot_mode"
 _ATTR_WEIGHT_SOURCE = "_convrot_weight_source"
+# W8A8 stores int8 as contiguous [K,N] (= weight.T) so torch._int_mm skips a
+# per-step transpose+copy. W8A16 keeps classic [N,K] for dequant F.linear.
+_ATTR_WEIGHT_LAYOUT = "_convrot_weight_layout"
 
 
 @dataclass(frozen=True)
@@ -110,25 +113,39 @@ def _maybe_attach_hadamard(
     group_size: int,
     device: torch.device,
     dtype: torch.dtype = torch.bfloat16,
+    shared_cache: dict[tuple[int, str, str, str], torch.Tensor] | None = None,
 ) -> torch.Tensor | None:
     """Precompute dense RHT matrix once (compile-friendly; skip env in hot path).
 
     FWHT backend stays dynamic (no fixed matmul). Dense is the 3080 default.
     Prefer bf16 on CUDA so group_rht can skip a per-call dtype cast when acts
     are bf16 (training default).
+
+    When ``shared_cache`` is provided, all LoRAs with the same
+    ``(group_size, device, dtype)`` share one Hadamard buffer (P1.7) instead of
+    duplicating ``group×group`` per module.
     """
     if rht_backend() != "dense":
         return None
+    store_dtype = dtype if device.type == "cuda" else torch.float32
+    cache_key = (int(group_size), str(device), str(store_dtype), hadamard_kind())
+    if shared_cache is not None and cache_key in shared_cache:
+        h = shared_cache[cache_key]
+        _set_buffer(lora, _BUFFER_HADAMARD, h)
+        return h
     try:
         h = normalized_hadamard(
             int(group_size),
             device=device if device.type != "meta" else "cpu",
-            dtype=dtype if device.type == "cuda" else torch.float32,
+            dtype=store_dtype,
             kind=hadamard_kind(),
         )
     except ValueError:
         return None
-    _set_buffer(lora, _BUFFER_HADAMARD, h.contiguous())
+    h = h.contiguous()
+    if shared_cache is not None:
+        shared_cache[cache_key] = h
+    _set_buffer(lora, _BUFFER_HADAMARD, h)
     return h
 
 
@@ -140,6 +157,7 @@ def _install_org_forward(
 ) -> None:
     # Close over precomputed Hadamard when present so forward avoids cache/env.
     hadamard = getattr(lora, _BUFFER_HADAMARD, None)
+    weight_layout = getattr(lora, _ATTR_WEIGHT_LAYOUT, "nk")
 
     if mode == "w8a16":
 
@@ -169,16 +187,19 @@ def _install_org_forward(
             _lora=lora,
             _gs=group_size,
             _h=hadamard,
+            _layout=weight_layout,
         ) -> torch.Tensor:
             h = getattr(_lora, _BUFFER_HADAMARD, None)
             if h is None:
                 h = _h
+            layout = getattr(_lora, _ATTR_WEIGHT_LAYOUT, _layout)
             return w8a8_forward_from_buffers(
                 x,
                 _lora._convrot_quantized_weight,
                 _lora._convrot_scale,
                 group_size=_gs,
                 hadamard=h,
+                weight_layout=str(layout),
             )
 
     lora.org_forward = _base_forward
@@ -471,6 +492,10 @@ def apply_convrot_to_lora_network(
             )
         )
 
+    # Share one Hadamard buffer across all modules with the same
+    # (group_size, device, dtype, kind) — group=256 → 256×256 bf16 ≈ 128 KiB total.
+    hadamard_share: dict[tuple[int, str, str, str], torch.Tensor] = {}
+
     for lora, base_module, block_idx, family, original_name in kept:
         lora_name = str(getattr(lora, "lora_name", original_name))
         layer_mode = _resolve_layer_mode(
@@ -575,7 +600,15 @@ def apply_convrot_to_lora_network(
             continue
 
         patches.append(patch)
-        _set_buffer(lora, _BUFFER_Q, q.contiguous())
+        # W8A8: store [K,N] so torch._int_mm avoids per-step t().contiguous()
+        # (same nbytes as [N,K]; W8A16 keeps [N,K] for dequant F.linear).
+        if layer_mode == "w8a8":
+            q_store = q.t().contiguous()
+            setattr(lora, _ATTR_WEIGHT_LAYOUT, "kn")
+        else:
+            q_store = q.contiguous()
+            setattr(lora, _ATTR_WEIGHT_LAYOUT, "nk")
+        _set_buffer(lora, _BUFFER_Q, q_store)
         _set_buffer(lora, _BUFFER_SCALE, scale.to(torch.float32).contiguous())
         setattr(lora, _ATTR_GROUP, group_size)
         setattr(lora, _ATTR_MODE, layer_mode)
@@ -584,6 +617,7 @@ def apply_convrot_to_lora_network(
             lora,
             group_size=group_size,
             device=base_module.weight.device,
+            shared_cache=hadamard_share,
         )
         _install_org_forward(lora, mode=layer_mode, group_size=group_size)
 

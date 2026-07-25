@@ -95,3 +95,39 @@ def test_backend_env_float_forces_fallback(monkeypatch: pytest.MonkeyPatch) -> N
     w_q, w_s = quantize_weight_per_output_channel(w)
     y = int8_mm_scaled(x_q, x_s, w_q, w_s)  # prefer auto but env=float
     assert torch.isfinite(y).all()
+
+
+def test_int8_mm_scaled_kn_layout_matches_nk() -> None:
+    """P1.6: pre-transposed [K,N] must match classic [N,K] float path."""
+    torch.manual_seed(6)
+    m, k, n = 24, 64, 48
+    from library.runtime.convrot.quant import quantize_weight_per_output_channel
+
+    x = torch.randn(m, k)
+    w = torch.randn(n, k)
+    x_q, x_s = quantize_activation_absmax_int8(x)
+    w_q, w_s = quantize_weight_per_output_channel(w)
+    y_nk = int8_mm_scaled(x_q, x_s, w_q, w_s, prefer="float", weight_layout="nk")
+    y_kn = int8_mm_scaled(
+        x_q, x_s, w_q.t().contiguous(), w_s, prefer="float", weight_layout="kn"
+    )
+    assert torch.allclose(y_nk, y_kn, atol=1e-5, rtol=1e-5)
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA for _int_mm kn")
+def test_int8_mm_scaled_kn_cuda_int_mm_matches_nk() -> None:
+    torch.manual_seed(7)
+    m, k, n = 32, 256, 128
+    device = torch.device("cuda")
+    from library.runtime.convrot.quant import quantize_weight_per_output_channel
+
+    x = torch.randn(m, k, device=device)
+    w = torch.randn(n, k, device=device)
+    x_q, x_s = quantize_activation_absmax_int8(x)
+    w_q, w_s = quantize_weight_per_output_channel(w)
+    y_nk = int8_mm_scaled(x_q, x_s, w_q, w_s, prefer="int_mm", weight_layout="nk")
+    y_kn = int8_mm_scaled(
+        x_q, x_s, w_q.t().contiguous(), w_s, prefer="int_mm", weight_layout="kn"
+    )
+    rel = (y_kn - y_nk).norm() / y_nk.norm().clamp_min(1e-8)
+    assert rel.item() < 1e-5

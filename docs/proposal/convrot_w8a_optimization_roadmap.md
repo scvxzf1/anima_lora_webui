@@ -283,3 +283,4 @@ JSON 证据：
 | 2026-07-25 | **P0-D 完成**：regular Hadamard（Kronecker \(4^k\)）+ `ANIMA_CONVROT_HADAMARD`；W8A16 multi-seed：regular@64 seed0 过 5% gate，grad_max 最低；默认仍 sylvester@256 |
 | 2026-07-25 | **P0-A3 完成**：fusion microbench 否决 P2 K/epilogue；**P1-F/G/H 实现 + 热测** `convrot_mem_speed_p1.json`：full W8A16 仍最省（4.34GB/1.21×）；largest 最快（1.13×）但 peak 回吐 |
 | 2026-07-25 | **P1.5 dtype 交通税**：dequant 目标 dtype、RHT/GEMM 去强制 fp32、hadamard bf16 buffer、scale `mul_`；热测 W8A16 **1.05× / 4.14GB**（`convrot_mem_speed_p15.json`） |
+| 2026-07-25 | **P1.6/1.7**：W8A8 kn 布局、bwd 免完整 dequant、共享 Hadamard；热测相对 P1.5 **中性**（`p16`/`p17.json`） |

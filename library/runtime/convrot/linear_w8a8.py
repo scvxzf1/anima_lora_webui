@@ -76,12 +76,18 @@ def w8a8_forward_from_buffers(
     *,
     group_size: int,
     hadamard: torch.Tensor | None = None,
+    weight_layout: str = "nk",
 ) -> torch.Tensor:
     """Functional W8A8 path for LoRA ``org_forward`` closures.
 
     Optional precomputed ``hadamard`` is forwarded into the fused path (P1-H).
+    ``weight_layout="kn"`` expects pre-transposed int8 ``[in, out]`` (P1.6).
     """
-    assert_group_divides(int(quantized_weight.shape[1]), group_size)
+    layout = "kn" if weight_layout == "kn" else "nk"
+    if layout == "kn":
+        assert_group_divides(int(quantized_weight.shape[0]), group_size)
+    else:
+        assert_group_divides(int(quantized_weight.shape[1]), group_size)
     if fused_enabled():
         return fused_w8a8_forward(
             x,
@@ -89,6 +95,7 @@ def w8a8_forward_from_buffers(
             scale,
             group_size=group_size,
             hadamard=hadamard,
+            weight_layout=layout,
         )
     # RHT in act TC dtype; absmax quant still promotes to fp32 internally (P1.5).
     compute_dtype = (
@@ -104,5 +111,6 @@ def w8a8_forward_from_buffers(
         x_rot,
         quantized_weight.to(device=x.device),
         scale.to(device=x.device),
+        weight_layout=layout,  # type: ignore[arg-type]
     )
     return y.to(dtype=x.dtype) if x.is_floating_point() and y.dtype != x.dtype else y

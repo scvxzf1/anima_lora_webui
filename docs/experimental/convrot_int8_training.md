@@ -449,6 +449,20 @@ JSON：`output/tests/convrot_mem_speed_p15.json`
 
 **未做：** P1-J trust-mask；W8A8 预转置 `w_q.T` 常驻 buffer；compile_blocks 下 re-profile。
 
+### G.8 P1.6 / P1.7：W8A8 kn 布局 + 反传无完整 dequant + 共享 Hadamard（2026-07-25）
+
+| 改动 | 作用 | 热测结论 |
+| --- | --- | --- |
+| W8A8 存 `[K,N]`（`weight_layout=kn`） | 去掉每步 `w_q.t().contiguous()` | 相对 P1.5 **中性**（sec ±2% 噪声） |
+| act quant：half 上 amax 再升 fp32 | 少一次 full fp32 abs | 同上 |
+| bwd：`grad @ W` → `(gy*scale) @ W_q` | 不物化完整 dequant `W` | peak 不变（已有 ckpt 主导） |
+| 同 group 共享一个 Hadamard buffer | 56×128KiB → 1×128KiB | alloc_after_apply 仍 3.10GB（探针粒度下不可见） |
+
+热测 JSON：`output/tests/convrot_mem_speed_p16.json`、`p17.json`  
+相对 P1.5：W8A16 仍 **~1.05× / 4.14GB**；W8A8 仍 **~1.47× / 4.43GB**。
+
+**产品默认不变：** full-mlp free-base **W8A16**。P1.6/1.7 是正确性/清洁实现，不单独构成速度叙事。
+
 ### H. P0-C：prequant_checkpoint 加载（2026-07-25）
 
 实现：`library/runtime/convrot/prequant.py` + `apply.py` 接线；导出：`scripts/experiments/convrot_export_prequant.py`。
