@@ -31,9 +31,103 @@ from scripts.experiments.int8_linear_equivalence_probe import (
     DEFAULT_DATA_DIR,
     DEFAULT_DIT_PATH,
     _load_checkpoint_batch,
+    discover_cached_batch_pairs,
     select_cached_batch_pair,
 )
 import re
+
+
+def _pick_cuda_device() -> torch.device:
+    """Prefer a PyTorch-supported GPU (skip sm_52 GTX 960 display adapters).
+
+    Dual-GPU boxes often expose the display card as ``cuda:0`` under
+    ``CUDA_DEVICE_ORDER=PCI_BUS_ID``. Probes should still find the 3080-class
+    card without requiring the caller to set ``CUDA_VISIBLE_DEVICES``.
+    """
+    if not torch.cuda.is_available():
+        raise SystemExit("CUDA required")
+    n = torch.cuda.device_count()
+    best = None
+    best_score = -1
+    for i in range(n):
+        try:
+            major, minor = torch.cuda.get_device_capability(i)
+        except Exception:
+            continue
+        # Current torch wheels need >= sm_75; 3080 is sm_86.
+        if major < 7 or (major == 7 and minor < 5):
+            continue
+        props = torch.cuda.get_device_properties(i)
+        # Score: prefer higher CC, then more memory.
+        score = major * 100 + minor * 10 + int(props.total_memory / (1024**3))
+        if score > best_score:
+            best_score = score
+            best = i
+    if best is None:
+        raise SystemExit(
+            "no CUDA device with compute capability >= 7.5 "
+            f"(saw {n} device(s); set CUDA_VISIBLE_DEVICES to a 3080-class GPU)"
+        )
+    name = torch.cuda.get_device_name(best)
+    print(f"using cuda:{best} ({name})", flush=True)
+    return torch.device(f"cuda:{best}")
+
+
+def _select_cached_batch_pair(
+    data_dir: Path,
+    cache_index: int,
+    *,
+    min_latent_tokens: int = 0,
+) -> object:
+    """Pick a cache pair; optionally require latent spatial tokens ≥ N.
+
+    ``min_latent_tokens`` filters by ``H*W`` of the cached latent (VAE latent
+    grid, not pixel). Used for same-VRAM higher-resolution KPI sweeps without
+    re-preprocessing.
+    """
+    if int(min_latent_tokens or 0) <= 0:
+        return select_cached_batch_pair(data_dir, cache_index)
+    import numpy as np
+
+    pairs = discover_cached_batch_pairs(data_dir)
+    if not pairs:
+        raise FileNotFoundError(
+            f"no matched *_anima.npz / *_anima_te.safetensors pairs under {data_dir}"
+        )
+    matched = []
+    for pair in pairs:
+        try:
+            with np.load(pair.latent_path) as z:
+                # Anima caches use keys like ``latents_144x112``, not bare ``latents``.
+                arr = None
+                for key in z.files:
+                    if "latent" in key.lower() and getattr(z[key], "ndim", 0) >= 3:
+                        arr = z[key]
+                        break
+                if arr is None:
+                    for key in z.files:
+                        if getattr(z[key], "ndim", 0) >= 3:
+                            arr = z[key]
+                            break
+                if arr is None:
+                    continue
+                tokens = int(arr.shape[-2] * arr.shape[-1])
+        except Exception:
+            continue
+        if tokens >= int(min_latent_tokens):
+            matched.append((tokens, pair))
+    if not matched:
+        raise FileNotFoundError(
+            f"no cache pair with latent H*W >= {min_latent_tokens} under {data_dir}"
+        )
+    matched.sort(key=lambda t: t[0])  # smallest eligible first (stable)
+    idx = int(cache_index)
+    if idx < 0 or idx >= len(matched):
+        raise IndexError(
+            f"cache index {idx} outside 0..{len(matched) - 1} "
+            f"(min_latent_tokens={min_latent_tokens})"
+        )
+    return matched[idx][1]
 
 
 def _create_lora(anima, *, seed, device, dtype, rank, alpha, scope):
@@ -93,9 +187,12 @@ def run_case(
     large_layer_mode: str | None = None,
     large_min_in_features: int | None = None,
     torch_compile: bool = False,
+    compile_mode: str | None = None,
     lora_rank: int = 4,
     lora_alpha: float | None = None,
     batch_size: int = 1,
+    cache_index: int = 0,
+    min_latent_tokens: int = 0,
 ) -> dict:
     if gemm_env is not None:
         os.environ["ANIMA_CONVROT_INT8_GEMM"] = gemm_env
@@ -114,8 +211,12 @@ def run_case(
     torch.cuda.synchronize()
 
     bs = max(1, int(batch_size))
-    pair = select_cached_batch_pair(data_dir, 0)
-    model_inputs, target, _meta = _load_checkpoint_batch(
+    pair = _select_cached_batch_pair(
+        data_dir,
+        int(cache_index),
+        min_latent_tokens=int(min_latent_tokens or 0),
+    )
+    model_inputs, target, batch_meta = _load_checkpoint_batch(
         pair,
         batch_size=bs,
         seed=seed,
@@ -124,6 +225,9 @@ def run_case(
         text_variant=0,
     )
     x, timesteps, context, padding_mask = model_inputs
+    # latent tokens = H*W of DiT spatial grid (x is 5D B,C,T,H,W)
+    latent_hw = int(x.shape[-2] * x.shape[-1])
+    latent_shape = list(x.shape)
 
     anima = load_anima_model(
         device=device,
@@ -183,10 +287,12 @@ def run_case(
         from library.runtime.harness import compile_blocks_for_training
 
         # Minimal training-like compile: inductor, grad-ckpt on (probe enables it).
+        mode = (compile_mode or "").strip() or None
         compile_blocks_for_training(
             anima,
             network,
             backend="inductor",
+            mode=mode,
             grad_ckpt=True,
         )
 
@@ -242,9 +348,15 @@ def run_case(
         "large_layer_mode": large_layer_mode,
         "large_min_in_features": large_min_in_features,
         "torch_compile": bool(torch_compile),
+        "compile_mode": (compile_mode or None),
         "lora_rank": rank,
         "lora_alpha": alpha,
         "batch_size": bs,
+        "cache_index": int(cache_index),
+        "min_latent_tokens": int(min_latent_tokens or 0),
+        "latent_hw": latent_hw,
+        "latent_shape": latent_shape,
+        "latent_path": str(getattr(pair, "latent_path", "")),
         "steps": steps,
         "elapsed_sec": elapsed,
         "sec_per_step": elapsed / steps,
@@ -336,6 +448,15 @@ def main() -> int:
         help="Compile DiT blocks after ConvRot apply (mirrors training order).",
     )
     parser.add_argument(
+        "--compile-mode",
+        type=str,
+        default=None,
+        help=(
+            "Optional torch.compile mode passed to compile_blocks_for_training "
+            "(e.g. default, reduce-overhead, max-autotune). Default None."
+        ),
+    )
+    parser.add_argument(
         "--lora-rank",
         type=int,
         default=4,
@@ -353,11 +474,26 @@ def main() -> int:
         default=1,
         help="Microbatch size (repeats one cached sample). Default 1.",
     )
+    parser.add_argument(
+        "--cache-index",
+        type=int,
+        default=0,
+        help="Index into discovered (or min-token-filtered) cache pairs.",
+    )
+    parser.add_argument(
+        "--min-latent-tokens",
+        type=int,
+        default=0,
+        help=(
+            "If >0, only use cache pairs whose latent H*W >= this. "
+            "Example: 896x1200 latent is often 56x75=4200; 1792x2400 ~112x150=16800."
+        ),
+    )
     args = parser.parse_args()
 
     if not torch.cuda.is_available():
         raise SystemExit("CUDA required")
-    device = torch.device("cuda:0")
+    device = _pick_cuda_device()
     dtype = torch.bfloat16
     prequant_path = str(args.prequant_path) if args.prequant_path is not None else None
 
@@ -495,9 +631,12 @@ def main() -> int:
                 group_size=args.group_size,
                 seed=args.seed,
                 torch_compile=bool(args.torch_compile),
+                compile_mode=args.compile_mode,
                 lora_rank=int(args.lora_rank),
                 lora_alpha=args.lora_alpha,
                 batch_size=int(args.batch_size),
+                cache_index=int(args.cache_index),
+                min_latent_tokens=int(args.min_latent_tokens or 0),
             )
         )
 

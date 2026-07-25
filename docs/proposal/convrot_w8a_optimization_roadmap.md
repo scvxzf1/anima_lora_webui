@@ -237,7 +237,8 @@ JSON 证据：
 6. [DONE] P1.11  否决 W8A8 half/TF32 默认加速；W8A8 scale fp32
 7. [DONE] Phase1 平台期文档 §G.16 — 下一刀仅当：换卡 / 真要 step≤bf16 / 或训整模 QAT
 8. [DONE] 替代 KPI：同显存更大 rank（§G.17）+ 同显存更大 batch（§G.19；**all@b2**）
-9. 仅当未来 profile 显示 RHT+quant 内存链 >50% 时，再开 P2-K Triton spike
+9. [DONE] §G.20：分辨率轴阻断；compile autotune 不关合税 → **Phase 1 micro-opt 冻结**
+10. 仅当未来 profile 显示 RHT+quant 内存链 >50% 时，再开 P2-K Triton spike
 ```
 
 依赖关系：
@@ -246,7 +247,7 @@ JSON 证据：
 - **regular 默认切换** 可选（WebUI 已有）；sylvester@256 仍兼容默认  
 - **P1-J 搁置**（冻结 base 路径无权重 STE 可修）  
 - **K/L 强依赖「convrot tax ≥50%」**，当前 ~8% 不满足  
-- **Phase 1 平台期 + 替代 KPI 已验证**：rank（mlp/all）与 batch（**仅 all**）同峰可抬；再抠 step 需换硬件或 P2
+- **Phase 1 冻结**：rank/batch 替代 KPI 已验证；分辨率本机无轴；残余 ~4% step 需换硬件或 P2；不再为抠 1% 开默认 half/TF32/scratch
 
 ---
 
@@ -304,3 +305,4 @@ JSON 证据：
 | 2026-07-25 | **同显存更大 rank**：W8A16@r32 peak **4.20GB** 仍 < bf16@r4 **4.95GB**（§G.17）；probe 支持 `--lora-rank` |
 | 2026-07-26 | **scope=all@r32** peak **3.63GB**；P1.12 frozen `w_q/scale` 不进 `save_for_backward`（速度中性清洁） |
 | 2026-07-26 | **同显存更大 batch**：mlp@b2 越峰；**all@b2 4.42GB**、**all@r32@b2 4.62GB** 仍 < bf16@b1 4.95（§G.19）；probe `--batch-size`；bwd cast scratch 否决 |
+| 2026-07-26 | **分辨率 KPI 阻断**（全 cache 同 16128 token）；`max-autotune-no-cudagraphs` 两端各 ~2.7% 但 **×bf16 仍 1.04**（§G.20）；probe 自动选 CC≥7.5 GPU + `--compile-mode` |

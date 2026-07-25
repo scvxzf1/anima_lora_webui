@@ -723,6 +723,32 @@ mlp free-base 省下的 ~0.84 GB **不够** 在同峰下把 microbatch 从 1 翻
 | 显存 + 表达力 | **all + r32 + b2** | peak **4.62 GB** < 4.95 |
 | 质量优先 | regular@64 | gate 3/3 |
 
+### G.20 分辨率 KPI 阻断 + compile mode 残余税（2026-07-26）
+
+**同显存更高分辨率：本机不可测（Anima 不变量）。**
+
+- `post_image_dataset/rokkotsu_goddess` 下 57 对 cache（文件名含 0896×1200 与 1792×2400）**全部**是 `latents_144x112`，`H×W = 16128` token（CONSTANT_TOKEN_BUCKETS 的 4200-family 变体之一经 VAE 压缩后的实际 grid）。
+- 像素文件名不同 ≠ DiT token 数不同；native flatten 按 token-count family 复用图。
+- 因此「同峰训更大分辨率」在 **当前 cache + bucket 表** 上 **没有可区分的探针轴**。要测需改 bucket / 真不同 token family 的 cache（超出 Phase 1 micro-opt）。
+- 探针仍加了 `--min-latent-tokens` / `--cache-index` 以备未来多 family cache。
+
+**`torch.compile` mode 不关合残余税：**
+
+| mode | bf16 sec | W8A16 sec | ×bf16 | 备注 |
+| --- | --- | --- | --- | --- |
+| default (`None`) | 1.133 | 1.180 | **1.042** | 训练常用 |
+| `max-autotune-no-cudagraphs` | 1.103 | 1.148 | **1.041** | 两端各快 ~2.7%；**相对税不变** |
+| `max-autotune` / `reduce-overhead` | — | — | — | CUDAGraph overwrite，与 grad-ckpt 训练 step 不兼容 |
+
+结论：autotune 是 **通用 compile 旋钮**，不是 ConvRot 专属 ROI；残余 ~4% 仍是 dequant+RHT 相对 bf16 TC 的结构税。
+
+**探针工程：**
+
+- `convrot_mem_speed_probe.py` 自动挑选 CC≥7.5 GPU（避免 PCI 序下 GTX 960 当 cuda:0）。
+- `--compile-mode`、`--batch-size`、`--lora-rank`、`--min-latent-tokens` 已齐。
+
+JSON：`output/tests/convrot_compile_{default,max-autotune-no-cudagraphs}_{bf16,w8a16_free}.json`。
+
 ### H. P0-C prequant 实现注记
 
 实现：`library/runtime/convrot/prequant.py` + `apply.py` 接线；导出：`scripts/experiments/convrot_export_prequant.py`。
@@ -849,7 +875,7 @@ W8A8 regular g=256：seed0 **grad_rel≈4.1**（异常大，seed1/2 正常）→
 
 ## 一句话结论
 
-**ConvRot 是修正「DiT 上裸 rowwise int8 效果差」的正确方向**（group-wise Hadamard 压 outlier）。本仓已自建 W8A16 / W8A8；free-base 后显存可低于 bf16；compile 下 W8A16 ~1.05× bf16。Phase 1 KPI = 显存/质量；**step ≤ bf16 非 KPI**。替代叙事：**同显存更大 rank**（mlp@r32）与 **同显存更大 batch**（仅 `scope=all`@b2 / all@r32@b2）。默认 sylvester@256；质量 opt-in regular@64。Triton 门槛未达。
+**ConvRot 是修正「DiT 上裸 rowwise int8 效果差」的正确方向**（group-wise Hadamard 压 outlier）。本仓已自建 W8A16 / W8A8；free-base 后显存可低于 bf16；compile 下 W8A16 ~1.05× bf16。Phase 1 KPI = 显存/质量；**step ≤ bf16 非 KPI**。替代叙事：**同显存更大 rank**（mlp@r32）与 **同显存更大 batch**（仅 `scope=all`@b2 / all@r32@b2）。分辨率同峰本机无独立轴（全 cache 同 token family）。默认 sylvester@256；质量 opt-in regular@64。Triton 门槛未达；**Phase 1 micro-opt 冻结**。
 
 ---
 ## 1. ConvRot 是什么
