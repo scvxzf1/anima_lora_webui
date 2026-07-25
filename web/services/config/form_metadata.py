@@ -105,8 +105,8 @@ FIELD_HELP: dict[str, dict[str, str]] = {
         "ko": "T-LoRA 타임스텝 마스킹 사용 시 최소 활성 랭크. 가장 낮은 노이즈에서 이 값까지 감소.",
     },
     "alpha_rank_scale": {
-        "en": "Scale alpha proportionally when T-LoRA reduces rank, keeping effective learning rate stable across timesteps.",
-        "ko": "T-LoRA가 랭크를 줄일 때 alpha를 비례적으로 조정하여 타임스텝별 실효 학습률 유지.",
+        "en": "Power-law exponent for the T-LoRA rank schedule. 1.0 is linear; >1 steeper (more capacity near high noise); <1 flatter.",
+        "ko": "T-LoRA 랭크 스케줄의 멱함수 지수. 1.0은 선형, >1은 더 가파름(고노이즈 쪽 용량 증가), <1은 더 평탄.",
     },
     "network_train_unet_only": {
         "en": "Train only the DiT (U-Net). Text encoder weights are frozen. Recommended for most LoRA training.",

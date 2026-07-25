@@ -86,6 +86,14 @@ def stamp_lora_save_metadata(
         )
         metadata["ss_router_source"] = str(cfg.router_source)
 
+    # T-LoRA is training-only (mask not in weights). Stamp the schedule so
+    # continue-training / experiment replay can recover the exact prior even
+    # when ss_network_args was not written.
+    if cfg.use_timestep_mask:
+        metadata["ss_use_timestep_mask"] = "true"
+        metadata["ss_min_rank"] = str(int(cfg.min_rank))
+        metadata["ss_alpha_rank_scale"] = str(float(cfg.alpha_rank_scale))
+
     if spec.name == "vera":
         plugin_args = getattr(cfg, "plugin_args", {}) or {}
         projection_key = plugin_args.get(

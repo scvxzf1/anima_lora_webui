@@ -81,9 +81,11 @@ class BaseLoRAModule(torch.nn.Module):
         self.register_buffer("alpha", torch.tensor(alpha))
 
         self._has_channel_scale = False
-        # Default all-ones mask → identity multiply; every forward can apply
-        # `lx * self._timestep_mask` unconditionally (no None-vs-Tensor guard
-        # under torch.compile). T-LoRA rebinds via LoRANetwork.set_timestep_mask.
+        # Default all-ones mask → identity multiply. Prefer applying the mask
+        # only on the training path (scaffold: `_gate` runs after the eval
+        # early-return; custom forwards should gate with `self.training`).
+        # Always-a-tensor avoids None-vs-Tensor branches under torch.compile.
+        # T-LoRA rebinds via LoRANetwork.set_timestep_mask.
         self.register_buffer(
             "_timestep_mask",
             torch.ones(1, lora_dim, dtype=torch.float32),

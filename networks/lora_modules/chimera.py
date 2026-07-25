@@ -461,11 +461,15 @@ class ChimeraHydraLoRAModule(BaseLoRAModule):
         if self._centered_gate:
             pi_c = pi_c - (1.0 / self.num_experts_content)
 
-        # λ application + T-LoRA mask (content only). Freq branch keeps
-        # full rank at every t — by construction the freq pool's job is
-        # coarse-stage / high-σ refinement which T-LoRA's argument says
-        # WANTS the full rank (TimeStep Master-style asymmetric mixture).
-        lx_c = lx_c * self.lambda_c.to(work) * self._timestep_mask.to(work)
+        # λ application + T-LoRA mask (content only, training-only).
+        # Freq branch keeps full rank at every t — by construction the freq
+        # pool's job is coarse-stage / high-σ refinement which T-LoRA's
+        # argument says WANTS the full rank (TimeStep Master-style
+        # asymmetric mixture). Eval/inference keep content full rank too so
+        # the schedule is absorbed into trained columns rather than reapplied.
+        lx_c = lx_c * self.lambda_c.to(work)
+        if self.training:
+            lx_c = lx_c * self._timestep_mask.to(work)
         lx_f = lx_f * self.lambda_f.to(work)
 
         if self.dropout is not None and self.training:

@@ -1,6 +1,6 @@
 export const FIELD_LABEL_ZH = {
     add_reft: '启用 ReFT',
-    alpha_rank_scale: '按秩缩放 Alpha',
+    alpha_rank_scale: '秩日程幂指数',
     apply_ffn_lora: 'EasyControl FFN LoRA',
     attn_mode: '注意力后端',
     balance_loss_warmup_ratio: '均衡损失预热比例',

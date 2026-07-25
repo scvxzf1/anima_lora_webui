@@ -54,7 +54,13 @@ def run_validation(
     accelerator = ctx.accelerator
 
     ctx.optimizer_eval_fn()
-    accelerator.unwrap_model(ctx.network).eval()
+    network = accelerator.unwrap_model(ctx.network)
+    network.eval()
+    # FM validation uses is_train=False (conditioning clears the mask), but
+    # CMMD/sample-style branches only flip eval mode. Clear explicitly so a
+    # stale T-LoRA buffer cannot leak into either path.
+    if hasattr(network, "clear_timestep_mask"):
+        network.clear_timestep_mask()
     unwrapped_unet = accelerator.unwrap_model(ctx.unet)
     block_swap_paused = False
     if (

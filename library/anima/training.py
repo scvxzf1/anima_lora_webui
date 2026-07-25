@@ -958,6 +958,11 @@ def sample_images(
     net = accelerator.unwrap_model(network) if network is not None else None
     if net is not None:
         net.eval()
+        # Sample does not go through apply_router_conditioning; force full
+        # rank so a stale T-LoRA buffer cannot shrink any module that still
+        # multiplies the mask outside a training-only guard.
+        if hasattr(net, "clear_timestep_mask"):
+            net.clear_timestep_mask()
 
     block_swap_paused = False
     if getattr(args, "disable_block_swap_for_eval", False) and hasattr(

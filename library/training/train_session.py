@@ -524,8 +524,12 @@ def run_training_session(trainer, args) -> None:
         total_batch_size=total_batch_size,
     )
     add_model_hash_metadata(metadata, args)
+    # Always stamp the resolved network kwargs. net_kwargs already merges
+    # TOML/top-level allowlisted keys (including T-LoRA) with any explicit
+    # network_args; gating on args.network_args alone dropped GUI/TOML-only
+    # training metadata such as use_timestep_mask / min_rank.
     metadata, minimum_metadata = finalize_metadata(
-        metadata, net_kwargs=net_kwargs if args.network_args else None
+        metadata, net_kwargs=net_kwargs or None
     )
 
     # Saver owns every save / remove operation plus the accelerator

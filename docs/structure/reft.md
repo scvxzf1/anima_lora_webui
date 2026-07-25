@@ -106,7 +106,7 @@ if self._timestep_mask is not None and self.training:
 edit = F.linear(delta, self.rotate_layer.weight.T)
 ```
 
-Same motivation as T-LoRA on LoRA — fine-detail refinement wants the full subspace, high-noise coarse steps don't need it. The ReFT mask is computed in `networks/lora_anima/network.py:577–600`, using the same GPU-resident shared-tensor pattern, and cleared at inference the same way.
+Same motivation as T-LoRA on LoRA — fine-detail refinement wants the full subspace, high-noise coarse steps don't need it. The ReFT mask is computed in `networks/lora_anima/routing_state.py::set_reft_timestep_mask`, using the same GPU-resident shared-tensor pattern, and cleared at inference the same way.
 
 ---
 

@@ -40,7 +40,7 @@ $$
 \text{mask}\ =\ [\,\underbrace{1,1,\dots,1}_{r(t)},\ \underbrace{0,0,\dots,0}_{R_\text{max}-r(t)}\,]
 $$
 
-One mask per step, **shared by reference** across all ~280 adapted LoRA modules. `networks/lora_anima/network.py:551–575` builds it on device each step and every module's `_timestep_mask` attribute points at the same tensor, so 280 module lookups cost one GPU-resident tensor — no CPU↔GPU transfers, no per-module allocations.
+One mask per step, **shared by reference** across all ~280 adapted LoRA modules. `networks/lora_anima/routing_state.py::set_timestep_mask` builds it on device each step and every module's `_timestep_mask` attribute points at the same tensor, so 280 module lookups cost one GPU-resident tensor — no CPU↔GPU transfers, no per-module allocations.
 
 The mask build itself stays on device:
 
@@ -81,9 +81,14 @@ so the full rank-$r(t)$ delta still composes cleanly with the frozen weight. `or
 
 ### Training-only
 
-`if self.training` is the whole story for inference. At test time the mask pointer is cleared (`clear_timestep_mask`, `network.py:602–608`) and the full rank is always live. Why: the trained `A` and `B` absorb the schedule into their columns — high-index columns are trained against fewer steps (only high-noise ones) but they still learn something, and the inference forward runs unmasked on purpose. Baking the mask into inference would erase that signal.
+`if self.training` is the primary guard inside each module forward. In addition:
 
-A call site in `train.py` hits `set_timestep_mask(timesteps)` and `set_reft_timestep_mask(timesteps)` right after noise sampling, per step.
+- `library/training/forward/router_conditioning.py` only calls `set_timestep_mask` / `set_reft_timestep_mask` when `is_train=True`; otherwise it calls `clear_timestep_mask` (fills the shared buffer with ones).
+- training-time sample previews (`library/anima/training.py::sample_images`) and validation (`library/training/validation.py`) also `network.eval()` and `clear_timestep_mask()` so a stale buffer cannot leak into previews.
+
+Why full-rank at eval: the trained `A` and `B` absorb the schedule into their columns — high-index columns are trained against fewer steps (only high-noise ones) but they still learn something, and the inference forward runs unmasked on purpose. Baking the mask into inference would erase that signal.
+
+The per-step train call site is `library/training/noise_target.py` → `apply_router_conditioning(...)` right after noise sampling.
 
 ---
 
@@ -95,7 +100,7 @@ $$
 r_\text{reft}(t)\ =\ \big\lfloor (1-t)^{\alpha}\,(d_\text{reft} - 1)\big\rfloor + 1
 $$
 
-`network.py:577–600`. Same power-law curve, different dimension, floor of 1. The ReFT `learned_source` output is masked exactly the same way as the LoRA `lora_down` output, before projection back through `rotate_layer.T`.
+`routing_state.set_reft_timestep_mask`. Same power-law curve, different dimension, floor of 1. The ReFT `learned_source` output is masked exactly the same way as the LoRA `lora_down` output, before projection back through `rotate_layer.T`.
 
 ---
 

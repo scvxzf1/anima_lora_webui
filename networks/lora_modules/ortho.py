@@ -146,8 +146,12 @@ class OrthoLoRAModule(BaseLoRAModule):
             x_lora = self._rebalance(x.to(work))
             lx = torch.nn.functional.linear(x_lora, Q_eff)
         # λ stays a fp32 Parameter (Adam state precision); cast at multiply
-        # so the chain remains bf16. Same for the timestep mask buffer.
-        lx = lx * self.lambda_layer.to(work) * self._timestep_mask.to(work)
+        # so the chain remains bf16. T-LoRA mask is training-only — inference
+        # and eval run full rank so high-index columns remain usable and merge
+        # stays bit-equivalent to unmasked adapter forward.
+        lx = lx * self.lambda_layer.to(work)
+        if self.training:
+            lx = lx * self._timestep_mask.to(work)
 
         if self.dropout is not None and self.training:
             lx = torch.nn.functional.dropout(lx, p=self.dropout)
@@ -497,7 +501,9 @@ class OrthoHydraLoRAModule(BaseLoRAModule):
             # dtype here so the balance loss reads the router-native gate.
             self._last_gate = gate
 
-        lx = lx * self.lambda_layer.to(work) * self._timestep_mask.to(work)
+        lx = lx * self.lambda_layer.to(work)
+        if self.training:
+            lx = lx * self._timestep_mask.to(work)
 
         if self.dropout is not None and self.training:
             lx = torch.nn.functional.dropout(lx, p=self.dropout)

@@ -36,10 +36,16 @@ def apply_router_conditioning(
     that re-fire conditioning) can pass None and the content router will
     silently no-op for that step.
     """
-    if hasattr(network, "set_timestep_mask"):
-        network.set_timestep_mask(timesteps, max_timestep=1.0)
-    if hasattr(network, "set_reft_timestep_mask"):
-        network.set_reft_timestep_mask(timesteps, max_timestep=1.0)
+    # T-LoRA is training-only. Validation/sample paths may still call this
+    # hook after network.eval(); force full rank there so stale or newly
+    # written masks cannot shrink Ortho/DoRA/FeRA/Chimera eval forwards.
+    if is_train:
+        if hasattr(network, "set_timestep_mask"):
+            network.set_timestep_mask(timesteps, max_timestep=1.0)
+        if hasattr(network, "set_reft_timestep_mask"):
+            network.set_reft_timestep_mask(timesteps, max_timestep=1.0)
+    elif hasattr(network, "clear_timestep_mask"):
+        network.clear_timestep_mask()
     # σ-conditional HydraLoRA router (Track B, timestep-hydra.md). No-op
     # unless use_sigma_router is on and the variant is hydra/ortho_hydra.
     if hasattr(network, "set_sigma"):

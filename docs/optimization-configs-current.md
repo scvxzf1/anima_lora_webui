@@ -112,7 +112,7 @@ configs/base.toml
 | `lora_adapter_kind` | WebUI catalog | 在表单中选择 LoRA/LoHa/LoKr/GLoRA/VeRA 类别 | 默认 `lora`；候选 `lora`、`loha`、`lokr`、`glora`、`vera` | 同一表单切换 adapter 类型 | 需要同步清理互斥 flags | 是 |
 | `use_ortho` | `lora.toml`、`gui-methods/ortholora.toml`、`tlora*.toml`、WebUI catalog | 启用 OrthoLoRA 正交参数化 | LoRA family 当前 `true`；plain GUI LoRA 无 | 减少更新污染、T-LoRA 组合 | 训练机制更复杂，合并/兼容需确认 | 是 |
 | `use_timestep_mask` | `lora.toml`、`tlora*.toml`、VeRA、WebUI catalog | 启用 T-LoRA 时间步 rank mask | T-LoRA/VeRA `true` | 不同去噪阶段分配容量 | 增加 `min_rank` 等超参 | 是 |
-| `min_rank` / `alpha_rank_scale` | T-LoRA/Hydra/Chimera/VeRA 配置 | 控制时间步 mask 最低秩和 alpha 缩放 | T-LoRA GUI `min_rank=8`；Hydra 8GB `1`；VeRA `64` | 时间步容量控制 | 过低可能欠拟合局部阶段 | 是 |
+| `min_rank` / `alpha_rank_scale` | T-LoRA/Hydra/Chimera/VeRA 配置 | 控制时间步 mask 最低秩与 power-law 日程指数 | T-LoRA GUI `min_rank=8`；Hydra 8GB `1`；VeRA `64` | 时间步容量控制 | 过低可能欠拟合局部阶段 | 是 |
 | `channel_scaling_alpha` | `lora.toml`、Chimera、Turbo/SPD network | 通道缩放强度 | 常见 `0.5` | LoRA/实验方法通道缩放 | 与方法实现耦合 | 是 |
 | `use_moe_style` | `lora.toml`、Hydra GUI | Hydra/FeRA MoE 结构 | 候选 `false`、`shared_A`、`independent_A`；Hydra 多为 `shared_A` | 专家路由类 adapter | 显存、速度、推理兼容性复杂度上升 | 是 |
 | `route_per_layer` | `lora.toml`、Hydra GUI、WebUI catalog | 是否逐层路由 | LoRA method 当前 `true`；Hydra GUI `true` | MoE 路由细粒度 | 路由统计和调参复杂 | 是 |

@@ -48,8 +48,9 @@ class StackedExpertsLoRAModule(BaseLoRAModule):
     (B, E) by `LoRANetwork.set_routing_weights`.
 
     T-LoRA composes via the inherited `_timestep_mask` (1, r), broadcast over
-    the expert axis. `rank_dropout` is unsupported here — the base helper
-    expects 2D/3D/4D lx; this forward produces 4D (B, L, E, r).
+    the expert axis and applied only while ``self.training``. `rank_dropout`
+    is unsupported here — the base helper expects 2D/3D/4D lx; this forward
+    produces 4D (B, L, E, r).
     """
 
     # Anima's adapted targets are projection Linears.
@@ -189,8 +190,9 @@ class StackedExpertsLoRAModule(BaseLoRAModule):
             lx = torch.einsum("...j,eij->...ei", x_proj, R_q)
 
             lx = lx * self.lambda_layer.to(compute_dtype)
-            # _timestep_mask (1, r) broadcasts uniformly over the expert axis.
-            lx = lx * self._timestep_mask
+            # T-LoRA is training-only; (1, r) broadcasts over the expert axis.
+            if self.training:
+                lx = lx * self._timestep_mask
 
             if self.dropout is not None and self.training:
                 lx = torch.nn.functional.dropout(lx, p=self.dropout)
@@ -215,7 +217,8 @@ class StackedExpertsLoRAModule(BaseLoRAModule):
                 self.lora_down_weight.float(),
             )
 
-            lx = lx * self._timestep_mask
+            if self.training:
+                lx = lx * self._timestep_mask
             if self.dropout is not None and self.training:
                 lx = torch.nn.functional.dropout(lx, p=self.dropout)
 

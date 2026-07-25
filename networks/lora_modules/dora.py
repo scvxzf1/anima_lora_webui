@@ -167,7 +167,9 @@ class DoRALoRAModule(LoRAModule):
 
         x_lora = self._rebalance(x)
         lx = self.lora_down(x_lora)
-        lx = lx * self._timestep_mask
+        # T-LoRA is training-only; eval/inference keep full rank.
+        if self.training:
+            lx = lx * self._timestep_mask
 
         if self.dropout is not None and self.training:
             lx = torch.nn.functional.dropout(lx, p=self.dropout)
