@@ -323,20 +323,27 @@ def test_apply_attaches_precomputed_hadamard_buffer() -> None:
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA scale storage path")
-def test_apply_stores_scale_bf16_on_cuda() -> None:
-    """P1.10: CUDA path stores per-out scale as bf16 to cut per-step cast."""
+def test_apply_stores_scale_bf16_on_cuda_w8a16_only() -> None:
+    """P1.10/11: W8A16 CUDA scale is bf16; W8A8 keeps float32 for grad gate."""
     device = torch.device("cuda")
-    linear = nn.Linear(32, 16, bias=False).to(device)
-    linear.weight.requires_grad_(False)
-    lora = _FakeLoRAModule("blocks.0.mlp.layer1", linear)
-    network = _FakeLoRANetwork([lora])
-    apply_convrot_to_lora_network(network, mode="w8a16", scope="mlp", group_size=16)
-    scale = network.unet_loras[0]._convrot_scale
-    assert scale.dtype == torch.bfloat16
-    assert scale.device.type == "cuda"
+    linear16 = nn.Linear(32, 16, bias=False).to(device)
+    linear16.weight.requires_grad_(False)
+    lora16 = _FakeLoRAModule("blocks.0.mlp.layer1", linear16)
+    apply_convrot_to_lora_network(
+        _FakeLoRANetwork([lora16]), mode="w8a16", scope="mlp", group_size=16
+    )
+    assert lora16._convrot_scale.dtype == torch.bfloat16
+
+    linear8 = nn.Linear(32, 16, bias=False).to(device)
+    linear8.weight.requires_grad_(False)
+    lora8 = _FakeLoRAModule("blocks.0.mlp.layer1", linear8)
+    apply_convrot_to_lora_network(
+        _FakeLoRANetwork([lora8]), mode="w8a8", scope="mlp", group_size=16
+    )
+    assert lora8._convrot_scale.dtype == torch.float32
     x = torch.randn(2, 32, device=device, dtype=torch.bfloat16)
-    y = network.unet_loras[0].org_forward(x)
-    assert torch.isfinite(y).all()
+    assert torch.isfinite(lora16.org_forward(x)).all()
+    assert torch.isfinite(lora8.org_forward(x)).all()
 
 
 def test_apply_large_mode_requires_threshold() -> None:

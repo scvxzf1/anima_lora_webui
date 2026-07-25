@@ -609,14 +609,16 @@ def apply_convrot_to_lora_network(
             q_store = q.contiguous()
             setattr(lora, _ATTR_WEIGHT_LAYOUT, "nk")
         _set_buffer(lora, _BUFFER_Q, q_store)
-        # P1.10: store scale in training compute dtype (bf16 on CUDA) so
-        # dequant / (gy*scale) skip a per-step float32 cast. Quantization
-        # still used float32 absmax; values are just rounded for storage.
-        scale_dtype = (
-            torch.bfloat16
-            if base_module.weight.device.type == "cuda"
-            else torch.float32
-        )
+        # P1.10: W8A16 can store scale as bf16 on CUDA (dequant/(gy*scale) skip
+        # a cast). W8A8 keeps float32 — bf16 scale alone pushed seed0 grad_rel
+        # over the 5% full-ckpt gate (P1.11d diagnosis vs p18 3/3).
+        if (
+            layer_mode == "w8a16"
+            and base_module.weight.device.type == "cuda"
+        ):
+            scale_dtype = torch.bfloat16
+        else:
+            scale_dtype = torch.float32
         _set_buffer(
             lora,
             _BUFFER_SCALE,

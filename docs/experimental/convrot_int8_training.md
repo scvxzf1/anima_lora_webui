@@ -24,6 +24,7 @@ python tasks.py lora ... --base_compute w8a8_convrot
 #   ANIMA_CONVROT_RHT=dense|fwht         # 默认 dense（本机 3080 更快；fwht 仅 sylvester）
 #   ANIMA_CONVROT_HADAMARD=sylvester|regular  # 也可由 --convrot_hadamard 写入
 #   ANIMA_CONVROT_W8A16_KERNEL=dequant|int8pack  # 默认 dequant（int8pack 本机更慢）
+#   ANIMA_CONVROT_STE_TF32=0|1               # 默认 0；W8A8 STE 用 TF32（更快但可能破 grad gate）
 
 # P1-G / P1-F 可选（默认全关，行为与 Phase 1 相同）
 #   --convrot_min_in_features 4096
@@ -560,7 +561,7 @@ W8A8 仍 ~1.4× bf16@compile；主税仍是 `_int_mm` + act quant，非 save/cas
 | largest-only + compile | mlp + largest | 4.51 GB | 1.17 s | 1.031 | 略快、省显存少 |
 | attention_out | out-proj only | 4.66 GB | 1.40 s | 1.014 | 几乎不省显存 |
 | **显存优先** | all + free + compile | **3.43 GB** | 1.30 s | **1.08** | 极限 VRAM |
-| W8A8 mlp + compile | mlp | **4.11 GB** | **1.27 s** | **~1.13** | 可用第二档（P1.11） |
+| W8A8 mlp + compile | mlp | **4.14 GB** | **1.58 s** | **~1.39** | 非速度默认（见 G.15） |
 
 WebUI：`convrot_scope` 选项扩展为 `mlp | all | attention_out | attn | mlp,attn`。
 
@@ -568,8 +569,8 @@ WebUI：`convrot_scope` 选项扩展为 `mlp | all | attention_out | attn | mlp,
 
 | 项 | 内容 |
 | --- | --- |
-| scale 存储 | CUDA 上 per-out scale 存 **bf16**（apply）；fused 入口不再强制 `float32` |
-| 目的 | dequant / `(gy*scale)` 少一次 per-step cast；absmax 仍在 float32 量化 |
+| scale 存储 | **W8A16** CUDA 上 per-out scale 存 bf16；**W8A8 保持 float32**（bf16 scale  alone 会把 seed0 grad 推过 5% gate） |
+| 目的 | W8A16 dequant / `(gy*scale)` 少一次 per-step cast；W8A8 保质量 |
 | CLI | `--convrot_hadamard {sylvester,regular}` 默认 `sylvester` |
 | Bootstrap | 写入 `ANIMA_CONVROT_HADAMARD`（CLI/WebUI 覆盖裸 env） |
 | Metadata | `ss_convrot_hadamard` |
@@ -578,25 +579,26 @@ WebUI：`convrot_scope` 选项扩展为 `mlp | all | attention_out | attn | mlp,
 
 默认仍 **sylvester@256**；seed 敏感 / 收紧 grad 时 WebUI 或 CLI 切 **regular@64**。
 
-### G.15 P1.11 W8A8 act half-quant + bf16 STE bwd（2026-07-25）
+### G.15 P1.11 W8A8 加速尝试：**否决默认**（2026-07-25）
 
-| 改动 | 作用 |
-| --- | --- |
-| `quantize_activation_absmax_int8` half 路径 | amax/mul 留在 bf16/fp16，**不再** `x.to(fp32)` 整表；scale 仍 fp32 |
-| fused / module W8A8 STE bwd | `(gy*scale)@W_q` 用 **compute_dtype**（bf16 TC），不再强制 fp32 累加 |
-| int32→scale | 仍必须先 `acc.float()`（bf16 尾数装不下 raw int32） |
+尝试与结果（mlp full-ckpt gate：out≤3% / loss≤5% / grad≤5%）：
 
-热测（mlp，3080）：
+| 尝试 | 速度（compile） | 质量 | 结论 |
+| --- | --- | --- | --- |
+| half act quant（无 full `x.fp32`） | **1.27 s**（~1.13×） | **1/3**（seed2 grad_rel ~1.4） | **否决默认** |
+| half quant + 仍 fp32 STE | ~1.58 s | **1/3** | 质量仍坏 → 根因是 **codes** 非 bwd |
+| bf16 STE bwd | ~1.27 s 档 | **1/3** | **否决** |
+| TF32 STE bwd（`matmul_precision=high`） | **1.42 s**（~1.25×） | **2/3**（seed0 grad 9.9%） | **仅 opt-in** |
+| **默认保持** fp32 act codes + fp32 STE | **1.58 s**（~1.39×） | **3/3**（P1.9 / p18） | **产品默认** |
 
-| 路径 | peak | sec/step | ×bf16 | vs P1.9 |
-| --- | --- | --- | --- | --- |
-| w8a8 eager | **4.21 GB** | **1.720 s** | 1.19 | was ~2.11 s / 4.43 GB |
-| **w8a8 + compile** | **4.11 GB** | **1.269 s** | **1.126** | was **1.582 s**（**−19.7%**） |
-| w8a16 + compile（对照） | 4.11 GB | 1.180 s | 1.046 | 持平 |
+落地：
 
-JSON：`output/tests/convrot_mem_speed_w8a8_compile_p111.json`、`convrot_mem_speed_p111_eager.json`。
+- act quant **保持** half amax → fp32 除法取 codes（与 P1.9 一致）。
+- STE bwd **默认 fp32**；`ANIMA_CONVROT_STE_TF32=1` 可开 TF32（速度换质量，不默认）。
+- **W8A8 scale 存 float32**（P1.10 的 CUDA bf16 scale 仅限 W8A16）。
+- 文档/WebUI **不**把 1.27 s 当承诺数字。
 
-W8A8 在 compile 下已从 ~1.39× 收到 **~1.13× bf16**，peak 与 W8A16 同档；仍非速度默认（W8A16 更稳），但可作为显存/对照第二档。
+JSON：`convrot_ckpt_w8a8_p111*.json`（**p111e 恢复 3/3**）、`convrot_mem_speed_w8a8_compile_p111*.json`。
 
 ### H. P0-C：prequant_checkpoint 加载（2026-07-25）
 

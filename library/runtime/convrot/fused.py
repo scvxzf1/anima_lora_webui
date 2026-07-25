@@ -234,28 +234,40 @@ class _FusedW8A8Fn(torch.autograd.Function):
         w_q, w_scale = ctx.saved_tensors
         hadamard = getattr(ctx, "hadamard", None)
         layout = getattr(ctx, "weight_layout", "nk")
-        # P1.11: run STE matmul in compute_dtype (bf16 TC) instead of forced
-        # fp32 — matches W8A16 bwd and cuts W8A8 bwd cast/gemm tax.
+        # STE accumulate stays fp32 (bf16 STE failed full-ckpt grad gate).
         # kn: grad_rot = (gy * scale) @ w_kn.T
         # nk: grad_rot = (gy * scale) @ w_nk
-        compute_dtype = getattr(ctx, "compute_dtype", torch.float32)
-        if compute_dtype not in (torch.float16, torch.bfloat16):
-            compute_dtype = torch.float32
-        gy = grad_y.to(dtype=compute_dtype)
-        scale = w_scale.to(device=gy.device, dtype=compute_dtype)
+        # Opt-in TF32: ANIMA_CONVROT_STE_TF32=1 (see gemm.ste_tf32_enabled).
+        from library.runtime.convrot.gemm import ste_tf32_enabled
+
+        gy = grad_y.to(torch.float32)
+        scale = w_scale.to(device=gy.device, dtype=torch.float32)
         if scale.dim() == 1:
             gy = gy * scale
         else:
             gy = gy * scale.reshape(1, -1)
-        w = w_q.to(dtype=compute_dtype)
+        w = w_q.to(torch.float32)
         if w.device != gy.device:
             w = w.to(device=gy.device)
-        if layout == "kn":
-            # w is [K,N]; need [N,K] as right factor → w.T
-            grad_rot = gy @ w.transpose(0, 1)
+        use_tf32 = ste_tf32_enabled() and gy.is_cuda
+        prev = torch.get_float32_matmul_precision() if use_tf32 else None
+        try:
+            if use_tf32:
+                torch.set_float32_matmul_precision("high")
+            if layout == "kn":
+                # w is [K,N]; need [N,K] as right factor → w.T
+                grad_rot = gy @ w.transpose(0, 1)
+            else:
+                grad_rot = gy @ w
+        finally:
+            if use_tf32 and prev is not None:
+                torch.set_float32_matmul_precision(prev)
+        compute_dtype = getattr(ctx, "compute_dtype", torch.float32)
+        if compute_dtype in (torch.float16, torch.bfloat16):
+            grad_rot_c = grad_rot.to(dtype=compute_dtype)
+            grad_x = _rotate_acts(grad_rot_c, ctx.group_size, hadamard=hadamard)
         else:
-            grad_rot = gy @ w
-        grad_x = _rotate_acts(grad_rot, ctx.group_size, hadamard=hadamard)
+            grad_x = _rotate_acts(grad_rot, ctx.group_size, hadamard=hadamard)
         if ctx.x_dtype != grad_x.dtype:
             grad_x = grad_x.to(dtype=ctx.x_dtype)
         return grad_x, None, None, None, None, None

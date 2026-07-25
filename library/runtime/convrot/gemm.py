@@ -11,6 +11,9 @@ import torch
 # also trip cublasLt NOT_SUPPORTED. Prefer true path when safe, else float.
 _INT_MM_MIN_M = 17
 _BACKEND_ENV = "ANIMA_CONVROT_INT8_GEMM"
+# Opt-in TF32 for the large fp32 STE matmul. Default OFF: seed0 grad_rel can
+# exceed the 5% full-ckpt gate on 3080 (P1.11c). Speed seekers may set =1.
+_STE_TF32_ENV = "ANIMA_CONVROT_STE_TF32"
 
 WeightLayout = Literal["nk", "kn"]
 
@@ -24,6 +27,11 @@ def int8_gemm_backend() -> Literal["auto", "int_mm", "float"]:
     if raw in {"float", "fake", "fp", "0", "false", "off"}:
         return "float"
     return "auto"
+
+
+def ste_tf32_enabled() -> bool:
+    raw = str(os.environ.get(_STE_TF32_ENV, "0") or "0").strip().lower()
+    return raw in {"1", "true", "on", "yes", "high"}
 
 
 def can_use_torch_int_mm(
@@ -53,24 +61,21 @@ def quantize_activation_absmax_int8(
     ``scale`` shape is ``x.shape[:-1] + (1,)`` such that
     ``x ≈ x_q.float() * scale``.
 
-    Half/bf16 path (P1.11): amax stays native; multiply by ``127/amax`` in the
-    act dtype then round — avoids a full ``x.to(float32)`` temporary. Scale is
-    still emitted in float32 for post-GEMM stability.
+    Half/bf16 inputs keep absmax in native dtype then promote scale only;
+    the division still runs in fp32 for stable int8 codes.
+
+    Note: a pure half mul-round path (no fp32 ``x``) was tried in P1.11 and
+    failed the full-ckpt grad gate (seed2 grad_rel >1). Keep fp32 codes.
     """
     from library.runtime.convrot.quant import INT8_MAX, SCALE_EPS
 
     work = x.detach()
     if work.dtype in (torch.float16, torch.bfloat16):
-        amax_h = work.abs().amax(dim=-1, keepdim=True).clamp_min(
-            torch.finfo(work.dtype).tiny
-        )
-        # inv ≈ 127/amax in act dtype; q = round(x * inv).
-        inv = (work.new_tensor(INT8_MAX) / amax_h).to(dtype=work.dtype)
-        q = (work * inv).round().clamp(-INT8_MAX, INT8_MAX).to(torch.int8)
-        scale = amax_h.to(torch.float32).clamp_min(SCALE_EPS) / INT8_MAX
-        return q, scale
-    work_f = work.to(torch.float32)
-    amax = work_f.abs().amax(dim=-1, keepdim=True).clamp_min(SCALE_EPS)
+        amax = work.abs().amax(dim=-1, keepdim=True).to(torch.float32).clamp_min(SCALE_EPS)
+        work_f = work.to(torch.float32)
+    else:
+        work_f = work.to(torch.float32)
+        amax = work_f.abs().amax(dim=-1, keepdim=True).clamp_min(SCALE_EPS)
     scale = amax / INT8_MAX
     q = (work_f / scale).round().clamp(-INT8_MAX, INT8_MAX).to(torch.int8)
     return q, scale
@@ -228,24 +233,29 @@ class _W8A8IntLinearFn(torch.autograd.Function):
         layout: WeightLayout = getattr(ctx, "weight_layout", "nk")
         x_dtype = getattr(ctx, "x_dtype", grad_y.dtype)
         # Base weights frozen — only grad_x. STE ignores act quant.
-        # Prefer act TC dtype for (gy*scale)@W (P1.11); fp32 only when needed.
-        if x_dtype in (torch.float16, torch.bfloat16):
-            acc_dtype = x_dtype
-        else:
-            acc_dtype = torch.float32
-        gy = grad_y.to(dtype=acc_dtype)
-        scale = w_scale.to(device=gy.device, dtype=acc_dtype)
+        # Default: fp32 accumulate (required for full-ckpt grad gate).
+        # Opt-in TF32 via ANIMA_CONVROT_STE_TF32=1 (faster, may fail 5% gate).
+        gy = grad_y.to(torch.float32)
+        scale = w_scale.to(device=gy.device, dtype=torch.float32)
         if scale.dim() == 1:
             gy = gy * scale
         else:
             gy = gy * scale.reshape(1, -1)
-        w = w_q.to(dtype=acc_dtype)
+        w = w_q.to(torch.float32)
         if w.device != gy.device:
             w = w.to(device=gy.device)
-        if layout == "kn":
-            grad_x = gy @ w.transpose(0, 1)
-        else:
-            grad_x = gy @ w
+        use_tf32 = ste_tf32_enabled() and gy.is_cuda
+        prev = torch.get_float32_matmul_precision() if use_tf32 else None
+        try:
+            if use_tf32:
+                torch.set_float32_matmul_precision("high")
+            if layout == "kn":
+                grad_x = gy @ w.transpose(0, 1)
+            else:
+                grad_x = gy @ w
+        finally:
+            if use_tf32 and prev is not None:
+                torch.set_float32_matmul_precision(prev)
         if x_dtype != grad_x.dtype:
             grad_x = grad_x.to(dtype=x_dtype)
         return grad_x, None, None, None
