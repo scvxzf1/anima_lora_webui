@@ -759,9 +759,9 @@ WebUI / `gui-methods` 自包含变体：
 - 标签：`LoRA + ConvRot W8A16 (VRAM)` / 中文「LoRA + ConvRot W8A16 显存档（实验）」
 
 ```bash
-# 合并检查
-.venv/bin/python train.py --method lora-convrot-vram --preset default \
-  --methods_subdir gui-methods --print-config --no-config-snapshot | rg convrot
+# 合并检查（METHODS_SUBDIR 选 gui-methods）
+METHODS_SUBDIR=gui-methods .venv/bin/python tasks.py print-config \
+  METHOD=lora-convrot-vram PRESET=default | rg convrot
 ```
 
 **不要** 与 `blocks_to_swap>0` 叠用当省显存方案：

@@ -229,21 +229,29 @@ def cmd_export_logs(extra):
 
 
 def cmd_print_config(extra):
+    """Dump merged config (METHOD / PRESET / optional METHODS_SUBDIR).
+
+    Env:
+      METHOD=<name> (default lora)
+      PRESET=<name> (default default)
+      METHODS_SUBDIR=<dir> (default methods; use gui-methods for WebUI variants)
+    """
     method = os.environ.get("METHOD", "lora")
     preset = _preset()
-    run(
-        [
-            PY,
-            "train.py",
-            "--method",
-            method,
-            "--preset",
-            preset,
-            "--print-config",
-            "--no-config-snapshot",
-            *extra,
-        ]
-    )
+    methods_subdir = os.environ.get("METHODS_SUBDIR", "methods")
+    cmd = [
+        PY,
+        "train.py",
+        "--method",
+        method,
+        "--preset",
+        preset,
+        "--methods_subdir",
+        methods_subdir,
+        "--print-config",
+        "--no-config-snapshot",
+    ]
+    run([*cmd, *extra])
 
 
 def cmd_explain_config(extra):
