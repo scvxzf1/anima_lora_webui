@@ -600,6 +600,37 @@ WebUI：`convrot_scope` 选项扩展为 `mlp | all | attention_out | attn | mlp,
 
 JSON：`convrot_ckpt_w8a8_p111*.json`（**p111e 恢复 3/3**）、`convrot_mem_speed_w8a8_compile_p111*.json`。
 
+### G.16 Phase 1 平台期（2026-07-25）
+
+**产品默认（速度 + 显存）**
+
+| 项 | 值 | 依据 |
+| --- | --- | --- |
+| `base_compute` | `w8a16_convrot`（实验开启时） | free-base peak **~4.11 GB** vs bf16 **~4.95** |
+| `convrot_scope` | `mlp` | compile **~1.05×** bf16（`p112`） |
+| `convrot_group_size` / hadamard | `256` / `sylvester` | 兼容 prequant；质量 2/3 |
+| `torch_compile` | 建议开 | 吃掉多数 Python 税 |
+| 显存优先 | `scope=all` | **~3.43 GB** / **~1.08×** |
+
+**质量 opt-in**
+
+| 项 | 值 | 依据 |
+| --- | --- | --- |
+| hadamard + group | `regular` + `64` | full-ckpt **3/3**；CLI/WebUI 已接线 |
+| W8A8 | 非速度默认 | compile **~1.39×**；gate 3/3；scale **必须 fp32** |
+
+**已否决 / 低 ROI（本机 3080）**
+
+- Triton K-loop / epilogue fusion（microbench）
+- 默认 FWHT / int8pack
+- W8A8 half act codes、bf16 STE、默认 TF32 STE（破 grad gate）
+- 共享 dequant scratch 默认开（peak 回吐、step 中性）
+- **P1-J trust-mask STE**：base 冻结时 `org_forward` 不对 `w_q` 反传，LoRA 梯度差来自 **前向 quant 噪声** 而非权重 STE；投入产出不匹配
+
+**残余税（W8A16@compile）** ≈ 4–5% step：`convrot_gemm` dequant+linear + 少量 RHT；再抠需换硬件或真 int8 TC 融合（P2）。
+
+**Phase 1 KPI 结论：** 显存已达成；质量 short-train / regular@64 可用；**step ≤ bf16 非 KPI** 且 3080 上不现实。
+
 ### H. P0-C：prequant_checkpoint 加载（2026-07-25）
 
 实现：`library/runtime/convrot/prequant.py` + `apply.py` 接线；导出：`scripts/experiments/convrot_export_prequant.py`。

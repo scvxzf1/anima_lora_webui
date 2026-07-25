@@ -194,7 +194,7 @@ JSON 证据：
 | **G** | 缩小 patch 范围：只 patch 最大 `in_features` 的 Linear | profile 显示小层 RHT 固定开销大 | ✅ 实现 + 热测：largest/min4096 ≈1.62s（1.13×）、peak 4.77GB（回吐 ~0.4GB） |
 | **H** | compile 友好：固定 shape dense RHT + `F.linear` 吃满 `torch.compile` | compile_blocks 后仍慢 | ✅ 2026-07-25：apply 预计算 `_convrot_hadamard` 并传入 fused；compile 下收益未单独 re-profile |
 | **I** | 3080 上 W8A16 **不** 默认 pack GEMM；W8A8 仅大 M 强制 `_int_mm` | microbench 已否 pack | 防 47 s/step 回归 |
-| **J** | 梯度数值：trust-mask 类（QuEST）替代朴素 STE | seed0 grad_rel 过大 | 质量，非速度 |
+| **J** | 梯度数值：trust-mask 类（QuEST）替代朴素 STE | seed0 grad_rel 过大 | **⏸ 搁置**：冻结 base 时 `w_q` 无 grad；LoRA 差来自前向 quant 噪声（见 experimental §G.16） |
 
 ### P2 — 低–不确定 ROI / 高成本（明确「冲速度」才开）
 
@@ -233,15 +233,19 @@ JSON 证据：
 2. [DONE] P0-A2 修 W8A16：dequant/F.linear 用 bf16/fp16 → ~1.23× bf16
 3. [DONE] P0-C   prequant_checkpoint 原生 v1 加载/导出
 4. [DONE] P0-D   regular Hadamard + multi-seed（默认仍 sylvester；opt-in regular@64）
-5. 仅当未来 profile 显示 RHT+quant 内存链 >50% 时，再开 P2-K Triton spike
+5. [DONE] P1.*   dtype 交通税 / kn 布局 / compile / scope profiles / hadamard 产品化
+6. [DONE] P1.11  否决 W8A8 half/TF32 默认加速；W8A8 scale fp32
+7. [DONE] Phase1 平台期文档 §G.16 — 下一刀仅当：换卡 / 真要 step≤bf16 / 或训整模 QAT
+8. 仅当未来 profile 显示 RHT+quant 内存链 >50% 时，再开 P2-K Triton spike
 ```
 
 依赖关系：
 
-- **A/A2/C/D 已完成** → 否决「立刻 Triton」；prequant 不承诺 step 加速  
-- **regular 默认切换** 需更多 seed / short-train 才建议  
-- **F/G 依赖更细 profile**（若仍要逼近 bf16）  
-- **K/L 强依赖「convrot tax ≥50%」**，当前不满足
+- **A/A2/C/D/P1 已完成** → 否决「立刻 Triton」；prequant 不承诺 step 加速  
+- **regular 默认切换** 可选（WebUI 已有）；sylvester@256 仍兼容默认  
+- **P1-J 搁置**（冻结 base 路径无权重 STE 可修）  
+- **K/L 强依赖「convrot tax ≥50%」**，当前 ~8% 不满足  
+- **Phase 1 平台期**：继续小改需明确新 KPI（更大 rank/分辨率同显存，或换硬件）
 
 ---
 
@@ -257,6 +261,9 @@ JSON 证据：
   - `ANIMA_CONVROT_FUSED=1|0`
   - `ANIMA_CONVROT_RHT=dense|fwht`
   - `ANIMA_CONVROT_W8A16_KERNEL=dequant|int8pack`
+  - `ANIMA_CONVROT_HADAMARD=sylvester|regular`（也可 `--convrot_hadamard`）
+  - `ANIMA_CONVROT_STE_TF32=0|1`（W8A8 STE TF32，默认关）
+  - `ANIMA_CONVROT_DEQUANT_SCRATCH=0|1`（默认关）
 
 ---
 
@@ -292,3 +299,4 @@ JSON 证据：
 | 2026-07-25 | **P1.9 W8A8**：STE 不存 x_rot；`int8_mm` `out_dtype=bf16`；compile 下 1.657→**1.582 s** / peak 4.14GB |
 | 2026-07-25 | **P1.10**：W8A16 CUDA scale 存 bf16；`--convrot_hadamard` CLI/bootstrap/metadata/WebUI；regular@64 可配置质量档 |
 | 2026-07-25 | **P1.11 否决默认 W8A8 加速**：half quant/bf16 STE 破 gate；TF32 STE opt-in；**W8A8 scale 改回 fp32**（p111e 3/3） |
+| 2026-07-25 | **Phase 1 平台期**：§G.16 产品默认；P1-J 搁置（冻结 base 无权重 STE）；残余 ~5% 需 P2/换卡 |

@@ -331,10 +331,10 @@ export const FIELD_HELP_TRAINING_ZH = {    learning_rate: help(
     base_compute: help(
         "冻结 DiT 底模 Linear 的计算路径（实验）。",
         "bf16 是默认高精度路径。w8a16_convrot / w8a8_convrot 对选定 scope（默认 mlp）做 group Regular Hadamard + int8 权重，用于省显存；不保证比 bf16 更快。与 block_swap_transfer_dtype=int8 互斥。",
-        ["W8A* 可降低冻结底模权重显存占用（本机 3080 约 −0.5–0.6 GB；scope=all 可到 ~3.4GB）。"],
-        ["step 时间通常仍高于 bf16；compile 下 W8A16 ~1.04×、W8A8 ~1.39×。"],
+        ["W8A16+mlp+compile：peak ~4.1GB（bf16~4.95），step ~1.05×；scope=all ~3.4GB / ~1.08×。"],
+        ["质量 opt-in：Hadamard=regular + group=64（3/3 gate）。W8A8 ~1.39×，非速度默认。"],
         ["正式训练保持 bf16。开启后请先做短训对照，不要默认用于生产长训。"],
-        "默认 bf16；只有显存吃紧且接受实验风险时再选 w8a16_convrot。"
+        "默认 bf16；显存吃紧且接受实验风险时再选 w8a16_convrot + compile。"
     ),
     convrot_group_size: help(
         "ConvRot 分组大小（RHT 的 group size）。",
