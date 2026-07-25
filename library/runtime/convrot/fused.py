@@ -157,20 +157,24 @@ class _FusedW8A16Fn(torch.autograd.Function):
         # RHT + dequant GEMM stay in act TC dtype (P1.5). Optional precomputed
         # ``hadamard`` avoids env/cache lookup (P1-H); held on ctx (not saved
         # for backward) because it is a constant buffer and not differentiated.
+        # w_q / w_scale are likewise frozen buffers — hold on ctx instead of
+        # save_for_backward to skip autograd packing (P1.12).
         compute_dtype = _resolve_compute_dtype(x)
         x_work = x.to(dtype=compute_dtype) if x.dtype != compute_dtype else x
         x_rot = _rotate_acts(x_work, int(group_size), hadamard=hadamard)
         y = _w8a16_linear_core(x_rot, w_q, w_scale)
         ctx.group_size = int(group_size)
         ctx.hadamard = hadamard
-        ctx.save_for_backward(w_q, w_scale)
+        ctx.w_q = w_q
+        ctx.w_scale = w_scale
         ctx.x_dtype = x.dtype
         ctx.compute_dtype = compute_dtype
         return y
 
     @staticmethod
     def backward(ctx, grad_y):
-        w_q, w_scale = ctx.saved_tensors
+        w_q = ctx.w_q
+        w_scale = ctx.w_scale
         hadamard = getattr(ctx, "hadamard", None)
         dtype = getattr(ctx, "compute_dtype", torch.float32)
         # grad_rot = (grad_y * scale) @ W_q  — avoids full [N,K] dequant temp.
@@ -225,13 +229,16 @@ class _FusedW8A8Fn(torch.autograd.Function):
         ctx.hadamard = hadamard
         ctx.compute_dtype = compute_dtype
         ctx.weight_layout = layout
-        ctx.save_for_backward(w_q, w_scale)
+        # Frozen weight buffers — ctx attrs, not save_for_backward (P1.12).
+        ctx.w_q = w_q
+        ctx.w_scale = w_scale
         ctx.x_dtype = x.dtype
         return y
 
     @staticmethod
     def backward(ctx, grad_y):
-        w_q, w_scale = ctx.saved_tensors
+        w_q = ctx.w_q
+        w_scale = ctx.w_scale
         hadamard = getattr(ctx, "hadamard", None)
         layout = getattr(ctx, "weight_layout", "nk")
         # STE accumulate stays fp32 (bf16 STE failed full-ckpt grad gate).

@@ -223,13 +223,16 @@ class _W8A8IntLinearFn(torch.autograd.Function):
         ctx.weight_layout = layout
         # STE does not need x_rot — only dtype for casting grad_x. Saves a full
         # activation tensor per layer vs older save_for_backward(x_rot, ...).
+        # Frozen w_q/w_scale: hold on ctx (P1.12), not save_for_backward.
         ctx.x_dtype = x_rot.dtype
-        ctx.save_for_backward(w_q, w_scale)
+        ctx.w_q = w_q
+        ctx.w_scale = w_scale
         return y
 
     @staticmethod
     def backward(ctx, grad_y: torch.Tensor):
-        w_q, w_scale = ctx.saved_tensors
+        w_q = ctx.w_q
+        w_scale = ctx.w_scale
         layout: WeightLayout = getattr(ctx, "weight_layout", "nk")
         x_dtype = getattr(ctx, "x_dtype", grad_y.dtype)
         # Base weights frozen — only grad_x. STE ignores act quant.

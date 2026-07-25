@@ -652,7 +652,24 @@ JSON：`convrot_ckpt_w8a8_p111*.json`（**p111e 恢复 3/3**）、`convrot_mem_s
 3. 产品叙事优先写 **「同显存训更大 rank」**，而不是「比 bf16 更快」。
 4. JSON：`output/tests/convrot_rank_{bf16,w8a16_free}_r{4,16,32}.json`。
 
-### H. P0-C：prequant_checkpoint 加载（2026-07-25）
+**scope=all 抬 rank（compile）：**
+
+| base | rank | scope | peak GB | sec/step |
+| --- | --- | --- | --- | --- |
+| W8A16 free | 4 | all | **3.43** | 1.29 |
+| W8A16 free | **32** | all | **3.63** | 1.29 |
+| bf16 | 4 | mlp | 4.95 | 1.14 |
+| bf16 | 32 | mlp | 5.04 | 1.13 |
+
+`all@r32` 仍比 `bf16@r4` 低 **~1.3 GB**；rank 税在 free-base 后几乎可忽略。
+
+### G.18 P1.12 frozen weight 不进 `save_for_backward`（2026-07-26）
+
+`w_q` / `w_scale` 是冻结 buffer，fused / W8A8 STE 改为挂 `ctx` 属性，避免 autograd packing。
+
+| 路径 | peak | sec/step | ×bf16 |
+| --- | --- | --- | --- |
+| W8A16 compile（ctx） | 4.11 GB | 1.178 s | ~1.05 |
 
 实现：`library/runtime/convrot/prequant.py` + `apply.py` 接线；导出：`scripts/experiments/convrot_export_prequant.py`。
 
