@@ -11,6 +11,7 @@ export const FORM_UI_DEFAULTS = {
     base_compute: 'bf16',
     convrot_group_size: 256,
     convrot_scope: 'mlp',
+    convrot_hadamard: 'sylvester',
     convrot_min_in_features: 0,
     convrot_largest_in_features_only: false,
     convrot_large_layer_mode: '',

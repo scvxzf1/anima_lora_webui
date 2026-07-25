@@ -273,10 +273,12 @@ def fused_w8a16_forward(
 ) -> torch.Tensor:
     assert_group_divides(int(quantized_weight.shape[1]), group_size)
     # autograd.Function.apply does not accept keyword args for tensor inputs.
+    # Keep scale dtype as stored (often bf16 from apply); only move device.
+    scale_dev = scale.to(device=x.device) if scale.device != x.device else scale
     y = _FusedW8A16Fn.apply(
         x,
         quantized_weight.to(device=x.device),
-        scale.to(device=x.device, dtype=torch.float32),
+        scale_dev,
         int(group_size),
         hadamard.to(device=x.device) if hadamard is not None else None,
     )
@@ -306,10 +308,11 @@ def fused_w8a8_forward(
         assert_group_divides(int(quantized_weight.shape[0]), group_size)
     else:
         assert_group_divides(int(quantized_weight.shape[1]), group_size)
+    scale_dev = scale.to(device=x.device) if scale.device != x.device else scale
     y = _FusedW8A8Fn.apply(
         x,
         quantized_weight.to(device=x.device),
-        scale.to(device=x.device, dtype=torch.float32),
+        scale_dev,
         int(group_size),
         hadamard.to(device=x.device) if hadamard is not None else None,
         layout,

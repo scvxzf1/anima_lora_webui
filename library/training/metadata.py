@@ -346,6 +346,14 @@ def update_anima_metadata(metadata: dict[str, Any], args) -> None:
             getattr(args, "convrot_group_size", 256)
         )
         metadata["ss_convrot_scope"] = str(getattr(args, "convrot_scope", "mlp"))
+        hadamard = str(
+            getattr(args, "convrot_hadamard", "sylvester") or "sylvester"
+        ).strip().lower()
+        if hadamard in {"regular", "reg", "paper", "convrot"}:
+            hadamard = "regular"
+        else:
+            hadamard = "sylvester"
+        metadata["ss_convrot_hadamard"] = hadamard
         metadata["ss_convrot_weight_source"] = str(
             getattr(args, "convrot_weight_source", "online_from_bf16")
         )

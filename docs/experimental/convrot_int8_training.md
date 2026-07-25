@@ -14,14 +14,15 @@ timeout 60 .venv/bin/python -m pytest tests/test_convrot_*.py -q
 
 # 训练（显式开启；默认 bf16 不变）
 python tasks.py lora ... --base_compute w8a16_convrot
-# 可选：--convrot_group_size 256 --convrot_scope mlp
+# 可选：--convrot_group_size 256 --convrot_scope mlp --convrot_hadamard sylvester
+# 质量 opt-in：--convrot_hadamard regular --convrot_group_size 64
 # W8A8（真 int8 GEMM 优先，形状不支持时回退 float）：
 python tasks.py lora ... --base_compute w8a8_convrot
 # 可选：
 #   ANIMA_CONVROT_INT8_GEMM=auto|int_mm|float
 #   ANIMA_CONVROT_FUSED=1|0              # 默认 1：单 autograd.Function 融合 RHT+GEMM
 #   ANIMA_CONVROT_RHT=dense|fwht         # 默认 dense（本机 3080 更快；fwht 仅 sylvester）
-#   ANIMA_CONVROT_HADAMARD=sylvester|regular  # 默认 sylvester；regular=论文 Kronecker H_4^k
+#   ANIMA_CONVROT_HADAMARD=sylvester|regular  # 也可由 --convrot_hadamard 写入
 #   ANIMA_CONVROT_W8A16_KERNEL=dequant|int8pack  # 默认 dequant（int8pack 本机更慢）
 
 # P1-G / P1-F 可选（默认全关，行为与 Phase 1 相同）
@@ -562,6 +563,20 @@ W8A8 仍 ~1.4× bf16@compile；主税仍是 `_int_mm` + act quant，非 save/cas
 | W8A8 mlp + compile | mlp | 4.14 GB | 1.58 s | 1.39 | 非速度默认 |
 
 WebUI：`convrot_scope` 选项扩展为 `mlp | all | attention_out | attn | mlp,attn`。
+
+### G.14 P1.10 scale bf16 + `convrot_hadamard` 产品化（2026-07-25）
+
+| 项 | 内容 |
+| --- | --- |
+| scale 存储 | CUDA 上 per-out scale 存 **bf16**（apply）；fused 入口不再强制 `float32` |
+| 目的 | dequant / `(gy*scale)` 少一次 per-step cast；absmax 仍在 float32 量化 |
+| CLI | `--convrot_hadamard {sylvester,regular}` 默认 `sylvester` |
+| Bootstrap | 写入 `ANIMA_CONVROT_HADAMARD`（CLI/WebUI 覆盖裸 env） |
+| Metadata | `ss_convrot_hadamard` |
+| WebUI | 同字段 + help；质量建议 `regular` + group `64` |
+| 热测 | p110 eager 与 p15 同量级（dtype 已吃完主税）；regular@64 ~1.04× |
+
+默认仍 **sylvester@256**；seed 敏感 / 收紧 grad 时 WebUI 或 CLI 切 **regular@64**。
 
 ### H. P0-C：prequant_checkpoint 加载（2026-07-25）
 

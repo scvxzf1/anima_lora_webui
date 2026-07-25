@@ -942,6 +942,18 @@ def add_dit_training_arguments(parser: argparse.ArgumentParser):
         help="[EXPERIMENTAL] ConvRot group size for RHT (must divide in_features).",
     )
     parser.add_argument(
+        "--convrot_hadamard",
+        type=str,
+        default="sylvester",
+        choices=["sylvester", "regular"],
+        help=(
+            "[EXPERIMENTAL] Hadamard construction for group RHT. "
+            "sylvester (default) is power-of-two FWHT-compatible; "
+            "regular is paper-aligned (group must be 4^k, e.g. 64/256/1024). "
+            "regular@64 measured 3/3 checkpoint gate on 3080."
+        ),
+    )
+    parser.add_argument(
         "--convrot_scope",
         type=str,
         default="mlp",

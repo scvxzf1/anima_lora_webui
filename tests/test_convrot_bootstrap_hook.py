@@ -36,6 +36,7 @@ def _args(**kwargs):
         base_compute="bf16",
         convrot_group_size=16,
         convrot_scope="mlp",
+        convrot_hadamard="sylvester",
         convrot_weight_source="online_from_bf16",
         convrot_prequant_path=None,
         convrot_min_in_features=0,
@@ -152,3 +153,24 @@ def test_maybe_apply_convrot_base_honors_min_in_and_largest() -> None:
     assert result.patches[0].name == "blocks.0.mlp.layer2"
     assert result.min_in_features == 64
     assert result.largest_in_features_only is True
+
+
+def test_maybe_apply_convrot_base_wires_hadamard_env(monkeypatch) -> None:
+    """CLI convrot_hadamard must win over bare env and stamp ANIMA_CONVROT_HADAMARD."""
+    import os
+
+    monkeypatch.delenv("ANIMA_CONVROT_HADAMARD", raising=False)
+    # group=16 is not 4^k — regular Hadamard rejects non-4^k sizes at matrix build.
+    # Use group=64 (4^3) so regular path can actually construct H.
+    linear = nn.Linear(64, 32, bias=False)
+    linear.weight.requires_grad_(False)
+    network = _FakeNetwork([_FakeLoRAModule("blocks.0.mlp.layer1", linear)])
+    args = _args(
+        base_compute="w8a16_convrot",
+        convrot_group_size=64,
+        convrot_hadamard="regular",
+    )
+    applied = TrainingBootstrap.maybe_apply_convrot_base(args, network)
+    assert applied is True
+    assert os.environ.get("ANIMA_CONVROT_HADAMARD") == "regular"
+    assert hasattr(network.unet_loras[0], "_convrot_quantized_weight")

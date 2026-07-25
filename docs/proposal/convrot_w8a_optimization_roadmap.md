@@ -290,3 +290,4 @@ JSON 证据：
 | 2026-07-25 | **质量复测 + scope=all**：ckpt W8A16 仍 2/3、W8A8 3/3；scope=all free W8A16 **3.44GB / 1.08×**（compile 3.43GB / 1.08×） |
 | 2026-07-25 | **regular@64 3/3 gate** + short-train 20-step last_rel **0.07%**；质量 opt-in 建议写入 experimental §G.11 |
 | 2026-07-25 | **P1.9 W8A8**：STE 不存 x_rot；`int8_mm` `out_dtype=bf16`；compile 下 1.657→**1.582 s** / peak 4.14GB |
+| 2026-07-25 | **P1.10**：CUDA scale 存 bf16；`--convrot_hadamard` CLI/bootstrap/metadata/WebUI；regular@64 可配置质量档 |

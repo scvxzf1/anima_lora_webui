@@ -204,6 +204,7 @@ class TrainingBootstrap:
 
         group_size = int(getattr(args, "convrot_group_size", 256) or 256)
         scope = str(getattr(args, "convrot_scope", "mlp") or "mlp")
+        hadamard = str(getattr(args, "convrot_hadamard", "sylvester") or "sylvester")
         weight_source = str(
             getattr(args, "convrot_weight_source", "online_from_bf16")
             or "online_from_bf16"
@@ -218,6 +219,16 @@ class TrainingBootstrap:
         large_min_in_features = (
             int(large_min_raw) if large_min_raw not in (None, "", 0, "0") else None
         )
+
+        # Wire Hadamard kind into the process env so rht/quant/apply share one
+        # source of truth (ANIMA_CONVROT_HADAMARD). CLI/WebUI wins over bare env.
+        kind = hadamard.strip().lower()
+        if kind in {"regular", "reg", "paper", "convrot"}:
+            os.environ["ANIMA_CONVROT_HADAMARD"] = "regular"
+            kind_resolved = "regular"
+        else:
+            os.environ["ANIMA_CONVROT_HADAMARD"] = "sylvester"
+            kind_resolved = "sylvester"
 
         # ConvRot quantizes frozen base weights only. In the normal training
         # bootstrap, unet.requires_grad_(False) runs later in
@@ -254,12 +265,13 @@ class TrainingBootstrap:
         except Exception:
             pass
         logger.info(
-            "[convrot] applied mode=%s scope=%s group=%s source=%s "
+            "[convrot] applied mode=%s scope=%s group=%s hadamard=%s source=%s "
             "patched=%d skipped=%d min_in=%d largest_only=%s large_mode=%s "
             "prequant=%s",
             mode,
             scope,
             result.group_size,
+            kind_resolved,
             weight_source,
             result.patched_count,
             result.skipped_count,

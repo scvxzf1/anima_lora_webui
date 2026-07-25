@@ -609,7 +609,19 @@ def apply_convrot_to_lora_network(
             q_store = q.contiguous()
             setattr(lora, _ATTR_WEIGHT_LAYOUT, "nk")
         _set_buffer(lora, _BUFFER_Q, q_store)
-        _set_buffer(lora, _BUFFER_SCALE, scale.to(torch.float32).contiguous())
+        # P1.10: store scale in training compute dtype (bf16 on CUDA) so
+        # dequant / (gy*scale) skip a per-step float32 cast. Quantization
+        # still used float32 absmax; values are just rounded for storage.
+        scale_dtype = (
+            torch.bfloat16
+            if base_module.weight.device.type == "cuda"
+            else torch.float32
+        )
+        _set_buffer(
+            lora,
+            _BUFFER_SCALE,
+            scale.to(dtype=scale_dtype).contiguous(),
+        )
         setattr(lora, _ATTR_GROUP, group_size)
         setattr(lora, _ATTR_MODE, layer_mode)
         setattr(lora, _ATTR_WEIGHT_SOURCE, weight_source)

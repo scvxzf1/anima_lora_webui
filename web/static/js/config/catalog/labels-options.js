@@ -15,6 +15,7 @@ export const FIELD_LABEL_ZH = {
     blocks_to_swap: 'CPU/GPU 交换块数',
     convrot_group_size: 'ConvRot 组大小',
     convrot_scope: 'ConvRot 作用范围',
+    convrot_hadamard: 'ConvRot Hadamard',
     convrot_min_in_features: 'ConvRot 最小 in_features',
     convrot_largest_in_features_only: '仅最大 in_features',
     convrot_large_layer_mode: '大层 ConvRot 模式',
@@ -238,6 +239,8 @@ export const FIELD_OPTIONS = {
     convrot_group_size: [64, 256, 1024],
     // Product profiles: mlp (speed default), all (VRAM), attention_out (mid).
     convrot_scope: ['mlp', 'all', 'attention_out', 'attn', 'mlp,attn'],
+    // sylvester: default / FWHT-compatible; regular: paper-aligned (prefer group 64).
+    convrot_hadamard: ['sylvester', 'regular'],
     convrot_largest_in_features_only: [false, true],
     convrot_large_layer_mode: ['', 'w8a16', 'w8a8'],
     block_swap_profile_jsonl: ['off', 'auto'],

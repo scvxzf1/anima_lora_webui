@@ -7,6 +7,7 @@ from typing import Any, Mapping, MutableMapping
 SS_BASE_COMPUTE = "ss_base_compute"
 SS_CONVROT_GROUP_SIZE = "ss_convrot_group_size"
 SS_CONVROT_SCOPE = "ss_convrot_scope"
+SS_CONVROT_HADAMARD = "ss_convrot_hadamard"
 SS_CONVROT_WEIGHT_SOURCE = "ss_convrot_weight_source"
 SS_CONVROT_MODE = "ss_convrot_mode"
 
@@ -14,6 +15,7 @@ CONVROT_METADATA_KEYS = (
     SS_BASE_COMPUTE,
     SS_CONVROT_GROUP_SIZE,
     SS_CONVROT_SCOPE,
+    SS_CONVROT_HADAMARD,
     SS_CONVROT_WEIGHT_SOURCE,
     SS_CONVROT_MODE,
 )
@@ -27,11 +29,19 @@ def stamp_convrot_metadata(
     scope: str,
     weight_source: str,
     mode: str | None = None,
+    hadamard: str | None = None,
 ) -> None:
     """Write ConvRot ss_* keys into adapter metadata dict (in-place)."""
     metadata[SS_BASE_COMPUTE] = str(base_compute)
     metadata[SS_CONVROT_GROUP_SIZE] = str(int(group_size))
     metadata[SS_CONVROT_SCOPE] = str(scope)
+    if hadamard is not None:
+        kind = str(hadamard).strip().lower()
+        if kind in {"regular", "reg", "paper", "convrot"}:
+            kind = "regular"
+        else:
+            kind = "sylvester"
+        metadata[SS_CONVROT_HADAMARD] = kind
     metadata[SS_CONVROT_WEIGHT_SOURCE] = str(weight_source)
     if mode is not None:
         metadata[SS_CONVROT_MODE] = str(mode)

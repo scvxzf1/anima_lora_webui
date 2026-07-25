@@ -109,6 +109,7 @@ export const FORM_SECTION_DEFS = [
             'base_compute',
             'convrot_group_size',
             'convrot_scope',
+            'convrot_hadamard',
             'convrot_min_in_features',
             'convrot_largest_in_features_only',
             'convrot_large_layer_mode',
@@ -435,8 +436,8 @@ export const CONFIG_COMPACT_FIELD_GROUPS = {
             keys: ['blocks_to_swap', 'block_swap_transfer_dtype', 'block_swap_restore_mode', 'selective_checkpoint', 'selective_checkpoint_blocks'],
         },
         {
-            className: 'config-field-grid-3col',
-            keys: ['base_compute', 'convrot_group_size', 'convrot_scope'],
+            className: 'config-field-grid-4col',
+            keys: ['base_compute', 'convrot_group_size', 'convrot_scope', 'convrot_hadamard'],
         },
         {
             className: 'config-field-grid-4col',

@@ -352,6 +352,14 @@ export const FIELD_HELP_TRAINING_ZH = {    learning_rate: help(
         ["仅 base_compute 为 w8a*_convrot 时生效。"],
         "默认 mlp；显存吃紧再改 all。"
     ),
+    convrot_hadamard: help(
+        "Group RHT 的 Hadamard 构造（P0-D / 质量 opt-in）。",
+        "sylvester：默认，2 的幂 FWHT 兼容，与既有 prequant 对齐。regular：论文 Kronecker 4^k 路径；本机 regular@64 检查点门 3/3 PASS。",
+        ["seed 敏感或要收紧 grad gate 时优先 regular + group 64。"],
+        ["切换 hadamard/group 后已有 prequant 必须重导出。"],
+        ["仅 base_compute 为 w8a*_convrot 时生效。"],
+        "默认 sylvester；质量对照时改 regular 并考虑 group=64。"
+    ),
     convrot_min_in_features: help(
         "按 in_features 下限过滤 ConvRot patch（P1-G）。",
         "0 表示不过滤。例如 4096 可跳过 Anima mlp.layer1（in=2048），只保留 layer2（in=8192）。",

@@ -207,8 +207,10 @@ def test_metadata_stamp_and_merge_reject() -> None:
         group_size=256,
         scope="mlp",
         weight_source="online_from_bf16",
+        hadamard="regular",
     )
     assert metadata_indicates_convrot(meta)
+    assert meta["ss_convrot_hadamard"] == "regular"
     with pytest.raises(RuntimeError, match="refused for ConvRot"):
         raise_if_merge_with_convrot(meta)
     raise_if_merge_with_convrot({"ss_base_compute": "bf16"})  # no raise
@@ -317,6 +319,23 @@ def test_apply_attaches_precomputed_hadamard_buffer() -> None:
     assert tuple(h.shape) == (16, 16)
     x = torch.randn(2, 32)
     y = lora.org_forward(x)
+    assert torch.isfinite(y).all()
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA scale storage path")
+def test_apply_stores_scale_bf16_on_cuda() -> None:
+    """P1.10: CUDA path stores per-out scale as bf16 to cut per-step cast."""
+    device = torch.device("cuda")
+    linear = nn.Linear(32, 16, bias=False).to(device)
+    linear.weight.requires_grad_(False)
+    lora = _FakeLoRAModule("blocks.0.mlp.layer1", linear)
+    network = _FakeLoRANetwork([lora])
+    apply_convrot_to_lora_network(network, mode="w8a16", scope="mlp", group_size=16)
+    scale = network.unet_loras[0]._convrot_scale
+    assert scale.dtype == torch.bfloat16
+    assert scale.device.type == "cuda"
+    x = torch.randn(2, 32, device=device, dtype=torch.bfloat16)
+    y = network.unet_loras[0].org_forward(x)
     assert torch.isfinite(y).all()
 
 

@@ -240,7 +240,16 @@ function currentConfigState() { return configState.currentConfig || {}; }
     }
 
     export function isConvrotScopedFieldActive(key, config = currentConfigState()) {
-        if (key !== 'convrot_group_size' && key !== 'convrot_scope') return true;
+        const convrotKeys = new Set([
+            'convrot_group_size',
+            'convrot_scope',
+            'convrot_hadamard',
+            'convrot_min_in_features',
+            'convrot_largest_in_features_only',
+            'convrot_large_layer_mode',
+            'convrot_large_min_in_features',
+        ]);
+        if (!convrotKeys.has(key)) return true;
         const baseCompute = String(config?.base_compute ?? 'bf16').trim().toLowerCase() || 'bf16';
         return baseCompute === 'w8a16_convrot' || baseCompute === 'w8a8_convrot';
     }
@@ -255,7 +264,15 @@ function currentConfigState() { return configState.currentConfig || {}; }
         if (LOKR_SCOPED_FIELD_KEYS.has(key) || VERA_SCOPED_FIELD_KEYS.has(key) || key === 'dora_wd') {
             if (!isLoraAdapterScopedFieldActive(key, config)) return true;
         }
-        if (key === 'convrot_group_size' || key === 'convrot_scope') {
+        if (
+            key === 'convrot_group_size'
+            || key === 'convrot_scope'
+            || key === 'convrot_hadamard'
+            || key === 'convrot_min_in_features'
+            || key === 'convrot_largest_in_features_only'
+            || key === 'convrot_large_layer_mode'
+            || key === 'convrot_large_min_in_features'
+        ) {
             if (!isConvrotScopedFieldActive(key, config)) return true;
         }
         const scopedFamilies = METHOD_SCOPED_CONFIG_FORM_FIELDS.get(key);
@@ -272,7 +289,15 @@ function currentConfigState() { return configState.currentConfig || {}; }
         if (LOKR_SCOPED_FIELD_KEYS.has(key) || VERA_SCOPED_FIELD_KEYS.has(key) || key === 'dora_wd') {
             return isLoraAdapterScopedFieldActive(key, config);
         }
-        if (key === 'convrot_group_size' || key === 'convrot_scope') {
+        if (
+            key === 'convrot_group_size'
+            || key === 'convrot_scope'
+            || key === 'convrot_hadamard'
+            || key === 'convrot_min_in_features'
+            || key === 'convrot_largest_in_features_only'
+            || key === 'convrot_large_layer_mode'
+            || key === 'convrot_large_min_in_features'
+        ) {
             return isConvrotScopedFieldActive(key, config);
         }
         const family = activeMethodKey(config);

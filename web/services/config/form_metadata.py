@@ -369,6 +369,7 @@ FORM_GROUPS = {
         "base_compute",
         "convrot_group_size",
         "convrot_scope",
+        "convrot_hadamard",
         "convrot_min_in_features",
         "convrot_largest_in_features_only",
         "convrot_large_layer_mode",
