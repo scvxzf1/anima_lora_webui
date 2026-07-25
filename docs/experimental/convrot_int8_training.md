@@ -515,6 +515,24 @@ JSON：`output/tests/convrot_mem_speed_scope_all.json`、`convrot_mem_speed_scop
 - **显存优先：** `scope=all`（mlp+attn）+ free_base → peak **~3.4 GB**（再省 ~0.7 GB vs mlp-only），step ~1.08× 同 scope bf16；质量门仍是历史同型 2/3。  
 - W8A8 仍不作为速度默认；scope=all 时更慢。
 
+### G.11 regular@64 质量 + 20-step short-train（2026-07-25）
+
+| 探针 | 结果 |
+| --- | --- |
+| W8A16 **regular@64** ckpt seeds 0–2 | **3/3 PASS**（grad_max 1.0%，out_max 1.6%）— 优于 sylvester@256 的 2/3 |
+| short-train 20-step W8A16 syl@256 seed0 | last_loss rel vs bf16 **0.07%**（0.13536 vs 0.13546） |
+
+JSON：`output/tests/convrot_ckpt_w8a16_reg64_seeds012_p18.json`、`output/tests/convrot_short_train_p18/short_train_w8a16_seed0.json`
+
+**质量建议（仍 opt-in，不改默认 sylvester@256）：**
+
+```bash
+export ANIMA_CONVROT_HADAMARD=regular
+python tasks.py lora ... --base_compute w8a16_convrot --convrot_group_size 64
+```
+
+默认仍 sylvester@256（兼容 / 与既有 prequant 对齐）；若 seed 敏感或要收紧 grad gate，优先 regular@64。
+
 ### H. P0-C：prequant_checkpoint 加载（2026-07-25）
 
 实现：`library/runtime/convrot/prequant.py` + `apply.py` 接线；导出：`scripts/experiments/convrot_export_prequant.py`。
