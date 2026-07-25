@@ -230,7 +230,7 @@ configs/base.toml
   `tenth`、`debug`。
 - 当前 `configs/gui-methods/` 变体包括：`chimera_hydra`、`easycontrol`、
   `glora`、`hydralora`、`hydralora-8gb`、`ip_adapter`、`loha`、`lokr`、
-  `lora`、`lora-8gb`、`lora_signal_probe`、`ortholora`、`reft`、
+  `lora`、`lora-8gb`、`lora-convrot-vram`、`lora_signal_probe`、`ortholora`、`reft`、
   `soft_tokens`、`tlora`、`tlora-8gb`、`tlora_ortho_reft`、`vera`；
   维护时仍以目录实时列表为准。
 

@@ -749,6 +749,21 @@ mlp free-base 省下的 ~0.84 GB **不够** 在同峰下把 microbatch 从 1 翻
 
 JSON：`output/tests/convrot_compile_{default,max-autotune-no-cudagraphs}_{bf16,w8a16_free}.json`。
 
+### G.21 产品变体 `lora-convrot-vram`（2026-07-26）
+
+WebUI / `gui-methods` 自包含变体：
+
+- 路径：`configs/gui-methods/lora-convrot-vram.toml`（本机外置 configs 根需同步一份）
+- 默认：`base_compute=w8a16_convrot`、`convrot_scope=all`、`network_dim=32`、`group=256` sylvester
+- 叙事：同显存更大 rank / 可尝试更大 batch（§G.17–G.19）；**不是**速度档
+- 标签：`LoRA + ConvRot W8A16 (VRAM)` / 中文「LoRA + ConvRot W8A16 显存档（实验）」
+
+```bash
+# 合并检查
+.venv/bin/python train.py --method lora-convrot-vram --preset default \
+  --methods_subdir gui-methods --print-config --no-config-snapshot | rg convrot
+```
+
 ### H. P0-C prequant 实现注记
 
 实现：`library/runtime/convrot/prequant.py` + `apply.py` 接线；导出：`scripts/experiments/convrot_export_prequant.py`。

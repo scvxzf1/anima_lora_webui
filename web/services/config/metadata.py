@@ -148,6 +148,7 @@ CONFIG_FILE_LABELS_ZH = {
     "configs/gui-methods/loha.toml": "LoHa 训练变体",
     "configs/gui-methods/lokr.toml": "LoKr 训练变体",
     "configs/gui-methods/lora-8gb.toml": "LoRA 低显存变体",
+    "configs/gui-methods/lora-convrot-vram.toml": "LoRA + ConvRot W8A16 显存档（实验）",
     "configs/gui-methods/lora.toml": "LoRA 标准训练变体",
     "configs/gui-methods/reft.toml": "ReFT 训练变体",
     "configs/gui-methods/soft_tokens.toml": "Soft Tokens 训练变体",
