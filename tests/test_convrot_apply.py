@@ -201,7 +201,9 @@ def test_normalize_and_mutex() -> None:
     assert warn_convrot_blocks_to_swap(base_compute="bf16", blocks_to_swap=8) is None
     assert warn_convrot_blocks_to_swap(base_compute="w8a16_convrot", blocks_to_swap=0) is None
     msg = warn_convrot_blocks_to_swap(base_compute="w8a16_convrot", blocks_to_swap=8)
-    assert msg is not None and "unaudited" in msg and "blocks_to_swap=8" in msg
+    assert msg is not None and "blocks_to_swap=8" in msg
+    # Post A-fix: free-base weights are skipped by masters; warn is residual-path note.
+    assert "skipped by block-swap" in msg or "residual" in msg
 
 
 def test_metadata_stamp_and_merge_reject() -> None:

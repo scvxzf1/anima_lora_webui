@@ -33,6 +33,24 @@ def synchronize_device(device: Optional[Union[str, torch.device]]):
         torch.cuda.synchronize()
 
 
+def is_weight_swap_excluded(module: nn.Module) -> bool:
+    """True when block-swap must not master / H2D / D2H this module.weight.
+
+    ConvRot free-base replaces dense ``Linear.weight`` with a ``meta`` Parameter
+    (see ``library.runtime.convrot.free_base``). Offloader masters and
+    ``weighs_to_device`` must skip those tensors — copying meta raises
+    ``NotImplementedError``. Attribute ``_convrot_weight_freed`` is the explicit
+    mark; ``device.type == "meta"`` is the belt-and-suspenders check.
+    """
+    if bool(getattr(module, "_convrot_weight_freed", False)):
+        return True
+    weight = getattr(module, "weight", None)
+    if weight is None:
+        return False
+    device = getattr(getattr(weight, "data", weight), "device", None)
+    return getattr(device, "type", None) == "meta"
+
+
 def should_move_weight_to_device(
     module: nn.Module,
     device: torch.device,
@@ -41,6 +59,9 @@ def should_move_weight_to_device(
 ) -> bool:
     weight = getattr(module, "weight", None)
     if weight is None:
+        return False
+    # Free-base / meta weights are not movable storage — never plan a swap job.
+    if is_weight_swap_excluded(module):
         return False
     target_device = torch.device(device)
     if (

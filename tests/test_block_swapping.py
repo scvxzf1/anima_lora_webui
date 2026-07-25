@@ -9,7 +9,8 @@ import torch
 from torch import nn
 from torch.utils.checkpoint import checkpoint as torch_checkpoint
 
-from library.runtime.device import should_move_weight_to_device
+from library.runtime.device import is_weight_swap_excluded, should_move_weight_to_device
+from library.runtime.convrot.free_base import free_linear_weight_storage
 from library.runtime.offloading import (
     Int8BlockSwapCpuMaster,
     ModelOffloader,
@@ -18,6 +19,10 @@ from library.runtime.offloading import (
     normalize_block_swap_restore_mode,
     normalize_block_swap_transfer_dtype,
     swap_weight_devices_no_cuda,
+)
+from library.runtime.block_swap_masters import (
+    _can_swap_frozen_weight_to_cpu,
+    _ensure_weight_on_device,
 )
 
 
@@ -66,6 +71,42 @@ def test_cpu_block_swap_policy_skips_trainable_weights() -> None:
     assert should_move_weight_to_device(
         block.adapter, torch.device("cpu"), include_trainable=True
     )
+
+
+def test_block_swap_skips_convrot_free_base_meta_weights() -> None:
+    """Scheme A: free-base meta Linears must not enter masters or weighs_to_device."""
+    block = _TinyBlock()
+    free_linear_weight_storage(block.base)
+
+    assert is_weight_swap_excluded(block.base)
+    assert not is_weight_swap_excluded(block.adapter)
+    assert not should_move_weight_to_device(
+        block.base, torch.device("cpu"), include_trainable=False
+    )
+    assert not _can_swap_frozen_weight_to_cpu(block.base)
+    # ensure is a no-op on meta (must not raise).
+    _ensure_weight_on_device(block.base, torch.device("cpu"))
+    assert block.base.weight.device.type == "meta"
+
+
+def test_prepare_block_devices_skips_free_base_masters() -> None:
+    """First prepare after free-base must not try to copy meta into CPU masters."""
+    blocks = nn.ModuleList([_TinyBlock(), _TinyBlock(), _TinyBlock()])
+    # Free base on every block (simulates scope covering those linears).
+    for b in blocks:
+        free_linear_weight_storage(b.base)
+
+    offloader = ModelOffloader(
+        blocks, blocks_to_swap=1, device=torch.device("cpu"), supports_backward=False
+    )
+    offloader.prepare_block_devices_before_forward(blocks, free_cache=False)
+
+    # No masters for freed bases; adapters may still be non-swappable (trainable).
+    assert offloader._cpu_weight_masters is not None
+    for block_masters in offloader._cpu_weight_masters:
+        assert "base" not in block_masters
+    for b in blocks:
+        assert b.base.weight.device.type == "meta"
 
 
 def test_prepare_block_devices_keeps_trainable_weights_on_main_device() -> None:

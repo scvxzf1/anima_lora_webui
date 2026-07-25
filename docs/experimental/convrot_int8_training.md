@@ -764,52 +764,68 @@ METHODS_SUBDIR=gui-methods .venv/bin/python tasks.py print-config \
   METHOD=lora-convrot-vram PRESET=default | rg convrot
 ```
 
-**不要** 与 `blocks_to_swap>0` 叠用当省显存方案：
+**与 `blocks_to_swap` 叠用（方案 A，2026-07-26 后）：**
 
-- 训练里 `enable_block_swap` 在 **ConvRot free-base 之前**（`model_loading` → 稍后 `maybe_apply_convrot_base`）。
-- free-base 把 Linear.weight 置 `meta`；offloader 仍按模块 `weight` 做 CPU master / H2D restore，语义未审计，且与 `block_swap_transfer_dtype=int8` **硬互斥**。
-- 本 profile 固定 `blocks_to_swap=0`；极限显存用 `scope=all` + 更大 rank/batch，而不是 swap。
-- **2026-07-26 热测**：free-base 后首次 `prepare_block_devices_before_forward` / `_capture_cpu_master` 直接
-  `NotImplementedError: Cannot copy out of meta tensor`（见 §G.22）——叠用 **不是慢，是硬挂**。
+- 训练顺序仍是 `enable_block_swap` → ConvRot free-base → 首次 prepare。
+- free-base 把 patched `Linear.weight` 置 meta；offloader **跳过**
+  `_convrot_weight_freed` / meta（`is_weight_swap_excluded`），只 master **残余**
+  冻结权重（adaln 等）。CPU masters 实测约 **0.33 GiB**（scope=all）。
+- ConvRot int8 payload 仍在 LoRA network 上、**默认常驻 GPU**（方案 A 不搬 quant buffer）。
+- `block_swap_transfer_dtype=int8` 与 ConvRot **仍硬互斥**。
+- 主 VRAM 叙事仍是 `scope=all` + 更大 rank/batch + GC；swap 是残余路径，不是速度档。
+- 热测见 §G.22。
 
-### G.22 `scope=all` × GC × `blocks_to_swap=20` 热测（2026-07-26）
+### G.22 `scope=all` × GC × `blocks_to_swap=20`（方案 A 前后）
 
-探针：`scripts/experiments/convrot_mem_speed_probe.py`（已支持 `--blocks-to-swap`、
-`--no-gradient-checkpointing`、host RSS）。顺序对齐训练：`enable_block_swap` →
-LoRA apply → ConvRot free-base → `switch_block_swap_for_training`（首次 prepare）→ 步进。
-平台：RTX 3080，`w8a16` free-base，`scope=all`，group 256 sylvester，r4，eager（无 compile），6 step。
+探针：`scripts/experiments/convrot_mem_speed_probe.py`（`--blocks-to-swap`、
+`--no-gradient-checkpointing`、host RSS）。顺序：`enable_block_swap` →
+LoRA apply → ConvRot free-base → `switch_block_swap_for_training` → 步进。
+平台：RTX 3080，`w8a16` free-base，`scope=all`，group 256 sylvester，r4，eager，6 step。
 
-| 组合 | GC | swap | status | math | peak VRAM | sec/step | host RSS after | host RSS Δ | 备注 |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| all+GC+swap20 | on | 20 | **error** | — | ~5.79 GB* | n/a | ~1.04 GB | +0.31 | 首次 prepare 撞 meta master |
-| all+GC | on | 0 | **ok** | finite loss/grad | **3.43 GB** | **1.75 s** | ~1.57 GB | +0.84 | 推荐叠用路径 |
-| all+swap20 | off | 20 | **error** | — | ~5.79 GB* | n/a | ~1.04 GB | +0.31 | 同 meta 硬挂；与 GC 无关 |
+#### G.22.1 修复前（硬挂）
 
-\*失败 case 的 peak 是 load/patch 阶段残留，**不是**稳定训练峰；`sec/step` 无意义。
+| 组合 | GC | swap | status | 备注 |
+| --- | --- | --- | --- | --- |
+| all+GC+swap20 / all+swap20 | ± | 20 | **error** | `_capture_cpu_master(meta)` → `NotImplementedError` |
+| all+GC | on | 0 | ok | ~3.43 GB / ~1.75 s |
 
-JSON：`output/tests/convrot_stack_all_gc_swap20.json`、`convrot_stack_all_gc.json`、
-`convrot_stack_all_swap20.json`。
+JSON：`output/tests/convrot_stack_all_*.json`。
 
-失败栈（两 swap 组合相同）：
+#### G.22.2 方案 A 后（skip free-base / meta）
 
-```text
-ModelOffloader.prepare_block_devices_before_forward
-  → _ensure_cpu_weight_masters
-    → _capture_cpu_master(weight.data)  # weight is meta after free-base
-      → NotImplementedError: Cannot copy out of meta tensor; no data!
-```
+代码：`library/runtime/device.py::is_weight_swap_excluded`、
+`block_swap_masters._can_swap_frozen_weight_to_cpu` / `_ensure_weight_on_device`、
+`warn_convrot_blocks_to_swap` 文案更新。
 
-**数学稳定（仅 all+GC）**：`convrot_checkpoint_probe --scope all` seeds 0/1/2 →
-gate 2/3（seed0 `grad_rel≈0.072` 略超 0.05；out/loss 均在阈内）。与历史 syl@256 full-ckpt
-2/3 一致；**不是** swap 引入的回归。JSON：`output/tests/convrot_ckpt_all_gc.json`。
+| 组合 | GC | swap | status | math | peak VRAM | sec/step | host RSS | 相对 all+GC |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| **all+GC+swap20** | on | 20 | **ok** | finite | **3.17 GB** | **2.04 s** | **2.33 GB**（Δ+1.60） | peak **−0.27 GB**；速度 **1.16×**；RSS **+0.75 GB** |
+| **all+GC** | on | 0 | **ok** | finite | **3.43 GB** | **1.76 s** | **1.57 GB**（Δ+0.84） | 基线 |
+| **all+swap20**（无 GC） | off | 20 | **OOM** | — | peak 尝试 ~9.3 GB | n/a | ~2.14 GB | 无 GC 激活值爆炸；**不要**关 GC 叠 swap |
 
-**结论**
+同 seed 一步 loss：swap vs no-swap `loss_rel≈4e-4`（对齐）；`grad_norm` 相对差 ~0.20（步进噪声/设备布局，非 gate 失败）。
+masters 日志：`Block swap frozen CPU masters prepared: 0.33 GiB across 28 blocks`。
 
-1. **`scope=all` + `gradient_checkpointing`：可叠用** — 数学有限、峰 ~3.43 GB、host RSS ~1.6 GB。
-2. **`scope=all` + `blocks_to_swap`（无论 GC 开/关）：当前 free-base 路径硬失败** —
-   不要当省显存方案；bootstrap 已有 `warn_convrot_blocks_to_swap`。
-3. 若未来要叠 swap，需在 free-base **前**捕获 masters，且 restore 跳过
-   `_convrot_weight_freed` / meta 权重（另开 P2，本轮不修）。
+JSON：`output/tests/convrot_stack_a_all_{gc_swap20,gc,swap20}.json`。
+
+**数学（all+GC，无 swap 对照）**：`convrot_checkpoint_probe --scope all` seeds 0/1/2 →
+gate 2/3（syl@256 历史水平）。JSON：`output/tests/convrot_ckpt_all_gc.json`。
+
+**四维结论（方案 A）**
+
+| 轴 | all+GC+swap20 vs all+GC |
+| --- | --- |
+| 数学 | 可跑且 loss 对齐；有限 loss/grad |
+| 速度 | **更慢**（~1.16× sec/step，swap 税） |
+| 显存 | **略省**（3.17 vs 3.43，约 −0.27 GB；残余 adaln 等） |
+| 主机内存 | **更高**（RSS ~2.33 vs 1.57；0.33 GiB masters + pin 开销） |
+
+产品建议：
+
+1. **默认仍 `all+GC`、`blocks_to_swap=0`**（速度/简单/主 VRAM 叙事）。
+2. **极限再抠 ~0.3 GB** 可开 `blocks_to_swap`（须 **GC on** + transfer **bf16**）；接受更慢与更高 host RSS。
+3. **禁止** `all+swap` 且关 GC（本机 OOM）。
+4. quant buffer 随 block 卸 CPU = 方案 B（P2），本轮不做。
 
 ### H. P0-C prequant 实现注记
 

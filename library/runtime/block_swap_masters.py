@@ -8,7 +8,7 @@ from typing import Optional, Union
 import torch
 import torch.nn as nn
 
-from library.runtime.device import should_move_weight_to_device
+from library.runtime.device import is_weight_swap_excluded, should_move_weight_to_device
 from library.runtime.int8_linear import (
     INT8_MAX,
     classify_frozen_linear_module,
@@ -32,11 +32,16 @@ def _ensure_weight_on_device(module: nn.Module, device: torch.device) -> None:
     weight = getattr(module, "weight", None)
     if weight is None:
         return
+    # Never materialize / move ConvRot free-base meta placeholders.
+    if is_weight_swap_excluded(module):
+        return
     if _weight_device_type(module) != device.type:
         weight.data = weight.data.to(device, non_blocking=True)
 
 
 def _can_swap_frozen_weight_to_cpu(module: nn.Module) -> bool:
+    if is_weight_swap_excluded(module):
+        return False
     return should_move_weight_to_device(
         module, torch.device("cpu"), include_trainable=False
     )
