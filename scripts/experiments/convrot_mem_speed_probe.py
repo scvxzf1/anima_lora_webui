@@ -95,6 +95,7 @@ def run_case(
     torch_compile: bool = False,
     lora_rank: int = 4,
     lora_alpha: float | None = None,
+    batch_size: int = 1,
 ) -> dict:
     if gemm_env is not None:
         os.environ["ANIMA_CONVROT_INT8_GEMM"] = gemm_env
@@ -112,10 +113,11 @@ def run_case(
     torch.cuda.reset_peak_memory_stats()
     torch.cuda.synchronize()
 
+    bs = max(1, int(batch_size))
     pair = select_cached_batch_pair(data_dir, 0)
     model_inputs, target, _meta = _load_checkpoint_batch(
         pair,
-        batch_size=1,
+        batch_size=bs,
         seed=seed,
         device=device,
         dtype=dtype,
@@ -242,6 +244,7 @@ def run_case(
         "torch_compile": bool(torch_compile),
         "lora_rank": rank,
         "lora_alpha": alpha,
+        "batch_size": bs,
         "steps": steps,
         "elapsed_sec": elapsed,
         "sec_per_step": elapsed / steps,
@@ -343,6 +346,12 @@ def main() -> int:
         type=float,
         default=None,
         help="LoRA alpha; default equals --lora-rank.",
+    )
+    parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=1,
+        help="Microbatch size (repeats one cached sample). Default 1.",
     )
     args = parser.parse_args()
 
@@ -488,6 +497,7 @@ def main() -> int:
                 torch_compile=bool(args.torch_compile),
                 lora_rank=int(args.lora_rank),
                 lora_alpha=args.lora_alpha,
+                batch_size=int(args.batch_size),
             )
         )
 

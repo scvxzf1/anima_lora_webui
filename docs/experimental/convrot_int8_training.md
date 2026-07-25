@@ -611,7 +611,7 @@ JSON：`convrot_ckpt_w8a8_p111*.json`（**p111e 恢复 3/3**）、`convrot_mem_s
 | `convrot_group_size` / hadamard | `256` / `sylvester` | 兼容 prequant；质量 2/3 |
 | `torch_compile` | 建议开 | 吃掉多数 Python 税 |
 | 显存优先 | `scope=all` | **~3.43 GB** / **~1.08×** |
-| **替代 KPI** | 同峰抬 `network_dim` | W8A16@**r32** 仍 **4.20 GB** < bf16@r4（§G.17） |
+| **替代 KPI** | 同峰抬 `network_dim` / batch | rank：§G.17；batch：§G.19（**all@b2** / **all@r32@b2**） |
 
 **质量 opt-in**
 
@@ -670,6 +670,60 @@ JSON：`convrot_ckpt_w8a8_p111*.json`（**p111e 恢复 3/3**）、`convrot_mem_s
 | 路径 | peak | sec/step | ×bf16 |
 | --- | --- | --- | --- |
 | W8A16 compile（ctx） | 4.11 GB | 1.178 s | ~1.05 |
+
+速度中性清洁改动；不改变质量门。
+
+### G.19 同显存更大 batch（替代 KPI，2026-07-26）
+
+探针：`convrot_mem_speed_probe.py --batch-size N --torch-compile`（repeat 1 cached sample；4 steps；3080）。
+
+**mlp scope（默认速度档）：**
+
+| base | bs | peak GB | sec/step | under bf16@b1 peak? | samp/s |
+| --- | --- | --- | --- | --- | --- |
+| bf16 | 1 | **4.95** | 1.14 | — | 0.88 |
+| bf16 | 2 | 5.89 | 2.20 | no | 0.91 |
+| bf16 | 4 | 7.79 | 4.33 | no | 0.92 |
+| W8A16 free | 1 | **4.11** | 1.18 | **yes (−0.84）** | 0.85 |
+| W8A16 free | 2 | 5.06 | 2.28 | **no（+0.11）** | 0.88 |
+| W8A16 free | 4 | 6.97 | 4.46 | no | 0.90 |
+
+mlp free-base 省下的 ~0.84 GB **不够** 在同峰下把 microbatch 从 1 翻到 2（激活/激活梯度主导 batch 税）。
+
+**scope=all（显存优先档）：**
+
+| base | bs | peak GB | sec/step | under bf16@b1? | samp/s |
+| --- | --- | --- | --- | --- | --- |
+| W8A16 free | 1 | **3.43** | 1.29 | yes | 0.77 |
+| **W8A16 free** | **2** | **4.42** | 2.49 | **yes（−0.53）** | **0.80** |
+| W8A16 free | 4 | 6.36 | 4.86 | no | 0.82 |
+
+**组合：all + r32 + b2 仍进 bf16@b1 峰：**
+
+| config | peak GB | sec/step | under bf16@b1? |
+| --- | --- | --- | --- |
+| all@r32@b1 | 3.63 | 1.30 | yes |
+| **all@r32@b2** | **4.62** | 2.49 | **yes（−0.33）** |
+
+解读：
+
+1. **「同显存更大 batch」只在 `scope=all` 上成立**（b=2 peak 4.42 < bf16@b1 4.95）。
+2. mlp 默认档更适合「同显存更大 rank」（§G.17），不适合同峰翻 batch。
+3. batch 税近似线性：peak ≈ base_storage + O(bs)；free-base 砍的是 storage，不砍 activation。
+4. 吞吐（samp/s）随 bs 略升（~3–5%），不是主收益；主收益是 **同 10GB 卡上可训更大有效 batch / 更大 rank**。
+5. bwd `w_q` cast scratch 微测：相对每步 `to(dtype)` 仅 ~0.1 ms、顺序层 peak ~16 MB —— **不实现**（ROI 低于文档成本）。
+6. JSON：`output/tests/convrot_bs_{bf16,w8a16_free}_b{1,2,4}.json`、`convrot_bs_all_w8a16_free_b{1,2,4}.json`、`convrot_bs_all_w8a16_free_r32_b{1,2}.json`。
+
+**产品叙事（Phase 1 冻结）：**
+
+| 目标 | 推荐配置 | 依据 |
+| --- | --- | --- |
+| 速度优先 | mlp + compile + r4–32 | ~1.05× bf16；r32 仍 < bf16@r4 peak |
+| 显存 / 更大 batch | **all + compile**；可 **b=2** 且仍 < bf16@b1 | §G.19 |
+| 显存 + 表达力 | **all + r32 + b2** | peak **4.62 GB** < 4.95 |
+| 质量优先 | regular@64 | gate 3/3 |
+
+### H. P0-C prequant 实现注记
 
 实现：`library/runtime/convrot/prequant.py` + `apply.py` 接线；导出：`scripts/experiments/convrot_export_prequant.py`。
 
@@ -795,7 +849,7 @@ W8A8 regular g=256：seed0 **grad_rel≈4.1**（异常大，seed1/2 正常）→
 
 ## 一句话结论
 
-**ConvRot 是修正「DiT 上裸 rowwise int8 效果差」的正确方向**（group-wise Hadamard 压 outlier）。本仓已自建 W8A16 / W8A8；free-base 后显存可低于 bf16；A2 后 W8A16 ~1.23× bf16；prequant 不加速 step。**P0-D 已实现论文 regular Hadamard**；本机 multi-seed 下 **regular@64 改善 seed0 grad**，但默认仍 **sylvester@256** 以保兼容。Triton 门槛未达。
+**ConvRot 是修正「DiT 上裸 rowwise int8 效果差」的正确方向**（group-wise Hadamard 压 outlier）。本仓已自建 W8A16 / W8A8；free-base 后显存可低于 bf16；compile 下 W8A16 ~1.05× bf16。Phase 1 KPI = 显存/质量；**step ≤ bf16 非 KPI**。替代叙事：**同显存更大 rank**（mlp@r32）与 **同显存更大 batch**（仅 `scope=all`@b2 / all@r32@b2）。默认 sylvester@256；质量 opt-in regular@64。Triton 门槛未达。
 
 ---
 ## 1. ConvRot 是什么
