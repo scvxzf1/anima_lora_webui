@@ -73,14 +73,15 @@
 
 ## 大概有哪些能力
 
-1. 训练 LoRA、LoKr、 这两个主要在维护的。“也不一定就是好的”
-2. “LoHa、OrthoLoRA、T-LoRA、HydraLoRA、FeRA、ReFT、ChimeraHydra、”这一窝没啥精力维护给我正义切割了，后端没删前端大部分没给配置项给了的也不一定可用。
-3. 在 WebUI 里管理训练方法、硬件预设、数据集配置、模型路径和 sample prompts。
-4. 支持图片 resize、VAE latent 缓存、文本编码缓存、PE 特征缓存和 caption index 构建。
-5. 支持训练队列、任务日志、历史任务分组、失败/中断任务续训和运行状态查看。
-6. 支持训练结果预览、权重选择、prompt 预览和基础推理测试。
-7. 保留命令行入口，适合自动化训练、实验方法验证和批处理。
-8. 附带 ComfyUI custom nodes、实验 bench、结构文档和 pytest 测试。
+1. 训练 LoRA、LoKr 这两个主要在维护的。“也不一定就是好的”
+2. LoHa 已作为 PEFT/LyCORIS 兼容插件接通（训练 / 保存 / 静态 merge / WebUI 变体可用），但定位是**兼容可用、非主力**；说明见 `docs/methods/loha.md`。
+3. “OrthoLoRA、T-LoRA、HydraLoRA、FeRA、ReFT、ChimeraHydra、”这一窝没啥精力维护给我正义切割了，后端没删前端大部分没给配置项给了的也不一定可用。
+4. 在 WebUI 里管理训练方法、硬件预设、数据集配置、模型路径和 sample prompts。
+5. 支持图片 resize、VAE latent 缓存、文本编码缓存、PE 特征缓存和 caption index 构建。
+6. 支持训练队列、任务日志、历史任务分组、失败/中断任务续训和运行状态查看。
+7. 支持训练结果预览、权重选择、prompt 预览和基础推理测试。
+8. 保留命令行入口，适合自动化训练、实验方法验证和批处理。
+9. 附带 ComfyUI custom nodes、实验 bench、结构文档和 pytest 测试。
 
 ## 致谢 / “抄袭”列表
 

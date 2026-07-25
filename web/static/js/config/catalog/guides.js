@@ -51,9 +51,9 @@ export const METHOD_GUIDE_ZH = {
     ),
     loha: choiceHelp(
         'LoHa',
-        '使用 Hadamard product 分解 LoRA 更新，输出 hada_w1/hada_w2 权重。',
-        '适合需要 PEFT/LyCORIS LoHa 兼容权重的训练；代价是推理侧也需要 LoHa 兼容加载器。',
-        '明确要 LoHa 格式时选，普通训练仍优先 LoRA。'
+        '使用两组低秩矩阵的 Hadamard 积形成 ΔW，导出 PEFT/LyCORIS 兼容的 hada_w* 权重。',
+        '兼容可用、非主力：可训练、可静态 merge、Web 热启动仅 LoHa→LoHa；参数量约 2× 同 rank LoRA，大层会物化临时 ΔW。',
+        '明确要 LoHa 格式时选；日常训练仍优先 LoRA，参数效率优先选 LoKr。'
     ),
     reft: choiceHelp(
         'ReFT',
@@ -250,8 +250,8 @@ export const VARIANT_GUIDE_ZH = {
     loha: choiceHelp(
         'LoHa',
         '输出 PEFT/LyCORIS 兼容的 hada_w1/hada_w2 权重，默认 rank=32。',
-        '可合并进 DiT Linear 权重；推理或继续训练时需要 LoHa 权重识别支持。',
-        '只有需要 LoHa 兼容格式时选。'
+        '兼容可用、非主力：可合并进 DiT Linear；热启动仅 LoHa→LoHa；参数量约 2× 同 rank LoRA。',
+        '明确要 LoHa 格式时选；日常训练优先 LoRA，参数效率优先 LoKr。'
     ),
     vera: choiceHelp(
         'VeRA',

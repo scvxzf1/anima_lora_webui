@@ -1,0 +1,19 @@
+# Worktree-local LoHa hot-test dataset (absolute paths into main repo MFU cache).
+
+[general]
+caption_extension = ".txt"
+keep_tokens = 3
+
+[[datasets]]
+batch_size = 1
+prior_loss_weight = 1.0
+caption_source_mode = "auto"
+caption_extension = ".txt"
+prefer_json_caption = false
+validation_split = 0.0
+validation_seed = 42
+
+  [[datasets.subsets]]
+  image_dir = "/home/scv/nvme0n1p1/训练器相关/anima_lora/bench/mfu/assets/rokkotsu_goddess_528_tag/dataset_cache/dataset-01/resized"
+  cache_dir = "/home/scv/nvme0n1p1/训练器相关/anima_lora/bench/mfu/assets/rokkotsu_goddess_528_tag/dataset_cache/dataset-01/lora"
+  num_repeats = 8

@@ -9,17 +9,9 @@ import torch
 import torch.nn.functional as F
 
 from ...lora_modules.base import BaseLoRAModule
+from .autograd import loha_linear, make_hada_weight
 
 logger = logging.getLogger(__name__)
-
-
-def _make_weight(
-    w1_a: torch.Tensor,
-    w1_b: torch.Tensor,
-    w2_a: torch.Tensor,
-    w2_b: torch.Tensor,
-) -> torch.Tensor:
-    return (w1_a.float() @ w1_b.float()) * (w2_a.float() @ w2_b.float())
 
 
 class LoHaModule(BaseLoRAModule):
@@ -76,7 +68,7 @@ class LoHaModule(BaseLoRAModule):
         self._fused = False
 
     def _compute_weight(self) -> torch.Tensor:
-        return _make_weight(
+        return make_hada_weight(
             self.hada_w1_a,
             self.hada_w1_b,
             self.hada_w2_a,
@@ -106,13 +98,28 @@ class LoHaModule(BaseLoRAModule):
             return org_forwarded
 
         x_loha = F.dropout(x, p=self.dropout) if self.training and self.dropout else x
-        weight = self._compute_weight()
-        if self.training:
+        effective_scale = float(self.multiplier) * float(self.scale)
+
+        # rank_dropout masks output rows of the materialized ΔW. Keep the legacy
+        # path when it is active so dropout semantics stay bit-compatible.
+        if self.training and self.rank_dropout:
+            weight = self._compute_weight()
             weight = self._drop_output_rows(weight, self.rank_dropout)
-        y = F.linear(x_loha.float(), weight.float())
+            y = F.linear(x_loha.float(), weight.float()) * effective_scale
+            y = y.to(org_forwarded.dtype)
+        else:
+            y = loha_linear(
+                x_loha,
+                self.hada_w1_a,
+                self.hada_w1_b,
+                self.hada_w2_a,
+                self.hada_w2_b,
+                scale=effective_scale,
+            )
+
         if self.training:
             y = y * self._scalar_timestep_gate(y)
-        return org_forwarded + (y * self.multiplier * self.scale).to(org_forwarded.dtype)
+        return org_forwarded + y.to(org_forwarded.dtype)
 
     def get_weight(self, multiplier=None):
         if multiplier is None:
@@ -128,7 +135,7 @@ class LoHaModule(BaseLoRAModule):
             if device is None:
                 device = weight.device
 
-            delta = _make_weight(
+            delta = make_hada_weight(
                 sd["hada_w1_a"].to(device),
                 sd["hada_w1_b"].to(device),
                 sd["hada_w2_a"].to(device),

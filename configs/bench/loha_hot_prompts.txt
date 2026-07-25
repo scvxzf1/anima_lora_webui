@@ -1,0 +1,2 @@
+masterpiece, best quality, score_7, safe, 1girl, solo, anime style, detailed face, upper body portrait, soft light, clean lineart --w 768 --h 768 --s 20 --g 4 --d 42001
+masterpiece, best quality, score_7, safe, 1girl, solo, full body, standing, dynamic pose, fantasy outfit, detailed hair, outdoors, blue sky --w 768 --h 768 --s 20 --g 4 --d 42002

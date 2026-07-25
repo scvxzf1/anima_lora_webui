@@ -3518,3 +3518,12 @@ def test_dataset_schedule_editor_blocks_stale_or_loading_preset_state() -> None:
     assert "...previousState" in loader
     assert "stageBtn.disabled = Boolean(activeState.loading) || !targetFile" in toolbar
     assert "if (activeDataset?.loading)" in dialog
+
+
+def test_loha_variant_method_family_maps_to_loha():
+    """LoHa must keep its own method-family key for form scoping."""
+    layout = _frontend_module_text("js/config/catalog/form-layout.js")
+    assert "loha: 'loha'" in layout
+    assert "loha: 'lora'" not in layout
+    guides = _frontend_module_text("js/config/catalog/guides.js")
+    assert "兼容可用、非主力" in guides

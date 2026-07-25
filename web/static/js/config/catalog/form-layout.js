@@ -523,7 +523,7 @@ export const VARIANT_METHOD_FAMILY = {
     lora_longer: 'lora',
     'lora-8gb': 'lora',
     glora: 'glora',
-    loha: 'lora',
+    loha: 'loha',
     lokr: 'lokr',
     ortholora: 'ortholora',
     tlora: 'tlora',
