@@ -234,17 +234,20 @@ class _FusedW8A8Fn(torch.autograd.Function):
         w_q, w_scale = ctx.saved_tensors
         hadamard = getattr(ctx, "hadamard", None)
         layout = getattr(ctx, "weight_layout", "nk")
-        # Keep bwd accumulate in fp32 for STE stability.
+        # P1.11: run STE matmul in compute_dtype (bf16 TC) instead of forced
+        # fp32 — matches W8A16 bwd and cuts W8A8 bwd cast/gemm tax.
         # kn: grad_rot = (gy * scale) @ w_kn.T
         # nk: grad_rot = (gy * scale) @ w_nk
-        # Avoids materializing full dequant W [N,K].
-        gy = grad_y.to(torch.float32)
-        scale = w_scale.to(device=gy.device, dtype=torch.float32)
+        compute_dtype = getattr(ctx, "compute_dtype", torch.float32)
+        if compute_dtype not in (torch.float16, torch.bfloat16):
+            compute_dtype = torch.float32
+        gy = grad_y.to(dtype=compute_dtype)
+        scale = w_scale.to(device=gy.device, dtype=compute_dtype)
         if scale.dim() == 1:
             gy = gy * scale
         else:
             gy = gy * scale.reshape(1, -1)
-        w = w_q.to(torch.float32)
+        w = w_q.to(dtype=compute_dtype)
         if w.device != gy.device:
             w = w.to(device=gy.device)
         if layout == "kn":
@@ -252,12 +255,7 @@ class _FusedW8A8Fn(torch.autograd.Function):
             grad_rot = gy @ w.transpose(0, 1)
         else:
             grad_rot = gy @ w
-        compute_dtype = getattr(ctx, "compute_dtype", torch.float32)
-        if compute_dtype in (torch.float16, torch.bfloat16):
-            grad_rot_c = grad_rot.to(dtype=compute_dtype)
-            grad_x = _rotate_acts(grad_rot_c, ctx.group_size, hadamard=hadamard)
-        else:
-            grad_x = _rotate_acts(grad_rot, ctx.group_size, hadamard=hadamard)
+        grad_x = _rotate_acts(grad_rot, ctx.group_size, hadamard=hadamard)
         if ctx.x_dtype != grad_x.dtype:
             grad_x = grad_x.to(dtype=ctx.x_dtype)
         return grad_x, None, None, None, None, None

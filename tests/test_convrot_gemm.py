@@ -35,6 +35,24 @@ def test_int8_mm_scaled_float_matches_dequant_matmul() -> None:
     assert torch.allclose(y, ref, atol=1e-4, rtol=1e-4)
 
 
+def test_quantize_activation_half_avoids_full_fp32_and_stays_close() -> None:
+    """P1.11: bf16/fp16 act quant should match fp32 codes within ±1."""
+    torch.manual_seed(11)
+    x = torch.randn(8, 64, dtype=torch.bfloat16)
+    q_h, s_h = quantize_activation_absmax_int8(x)
+    # Reference: classic full fp32 path.
+    work_f = x.float()
+    amax = work_f.abs().amax(dim=-1, keepdim=True).clamp_min(1e-12)
+    scale = amax / 127.0
+    q_ref = (work_f / scale).round().clamp(-127, 127).to(torch.int8)
+    # Codes may differ by at most 1 from half-precision amax/mul rounding.
+    assert (q_h.to(torch.int16) - q_ref.to(torch.int16)).abs().max().item() <= 1
+    rel = (s_h - scale).abs() / scale.clamp_min(1e-8)
+    assert rel.max().item() < 0.02
+    assert q_h.dtype == torch.int8
+    assert s_h.dtype == torch.float32
+
+
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required for _int_mm")
 def test_int8_mm_scaled_cuda_int_mm_matches_float_when_supported() -> None:
     torch.manual_seed(1)

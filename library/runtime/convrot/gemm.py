@@ -53,18 +53,24 @@ def quantize_activation_absmax_int8(
     ``scale`` shape is ``x.shape[:-1] + (1,)`` such that
     ``x ≈ x_q.float() * scale``.
 
-    Half/bf16 inputs keep absmax in native dtype then promote scale only;
-    the division still runs in fp32 for stable int8 codes.
+    Half/bf16 path (P1.11): amax stays native; multiply by ``127/amax`` in the
+    act dtype then round — avoids a full ``x.to(float32)`` temporary. Scale is
+    still emitted in float32 for post-GEMM stability.
     """
     from library.runtime.convrot.quant import INT8_MAX, SCALE_EPS
 
     work = x.detach()
     if work.dtype in (torch.float16, torch.bfloat16):
-        amax = work.abs().amax(dim=-1, keepdim=True).to(torch.float32).clamp_min(SCALE_EPS)
-        work_f = work.to(torch.float32)
-    else:
-        work_f = work.to(torch.float32)
-        amax = work_f.abs().amax(dim=-1, keepdim=True).clamp_min(SCALE_EPS)
+        amax_h = work.abs().amax(dim=-1, keepdim=True).clamp_min(
+            torch.finfo(work.dtype).tiny
+        )
+        # inv ≈ 127/amax in act dtype; q = round(x * inv).
+        inv = (work.new_tensor(INT8_MAX) / amax_h).to(dtype=work.dtype)
+        q = (work * inv).round().clamp(-INT8_MAX, INT8_MAX).to(torch.int8)
+        scale = amax_h.to(torch.float32).clamp_min(SCALE_EPS) / INT8_MAX
+        return q, scale
+    work_f = work.to(torch.float32)
+    amax = work_f.abs().amax(dim=-1, keepdim=True).clamp_min(SCALE_EPS)
     scale = amax / INT8_MAX
     q = (work_f / scale).round().clamp(-INT8_MAX, INT8_MAX).to(torch.int8)
     return q, scale
@@ -124,7 +130,7 @@ def int8_mm_scaled(
     )
     result_dtype = out_dtype or torch.float32
 
-    # Scales applied in float32 for stability, then cast once to result_dtype.
+    # Post-scale in float32 (int32 acc needs headroom); final cast once.
     x_scale_flat = x_scale.reshape(-1, 1).to(device=flat.device, dtype=torch.float32)
     w_scale_row = w_scale.reshape(1, -1).to(device=flat.device, dtype=torch.float32)
 
@@ -137,6 +143,7 @@ def int8_mm_scaled(
                 b = w_q.t().contiguous()
             a = flat if flat.is_contiguous() else flat.contiguous()
             acc = torch._int_mm(a, b)
+            # int32→fp32 required before scale (bf16 mantissa too short for raw acc).
             y = acc.to(torch.float32)
             y.mul_(x_scale_flat)
             y.mul_(w_scale_row)
@@ -221,14 +228,18 @@ class _W8A8IntLinearFn(torch.autograd.Function):
         layout: WeightLayout = getattr(ctx, "weight_layout", "nk")
         x_dtype = getattr(ctx, "x_dtype", grad_y.dtype)
         # Base weights frozen — only grad_x. STE ignores act quant.
-        # grad_rot = (gy * scale) @ W  without full dequant temp.
-        gy = grad_y.to(torch.float32)
-        scale = w_scale.to(device=gy.device, dtype=torch.float32)
+        # Prefer act TC dtype for (gy*scale)@W (P1.11); fp32 only when needed.
+        if x_dtype in (torch.float16, torch.bfloat16):
+            acc_dtype = x_dtype
+        else:
+            acc_dtype = torch.float32
+        gy = grad_y.to(dtype=acc_dtype)
+        scale = w_scale.to(device=gy.device, dtype=acc_dtype)
         if scale.dim() == 1:
             gy = gy * scale
         else:
             gy = gy * scale.reshape(1, -1)
-        w = w_q.to(torch.float32)
+        w = w_q.to(dtype=acc_dtype)
         if w.device != gy.device:
             w = w.to(device=gy.device)
         if layout == "kn":

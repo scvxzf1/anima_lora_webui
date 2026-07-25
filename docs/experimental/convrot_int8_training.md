@@ -560,7 +560,7 @@ W8A8 仍 ~1.4× bf16@compile；主税仍是 `_int_mm` + act quant，非 save/cas
 | largest-only + compile | mlp + largest | 4.51 GB | 1.17 s | 1.031 | 略快、省显存少 |
 | attention_out | out-proj only | 4.66 GB | 1.40 s | 1.014 | 几乎不省显存 |
 | **显存优先** | all + free + compile | **3.43 GB** | 1.30 s | **1.08** | 极限 VRAM |
-| W8A8 mlp + compile | mlp | 4.14 GB | 1.58 s | 1.39 | 非速度默认 |
+| W8A8 mlp + compile | mlp | **4.11 GB** | **1.27 s** | **~1.13** | 可用第二档（P1.11） |
 
 WebUI：`convrot_scope` 选项扩展为 `mlp | all | attention_out | attn | mlp,attn`。
 
@@ -577,6 +577,26 @@ WebUI：`convrot_scope` 选项扩展为 `mlp | all | attention_out | attn | mlp,
 | 热测 | p110 eager 与 p15 同量级（dtype 已吃完主税）；regular@64 ~1.04× |
 
 默认仍 **sylvester@256**；seed 敏感 / 收紧 grad 时 WebUI 或 CLI 切 **regular@64**。
+
+### G.15 P1.11 W8A8 act half-quant + bf16 STE bwd（2026-07-25）
+
+| 改动 | 作用 |
+| --- | --- |
+| `quantize_activation_absmax_int8` half 路径 | amax/mul 留在 bf16/fp16，**不再** `x.to(fp32)` 整表；scale 仍 fp32 |
+| fused / module W8A8 STE bwd | `(gy*scale)@W_q` 用 **compute_dtype**（bf16 TC），不再强制 fp32 累加 |
+| int32→scale | 仍必须先 `acc.float()`（bf16 尾数装不下 raw int32） |
+
+热测（mlp，3080）：
+
+| 路径 | peak | sec/step | ×bf16 | vs P1.9 |
+| --- | --- | --- | --- | --- |
+| w8a8 eager | **4.21 GB** | **1.720 s** | 1.19 | was ~2.11 s / 4.43 GB |
+| **w8a8 + compile** | **4.11 GB** | **1.269 s** | **1.126** | was **1.582 s**（**−19.7%**） |
+| w8a16 + compile（对照） | 4.11 GB | 1.180 s | 1.046 | 持平 |
+
+JSON：`output/tests/convrot_mem_speed_w8a8_compile_p111.json`、`convrot_mem_speed_p111_eager.json`。
+
+W8A8 在 compile 下已从 ~1.39× 收到 **~1.13× bf16**，peak 与 W8A16 同档；仍非速度默认（W8A16 更稳），但可作为显存/对照第二档。
 
 ### H. P0-C：prequant_checkpoint 加载（2026-07-25）
 
