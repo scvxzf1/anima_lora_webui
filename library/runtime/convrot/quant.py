@@ -34,12 +34,23 @@ def dequantize_weight(
     *,
     dtype: torch.dtype | None = None,
 ) -> torch.Tensor:
+    """Dequant int8 weights.
+
+    When ``dtype`` is fp16/bf16, cast then multiply in that dtype (no full fp32
+    materialize). Numerically within rounding of the fp32-then-cast path for
+    per-channel absmax scales; hot path measured cheaper on Ampere.
+    """
     if quantized.dim() != 2:
         raise ValueError("quantized weight must be 2D")
     if scale.shape != (quantized.shape[0],):
         raise ValueError("scale must have one value per output channel")
-    weight = quantized.to(torch.float32) * scale.to(torch.float32)[:, None]
-    return weight.to(dtype) if dtype is not None else weight
+    if dtype is None or dtype == torch.float32:
+        weight = quantized.to(torch.float32) * scale.to(
+            device=quantized.device, dtype=torch.float32
+        )[:, None]
+        return weight
+    # Half / bf16 / other: avoid allocating a full fp32 [out, in] temporary.
+    return quantized.to(dtype) * scale.to(device=quantized.device, dtype=dtype)[:, None]
 
 
 def rotate_and_quantize_weight(

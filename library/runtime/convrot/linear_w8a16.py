@@ -113,20 +113,21 @@ def w8a16_forward_from_buffers(
 ) -> torch.Tensor:
     """Functional W8A16 path used by LoRA ``org_forward`` closures.
 
-    When ``hadamard is None`` and fused mode is on (default), uses the fused
-    autograd path (dense RHT + dequant linear by default). Passing an explicit
-    ``hadamard`` forces the non-fused dense path for equivalence tests.
+    Default uses the fused autograd path (dense RHT + dequant linear). An
+    optional precomputed ``hadamard`` is forwarded into the fused path so the
+    hot path avoids env/cache lookups (P1-H). Set ``ANIMA_CONVROT_FUSED=0`` to
+    force the legacy non-fused dense path (still honors ``hadamard``).
     """
     assert_group_divides(int(quantized_weight.shape[1]), group_size)
-    if hadamard is None and fused_enabled():
+    if fused_enabled():
         return fused_w8a16_forward(
             x,
             quantized_weight,
             scale,
             group_size=group_size,
+            hadamard=hadamard,
         )
-    # RHT in float32; dequant linear prefers bf16/fp16 TC (matches fused path).
-    x_rot = group_rht(x.to(torch.float32), group_size, hadamard=hadamard)
+    # RHT + dequant linear prefer bf16/fp16 TC (matches fused path / P1.5).
     compute_dtype = (
         x.dtype
         if x.is_floating_point() and x.dtype in (torch.float16, torch.bfloat16)
@@ -134,8 +135,10 @@ def w8a16_forward_from_buffers(
         if x.device.type == "cuda"
         else torch.float32
     )
-    weight = dequantize_weight(quantized_weight, scale, dtype=compute_dtype).to(
-        device=x.device, dtype=compute_dtype
-    )
-    y = F.linear(x_rot.to(dtype=compute_dtype), weight, None)
-    return y.to(dtype=x.dtype) if x.is_floating_point() else y
+    x_work = x.to(dtype=compute_dtype) if x.dtype != compute_dtype else x
+    x_rot = group_rht(x_work, group_size, hadamard=hadamard)
+    weight = dequantize_weight(quantized_weight, scale, dtype=compute_dtype)
+    if weight.device != x.device:
+        weight = weight.to(device=x.device)
+    y = F.linear(x_rot, weight, None)
+    return y.to(dtype=x.dtype) if x.is_floating_point() and y.dtype != x.dtype else y

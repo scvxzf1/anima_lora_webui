@@ -45,9 +45,20 @@ def w8a16_kernel_backend() -> Literal["auto", "int8pack", "dequant"]:
     return "auto"
 
 
-def _rotate_acts(x: torch.Tensor, group_size: int) -> torch.Tensor:
-    """RHT on activations using configured backend (dense default)."""
+def _rotate_acts(
+    x: torch.Tensor,
+    group_size: int,
+    *,
+    hadamard: torch.Tensor | None = None,
+) -> torch.Tensor:
+    """RHT on activations using configured backend (dense default).
+
+    When ``hadamard`` is provided, always use dense matmul with that matrix
+    (compile-friendly: no env lookup / cache miss on the hot path).
+    """
     with torch.profiler.record_function("convrot::rht"):
+        if hadamard is not None:
+            return group_rht(x, group_size, hadamard=hadamard)
         if rht_backend() == "fwht":
             return group_fwht(x, group_size)
         return group_rht(x, group_size)
@@ -72,11 +83,21 @@ def can_use_weight_int8pack_mm(
     return True
 
 
+def _resolve_compute_dtype(x: torch.Tensor) -> torch.dtype:
+    """Prefer act dtype for TC; CUDA non-half inputs fall back to bf16."""
+    if x.is_floating_point() and x.dtype in (torch.float16, torch.bfloat16):
+        return x.dtype
+    if x.device.type == "cuda":
+        return torch.bfloat16
+    return torch.float32
+
+
 def _w8a16_linear_core(
     x_rot: torch.Tensor,
     w_q: torch.Tensor,
     w_scale: torch.Tensor,
 ) -> torch.Tensor:
+    """Return y in ``x_rot``'s floating dtype (no forced float32 materialize)."""
     backend = w8a16_kernel_backend()
     *leading, k = x_rot.shape
     flat = x_rot.reshape(-1, k)
@@ -110,33 +131,32 @@ def _w8a16_linear_core(
                     w_q.contiguous(),
                     w_scale.to(device=flat.device, dtype=torch.float32).contiguous(),
                 )
-            return y.to(torch.float32).reshape(*leading, n)
+            # Pack kernel returns float; cast to compute_dtype for a single exit type.
+            return y.to(dtype=compute_dtype).reshape(*leading, n)
         except RuntimeError:
             if backend == "int8pack":
                 raise
     with torch.profiler.record_function("convrot::dequant"):
-        weight = dequantize_weight(w_q, w_scale, dtype=compute_dtype).to(
-            device=flat.device, dtype=compute_dtype
-        )
+        weight = dequantize_weight(w_q, w_scale, dtype=compute_dtype)
+        if weight.device != flat.device:
+            weight = weight.to(device=flat.device)
     with torch.profiler.record_function("convrot::gemm_dequant_linear"):
         y = F.linear(flat.to(dtype=compute_dtype), weight, None)
-    return y.to(torch.float32).reshape(*leading, n)
+    return y.reshape(*leading, n)
 
 
 class _FusedW8A16Fn(torch.autograd.Function):
     @staticmethod
-    def forward(ctx, x, w_q, w_scale, group_size: int):
-        # RHT in float32 (cheap vs GEMM on measured 3080 profile); GEMM in act TC dtype.
-        x_rot = _rotate_acts(x.to(torch.float32), int(group_size))
-        compute_dtype = (
-            x.dtype
-            if x.is_floating_point() and x.dtype in (torch.float16, torch.bfloat16)
-            else torch.bfloat16
-            if x.device.type == "cuda"
-            else torch.float32
-        )
-        y = _w8a16_linear_core(x_rot.to(dtype=compute_dtype), w_q, w_scale)
+    def forward(ctx, x, w_q, w_scale, group_size: int, hadamard: torch.Tensor | None):
+        # RHT + dequant GEMM stay in act TC dtype (P1.5). Optional precomputed
+        # ``hadamard`` avoids env/cache lookup (P1-H); held on ctx (not saved
+        # for backward) because it is a constant buffer and not differentiated.
+        compute_dtype = _resolve_compute_dtype(x)
+        x_work = x.to(dtype=compute_dtype) if x.dtype != compute_dtype else x
+        x_rot = _rotate_acts(x_work, int(group_size), hadamard=hadamard)
+        y = _w8a16_linear_core(x_rot, w_q, w_scale)
         ctx.group_size = int(group_size)
+        ctx.hadamard = hadamard
         ctx.save_for_backward(w_q, w_scale)
         ctx.x_dtype = x.dtype
         ctx.compute_dtype = compute_dtype
@@ -145,27 +165,33 @@ class _FusedW8A16Fn(torch.autograd.Function):
     @staticmethod
     def backward(ctx, grad_y):
         w_q, w_scale = ctx.saved_tensors
+        hadamard = getattr(ctx, "hadamard", None)
         dtype = getattr(ctx, "compute_dtype", torch.float32)
-        w_hat = dequantize_weight(w_q, w_scale, dtype=dtype).to(
-            device=grad_y.device, dtype=dtype
-        )
+        w_hat = dequantize_weight(w_q, w_scale, dtype=dtype)
+        if w_hat.device != grad_y.device:
+            w_hat = w_hat.to(device=grad_y.device)
         grad_rot = grad_y.to(dtype=dtype) @ w_hat
-        grad_x = _rotate_acts(grad_rot.to(torch.float32), ctx.group_size)
+        # RHT is involutory; stay in compute_dtype (no fp32 hop).
+        grad_x = _rotate_acts(grad_rot, ctx.group_size, hadamard=hadamard)
         if ctx.x_dtype != grad_x.dtype:
             grad_x = grad_x.to(dtype=ctx.x_dtype)
-        return grad_x, None, None, None
+        return grad_x, None, None, None, None
 
 
 class _FusedW8A8Fn(torch.autograd.Function):
     @staticmethod
-    def forward(ctx, x, w_q, w_scale, group_size: int):
-        x_f = x.to(torch.float32)
-        x_rot = _rotate_acts(x_f, int(group_size))
+    def forward(ctx, x, w_q, w_scale, group_size: int, hadamard: torch.Tensor | None):
+        # RHT in act TC dtype; absmax quant still promotes to fp32 internally.
+        compute_dtype = _resolve_compute_dtype(x)
+        x_work = x.to(dtype=compute_dtype) if x.dtype != compute_dtype else x
+        x_rot = _rotate_acts(x_work, int(group_size), hadamard=hadamard)
         with torch.profiler.record_function("convrot::act_quant"):
             x_q, x_scale = quantize_activation_absmax_int8(x_rot)
         with torch.profiler.record_function("convrot::gemm_int8"):
             y = int8_mm_scaled(x_q, x_scale, w_q, w_scale)
         ctx.group_size = int(group_size)
+        ctx.hadamard = hadamard
+        ctx.compute_dtype = compute_dtype
         ctx.save_for_backward(w_q, w_scale)
         ctx.x_dtype = x.dtype
         return y
@@ -173,14 +199,22 @@ class _FusedW8A8Fn(torch.autograd.Function):
     @staticmethod
     def backward(ctx, grad_y):
         w_q, w_scale = ctx.saved_tensors
-        w_hat = dequantize_weight(w_q, w_scale, dtype=torch.float32).to(
-            device=grad_y.device
-        )
+        hadamard = getattr(ctx, "hadamard", None)
+        # Keep bwd dequant in fp32 for STE stability (act quant is already coarse).
+        w_hat = dequantize_weight(w_q, w_scale, dtype=torch.float32)
+        if w_hat.device != grad_y.device:
+            w_hat = w_hat.to(device=grad_y.device)
         grad_rot = grad_y.to(torch.float32) @ w_hat
-        grad_x = _rotate_acts(grad_rot, ctx.group_size)
+        # Rotate back in compute_dtype when possible to cut traffic.
+        compute_dtype = getattr(ctx, "compute_dtype", torch.float32)
+        if compute_dtype in (torch.float16, torch.bfloat16):
+            grad_rot_c = grad_rot.to(dtype=compute_dtype)
+            grad_x = _rotate_acts(grad_rot_c, ctx.group_size, hadamard=hadamard)
+        else:
+            grad_x = _rotate_acts(grad_rot, ctx.group_size, hadamard=hadamard)
         if ctx.x_dtype != grad_x.dtype:
             grad_x = grad_x.to(dtype=ctx.x_dtype)
-        return grad_x, None, None, None
+        return grad_x, None, None, None, None
 
 
 def fused_w8a16_forward(
@@ -189,15 +223,20 @@ def fused_w8a16_forward(
     scale: torch.Tensor,
     *,
     group_size: int,
+    hadamard: torch.Tensor | None = None,
 ) -> torch.Tensor:
     assert_group_divides(int(quantized_weight.shape[1]), group_size)
+    # autograd.Function.apply does not accept keyword args for tensor inputs.
     y = _FusedW8A16Fn.apply(
         x,
         quantized_weight.to(device=x.device),
         scale.to(device=x.device, dtype=torch.float32),
         int(group_size),
+        hadamard.to(device=x.device) if hadamard is not None else None,
     )
-    return y.to(dtype=x.dtype) if x.is_floating_point() else y
+    if x.is_floating_point() and y.dtype != x.dtype:
+        return y.to(dtype=x.dtype)
+    return y
 
 
 def fused_w8a8_forward(
@@ -206,6 +245,7 @@ def fused_w8a8_forward(
     scale: torch.Tensor,
     *,
     group_size: int,
+    hadamard: torch.Tensor | None = None,
 ) -> torch.Tensor:
     assert_group_divides(int(quantized_weight.shape[1]), group_size)
     y = _FusedW8A8Fn.apply(
@@ -213,5 +253,8 @@ def fused_w8a8_forward(
         quantized_weight.to(device=x.device),
         scale.to(device=x.device, dtype=torch.float32),
         int(group_size),
+        hadamard.to(device=x.device) if hadamard is not None else None,
     )
-    return y.to(dtype=x.dtype) if x.is_floating_point() else y
+    if x.is_floating_point() and y.dtype != x.dtype:
+        return y.to(dtype=x.dtype)
+    return y

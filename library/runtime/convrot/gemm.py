@@ -98,14 +98,19 @@ def int8_mm_scaled(
         and can_use_torch_int_mm(m, k, n, device=flat.device)
     )
 
+    x_scale_flat = x_scale.reshape(-1, 1).to(device=flat.device, dtype=torch.float32)
+    w_scale_row = w_scale.reshape(1, -1).to(device=flat.device, dtype=torch.float32)
+
     if use_int:
         try:
             # _int_mm(A[M,K], B[K,N]) -> int32[M,N]
+            # Prefer a view when w_q is already contiguous in the needed layout.
             b = w_q.t().contiguous()
             acc = torch._int_mm(flat.contiguous(), b)
+            # In-place scale chain: fewer temporaries than two out-of-place muls.
             y = acc.to(torch.float32)
-            y = y * x_scale.reshape(-1, 1).to(torch.float32)
-            y = y * w_scale.reshape(1, -1).to(device=y.device, dtype=torch.float32)
+            y.mul_(x_scale_flat)
+            y.mul_(w_scale_row)
             return y.reshape(*leading, n)
         except RuntimeError:
             if backend == "int_mm":
@@ -114,8 +119,8 @@ def int8_mm_scaled(
 
     # Float reference / fallback: exact for int8×int8 when accumulated in fp32.
     y = flat.to(torch.float32) @ w_q.to(torch.float32).t()
-    y = y * x_scale.reshape(-1, 1).to(torch.float32)
-    y = y * w_scale.reshape(1, -1).to(device=y.device, dtype=torch.float32)
+    y.mul_(x_scale_flat)
+    y.mul_(w_scale_row)
     return y.reshape(*leading, n)
 
 
@@ -139,7 +144,11 @@ class _W8A8IntLinearFn(torch.autograd.Function):
     def backward(ctx, grad_y: torch.Tensor):
         x_rot, w_q, w_scale = ctx.saved_tensors
         # Base weights frozen — only grad_x. STE ignores act quant.
-        w_hat = w_q.to(torch.float32) * w_scale.to(torch.float32)[:, None]
+        from library.runtime.convrot.quant import dequantize_weight
+
+        w_hat = dequantize_weight(w_q, w_scale, dtype=torch.float32)
+        if w_hat.device != grad_y.device:
+            w_hat = w_hat.to(device=grad_y.device)
         grad = grad_y.to(torch.float32)
         # y = x @ W^T  => grad_x = grad_y @ W
         grad_x = grad @ w_hat

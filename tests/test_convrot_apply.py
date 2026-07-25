@@ -232,3 +232,98 @@ def test_lora_residual_stays_in_original_space() -> None:
     base_out = lora.org_forward(x)
     assert torch.allclose(y_after, base_out + delta, atol=1e-5)
     assert y_after.shape == y_before.shape
+
+
+def test_apply_min_in_features_skips_small() -> None:
+    small = _frozen_linear(32, 64)   # in=32
+    large = _frozen_linear(128, 64)  # in=128
+    network = _FakeLoRANetwork(
+        [
+            _FakeLoRAModule("blocks.0.mlp.layer1", small),
+            _FakeLoRAModule("blocks.0.mlp.layer2", large),
+        ]
+    )
+    result = apply_convrot_to_lora_network(
+        network,
+        mode="w8a16",
+        scope="mlp",
+        group_size=16,
+        min_in_features=64,
+    )
+    assert result.patched_count == 1
+    assert result.patches[0].name == "blocks.0.mlp.layer2"
+    assert any("min_in_features" in (s.skipped_reason or "") for s in result.skipped)
+    assert hasattr(network.unet_loras[1], "_convrot_quantized_weight")
+    assert not hasattr(network.unet_loras[0], "_convrot_quantized_weight")
+
+
+def test_apply_largest_in_features_only() -> None:
+    layer1 = _frozen_linear(32, 128)  # in=32
+    layer2 = _frozen_linear(128, 32)  # in=128 → max
+    network = _FakeLoRANetwork(
+        [
+            _FakeLoRAModule("blocks.0.mlp.layer1", layer1),
+            _FakeLoRAModule("blocks.0.mlp.layer2", layer2),
+        ]
+    )
+    result = apply_convrot_to_lora_network(
+        network,
+        mode="w8a16",
+        scope="mlp",
+        group_size=16,
+        largest_in_features_only=True,
+    )
+    assert result.patched_count == 1
+    assert result.patches[0].name == "blocks.0.mlp.layer2"
+    assert result.largest_in_features_only is True
+
+
+def test_apply_large_layer_mode_mixed() -> None:
+    layer1 = _frozen_linear(32, 128)
+    layer2 = _frozen_linear(128, 32)
+    network = _FakeLoRANetwork(
+        [
+            _FakeLoRAModule("blocks.0.mlp.layer1", layer1),
+            _FakeLoRAModule("blocks.0.mlp.layer2", layer2),
+        ]
+    )
+    result = apply_convrot_to_lora_network(
+        network,
+        mode="w8a16",
+        scope="mlp",
+        group_size=16,
+        large_layer_mode="w8a8",
+        large_min_in_features=64,
+    )
+    assert result.patched_count == 2
+    by_name = {p.name: p.mode for p in result.patches}
+    assert by_name["blocks.0.mlp.layer1"] == "w8a16"
+    assert by_name["blocks.0.mlp.layer2"] == "w8a8"
+    assert network.unet_loras[0]._convrot_mode == "w8a16"
+    assert network.unet_loras[1]._convrot_mode == "w8a8"
+
+
+def test_apply_attaches_precomputed_hadamard_buffer() -> None:
+    linear = _frozen_linear(32, 32)
+    network = _FakeLoRANetwork([_FakeLoRAModule("blocks.0.mlp.layer1", linear)])
+    apply_convrot_to_lora_network(network, mode="w8a16", scope="mlp", group_size=16)
+    lora = network.unet_loras[0]
+    assert hasattr(lora, "_convrot_hadamard")
+    h = lora._convrot_hadamard
+    assert tuple(h.shape) == (16, 16)
+    x = torch.randn(2, 32)
+    y = lora.org_forward(x)
+    assert torch.isfinite(y).all()
+
+
+def test_apply_large_mode_requires_threshold() -> None:
+    linear = _frozen_linear(32, 32)
+    network = _FakeLoRANetwork([_FakeLoRAModule("blocks.0.mlp.layer1", linear)])
+    with pytest.raises(ValueError, match="large_min_in_features"):
+        apply_convrot_to_lora_network(
+            network,
+            mode="w8a16",
+            scope="mlp",
+            group_size=16,
+            large_layer_mode="w8a8",
+        )

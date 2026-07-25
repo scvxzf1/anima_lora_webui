@@ -208,7 +208,11 @@ def group_rht(
             raise ValueError(
                 f"hadamard must be [{group_size}, {group_size}], got {tuple(hadamard.shape)}"
             )
-        h = hadamard.to(device=x.device, dtype=work_dtype)
+        # Avoid redundant host/device + dtype copies on the hot path.
+        if hadamard.device == x.device and hadamard.dtype == work_dtype:
+            h = hadamard
+        else:
+            h = hadamard.to(device=x.device, dtype=work_dtype)
     grouped = x.reshape(*leading, n_groups, group_size)
     if not grouped.is_floating_point():
         grouped = grouped.to(work_dtype)

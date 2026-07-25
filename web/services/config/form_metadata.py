@@ -17,8 +17,16 @@ FIELD_HELP: dict[str, dict[str, str]] = {
         "ko": "LoRA 네트워크 구현의 Python 모듈 경로.",
     },
     "use_timestep_mask": {
-        "en": "Enable T-LoRA: effective rank varies with denoising timestep via power-law schedule. Full rank at high noise, reduced at low noise.",
-        "ko": "T-LoRA 활성화: 디노이징 타임스텝에 따라 유효 랭크 변동. 높은 노이즈에서 전체 랭크, 낮은 노이즈에서 축소.",
+        "en": "Enable T-LoRA: effective rank varies with denoising timestep via power-law schedule. Default (anima mode) is full rank at high noise, reduced at low noise; paper mode inverts that schedule.",
+        "ko": "T-LoRA 활성화: 디노이징 타임스텝에 따라 유효 랭크 변동. 기본(anima)은 높은 노이즈에서 전체 랭크, 낮은 노이즈에서 축소; paper 모드는 반대.",
+    },
+    "timestep_mask_mode": {
+        "en": "T-LoRA rank schedule direction under Anima t∈[0,1] (t=0 noise, t=1 clean). 'anima' = full rank at noise end (default). 'paper' = inverted (Soboleva et al.; min_rank at high noise).",
+        "ko": "T-LoRA 랭크 스케줄 방향(Anima t∈[0,1], t=0 노이즈, t=1 클린). 'anima' = 노이즈 끝 전체 랭크(기본). 'paper' = 반전(Soboleva 등; 고노이즈에서 min_rank).",
+    },
+    "timestep_mask_at_inference": {
+        "en": "Reapply the T-LoRA rank mask at eval/inference every denoise step (paper-faithful). Default off keeps train-only full-rank inference and static merge. When on, checkpoints refuse static merge and load as dynamic hooks.",
+        "ko": "평가/추론 시 매 디노이즈 스텝에 T-LoRA 랭크 마스크 재적용(논문 충실). 기본 off는 학습 전용·전체 랭크 추론·정적 병합 유지. on이면 정적 병합 거부 및 동적 훅 로드.",
     },
     "use_ortho": {
         "en": "Enable OrthoLoRA: SVD-based orthogonal parameterization of the update matrix (linear layers only). Regularizes toward structured updates; saved as plain LoRA via thin SVD at checkpoint time.",
@@ -322,6 +330,8 @@ FORM_GROUPS = {
         "add_reft",
         "min_rank",
         "alpha_rank_scale",
+        "timestep_mask_mode",
+        "timestep_mask_at_inference",
         "num_experts",
         "balance_loss_weight",
         "balance_loss_warmup_ratio",
@@ -359,6 +369,10 @@ FORM_GROUPS = {
         "base_compute",
         "convrot_group_size",
         "convrot_scope",
+        "convrot_min_in_features",
+        "convrot_largest_in_features_only",
+        "convrot_large_layer_mode",
+        "convrot_large_min_in_features",
         "torch_compile",
         "cache_llm_adapter_outputs",
         "masked_loss",

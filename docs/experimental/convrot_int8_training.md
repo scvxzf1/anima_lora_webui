@@ -24,6 +24,11 @@ python tasks.py lora ... --base_compute w8a8_convrot
 #   ANIMA_CONVROT_HADAMARD=sylvester|regular  # 默认 sylvester；regular=论文 Kronecker H_4^k
 #   ANIMA_CONVROT_W8A16_KERNEL=dequant|int8pack  # 默认 dequant（int8pack 本机更慢）
 
+# P1-G / P1-F 可选（默认全关，行为与 Phase 1 相同）
+#   --convrot_min_in_features 4096
+#   --convrot_largest_in_features_only
+#   --convrot_large_layer_mode w8a8 --convrot_large_min_in_features 4096
+
 # P0-A step profiler（bf16 / w8a16 / w8a8 单 step 饼图）
 .venv/bin/python scripts/experiments/convrot_step_profile_probe.py \
   --cases bf16,w8a16_free,w8a8_auto \
@@ -43,7 +48,7 @@ python tasks.py lora ... --base_compute w8a16_convrot \
 - `library/runtime/convrot/`（RHT / quant / W8A16 / W8A8 / apply / free_base / gemm / fused / prequant / checks / metadata）
 - `library/training/bootstrap.py::maybe_apply_convrot_base`（compile 前薄钩子）
 - `library/training/cli_args.py`（`base_compute` / `convrot_*`）
-- 探针：`scripts/experiments/convrot_{equivalence,checkpoint,short_train,mem_speed,step_profile,export_prequant}_probe.py`（export 脚本名见上）
+- 探针：`scripts/experiments/convrot_{equivalence,checkpoint,short_train,mem_speed,step_profile,export_prequant,fusion_microbench}_probe.py`（export / fusion 脚本名见上；fusion 文件为 `convrot_fusion_microbench.py`）
 - 非 ConvRot 对照：`library/runtime/int8_linear.py`、`block_swap_transfer_dtype=int8`
 
 相关 findings：[`../findings/anima_int8_base_linear_audit.md`](../findings/anima_int8_base_linear_audit.md)、[`../methods/channel_scaling.md`](../methods/channel_scaling.md)、`bench/channel_stats/`
@@ -296,6 +301,153 @@ Mem/speed 复测 JSON：`output/tests/convrot_mem_speed_bf16_compute.json`（6 s
 | w8a8_auto | 4.49 | 2.55 | 1.57× | 与 A2 前同量级 |
 
 结论：A2 把 W8A16 端到端从 **~1.77× 慢收到 ~1.23×**，且 peak 仍低于 bf16。剩余差距主要来自 RHT + dequant 额外链与其它开销，**不是**「再写一个 Python fusion」能抹平；Triton 仍非当前最高 ROI。
+
+#### G.5 单 op microbench + fusion 上界（2026-07-25，步骤 1+2）
+
+脚本：`scripts/experiments/convrot_fusion_microbench.py`
+
+JSON：`output/tests/convrot_fusion_microbench.json`
+
+测试：`tests/test_convrot_fusion_microbench.py`
+
+环境：RTX 3080 / torch 2.12.0+cu130；Anima MLP 形状 `layer1 [8192,2048]` / `layer2 [2048,8192]`；M∈{64,512,4032}；dtype=bf16。
+
+**目的（对应优化讨论步骤 1+2）：**
+
+1. 固化单 op 基准：bf16 `F.linear` / W8A16 dequant+linear / predequant linear / int8pack / W8A8 `_int_mm`+post-scale / `_int_mm` only / float fallback / 反传 full vs chunked
+2. **不写 Triton**，用差值估 fusion 上界，再决定要不要开 P2
+
+端到端锚点（未在本脚本重跑，来自 A2 mem_speed）：
+
+| case | sec/step | peak GB |
+| --- | --- | --- |
+| bf16 | 1.62 | 5.00 |
+| w8a16_free | 1.99（1.23×） | 4.34 |
+| w8a8_auto | 2.55（1.57×） | 4.49 |
+
+**bucket-M（M=4032，训练 token 量级）摘要：**
+
+| 路径 | 相对 | 解读 |
+| --- | --- | --- |
+| W8A16 dequant+linear vs bf16 | **~1.21×** | 与 e2e 1.23× 同量级 |
+| W8A16 **predequant** vs bf16 | **~1.00×** | 免费 dequant 的天花板 = bf16 linear |
+| W8A16 dequant 税（占 dequant 路径） | **~17.5%** | 小 M 会虚高到 60–90%，不能拿来开 P2 |
+| W8A8 post-scale vs bf16 | **~1.60×** | 仍慢 |
+| W8A8 **int_mm only** vs bf16 | **~1.31×** | 去掉 scale 也赢不了 bf16 TC |
+| W8A8 post-scale 税（占 scaled 路径） | **~17%** | 有税，但 body 才是主因 |
+| `_weight_int8pack_mm` vs dequant | **~9–100× 更慢** | 继续禁止默认 |
+
+**反传 `grad_x = gy @ dequant(W)` vs out-dim chunked：**
+
+| | 速度 | 峰值 |
+| --- | --- | --- |
+| chunked vs full | **~5× 更慢**（平均） | **~0.67×** 峰值（有省） |
+| 数值 | rel err ~1e-2 量级 | — |
+
+**决策（脚本 `decision` 字段，以 bucket-M 为主）：**
+
+| 项 | 结论 |
+| --- | --- |
+| W8A8 epilogue 真融合实现 | **否**（tax≥15% 但 int_mm-only 已 1.31× bf16，融完仍输） |
+| W8A16 K-loop / Triton dequant 融合 | **否**（天花板 = bf16 linear，且 bucket-M dequant 税仅 ~17%） |
+| 反传 chunked 为速度 | **否** |
+| 反传 chunked 为峰值 | **可选**（OOM / 大层时） |
+| **P2 Triton 现在就开** | **否** |
+| 下一步默认 | 继续 **P1**（compile 友好 / 缩 scope / 混精层）；产品 KPI 仍是显存 |
+
+一句话：步骤 1+2 完成——**基准已冻、上界已量**；「先融进 K 循环再对标」被数据否定为下一刀。
+
+### G.6 P1-F/G/H：缩 scope / 混精 / compile 友好（2026-07-25）
+
+实现面（默认全关，**不改变**既有 `mlp` 全量 patch 行为）：
+
+| 旋钮 | 作用 | 入口 |
+| --- | --- | --- |
+| `convrot_min_in_features` | 跳过 `in_features` 小于阈值的层（P1-G） | CLI / WebUI / apply |
+| `convrot_largest_in_features_only` | scope 内只 patch 最大 `in_features`（Anima mlp → 常为 layer2） | 同上 |
+| `convrot_large_layer_mode` + `convrot_large_min_in_features` | 大层覆盖 mode（如默认 w8a16、大层 w8a8）（P1-F） | 同上 |
+| 预计算 `_convrot_hadamard` | dense RHT 矩阵挂 buffer，传入 fused，避免 hot-path env/cache（P1-H） | apply 默认 |
+
+示例：
+
+```bash
+# 只 patch 最大 in 的 MLP 层
+python tasks.py lora ... --base_compute w8a16_convrot --convrot_largest_in_features_only
+
+# 小层 W8A16，in>=4096 的层 W8A8
+python tasks.py lora ... --base_compute w8a16_convrot \
+  --convrot_large_layer_mode w8a8 --convrot_large_min_in_features 4096
+```
+
+测试：`tests/test_convrot_apply.py`（min_in / largest_only / mixed mode / hadamard buffer）、`tests/test_convrot_bootstrap_hook.py`、`tests/test_convrot_fused.py`（hadamard 进 fused）。
+
+#### G.6.1 P1 热测（2026-07-25，RTX 3080，scope=mlp，steps=6）
+
+命令：
+
+```bash
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=0 \
+  .venv/bin/python scripts/experiments/convrot_mem_speed_probe.py \
+  --cases p1 --steps 6 --group-size 256 --scope mlp \
+  --json-out output/tests/convrot_mem_speed_p1.json
+```
+
+| 路径 | peak GB | sec/step | ×bf16 | patched | freed MB | loss |
+| --- | --- | --- | --- | --- | --- | --- |
+| bf16 | 5.00 | 1.430 | 1.00 | 0 | 0 | 0.0944 |
+| w8a16_free（全 mlp） | **4.34** | 1.735 | 1.21 | 56 | 1792 | 0.0944 |
+| w8a16_largest（仅 max in） | 4.77 | **1.619** | **1.13** | 28 | 896 | 0.0944 |
+| w8a16_min4096 | 4.77 | 1.623 | 1.14 | 28 | 896 | 0.0944 |
+| w8a16 + large@4096→w8a8 | 4.49 | 1.958 | 1.37 | 56 | 1792 | 0.0944 |
+| w8a8_auto（全 mlp） | 4.49 | 2.140 | 1.50 | 56 | 1792 | 0.0945 |
+
+解读：
+
+- **largest / min4096 等价**（Anima mlp 只有 in=2048 / 8192 两档）：各 28 层，只 patch layer2。
+- 缩 scope 相对 full w8a16：**更快**（1.62 vs 1.74 s，≈1.13× bf16），但 **省显存减半**（peak 4.77 vs 4.34；freed 896 vs 1792 MB）——小层仍是 bf16 全量权重。
+- **混精（小层 W8A16 + 大层 W8A8）** 峰值与 full W8A8 同档（4.49 GB），速度介于 full W8A16 与 full W8A8 之间（1.96 s），**未** 同时拿到「最快 + 最省」。
+- 产品默认仍建议：**full mlp W8A16 free**（峰值最低、×1.21 可接受）；若更在意 step 且能接受 ~0.4 GB 回吐，用 `largest_only` / `min_in=4096`。
+- 本轮 loss 与 bf16 一致（1-batch short probe，非质量门替代）。
+
+JSON：`output/tests/convrot_mem_speed_p1.json`
+
+**未做（当时）：** trust-mask STE（P1-J）；compile_blocks 下 re-profile P1-H 收益。
+
+### G.7 P1.5：dtype 交通税（2026-07-25）
+
+实现（**数学语义不变**，只砍强制 fp32 往返 / 多余 cast）：
+
+| 改动 | 位置 | 作用 |
+| --- | --- | --- |
+| `dequantize_weight(..., dtype=bf16)` 直接在目标 dtype 乘 | `quant.py` | 去掉 full fp32 `[out,in]` 中间张量 |
+| fused W8A16 RHT+GEMM 全程 act TC dtype | `fused.py` | 去掉 `x→fp32→RHT→bf16` 与 `y→fp32→x.dtype` |
+| fused W8A8 激活 RHT 用 bf16 | `fused.py` / `linear_w8a8.py` | absmax quant 内部仍 fp32 |
+| hadamard buffer 默认 bf16（CUDA） | `apply.py` | 与 act dtype 对齐，省 per-call cast |
+| `int8_mm_scaled` 就地 `mul_` scale | `gemm.py` | 少两个 out-of-place 临时 |
+| hadamard 不进 `save_for_backward` | `fused.py` | 常量 buffer 挂 `ctx`，减 autograd 图 |
+
+热测（RTX 3080，scope=mlp，steps=6）：
+
+```bash
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=0 \
+  .venv/bin/python scripts/experiments/convrot_mem_speed_probe.py \
+  --cases bf16,w8a16_free,w8a8_auto --steps 6 \
+  --json-out output/tests/convrot_mem_speed_p15.json
+```
+
+| 路径 | peak GB | sec/step | ×bf16 | vs P1 sec | vs P1 peak |
+| --- | --- | --- | --- | --- | --- |
+| bf16 | 5.00 | 1.433 | 1.00 | ≈ | ≈ |
+| **w8a16_free** | **4.14** | **1.508** | **1.05** | 1.735→1.508（−13%） | 4.34→4.14 |
+| w8a8_auto | 4.43 | 2.062 | 1.44 | 2.140→2.062（−4%） | 4.49→4.43 |
+
+单层 sanity：W8A16/W8A8 rel vs bf16 linear ≈ 0.8% / 1.0%，grad 有限。
+
+JSON：`output/tests/convrot_mem_speed_p15.json`
+
+**结论：** W8A16 已逼近 bf16 step（+5%）；主 KPI（显存）再降 ~0.2 GB。W8A8 仍慢在 `_int_mm`+act quant，非 dtype 交通主因。
+
+**未做：** P1-J trust-mask；W8A8 预转置 `w_q.T` 常驻 buffer；compile_blocks 下 re-profile。
 
 ### H. P0-C：prequant_checkpoint 加载（2026-07-25）
 

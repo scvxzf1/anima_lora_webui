@@ -25,6 +25,21 @@ def test_quantize_weight_per_output_channel_shapes_and_roundtrip() -> None:
     assert rel.item() < 0.05
 
 
+def test_dequantize_weight_half_dtype_close_to_fp32_path() -> None:
+    """P1.5: target-dtype dequant must not drift far from fp32-then-cast."""
+    torch.manual_seed(11)
+    w = torch.randn(17, 64)
+    q, scale = quantize_weight_per_output_channel(w)
+    ref = (q.to(torch.float32) * scale.to(torch.float32)[:, None]).to(torch.bfloat16)
+    got = dequantize_weight(q, scale, dtype=torch.bfloat16)
+    assert got.dtype is torch.bfloat16
+    # bf16 rounding of (i8 * scale) can differ slightly by order of cast;
+    # keep a generous bound for absmax scales in typical weight range.
+    rel = (got.float() - ref.float()).norm() / ref.float().norm().clamp_min(1e-8)
+    # i8 * scale in bf16 vs fp32-then-cast: ~0.3% typical from cast order.
+    assert rel.item() < 1e-2
+
+
 def test_rotate_and_quantize_weight_uses_rotated_domain() -> None:
     torch.manual_seed(1)
     w = torch.randn(5, 64)

@@ -349,6 +349,18 @@ def update_anima_metadata(metadata: dict[str, Any], args) -> None:
         metadata["ss_convrot_weight_source"] = str(
             getattr(args, "convrot_weight_source", "online_from_bf16")
         )
+        metadata["ss_convrot_min_in_features"] = str(
+            getattr(args, "convrot_min_in_features", 0) or 0
+        )
+        metadata["ss_convrot_largest_in_features_only"] = str(
+            bool(getattr(args, "convrot_largest_in_features_only", False))
+        ).lower()
+        large_mode = getattr(args, "convrot_large_layer_mode", None)
+        if large_mode:
+            metadata["ss_convrot_large_layer_mode"] = str(large_mode)
+            metadata["ss_convrot_large_min_in_features"] = str(
+                getattr(args, "convrot_large_min_in_features", "") or ""
+            )
         mode = base_compute.strip().lower().removesuffix("_convrot")
         if mode in {"w8a16", "w8a8"}:
             metadata["ss_convrot_mode"] = mode

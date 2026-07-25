@@ -56,12 +56,17 @@ def test_fused_w8a16_matches_legacy_dense_path() -> None:
     q, scale = rotate_and_quantize_weight(w, 32)
     x = torch.randn(5, 128)
     h = normalized_hadamard(32, dtype=torch.float32)
-    legacy = w8a16_forward_from_buffers(
-        x, q, scale, group_size=32, hadamard=h
-    )
+    # Force non-fused dense for explicit legacy reference.
+    os.environ["ANIMA_CONVROT_FUSED"] = "0"
+    try:
+        legacy = w8a16_forward_from_buffers(
+            x, q, scale, group_size=32, hadamard=h
+        )
+    finally:
+        os.environ.pop("ANIMA_CONVROT_FUSED", None)
     os.environ["ANIMA_CONVROT_W8A16_KERNEL"] = "dequant"
     try:
-        fused = fused_w8a16_forward(x, q, scale, group_size=32)
+        fused = fused_w8a16_forward(x, q, scale, group_size=32, hadamard=h)
     finally:
         os.environ.pop("ANIMA_CONVROT_W8A16_KERNEL", None)
     rel = (fused - legacy).norm() / legacy.norm().clamp_min(1e-8)
@@ -89,12 +94,18 @@ def test_fused_w8a8_matches_legacy_and_has_grad() -> None:
     q, scale = rotate_and_quantize_weight(w, 32)
     x = torch.randn(6, 128, requires_grad=True)
     h = normalized_hadamard(32)
-    legacy = w8a8_forward_from_buffers(x.detach(), q, scale, group_size=32, hadamard=h)
-    fused = fused_w8a8_forward(x.detach(), q, scale, group_size=32)
+    os.environ["ANIMA_CONVROT_FUSED"] = "0"
+    try:
+        legacy = w8a8_forward_from_buffers(
+            x.detach(), q, scale, group_size=32, hadamard=h
+        )
+    finally:
+        os.environ.pop("ANIMA_CONVROT_FUSED", None)
+    fused = fused_w8a8_forward(x.detach(), q, scale, group_size=32, hadamard=h)
     rel = (fused - legacy).norm() / legacy.norm().clamp_min(1e-8)
     assert rel.item() < 1e-4
 
-    y = fused_w8a8_forward(x, q, scale, group_size=32)
+    y = fused_w8a8_forward(x, q, scale, group_size=32, hadamard=h)
     y.sum().backward()
     assert x.grad is not None and x.grad.abs().sum() > 0
 

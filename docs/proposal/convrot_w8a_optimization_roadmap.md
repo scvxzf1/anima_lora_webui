@@ -47,9 +47,10 @@ python tasks.py lora ... --base_compute w8a8_convrot
 
 | 路径 | peak VRAM | sec/step | 备注 |
 | --- | --- | --- | --- |
-| bf16 | ~5.0 GB | **~1.7 s** | 基线 |
-| free-base + dense RHT + dequant W8A16 | **~4.4 GB** | ~3.0 s | 当前推荐默认 |
-| free-base + W8A8 `_int_mm` auto | **~4.5 GB** | ~2.55 s | 真 int8 GEMM 已接 |
+| bf16 | ~5.0 GB | **~1.43 s** | 基线（2026-07-25 P1.5 热测） |
+| free-base + W8A16（P1.5） | **~4.14 GB** | **~1.51 s（1.05×）** | **当前推荐默认** |
+| free-base + W8A8 `_int_mm` auto（P1.5） | **~4.43 GB** | ~2.06 s（1.44×） | 真 int8 GEMM |
+| free-base W8A16（P1 前 / A2） | ~4.34 GB | ~1.74–1.99 s | 历史锚点 |
 | 误默认 FWHT + `_weight_int8pack_mm` W8A16 | ~4.55 GB | **~47.6 s** | 已废弃为默认 |
 
 已落地（参见规格书 M1–M5 + 任务 1–3）：
@@ -181,14 +182,15 @@ JSON 证据：
 | **D** | 质量对齐：regular Hadamard + group ∈ {64,256,1024}（4 的幂）对照 | 可能改善 seed0 grad；为混精铺路 | ✅ 2026-07-25：实现 + multi-seed；regular@64 seed0 PASS；默认仍 sylvester |
 | **E** | 文档/产品口径：Phase 1 KPI = 显存 / 可训，速度非 KPI | 防错误预期 | ✅ 同步中 |
 | **A2** | **（profile 新增）W8A16 dequant linear 保持 bf16/fp16 计算** | 收回 fp32 sgemm 税 | ✅ 2026-07-24：mem_speed 1.99s/step（原 ~3.0）；见 `convrot_mem_speed_bf16_compute.json` |
+| **A3** | 单 op microbench + fusion 上界（bf16 / dequant / predequant / int_mm±scale / bwd chunk；**不写 Triton**） | 决定是否开 P2 K/epilogue | ✅ 2026-07-25：`convrot_fusion_microbench.py` + JSON；**P2 不开**；见 experimental §G.5 |
 
 ### P1 — 中 ROI / 中成本（有 profile 后再开）
 
 | ID | 方向 | 触发条件 | 预期 |
 | --- | --- | --- | --- |
-| **F** | 混合精度层：敏感层 bf16/W8A16，大 MLP W8A8（论文 ~20% 敏感层留高精） | out/grad 紧、大层占算力 | 质量↑，速度中性或略好 |
-| **G** | 缩小 patch 范围：只 patch 最大 `in_features` 的 Linear | profile 显示小层 RHT 固定开销大 | step 小幅↓ |
-| **H** | compile 友好：固定 shape dense RHT + `F.linear` 吃满 `torch.compile` | compile_blocks 后仍慢 | 收回部分 Python 税 |
+| **F** | 混合精度层：敏感层 bf16/W8A16，大 MLP W8A8（论文 ~20% 敏感层留高精） | out/grad 紧、大层占算力 | ✅ 2026-07-25 实现；热测 mixed 1.96s / 4.49GB（见 `convrot_mem_speed_p1.json`）— **不** 优于 full W8A16 默认 |
+| **G** | 缩小 patch 范围：只 patch 最大 `in_features` 的 Linear | profile 显示小层 RHT 固定开销大 | ✅ 实现 + 热测：largest/min4096 ≈1.62s（1.13×）、peak 4.77GB（回吐 ~0.4GB） |
+| **H** | compile 友好：固定 shape dense RHT + `F.linear` 吃满 `torch.compile` | compile_blocks 后仍慢 | ✅ 2026-07-25：apply 预计算 `_convrot_hadamard` 并传入 fused；compile 下收益未单独 re-profile |
 | **I** | 3080 上 W8A16 **不** 默认 pack GEMM；W8A8 仅大 M 强制 `_int_mm` | microbench 已否 pack | 防 47 s/step 回归 |
 | **J** | 梯度数值：trust-mask 类（QuEST）替代朴素 STE | seed0 grad_rel 过大 | 质量，非速度 |
 
@@ -196,7 +198,7 @@ JSON 证据：
 
 | ID | 方向 | 条件 | 风险 |
 | --- | --- | --- | --- |
-| **K** | Triton 真融合：`group_RHT + absmax + int8 GEMM` 单核（前向）；反传 STE 另核 | profile 证明 RHT+quant **内存链** 占 step >50% | 工程量大；3080 仍可能输 bf16 TC |
+| **K** | Triton 真融合：`group_RHT + absmax + int8 GEMM` 单核（前向）；反传 STE 另核 | profile 链 >50% **且** microbench 证明 free-fusion 体能 ≤~1.15× bf16（A3：**未满足**，bucket-M int_mm-only 已 ~1.31×） | 工程量大；3080 仍可能输 bf16 TC；**当前默认不开** |
 | **L** | 移植 CUTLASS / QuaRot / QuEST 推理核到训练 `org_forward` | 形状对齐、有维护意愿 | 许可证 / API / 反传缺失 |
 | **M** | 换硬件再测：4090 / A100 / Hopper+ | 有卡 | 3080 结论不外推 |
 | **N** | W4A4 推理路径或「训完再 PTQ」 | 产品要的是出图吞吐 | 与 LoRA 训练目标分叉 |
@@ -279,3 +281,5 @@ JSON 证据：
 | 2026-07-25 | **P0-C 完成**：`prequant.py` 原生 v1 + apply 接线 + export 脚本 + unit tests；CLI help 更新 |
 | 2026-07-25 | P0-C **mem/speed 热测**：online vs prequant step 几乎相同（W8A16 2.03 vs 2.05 s）；apply 因读盘更慢；peak 同 free-base；见 `convrot_mem_speed_prequant.json` |
 | 2026-07-25 | **P0-D 完成**：regular Hadamard（Kronecker \(4^k\)）+ `ANIMA_CONVROT_HADAMARD`；W8A16 multi-seed：regular@64 seed0 过 5% gate，grad_max 最低；默认仍 sylvester@256 |
+| 2026-07-25 | **P0-A3 完成**：fusion microbench 否决 P2 K/epilogue；**P1-F/G/H 实现 + 热测** `convrot_mem_speed_p1.json`：full W8A16 仍最省（4.34GB/1.21×）；largest 最快（1.13×）但 peak 回吐 |
+| 2026-07-25 | **P1.5 dtype 交通税**：dequant 目标 dtype、RHT/GEMM 去强制 fp32、hadamard bf16 buffer、scale `mul_`；热测 W8A16 **1.05× / 4.14GB**（`convrot_mem_speed_p15.json`） |

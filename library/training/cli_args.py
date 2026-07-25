@@ -975,6 +975,46 @@ def add_dit_training_arguments(parser: argparse.ArgumentParser):
         ),
     )
     parser.add_argument(
+        "--convrot_min_in_features",
+        type=int,
+        default=0,
+        help=(
+            "[EXPERIMENTAL][P1-G] Skip ConvRot on Linears with in_features below "
+            "this threshold (0=off). Useful to drop small layers where RHT fixed "
+            "cost dominates (e.g. 2048 keeps Anima mlp.layer1 only when combined "
+            "with largest-only, or 4096 for layer2-in)."
+        ),
+    )
+    parser.add_argument(
+        "--convrot_largest_in_features_only",
+        action="store_true",
+        help=(
+            "[EXPERIMENTAL][P1-G] Among scope-matched modules, only patch those "
+            "with the maximum in_features (Anima mlp: layer2 in=8192). Default off."
+        ),
+    )
+    parser.add_argument(
+        "--convrot_large_layer_mode",
+        type=str,
+        default=None,
+        choices=["w8a16", "w8a8", "w8a16_convrot", "w8a8_convrot"],
+        help=(
+            "[EXPERIMENTAL][P1-F] Override compute mode for layers with "
+            "in_features >= --convrot_large_min_in_features. Example: "
+            "base_compute=w8a16_convrot + large_layer_mode=w8a8 + large_min=4096 "
+            "keeps small MLP on W8A16 and big in-dim on W8A8."
+        ),
+    )
+    parser.add_argument(
+        "--convrot_large_min_in_features",
+        type=int,
+        default=None,
+        help=(
+            "[EXPERIMENTAL][P1-F] in_features threshold for "
+            "--convrot_large_layer_mode. Required when large_layer_mode is set."
+        ),
+    )
+    parser.add_argument(
         "--block_swap_restore_mode",
         type=str,
         default="foreach",

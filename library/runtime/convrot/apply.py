@@ -23,7 +23,12 @@ from library.runtime.convrot.prequant import (
     resolve_effective_group_size,
 )
 from library.runtime.convrot.quant import rotate_and_quantize_weight
-from library.runtime.convrot.rht import assert_group_divides
+from library.runtime.convrot.rht import (
+    assert_group_divides,
+    hadamard_kind,
+    normalized_hadamard,
+    rht_backend,
+)
 from library.runtime.convrot.scope import classify_convrot_linear_module
 
 logger = logging.getLogger(__name__)
@@ -32,6 +37,7 @@ ConvRotMode = Literal["w8a16", "w8a8"]
 
 _BUFFER_Q = "_convrot_quantized_weight"
 _BUFFER_SCALE = "_convrot_scale"
+_BUFFER_HADAMARD = "_convrot_hadamard"
 _ATTR_GROUP = "_convrot_group_size"
 _ATTR_MODE = "_convrot_mode"
 _ATTR_WEIGHT_SOURCE = "_convrot_weight_source"
@@ -63,6 +69,10 @@ class ConvRotApplyResult:
     prequant_path: str | None = None
     freed_modules: int = 0
     freed_bytes: int = 0
+    min_in_features: int = 0
+    largest_in_features_only: bool = False
+    large_layer_mode: str | None = None
+    large_min_in_features: int | None = None
 
     @property
     def patched_count(self) -> int:
@@ -94,12 +104,43 @@ def _resolve_base_linear(lora: nn.Module) -> nn.Linear | None:
     return None
 
 
+def _maybe_attach_hadamard(
+    lora: nn.Module,
+    *,
+    group_size: int,
+    device: torch.device,
+    dtype: torch.dtype = torch.bfloat16,
+) -> torch.Tensor | None:
+    """Precompute dense RHT matrix once (compile-friendly; skip env in hot path).
+
+    FWHT backend stays dynamic (no fixed matmul). Dense is the 3080 default.
+    Prefer bf16 on CUDA so group_rht can skip a per-call dtype cast when acts
+    are bf16 (training default).
+    """
+    if rht_backend() != "dense":
+        return None
+    try:
+        h = normalized_hadamard(
+            int(group_size),
+            device=device if device.type != "meta" else "cpu",
+            dtype=dtype if device.type == "cuda" else torch.float32,
+            kind=hadamard_kind(),
+        )
+    except ValueError:
+        return None
+    _set_buffer(lora, _BUFFER_HADAMARD, h.contiguous())
+    return h
+
+
 def _install_org_forward(
     lora: nn.Module,
     *,
     mode: ConvRotMode,
     group_size: int,
 ) -> None:
+    # Close over precomputed Hadamard when present so forward avoids cache/env.
+    hadamard = getattr(lora, _BUFFER_HADAMARD, None)
+
     if mode == "w8a16":
 
         def _base_forward(
@@ -107,13 +148,17 @@ def _install_org_forward(
             *,
             _lora=lora,
             _gs=group_size,
+            _h=hadamard,
         ) -> torch.Tensor:
+            h = getattr(_lora, _BUFFER_HADAMARD, None)
+            if h is None:
+                h = _h
             return w8a16_forward_from_buffers(
                 x,
                 _lora._convrot_quantized_weight,
                 _lora._convrot_scale,
                 group_size=_gs,
-                hadamard=None,
+                hadamard=h,
             )
 
     else:
@@ -123,16 +168,103 @@ def _install_org_forward(
             *,
             _lora=lora,
             _gs=group_size,
+            _h=hadamard,
         ) -> torch.Tensor:
+            h = getattr(_lora, _BUFFER_HADAMARD, None)
+            if h is None:
+                h = _h
             return w8a8_forward_from_buffers(
                 x,
                 _lora._convrot_quantized_weight,
                 _lora._convrot_scale,
                 group_size=_gs,
-                hadamard=None,
+                hadamard=h,
             )
 
     lora.org_forward = _base_forward
+
+
+def _resolve_layer_mode(
+    *,
+    default_mode: ConvRotMode,
+    in_features: int,
+    large_layer_mode: str | None,
+    large_min_in_features: int | None,
+) -> ConvRotMode:
+    if not large_layer_mode or large_min_in_features is None:
+        return default_mode
+    if in_features < int(large_min_in_features):
+        return default_mode
+    text = str(large_layer_mode).strip().lower().removesuffix("_convrot")
+    if text not in {"w8a16", "w8a8"}:
+        raise ValueError(
+            f"unsupported convrot_large_layer_mode={large_layer_mode!r}; "
+            "expected w8a16 | w8a8"
+        )
+    return text  # type: ignore[return-value]
+
+
+def _filter_candidates_by_size(
+    candidates: list[tuple[nn.Module, nn.Linear, int, str, str]],
+    *,
+    min_in_features: int,
+    largest_in_features_only: bool,
+) -> tuple[
+    list[tuple[nn.Module, nn.Linear, int, str, str]],
+    list[ConvRotLoRABaseForwardPatch],
+]:
+    """Apply P1-G size filters; return (kept, size-skipped stubs)."""
+    skipped: list[ConvRotLoRABaseForwardPatch] = []
+    kept: list[tuple[nn.Module, nn.Linear, int, str, str]] = []
+    min_in = max(0, int(min_in_features))
+
+    for lora, base, block_idx, family, original_name in candidates:
+        in_f = int(base.in_features)
+        lora_name = str(getattr(lora, "lora_name", original_name))
+        if min_in > 0 and in_f < min_in:
+            skipped.append(
+                ConvRotLoRABaseForwardPatch(
+                    lora_name=lora_name,
+                    name=str(original_name),
+                    family=family,
+                    block_idx=block_idx,
+                    shape=tuple(int(d) for d in base.weight.shape),
+                    group_size=0,
+                    mode="",
+                    bf16_bytes=int(base.weight.numel()) * 2,
+                    payload_bytes=0,
+                    skipped_reason=f"min_in_features:{in_f}<{min_in}",
+                )
+            )
+            continue
+        kept.append((lora, base, block_idx, family, original_name))
+
+    if largest_in_features_only and kept:
+        max_in = max(int(base.in_features) for _, base, *_ in kept)
+        trimmed: list[tuple[nn.Module, nn.Linear, int, str, str]] = []
+        for lora, base, block_idx, family, original_name in kept:
+            in_f = int(base.in_features)
+            if in_f < max_in:
+                lora_name = str(getattr(lora, "lora_name", original_name))
+                skipped.append(
+                    ConvRotLoRABaseForwardPatch(
+                        lora_name=lora_name,
+                        name=str(original_name),
+                        family=family,
+                        block_idx=block_idx,
+                        shape=tuple(int(d) for d in base.weight.shape),
+                        group_size=0,
+                        mode="",
+                        bf16_bytes=int(base.weight.numel()) * 2,
+                        payload_bytes=0,
+                        skipped_reason=f"largest_in_features_only:{in_f}<{max_in}",
+                    )
+                )
+                continue
+            trimmed.append((lora, base, block_idx, family, original_name))
+        kept = trimmed
+
+    return kept, skipped
 
 
 def _resolve_payload(
@@ -185,6 +317,10 @@ def apply_convrot_to_lora_network(
     free_base_weights: bool = True,
     unet: nn.Module | None = None,
     prequant_group_size_strict: bool = True,
+    min_in_features: int = 0,
+    largest_in_features_only: bool = False,
+    large_layer_mode: str | None = None,
+    large_min_in_features: int | None = None,
 ) -> ConvRotApplyResult:
     """Patch LoRA ``org_forward`` with ConvRot W8A* base path.
 
@@ -198,11 +334,40 @@ def apply_convrot_to_lora_network(
     * ``online_from_bf16`` — RHT+quant live frozen weights (default).
     * ``prequant_checkpoint`` — load rotated int8 + scale from ``prequant_path``
       (native ``anima_lora_convrot_prequant_v1`` or weight/weight_scale pairs).
+
+    P1 size / mixed-mode knobs:
+
+    * ``min_in_features`` — skip Linears with ``in_features`` below this (0=off).
+    * ``largest_in_features_only`` — among scope hits, only patch max ``in_features``.
+    * ``large_layer_mode`` + ``large_min_in_features`` — override mode for big
+      layers (e.g. default w8a16, large mlp.layer1 → w8a8).
     """
     if mode not in {"w8a16", "w8a8"}:
         raise ValueError(f"unsupported convrot mode={mode!r}")
     if weight_source not in {"online_from_bf16", "prequant_checkpoint"}:
         raise ValueError(f"unsupported convrot_weight_source={weight_source!r}")
+
+    large_mode_norm: str | None = None
+    large_min: int | None = None
+    if large_layer_mode is not None and str(large_layer_mode).strip():
+        large_mode_norm = (
+            str(large_layer_mode).strip().lower().removesuffix("_convrot")
+        )
+        if large_mode_norm not in {"w8a16", "w8a8"}:
+            raise ValueError(
+                f"unsupported convrot_large_layer_mode={large_layer_mode!r}"
+            )
+        if large_min_in_features is None:
+            raise ValueError(
+                "convrot_large_layer_mode requires convrot_large_min_in_features"
+            )
+        large_min = int(large_min_in_features)
+        if large_min <= 0:
+            raise ValueError("convrot_large_min_in_features must be > 0")
+    elif large_min_in_features is not None and int(large_min_in_features) > 0:
+        raise ValueError(
+            "convrot_large_min_in_features requires convrot_large_layer_mode"
+        )
 
     prequant: PrequantCheckpoint | None = None
     effective_group = int(group_size)
@@ -218,7 +383,6 @@ def apply_convrot_to_lora_network(
             strict=prequant_group_size_strict,
         )
     elif prequant_path:
-        # Explicit path with online source is confusing; refuse.
         raise ValueError(
             "convrot_prequant_path is only valid with "
             "convrot_weight_source=prequant_checkpoint"
@@ -231,7 +395,9 @@ def apply_convrot_to_lora_network(
     patches: list[ConvRotLoRABaseForwardPatch] = []
     skipped: list[ConvRotLoRABaseForwardPatch] = []
     group_size = int(effective_group)
+    min_in = max(0, int(min_in_features))
 
+    candidates: list[tuple[nn.Module, nn.Linear, int, str, str]] = []
     for lora in getattr(network, "unet_loras", []) or []:
         original_name = getattr(lora, "original_name", None)
         if not original_name:
@@ -279,6 +445,41 @@ def apply_convrot_to_lora_network(
             )
             continue
 
+        candidates.append(
+            (lora, base_module, block_idx, family, str(original_name))
+        )
+
+    kept, size_skipped = _filter_candidates_by_size(
+        candidates,
+        min_in_features=min_in,
+        largest_in_features_only=bool(largest_in_features_only),
+    )
+    for item in size_skipped:
+        skipped.append(
+            ConvRotLoRABaseForwardPatch(
+                lora_name=item.lora_name,
+                name=item.name,
+                family=item.family,
+                block_idx=item.block_idx,
+                shape=item.shape,
+                group_size=group_size,
+                mode=mode,
+                bf16_bytes=item.bf16_bytes,
+                payload_bytes=0,
+                weight_source=weight_source,
+                skipped_reason=item.skipped_reason,
+            )
+        )
+
+    for lora, base_module, block_idx, family, original_name in kept:
+        lora_name = str(getattr(lora, "lora_name", original_name))
+        layer_mode = _resolve_layer_mode(
+            default_mode=mode,
+            in_features=int(base_module.in_features),
+            large_layer_mode=large_mode_norm,
+            large_min_in_features=large_min,
+        )
+
         try:
             validate_base_linear_for_convrot(
                 base_module, group_size=group_size, name=str(original_name)
@@ -292,7 +493,7 @@ def apply_convrot_to_lora_network(
                     block_idx=block_idx,
                     shape=tuple(int(d) for d in base_module.weight.shape),
                     group_size=group_size,
-                    mode=mode,
+                    mode=layer_mode,
                     bf16_bytes=int(base_module.weight.numel()) * 2,
                     payload_bytes=0,
                     weight_source=weight_source,
@@ -311,14 +512,13 @@ def apply_convrot_to_lora_network(
             block_idx=block_idx,
             shape=tuple(int(d) for d in weight.shape),
             group_size=group_size,
-            mode=mode,
+            mode=layer_mode,
             bf16_bytes=bf16_bytes,
             payload_bytes=payload_bytes,
             weight_source=weight_source,
         )
 
         if dry_run:
-            # For prequant dry_run still verify the layer exists / shape matches.
             if weight_source == "prequant_checkpoint":
                 try:
                     _resolve_payload(
@@ -337,7 +537,7 @@ def apply_convrot_to_lora_network(
                             block_idx=block_idx,
                             shape=patch.shape,
                             group_size=group_size,
-                            mode=mode,
+                            mode=layer_mode,
                             bf16_bytes=bf16_bytes,
                             payload_bytes=0,
                             weight_source=weight_source,
@@ -365,7 +565,7 @@ def apply_convrot_to_lora_network(
                     block_idx=block_idx,
                     shape=patch.shape,
                     group_size=group_size,
-                    mode=mode,
+                    mode=layer_mode,
                     bf16_bytes=bf16_bytes,
                     payload_bytes=0,
                     weight_source=weight_source,
@@ -378,9 +578,14 @@ def apply_convrot_to_lora_network(
         _set_buffer(lora, _BUFFER_Q, q.contiguous())
         _set_buffer(lora, _BUFFER_SCALE, scale.to(torch.float32).contiguous())
         setattr(lora, _ATTR_GROUP, group_size)
-        setattr(lora, _ATTR_MODE, mode)
+        setattr(lora, _ATTR_MODE, layer_mode)
         setattr(lora, _ATTR_WEIGHT_SOURCE, weight_source)
-        _install_org_forward(lora, mode=mode, group_size=group_size)
+        _maybe_attach_hadamard(
+            lora,
+            group_size=group_size,
+            device=base_module.weight.device,
+        )
+        _install_org_forward(lora, mode=layer_mode, group_size=group_size)
 
     freed_modules = 0
     freed_bytes = 0
@@ -399,6 +604,10 @@ def apply_convrot_to_lora_network(
         prequant_path=str(prequant_path) if prequant_path else None,
         freed_modules=freed_modules,
         freed_bytes=freed_bytes,
+        min_in_features=min_in,
+        largest_in_features_only=bool(largest_in_features_only),
+        large_layer_mode=large_mode_norm,
+        large_min_in_features=large_min,
     )
 
     if not dry_run and result.patched_count == 0 and not allow_zero_patches:
@@ -408,14 +617,21 @@ def apply_convrot_to_lora_network(
         raise RuntimeError(
             "apply_convrot_to_lora_network: patched=0 "
             f"(mode={mode} scope={scope} group={group_size} "
-            f"weight_source={weight_source}); "
+            f"weight_source={weight_source} min_in={min_in} "
+            f"largest_only={bool(largest_in_features_only)}); "
             f"skipped={result.skipped_count} reasons={skip_reasons}. "
             "Phase 1 requires plain LoRA modules with org_module_ref on scope targets."
         )
 
+    mode_mix = ""
+    if large_mode_norm and large_min is not None:
+        n_large = sum(1 for p in patches if p.mode == large_mode_norm)
+        mode_mix = f" large_mode={large_mode_norm}@{large_min}({n_large})"
+
     logger.info(
         "[convrot] mode=%s scope=%s group=%s source=%s patched=%d skipped=%d "
-        "freed_modules=%d freed_mb=%.1f dry_run=%s prequant=%s",
+        "freed_modules=%d freed_mb=%.1f min_in=%d largest_only=%s%s dry_run=%s "
+        "prequant=%s",
         mode,
         scope,
         group_size,
@@ -424,6 +640,9 @@ def apply_convrot_to_lora_network(
         result.skipped_count,
         freed_modules,
         freed_bytes / (1024 * 1024),
+        min_in,
+        bool(largest_in_features_only),
+        mode_mix,
         dry_run,
         prequant_path,
     )

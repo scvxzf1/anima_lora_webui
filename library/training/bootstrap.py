@@ -209,6 +209,15 @@ class TrainingBootstrap:
             or "online_from_bf16"
         )
         prequant_path = getattr(args, "convrot_prequant_path", None) or None
+        min_in_features = int(getattr(args, "convrot_min_in_features", 0) or 0)
+        largest_only = bool(
+            getattr(args, "convrot_largest_in_features_only", False)
+        )
+        large_layer_mode = getattr(args, "convrot_large_layer_mode", None) or None
+        large_min_raw = getattr(args, "convrot_large_min_in_features", None)
+        large_min_in_features = (
+            int(large_min_raw) if large_min_raw not in (None, "", 0, "0") else None
+        )
 
         # ConvRot quantizes frozen base weights only. In the normal training
         # bootstrap, unet.requires_grad_(False) runs later in
@@ -234,6 +243,10 @@ class TrainingBootstrap:
             weight_source=weight_source,
             prequant_path=prequant_path,
             unet=unet,
+            min_in_features=min_in_features,
+            largest_in_features_only=largest_only,
+            large_layer_mode=large_layer_mode,
+            large_min_in_features=large_min_in_features,
         )
         # Stash for optional metadata consumers.
         try:
@@ -242,13 +255,17 @@ class TrainingBootstrap:
             pass
         logger.info(
             "[convrot] applied mode=%s scope=%s group=%s source=%s "
-            "patched=%d skipped=%d prequant=%s",
+            "patched=%d skipped=%d min_in=%d largest_only=%s large_mode=%s "
+            "prequant=%s",
             mode,
             scope,
             result.group_size,
             weight_source,
             result.patched_count,
             result.skipped_count,
+            result.min_in_features,
+            result.largest_in_features_only,
+            result.large_layer_mode,
             prequant_path,
         )
         return True

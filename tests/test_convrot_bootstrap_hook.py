@@ -38,6 +38,10 @@ def _args(**kwargs):
         convrot_scope="mlp",
         convrot_weight_source="online_from_bf16",
         convrot_prequant_path=None,
+        convrot_min_in_features=0,
+        convrot_largest_in_features_only=False,
+        convrot_large_layer_mode=None,
+        convrot_large_min_in_features=None,
         block_swap_transfer_dtype="bf16",
         network_args=None,
     )
@@ -123,3 +127,28 @@ def test_maybe_apply_convrot_base_freezes_org_refs_when_unet_missing() -> None:
     assert applied is True
     assert linear.weight.requires_grad is False
     assert hasattr(network.unet_loras[0], "_convrot_quantized_weight")
+
+
+def test_maybe_apply_convrot_base_honors_min_in_and_largest() -> None:
+    small = nn.Linear(32, 64, bias=False)
+    large = nn.Linear(128, 32, bias=False)
+    small.weight.requires_grad_(False)
+    large.weight.requires_grad_(False)
+    network = _FakeNetwork(
+        [
+            _FakeLoRAModule("blocks.0.mlp.layer1", small),
+            _FakeLoRAModule("blocks.0.mlp.layer2", large),
+        ]
+    )
+    args = _args(
+        base_compute="w8a16_convrot",
+        convrot_min_in_features=64,
+        convrot_largest_in_features_only=True,
+    )
+    applied = TrainingBootstrap.maybe_apply_convrot_base(args, network)
+    assert applied is True
+    result = args._convrot_apply_result
+    assert result.patched_count == 1
+    assert result.patches[0].name == "blocks.0.mlp.layer2"
+    assert result.min_in_features == 64
+    assert result.largest_in_features_only is True

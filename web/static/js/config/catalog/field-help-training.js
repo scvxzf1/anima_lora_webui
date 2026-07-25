@@ -352,6 +352,38 @@ export const FIELD_HELP_TRAINING_ZH = {    learning_rate: help(
         ["仅 base_compute 为 w8a*_convrot 时生效。"],
         "保持 mlp。"
     ),
+    convrot_min_in_features: help(
+        "按 in_features 下限过滤 ConvRot patch（P1-G）。",
+        "0 表示不过滤。例如 4096 可跳过 Anima mlp.layer1（in=2048），只保留 layer2（in=8192）。",
+        ["小层 RHT 固定开销占比高，跳过它们常能略提速。"],
+        ["过滤过多会减少省显存收益。"],
+        ["仅 base_compute 为 w8a*_convrot 时生效。"],
+        "默认 0；想只 patch 大层时再设。"
+    ),
+    convrot_largest_in_features_only: help(
+        "在 scope 命中层里只 patch 最大 in_features 的 Linear（P1-G）。",
+        "Anima mlp 下通常只剩 layer2（8192→2048）。可与 min_in_features 叠用。",
+        ["进一步砍小层固定税。"],
+        ["省显存幅度变小；质量面也更窄。"],
+        ["仅 base_compute 为 w8a*_convrot 时生效。"],
+        "默认关；显存仍紧或要提速时再开。"
+    ),
+    convrot_large_layer_mode: help(
+        "大 in_features 层覆盖计算模式（P1-F 混精）。",
+        "空=不覆盖。可设 w8a16 / w8a8，配合「大层阈值」：例如默认 w8a16，大层改 w8a8。",
+        ["大层吃算力/显存，小层留更高精度。"],
+        ["混精增加配置复杂度；W8A8 大层仍可能更慢。"],
+        ["必须同时设 convrot_large_min_in_features。"],
+        "默认空；质量紧时再试。"
+    ),
+    convrot_large_min_in_features: help(
+        "触发 large_layer_mode 的 in_features 阈值（P1-F）。",
+        "例如 4096：Anima layer2（8192）走 large 模式，layer1（2048）走 base_compute。",
+        ["只覆盖真正的大矩阵。"],
+        ["阈值过低会把几乎所有层都改成 large 模式。"],
+        ["仅在设置了 convrot_large_layer_mode 时生效。"],
+        "与 large_layer_mode 成对使用。"
+    ),
     block_swap_restore_mode: help(
         "块交换 restore 阶段如何把 frozen base 权重恢复回 GPU。",
         "foreach 是当前默认正式路径；slab 会把同一 slot 的多个小 weight 恢复合并成更少的大 H2D，减少小 kernel / 小 copy 调度。",

@@ -77,19 +77,32 @@ def w8a8_forward_from_buffers(
     group_size: int,
     hadamard: torch.Tensor | None = None,
 ) -> torch.Tensor:
-    """Functional W8A8 path for LoRA ``org_forward`` closures."""
+    """Functional W8A8 path for LoRA ``org_forward`` closures.
+
+    Optional precomputed ``hadamard`` is forwarded into the fused path (P1-H).
+    """
     assert_group_divides(int(quantized_weight.shape[1]), group_size)
-    if hadamard is None and fused_enabled():
+    if fused_enabled():
         return fused_w8a8_forward(
             x,
             quantized_weight,
             scale,
             group_size=group_size,
+            hadamard=hadamard,
         )
-    x_rot = group_rht(x.to(torch.float32), group_size, hadamard=hadamard)
+    # RHT in act TC dtype; absmax quant still promotes to fp32 internally (P1.5).
+    compute_dtype = (
+        x.dtype
+        if x.is_floating_point() and x.dtype in (torch.float16, torch.bfloat16)
+        else torch.bfloat16
+        if x.device.type == "cuda"
+        else torch.float32
+    )
+    x_work = x.to(dtype=compute_dtype) if x.dtype != compute_dtype else x
+    x_rot = group_rht(x_work, group_size, hadamard=hadamard)
     y = w8a8_int_linear(
         x_rot,
         quantized_weight.to(device=x.device),
         scale.to(device=x.device),
     )
-    return y.to(dtype=x.dtype) if x.is_floating_point() else y
+    return y.to(dtype=x.dtype) if x.is_floating_point() and y.dtype != x.dtype else y

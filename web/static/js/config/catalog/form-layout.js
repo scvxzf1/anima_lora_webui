@@ -109,6 +109,10 @@ export const FORM_SECTION_DEFS = [
             'base_compute',
             'convrot_group_size',
             'convrot_scope',
+            'convrot_min_in_features',
+            'convrot_largest_in_features_only',
+            'convrot_large_layer_mode',
+            'convrot_large_min_in_features',
             'block_swap_profile_jsonl',
             'memory_probe_jsonl',
             'memory_probe_max_steps',
@@ -241,6 +245,8 @@ export const FORM_SECTION_DEFS = [
             'use_timestep_mask',
             'min_rank',
             'alpha_rank_scale',
+            'timestep_mask_mode',
+            'timestep_mask_at_inference',
             'channel_scaling_alpha',
             'layer_start',
             'add_reft',
@@ -431,6 +437,15 @@ export const CONFIG_COMPACT_FIELD_GROUPS = {
         {
             className: 'config-field-grid-3col',
             keys: ['base_compute', 'convrot_group_size', 'convrot_scope'],
+        },
+        {
+            className: 'config-field-grid-4col',
+            keys: [
+                'convrot_min_in_features',
+                'convrot_largest_in_features_only',
+                'convrot_large_layer_mode',
+                'convrot_large_min_in_features',
+            ],
         },
         {
             className: 'config-field-grid-3col',

@@ -88,6 +88,10 @@ def run_case(
     seed: int,
     weight_source: str = "online_from_bf16",
     prequant_path: str | None = None,
+    min_in_features: int = 0,
+    largest_in_features_only: bool = False,
+    large_layer_mode: str | None = None,
+    large_min_in_features: int | None = None,
 ) -> dict:
     if gemm_env is not None:
         os.environ["ANIMA_CONVROT_INT8_GEMM"] = gemm_env
@@ -145,6 +149,10 @@ def run_case(
             weight_source=weight_source,
             prequant_path=prequant_path,
             unet=anima,
+            min_in_features=min_in_features,
+            largest_in_features_only=largest_in_features_only,
+            large_layer_mode=large_layer_mode,
+            large_min_in_features=large_min_in_features,
         )
         torch.cuda.synchronize()
         apply_wall_sec = time.perf_counter() - t_apply0
@@ -153,6 +161,12 @@ def run_case(
             "freed_bytes": result.freed_bytes,
             "patched": result.patched_count,
             "weight_source": result.weight_source,
+            "min_in_features": result.min_in_features,
+            "largest_in_features_only": result.largest_in_features_only,
+            "large_layer_mode": result.large_layer_mode,
+            "large_min_in_features": result.large_min_in_features,
+            "patch_modes": sorted({p.mode for p in result.patches}),
+            "patch_names_sample": [p.name for p in result.patches[:8]],
         }
 
     torch.cuda.synchronize()
@@ -201,6 +215,10 @@ def run_case(
         "gemm_env": gemm_env,
         "weight_source": weight_source if mode is not None else None,
         "prequant_path": prequant_path,
+        "min_in_features": min_in_features,
+        "largest_in_features_only": largest_in_features_only,
+        "large_layer_mode": large_layer_mode,
+        "large_min_in_features": large_min_in_features,
         "steps": steps,
         "elapsed_sec": elapsed,
         "sec_per_step": elapsed / steps,
@@ -219,6 +237,7 @@ def run_case(
         f"alloc_after_apply={payload['allocated_after_apply_gb']:.2f}GB "
         f"sec/step={payload['sec_per_step']:.3f} "
         f"apply={0.0 if apply_wall_sec is None else apply_wall_sec:.3f}s "
+        f"patched={free_stats.get('patched', 0)} "
         f"meta_bases={meta_bases} freed_mb={free_stats.get('freed_bytes',0)/1024**2:.1f} "
         f"loss={last_loss:.4f}",
         flush=True,
@@ -252,7 +271,8 @@ def main() -> int:
         default="all",
         help=(
             "Comma list: bf16,w8a16_free,w8a16_nofree,w8a8_auto,w8a8_float,"
-            "w8a16_prequant,w8a8_prequant or all"
+            "w8a16_prequant,w8a8_prequant,"
+            "w8a16_largest,w8a16_min4096,w8a16_mixed_large_w8a8 or all / p1"
         ),
     )
     parser.add_argument(
@@ -260,6 +280,29 @@ def main() -> int:
         type=Path,
         default=None,
         help="Required for *prequant cases (native anima_lora_convrot_prequant_v1).",
+    )
+    parser.add_argument(
+        "--min-in-features",
+        type=int,
+        default=0,
+        help="Global default for cases that do not set their own min_in_features.",
+    )
+    parser.add_argument(
+        "--largest-in-features-only",
+        action="store_true",
+        help="Global default largest-only flag for generic w8a* cases.",
+    )
+    parser.add_argument(
+        "--large-layer-mode",
+        type=str,
+        default=None,
+        help="Global default large-layer mode override.",
+    )
+    parser.add_argument(
+        "--large-min-in-features",
+        type=int,
+        default=None,
+        help="Global default large-layer in_features threshold.",
     )
     args = parser.parse_args()
 
@@ -269,15 +312,43 @@ def main() -> int:
     dtype = torch.bfloat16
     prequant_path = str(args.prequant_path) if args.prequant_path is not None else None
 
+    # Shared P1 defaults (overridden per named case below).
+    p1_defaults = dict(
+        min_in_features=int(args.min_in_features or 0),
+        largest_in_features_only=bool(args.largest_in_features_only),
+        large_layer_mode=args.large_layer_mode,
+        large_min_in_features=args.large_min_in_features,
+    )
+
     all_cases = {
         "bf16": dict(label="bf16", mode=None, free_base=False, gemm_env=None),
-        "w8a16_free": dict(label="w8a16_free", mode="w8a16", free_base=True, gemm_env=None),
-        "w8a16_nofree": dict(
-            label="w8a16_nofree", mode="w8a16", free_base=False, gemm_env=None
+        "w8a16_free": dict(
+            label="w8a16_free",
+            mode="w8a16",
+            free_base=True,
+            gemm_env=None,
+            **p1_defaults,
         ),
-        "w8a8_auto": dict(label="w8a8_auto", mode="w8a8", free_base=True, gemm_env="auto"),
+        "w8a16_nofree": dict(
+            label="w8a16_nofree",
+            mode="w8a16",
+            free_base=False,
+            gemm_env=None,
+            **p1_defaults,
+        ),
+        "w8a8_auto": dict(
+            label="w8a8_auto",
+            mode="w8a8",
+            free_base=True,
+            gemm_env="auto",
+            **p1_defaults,
+        ),
         "w8a8_float": dict(
-            label="w8a8_float", mode="w8a8", free_base=True, gemm_env="float"
+            label="w8a8_float",
+            mode="w8a8",
+            free_base=True,
+            gemm_env="float",
+            **p1_defaults,
         ),
         "w8a16_prequant": dict(
             label="w8a16_prequant",
@@ -286,6 +357,7 @@ def main() -> int:
             gemm_env=None,
             weight_source="prequant_checkpoint",
             prequant_path=prequant_path,
+            **p1_defaults,
         ),
         "w8a8_prequant": dict(
             label="w8a8_prequant",
@@ -294,6 +366,38 @@ def main() -> int:
             gemm_env="auto",
             weight_source="prequant_checkpoint",
             prequant_path=prequant_path,
+            **p1_defaults,
+        ),
+        # P1 named presets (Anima mlp: layer1 in=2048, layer2 in=8192).
+        "w8a16_largest": dict(
+            label="w8a16_largest",
+            mode="w8a16",
+            free_base=True,
+            gemm_env=None,
+            min_in_features=0,
+            largest_in_features_only=True,
+            large_layer_mode=None,
+            large_min_in_features=None,
+        ),
+        "w8a16_min4096": dict(
+            label="w8a16_min4096",
+            mode="w8a16",
+            free_base=True,
+            gemm_env=None,
+            min_in_features=4096,
+            largest_in_features_only=False,
+            large_layer_mode=None,
+            large_min_in_features=None,
+        ),
+        "w8a16_mixed_large_w8a8": dict(
+            label="w8a16_mixed_large_w8a8",
+            mode="w8a16",
+            free_base=True,
+            gemm_env="auto",
+            min_in_features=0,
+            largest_in_features_only=False,
+            large_layer_mode="w8a8",
+            large_min_in_features=4096,
         ),
     }
     if args.cases.strip().lower() == "all":
@@ -305,10 +409,22 @@ def main() -> int:
             "w8a8_auto",
             "w8a8_float",
         ]
+    elif args.cases.strip().lower() == "p1":
+        case_keys = [
+            "bf16",
+            "w8a16_free",
+            "w8a16_largest",
+            "w8a16_min4096",
+            "w8a16_mixed_large_w8a8",
+            "w8a8_auto",
+        ]
     else:
         case_keys = [c.strip() for c in args.cases.split(",") if c.strip()]
     if any(k.endswith("_prequant") for k in case_keys) and not prequant_path:
         raise SystemExit("--prequant-path is required for *prequant cases")
+    unknown = [k for k in case_keys if k not in all_cases]
+    if unknown:
+        raise SystemExit(f"unknown cases: {unknown}; known={sorted(all_cases)}")
     results = []
     import gc
 
