@@ -611,6 +611,7 @@ JSON：`convrot_ckpt_w8a8_p111*.json`（**p111e 恢复 3/3**）、`convrot_mem_s
 | `convrot_group_size` / hadamard | `256` / `sylvester` | 兼容 prequant；质量 2/3 |
 | `torch_compile` | 建议开 | 吃掉多数 Python 税 |
 | 显存优先 | `scope=all` | **~3.43 GB** / **~1.08×** |
+| **替代 KPI** | 同峰抬 `network_dim` | W8A16@**r32** 仍 **4.20 GB** < bf16@r4（§G.17） |
 
 **质量 opt-in**
 
@@ -630,6 +631,26 @@ JSON：`convrot_ckpt_w8a8_p111*.json`（**p111e 恢复 3/3**）、`convrot_mem_s
 **残余税（W8A16@compile）** ≈ 4–5% step：`convrot_gemm` dequant+linear + 少量 RHT；再抠需换硬件或真 int8 TC 融合（P2）。
 
 **Phase 1 KPI 结论：** 显存已达成；质量 short-train / regular@64 可用；**step ≤ bf16 非 KPI** 且 3080 上不现实。
+
+### G.17 同显存更大 rank（替代 KPI，2026-07-25）
+
+探针：`convrot_mem_speed_probe.py --lora-rank N --torch-compile`（mlp，6 steps，3080）。
+
+| base | rank | peak GB | sec/step | vs bf16@r4 peak |
+| --- | --- | --- | --- | --- |
+| bf16 | 4 | **4.95** | 1.13 | 1.00× |
+| bf16 | 16 | 4.99 | 1.13 | +0.04 |
+| bf16 | 32 | 5.04 | 1.14 | +0.09 |
+| **W8A16 free** | 4 | **4.11** | 1.18 | **−0.84** |
+| W8A16 free | 16 | 4.15 | 1.18 | −0.80 |
+| **W8A16 free** | **32** | **4.20** | 1.18 | **−0.75** |
+
+解读：
+
+1. **W8A16@r32 峰值仍比 bf16@r4 低 ~0.75 GB** —— 同机可把 rank 提到 32 仍更省显存。
+2. rank 4→32 在 W8A16 上只抬 peak **~0.09 GB**（LoRA 相对 free-base 后的底模很小）；step 几乎不变。
+3. 产品叙事优先写 **「同显存训更大 rank」**，而不是「比 bf16 更快」。
+4. JSON：`output/tests/convrot_rank_{bf16,w8a16_free}_r{4,16,32}.json`。
 
 ### H. P0-C：prequant_checkpoint 加载（2026-07-25）
 

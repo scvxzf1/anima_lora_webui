@@ -300,3 +300,4 @@ JSON 证据：
 | 2026-07-25 | **P1.10**：W8A16 CUDA scale 存 bf16；`--convrot_hadamard` CLI/bootstrap/metadata/WebUI；regular@64 可配置质量档 |
 | 2026-07-25 | **P1.11 否决默认 W8A8 加速**：half quant/bf16 STE 破 gate；TF32 STE opt-in；**W8A8 scale 改回 fp32**（p111e 3/3） |
 | 2026-07-25 | **Phase 1 平台期**：§G.16 产品默认；P1-J 搁置（冻结 base 无权重 STE）；残余 ~5% 需 P2/换卡 |
+| 2026-07-25 | **同显存更大 rank**：W8A16@r32 peak **4.20GB** 仍 < bf16@r4 **4.95GB**（§G.17）；probe 支持 `--lora-rank` |

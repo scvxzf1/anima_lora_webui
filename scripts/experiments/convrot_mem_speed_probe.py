@@ -93,6 +93,8 @@ def run_case(
     large_layer_mode: str | None = None,
     large_min_in_features: int | None = None,
     torch_compile: bool = False,
+    lora_rank: int = 4,
+    lora_alpha: float | None = None,
 ) -> dict:
     if gemm_env is not None:
         os.environ["ANIMA_CONVROT_INT8_GEMM"] = gemm_env
@@ -100,6 +102,9 @@ def run_case(
         del os.environ["ANIMA_CONVROT_INT8_GEMM"]
 
     from library.anima.weights import load_anima_model
+
+    rank = int(lora_rank)
+    alpha = float(lora_alpha) if lora_alpha is not None else float(rank)
 
     torch.cuda.empty_cache()
     # Ensure context exists before peak-stat APIs (some drivers reject bare device objects).
@@ -133,8 +138,8 @@ def run_case(
         seed=seed + 101,
         device=device,
         dtype=dtype,
-        rank=4,
-        alpha=4.0,
+        rank=rank,
+        alpha=alpha,
         scope=scope,
     )
     free_stats = {"freed_modules": 0, "freed_bytes": 0}
@@ -235,6 +240,8 @@ def run_case(
         "large_layer_mode": large_layer_mode,
         "large_min_in_features": large_min_in_features,
         "torch_compile": bool(torch_compile),
+        "lora_rank": rank,
+        "lora_alpha": alpha,
         "steps": steps,
         "elapsed_sec": elapsed,
         "sec_per_step": elapsed / steps,
@@ -324,6 +331,18 @@ def main() -> int:
         "--torch-compile",
         action="store_true",
         help="Compile DiT blocks after ConvRot apply (mirrors training order).",
+    )
+    parser.add_argument(
+        "--lora-rank",
+        type=int,
+        default=4,
+        help="LoRA rank (network_dim). Default 4 matches historical probes.",
+    )
+    parser.add_argument(
+        "--lora-alpha",
+        type=float,
+        default=None,
+        help="LoRA alpha; default equals --lora-rank.",
     )
     args = parser.parse_args()
 
@@ -467,6 +486,8 @@ def main() -> int:
                 group_size=args.group_size,
                 seed=args.seed,
                 torch_compile=bool(args.torch_compile),
+                lora_rank=int(args.lora_rank),
+                lora_alpha=args.lora_alpha,
             )
         )
 
