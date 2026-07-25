@@ -306,3 +306,4 @@ JSON 证据：
 | 2026-07-26 | **scope=all@r32** peak **3.63GB**；P1.12 frozen `w_q/scale` 不进 `save_for_backward`（速度中性清洁） |
 | 2026-07-26 | **同显存更大 batch**：mlp@b2 越峰；**all@b2 4.42GB**、**all@r32@b2 4.62GB** 仍 < bf16@b1 4.95（§G.19）；probe `--batch-size`；bwd cast scratch 否决 |
 | 2026-07-26 | **分辨率 KPI 阻断**（全 cache 同 16128 token）；`max-autotune-no-cudagraphs` 两端各 ~2.7% 但 **×bf16 仍 1.04**（§G.20）；probe 自动选 CC≥7.5 GPU + `--compile-mode` |
+| 2026-07-26 | **产品变体** `configs/gui-methods/lora-convrot-vram.toml`（scope=all / dim=32 / W8A16；§G.21） |
