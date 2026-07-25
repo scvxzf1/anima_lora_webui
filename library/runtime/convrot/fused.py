@@ -19,7 +19,7 @@ import torch
 from torch.nn import functional as F
 
 from library.runtime.convrot.gemm import int8_mm_scaled, quantize_activation_absmax_int8
-from library.runtime.convrot.quant import dequantize_weight
+from library.runtime.convrot.quant import dequantize_weight, get_dequant_scratch
 from library.runtime.convrot.rht import (
     assert_group_divides,
     group_fwht,
@@ -137,7 +137,13 @@ def _w8a16_linear_core(
             if backend == "int8pack":
                 raise
     with torch.profiler.record_function("convrot::dequant"):
-        weight = dequantize_weight(w_q, w_scale, dtype=compute_dtype)
+        # P1.8: reuse a process-level [>=N,>=K] scratch across sequential layers.
+        scratch = get_dequant_scratch(
+            n, k, device=flat.device, dtype=compute_dtype
+        )
+        weight = dequantize_weight(
+            w_q, w_scale, dtype=compute_dtype, out=scratch
+        )
         if weight.device != flat.device:
             weight = weight.to(device=flat.device)
     with torch.profiler.record_function("convrot::gemm_dequant_linear"):

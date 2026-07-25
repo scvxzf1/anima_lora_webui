@@ -129,7 +129,8 @@ def int8_mm_scaled(
                 b = w_q if w_q.is_contiguous() else w_q.contiguous()
             else:
                 b = w_q.t().contiguous()
-            acc = torch._int_mm(flat.contiguous(), b)
+            a = flat if flat.is_contiguous() else flat.contiguous()
+            acc = torch._int_mm(a, b)
             y = acc.to(torch.float32)
             y.mul_(x_scale_flat)
             y.mul_(w_scale_row)

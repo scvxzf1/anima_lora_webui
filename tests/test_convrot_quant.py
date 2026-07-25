@@ -40,6 +40,55 @@ def test_dequantize_weight_half_dtype_close_to_fp32_path() -> None:
     assert rel.item() < 1e-2
 
 
+def test_dequantize_weight_out_scratch_matches_alloc(monkeypatch) -> None:
+    """P1.8: writing into a shared scratch buffer must match fresh allocate."""
+    from library.runtime.convrot.quant import clear_dequant_scratch, get_dequant_scratch
+
+    monkeypatch.setenv("ANIMA_CONVROT_DEQUANT_SCRATCH", "1")
+    torch.manual_seed(12)
+    w = torch.randn(11, 48)
+    q, scale = quantize_weight_per_output_channel(w)
+    ref = dequantize_weight(q, scale, dtype=torch.float32)
+    clear_dequant_scratch()
+    scratch = get_dequant_scratch(11, 48, device=q.device, dtype=torch.float32)
+    assert scratch is not None and tuple(scratch.shape) == (11, 48)
+    got = dequantize_weight(q, scale, dtype=torch.float32, out=scratch)
+    assert got.data_ptr() == scratch.data_ptr()
+    assert torch.allclose(got, ref, atol=0, rtol=0)
+    # Larger N*K grows flat capacity; smaller view still exact.
+    big = get_dequant_scratch(20, 64, device=q.device, dtype=torch.float32)
+    assert big is not None and tuple(big.shape) == (20, 64)
+    got2 = dequantize_weight(
+        q,
+        scale,
+        dtype=torch.float32,
+        out=get_dequant_scratch(11, 48, device=q.device, dtype=torch.float32),
+    )
+    assert torch.allclose(got2, ref, atol=0, rtol=0)
+    # max(N)×max(K) trap must NOT apply: capacity is max(N*K), not 20*64 after 11*48.
+    clear_dequant_scratch()
+    a = get_dequant_scratch(8192, 2048, device=q.device, dtype=torch.bfloat16)
+    b = get_dequant_scratch(2048, 8192, device=q.device, dtype=torch.bfloat16)
+    assert a is not None and b is not None
+    # Same flat storage; both views have numel 8192*2048.
+    assert a.numel() == 8192 * 2048
+    assert b.numel() == 8192 * 2048
+    # Underlying flat buffer capacity equals max product, not 8192*8192.
+    from library.runtime.convrot.quant import _DEQUANT_SCRATCH
+
+    flat = next(iter(_DEQUANT_SCRATCH.values()))
+    assert flat.numel() == 8192 * 2048
+    assert flat.numel() < 8192 * 8192
+
+
+def test_dequant_scratch_default_off(monkeypatch) -> None:
+    from library.runtime.convrot.quant import clear_dequant_scratch, get_dequant_scratch
+
+    monkeypatch.delenv("ANIMA_CONVROT_DEQUANT_SCRATCH", raising=False)
+    clear_dequant_scratch()
+    assert get_dequant_scratch(8, 8, device=torch.device("cpu"), dtype=torch.float32) is None
+
+
 def test_rotate_and_quantize_weight_uses_rotated_domain() -> None:
     torch.manual_seed(1)
     w = torch.randn(5, 64)

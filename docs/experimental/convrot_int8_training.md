@@ -463,6 +463,26 @@ JSON：`output/tests/convrot_mem_speed_p15.json`
 
 **产品默认不变：** full-mlp free-base **W8A16**。P1.6/1.7 是正确性/清洁实现，不单独构成速度叙事。
 
+### G.9 P1.8 dequant scratch + compile 热测（2026-07-25）
+
+| 项 | 结论 |
+| --- | --- |
+| 共享 dequant scratch（flat `max(N*K)`） | 实现保留；**默认关闭**（`ANIMA_CONVROT_DEQUANT_SCRATCH=1` opt-in）。2D max(N)×max(K) 会误扩到 8192²；flat 修后 step 仍中性、常驻 buffer 略抬 peak |
+| probe `--torch-compile` | 对齐训练：apply → `compile_blocks_for_training` |
+
+compile 热测（RTX 3080，mlp，steps=4，inductor + grad-ckpt）：
+
+| 路径 | peak GB | sec/step | ×bf16 |
+| --- | --- | --- | --- |
+| bf16 + compile | 4.95 | 1.139 | 1.00 |
+| **w8a16_free + compile** | **4.11** | **1.180** | **1.036** |
+| w8a8_auto + compile | 4.17 | 1.657 | 1.455 |
+
+JSON：`output/tests/convrot_mem_speed_compile_p18.json`  
+无 compile 基线（P1.5）：W8A16 **1.05× / 4.14GB**。
+
+**结论：** 训练常用 compile 路径上 W8A16 已逼近 bf16（+3.6%），显存仍省 ~0.8 GB。W8A8 在 compile 下仍 ~1.45×，主税在 int8 GEMM/act quant，非 dtype 交通。
+
 ### H. P0-C：prequant_checkpoint 加载（2026-07-25）
 
 实现：`library/runtime/convrot/prequant.py` + `apply.py` 接线；导出：`scripts/experiments/convrot_export_prequant.py`。

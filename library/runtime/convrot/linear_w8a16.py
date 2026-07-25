@@ -9,7 +9,11 @@ from torch import nn
 from torch.nn import functional as F
 
 from library.runtime.convrot.fused import fused_enabled, fused_w8a16_forward
-from library.runtime.convrot.quant import dequantize_weight, rotate_and_quantize_weight
+from library.runtime.convrot.quant import (
+    dequantize_weight,
+    get_dequant_scratch,
+    rotate_and_quantize_weight,
+)
 from library.runtime.convrot.rht import assert_group_divides, group_rht
 
 
@@ -137,7 +141,11 @@ def w8a16_forward_from_buffers(
     )
     x_work = x.to(dtype=compute_dtype) if x.dtype != compute_dtype else x
     x_rot = group_rht(x_work, group_size, hadamard=hadamard)
-    weight = dequantize_weight(quantized_weight, scale, dtype=compute_dtype)
+    n, k = int(quantized_weight.shape[0]), int(quantized_weight.shape[1])
+    scratch = get_dequant_scratch(n, k, device=x.device, dtype=compute_dtype)
+    weight = dequantize_weight(
+        quantized_weight, scale, dtype=compute_dtype, out=scratch
+    )
     if weight.device != x.device:
         weight = weight.to(device=x.device)
     y = F.linear(x_rot, weight, None)

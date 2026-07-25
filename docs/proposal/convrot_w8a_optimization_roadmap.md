@@ -47,11 +47,13 @@ python tasks.py lora ... --base_compute w8a8_convrot
 
 | 路径 | peak VRAM | sec/step | 备注 |
 | --- | --- | --- | --- |
-| bf16 | ~5.0 GB | **~1.43 s** | 基线（2026-07-25 P1.5 热测） |
-| free-base + W8A16（P1.5） | **~4.14 GB** | **~1.51 s（1.05×）** | **当前推荐默认** |
-| free-base + W8A8 `_int_mm` auto（P1.5） | **~4.43 GB** | ~2.06 s（1.44×） | 真 int8 GEMM |
+| bf16（eager） | ~5.0 GB | **~1.43 s** | P1.5 热测 |
+| free-base W8A16（eager, P1.5） | **~4.14 GB** | **~1.51 s（1.05×）** | 推荐默认（无 compile） |
+| bf16 + torch.compile | ~4.95 GB | **~1.14 s** | 2026-07-25 compile 热测 |
+| free-base W8A16 + compile | **~4.11 GB** | **~1.18 s（1.036×）** | **训练常用路径推荐** |
+| free-base W8A8 + compile | **~4.17 GB** | ~1.66 s（1.45×） | 仍慢在 int8 GEMM |
 | free-base W8A16（P1 前 / A2） | ~4.34 GB | ~1.74–1.99 s | 历史锚点 |
-| 误默认 FWHT + `_weight_int8pack_mm` W8A16 | ~4.55 GB | **~47.6 s** | 已废弃为默认 |
+| 误默认 FWHT + int8pack | ~4.55 GB | **~47.6 s** | 已废弃为默认 |
 
 已落地（参见规格书 M1–M5 + 任务 1–3）：
 
@@ -284,3 +286,4 @@ JSON 证据：
 | 2026-07-25 | **P0-A3 完成**：fusion microbench 否决 P2 K/epilogue；**P1-F/G/H 实现 + 热测** `convrot_mem_speed_p1.json`：full W8A16 仍最省（4.34GB/1.21×）；largest 最快（1.13×）但 peak 回吐 |
 | 2026-07-25 | **P1.5 dtype 交通税**：dequant 目标 dtype、RHT/GEMM 去强制 fp32、hadamard bf16 buffer、scale `mul_`；热测 W8A16 **1.05× / 4.14GB**（`convrot_mem_speed_p15.json`） |
 | 2026-07-25 | **P1.6/1.7**：W8A8 kn 布局、bwd 免完整 dequant、共享 Hadamard；热测相对 P1.5 **中性**（`p16`/`p17.json`） |
+| 2026-07-25 | **P1.8 + compile 热测**：dequant scratch 默认关；`--torch-compile` 下 W8A16 **1.036× / 4.11GB**（`convrot_mem_speed_compile_p18.json`）；step profile tax~8% |

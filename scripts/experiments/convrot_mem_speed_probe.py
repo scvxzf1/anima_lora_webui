@@ -92,6 +92,7 @@ def run_case(
     largest_in_features_only: bool = False,
     large_layer_mode: str | None = None,
     large_min_in_features: int | None = None,
+    torch_compile: bool = False,
 ) -> dict:
     if gemm_env is not None:
         os.environ["ANIMA_CONVROT_INT8_GEMM"] = gemm_env
@@ -169,6 +170,19 @@ def run_case(
             "patch_names_sample": [p.name for p in result.patches[:8]],
         }
 
+    # Match training order: compile AFTER ConvRot apply so dynamo traces
+    # the patched org_forward (AGENTS.md Compile After Apply).
+    if torch_compile:
+        from library.runtime.harness import compile_blocks_for_training
+
+        # Minimal training-like compile: inductor, grad-ckpt on (probe enables it).
+        compile_blocks_for_training(
+            anima,
+            network,
+            backend="inductor",
+            grad_ckpt=True,
+        )
+
     torch.cuda.synchronize()
     torch.cuda.reset_peak_memory_stats()
     storage_after_apply = torch.cuda.memory_allocated()
@@ -176,8 +190,9 @@ def run_case(
     params = [p for p in network.parameters() if p.requires_grad]
     optim = torch.optim.AdamW(params, lr=5e-5)
 
-    # warmup
-    for _ in range(2):
+    # warmup (extra steps when compile is on so inductor settles)
+    warm = 4 if torch_compile else 2
+    for _ in range(warm):
         optim.zero_grad(set_to_none=True)
         out = anima(x, timesteps, context, padding_mask=padding_mask)
         loss = F.mse_loss(out.float(), target.float())
@@ -219,6 +234,7 @@ def run_case(
         "largest_in_features_only": largest_in_features_only,
         "large_layer_mode": large_layer_mode,
         "large_min_in_features": large_min_in_features,
+        "torch_compile": bool(torch_compile),
         "steps": steps,
         "elapsed_sec": elapsed,
         "sec_per_step": elapsed / steps,
@@ -303,6 +319,11 @@ def main() -> int:
         type=int,
         default=None,
         help="Global default large-layer in_features threshold.",
+    )
+    parser.add_argument(
+        "--torch-compile",
+        action="store_true",
+        help="Compile DiT blocks after ConvRot apply (mirrors training order).",
     )
     args = parser.parse_args()
 
@@ -445,6 +466,7 @@ def main() -> int:
                 scope=args.scope,
                 group_size=args.group_size,
                 seed=args.seed,
+                torch_compile=bool(args.torch_compile),
             )
         )
 
