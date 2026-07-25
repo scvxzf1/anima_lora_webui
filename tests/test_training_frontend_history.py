@@ -1383,10 +1383,34 @@ def test_history_detail_overview_uses_full_copyable_paths_and_resume_weights() -
     assert "icon.className = `metric-icon metric-icon-${iconName}`" in overview
     assert "['平均速度', formatHistoryAverageSpeed(task), 'gauge']" in overview
     assert "['训练总时间', formatHistoryTaskDuration(task), 'time']" in overview
+    assert "['训练精度', formatHistoryTrainingPrecision(payload.config_toml), 'chip']" in overview
+    assert "['训练变体', formatHistoryTrainingVariant(task, payload.config_toml), 'chip']" in overview
+    assert "['预处理精度', formatHistoryPreprocessPrecision(payload.config_toml), 'chip']" in overview
+    assert "['块交换精度', formatHistoryBlockSwapPrecision(payload.config_toml), 'chip']" in overview
     assert "function formatHistoryAverageSpeed(record)" in overview_source
     assert "function formatHistoryTaskDuration(record)" in overview_source
+    assert "function formatHistoryTrainingPrecision(configText)" in overview_source
+    assert "function formatHistoryTrainingVariant(task, configText)" in overview_source
+    assert "function formatHistoryPreprocessPrecision(configText)" in overview_source
+    assert "function formatHistoryBlockSwapPrecision(configText)" in overview_source
+    assert "function readConfigString(configText, key)" in overview_source
+    assert "precision_preference" in overview_source
+    assert "mixed_precision" in overview_source
+    assert "preprocess_precision_preference" in overview_source
+    assert "block_swap_transfer_dtype" in overview_source
+    assert "use_loha" in overview_source
+    assert "use_lokr" in overview_source
+    assert "use_chimera_hydra" in overview_source
+    assert "use_timestep_mask" in overview_source
+    assert "hasSnapshot" in overview_source
+    assert "无法生成配置快照" in overview_source
+    assert "replace(/-8gb$/" in overview_source
     assert "ctx.format.formatDuration" in overview_source
     assert "muted: taskFinished && ['队列', '续训'].includes(label) && value === '-'" in overview
+    assert "'训练精度'" in overview_source
+    assert "'训练变体'" in overview_source
+    assert "'预处理精度'" in overview_source
+    assert "'块交换精度'" in overview_source
     assert "section.classList.toggle('is-complete', finished);" in progress
     assert "historyCurveStatGroup('速度组'" in curve_index_source
     assert "['平均速度', formatHistoryAverageSpeed(task)]" in curve_index_source

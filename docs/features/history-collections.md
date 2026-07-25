@@ -31,6 +31,20 @@
 
 当前历史模式只保留 **collection / collections**，不再使用旧的 config/flat 主模式。
 
+### 概览「实时指标」第三行
+
+训练任务详情「概览」页的实时指标网格固定为 5 列。第三行展示配置摘要，数据来自任务的 `config.snapshot.toml`（API 字段 `config_toml`），不是运行中实时采样：
+
+| 格子 | 含义 | 取值 |
+| --- | --- | --- |
+| 训练精度 | 训练精度倾向 / 混合精度 | 优先 `precision_preference`，否则 `mixed_precision` |
+| 训练变体 | 方法短名 | 由 snapshot 标志推断，如 `lora` / `lokr` / `loha` / `vera` / `glora` / `hydralora` / `tlora` / `reft` / `chimera`；识别不出时为 `-`，不回退导入配置文件名 |
+| 预处理精度 | 预处理缓存精度 | `preprocess_precision_preference` |
+| 块交换精度 | 块交换传输精度 | `block_swap_transfer_dtype` |
+| （空位） | 预留 | 不渲染第五格，靠 5 列 grid 自然留白 |
+
+相关代码：`web/static/js/features/history-detail/overview.js`。
+
 ---
 
 ## 2. 入口
