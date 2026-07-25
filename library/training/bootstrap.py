@@ -171,6 +171,7 @@ class TrainingBootstrap:
             assert_convrot_block_swap_mutex,
             convrot_mode_from_base_compute,
             normalize_base_compute,
+            warn_convrot_blocks_to_swap,
         )
         from library.runtime.convrot.apply import apply_convrot_to_lora_network
 
@@ -192,6 +193,12 @@ class TrainingBootstrap:
                 args, "block_swap_transfer_dtype", "bf16"
             ),
         )
+        swap_warn = warn_convrot_blocks_to_swap(
+            base_compute=base_compute,
+            blocks_to_swap=getattr(args, "blocks_to_swap", 0),
+        )
+        if swap_warn:
+            logger.warning("[convrot] %s", swap_warn)
 
         # Phase 1: refuse DoRA / dora_wd network args early with a clear error.
         net_args = getattr(args, "network_args", None) or []

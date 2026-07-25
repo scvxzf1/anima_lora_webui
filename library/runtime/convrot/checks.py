@@ -106,3 +106,29 @@ def assert_convrot_block_swap_mutex(
             "block_swap_transfer_dtype=int8 (double dequant / confused semantics). "
             "Use block_swap_transfer_dtype=bf16 when enabling ConvRot."
         )
+
+
+def warn_convrot_blocks_to_swap(
+    *,
+    base_compute: str,
+    blocks_to_swap: int | None,
+) -> str | None:
+    """Return a warning string if ConvRot free-base is stacked with block swap.
+
+    ``enable_block_swap`` runs *before* ``maybe_apply_convrot_base`` in the
+    training bootstrap. Free-base then replaces patched Linear weights with
+    ``meta`` tensors while the offloader still owns CPU masters / H2D restore
+    for module ``weight``. That interaction is unaudited — prefer
+    ``blocks_to_swap=0`` and use ``convrot_scope=all`` + larger rank/batch for
+    VRAM headroom instead.
+    """
+    mode = normalize_base_compute(base_compute)
+    n = int(blocks_to_swap or 0)
+    if mode == "bf16" or n <= 0:
+        return None
+    return (
+        f"base_compute={mode} with blocks_to_swap={n}: ConvRot free-base puts "
+        "patched Linear.weight on meta after block-swap masters are captured; "
+        "this stack is unaudited. Prefer blocks_to_swap=0 (see "
+        "docs/experimental/convrot_int8_training.md §G.21)."
+    )

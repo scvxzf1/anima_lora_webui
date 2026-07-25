@@ -7,6 +7,7 @@ from library.runtime.convrot.apply import (
 )
 from library.runtime.convrot.checks import (
     assert_convrot_block_swap_mutex,
+    warn_convrot_blocks_to_swap,
     convrot_mode_from_base_compute,
     normalize_base_compute,
 )
@@ -53,4 +54,5 @@ __all__ = [
     "save_prequant_checkpoint",
     "stamp_convrot_metadata",
     "w8a8_int_linear",
+    "warn_convrot_blocks_to_swap",
 ]

@@ -10,6 +10,7 @@ from library.runtime.convrot.apply import apply_convrot_to_lora_network
 from library.runtime.convrot.checks import (
     assert_convrot_block_swap_mutex,
     normalize_base_compute,
+    warn_convrot_blocks_to_swap,
 )
 from library.runtime.convrot.metadata import (
     metadata_indicates_convrot,
@@ -197,6 +198,10 @@ def test_normalize_and_mutex() -> None:
         assert_convrot_block_swap_mutex(
             base_compute="w8a16_convrot", block_swap_transfer_dtype="int8"
         )
+    assert warn_convrot_blocks_to_swap(base_compute="bf16", blocks_to_swap=8) is None
+    assert warn_convrot_blocks_to_swap(base_compute="w8a16_convrot", blocks_to_swap=0) is None
+    msg = warn_convrot_blocks_to_swap(base_compute="w8a16_convrot", blocks_to_swap=8)
+    assert msg is not None and "unaudited" in msg and "blocks_to_swap=8" in msg
 
 
 def test_metadata_stamp_and_merge_reject() -> None:
