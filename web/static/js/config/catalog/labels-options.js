@@ -236,7 +236,8 @@ export const FIELD_OPTIONS = {
     block_swap_transfer_dtype: ['bf16', 'fp8_e4m3'],
     base_compute: ['bf16', 'w8a16_convrot', 'w8a8_convrot'],
     convrot_group_size: [64, 256, 1024],
-    convrot_scope: ['mlp'],
+    // Product profiles: mlp (speed default), all (VRAM), attention_out (mid).
+    convrot_scope: ['mlp', 'all', 'attention_out', 'attn', 'mlp,attn'],
     convrot_largest_in_features_only: [false, true],
     convrot_large_layer_mode: ['', 'w8a16', 'w8a8'],
     block_swap_profile_jsonl: ['off', 'auto'],

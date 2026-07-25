@@ -551,6 +551,18 @@ JSON：`output/tests/convrot_mem_speed_w8a8_compile_p19.json`
 
 W8A8 仍 ~1.4× bf16@compile；主税仍是 `_int_mm` + act quant，非 save/cast。
 
+### G.13 产品 profile 对照（2026-07-25）
+
+| Profile | scope / 旋钮 | peak | sec/step | ×bf16 | 用途 |
+| --- | --- | --- | --- | --- | --- |
+| **速度默认** | mlp + free + compile | **4.11 GB** | 1.18 s | **1.036** | 日常训 |
+| largest-only + compile | mlp + largest | 4.51 GB | 1.17 s | 1.031 | 略快、省显存少 |
+| attention_out | out-proj only | 4.66 GB | 1.40 s | 1.014 | 几乎不省显存 |
+| **显存优先** | all + free + compile | **3.43 GB** | 1.30 s | **1.08** | 极限 VRAM |
+| W8A8 mlp + compile | mlp | 4.14 GB | 1.58 s | 1.39 | 非速度默认 |
+
+WebUI：`convrot_scope` 选项扩展为 `mlp | all | attention_out | attn | mlp,attn`。
+
 ### H. P0-C：prequant_checkpoint 加载（2026-07-25）
 
 实现：`library/runtime/convrot/prequant.py` + `apply.py` 接线；导出：`scripts/experiments/convrot_export_prequant.py`。

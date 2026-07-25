@@ -346,11 +346,11 @@ export const FIELD_HELP_TRAINING_ZH = {    learning_rate: help(
     ),
     convrot_scope: help(
         "ConvRot 作用到哪些 Linear 模块。",
-        "WebUI MVP 固定为 mlp（FFN 大层）。attention / all 等高级 scope 请用 CLI。",
+        "mlp：速度默认（compile 下 W8A16 ~1.04× bf16，peak ~4.1GB）。all：mlp+attn 显存优先（~3.4GB，~1.08×）。attention_out：只 out-proj 折中。",
         ["只 patch 大 MLP 层通常性价比最高。"],
         ["扩大 scope 会增加量化误差面和 apply 成本。"],
         ["仅 base_compute 为 w8a*_convrot 时生效。"],
-        "保持 mlp。"
+        "默认 mlp；显存吃紧再改 all。"
     ),
     convrot_min_in_features: help(
         "按 in_features 下限过滤 ConvRot patch（P1-G）。",
