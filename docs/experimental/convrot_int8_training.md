@@ -764,6 +764,12 @@ WebUI / `gui-methods` 自包含变体：
   --methods_subdir gui-methods --print-config --no-config-snapshot | rg convrot
 ```
 
+**不要** 与 `blocks_to_swap>0` 叠用当省显存方案：
+
+- 训练里 `enable_block_swap` 在 **ConvRot free-base 之前**（`model_loading` → 稍后 `maybe_apply_convrot_base`）。
+- free-base 把 Linear.weight 置 `meta`；offloader 仍按模块 `weight` 做 CPU master / H2D restore，语义未审计，且与 `block_swap_transfer_dtype=int8` **硬互斥**。
+- 本 profile 固定 `blocks_to_swap=0`；极限显存用 `scope=all` + 更大 rank/batch，而不是 swap。
+
 ### H. P0-C prequant 实现注记
 
 实现：`library/runtime/convrot/prequant.py` + `apply.py` 接线；导出：`scripts/experiments/convrot_export_prequant.py`。
