@@ -212,7 +212,15 @@ class _FusedW8A8Fn(torch.autograd.Function):
         with torch.profiler.record_function("convrot::act_quant"):
             x_q, x_scale = quantize_activation_absmax_int8(x_rot)
         with torch.profiler.record_function("convrot::gemm_int8"):
-            y = int8_mm_scaled(x_q, x_scale, w_q, w_scale, weight_layout=layout)
+            # Emit y in compute_dtype to skip a full float32→bf16 cast (P1.9).
+            y = int8_mm_scaled(
+                x_q,
+                x_scale,
+                w_q,
+                w_scale,
+                weight_layout=layout,
+                out_dtype=compute_dtype,
+            )
         ctx.group_size = int(group_size)
         ctx.hadamard = hadamard
         ctx.compute_dtype = compute_dtype

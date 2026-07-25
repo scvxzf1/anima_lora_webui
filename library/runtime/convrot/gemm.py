@@ -78,8 +78,9 @@ def int8_mm_scaled(
     *,
     prefer: Literal["auto", "int_mm", "float"] | None = None,
     weight_layout: WeightLayout = "nk",
+    out_dtype: torch.dtype | None = None,
 ) -> torch.Tensor:
-    """Compute ``(x_q @ W^T) * x_scale * w_scale`` in float32.
+    """Compute ``(x_q @ W^T) * x_scale * w_scale``.
 
     Parameters
     ----------
@@ -96,6 +97,9 @@ def int8_mm_scaled(
     weight_layout:
         See ``w_q``. Prefer ``kn`` on the W8A8 hot path so each step skips
         ``w_q.t().contiguous()`` (same storage bytes as ``nk``).
+    out_dtype:
+        Result dtype. Default float32 (tests / reference). Training fused path
+        passes bf16/fp16 to avoid a late cast and halve y traffic (P1.9).
     """
     if x_q.dtype is not torch.int8 or w_q.dtype is not torch.int8:
         raise TypeError("x_q and w_q must be torch.int8")
@@ -118,7 +122,9 @@ def int8_mm_scaled(
         backend == "auto"
         and can_use_torch_int_mm(m, k, n, device=flat.device)
     )
+    result_dtype = out_dtype or torch.float32
 
+    # Scales applied in float32 for stability, then cast once to result_dtype.
     x_scale_flat = x_scale.reshape(-1, 1).to(device=flat.device, dtype=torch.float32)
     w_scale_row = w_scale.reshape(1, -1).to(device=flat.device, dtype=torch.float32)
 
@@ -134,6 +140,8 @@ def int8_mm_scaled(
             y = acc.to(torch.float32)
             y.mul_(x_scale_flat)
             y.mul_(w_scale_row)
+            if result_dtype != torch.float32:
+                y = y.to(dtype=result_dtype)
             return y.reshape(*leading, n)
         except RuntimeError:
             if backend == "int_mm":
@@ -148,6 +156,8 @@ def int8_mm_scaled(
         y = flat.to(torch.float32) @ w_f.t()
     y.mul_(x_scale_flat)
     y.mul_(w_scale_row)
+    if result_dtype != torch.float32:
+        y = y.to(dtype=result_dtype)
     return y.reshape(*leading, n)
 
 
@@ -188,17 +198,28 @@ class _W8A8IntLinearFn(torch.autograd.Function):
         weight_layout: str,
     ) -> torch.Tensor:
         layout: WeightLayout = "kn" if weight_layout == "kn" else "nk"
+        out_dtype = (
+            x_rot.dtype
+            if x_rot.is_floating_point()
+            and x_rot.dtype in (torch.float16, torch.bfloat16)
+            else torch.float32
+        )
         x_q, x_scale = quantize_activation_absmax_int8(x_rot)
-        y = int8_mm_scaled(x_q, x_scale, w_q, w_scale, weight_layout=layout)
+        y = int8_mm_scaled(
+            x_q, x_scale, w_q, w_scale, weight_layout=layout, out_dtype=out_dtype
+        )
         ctx.weight_layout = layout
-        # STE: save float rotated input and dequant-ready weight scales.
-        ctx.save_for_backward(x_rot, w_q, w_scale)
+        # STE does not need x_rot — only dtype for casting grad_x. Saves a full
+        # activation tensor per layer vs older save_for_backward(x_rot, ...).
+        ctx.x_dtype = x_rot.dtype
+        ctx.save_for_backward(w_q, w_scale)
         return y
 
     @staticmethod
     def backward(ctx, grad_y: torch.Tensor):
-        x_rot, w_q, w_scale = ctx.saved_tensors
+        w_q, w_scale = ctx.saved_tensors
         layout: WeightLayout = getattr(ctx, "weight_layout", "nk")
+        x_dtype = getattr(ctx, "x_dtype", grad_y.dtype)
         # Base weights frozen — only grad_x. STE ignores act quant.
         # grad_rot = (gy * scale) @ W  without full dequant temp.
         gy = grad_y.to(torch.float32)
@@ -214,8 +235,8 @@ class _W8A8IntLinearFn(torch.autograd.Function):
             grad_x = gy @ w.transpose(0, 1)
         else:
             grad_x = gy @ w
-        if x_rot.dtype != grad_x.dtype:
-            grad_x = grad_x.to(dtype=x_rot.dtype)
+        if x_dtype != grad_x.dtype:
+            grad_x = grad_x.to(dtype=x_dtype)
         return grad_x, None, None, None
 
 

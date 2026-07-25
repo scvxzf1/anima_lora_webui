@@ -533,6 +533,24 @@ python tasks.py lora ... --base_compute w8a16_convrot --convrot_group_size 64
 
 默认仍 sylvester@256（兼容 / 与既有 prequant 对齐）；若 seed 敏感或要收紧 grad gate，优先 regular@64。
 
+### G.12 W8A8 STE 瘦身 + out_dtype（2026-07-25，P1.9）
+
+| 改动 | 作用 |
+| --- | --- |
+| `_W8A8IntLinearFn` 不再 `save_for_backward(x_rot)` | 只存 `x_dtype`；STE 不需要激活 |
+| `int8_mm_scaled(..., out_dtype=bf16)` | fused 路径 y 直接 bf16，少一次 full cast |
+
+热测（mlp）：
+
+| 路径 | peak | sec/step | 备注 |
+| --- | --- | --- | --- |
+| w8a8 eager | 4.43 GB | ~2.11 s | 相对 P1.5 中性 |
+| **w8a8 + compile** | **4.14 GB** | **1.582 s** | 此前 compile 1.657 s（~−4.5%） |
+
+JSON：`output/tests/convrot_mem_speed_w8a8_compile_p19.json`
+
+W8A8 仍 ~1.4× bf16@compile；主税仍是 `_int_mm` + act quant，非 save/cast。
+
 ### H. P0-C：prequant_checkpoint 加载（2026-07-25）
 
 实现：`library/runtime/convrot/prequant.py` + `apply.py` 接线；导出：`scripts/experiments/convrot_export_prequant.py`。
