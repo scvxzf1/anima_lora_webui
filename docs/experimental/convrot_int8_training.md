@@ -769,6 +769,47 @@ METHODS_SUBDIR=gui-methods .venv/bin/python tasks.py print-config \
 - 训练里 `enable_block_swap` 在 **ConvRot free-base 之前**（`model_loading` → 稍后 `maybe_apply_convrot_base`）。
 - free-base 把 Linear.weight 置 `meta`；offloader 仍按模块 `weight` 做 CPU master / H2D restore，语义未审计，且与 `block_swap_transfer_dtype=int8` **硬互斥**。
 - 本 profile 固定 `blocks_to_swap=0`；极限显存用 `scope=all` + 更大 rank/batch，而不是 swap。
+- **2026-07-26 热测**：free-base 后首次 `prepare_block_devices_before_forward` / `_capture_cpu_master` 直接
+  `NotImplementedError: Cannot copy out of meta tensor`（见 §G.22）——叠用 **不是慢，是硬挂**。
+
+### G.22 `scope=all` × GC × `blocks_to_swap=20` 热测（2026-07-26）
+
+探针：`scripts/experiments/convrot_mem_speed_probe.py`（已支持 `--blocks-to-swap`、
+`--no-gradient-checkpointing`、host RSS）。顺序对齐训练：`enable_block_swap` →
+LoRA apply → ConvRot free-base → `switch_block_swap_for_training`（首次 prepare）→ 步进。
+平台：RTX 3080，`w8a16` free-base，`scope=all`，group 256 sylvester，r4，eager（无 compile），6 step。
+
+| 组合 | GC | swap | status | math | peak VRAM | sec/step | host RSS after | host RSS Δ | 备注 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| all+GC+swap20 | on | 20 | **error** | — | ~5.79 GB* | n/a | ~1.04 GB | +0.31 | 首次 prepare 撞 meta master |
+| all+GC | on | 0 | **ok** | finite loss/grad | **3.43 GB** | **1.75 s** | ~1.57 GB | +0.84 | 推荐叠用路径 |
+| all+swap20 | off | 20 | **error** | — | ~5.79 GB* | n/a | ~1.04 GB | +0.31 | 同 meta 硬挂；与 GC 无关 |
+
+\*失败 case 的 peak 是 load/patch 阶段残留，**不是**稳定训练峰；`sec/step` 无意义。
+
+JSON：`output/tests/convrot_stack_all_gc_swap20.json`、`convrot_stack_all_gc.json`、
+`convrot_stack_all_swap20.json`。
+
+失败栈（两 swap 组合相同）：
+
+```text
+ModelOffloader.prepare_block_devices_before_forward
+  → _ensure_cpu_weight_masters
+    → _capture_cpu_master(weight.data)  # weight is meta after free-base
+      → NotImplementedError: Cannot copy out of meta tensor; no data!
+```
+
+**数学稳定（仅 all+GC）**：`convrot_checkpoint_probe --scope all` seeds 0/1/2 →
+gate 2/3（seed0 `grad_rel≈0.072` 略超 0.05；out/loss 均在阈内）。与历史 syl@256 full-ckpt
+2/3 一致；**不是** swap 引入的回归。JSON：`output/tests/convrot_ckpt_all_gc.json`。
+
+**结论**
+
+1. **`scope=all` + `gradient_checkpointing`：可叠用** — 数学有限、峰 ~3.43 GB、host RSS ~1.6 GB。
+2. **`scope=all` + `blocks_to_swap`（无论 GC 开/关）：当前 free-base 路径硬失败** —
+   不要当省显存方案；bootstrap 已有 `warn_convrot_blocks_to_swap`。
+3. 若未来要叠 swap，需在 free-base **前**捕获 masters，且 restore 跳过
+   `_convrot_weight_freed` / meta 权重（另开 P2，本轮不修）。
 
 ### H. P0-C prequant 实现注记
 

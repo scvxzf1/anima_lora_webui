@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import resource
 import sys
 import time
 from pathlib import Path
@@ -26,6 +27,7 @@ import torch
 from torch.nn import functional as F
 
 from library.runtime.convrot.apply import apply_convrot_to_lora_network
+from library.runtime.convrot.checks import warn_convrot_blocks_to_swap
 from library.runtime.int8_linear import selected_int8_linear_modules
 from scripts.experiments.int8_linear_equivalence_probe import (
     DEFAULT_DATA_DIR,
@@ -35,6 +37,36 @@ from scripts.experiments.int8_linear_equivalence_probe import (
     select_cached_batch_pair,
 )
 import re
+
+
+def _host_rss_bytes() -> int:
+    """Current process RSS in bytes (Linux: getrusage.ru_maxrss is KiB peak).
+
+    On Linux ``ru_maxrss`` is the high-water mark in KiB, not current RSS.
+    Prefer ``/proc/self/status VmRSS`` when available so consecutive samples
+    can show growth; fall back to maxrss peak.
+    """
+    try:
+        status = Path("/proc/self/status").read_text(encoding="utf-8")
+        for line in status.splitlines():
+            if line.startswith("VmRSS:"):
+                # e.g. "VmRSS:\t123456 kB"
+                parts = line.split()
+                return int(parts[1]) * 1024
+    except Exception:
+        pass
+    # Portable fallback: peak resident set (Linux KiB, macOS bytes — document as peak).
+    usage = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    if sys.platform == "darwin":
+        return int(usage)
+    return int(usage) * 1024
+
+
+def _host_maxrss_bytes() -> int:
+    usage = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    if sys.platform == "darwin":
+        return int(usage)
+    return int(usage) * 1024
 
 
 def _pick_cuda_device() -> torch.device:
@@ -193,6 +225,9 @@ def run_case(
     batch_size: int = 1,
     cache_index: int = 0,
     min_latent_tokens: int = 0,
+    gradient_checkpointing: bool = True,
+    blocks_to_swap: int = 0,
+    block_swap_transfer_dtype: str = "bf16",
 ) -> dict:
     if gemm_env is not None:
         os.environ["ANIMA_CONVROT_INT8_GEMM"] = gemm_env
@@ -203,6 +238,13 @@ def run_case(
 
     rank = int(lora_rank)
     alpha = float(lora_alpha) if lora_alpha is not None else float(rank)
+    n_swap = max(0, int(blocks_to_swap or 0))
+    transfer_dtype = str(block_swap_transfer_dtype or "bf16").strip().lower()
+    host_rss_before = _host_rss_bytes()
+    host_maxrss_before = _host_maxrss_bytes()
+    status = "ok"
+    error = None
+    swap_warn = None
 
     torch.cuda.empty_cache()
     # Ensure context exists before peak-stat APIs (some drivers reject bare device objects).
@@ -229,113 +271,202 @@ def run_case(
     latent_hw = int(x.shape[-2] * x.shape[-1])
     latent_shape = list(x.shape)
 
-    anima = load_anima_model(
-        device=device,
-        dit_path=str(dit_path),
-        attn_mode="torch",
-        loading_device=device,
-        dit_weight_dtype=dtype,
-    )
-    anima.to(device=device, dtype=dtype).requires_grad_(False)
-    anima.reset_mod_guidance()
-    anima.enable_gradient_checkpointing()
-    network = _create_lora(
-        anima,
-        seed=seed + 101,
-        device=device,
-        dtype=dtype,
-        rank=rank,
-        alpha=alpha,
-        scope=scope,
-    )
-    free_stats = {"freed_modules": 0, "freed_bytes": 0}
+    anima = None
+    network = None
+    optim = None
+    params = None
+    free_stats: dict = {"freed_modules": 0, "freed_bytes": 0}
     apply_wall_sec = None
-    if mode is not None:
-        t_apply0 = time.perf_counter()
-        result = apply_convrot_to_lora_network(
-            network,
-            mode=mode,  # type: ignore[arg-type]
-            scope=scope,
-            group_size=group_size,
-            free_base_weights=free_base,
-            weight_source=weight_source,
-            prequant_path=prequant_path,
-            unet=anima,
-            min_in_features=min_in_features,
-            largest_in_features_only=largest_in_features_only,
-            large_layer_mode=large_layer_mode,
-            large_min_in_features=large_min_in_features,
-        )
-        torch.cuda.synchronize()
-        apply_wall_sec = time.perf_counter() - t_apply0
-        free_stats = {
-            "freed_modules": result.freed_modules,
-            "freed_bytes": result.freed_bytes,
-            "patched": result.patched_count,
-            "weight_source": result.weight_source,
-            "min_in_features": result.min_in_features,
-            "largest_in_features_only": result.largest_in_features_only,
-            "large_layer_mode": result.large_layer_mode,
-            "large_min_in_features": result.large_min_in_features,
-            "patch_modes": sorted({p.mode for p in result.patches}),
-            "patch_names_sample": [p.name for p in result.patches[:8]],
-        }
-
-    # Match training order: compile AFTER ConvRot apply so dynamo traces
-    # the patched org_forward (AGENTS.md Compile After Apply).
-    if torch_compile:
-        from library.runtime.harness import compile_blocks_for_training
-
-        # Minimal training-like compile: inductor, grad-ckpt on (probe enables it).
-        mode = (compile_mode or "").strip() or None
-        compile_blocks_for_training(
-            anima,
-            network,
-            backend="inductor",
-            mode=mode,
-            grad_ckpt=True,
-        )
-
-    torch.cuda.synchronize()
-    torch.cuda.reset_peak_memory_stats()
-    storage_after_apply = torch.cuda.memory_allocated()
-
-    params = [p for p in network.parameters() if p.requires_grad]
-    optim = torch.optim.AdamW(params, lr=5e-5)
-
-    # warmup (extra steps when compile is on so inductor settles)
-    warm = 4 if torch_compile else 2
-    for _ in range(warm):
-        optim.zero_grad(set_to_none=True)
-        out = anima(x, timesteps, context, padding_mask=padding_mask)
-        loss = F.mse_loss(out.float(), target.float())
-        loss.backward()
-        optim.step()
-    torch.cuda.synchronize()
-    torch.cuda.reset_peak_memory_stats()
-
-    t0 = time.perf_counter()
+    storage_after_apply = 0
+    host_rss_after_apply = host_rss_before
     last_loss = None
-    for _ in range(steps):
-        optim.zero_grad(set_to_none=True)
-        out = anima(x, timesteps, context, padding_mask=padding_mask)
-        loss = F.mse_loss(out.float(), target.float())
-        loss.backward()
-        optim.step()
-        last_loss = float(loss.detach().item())
-    torch.cuda.synchronize()
-    elapsed = time.perf_counter() - t0
-    peak = int(torch.cuda.max_memory_allocated())
-    allocated = int(torch.cuda.memory_allocated())
-
-    # count meta base weights
+    last_grad_norm = None
+    finite_steps = 0
+    warm = 4 if torch_compile else 2
+    elapsed = 0.0
     meta_bases = 0
-    for lora in network.unet_loras:
-        refs = getattr(lora, "org_module_ref", None)
-        if refs and getattr(refs[0], "weight", None) is not None:
-            if refs[0].weight.device.type == "meta":
-                meta_bases += 1
+    peak = 0
+    allocated = 0
 
+    try:
+        anima = load_anima_model(
+            device=device,
+            dit_path=str(dit_path),
+            attn_mode="torch",
+            loading_device=device,
+            dit_weight_dtype=dtype,
+        )
+        # Training order (model_loading → bootstrap): place DiT, optional block
+        # swap *before* ConvRot free-base so masters/hooks mirror real training.
+        anima.to(device=device, dtype=dtype).requires_grad_(False)
+        anima.reset_mod_guidance()
+        if gradient_checkpointing:
+            anima.enable_gradient_checkpointing()
+
+        if n_swap > 0:
+            base_compute = (
+                f"{mode}_convrot" if mode in {"w8a16", "w8a8"} else "bf16"
+            )
+            swap_warn = warn_convrot_blocks_to_swap(
+                base_compute=base_compute,
+                blocks_to_swap=n_swap,
+            )
+            if swap_warn:
+                print(f"[convrot] WARNING: {swap_warn}", flush=True)
+            anima.enable_block_swap(
+                n_swap,
+                device,
+                transfer_dtype=transfer_dtype,
+            )
+            anima.move_to_device_except_swap_blocks(device)
+            # Defer switch_block_swap_for_training (first prepare) until after
+            # free-base so we match training: enable_block_swap in model_loading,
+            # free-base in bootstrap, first prepare on first train step.
+
+        network = _create_lora(
+            anima,
+            seed=seed + 101,
+            device=device,
+            dtype=dtype,
+            rank=rank,
+            alpha=alpha,
+            scope=scope,
+        )
+        if mode is not None:
+            t_apply0 = time.perf_counter()
+            result = apply_convrot_to_lora_network(
+                network,
+                mode=mode,  # type: ignore[arg-type]
+                scope=scope,
+                group_size=group_size,
+                free_base_weights=free_base,
+                weight_source=weight_source,
+                prequant_path=prequant_path,
+                unet=anima,
+                min_in_features=min_in_features,
+                largest_in_features_only=largest_in_features_only,
+                large_layer_mode=large_layer_mode,
+                large_min_in_features=large_min_in_features,
+            )
+            torch.cuda.synchronize()
+            apply_wall_sec = time.perf_counter() - t_apply0
+            free_stats = {
+                "freed_modules": result.freed_modules,
+                "freed_bytes": result.freed_bytes,
+                "patched": result.patched_count,
+                "weight_source": result.weight_source,
+                "min_in_features": result.min_in_features,
+                "largest_in_features_only": result.largest_in_features_only,
+                "large_layer_mode": result.large_layer_mode,
+                "large_min_in_features": result.large_min_in_features,
+                "patch_modes": sorted({p.mode for p in result.patches}),
+                "patch_names_sample": [p.name for p in result.patches[:8]],
+            }
+
+        # Arm forward+backward swap *after* free-base (first prepare captures masters).
+        # With free_base=True this currently hard-fails: masters try to copy meta.
+        if n_swap > 0:
+            anima.switch_block_swap_for_training()
+
+        # Match training order: compile AFTER ConvRot apply so dynamo traces
+        # the patched org_forward (AGENTS.md Compile After Apply).
+        if torch_compile:
+            from library.runtime.harness import compile_blocks_for_training
+
+            cmode = (compile_mode or "").strip() or None
+            compile_blocks_for_training(
+                anima,
+                network,
+                backend="inductor",
+                mode=cmode,
+                grad_ckpt=bool(gradient_checkpointing),
+            )
+
+        torch.cuda.synchronize()
+        torch.cuda.reset_peak_memory_stats()
+        storage_after_apply = torch.cuda.memory_allocated()
+        host_rss_after_apply = _host_rss_bytes()
+
+        params = [p for p in network.parameters() if p.requires_grad]
+        optim = torch.optim.AdamW(params, lr=5e-5)
+
+        def _one_step() -> tuple[float, float]:
+            """One optim step; returns (loss, grad_norm). Raises on hard failure."""
+            if n_swap > 0:
+                anima.prepare_block_swap_before_forward()
+            optim.zero_grad(set_to_none=True)
+            out = anima(x, timesteps, context, padding_mask=padding_mask)
+            loss = F.mse_loss(out.float(), target.float())
+            loss.backward()
+            grad_sq = 0.0
+            for p in params:
+                if p.grad is not None:
+                    grad_sq += float(p.grad.detach().float().pow(2).sum().item())
+            optim.step()
+            return float(loss.detach().item()), float(grad_sq**0.5)
+
+        for _ in range(warm):
+            last_loss, last_grad_norm = _one_step()
+            if (
+                last_loss is not None
+                and last_grad_norm is not None
+                and last_loss == last_loss
+                and last_grad_norm == last_grad_norm
+            ):
+                finite_steps += 1
+        torch.cuda.synchronize()
+        torch.cuda.reset_peak_memory_stats()
+
+        t0 = time.perf_counter()
+        for _ in range(steps):
+            last_loss, last_grad_norm = _one_step()
+            if (
+                last_loss is not None
+                and last_grad_norm is not None
+                and last_loss == last_loss
+                and last_grad_norm == last_grad_norm
+            ):
+                finite_steps += 1
+        torch.cuda.synchronize()
+        elapsed = time.perf_counter() - t0
+    except Exception as exc:  # noqa: BLE001 — probe must record stack failures
+        status = "error"
+        error = f"{type(exc).__name__}: {exc}"
+        print(f"[{label}] ERROR: {error}", flush=True)
+        elapsed = 0.0
+        try:
+            torch.cuda.synchronize()
+        except Exception:
+            pass
+
+    try:
+        peak = int(torch.cuda.max_memory_allocated())
+        allocated = int(torch.cuda.memory_allocated())
+    except Exception:
+        peak = 0
+        allocated = 0
+    host_rss_after = _host_rss_bytes()
+    host_maxrss_after = _host_maxrss_bytes()
+
+    if network is not None:
+        for lora in network.unet_loras:
+            refs = getattr(lora, "org_module_ref", None)
+            if refs and getattr(refs[0], "weight", None) is not None:
+                if refs[0].weight.device.type == "meta":
+                    meta_bases += 1
+
+    math_ok = (
+        status == "ok"
+        and last_loss is not None
+        and last_grad_norm is not None
+        and last_loss == last_loss
+        and last_grad_norm == last_grad_norm
+        and finite_steps == warm + steps
+    )
+
+    net_bytes = (
+        _bytes_of_module_params_buffers(network) if network is not None else 0
+    )
     payload = {
         "label": label,
         "mode": mode or "bf16",
@@ -349,6 +480,10 @@ def run_case(
         "large_min_in_features": large_min_in_features,
         "torch_compile": bool(torch_compile),
         "compile_mode": (compile_mode or None),
+        "gradient_checkpointing": bool(gradient_checkpointing),
+        "blocks_to_swap": n_swap,
+        "block_swap_transfer_dtype": transfer_dtype if n_swap > 0 else None,
+        "swap_warn": swap_warn,
         "lora_rank": rank,
         "lora_alpha": alpha,
         "batch_size": bs,
@@ -359,34 +494,70 @@ def run_case(
         "latent_path": str(getattr(pair, "latent_path", "")),
         "steps": steps,
         "elapsed_sec": elapsed,
-        "sec_per_step": elapsed / steps,
+        "sec_per_step": (elapsed / steps) if steps > 0 and status == "ok" else None,
         "apply_wall_sec": apply_wall_sec,
         "peak_bytes": peak,
         "peak_gb": peak / (1024**3),
         "allocated_after_steps_gb": allocated / (1024**3),
         "allocated_after_apply_gb": storage_after_apply / (1024**3),
+        "host_rss_before_gb": host_rss_before / (1024**3),
+        "host_rss_after_apply_gb": host_rss_after_apply / (1024**3),
+        "host_rss_after_gb": host_rss_after / (1024**3),
+        "host_rss_delta_gb": (host_rss_after - host_rss_before) / (1024**3),
+        "host_maxrss_before_gb": host_maxrss_before / (1024**3),
+        "host_maxrss_after_gb": host_maxrss_after / (1024**3),
         "last_loss": last_loss,
+        "last_grad_norm": last_grad_norm,
+        "finite_steps": finite_steps,
+        "math_ok": math_ok,
+        "status": status,
+        "error": error,
         "free_stats": free_stats,
         "meta_base_linears": meta_bases,
-        "network_param_buffer_bytes": _bytes_of_module_params_buffers(network),
+        "network_param_buffer_bytes": net_bytes,
+        "scope": scope,
     }
+    loss_s = "nan" if last_loss is None else f"{last_loss:.4f}"
+    sec_s = (
+        f"{payload['sec_per_step']:.3f}"
+        if payload["sec_per_step"] is not None
+        else "n/a"
+    )
     print(
-        f"[{label}] peak={payload['peak_gb']:.2f}GB "
+        f"[{label}] status={status} math_ok={math_ok} "
+        f"peak={payload['peak_gb']:.2f}GB "
         f"alloc_after_apply={payload['allocated_after_apply_gb']:.2f}GB "
-        f"sec/step={payload['sec_per_step']:.3f} "
+        f"sec/step={sec_s} "
+        f"rss={payload['host_rss_after_gb']:.2f}GB "
+        f"(Δ{payload['host_rss_delta_gb']:+.2f}) "
+        f"gc={gradient_checkpointing} swap={n_swap} "
         f"apply={0.0 if apply_wall_sec is None else apply_wall_sec:.3f}s "
         f"patched={free_stats.get('patched', 0)} "
         f"meta_bases={meta_bases} freed_mb={free_stats.get('freed_bytes',0)/1024**2:.1f} "
-        f"loss={last_loss:.4f}",
+        f"loss={loss_s}",
         flush=True,
     )
+
+    # Tear down offloader threads before deleting the model.
+    if (
+        anima is not None
+        and n_swap > 0
+        and getattr(anima, "offloader", None) is not None
+    ):
+        try:
+            anima.offloader.thread_pool.shutdown(wait=False)
+        except Exception:
+            pass
 
     del anima, network, optim, params, model_inputs, target
     import gc
 
     gc.collect()
     torch.cuda.empty_cache()
-    torch.cuda.synchronize()
+    try:
+        torch.cuda.synchronize()
+    except Exception:
+        pass
     return payload
 
 
@@ -488,6 +659,26 @@ def main() -> int:
             "If >0, only use cache pairs whose latent H*W >= this. "
             "Example: 896x1200 latent is often 56x75=4200; 1792x2400 ~112x150=16800."
         ),
+    )
+    parser.add_argument(
+        "--no-gradient-checkpointing",
+        action="store_true",
+        help="Disable gradient checkpointing (default: enabled, matches historical probes).",
+    )
+    parser.add_argument(
+        "--blocks-to-swap",
+        type=int,
+        default=0,
+        help=(
+            "DiT blocks_to_swap (training path). 0=off. Stacking with ConvRot "
+            "free-base is unaudited; probe records the stack for hot tests."
+        ),
+    )
+    parser.add_argument(
+        "--block-swap-transfer-dtype",
+        type=str,
+        default="bf16",
+        help="block_swap_transfer_dtype (must not be int8 with ConvRot).",
     )
     args = parser.parse_args()
 
@@ -637,6 +828,9 @@ def main() -> int:
                 batch_size=int(args.batch_size),
                 cache_index=int(args.cache_index),
                 min_latent_tokens=int(args.min_latent_tokens or 0),
+                gradient_checkpointing=not bool(args.no_gradient_checkpointing),
+                blocks_to_swap=int(args.blocks_to_swap or 0),
+                block_swap_transfer_dtype=str(args.block_swap_transfer_dtype),
             )
         )
 

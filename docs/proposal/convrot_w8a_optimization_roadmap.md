@@ -308,3 +308,4 @@ JSON 证据：
 | 2026-07-26 | **分辨率 KPI 阻断**（全 cache 同 16128 token）；`max-autotune-no-cudagraphs` 两端各 ~2.7% 但 **×bf16 仍 1.04**（§G.20）；probe 自动选 CC≥7.5 GPU + `--compile-mode` |
 | 2026-07-26 | **产品变体** `configs/gui-methods/lora-convrot-vram.toml`（scope=all / dim=32 / W8A16；§G.21） |
 | 2026-07-26 | **否决** ConvRot∥block_swap 作为下一刀：apply 顺序 free-base 在 swap 后；meta weight 与 offloader 未审计 |
+| 2026-07-26 | **热测 §G.22**：`all+GC` 可叠（3.43GB / 1.75s eager / math ok）；`all±GC+swap20` free-base 后首次 prepare **硬挂** meta master（`convrot_stack_*.json`）；probe 增 `--blocks-to-swap` / RSS |
