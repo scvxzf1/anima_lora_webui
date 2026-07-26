@@ -1,0 +1,109 @@
+# Delta-caption EDIT descriptor — Phase 2.5 of the directedit_ec line
+# (project/directedit_ec/roadmap.md). Same mined cross-image pairs as subject
+# (cond = image A of a character, target = image B of the same character), but
+# the prompt is the TAG DELTA between the captions — additions in B's order
+# plus `-`-prefixed removals — i.e. an edit *instruction*, not a description.
+# Shared tags cancel, so the character name drops out of the prompt: the cond
+# stream is the only identity source (starves the name-tag shortcut the
+# subject probe had to control for). Targets are real corpus images — no
+# teacher in the loop, so no Phase-3 teacher ceiling and no tagger-readback
+# dependency.
+#
+# Pipeline (staging is CPU symlinks + delta-caption .txt; preprocess ALSO runs
+# a TE encode pass — delta captions are new text, the shared TE cache is B's
+# full caption and does not apply):
+#   make caption-index                                      # if the index is stale
+#   make easycontrol-staging    EASYADAPTER=subject_edit    # mine + stage + cond/
+#   make easycontrol-preprocess EASYADAPTER=subject_edit    # cond/ + TE encode → text/
+#   make easycontrol            EASYADAPTER=subject_edit    # train
+# Probe: project/directedit_ec/bench/run_subject_probe.py --ec_weight <ckpt>
+# still applies as a smoke check (it exercises retrieval, not edit semantics);
+# an edit-instruction probe is the line's next bench artifact.
+
+name = "subject_edit"
+
+# Mining knobs (CLI flags of easycontrol_adapters/tools/subject_edit_pairs.py win).
+[staging]
+caption_index = 'post_image_dataset/captions/caption_index.json'
+resized_dir = 'post_image_dataset/resized'
+lora_cache_dir = 'post_image_dataset/lora'
+min_group = 2
+max_per_character = 16
+solo_only = true
+partner = "min_delta"    # smallest symmetric tag delta = nearest-edit pair
+partner_scope = "any"    # same-artist pairs dominate under min_delta naturally
+min_delta = 2            # near-duplicates teach nothing
+# Measured on this corpus (2026-07-25): median caption 37 tags, median
+# nearest-partner symmetric delta 37; survivors at max_delta 24/36/44 =
+# 165/566/845. 40 ≈ 700 pairs — deltas stay shorter than a full caption
+# without starving the set.
+max_delta = 40           # huge deltas = unrelated images + caption noise
+include_removals = true  # encode source-only tags as `-tag` (absence is else
+                         # ambiguous between 'keep' and 'remove')
+seed = 42
+
+# TE-encode knobs for `make easycontrol-preprocess EASYADAPTER=subject_edit`
+# (forwarded to scripts/preprocess/cache_text_embeddings.py over staging/ →
+# {name}/text). Shuffle variants are fine — a tag instruction is order-free —
+# but tag DROPOUT must stay 0: dropping part of the instruction leaves the
+# target unexplained. min_pixels 0 — low-tier resized images sit under the
+# script's 0.5MP default and would be silently skipped.
+[preprocess]
+caption_shuffle_variants = 4
+caption_tag_dropout_rate = 0.0
+min_pixels = 0
+
+# Training overrides, folded in as CLI on top of configs/easycontrol/easycontrol.toml.
+# Gate + LoRA config carried from the subject arm 2 (the open-gate recipe the
+# 2026-07-25 probe validated: b_cond_init=-4, cond_res_scale=1.0, ffn LoRA).
+# caption_dropout_rate stays: prompt-free steps teach "cond alone → re-render
+# the character", the delta steps teach the edit on top of that.
+[training]
+network_dim = 32
+network_alpha = 32
+network_args = [
+    "b_cond_init=-4.0",
+    "cond_scale=1.0",
+    "apply_ffn_lora=1",
+    "cond_res_scale=1.0",
+]
+output_name = "anima_easycontrol_subject_edit"
+masked_loss = false
+learning_rate = 2e-5
+# ~700 pairs at max_delta=40 → 12 epochs ≈ subject's 8×1116 optimizer steps.
+max_train_epochs = 12
+save_every_n_epochs = 4
+checkpointing_epochs = 4
+easycontrol_drop_p = 0.05
+easycontrol_cond_noise_max = 0.0
+caption_dropout_rate = 0.1
+use_shuffled_caption_variants = true
+blocks_to_swap = 0
+
+# === generated dataset blueprint (rewritten by the miner; do not edit below) ===
+# Delta-caption edit pairs wired as an EasyControl control task. staging/ holds
+# PNG symlinks for every mined TARGET plus real .txt files with the TAG DELTA
+# (additions + prefixed removals) vs the cond partner; pairs.json records the
+# partner + delta stats.
+#
+# Roles (EasyControl: cache_dir = denoising target, cond_cache_dir = condition):
+#   target = image B; prompt = tags(B) - tags(A) + removal-prefixed tags(A)-(B)
+#   cond   = image A of the same character, filed under B's stem at A's bucket.
+# So the adapter learns: given THIS image and THIS edit instruction, produce
+# the edited result — the prompt no longer describes, it instructs (and the
+# character name cancels out of it, so identity must come from the cond).
+
+[general]
+caption_extension = '.txt'
+
+[[datasets]]
+batch_size = 1
+
+  [[datasets.subsets]]
+  image_dir = 'post_image_dataset/easycontrol/{name}/staging'
+  cache_dir = 'post_image_dataset/lora'                             # shared corpus cache: target latents + PE reused as-is
+  cond_cache_dir = 'post_image_dataset/easycontrol/{name}/cond'   # condition: the partner's latent, keyed by the target stem
+  text_cache_dir = 'post_image_dataset/easycontrol/{name}/text'   # delta-caption TE cache (the preprocess step encodes it)
+  recursive = true                 # tree is nested <artist>/<stem>; the shared cache mirrors it
+  flip_aug = false                 # cond latents have no flipped variant
+  num_repeats = 1

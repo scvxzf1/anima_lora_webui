@@ -40,7 +40,7 @@ from pathlib import Path
 # Shared tag-shape primitives (torch-free) — single source of truth for the
 # artist ``@``-prefix rule, count-tag detection, and the raw-caption rating set,
 # kept in sync with the Anima Tagger vocab build (scripts/anima_tagger/vocab.py).
-from library.captioning.taxonomy import CAPTION_RATINGS, is_artist_tag, is_count_tag
+from library.captioning.taxonomy import is_artist_tag, is_count_tag, is_rating_tag
 
 
 DEFAULT_VOCAB = "models/captioners/anima-tagger-v2/vocab.json"
@@ -186,7 +186,7 @@ def _classify(
                     or tag in seen["count"]
                 ):
                     continue
-                if tag in CAPTION_RATINGS or is_count_tag(tag) or _PAREN_RE.match(tag):
+                if is_rating_tag(tag) or is_count_tag(tag) or _PAREN_RE.match(tag):
                     continue
                 if _norm_words(tag) & copy_words:
                     continue  # franchise sub-title of a known copyright

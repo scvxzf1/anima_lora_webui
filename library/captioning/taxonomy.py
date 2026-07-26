@@ -20,29 +20,17 @@ from __future__ import annotations
 
 import re
 
-# ── Count tags ─────────────────────────────────────────────────────────────
-# Matches ``1girl``, ``2girls``, ``1boy``, ``3others``, ``6+girls`` (booru "≥6
-# of"), and ``multiple_girls`` / ``multiple girls`` (underscore or space). This
-# is the tagger's long-standing definition; ``classify_people`` and the vocab
-# categorizer both key off it. (The caption-index builder additionally treats
-# ``no girls`` / ``no boys`` as part of the leading count band, but those are
-# general tags that sit *after* ``@artist`` in practice, so they never reach the
-# pre-artist character span — keeping them out of ``is_count_tag`` avoids
-# mistyping them in the model vocab.)
+# People-count tags — shared definition that classify_people and the vocab categorizer both key off. The caption-index builder additionally counts "no girls"/"no boys", but those sit after @artist so they never reach the pre-artist span; keeping them out here avoids mistyping them in the model vocab.
 _COUNT_RE = re.compile(
     r"^(?:\d+\+?(?:girl|boy|other)s?|multiple[_ ](?:girls|boys|others))$"
 )
 
-# Pull the leading integer off a count tag like "3girls" / "6+girls" → 3 / 6.
 _LEADING_INT_RE = re.compile(r"^(\d+)")
 
 
 def is_count_tag(tag: str) -> bool:
     """True for people-count tags (``1girl``, ``2girls``, ``multiple_boys``…)."""
     return bool(_COUNT_RE.match(tag))
-
-
-# ── Artist tags ────────────────────────────────────────────────────────────
 
 
 def is_artist_tag(tag: str) -> bool:
@@ -60,10 +48,29 @@ def strip_artist_prefix(tag: str) -> str:
     return tag[1:] if tag.startswith("@") else tag
 
 
-# ── Rating literals ──────────────────────────────────────────────────────────
-# Raw captions carry the *4-class* danbooru rating vocabulary. Use this to strip
-# the leading rating band when parsing a caption. Note this is intentionally a
-# superset of the tagger's MODEL-OUTPUT ratings
-# (``library.captioning.anima_tagger.RATINGS``), which is the 3-class set after
-# the ``questionable → sensitive`` collapse the head is trained on.
-CAPTION_RATINGS = frozenset({"general", "sensitive", "questionable", "explicit"})
+# Anima's 4-class rating vocabulary — the leading safety band of a caption
+# (``safe, 1girl, …``), and the same set the tagger's rating head predicts
+# (``library.captioning.anima_tagger.RATINGS``, which fixes the class order).
+CAPTION_RATINGS = frozenset({"safe", "sensitive", "nsfw", "explicit"})
+
+# Danbooru's own rating literals, mapped onto the Anima band. Anima renames two
+# of the four (``general``→``safe``, ``questionable``→``nsfw``) and keeps the
+# other two verbatim, so raw booru captions — and corpora/vocab.json built
+# before the rename — still read as ratings instead of falling through to the
+# ``general`` *category*.
+LEGACY_RATING_ALIASES = {"general": "safe", "questionable": "nsfw"}
+
+# Every literal that reads as a rating: canonical band + accepted legacy spellings.
+RATING_LITERALS = CAPTION_RATINGS | frozenset(LEGACY_RATING_ALIASES)
+
+
+def is_rating_tag(tag: str) -> bool:
+    """True for any accepted rating literal (canonical Anima or legacy booru)."""
+    return tag in RATING_LITERALS
+
+
+def canonical_rating(tag: str) -> str | None:
+    """The canonical Anima rating for ``tag``, or None when it isn't a rating."""
+    if tag in CAPTION_RATINGS:
+        return tag
+    return LEGACY_RATING_ALIASES.get(tag)

@@ -241,6 +241,11 @@ COMMANDS = {
         utilities.cmd_export_logs,
         "Dump TB scalar logs to JSON (RUN=<dir>, ALL=1 for every subrun, JSONL=1 for line-delimited)",
     ),
+    "run-status": (
+        utilities.cmd_run_status,
+        "Step/ETA/last-ckpt one-liner for a run from its progress.jsonl "
+        "(RUN=<output_name|path>, default newest; ARGS='--list|--json')",
+    ),
     "print-config": (
         utilities.cmd_print_config,
         "Dump merged config (METHOD=<name> PRESET=<name>) with provenance",
