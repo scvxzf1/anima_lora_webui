@@ -93,11 +93,31 @@ import { bindTrainingViewTabKeyboard, showTrainingView } from '../anima-app/help
 import { loadTrainingHistoryList, renderHistoryManager } from '../anima-app/helpers/history-list-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
 import { installBeginnerTooltips } from './beginner-tooltips.js?v=module-bootstrap-20260714-stage-dataset5';
 import { SETUP_EVENT_DOM_CONTRACT } from './event-listeners-contract.js?v=module-bootstrap-20260714-stage-dataset5';
+import { debounce } from '../../shared/debounce.js?v=module-bootstrap-20260714-stage-dataset5';
+import { bindBrowseDialogBackdropClose } from '../../shared/dialog.js?v=module-bootstrap-20260714-stage-dataset5';
 
 const ctx = getAppContext();
 const appShellState = getAppShellState();
 const datasetState = getDatasetState();
 const historyState = getHistoryState();
+
+const scheduleHistoryManagerRender = debounce(() => {
+    renderHistoryManager();
+}, 150);
+
+// Browse/preview dialogs: click backdrop to close.
+// Confirm dialogs (history-task-dialog / preflight) stay button+Esc only.
+bindBrowseDialogBackdropClose([
+    'tutorial-dialog',
+    'preview-dialog',
+    'dataset-preview-dialog',
+    'config-dataset-picker-dialog',
+    'continue-lora-dialog',
+    'dataset-experimental-dialog',
+    'stage-resolution-dialog',
+    // image-test-layer-dialog / preview-panel-dialog / history-detail-dialog
+    // already have dedicated close handlers elsewhere.
+]);
 const tomlState = getTomlState();
 const trainingState = getTrainingState();
 
@@ -280,16 +300,21 @@ export function setupEventListeners() {
         on(id, id === 'history-manager-search' ? 'input' : 'change', (event) => {
             const value = event.target.value || historyManagerFilterDefault(key);
             historyState.historyManagerFilters[key] = value;
-            renderHistoryManager();
+            if (id === 'history-manager-search') {
+                scheduleHistoryManagerRender();
+            } else {
+                scheduleHistoryManagerRender.cancel();
+                renderHistoryManager();
+            }
         });
     }
     on('history-collection-search', 'input', (event) => {
         historyState.historyCollectionSearch = event.target.value || '';
-        renderHistoryManager();
+        scheduleHistoryManagerRender();
     });
     on('history-config-group-search', 'input', (event) => {
         historyState.historyConfigGroupSearch = event.target.value || '';
-        renderHistoryManager();
+        scheduleHistoryManagerRender();
     });
     ensureHistoryDetailFeature().bindHistoryDetailEvents();
     on('btn-live-training', 'click', returnToLiveTraining);

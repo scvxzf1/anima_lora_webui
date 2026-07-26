@@ -7,7 +7,12 @@ import { valuesEqual } from '../anima-app/helpers/form-values.js?v=module-bootst
 import { collectLiveCompatIssues, formatLiveCompatStatus } from './live-compat.js?v=module-bootstrap-20260714-stage-dataset5';
 import { setTomlStatus } from '../anima-app/helpers/toml-action-state-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
 import { buildFieldPresentation, fieldSourceBadgeLabel } from './field-presentation.js?v=module-bootstrap-20260714-stage-dataset5';
-import { isTruthy } from '../anima-app/helpers/config-values.js?v=module-bootstrap-20260714-stage-dataset5';
+import {
+    isTruthy,
+    loraAdapterFlagsForKind,
+    normalizeLoraAdapterKind,
+    precisionPreferencePatch,
+} from '../anima-app/helpers/config-values.js?v=module-bootstrap-20260714-stage-dataset5';
 import { getConfigState } from '../anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
 import {
     formatFieldName,
@@ -136,7 +141,16 @@ export function createFieldRow(key, value) {
     input.dataset.valueType = fieldValueTypeForKey(key, originalValue);
     input.addEventListener('input', handleFormFieldChange);
     input.addEventListener('change', handleFormFieldChange);
-    nameSpan.addEventListener('click', () => focusConfigFieldInput(input));
+    nameSpan.addEventListener('click', () => {
+        // checkbox 字段名区域应切换勾选（label 语义），而非只 focus 14px 的输入框。
+        if (input.type === 'checkbox') {
+            if (input.disabled) return;
+            input.checked = !input.checked;
+            handleFormFieldChange({ target: input });
+            return;
+        }
+        focusConfigFieldInput(input);
+    });
 
     if (key === 'sample_prompts' && configState.samplePromptsMode !== 'path') {
         const labelStack = document.createElement('div');

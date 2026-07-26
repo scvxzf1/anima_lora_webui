@@ -18,15 +18,111 @@ import { showAppConfirmDialog } from '../anima-app/helpers/toml-selection-bridge
 import { isHistoryReviewMode } from '../anima-app/helpers/history-detail-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
 import { renderResumePanelState } from '../anima-app/helpers/history-timeline-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
 import { loadTrainingQueue, updateTrainingQueueFromPayload } from '../anima-app/helpers/queue-view-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
-import { loadTrainingHistoryList } from '../anima-app/helpers/history-list-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { loadTrainingHistoryList, mergeLiveTrainingHistoryTask } from '../anima-app/helpers/history-list-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { getHistoryState } from '../anima-app/helpers/history-state-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
 import { pollStatus, scheduleStatusPoll } from '../anima-app/helpers/status-polling-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
 import { configureLiveLogBridge } from '../anima-app/helpers/live-log-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
 import { getTrainingState } from '../anima-app/helpers/training-state-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
 
 const LOG_RENDER_BATCH_SIZE = 250;
 const LOG_STICK_BOTTOM_THRESHOLD_PX = 48;
+const WS_HISTORY_STALE_MS = 15000;
 const trainingState = getTrainingState();
 const trainingRuntime = trainingState.trainingRuntime;
+
+function clearWsReconnectTimer() {
+    if (trainingState.wsReconnectTimer != null) {
+        window.clearTimeout(trainingState.wsReconnectTimer);
+        trainingState.wsReconnectTimer = null;
+    }
+}
+
+function closeActiveWebSocket({ allowReconnect = false } = {}) {
+    const old = trainingState.ws;
+    if (!old) return;
+    // 主动关闭时屏蔽 onclose，避免叠加重连
+    if (!allowReconnect) {
+        old.onclose = null;
+        old.onerror = null;
+        old.onmessage = null;
+        old.onopen = null;
+    }
+    try {
+        if (old.readyState === WebSocket.OPEN || old.readyState === WebSocket.CONNECTING) {
+            old.close();
+        }
+    } catch {
+        // ignore close races
+    }
+    if (trainingState.ws === old) trainingState.ws = null;
+}
+
+function scheduleWsReconnect() {
+    clearWsReconnectTimer();
+    trainingState.wsReconnectTimer = window.setTimeout(() => {
+        trainingState.wsReconnectTimer = null;
+        connectWebSocket();
+    }, 3000);
+}
+
+function readHistoryTasksSafe() {
+    try {
+        return getHistoryState().historyTasks;
+    } catch {
+        return [];
+    }
+}
+
+/**
+ * Gate full history reloads from WS status/queue events.
+ * Mirrors the poll path: only refresh when task/status transitions or the
+ * cached task is missing; otherwise merge live status into the known row.
+ */
+function maybeRefreshHistoryFromWs(statusLike = {}, { force = false } = {}) {
+    if (location.protocol === 'file:') return;
+    const taskId = String(statusLike.task_id || statusLike.id || '').trim();
+    const state = String(statusLike.status || statusLike.state || '').trim();
+    const live = isLiveRunningState(state);
+    const previousTaskId = trainingState.wsHistoryLastTaskId || '';
+    const previousStatus = trainingState.wsHistoryLastStatus || '';
+    const historyTasks = readHistoryTasksSafe();
+    const knownTask = Boolean(
+        taskId
+        && Array.isArray(historyTasks)
+        && historyTasks.some((task) => String(task?.id || '') === taskId),
+    );
+    const taskChanged = Boolean(taskId && taskId !== previousTaskId);
+    const statusChanged = Boolean(taskId && state && state !== previousStatus);
+    const transitionedToTerminal = Boolean(
+        taskId
+        && taskId === previousTaskId
+        && isLiveRunningState(previousStatus)
+        && !live
+        && state,
+    );
+    const now = Date.now();
+    const stale = now - Number(trainingState.wsHistoryLastRefreshAt || 0) >= WS_HISTORY_STALE_MS;
+
+    if (live && knownTask) {
+        try {
+            mergeLiveTrainingHistoryTask(statusLike);
+        } catch {
+            // History feature can be absent in isolated fixtures.
+        }
+    }
+
+    const shouldRefreshHistory = force
+        || taskChanged
+        || (taskId && !knownTask)
+        || transitionedToTerminal
+        || (!taskId && stale);
+
+    trainingState.wsHistoryLastTaskId = taskId || previousTaskId;
+    if (state) trainingState.wsHistoryLastStatus = state;
+    if (!shouldRefreshHistory) return;
+    trainingState.wsHistoryLastRefreshAt = now;
+    loadTrainingHistoryList();
+}
 
     export async function stopTraining() {
         const stopBtn = document.getElementById('btn-stop-training');
@@ -65,24 +161,45 @@ const trainingRuntime = trainingState.trainingRuntime;
     // ── WebSocket ──
     export function connectWebSocket() {
         const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+        clearWsReconnectTimer();
+        // 已有 OPEN/CONNECTING 连接时复用，避免叠加
+        if (
+            trainingState.ws
+            && (trainingState.ws.readyState === WebSocket.OPEN
+                || trainingState.ws.readyState === WebSocket.CONNECTING)
+        ) {
+            return;
+        }
+        closeActiveWebSocket();
         setLogStatus('连接中', 'warning');
-        trainingState.ws = new WebSocket(`${proto}//${location.host}/ws/training`);
-        trainingState.ws.onopen = () => {
+        const ws = new WebSocket(`${proto}//${location.host}/ws/training`);
+        trainingState.ws = ws;
+        ws.onopen = () => {
+            if (trainingState.ws !== ws) return;
             setLogStatus('已连接', 'ok');
             recoverLiveTrainingState();
         };
-        trainingState.ws.onmessage = (e) => {
+        ws.onmessage = (e) => {
+            if (trainingState.ws !== ws) return;
             const msg = JSON.parse(e.data);
             handleWsMessage(msg);
         };
-        trainingState.ws.onclose = () => {
+        ws.onclose = () => {
+            if (trainingState.ws !== ws) return;
+            trainingState.ws = null;
             setLogStatus('已断开，准备重连', 'warning');
             scheduleStatusPoll({ immediate: true });
-            setTimeout(connectWebSocket, 3000);
+            scheduleWsReconnect();
         };
-        trainingState.ws.onerror = () => {
+        ws.onerror = () => {
+            if (trainingState.ws !== ws) return;
             setLogStatus('连接异常', 'error');
-            trainingState.ws.close();
+            // 关自身，不关可变的 trainingState.ws 引用
+            try {
+                ws.close();
+            } catch {
+                // ignore
+            }
         };
     }
 
@@ -103,17 +220,18 @@ const trainingRuntime = trainingState.trainingRuntime;
                 break;
             case 'status':
                 if (isHistoryReviewMode()) {
-                    loadTrainingHistoryList();
+                    maybeRefreshHistoryFromWs(msg);
                     renderResumePanelState();
                     break;
                 }
                 updateStatus(msg);
                 loadTrainingQueue();
-                loadTrainingHistoryList();
+                maybeRefreshHistoryFromWs(msg);
                 break;
             case 'queue':
                 updateTrainingQueueFromPayload(msg);
-                loadTrainingHistoryList();
+                // queue 事件本身不携带 task 状态；仅在 stale 时全量拉 history，避免每次闪烁
+                maybeRefreshHistoryFromWs(msg, { force: false });
                 break;
             case 'system':
                 if (isHistoryReviewMode()) break;

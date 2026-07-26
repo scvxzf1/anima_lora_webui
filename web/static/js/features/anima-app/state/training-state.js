@@ -1,6 +1,11 @@
 export function createTrainingState() {
     return {
         ws: null,
+        wsReconnectTimer: null,
+        // WS status/queue 刷新 history 的门控状态（对齐 status-polling 侧栏策略）
+        wsHistoryLastTaskId: '',
+        wsHistoryLastStatus: '',
+        wsHistoryLastRefreshAt: 0,
         lossChart: null,
         stepCounter: 0,
         trainingStatusPollFailures: 0,

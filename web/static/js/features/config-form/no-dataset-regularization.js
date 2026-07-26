@@ -22,6 +22,9 @@ import { appendFieldRows } from './field-rows.js?v=module-bootstrap-20260714-sta
 import {
     setTomlStatus,
 } from '../anima-app/helpers/toml-action-state-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { getConfigState } from '../anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+
+const configFormState = getConfigState().configFormState;
 
     function createNoDatasetRegularizationModePanel() {
         const panel = document.createElement('div');

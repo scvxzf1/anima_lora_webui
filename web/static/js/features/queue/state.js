@@ -52,6 +52,48 @@ export function updateQueueStateFromPayload(state, payload = {}) {
     return state.queue;
 }
 
+/**
+ * Stable signature for full queue UI rebuilds.
+ * Running progress is patched separately via updateRunningQueueProgress, so
+ * progress/percent fields are intentionally excluded to avoid full re-renders.
+ */
+export function queueRenderSignature(state) {
+    const queue = state?.queue || {};
+    const feedback = state?.feedback || {};
+    const items = Array.isArray(queue.items) ? queue.items : [];
+    const itemSig = items.map((item) => [
+        item?.id || '',
+        item?.state || '',
+        item?.title || item?.name || item?.variant || '',
+        item?.config_file || item?.runtime_config_file || '',
+        item?.job || '',
+        item?.error || '',
+        item?.message || '',
+    ].join('')).join('');
+    const summary = queue.summary || {};
+    return [
+        state?.filter || '',
+        queue.loading ? '1' : '0',
+        queue.paused ? '1' : '0',
+        queue.failurePolicy || '',
+        queue.error || '',
+        queue.status || '',
+        queue.currentItemId || '',
+        summary.total || 0,
+        summary.queued || 0,
+        summary.running || 0,
+        summary.done || 0,
+        summary.error || 0,
+        summary.canceled || 0,
+        feedback.message || '',
+        feedback.tone || '',
+        feedback.busyAction || '',
+        feedback.busyItemId || '',
+        feedback.flashItemId || '',
+        itemSig,
+    ].join('');
+}
+
 export function setQueueFilter(state, filter) {
     state.filter = filter || 'actionable';
 }

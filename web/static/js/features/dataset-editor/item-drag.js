@@ -16,6 +16,9 @@ import { moveDatasetEditorRow, moveDatasetEditorRowToIndex } from './mutations.j
 
 const datasetState = getDatasetState();
 let datasetEditorDragState = null;
+// Pointer/touch fallback drag session. Module-local (same pattern as datasetEditorDragState);
+// dataset-state.js still has a leftover null field from the split, unused elsewhere.
+let datasetEditorPointerDrag = null;
 
 function datasetEditorDragRows() {
             return normalizeDatasetEditorRows(datasetEditorStateForActivePanel().datasets);

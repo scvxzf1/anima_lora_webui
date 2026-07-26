@@ -378,6 +378,13 @@ const trainingRuntime = trainingState.trainingRuntime;
                 };
             })
             .filter((item) => item.label && item.value);
+        // Dirty-check: path fields almost never change between progress/metrics ticks.
+        // Skip full DOM rebuild (4 buttons + rebind click) when content is identical.
+        const signature = entries.length
+            ? entries.map((item) => `${item.label}${item.value}`).join('')
+            : ` ${fallback || '运行目录和配置快照会在任务启动后显示。'}`;
+        if (el.dataset.summarySignature === signature) return;
+        el.dataset.summarySignature = signature;
         el.innerHTML = '';
         el.classList.toggle('is-empty', entries.length === 0);
         el.classList.remove('has-copy-feedback');

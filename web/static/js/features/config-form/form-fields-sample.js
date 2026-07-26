@@ -11,6 +11,7 @@ import {
     samplePromptsContentNeedsTextMode,
     serializeSamplePromptsEditor,
 } from '../sample-prompts/model.js?v=module-bootstrap-20260714-stage-dataset5';
+import { handleFormFieldChange } from './form-fields-ui.js?v=module-bootstrap-20260714-stage-dataset5';
 
 function createSamplePromptsPathInput(value) {
     const input = document.createElement('input');

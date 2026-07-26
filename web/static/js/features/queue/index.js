@@ -4,6 +4,7 @@ import { createQueueEnqueue } from './enqueue.js?v=module-bootstrap-20260714-sta
 import { createQueueRenderer } from './render.js?v=module-bootstrap-20260714-stage-dataset5';
 import {
     createQueueState,
+    queueRenderSignature,
     setQueueError,
     setQueueLoading,
     updateQueueStateFromPayload,
@@ -12,26 +13,31 @@ import {
 export function createQueueFeature(ctx, deps) {
     const state = createQueueState();
     let renderer = null;
+    let lastRenderSignature = '';
 
-    function renderTrainingQueue() {
+    function renderTrainingQueue(options = {}) {
+        const force = options.force === true;
+        const signature = queueRenderSignature(state);
+        if (!force && signature && signature === lastRenderSignature) return;
+        lastRenderSignature = signature;
         renderer?.renderTrainingQueue();
     }
 
-    function updateTrainingQueueFromPayload(payload = {}) {
+    function updateTrainingQueueFromPayload(payload = {}, options = {}) {
         updateQueueStateFromPayload(state, payload);
-        renderTrainingQueue();
+        renderTrainingQueue(options);
     }
 
     async function loadTrainingQueue() {
         if (location.protocol === 'file:') return;
         setQueueLoading(state);
-        renderTrainingQueue();
+        renderTrainingQueue({ force: true });
         try {
             const payload = await fetchTrainingQueue(ctx);
-            updateTrainingQueueFromPayload(payload);
+            updateTrainingQueueFromPayload(payload, { force: true });
         } catch (e) {
             setQueueError(state, '读取队列失败: ' + e.message);
-            renderTrainingQueue();
+            renderTrainingQueue({ force: true });
         }
     }
 

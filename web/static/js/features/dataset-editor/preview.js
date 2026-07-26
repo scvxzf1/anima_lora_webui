@@ -7,6 +7,8 @@ import {
     datasetPreviewImageToPreviewImage,
     datasetPreviewValidationText,
 } from '../anima-app/helpers/dataset-preview.js?v=module-bootstrap-20260714-stage-dataset5';
+import { captionSourceModeLabel } from '../anima-app/helpers/caption-source.js?v=module-bootstrap-20260714-stage-dataset5';
+import { normalizeDatasetDefaults } from '../anima-app/helpers/dataset-values.js?v=module-bootstrap-20260714-stage-dataset5';
 import { getDatasetState } from '../anima-app/helpers/dataset-state-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
 import { datasetPresetApi } from '../anima-app/helpers/runtime-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
 import { openPreviewDialog, createPreviewDetailRow, copyText } from '../anima-app/helpers/preview-view-bridge.js?v=module-bootstrap-20260714-stage-dataset5';

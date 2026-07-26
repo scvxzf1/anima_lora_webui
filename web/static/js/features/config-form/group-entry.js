@@ -26,10 +26,25 @@ import {
 } from './stage-resolution.js?v=module-bootstrap-20260714-stage-dataset5';
 import { appendFieldRows } from './field-rows.js?v=module-bootstrap-20260714-stage-dataset5';
 import { createConfigDatasetPicker } from './dataset-picker.js?v=module-bootstrap-20260714-stage-dataset5';
+import { debounce } from '../../shared/debounce.js?v=module-bootstrap-20260714-stage-dataset5';
 
 const configState = getConfigState();
 const configFormState = configState.configFormState;
 const stageResolutionState = configState.stageResolutionState;
+
+const applyConfigSearch = debounce((rawValue) => {
+    syncConfigDraftFromForm();
+    configFormState.search = rawValue || '';
+    renderConfigForm(currentConfigState());
+    requestAnimationFrame(() => {
+        const next = document.getElementById('config-search-input');
+        if (next) {
+            next.focus();
+            const length = next.value.length;
+            next.setSelectionRange(length, length);
+        }
+    });
+}, 150);
 
 function currentConfigState() {
     return configState.currentConfig || {};
@@ -213,17 +228,7 @@ export function updateConfigStickyPlacement() {
         search.placeholder = '输入学习率、caption、network_dim 或中文名称';
         search.value = configFormState.search;
         search.addEventListener('input', (event) => {
-            syncConfigDraftFromForm();
-            configFormState.search = event.target.value || '';
-            renderConfigForm(currentConfigState());
-            requestAnimationFrame(() => {
-                const next = document.getElementById('config-search-input');
-                if (next) {
-                    next.focus();
-                    const length = next.value.length;
-                    next.setSelectionRange(length, length);
-                }
-            });
+            applyConfigSearch(event.target.value || '');
         });
         search.addEventListener('keydown', (event) => {
             if (event.key !== 'Escape') return;
@@ -232,6 +237,7 @@ export function updateConfigStickyPlacement() {
                 return;
             }
             event.preventDefault();
+            applyConfigSearch.cancel();
             syncConfigDraftFromForm();
             configFormState.search = '';
             renderConfigForm(currentConfigState());

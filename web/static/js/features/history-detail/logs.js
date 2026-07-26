@@ -1,4 +1,5 @@
 import { historyDetailLimitNotice } from './system.js?v=module-bootstrap-20260714-stage-dataset5';
+import { debounce } from '../../shared/debounce.js?v=module-bootstrap-20260714-stage-dataset5';
 
 const HISTORY_LOG_RENDER_BATCH_SIZE = 200;
 
@@ -154,18 +155,38 @@ export function createHistoryLogsRenderer({ state, deps }) {
             renderConsole({ focusMatch: true });
         }
 
+        const scheduleConsoleSearch = debounce(() => {
+            renderConsole();
+        }, 150);
         search.addEventListener('input', (event) => {
             state.logs.query = event.target.value || '';
             state.logs.matchIndex = 0;
-            renderConsole();
+            scheduleConsoleSearch();
         });
         search.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape') {
+                if (!search.value) return;
+                event.preventDefault();
+                scheduleConsoleSearch.cancel();
+                search.value = '';
+                state.logs.query = '';
+                state.logs.matchIndex = 0;
+                renderConsole();
+                return;
+            }
             if (event.key !== 'Enter') return;
             event.preventDefault();
+            scheduleConsoleSearch.flush();
             moveMatch(event.shiftKey ? -1 : 1);
         });
-        previous.addEventListener('click', () => moveMatch(-1));
-        next.addEventListener('click', () => moveMatch(1));
+        previous.addEventListener('click', () => {
+            scheduleConsoleSearch.flush();
+            moveMatch(-1);
+        });
+        next.addEventListener('click', () => {
+            scheduleConsoleSearch.flush();
+            moveMatch(1);
+        });
 
         consoleShell.append(toolbar);
         if (notice) consoleShell.appendChild(notice);

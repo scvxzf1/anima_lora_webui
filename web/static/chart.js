@@ -63,8 +63,26 @@ export class MetricsChart {
     }
 
     setDisplayOptions(options = {}) {
-        if (options.showLr !== undefined) this.showLr = options.showLr !== false;
-        if (options.rangeMode !== undefined) this.rangeMode = options.rangeMode || 'all';
+        let changed = false;
+        if (options.showLr !== undefined) {
+            const next = options.showLr !== false;
+            if (this.showLr !== next) {
+                this.showLr = next;
+                changed = true;
+            }
+        }
+        if (options.rangeMode !== undefined) {
+            const next = options.rangeMode || 'all';
+            if (this.rangeMode !== next) {
+                this.rangeMode = next;
+                changed = true;
+            }
+        }
+        // push() already rendered; skip a second full canvas draw when options are unchanged.
+        if (!changed && options.force !== true) {
+            this._sanitizeHover();
+            return;
+        }
         this._sanitizeHover();
         this.render();
     }
