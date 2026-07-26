@@ -2049,6 +2049,30 @@ class Anima(nn.Module):
                 self._dynamic_seq_range = (int(seq_range[0]), int(seq_range[1]))
             else:
                 self._dynamic_seq_range = (min(counts), max(counts))
+            # Inductor's mix-order-reduction fusion (torch 2.12, default-on) is
+            # incompatible with the strict seq marks: its profitability check
+            # calls guard_or_true(Ge(nrow, 4096)) where nrow is the symbolic seq
+            # axis (it fires on backward graphs that pair a seq-axis reduction
+            # with an elementwise grad — e.g. any LoRA on a broadcast-consumed
+            # Linear like adaln_up, whose shift/scale/gate grads reduce over
+            # seq). The recorded guard (either branch: Ge(seq, 4096) or its
+            # negation seq <= 4095, per the first-traced hint) contradicts any
+            # mark range straddling 4096 → ConstraintViolationError at guard
+            # build. MUST be pinned via pin_inductor_flag, not plain assignment:
+            # inductor config overrides are thread-local ContextVars, and the
+            # grad-enabled step-0 compile (grad-ckpt recompute / AOT backward
+            # path) schedules in a context where a plain override is absent and
+            # the read falls back to the env-derived default True.
+            import torch._inductor.config as _inductor_config
+
+            if _inductor_config.triton.mix_order_reduction:
+                from library.runtime.dynamo import pin_inductor_flag
+
+                pin_inductor_flag("triton.mix_order_reduction", False)
+                print(
+                    "Anima: inductor mix_order_reduction disabled — default pinned "
+                    "(hint-derived 4096-boundary guard breaks strict dynamic-seq marks)"
+                )
 
         compile_kwargs = {"backend": backend, "dynamic": False}
         if mode is not None:
