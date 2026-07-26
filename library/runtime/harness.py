@@ -812,6 +812,114 @@ def compile_blocks_for_training(
             dynamic_seq=dynamic_seq,
             seq_range=seq_range,
         )
+    # Record what this compile actually ran with, so a mid-run sample at a new
+    # resolution can recompile with the same settings and a widened range
+    # (see ensure_training_compile_seq_range). compile_blocks may floor/clamp
+    # the range, so read back the live one it settled on.
+    active_seq_range = getattr(unet, "_dynamic_seq_range", None) or seq_range
+    setattr(
+        unet,
+        "_training_compile_config",
+        {
+            "backend": backend,
+            "mode": mode,
+            "n_token_families": n_token_families,
+            "seq_range": active_seq_range,
+            "dynamic_seq": dynamic_seq,
+            "activation_memory_budget": activation_memory_budget,
+            # Both partitioner knobs must round-trip: a recompile that dropped
+            # them would silently re-tune the min-cut heuristics mid-run and
+            # change the memory/step-time profile the run was configured for.
+            "partitioner_recompute_views": partitioner_recompute_views,
+            "partitioner_aggressive_recomputation": (
+                partitioner_aggressive_recomputation
+            ),
+            "compile_block_scope": compile_block_scope,
+            "grad_ckpt": grad_ckpt,
+        },
+    )
+    seen = set(getattr(unet, "_training_compile_seen_seq_lens", set()) or set())
+    if active_seq_range is not None:
+        seen.update((int(active_seq_range[0]), int(active_seq_range[1])))
+    setattr(unet, "_training_compile_seen_seq_lens", seen)
+
+
+def ensure_training_compile_seq_range(
+    unet: object,
+    network: object,
+    seq_lens,
+    *,
+    logger: logging.Logger = log,
+) -> bool:
+    """Expand a training dynamic-seq compile range when sampling discovers a new size.
+
+    Training samples reuse the live compiled DiT blocks. Prompt files are read at
+    every sampling event, so users can add a preview resolution after startup.
+    When that resolution falls outside the original dynamic-seq range, recompile
+    once with the same backend/mode/partitioner settings and a widened range
+    instead of skipping the prompt or crashing inside ``mark_dynamic`` guards.
+
+    Returns True when a recompile happened. No-op (False) when compile is off,
+    the run is not dynamic-seq, or every requested length is already in range —
+    so the common case costs one dict lookup per sampling event.
+    """
+
+    config = getattr(unet, "_training_compile_config", None)
+    if not config or not config.get("dynamic_seq"):
+        return False
+
+    if isinstance(seq_lens, int):
+        requested = {int(seq_lens)}
+    else:
+        requested = {int(seq_len) for seq_len in seq_lens}
+    requested = {seq_len for seq_len in requested if seq_len > 0}
+    if not requested:
+        return False
+
+    seq_range = getattr(unet, "_dynamic_seq_range", None) or config.get("seq_range")
+    if seq_range is None:
+        return False
+    lo, hi = int(seq_range[0]), int(seq_range[1])
+    outside = {seq_len for seq_len in requested if seq_len < lo or seq_len > hi}
+    if not outside:
+        return False
+
+    new_range = (min([lo, *outside]), max([hi, *outside]))
+    seen = set(getattr(unet, "_training_compile_seen_seq_lens", set()) or set())
+    old_n = int(config.get("n_token_families") or max(2, len(seen) or 1))
+    # Family count only feeds the dynamo recompile-limit heuristic, so erring
+    # high (counting in-range-but-unseen lengths too) just buys headroom.
+    new_n = old_n + len(requested - seen)
+
+    logger.info(
+        "Expanding torch_compile dynamic-seq range for sample preview: "
+        "%s -> %s (new token counts: %s)",
+        (lo, hi),
+        new_range,
+        sorted(outside),
+    )
+    compile_blocks_for_training(
+        unet,
+        network,
+        backend=config["backend"],
+        mode=config.get("mode"),
+        n_token_families=new_n,
+        seq_range=new_range,
+        dynamic_seq=True,
+        activation_memory_budget=float(config.get("activation_memory_budget", 1.0)),
+        partitioner_recompute_views=bool(
+            config.get("partitioner_recompute_views", False)
+        ),
+        partitioner_aggressive_recomputation=bool(
+            config.get("partitioner_aggressive_recomputation", False)
+        ),
+        compile_block_scope=str(config.get("compile_block_scope") or "resident"),
+        grad_ckpt=bool(config.get("grad_ckpt", False)),
+        logger=logger,
+    )
+    seen.update(requested)
+    setattr(unet, "_training_compile_seen_seq_lens", seen)
+    return True
 
 
 @dataclass

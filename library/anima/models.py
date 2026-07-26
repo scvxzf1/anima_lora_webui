@@ -2092,7 +2092,16 @@ class Anima(nn.Module):
         for block_idx, block in enumerate(self.blocks):
             if block_idx >= n_compile:
                 continue
-            compiled_inner = torch.compile(block._forward, **compile_kwargs)
+            # Compile the ORIGINAL forward, never the currently-installed one.
+            # ensure_training_compile_seq_range re-enters compile_blocks to widen
+            # a dynamic-seq range mid-run; without this the second pass would
+            # wrap the first pass's compiled (and dynamic-seq-marked) callable,
+            # nesting a graph inside a graph and re-marking an already-marked
+            # seq axis against the stale bounds.
+            if not hasattr(block, "_anima_compile_base_forward"):
+                block._anima_compile_base_forward = block._forward
+            base_forward = block._anima_compile_base_forward
+            compiled_inner = torch.compile(base_forward, **compile_kwargs)
             if self._dynamic_seq:
                 lo, hi = self._dynamic_seq_range
                 block._forward = _make_dynamic_seq_forward(compiled_inner, lo, hi)
