@@ -405,6 +405,82 @@ def test_save_standard_lora_roundtrip(tmp_path: Path):
     assert f"{prefix}.lora_down.weight" not in loaded
 
 
+def _make_adaln_lora_sd(prefix: str, r: int, in_dim: int, out_dim: int) -> dict:
+    """Fake adaln_up_{branch} LoRA entry in the runtime layout."""
+    return {
+        f"{prefix}.lora_down.weight": torch.randn(r, in_dim),
+        f"{prefix}.lora_up.weight": torch.randn(out_dim, r),
+        f"{prefix}.alpha": _alpha(r),
+    }
+
+
+def test_save_relays_adaln_to_comfy_layout(tmp_path: Path):
+    """Trained adaln keys must ship in the ComfyUI layout — ComfyUI's generic
+    key map only knows ``adaln_modulation_{br}_2`` and silently drops the
+    runtime ``adaln_up_{br}`` names (adaln key-naming contract)."""
+    from safetensors import safe_open
+
+    r, in_dim, out_dim = 4, 8, 12
+    sd = _make_std_lora_sd("lora_unet_blocks_0_self_attn_qkv_proj", r, 8, out_dim)
+    for branch in ("self_attn", "cross_attn", "mlp"):
+        sd |= _make_adaln_lora_sd(
+            f"lora_unet_blocks_0_adaln_up_{branch}", r, in_dim, 3 * out_dim
+        )
+
+    loaded = _save_and_reload(sd, tmp_path, save_variant="standard")
+
+    for branch in ("self_attn", "cross_attn", "mlp"):
+        comfy = f"lora_unet_blocks_0_adaln_modulation_{branch}_2"
+        assert f"{comfy}.lora_down.weight" in loaded
+        assert f"{comfy}.lora_up.weight" in loaded
+        assert f"{comfy}.alpha" in loaded
+    assert not any("adaln_up_" in k for k in loaded)
+    # the non-adaln keys still take the normal defuse path
+    assert "lora_unet_blocks_0_self_attn_q_proj.lora_down.weight" in loaded
+
+    with safe_open(str(tmp_path / "out.safetensors"), framework="pt") as f:
+        assert f.metadata()["ss_adaln_layout"] == "comfy"
+
+
+def test_save_adaln_relayout_inert_without_adaln(tmp_path: Path):
+    """An adaln-less checkpoint is untouched — no stamp, no renames."""
+    from safetensors import safe_open
+
+    sd = _make_std_lora_sd("lora_unet_blocks_0_self_attn_qkv_proj", 4, 8, 12)
+
+    _save_and_reload(sd, tmp_path, save_variant="standard")
+
+    with safe_open(str(tmp_path / "out.safetensors"), framework="pt") as f:
+        assert "ss_adaln_layout" not in f.metadata()
+
+
+def test_adaln_relayout_round_trips_back_to_runtime_names():
+    """Load side undoes the save-side rename, so a saved checkpoint reloads
+    onto the runtime ``adaln_up_{br}`` modules instead of landing in
+    ``missing_keys`` and silently training from scratch."""
+    from networks.lora_utils import (
+        has_comfy_adaln_keys,
+        relayout_adaln_comfy_to_runtime,
+        relayout_adaln_runtime_to_comfy,
+    )
+
+    runtime = {}
+    for branch in ("self_attn", "cross_attn", "mlp"):
+        runtime |= _make_adaln_lora_sd(
+            f"lora_unet_blocks_3_adaln_up_{branch}", 4, 8, 24
+        )
+    runtime |= _make_std_lora_sd("lora_unet_blocks_3_self_attn_q_proj", 4, 8, 12)
+
+    comfy = relayout_adaln_runtime_to_comfy(runtime)
+    assert has_comfy_adaln_keys(comfy)
+    assert not has_comfy_adaln_keys(runtime)
+
+    back = relayout_adaln_comfy_to_runtime(comfy)
+    assert set(back) == set(runtime)
+    for key, value in runtime.items():
+        assert torch.equal(back[key], value)
+
+
 def test_save_standard_dora_roundtrip_exports_dora_scale(tmp_path: Path):
     r, in_dim, out_dim = 4, 8, 12
     prefix = "lora_unet_blocks_0_self_attn_qkv_proj"

@@ -82,6 +82,19 @@ compile_dynamic_seq = true
 activation_memory_budget = 1.0
 save_precision= "bf16"
 use_custom_down_autograd = false
+# Adapt the per-block adaln_up_{branch} modulation projectors too. They sit in
+# the network's _DEFAULT_EXCLUDE; this rescues them via include_patterns (an
+# exclude-override, not a whitelist — the default attn+MLP set is untouched).
+# Matches diffusion-pipe (the Anima author's trainer), which targets every
+# Linear under Block. adaln_rank sets their rank (in-dim is 256, so r32 already
+# keeps ~98% of the ΔW energy); their alpha is DERIVED from the network's
+# rank/alpha by the √r law (network_alpha·√(adaln_rank/network_dim)) so α/√r
+# matches the attn+MLP modules whatever the method picks — set adaln_alpha to
+# override. Inert on the frozen-DiT methods (soft_tokens / easycontrol).
+# Off by default here: it grows the trained module set and the VRAM add, and
+# every existing recipe in this fork was tuned without it. Turn on per-run
+# (`train_adaln = true`, `adaln_rank = 16`) or per method config.
+train_adaln = false
 log_every_n_steps=2
 dataloader_pin_memory = true
 persistent_data_loader_workers= true

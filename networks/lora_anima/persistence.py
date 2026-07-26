@@ -172,6 +172,19 @@ def load_lora_network_weights(network, file):
     else:
         weights_sd = torch.load(file, map_location="cpu")
 
+    # save_network_weights relays adaln keys to the ComfyUI layout
+    # (adaln_up_{br} -> adaln_modulation_{br}_2), so a resume/soup/init load of
+    # our own checkpoint must rename them back or every adaln module lands in
+    # missing_keys and silently trains from scratch. Presence-gated — mirrors
+    # create_network_from_weights (factory.py).
+    from networks.lora_utils import (
+        has_comfy_adaln_keys,
+        relayout_adaln_comfy_to_runtime,
+    )
+
+    if has_comfy_adaln_keys(weights_sd):
+        weights_sd = relayout_adaln_comfy_to_runtime(weights_sd)
+
     # Stack per-expert hydra ups into fused lora_up_weight (training form).
     # Also stacks per-expert `.lora_downs.{i}.weight` for the independent-A
     # layout. No-op for plain LoRA.

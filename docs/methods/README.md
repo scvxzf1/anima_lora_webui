@@ -16,6 +16,7 @@
 | [psoft-integrated-ortholora.md](psoft-integrated-ortholora.md) | OrthoLoRA / Cayley 正交参数化，配合 [../structure/ortholora.md](../structure/ortholora.md) 阅读 |
 | [timestep_mask.md](timestep_mask.md) | T-LoRA 时间步 rank mask，配合 [../structure/timestep-mask.md](../structure/timestep-mask.md) 阅读 |
 | [reft.md](reft.md) | ReFT 残差流表示编辑，配合 [../structure/reft.md](../structure/reft.md) 阅读 |
+| [adaln.md](adaln.md) | AdaLN LoRA：`train_adaln` 旋钮与 runtime↔ComfyUI 键布局互转 |
 | [mod-guidance.md](mod-guidance.md) | Modulation guidance，基于 pooled-text AdaLN steering |
 | [invert.md](invert.md) | 历史 inversion 说明；当前可运行入口是 `exp-invert-directedit` 探针 |
 | [spectrum.md](spectrum.md) | Spectrum 推理加速，配合 [../structure/spectrum.md](../structure/spectrum.md) 阅读 |

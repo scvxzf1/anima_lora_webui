@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import ast
 import logging
+import math
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Literal, Mapping, Optional, Type, Union
 
@@ -231,9 +232,10 @@ class LoRANetworkCfg:
     rank_dropout: Optional[float] = None
     module_dropout: Optional[float] = None
 
-    # per-module rank / lr regex overrides
+    # per-module rank / lr / alpha regex overrides
     reg_dims: Optional[Dict[str, int]] = None
     reg_lrs: Optional[Dict[str, float]] = None
+    reg_alphas: Optional[Dict[str, float]] = None
 
     # T-LoRA
     use_timestep_mask: bool = False
@@ -430,6 +432,10 @@ class LoRANetworkCfg:
                 "verbose",
                 "network_reg_dims",
                 "network_reg_lrs",
+                "network_reg_alphas",
+                "train_adaln",
+                "adaln_rank",
+                "adaln_alpha",
                 "network_router_lr_scale",
                 "loraplus_lr_ratio",
                 "loraplus_unet_lr_ratio",
@@ -465,6 +471,25 @@ class LoRANetworkCfg:
         exclude_patterns = _as_str_list(kwargs.get("exclude_patterns")) or []
         exclude_patterns.append(_DEFAULT_EXCLUDE)
         include_patterns = _as_str_list(kwargs.get("include_patterns"))
+
+        # adaln convenience knobs: train_adaln adds the adaln_up_{branch}
+        # Linears to the target set — they sit in _DEFAULT_EXCLUDE, so this
+        # rescues them via include_patterns (an exclude-override, not a
+        # whitelist, so the default attn+MLP set is untouched). adaln_rank /
+        # adaln_alpha give them their own rank / alpha (0/absent rank = the
+        # network's; 0/absent alpha = derived from network_dim/network_alpha by
+        # the √r law, below). Translates to the include_patterns /
+        # network_reg_dims / network_reg_alphas primitives; injected into
+        # reg_dims / reg_alphas after those strings are parsed, below.
+        train_adaln = _as_bool(kwargs.get("train_adaln"))
+        adaln_rank_raw = kwargs.get("adaln_rank")
+        adaln_rank = int(adaln_rank_raw) if adaln_rank_raw is not None else 0
+        adaln_alpha_raw = kwargs.get("adaln_alpha")
+        adaln_alpha = float(adaln_alpha_raw) if adaln_alpha_raw is not None else 0.0
+        if adaln_rank > 0 and not train_adaln:
+            raise ValueError("adaln_rank > 0 requires train_adaln = true")
+        if adaln_alpha > 0 and not train_adaln:
+            raise ValueError("adaln_alpha > 0 requires train_adaln = true")
 
         layer_start = kwargs.get("layer_start")
         layer_start = int(layer_start) if layer_start is not None else None
@@ -725,6 +750,25 @@ class LoRANetworkCfg:
         reg_dims = _parse_kv_pairs(reg_dims_str, is_int=True) if reg_dims_str else None
         reg_lrs_str = kwargs.get("network_reg_lrs")
         reg_lrs = _parse_kv_pairs(reg_lrs_str, is_int=False) if reg_lrs_str else None
+        reg_alphas_str = kwargs.get("network_reg_alphas")
+        reg_alphas = (
+            _parse_kv_pairs(reg_alphas_str, is_int=False) if reg_alphas_str else None
+        )
+
+        if train_adaln:
+            _adaln_pat = ".*adaln_up_.*"
+            include_patterns = (include_patterns or []) + [_adaln_pat]
+            if adaln_rank > 0:
+                reg_dims = {**(reg_dims or {}), _adaln_pat: adaln_rank}
+            if adaln_alpha <= 0:
+                # Derive from the network's own rank/alpha instead of inheriting
+                # network_alpha at a smaller rank (which runs the adaln modules
+                # network_dim/adaln_rank hotter in alpha/rank). √r law
+                # (alpha ∝ √r). adaln_rank = 0 shares the network rank, so the
+                # factor is 1 and this is a no-op.
+                _r = adaln_rank if adaln_rank > 0 else network_dim
+                adaln_alpha = network_alpha * math.sqrt(_r / max(network_dim, 1))
+            reg_alphas = {**(reg_alphas or {}), _adaln_pat: adaln_alpha}
 
         num_registers = int(kwargs.get("num_registers", 0) or 0)
         if num_registers < 0:
@@ -753,6 +797,7 @@ class LoRANetworkCfg:
             module_dropout=module_dropout,
             reg_dims=reg_dims,
             reg_lrs=reg_lrs,
+            reg_alphas=reg_alphas,
             use_timestep_mask=use_timestep_mask,
             min_rank=min_rank,
             alpha_rank_scale=alpha_rank_scale,

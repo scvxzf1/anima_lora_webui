@@ -349,6 +349,115 @@ def test_reg_dims_and_reg_lrs_kv_pairs():
     assert cfg.reg_lrs == {"blocks\\.0.*": 1e-4, "blocks\\.1.*": 2e-4}
 
 
+def test_reg_alphas_kv_pairs():
+    """``network_reg_alphas`` completes the reg_dims / reg_lrs trio: a
+    per-pattern alpha override, independent of whether the dim came from a
+    reg_dims match or the network default."""
+    cfg = LoRANetworkCfg.from_kwargs(
+        {"network_reg_alphas": "blocks\\.0.*=8, blocks\\.1.*=16"},
+        network_dim=4,
+        network_alpha=1.0,
+        neuron_dropout=None,
+        module_class=LoRAModule,
+    )
+    assert cfg.reg_alphas == {"blocks\\.0.*": 8.0, "blocks\\.1.*": 16.0}
+
+
+def test_train_adaln_desugars_to_include_pattern():
+    """``train_adaln`` is an exclude-override, not a whitelist: it appends the
+    adaln include and leaves the default attn+MLP target set alone."""
+    cfg = LoRANetworkCfg.from_kwargs(
+        {"train_adaln": "true"},
+        network_dim=4,
+        network_alpha=1.0,
+        neuron_dropout=None,
+        module_class=LoRAModule,
+    )
+    assert ".*adaln_up_.*" in cfg.include_patterns
+    # the default exclude still lists adaln_up_ — the include is what beats it
+    assert any("adaln_up_" in p for p in cfg.exclude_patterns)
+    # rank inherits the network's unless overridden; alpha is always pinned via
+    # reg_alphas, but at adaln_rank=0 the √r factor is 1 → the network alpha
+    assert not cfg.reg_dims
+    assert cfg.reg_alphas == {".*adaln_up_.*": 1.0}
+
+
+def test_adaln_alpha_derives_from_network_rank_alpha():
+    """Unset ``adaln_alpha`` follows the network's rank/alpha by the √r law
+    rather than inheriting network_alpha at the smaller adaln rank (which would
+    run the adaln modules network_dim/adaln_rank hotter in alpha/rank)."""
+    cfg = LoRANetworkCfg.from_kwargs(
+        {"train_adaln": "true", "adaln_rank": "16"},
+        network_dim=32,
+        network_alpha=128.0,
+        neuron_dropout=None,
+        module_class=LoRAModule,
+    )
+    assert cfg.reg_alphas[".*adaln_up_.*"] == pytest.approx(128.0 * (0.5**0.5))
+    # and it tracks network_alpha rather than a hard-coded constant
+    cfg = LoRANetworkCfg.from_kwargs(
+        {"train_adaln": "true", "adaln_rank": "16"},
+        network_dim=32,
+        network_alpha=32.0,
+        neuron_dropout=None,
+        module_class=LoRAModule,
+    )
+    assert cfg.reg_alphas[".*adaln_up_.*"] == pytest.approx(32.0 * (0.5**0.5))
+
+
+def test_train_adaln_off_leaves_include_patterns_untouched():
+    cfg = LoRANetworkCfg.from_kwargs(
+        {"include_patterns": "['baz.*']"},
+        network_dim=4,
+        network_alpha=1.0,
+        neuron_dropout=None,
+        module_class=LoRAModule,
+    )
+    assert cfg.include_patterns == ["baz.*"]
+    assert cfg.reg_alphas is None
+
+
+def test_adaln_rank_and_alpha_ride_the_reg_overrides():
+    """``adaln_rank`` / ``adaln_alpha`` desugar onto the same pattern via
+    reg_dims / reg_alphas, merging with any user-supplied entries."""
+    cfg = LoRANetworkCfg.from_kwargs(
+        {
+            "train_adaln": "true",
+            "adaln_rank": "32",
+            "adaln_alpha": "128",
+            "network_reg_dims": "blocks\\.0.*=8",
+        },
+        network_dim=4,
+        network_alpha=1.0,
+        neuron_dropout=None,
+        module_class=LoRAModule,
+    )
+    assert cfg.reg_dims == {"blocks\\.0.*": 8, ".*adaln_up_.*": 32}
+    assert cfg.reg_alphas == {".*adaln_up_.*": 128.0}
+
+
+@pytest.mark.parametrize("key, value", [("adaln_rank", "32"), ("adaln_alpha", "128")])
+def test_adaln_rank_alpha_require_train_adaln(key, value):
+    with pytest.raises(ValueError, match="train_adaln"):
+        LoRANetworkCfg.from_kwargs(
+            {key: value},
+            network_dim=4,
+            network_alpha=1.0,
+            neuron_dropout=None,
+            module_class=LoRAModule,
+        )
+
+
+def test_adaln_knobs_reach_the_network_kwarg_allowlist():
+    """Top-level TOML keys only become ``net_kwargs`` if the allowlist names
+    them — an unlisted ``train_adaln = true`` would be silently ignored."""
+    from networks import all_network_kwargs
+
+    assert {"train_adaln", "adaln_rank", "adaln_alpha", "network_reg_alphas"} <= set(
+        all_network_kwargs()
+    )
+
+
 def test_reft_dim_falls_back_to_network_dim():
     """Old factory behavior: ``reft_dim`` defaults to ``network_dim`` when
     not specified, not to the dataclass default of 4."""
