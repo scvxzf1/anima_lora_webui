@@ -93,6 +93,7 @@ export function resolveFileGroupSameListDrop(list, group, options, payload, y) {
     const targetFile = nearest.file;
     const position = rowDropPosition(nearest.row, y);
     const currentOrder = fileGroupOrderFromDom(list, rowSelector);
+    // 跨组时 source 不在 currentOrder；moveFileNearList 会把它插入到 anchor 旁。
     const nextOrder = moveFileNearList(currentOrder, payload.file, targetFile, position);
     const remaining = currentOrder.filter((path) => path !== payload.file);
     const anchorIndex = remaining.indexOf(targetFile);
@@ -100,6 +101,7 @@ export function resolveFileGroupSameListDrop(list, group, options, payload, y) {
         ? remaining.length
         : anchorIndex + (position === 'after' ? 1 : 0);
 
+    // 仅同组且顺序未变时跳过；跨组 nextOrder 必含 source，不会误判 no-op。
     const unchanged = nextOrder.length === currentOrder.length
         && nextOrder.every((path, idx) => path === currentOrder[idx]);
 

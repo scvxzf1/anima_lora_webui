@@ -964,6 +964,75 @@ def test_place_config_file_in_group_same_group_uses_anchor_before_after(tmp_path
     ]
 
 
+def test_place_dataset_file_cross_group_with_order_list(tmp_path: Path, monkeypatch):
+    """跨数据集分组拖入：前端提交目标组 DOM order（含 source）时必须真正迁入。"""
+    configs, _dataset_path = _write_minimal_config_tree(tmp_path)
+    for name in ("alpha", "beta", "gamma"):
+        (configs / "datasets" / f"{name}.toml").write_text(
+            f'[[datasets]]\nsource_dir = "/tmp/{name}"\nnum_repeats = 1\n',
+            encoding="utf-8",
+        )
+    (configs / "web-file-groups.toml").write_text(
+        "\n".join(
+            [
+                "[[groups]]",
+                'id = "group_a"',
+                'label = "数据集 A"',
+                'kind = "dataset"',
+                "open = true",
+                "locked = false",
+                "user_managed = true",
+                "files = [",
+                '  "configs/datasets/alpha.toml",',
+                '  "configs/datasets/beta.toml",',
+                "]",
+                "order = [",
+                '  "configs/datasets/alpha.toml",',
+                '  "configs/datasets/beta.toml",',
+                "]",
+                "",
+                "[[groups]]",
+                'id = "group_b"',
+                'label = "数据集 B"',
+                'kind = "dataset"',
+                "open = true",
+                "locked = false",
+                "user_managed = true",
+                "files = [",
+                '  "configs/datasets/gamma.toml",',
+                "]",
+                "order = [",
+                '  "configs/datasets/gamma.toml",',
+                "]",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    _patch_config_service_paths(monkeypatch, tmp_path)
+
+    # 模拟前端跨组：目标 list DOM 只有 gamma，moveFileNearList 产出 [alpha, gamma]
+    desired = [
+        "configs/datasets/alpha.toml",
+        "configs/datasets/gamma.toml",
+    ]
+    ok, message, group = config_service.place_config_file_in_group(
+        "configs/datasets/alpha.toml",
+        "group_b",
+        0,
+        "configs/datasets/gamma.toml",
+        "before",
+        desired,
+    )
+    assert ok is True, message
+    assert [item["path"] for item in group["files"]] == desired
+
+    groups = {item["id"]: item for item in config_service.list_config_file_groups(kind="dataset")}
+    assert "configs/datasets/alpha.toml" not in [
+        item["path"] for item in groups["group_a"]["files"]
+    ]
+    assert [item["path"] for item in groups["group_b"]["files"]] == desired
+
+
 def test_place_config_file_rejects_cross_kind_and_locked_targets(tmp_path: Path, monkeypatch):
     configs, _dataset_path = _write_minimal_config_tree(tmp_path)
     (configs / "datasets" / "character.toml").write_text(

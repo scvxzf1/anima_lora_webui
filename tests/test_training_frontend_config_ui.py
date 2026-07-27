@@ -2669,6 +2669,11 @@ def test_file_group_drag_matches_history_style_same_list_reorder() -> None:
     assert "remaining.indexOf(targetFile)" in targets or "nextOrder.indexOf" in targets or "anchorIndex" in targets
     assert "dataset?.file" in targets or "dataset.file" in targets
 
+    # 跨组：source 不在目标 list 时不能 early-return 成 no-op（会让落点静默失败）。
+    move_fn = _section(core, "export function moveFileNearList", "export function configFileDropIndex")
+    assert "!out.includes(source)" not in move_fn
+    assert "sourceIndex" in move_fn or "out.indexOf(source)" in move_fn
+
     # 预览对齐历史：挂到父列表，用 offsetTop，而不是 body fixed 漂。
     assert "placeFileGroupDropPreview" in core
     assert "offsetTop" in core
@@ -2676,6 +2681,58 @@ def test_file_group_drag_matches_history_style_same_list_reorder() -> None:
     assert "position: absolute;" in css
     assert ".file-group-drop-preview" in css
     assert ".dataset-preset-group-list" in css or ".file-group-drop-host" in css
+
+
+def test_move_file_near_list_inserts_across_groups() -> None:
+    """跨组拖入：source 不在目标 DOM 顺序时，仍插入到 anchor 旁（同组/跨组共用 helper）。"""
+    if not shutil.which("node"):
+        pytest.skip("node is required for moveFileNearList pure helper checks")
+
+    core_path = STATIC_DIR / "js/features/toml-manager/file-group-drag-core.js"
+    core = core_path.read_text(encoding="utf-8")
+    start = core.index("export function moveFileNearList")
+    end = core.index("export function configFileDropIndex", start)
+    fn_src = core[start:end].replace("export function moveFileNearList", "function moveFileNearList", 1)
+    script = (
+        fn_src
+        + "\n"
+        + r"""
+const same = moveFileNearList(['a', 'b', 'c'], 'a', 'c', 'after');
+const crossBefore = moveFileNearList(['x', 'y'], 'a', 'x', 'before');
+const crossAfter = moveFileNearList(['x', 'y'], 'a', 'y', 'after');
+const crossMissingAnchor = moveFileNearList(['x', 'y'], 'a', 'missing', 'before');
+const emptyTarget = moveFileNearList([], 'a', '', 'after');
+// 真正 no-op：源已在 anchor 的 after 位
+const noop = moveFileNearList(['a', 'b'], 'b', 'a', 'after');
+// source===anchor 时先摘后插到末尾（真实 drop 路径会先过滤自身行）
+const selfAnchor = moveFileNearList(['a', 'b'], 'a', 'a', 'before');
+console.log(JSON.stringify({
+  same,
+  crossBefore,
+  crossAfter,
+  crossMissingAnchor,
+  emptyTarget,
+  noop,
+  selfAnchor,
+}));
+"""
+    )
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", script],
+        cwd=Path(__file__).resolve().parents[1],
+        text=True,
+        capture_output=True,
+        timeout=20,
+    )
+    assert result.returncode == 0, result.stderr or result.stdout
+    payload = json.loads(result.stdout)
+    assert payload["same"] == ["b", "c", "a"]
+    assert payload["crossBefore"] == ["a", "x", "y"]
+    assert payload["crossAfter"] == ["x", "y", "a"]
+    assert payload["crossMissingAnchor"] == ["x", "y", "a"]
+    assert payload["emptyTarget"] == ["a"]
+    assert payload["noop"] == ["a", "b"]
+    assert payload["selfAnchor"] == ["b", "a"]
 
 
 def test_file_group_drop_targets_resolve_shared_helpers_and_prefer_rows() -> None:

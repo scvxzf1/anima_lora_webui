@@ -497,6 +497,8 @@ export function finishFileGroupDrag() {
 
 
 export function moveFileNearList(list, sourceValue, targetValue, position = 'after') {
+    // 同组：source 已在 list，先摘再插。
+    // 跨组：source 不在目标 list，直接插到 anchor 旁（不能 early-return 成 no-op）。
     const out = [];
     const seen = new Set();
     for (const raw of list || []) {
@@ -507,9 +509,10 @@ export function moveFileNearList(list, sourceValue, targetValue, position = 'aft
     }
     const source = String(sourceValue || '').trim();
     const target = String(targetValue || '').trim();
-    if (!source || !out.includes(source)) return out;
+    if (!source) return out;
     const original = [...out];
-    out.splice(out.indexOf(source), 1);
+    const sourceIndex = out.indexOf(source);
+    if (sourceIndex >= 0) out.splice(sourceIndex, 1);
     let index = out.length;
     if (target) {
         const targetIndex = out.indexOf(target);
