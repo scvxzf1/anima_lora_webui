@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Any
 
 from web.services.training.common import _clean_history_text, _format_ts, _int_or_none
 from web.services.training.context import training_facade as _training_facade
+from web.services.training.history_config_chips import history_config_chips_for_task_dir
 from web.services.training.history_meta import (
     _default_preprocess_history_name,
     _fill_history_group_meta,
@@ -310,6 +311,13 @@ def _history_summary(meta: dict[str, Any], task_dir: Path) -> dict[str, Any]:
         out["name"] = _default_preprocess_history_name(out)
     out["log_count"] = _history_jsonl_count(out, "log_count", task_dir / "logs.jsonl")
     out["metric_count"] = _history_metric_count(out, task_dir)
+    chips = history_config_chips_for_task_dir(
+        task_dir,
+        variant=str(out.get("variant") or ""),
+    )
+    out["training_variant"] = chips["training_variant"]
+    out["preprocess_precision"] = chips["preprocess_precision"]
+    out["block_swap_precision"] = chips["block_swap_precision"]
     return out
 
 

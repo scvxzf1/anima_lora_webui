@@ -597,3 +597,76 @@ def test_training_service_root_points_at_repo_root() -> None:
     assert root.name != "web"
     assert root == Path(__file__).resolve().parents[1]
 
+
+def test_history_summary_includes_config_chip_fields_from_snapshot(tmp_path, monkeypatch):
+    from web.services.training import history_store as history_store_impl
+
+    history_dir = tmp_path / "history"
+    task_id = "20260727-chip-training-imported-demo"
+    snapshot = "\n".join(
+        [
+            "network_module = \"networks.lora_anima\"",
+            "use_lokr = true",
+            'preprocess_precision_preference = "bf16"',
+            'block_swap_transfer_dtype = "fp8_e4m3"',
+            'mixed_precision = "bf16"',
+        ]
+    ) + "\n"
+    task_dir = _write_group_task(
+        history_dir,
+        task_id,
+        job="training",
+        variant="okkotsu_goddess_demo",
+        started_at=2000.0,
+        config_text=snapshot,
+    )
+    meta = json.loads((task_dir / "meta.json").read_text(encoding="utf-8"))
+    monkeypatch.setattr(training_service, "HISTORY_DIR", history_dir)
+
+    summary = history_store_impl._history_summary(meta, task_dir)
+
+    assert summary["training_variant"] == "lokr"
+    assert summary["preprocess_precision"] == "bf16"
+    assert summary["block_swap_precision"] == "fp8_e4m3"
+    # 配置 stem 仍是 variant，不能被 chip 覆盖
+    assert summary["variant"] == "okkotsu_goddess_demo"
+
+
+def test_history_summary_config_chips_empty_without_snapshot(tmp_path, monkeypatch):
+    from web.services.training import history_store as history_store_impl
+
+    history_dir = tmp_path / "history"
+    task_id = "20260727-chip-nosnap"
+    task_dir = _write_group_task(history_dir, task_id, job="training", started_at=2100.0)
+    (task_dir / "config.snapshot.toml").unlink()
+    meta = json.loads((task_dir / "meta.json").read_text(encoding="utf-8"))
+    monkeypatch.setattr(training_service, "HISTORY_DIR", history_dir)
+
+    summary = history_store_impl._history_summary(meta, task_dir)
+
+    assert summary["training_variant"] == ""
+    assert summary["preprocess_precision"] == ""
+    assert summary["block_swap_precision"] == ""
+
+
+def test_history_config_chips_hydralora_and_tlora_from_text():
+    from web.services.training.history_config_chips import history_config_chips_from_snapshot_text
+
+    hydra = history_config_chips_from_snapshot_text(
+        'use_moe_style = "shared_A"\nnetwork_module = "networks.lora_anima"\n',
+        variant="whatever",
+    )
+    assert hydra["training_variant"] == "hydralora"
+
+    tlora = history_config_chips_from_snapshot_text(
+        "use_timestep_mask = true\nnetwork_module = \"networks.lora_anima\"\n",
+        variant="tlora-8gb",
+    )
+    assert tlora["training_variant"] == "tlora"
+
+    chimera = history_config_chips_from_snapshot_text(
+        "use_chimera_hydra = true\nuse_moe_style = \"shared_A\"\n",
+        variant="x",
+    )
+    assert chimera["training_variant"] == "chimera"
+
