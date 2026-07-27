@@ -477,6 +477,9 @@ export function applyHistoryStatFilter(state) {
         state: 'all',
         archived: 'all',
         source: 'all',
+        trainingVariant: 'all',
+        preprocessPrecision: 'all',
+        blockSwapPrecision: 'all',
         sort: historyState.historyManagerFilters.sort || 'newest',
     };
     if (state === 'training' || state === 'preprocess') {
@@ -501,6 +504,9 @@ export function historyStatFilterIsActive(state) {
     const base =
         searchEmpty &&
         Boolean(historyState.historyManagerFilters.sort || 'newest') &&
+        (historyState.historyManagerFilters.trainingVariant || 'all') === 'all' &&
+        (historyState.historyManagerFilters.preprocessPrecision || 'all') === 'all' &&
+        (historyState.historyManagerFilters.blockSwapPrecision || 'all') === 'all' &&
         (state === 'archived'
             ? historyState.historyManagerFilters.archived === 'archived'
             : (historyState.historyManagerFilters.archived || 'active') === 'all');
@@ -553,6 +559,7 @@ export function historyManagerBaseFilteredTasks() {
         if (historyState.historyManagerFilters.archived === 'active' && archived) return false;
         if (historyState.historyManagerFilters.archived === 'archived' && !archived) return false;
         if (!historyTaskMatchesSourceFilter(task, historyState.historyManagerFilters.source)) return false;
+        if (!historyTaskMatchesChipFilters(task, historyState.historyManagerFilters)) return false;
         if (search && !historyTaskSearchText(task).includes(search)) return false;
         return true;
     });
@@ -593,6 +600,25 @@ export function historyTaskMatchesSourceFilter(task, filter) {
     return true;
 }
 
+export function historyTaskMatchesChipFilters(task, filters = {}) {
+    const trainingVariant = filters.trainingVariant || 'all';
+    if (trainingVariant !== 'all') {
+        const value = String(task?.training_variant || '').trim().toLowerCase();
+        if (value !== trainingVariant) return false;
+    }
+    const preprocessPrecision = filters.preprocessPrecision || 'all';
+    if (preprocessPrecision !== 'all') {
+        const value = String(task?.preprocess_precision || '').trim().toLowerCase();
+        if (value !== preprocessPrecision) return false;
+    }
+    const blockSwapPrecision = filters.blockSwapPrecision || 'all';
+    if (blockSwapPrecision !== 'all') {
+        const value = String(task?.block_swap_precision || '').trim().toLowerCase();
+        if (value !== blockSwapPrecision) return false;
+    }
+    return true;
+}
+
 export function historyTaskSearchText(task) {
     return [
         task.id,
@@ -604,6 +630,9 @@ export function historyTaskSearchText(task) {
         task.history_run_label,
         task.methods_subdir,
         task.variant,
+        task.training_variant,
+        task.preprocess_precision,
+        task.block_swap_precision,
         task.preset,
         task.run_dir,
         task.training_output_dir,

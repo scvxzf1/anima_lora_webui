@@ -299,6 +299,35 @@ def test_history_manager_extra_filter_controls_are_wired() -> None:
     assert "'history-filter-block-swap-precision'" in tips
 
 
+def test_history_manager_base_filter_includes_config_chip_fields() -> None:
+    src = _frontend_module_text("js/features/history-list/collections-workbench.js")
+    base = _section(src, "export function historyManagerBaseFilteredTasks", "export function historyManagerVisibleTasks")
+    assert "historyTaskMatchesChipFilters" in base
+
+    chip = _section(src, "export function historyTaskMatchesChipFilters", "export function historyTaskSearchText")
+    assert "trainingVariant" in chip
+    assert "preprocessPrecision" in chip
+    assert "blockSwapPrecision" in chip
+    assert "training_variant" in chip
+    assert "preprocess_precision" in chip
+    assert "block_swap_precision" in chip
+
+    apply = _section(src, "export function applyHistoryStatFilter", "export function historyStatFilterIsActive")
+    assert "trainingVariant: 'all'" in apply
+    assert "preprocessPrecision: 'all'" in apply
+    assert "blockSwapPrecision: 'all'" in apply
+
+    active = _section(src, "export function historyStatFilterIsActive", "export function historyManagerFilteredTasks")
+    assert "trainingVariant" in active
+    assert "preprocessPrecision" in active
+    assert "blockSwapPrecision" in active
+
+    search = _section(src, "export function historyTaskSearchText", "export function historyTaskMatchesCollectionSearch")
+    assert "task.training_variant" in search
+    assert "task.preprocess_precision" in search
+    assert "task.block_swap_precision" in search
+
+
 def test_history_manager_frontend_hooks_are_present() -> None:
     source = APP_JS.read_text(encoding="utf-8")
     legacy_source = _anima_app_container_text()
