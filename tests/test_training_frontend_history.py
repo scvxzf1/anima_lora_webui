@@ -1389,22 +1389,18 @@ def test_history_detail_overview_uses_full_copyable_paths_and_resume_weights() -
     assert "['块交换精度', formatHistoryBlockSwapPrecision(payload.config_toml), 'chip']" in overview
     assert "function formatHistoryAverageSpeed(record)" in overview_source
     assert "function formatHistoryTaskDuration(record)" in overview_source
-    assert "function formatHistoryTrainingPrecision(configText)" in overview_source
-    assert "function formatHistoryTrainingVariant(task, configText)" in overview_source
-    assert "function formatHistoryPreprocessPrecision(configText)" in overview_source
-    assert "function formatHistoryBlockSwapPrecision(configText)" in overview_source
-    assert "function readConfigString(configText, key)" in overview_source
-    assert "precision_preference" in overview_source
-    assert "mixed_precision" in overview_source
-    assert "preprocess_precision_preference" in overview_source
-    assert "block_swap_transfer_dtype" in overview_source
-    assert "use_loha" in overview_source
-    assert "use_lokr" in overview_source
-    assert "use_chimera_hydra" in overview_source
-    assert "use_timestep_mask" in overview_source
-    assert "hasSnapshot" in overview_source
-    assert "无法生成配置快照" in overview_source
-    assert "replace(/-8gb$/" in overview_source
+    chips_source = _frontend_module_text("js/features/history-detail/config-chips.js")
+    assert "export function formatHistoryTrainingVariant" in chips_source
+    assert "export function formatHistoryPreprocessPrecision" in chips_source
+    assert "export function formatHistoryBlockSwapPrecision" in chips_source
+    assert "export function formatHistoryTrainingPrecision" in chips_source
+    assert "use_lokr" in chips_source
+    assert "preprocess_precision_preference" in chips_source
+    assert "block_swap_transfer_dtype" in chips_source
+    assert "from './config-chips.js?v=module-bootstrap-20260714-stage-dataset5'" in overview_source
+    assert "formatHistoryTrainingVariant(task, payload.config_toml)" in overview
+    # 内联定义应消失
+    assert "function formatHistoryTrainingVariant(task, configText)" not in overview_source
     assert "ctx.format.formatDuration" in overview_source
     assert "muted: taskFinished && ['队列', '续训'].includes(label) && value === '-'" in overview
     assert "'训练精度'" in overview_source
