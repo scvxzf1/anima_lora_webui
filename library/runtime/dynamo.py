@@ -1,13 +1,15 @@
-"""Dynamo compile-budget helpers.
+"""Dynamo/inductor compile-config pinning helpers.
 
-The one knob worth a shared home: raising a ``torch._dynamo`` recompile budget
-so it survives into the *backward* compile context. A plain
-``config.recompile_limit = N`` assignment is context-local (see
-``pin_dynamo_limit``), so every call site that pre-raises the budget before a
-``torch.compile`` would otherwise re-discover the same ContextVar trap and spill
-to eager mid-warmup. Keep this dependency-free (torch + logging only) so any
-layer — ``library.anima`` models, ``library.runtime`` harness, ``networks/``
-adapters, ``scripts/`` distill loops — can import it without a cycle.
+The knobs worth a shared home: setting a ``torch._dynamo`` / ``torch._inductor``
+config value so it survives into the *backward* compile context. A plain
+``config.<name> = value`` assignment is context-local (the ``user_override`` is
+a thread-local ``ContextVar`` — see ``pin_dynamo_limit`` / ``pin_inductor_flag``),
+so every call site that sets a compile knob before a ``torch.compile`` would
+otherwise re-discover the same ContextVar trap: the grad-bearing compile reads
+the entry's *default* and the setting silently reverts. Keep this
+dependency-free (torch + logging only) so any layer — ``library.anima`` models,
+``library.runtime`` harness, ``networks/`` adapters, ``scripts/`` distill loops
+— can import it without a cycle.
 """
 
 from __future__ import annotations
@@ -53,3 +55,73 @@ def pin_dynamo_limit(name: str, value: int) -> int:
             "in the backward-compile context and spill to eager"
         )
     return target
+
+
+def pin_inductor_flag(name: str, value: object) -> None:
+    """Set a ``torch._inductor.config`` value so it holds in EVERY execution context.
+
+    Same ContextVar trap as :func:`pin_dynamo_limit`, inductor edition: config
+    ``user_override``s are thread-local, and the grad-enabled step-0 compile
+    (grad-ckpt recompute / AOT backward path) runs its inductor scheduling in a
+    context where a plain assignment's override is absent — the read falls back
+    to the entry's ``.default``. For ``triton.mix_order_reduction`` that default
+    is env-derived True, so the ``compile_blocks`` kill silently reverted and
+    the fusion's hint-derived ``Ge(seq, 4096)`` guard broke strict dynamic-seq
+    marks (ConstraintViolationError at the first training step under gradient
+    checkpointing — the v1.14.0 adaln-default-on community crash). Pin both: the
+    override (same-context reads) and the default (compile-/backward-thread
+    reads).
+
+    ``name`` is the fully-qualified dotted key, e.g.
+    ``"triton.mix_order_reduction"``. (No alias-following here — none of the
+    pinned inductor keys alias; ``_config[name]`` IS the canonical entry.)
+    """
+    import torch._inductor.config as cfg_mod
+
+    obj = cfg_mod
+    *parents, leaf = name.split(".")
+    for parent in parents:
+        obj = getattr(obj, parent)
+    setattr(obj, leaf, value)  # context-local override (main thread + logs)
+    try:
+        cfg_mod._config[name].default = value  # global fallback (all contexts)
+    except Exception as e:  # noqa: BLE001 - defensive against torch internals
+        logger.warning(
+            f"could not pin inductor {name} default ({e}); the value may revert "
+            "in the backward-compile context"
+        )
+
+
+def pin_inductor_flag(name: str, value: object) -> None:
+    """Set a ``torch._inductor.config`` value so it holds in EVERY execution context.
+
+    Same ContextVar trap as :func:`pin_dynamo_limit`, inductor edition: config
+    ``user_override``s are thread-local, and the grad-enabled step-0 compile
+    (grad-ckpt recompute / AOT backward path) runs its inductor scheduling in a
+    context where a plain assignment's override is absent — the read falls back
+    to the entry's ``.default``. For ``triton.mix_order_reduction`` that default
+    is env-derived True, so the ``compile_blocks`` kill silently reverted and
+    the fusion's hint-derived ``Ge(seq, 4096)`` guard broke strict dynamic-seq
+    marks (ConstraintViolationError at the first training step under gradient
+    checkpointing — the v1.14.0 adaln-default-on community crash). Pin both: the
+    override (same-context reads) and the default (compile-/backward-thread
+    reads).
+
+    ``name`` is the fully-qualified dotted key, e.g.
+    ``"triton.mix_order_reduction"``. (No alias-following here — none of the
+    pinned inductor keys alias; ``_config[name]`` IS the canonical entry.)
+    """
+    import torch._inductor.config as cfg_mod
+
+    obj = cfg_mod
+    *parents, leaf = name.split(".")
+    for parent in parents:
+        obj = getattr(obj, parent)
+    setattr(obj, leaf, value)  # context-local override (main thread + logs)
+    try:
+        cfg_mod._config[name].default = value  # global fallback (all contexts)
+    except Exception as e:  # noqa: BLE001 - defensive against torch internals
+        logger.warning(
+            f"could not pin inductor {name} default ({e}); the value may revert "
+            "in the backward-compile context"
+        )

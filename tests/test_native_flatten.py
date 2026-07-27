@@ -119,6 +119,38 @@ def test_compile_blocks_can_compile_swapped_tail(monkeypatch, capsys):
     assert "2 resident + 2 swapped compiled" in capsys.readouterr().out
 
 
+def test_compile_blocks_reuses_base_forward_on_recompile(monkeypatch):
+    """A second compile_blocks (dynamic-seq range widened for a new sample
+    resolution) must compile the ORIGINAL forward, not the already-compiled
+    one — otherwise the graphs nest and the seq axis is re-marked against
+    stale bounds."""
+    compiled_sources = []
+
+    def fake_compile(fn, **_kwargs):
+        compiled_sources.append(fn)
+
+        def compiled(*args, **kwargs):
+            return fn(*args, **kwargs)
+
+        return compiled
+
+    monkeypatch.setattr(torch, "compile", fake_compile)
+    model = _tiny_anima()
+
+    model.compile_blocks(backend="eager", n_token_families=2)
+    base_forward = model.blocks[0]._anima_compile_base_forward
+    first_compiled_forward = model.blocks[0]._forward
+
+    model.compile_blocks(backend="eager", n_token_families=3)
+
+    assert model.blocks[0]._anima_compile_base_forward is base_forward
+    assert compiled_sources[0] is base_forward
+    # second pass over block 0 (2 blocks per pass) — still the base, not the
+    # first pass's compiled callable
+    assert compiled_sources[2] is base_forward
+    assert model.blocks[0]._forward is not first_compiled_forward
+
+
 @torch.no_grad()
 def test_compile_blocks_dynamic_seq_marks_range_and_runs():
     """dynamic_seq wraps the compiled inner, so eager backend still executes."""

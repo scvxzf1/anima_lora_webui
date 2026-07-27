@@ -333,6 +333,9 @@ export function syncHistoryFilterControls() {
         'history-filter-state': 'state',
         'history-filter-archived': 'archived',
         'history-filter-source': 'source',
+        'history-filter-training-variant': 'trainingVariant',
+        'history-filter-preprocess-precision': 'preprocessPrecision',
+        'history-filter-block-swap-precision': 'blockSwapPrecision',
         'history-sort-mode': 'sort',
     };
     for (const [id, key] of Object.entries(controls)) {

@@ -502,8 +502,13 @@ class RMSNorm(torch.nn.Module):
         return x * torch.rsqrt(x.pow(2).mean(-1, keepdim=True) + self.eps)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        output = self._norm(x.float())
-        return (output * self.weight).to(x.dtype)
+        # Variance in fp32 for numerical stability, then immediately restore
+        # ``x.dtype`` *before* the affine multiply so inductor cannot keep a
+        # float32 Q/K path into FlashAttention (compile + ConvRot scope=all).
+        # Equivalent to ``(self._norm(x.float()) * weight).to(x.dtype)`` up to
+        # half-precision rounding on the final mul.
+        output = self._norm(x.float()).to(dtype=x.dtype)
+        return output * self.weight.to(dtype=x.dtype)
 
 
 class GPT2FeedForward(nn.Module):
@@ -651,14 +656,36 @@ class Attention(nn.Module):
         rope_cos_sin: Optional[tuple[torch.Tensor, torch.Tensor]] = None,
     ) -> torch.Tensor:
         q, k, v = self.compute_qkv(x, context, rope_cos_sin=rope_cos_sin)
-        if q.dtype != v.dtype:
-            if (
-                not attn_params.supports_fp32 or attn_params.requires_same_dtype
-            ) and torch.is_autocast_enabled():
-                # FlashAttention requires fp16/bf16, xformers require same dtype; only cast when autocast is active.
-                target_dtype = v.dtype  # v has fp16/bf16 dtype
-                q = q.to(target_dtype)
-                k = k.to(target_dtype)
+        # Align Q/K/V dtypes for backends that reject mixed or fp32 stacks.
+        # Flash hard-cast also lives in attention_dispatch (compile can still
+        # promote all three to fp32); this covers mixed-dtype before dispatch.
+        if not attn_params.supports_fp32 or attn_params.requires_same_dtype:
+            half = (torch.float16, torch.bfloat16)
+            if q.dtype != v.dtype or k.dtype != v.dtype or q.dtype not in half:
+                if v.dtype in half:
+                    target_dtype = v.dtype
+                elif torch.is_autocast_enabled():
+                    get_dtype = getattr(torch, "get_autocast_dtype", None)
+                    if get_dtype is not None:
+                        try:
+                            target_dtype = get_dtype("cuda")
+                        except (TypeError, RuntimeError, ValueError):
+                            target_dtype = torch.bfloat16
+                    else:
+                        get_gpu = getattr(torch, "get_autocast_gpu_dtype", None)
+                        target_dtype = (
+                            get_gpu() if get_gpu is not None else torch.bfloat16
+                        )
+                    if target_dtype not in half:
+                        target_dtype = torch.bfloat16
+                else:
+                    target_dtype = torch.bfloat16
+                if q.dtype != target_dtype:
+                    q = q.to(dtype=target_dtype)
+                if k.dtype != target_dtype:
+                    k = k.to(dtype=target_dtype)
+                if v.dtype != target_dtype:
+                    v = v.to(dtype=target_dtype)
         # return self.compute_attention(q, k, v)
         qkv = [q, k, v]
         del q, k, v
@@ -2049,6 +2076,30 @@ class Anima(nn.Module):
                 self._dynamic_seq_range = (int(seq_range[0]), int(seq_range[1]))
             else:
                 self._dynamic_seq_range = (min(counts), max(counts))
+            # Inductor's mix-order-reduction fusion (torch 2.12, default-on) is
+            # incompatible with the strict seq marks: its profitability check
+            # calls guard_or_true(Ge(nrow, 4096)) where nrow is the symbolic seq
+            # axis (it fires on backward graphs that pair a seq-axis reduction
+            # with an elementwise grad — e.g. any LoRA on a broadcast-consumed
+            # Linear like adaln_up, whose shift/scale/gate grads reduce over
+            # seq). The recorded guard (either branch: Ge(seq, 4096) or its
+            # negation seq <= 4095, per the first-traced hint) contradicts any
+            # mark range straddling 4096 → ConstraintViolationError at guard
+            # build. MUST be pinned via pin_inductor_flag, not plain assignment:
+            # inductor config overrides are thread-local ContextVars, and the
+            # grad-enabled step-0 compile (grad-ckpt recompute / AOT backward
+            # path) schedules in a context where a plain override is absent and
+            # the read falls back to the env-derived default True.
+            import torch._inductor.config as _inductor_config
+
+            if _inductor_config.triton.mix_order_reduction:
+                from library.runtime.dynamo import pin_inductor_flag
+
+                pin_inductor_flag("triton.mix_order_reduction", False)
+                print(
+                    "Anima: inductor mix_order_reduction disabled — default pinned "
+                    "(hint-derived 4096-boundary guard breaks strict dynamic-seq marks)"
+                )
 
         compile_kwargs = {"backend": backend, "dynamic": False}
         if mode is not None:
@@ -2068,7 +2119,16 @@ class Anima(nn.Module):
         for block_idx, block in enumerate(self.blocks):
             if block_idx >= n_compile:
                 continue
-            compiled_inner = torch.compile(block._forward, **compile_kwargs)
+            # Compile the ORIGINAL forward, never the currently-installed one.
+            # ensure_training_compile_seq_range re-enters compile_blocks to widen
+            # a dynamic-seq range mid-run; without this the second pass would
+            # wrap the first pass's compiled (and dynamic-seq-marked) callable,
+            # nesting a graph inside a graph and re-marking an already-marked
+            # seq axis against the stale bounds.
+            if not hasattr(block, "_anima_compile_base_forward"):
+                block._anima_compile_base_forward = block._forward
+            base_forward = block._anima_compile_base_forward
+            compiled_inner = torch.compile(base_forward, **compile_kwargs)
             if self._dynamic_seq:
                 lo, hi = self._dynamic_seq_range
                 block._forward = _make_dynamic_seq_forward(compiled_inner, lo, hi)

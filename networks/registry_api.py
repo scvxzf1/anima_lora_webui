@@ -96,7 +96,15 @@ SHARED_KWARG_FLAGS: Tuple[str, ...] = (
     "verbose",
     "network_reg_dims",
     "network_reg_lrs",
+    "network_reg_alphas",
     "network_router_lr_scale",
+    # adaln convenience knobs. Desugar into include_patterns / reg_dims /
+    # reg_alphas inside ``LoRANetworkCfg.from_kwargs``; listed here so a
+    # top-level TOML key reaches ``net_kwargs`` at all (bootstrap forwards
+    # only what this allowlist names).
+    "train_adaln",
+    "adaln_rank",
+    "adaln_alpha",
     "loraplus_lr_ratio",
     "loraplus_unet_lr_ratio",
     "loraplus_text_encoder_lr_ratio",

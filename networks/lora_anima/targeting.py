@@ -57,6 +57,7 @@ def collect_lora_target_candidates(
     modules_dim: Optional[dict[str, int]],
     modules_alpha: Optional[dict[str, float]],
     reg_dims: Optional[dict[str, int]],
+    reg_alphas: Optional[dict[str, float]] = None,
     default_dim: Optional[int],
     lora_dim: int,
     alpha: float,
@@ -138,6 +139,21 @@ def collect_lora_target_candidates(
                         if dim is None and (is_linear or is_conv2d_1x1):
                             dim = default_dim if default_dim is not None else lora_dim
                             alpha_val = alpha
+                        # Per-pattern alpha override (completes the reg_dims /
+                        # reg_lrs trio). Independent of reg_dims: applies whether
+                        # the dim came from a reg_dims match or the network
+                        # default — e.g. a scale-preserving alpha on adaln
+                        # modules built at their own rank.
+                        if reg_alphas is not None and dim:
+                            for reg, a in reg_alphas.items():
+                                if re.fullmatch(reg, original_name):
+                                    alpha_val = a
+                                    if logger is not None:
+                                        logger.debug(
+                                            f"Module {original_name} matched "
+                                            f"with regex '{reg}' -> alpha: {a}"
+                                        )
+                                    break
 
                     if dim is None or dim == 0:
                         if is_linear or is_conv2d_1x1:

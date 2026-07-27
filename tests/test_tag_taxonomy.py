@@ -65,14 +65,29 @@ def test_is_count_tag():
         assert not tx.is_count_tag(t), t
 
 
-def test_caption_ratings_superset_of_model_ratings():
-    # CAPTION_RATINGS (raw, 4-class) is a superset of the tagger's model-output
-    # RATINGS (3-class, after questionable→sensitive collapse).
+def test_caption_ratings_are_the_anima_band():
+    # The one rating vocabulary: Anima's 4-class band. The tagger's ordered
+    # RATINGS (class index for the rating head) must carry exactly the same
+    # members as the unordered CAPTION_RATINGS.
     from library.captioning.anima_tagger import RATINGS
 
-    assert set(RATINGS) <= tx.CAPTION_RATINGS
-    assert "questionable" in tx.CAPTION_RATINGS
-    assert "questionable" not in RATINGS
+    assert tx.CAPTION_RATINGS == {"safe", "sensitive", "nsfw", "explicit"}
+    assert set(RATINGS) == tx.CAPTION_RATINGS
+    assert len(RATINGS) == len(tx.CAPTION_RATINGS)  # no duplicate class index
+
+
+def test_legacy_booru_ratings_alias_onto_the_anima_band():
+    # Raw danbooru captions (and pre-rename vocab.json) still read as ratings.
+    assert tx.canonical_rating("general") == "safe"
+    assert tx.canonical_rating("questionable") == "nsfw"
+    for r in tx.CAPTION_RATINGS:
+        assert tx.canonical_rating(r) == r  # canonical spellings are fixpoints
+        assert tx.is_rating_tag(r)
+    for legacy in ("general", "questionable"):
+        assert tx.is_rating_tag(legacy)
+    for other in ("blue eyes", "1girl", "@sincos", "safety"):
+        assert not tx.is_rating_tag(other)
+        assert tx.canonical_rating(other) is None
 
 
 def test_index_and_tagger_agree_on_tag_shape():

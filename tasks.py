@@ -174,6 +174,11 @@ COMMANDS = {
     # ── Downloads ─────────────────────────────────────────────────────
     "download-models": (downloads.cmd_download_models, "Download all models"),
     "download-anima": (downloads.cmd_download_anima, "Download Anima model"),
+    "download-anima-variant": (
+        downloads.cmd_download_anima_variant,
+        "Download an alternate Anima base DiT (aesthetic / turbo / preview); "
+        "ARGS=<name>, no args lists them",
+    ),
     "download-sam3": (downloads.cmd_download_sam3, "Download SAM3 model"),
     "download-mit": (downloads.cmd_download_mit, "Download MIT model"),
     "download-pe": (
@@ -235,6 +240,11 @@ COMMANDS = {
     "export-logs": (
         utilities.cmd_export_logs,
         "Dump TB scalar logs to JSON (RUN=<dir>, ALL=1 for every subrun, JSONL=1 for line-delimited)",
+    ),
+    "run-status": (
+        utilities.cmd_run_status,
+        "Step/ETA/last-ckpt one-liner for a run from its progress.jsonl "
+        "(RUN=<output_name|path>, default newest; ARGS='--list|--json')",
     ),
     "print-config": (
         utilities.cmd_print_config,

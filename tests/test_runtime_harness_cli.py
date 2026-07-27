@@ -241,6 +241,153 @@ def test_compile_blocks_for_training_compiles_adapter_cond_stream(
     }
 
 
+class _SeqRangeFakeUnet:
+    """Records compile_blocks calls and mimics the live-range write-back."""
+
+    patch_spatial = 2
+    vae_spatial_compression = 8
+
+    def __init__(self):
+        self.calls = []
+
+    def compile_blocks(self, backend, **kwargs):
+        self.calls.append((backend, kwargs))
+        self._dynamic_seq = kwargs["dynamic_seq"]
+        self._dynamic_seq_range = kwargs["seq_range"]
+
+
+class _SeqRangeFakeNetwork:
+    def __init__(self):
+        self.calls = []
+
+    def compile_cond_stream(self, backend, **kwargs):
+        self.calls.append((backend, kwargs))
+
+
+def test_training_compile_seq_range_expands_for_new_sample_size(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A preview resolution added mid-run widens the range and recompiles once,
+    instead of the prompt being skipped."""
+    from library.runtime import harness
+
+    unet = _SeqRangeFakeUnet()
+    network = _SeqRangeFakeNetwork()
+    monkeypatch.setattr(harness, "_compile_cache_base", None)
+    monkeypatch.setenv("TORCHINDUCTOR_CACHE_DIR", str(tmp_path))
+
+    harness.compile_blocks_for_training(
+        unet,
+        network,
+        backend="eager",
+        mode=None,
+        n_token_families=2,
+        seq_range=(3080, 3256),
+        dynamic_seq=True,
+        activation_memory_budget=1.0,
+        grad_ckpt=False,
+    )
+
+    changed = harness.ensure_training_compile_seq_range(unet, network, {3456})
+
+    assert changed is True
+    assert unet.calls[-1][1]["seq_range"] == (3080, 3456)
+    assert unet.calls[-1][1]["n_token_families"] == 3
+    assert network.calls[-1][1]["seq_range"] == (3080, 3456)
+
+    # idempotent: the widened range now covers it, so no second recompile
+    assert harness.ensure_training_compile_seq_range(unet, network, {3456}) is False
+    assert len(unet.calls) == 2
+
+
+def test_training_compile_seq_range_noop_in_range_and_when_static(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """In-range lengths and non-dynamic-seq compiles never recompile."""
+    from library.runtime import harness
+
+    monkeypatch.setattr(harness, "_compile_cache_base", None)
+    monkeypatch.setenv("TORCHINDUCTOR_CACHE_DIR", str(tmp_path))
+
+    unet = _SeqRangeFakeUnet()
+    network = _SeqRangeFakeNetwork()
+    harness.compile_blocks_for_training(
+        unet,
+        network,
+        backend="eager",
+        n_token_families=2,
+        seq_range=(3080, 3256),
+        dynamic_seq=True,
+    )
+    assert harness.ensure_training_compile_seq_range(unet, network, {3200}) is False
+    assert harness.ensure_training_compile_seq_range(unet, network, set()) is False
+    assert len(unet.calls) == 1
+
+    static = _SeqRangeFakeUnet()
+    harness.compile_blocks_for_training(
+        static,
+        network,
+        backend="eager",
+        n_token_families=2,
+        seq_range=(3080, 3256),
+        dynamic_seq=False,
+    )
+    assert harness.ensure_training_compile_seq_range(static, network, {9999}) is False
+    assert len(static.calls) == 1
+
+    # no compile at all -> no recorded config -> no-op
+    assert harness.ensure_training_compile_seq_range(object(), network, {9999}) is False
+
+
+def test_training_compile_seq_range_round_trips_partitioner_knobs(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The recompile must reuse the original partitioner tuning.
+
+    Dropping these would silently re-tune the min-cut heuristics mid-run and
+    change the memory / step-time profile the run was configured for.
+    """
+    from library.runtime import harness
+
+    applied: list[dict] = []
+    monkeypatch.setattr(harness, "_compile_cache_base", None)
+    monkeypatch.setenv("TORCHINDUCTOR_CACHE_DIR", str(tmp_path))
+    monkeypatch.setattr(
+        harness,
+        "_apply_partitioner_tuning",
+        lambda **kwargs: applied.append(kwargs),
+    )
+
+    unet = _SeqRangeFakeUnet()
+    network = _SeqRangeFakeNetwork()
+    harness.compile_blocks_for_training(
+        unet,
+        network,
+        backend="eager",
+        mode="max-autotune",
+        n_token_families=2,
+        seq_range=(3080, 3256),
+        dynamic_seq=True,
+        activation_memory_budget=0.85,
+        partitioner_recompute_views=True,
+        partitioner_aggressive_recomputation=True,
+        compile_block_scope="all",
+        grad_ckpt=False,
+    )
+
+    assert harness.ensure_training_compile_seq_range(unet, network, {3456}) is True
+
+    assert applied[-1]["recompute_views"] is True
+    assert applied[-1]["aggressive_recomputation"] is True
+    # and the rest of the compile identity survives the recompile too
+    assert unet.calls[-1][0] == "eager"
+    assert unet.calls[-1][1]["mode"] == "max-autotune"
+    assert unet.calls[-1][1]["compile_block_scope"] == "all"
+
+
 def test_compile_blocks_for_training_pins_lokr_checkpoint_budget(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:

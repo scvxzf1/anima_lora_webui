@@ -54,6 +54,13 @@ def save_loha_weights(
     """Write a LoHa checkpoint using the standard safetensors path."""
 
     defuse_loha_qkv(state_dict)
+    # Same runtime→ComfyUI adaln relayout the plain-LoRA writer does. This
+    # handler short-circuits lora_save.save_network_weights, so without it a
+    # LoHa trained with train_adaln would ship runtime-named adaln keys that
+    # ComfyUI's generic key map silently drops. Presence-gated.
+    from networks.lora_save import _relayout_adaln_to_comfy
+
+    metadata = _relayout_adaln_to_comfy(state_dict, metadata)
 
     if dtype is not None:
         for key in list(state_dict.keys()):

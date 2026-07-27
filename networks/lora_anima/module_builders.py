@@ -209,6 +209,7 @@ def _collect_lora_module_candidates(
         modules_dim=cfg.modules_dim,
         modules_alpha=cfg.modules_alpha,
         reg_dims=cfg.reg_dims,
+        reg_alphas=cfg.reg_alphas,
         default_dim=default_dim,
         lora_dim=cfg.lora_dim,
         alpha=cfg.alpha,

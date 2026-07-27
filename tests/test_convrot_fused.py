@@ -130,3 +130,23 @@ def test_w8a16_int8pack_kernel_close_to_dequant() -> None:
     rel = (y_pack.float() - y_ref.float()).norm() / y_ref.float().norm().clamp_min(1e-8)
     # Packed kernel is approximate vs fp32 dequant; keep a generous bound.
     assert rel.item() < 0.05
+
+
+def test_fused_w8a16_returns_input_half_dtype() -> None:
+    """E: org_forward must not promote half acts to float32 for QKV path."""
+    torch.manual_seed(11)
+    w = torch.randn(64, 128)
+    q, scale = rotate_and_quantize_weight(w, 32)
+    for dtype in (torch.bfloat16, torch.float16):
+        x = torch.randn(4, 128, dtype=dtype)
+        y = fused_w8a16_forward(x, q, scale, group_size=32)
+        assert y.dtype == dtype, f"expected {dtype}, got {y.dtype}"
+
+
+def test_fused_w8a8_returns_input_half_dtype() -> None:
+    torch.manual_seed(12)
+    w = torch.randn(64, 128)
+    q, scale = rotate_and_quantize_weight(w, 32)
+    x = torch.randn(4, 128, dtype=torch.bfloat16)
+    y = fused_w8a8_forward(x, q, scale, group_size=32)
+    assert y.dtype == torch.bfloat16

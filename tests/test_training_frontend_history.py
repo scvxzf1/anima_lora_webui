@@ -266,6 +266,68 @@ def test_history_task_dialog_busy_state_uses_toml_state() -> None:
     assert "sharedDialogBusy" not in dialog_section.replace("tomlState.sharedDialogBusy", "")
 
 
+def test_history_manager_extra_filter_controls_are_wired() -> None:
+    html = INDEX_HTML.read_text(encoding="utf-8")
+    assert 'id="history-filter-training-variant"' in html
+    assert 'id="history-filter-preprocess-precision"' in html
+    assert 'id="history-filter-block-swap-precision"' in html
+    assert "<span>训练变体</span>" in html
+    assert "<span>预处理精度</span>" in html
+    assert "<span>块交换精度</span>" in html
+
+    state_src = _frontend_module_text("js/features/anima-app/state/history-state.js")
+    assert "trainingVariant: 'all'" in state_src
+    assert "preprocessPrecision: 'all'" in state_src
+    assert "blockSwapPrecision: 'all'" in state_src
+
+    setup = _frontend_module_text("js/features/app-shell/event-listeners-setup.js")
+    assert "'history-filter-training-variant': 'trainingVariant'" in setup
+    assert "'history-filter-preprocess-precision': 'preprocessPrecision'" in setup
+    assert "'history-filter-block-swap-precision': 'blockSwapPrecision'" in setup
+
+    coll = _frontend_module_text("js/features/history-list/task-collections.js")
+    assert "'history-filter-training-variant': 'trainingVariant'" in coll
+
+    contract = _frontend_module_text("js/features/app-shell/event-listeners-contract.js")
+    assert "'history-filter-training-variant'" in contract
+    assert "'history-filter-preprocess-precision'" in contract
+    assert "'history-filter-block-swap-precision'" in contract
+
+    tips = _frontend_module_text("js/features/app-shell/beginner-tooltips.js")
+    assert "'history-filter-training-variant'" in tips
+    assert "'history-filter-preprocess-precision'" in tips
+    assert "'history-filter-block-swap-precision'" in tips
+
+
+def test_history_manager_base_filter_includes_config_chip_fields() -> None:
+    src = _frontend_module_text("js/features/history-list/collections-workbench.js")
+    base = _section(src, "export function historyManagerBaseFilteredTasks", "export function historyManagerVisibleTasks")
+    assert "historyTaskMatchesChipFilters" in base
+
+    chip = _section(src, "export function historyTaskMatchesChipFilters", "export function historyTaskSearchText")
+    assert "trainingVariant" in chip
+    assert "preprocessPrecision" in chip
+    assert "blockSwapPrecision" in chip
+    assert "training_variant" in chip
+    assert "preprocess_precision" in chip
+    assert "block_swap_precision" in chip
+
+    apply = _section(src, "export function applyHistoryStatFilter", "export function historyStatFilterIsActive")
+    assert "trainingVariant: 'all'" in apply
+    assert "preprocessPrecision: 'all'" in apply
+    assert "blockSwapPrecision: 'all'" in apply
+
+    active = _section(src, "export function historyStatFilterIsActive", "export function historyManagerFilteredTasks")
+    assert "trainingVariant" in active
+    assert "preprocessPrecision" in active
+    assert "blockSwapPrecision" in active
+
+    search = _section(src, "export function historyTaskSearchText", "export function historyTaskMatchesCollectionSearch")
+    assert "task.training_variant" in search
+    assert "task.preprocess_precision" in search
+    assert "task.block_swap_precision" in search
+
+
 def test_history_manager_frontend_hooks_are_present() -> None:
     source = APP_JS.read_text(encoding="utf-8")
     legacy_source = _anima_app_container_text()
@@ -1389,22 +1451,18 @@ def test_history_detail_overview_uses_full_copyable_paths_and_resume_weights() -
     assert "['块交换精度', formatHistoryBlockSwapPrecision(payload.config_toml), 'chip']" in overview
     assert "function formatHistoryAverageSpeed(record)" in overview_source
     assert "function formatHistoryTaskDuration(record)" in overview_source
-    assert "function formatHistoryTrainingPrecision(configText)" in overview_source
-    assert "function formatHistoryTrainingVariant(task, configText)" in overview_source
-    assert "function formatHistoryPreprocessPrecision(configText)" in overview_source
-    assert "function formatHistoryBlockSwapPrecision(configText)" in overview_source
-    assert "function readConfigString(configText, key)" in overview_source
-    assert "precision_preference" in overview_source
-    assert "mixed_precision" in overview_source
-    assert "preprocess_precision_preference" in overview_source
-    assert "block_swap_transfer_dtype" in overview_source
-    assert "use_loha" in overview_source
-    assert "use_lokr" in overview_source
-    assert "use_chimera_hydra" in overview_source
-    assert "use_timestep_mask" in overview_source
-    assert "hasSnapshot" in overview_source
-    assert "无法生成配置快照" in overview_source
-    assert "replace(/-8gb$/" in overview_source
+    chips_source = _frontend_module_text("js/features/history-detail/config-chips.js")
+    assert "export function formatHistoryTrainingVariant" in chips_source
+    assert "export function formatHistoryPreprocessPrecision" in chips_source
+    assert "export function formatHistoryBlockSwapPrecision" in chips_source
+    assert "export function formatHistoryTrainingPrecision" in chips_source
+    assert "use_lokr" in chips_source
+    assert "preprocess_precision_preference" in chips_source
+    assert "block_swap_transfer_dtype" in chips_source
+    assert "from './config-chips.js?v=module-bootstrap-20260714-stage-dataset5'" in overview_source
+    assert "formatHistoryTrainingVariant(task, payload.config_toml)" in overview
+    # 内联定义应消失
+    assert "function formatHistoryTrainingVariant(task, configText)" not in overview_source
     assert "ctx.format.formatDuration" in overview_source
     assert "muted: taskFinished && ['队列', '续训'].includes(label) && value === '-'" in overview
     assert "'训练精度'" in overview_source

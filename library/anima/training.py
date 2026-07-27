@@ -16,6 +16,7 @@ from PIL import Image
 
 from library.runtime.device import clean_memory_on_device, synchronize_device
 from library import train_util
+from library.datasets.buckets import snap_sample_size
 from library.training.checkpoints import (
     get_epoch_ckpt_name,
     get_remove_epoch_no,
@@ -34,6 +35,26 @@ setup_logging()
 import logging  # noqa: E402
 
 logger = logging.getLogger(__name__)
+
+
+def _ensure_sample_compile_range(dit, network, prompts) -> bool:
+    """Widen the training dynamic-seq compile range to cover these prompts.
+
+    Prompt files are re-read at every sampling event, so a resolution added
+    after startup can fall outside the compiled range. Expanding it here means
+    the preview renders instead of being skipped by the guard in
+    ``_sample_image_inference``. No-op when compile is off or not dynamic-seq.
+    """
+    from library.datasets.buckets import token_counts_for_sample_prompts
+    from library.runtime.harness import ensure_training_compile_seq_range
+
+    return ensure_training_compile_seq_range(
+        dit,
+        network,
+        token_counts_for_sample_prompts(prompts),
+        logger=logger,
+    )
+
 
 _TRAINING_SAMPLE_SAMPLERS = {"euler", "er_sde", "lcm"}
 _LEGACY_TRAINING_SAMPLE_SAMPLERS = {
@@ -964,6 +985,16 @@ def sample_images(
         if hasattr(net, "clear_timestep_mask"):
             net.clear_timestep_mask()
 
+    if use_cached_prompt_snapshot:
+        prompts = [dict(prompt) for prompt in sample_prompts_snapshot]
+    else:
+        prompts = train_util.load_prompts(args.sample_prompts)
+    # Before the block-swap pause below: pause_block_swap() zeroes
+    # blocks_to_swap, and a recompile under that would treat every block as
+    # resident and compile the swapped tail too — silently widening
+    # compile_block_scope="resident" for the rest of the run.
+    _ensure_sample_compile_range(dit, net, prompts)
+
     block_swap_paused = False
     if getattr(args, "disable_block_swap_for_eval", False) and hasattr(
         dit, "pause_block_swap"
@@ -974,10 +1005,6 @@ def sample_images(
     else:
         dit.switch_block_swap_for_inference()
 
-    if use_cached_prompt_snapshot:
-        prompts = [dict(prompt) for prompt in sample_prompts_snapshot]
-    else:
-        prompts = train_util.load_prompts(args.sample_prompts)
     save_dir = os.path.join(args.output_dir, "sample")
     os.makedirs(save_dir, exist_ok=True)
 
@@ -1084,15 +1111,13 @@ def _sample_image_inference(
         torch.manual_seed(seed)
         torch.cuda.manual_seed_all(seed)  # seed all CUDA devices for multi-GPU
 
-    height = max(64, height - height % 16)
-    width = max(64, width - width % 16)
+    width, height = snap_sample_size(width, height)
 
-    # Train-time sampling runs through the same compiled blocks as training. The
-    # compile token budget already covers the prompts present at startup
-    # (train.py::_sample_prompt_token_counts), but prompts are re-read from disk
-    # at every sample event — a resolution added mid-run can fall outside the
-    # dynamic-seq mark_dynamic range and would crash the run with a
-    # ConstraintViolationError (#42). Skip it instead.
+    # Train-time sampling runs through the same compiled blocks as training.
+    # sample_images() widens the compile range before this point when prompt
+    # files gain new resolutions mid-run; this guard remains as the final
+    # no-crash fallback for unusual compile states (a ConstraintViolationError
+    # would otherwise take down the whole run).
     seq_len = (width // 16) * (height // 16)
     seq_range = getattr(dit, "_dynamic_seq_range", None)
     if (
@@ -1102,10 +1127,9 @@ def _sample_image_inference(
     ):
         logger.warning(
             f"Skipping sample prompt at {width}x{height} ({seq_len} tokens): outside "
-            f"the compiled dynamic-seq token range {seq_range}. The compile budget "
-            "covers the training buckets plus the sample prompts present at startup; "
-            "to sample at this resolution, restart training with it in the prompt "
-            "file, lower --w/--h, or disable torch_compile."
+            f"the compiled dynamic-seq token range {seq_range}. Automatic range "
+            "expansion was unavailable for this compile state; lower --w/--h, "
+            "restart training, or disable torch_compile."
         )
         return
 

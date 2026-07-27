@@ -218,7 +218,11 @@ def cmd_vendor_sync(extra):
 
 
 def cmd_export_logs(extra):
-    """Dump TB scalar logs to JSON. RUN=<dir> (default output/logs), ALL=1, JSONL=1."""
+    """Dump TB scalar logs to JSON. RUN=<dir> (default output/logs), ALL=1, JSONL=1.
+
+    For the "where is this run at" digest, prefer ``make run-status`` /
+    ``python tasks.py run-status`` (progress.jsonl), which does not need TB.
+    """
     run_path = os.environ.get("RUN", "output/logs")
     cmd = [PY, "scripts/export_logs_json.py", run_path]
     if os.environ.get("ALL"):
@@ -226,6 +230,18 @@ def cmd_export_logs(extra):
     if os.environ.get("JSONL"):
         cmd.append("--jsonl")
     run([*cmd, *extra])
+
+
+def cmd_run_status(extra):
+    """One-line status for a training run, read from its progress.jsonl.
+
+    ``RUN=<output_name|path>`` picks the run (default: the most recently updated
+    stream under ``output/logs``). Reports step/total, it/s, ETA, last losses and
+    last checkpoint for train.py runs and the bespoke ``make turbo`` loop alike.
+    ``ARGS="--list"`` reports every run; ``ARGS="--json"`` for the raw dict.
+    """
+    target = os.environ.get("RUN")
+    run([PY, "scripts/run_status.py", *([target] if target else []), *extra])
 
 
 def cmd_print_config(extra):

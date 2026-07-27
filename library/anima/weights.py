@@ -20,8 +20,20 @@ import logging  # noqa: E402
 logger = logging.getLogger(__name__)
 
 
+# Official Anima releases ship the same DiT under two state-dict prefixes:
+# base-v1.0 uses ``net.``; aesthetic/turbo/preview releases use ComfyUI's
+# ``model.diffusion_model.``. Key sets are otherwise identical, so prefix
+# stripping is all that stands between those checkpoints and training —
+# load_anima_model raises on unexpected keys, so a missed prefix is a hard
+# load failure (685 missing + 685 unexpected), not a silent degradation.
+_DIT_PREFIXES = ("net.", "model.diffusion_model.")
+
+
 def _strip_net_prefix(key: str) -> str:
-    return key[len("net.") :] if key.startswith("net.") else key
+    for prefix in _DIT_PREFIXES:
+        if key.startswith(prefix):
+            return key[len(prefix) :]
+    return key
 
 
 # Regex patterns for fused projection key remapping (compiled once)
@@ -277,10 +289,19 @@ def load_llm_adapter(
 
     if any(k.startswith("llm_adapter.") for k in keys):
         prefix = "llm_adapter."
-    elif any(k.startswith("net.llm_adapter.") for k in keys):
-        prefix = "net.llm_adapter."
     else:
-        prefix = None  # adapter-only weights file (no prefix)
+        # Prefixed DiT checkpoints: net.llm_adapter. or
+        # model.diffusion_model.llm_adapter. (see _DIT_PREFIXES). Missing one
+        # here falls through to prefix=None, which treats the whole DiT as
+        # adapter weights — no exception, just a silently untrained adapter.
+        prefix = next(
+            (
+                c
+                for c in (p + "llm_adapter." for p in _DIT_PREFIXES)
+                if any(k.startswith(c) for k in keys)
+            ),
+            None,  # adapter-only weights file (no prefix)
+        )
 
     state_dict: Dict[str, torch.Tensor] = {}
     with safe_open(weight_path, framework="pt", device="cpu") as f:

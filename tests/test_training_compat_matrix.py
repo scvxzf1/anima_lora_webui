@@ -164,6 +164,55 @@ def test_matrix_accepts_convrot_with_bf16_transfer() -> None:
     assert "invalid_base_compute" not in _codes(result.errors)
 
 
+def test_matrix_warns_convrot_attn_flash_compile_combo() -> None:
+    """Four-lock path: scope covering attn + flash + compile + w8a16.
+
+    Informational only — flash dispatcher hard-casts; do not hard-error.
+    """
+    hit = check_training_compat(
+        {
+            "base_compute": "w8a16_convrot",
+            "convrot_scope": "all",
+            "attn_mode": "flash",
+            "torch_compile": True,
+            "block_swap_transfer_dtype": "bf16",
+        }
+    )
+    miss_mlp = check_training_compat(
+        {
+            "base_compute": "w8a16_convrot",
+            "convrot_scope": "mlp",
+            "attn_mode": "flash",
+            "torch_compile": True,
+            "block_swap_transfer_dtype": "bf16",
+        }
+    )
+    miss_no_compile = check_training_compat(
+        {
+            "base_compute": "w8a16_convrot",
+            "convrot_scope": "all",
+            "attn_mode": "flash",
+            "torch_compile": False,
+            "block_swap_transfer_dtype": "bf16",
+        }
+    )
+    miss_self_qkv = check_training_compat(
+        {
+            "base_compute": "w8a8_convrot",
+            "convrot_scope": "self_attn_qkv",
+            "attn_mode": "flash",
+            "torch_compile": True,
+            "block_swap_transfer_dtype": "bf16",
+        }
+    )
+
+    assert hit.ok
+    assert "convrot_attn_flash_compile_dtype" in _codes(hit.warnings)
+    assert "convrot_attn_flash_compile_dtype" not in _codes(miss_mlp.warnings)
+    assert "convrot_attn_flash_compile_dtype" not in _codes(miss_no_compile.warnings)
+    assert "convrot_attn_flash_compile_dtype" in _codes(miss_self_qkv.warnings)
+
+
 class _CacheableDataset:
     datasets: list[object] = []
 

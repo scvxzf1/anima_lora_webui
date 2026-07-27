@@ -1,0 +1,87 @@
+# Cross-image SUBJECT descriptor — Phase 2 of the directedit_ec line
+# (project/directedit_ec/initial_proposal.md, project/directedit_ec/roadmap.md).
+# Same EasyControlNetwork as inpaint/colorize; only the data pairing changes:
+# cond = image A of a character, target = image B of the SAME character, mined
+# from the typed caption index. Cross-image pairs force content-based
+# (associative) retrieval — positional copying cannot satisfy the loss.
+#
+# Pipeline (both steps are CPU-only symlink work — no encode pass; latents/TE
+# are reused from the shared LoRA cache):
+#   make caption-index                                  # if the index is stale
+#   make easycontrol-staging    EASYADAPTER=subject     # mine pairs + staging/ + cond/
+#   make easycontrol-preprocess EASYADAPTER=subject     # rebuild cond/ only (idempotent)
+#   make easycontrol            EASYADAPTER=subject     # train (~inpaint scale)
+# Gate (roadmap): re-run project/directedit_ec/bench/run_bench.py
+#   --ec_weight output/ckpt/anima_easycontrol_subject.safetensors
+# → (a) b_offset sweet-spot width ≥ 2 units; (b) ≥ vinj_t6 parity on the 1b
+# geometry edit the inpaint prior failed.
+
+name = "subject"
+
+# Mining knobs (CLI flags of easycontrol_adapters/tools/subject_pairs.py win).
+[staging]
+caption_index = 'post_image_dataset/captions/caption_index.json'
+resized_dir = 'post_image_dataset/resized'
+lora_cache_dir = 'post_image_dataset/lora'
+min_group = 2            # a character needs ≥2 solo images to pair at all
+max_per_character = 16   # cap targets/character (top group is 47× miku otherwise)
+solo_only = true         # 1girl/1boy only — unambiguous character↔pixels binding
+seed = 42
+
+# Training overrides for `make easycontrol EASYADAPTER=subject`, folded in as
+# CLI on top of configs/easycontrol/easycontrol.toml (--dataset_config is
+# injected automatically). Anti-shortcut knobs per the Phase-2 proposal:
+#   cond_res_scale 0.5  — starves the positional shortcut (and is faster);
+#   easycontrol_drop_p 0.05 + b_cond_init -8 — a softer learned operating
+#   point than inpaint's all-in -6 (the cliff this phase exists to widen).
+[training]
+network_dim = 32
+network_alpha = 32
+network_args = [
+    "b_cond_init=-4.0",
+    "cond_scale=1.0",
+    "apply_ffn_lora=1",
+    "cond_res_scale=1.0",
+]
+output_name = "anima_easycontrol_subjectv2"
+masked_loss = false
+learning_rate = 2e-5
+# Inpaint's recipe was 4 epochs over the ~3k-image corpus; the pair set is
+# ~1.1k targets, so 8 epochs lands near the same optimizer-step count.
+max_train_epochs = 8
+save_every_n_epochs = 4
+checkpointing_epochs = 4
+easycontrol_drop_p = 0.05
+easycontrol_cond_noise_max = 0.0
+# Text = FULL captions of the target (the prompt keeps owning layout/pose; the
+# cond should own identity/appearance only). Shuffle variants ride the shared
+# LoRA TE cache.
+caption_dropout_rate = 0.1
+use_shuffled_caption_variants = true
+blocks_to_swap = 0
+
+# === generated dataset blueprint (rewritten by the miner; do not edit below) ===
+# Cross-image subject pairs wired as an EasyControl control task. staging/ holds
+# symlinks to the resized corpus for every mined TARGET; pairs.json (sibling of
+# staging/) records its cond partner (another image of the same character).
+#
+# Roles (EasyControl: cache_dir = denoising target, cond_cache_dir = condition):
+#   target = image B (+ its full caption — the prompt keeps owning layout/pose)
+#   cond   = image A of the same character, filed in cond/ under B's stem at
+#            A's bucket (cond≠target shapes are supported downstream).
+# So the adapter learns: given ANOTHER image of the subject as reference,
+# generate this one — retrieval that positional copying cannot satisfy.
+
+[general]
+caption_extension = '.txt'
+
+[[datasets]]
+batch_size = 1
+
+  [[datasets.subsets]]
+  image_dir = 'post_image_dataset/easycontrol/{name}/staging'
+  cache_dir = 'post_image_dataset/lora'                             # shared corpus cache: target latents + TE/PE reused as-is
+  cond_cache_dir = 'post_image_dataset/easycontrol/{name}/cond'   # condition: the partner's latent, keyed by the target stem
+  recursive = true                 # tree is nested <artist>/<stem>; the shared cache mirrors it
+  flip_aug = false                 # cond latents have no flipped variant
+  num_repeats = 1
