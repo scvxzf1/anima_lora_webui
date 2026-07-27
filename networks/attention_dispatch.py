@@ -63,6 +63,59 @@ def sdpa_backend_context(attn_mode: Optional[str]):
     return nullcontext()
 
 
+_FLASH_HALF_DTYPES = (torch.float16, torch.bfloat16)
+
+
+def _preferred_flash_dtype(*tensors: torch.Tensor) -> torch.dtype:
+    """Pick fp16/bf16 for FlashAttention when inputs may be float32.
+
+    Preference order:
+    1. Any already-half Q/K/V dtype (keeps mixed stacks consistent)
+    2. Active autocast GPU dtype when it is half
+    3. bfloat16 (default mixed-precision training target)
+    """
+    for tensor in tensors:
+        if tensor is not None and tensor.dtype in _FLASH_HALF_DTYPES:
+            return tensor.dtype
+    if torch.is_autocast_enabled():
+        # Prefer the public helper; fall back for older torch builds.
+        get_dtype = getattr(torch, "get_autocast_dtype", None)
+        if get_dtype is not None:
+            try:
+                autocast_dtype = get_dtype("cuda")
+            except (TypeError, RuntimeError, ValueError):
+                autocast_dtype = None
+        else:
+            get_gpu = getattr(torch, "get_autocast_gpu_dtype", None)
+            autocast_dtype = get_gpu() if get_gpu is not None else None
+        if autocast_dtype in _FLASH_HALF_DTYPES:
+            return autocast_dtype
+    return torch.bfloat16
+
+
+def _cast_qkv_for_flash(
+    q: torch.Tensor,
+    k: torch.Tensor,
+    v: torch.Tensor,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Unconditionally cast Q/K/V to fp16/bf16 before FlashAttention.
+
+    FlashAttention kernels reject float32. Under ``torch.compile`` + ConvRot
+    ``scope=all`` the inductor graph can materialize Q/K/V as float32 even when
+    training mixed_precision is bf16, and the weak Attention.forward guard
+    (cast only when q.dtype != v.dtype *and* autocast is on) does not fire.
+    Casting here is the safety net for that four-lock combo.
+    """
+    target = _preferred_flash_dtype(q, k, v)
+    if q.dtype != target:
+        q = q.to(dtype=target)
+    if k.dtype != target:
+        k = k.to(dtype=target)
+    if v.dtype != target:
+        v = v.to(dtype=target)
+    return q, k, v
+
+
 @dataclass
 class AttentionParams:
     attn_mode: Optional[str] = None
@@ -332,6 +385,9 @@ def dispatch_attention(
             x = x.view(batch_size, seqlen, x.shape[-2], x.shape[-1])  # B, L, H, D
 
     elif attn_params.attn_mode == "flash":
+        # Hard half cast: FlashAttention rejects fp32. Required when compile
+        # materializes Q/K/V as float32 (e.g. w8a16_convrot scope=all).
+        q, k, v = _cast_qkv_for_flash(q, k, v)
         if attn_params.cu_seqlens is None:  # all tokens are valid
             x = flash_attn_func(q, k, v, drop_rate, softmax_scale=scale)  # B, L, H, D
             del q, k, v
@@ -421,6 +477,7 @@ def attention_with_lse(
             f"flash-attn installed (got attn_mode={attn_mode!r}, "
             f"flash_attn={'installed' if flash_attn is not None else 'missing'})."
         )
+    q, k, v = _cast_qkv_for_flash(q, k, v)
     out, lse, _ = flash_attn_func(
         q, k, v, drop_rate, softmax_scale=softmax_scale, return_attn_probs=True
     )

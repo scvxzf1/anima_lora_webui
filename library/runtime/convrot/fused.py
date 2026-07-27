@@ -163,6 +163,16 @@ class _FusedW8A16Fn(torch.autograd.Function):
         x_work = x.to(dtype=compute_dtype) if x.dtype != compute_dtype else x
         x_rot = _rotate_acts(x_work, int(group_size), hadamard=hadamard)
         y = _w8a16_linear_core(x_rot, w_q, w_scale)
+        # Prefer returning act dtype so LoRA ``org + delta`` stays half under
+        # torch.compile (avoids float32 QKV into FlashAttention). When input is
+        # already non-half (rare host path), keep compute_dtype (bf16 on CUDA).
+        out_dtype = (
+            x.dtype
+            if x.is_floating_point() and x.dtype in (torch.float16, torch.bfloat16)
+            else compute_dtype
+        )
+        if y.dtype != out_dtype:
+            y = y.to(dtype=out_dtype)
         ctx.group_size = int(group_size)
         ctx.hadamard = hadamard
         ctx.w_q = w_q
@@ -225,6 +235,13 @@ class _FusedW8A8Fn(torch.autograd.Function):
                 weight_layout=layout,
                 out_dtype=compute_dtype,
             )
+        out_dtype = (
+            x.dtype
+            if x.is_floating_point() and x.dtype in (torch.float16, torch.bfloat16)
+            else compute_dtype
+        )
+        if y.dtype != out_dtype:
+            y = y.to(dtype=out_dtype)
         ctx.group_size = int(group_size)
         ctx.hadamard = hadamard
         ctx.compute_dtype = compute_dtype

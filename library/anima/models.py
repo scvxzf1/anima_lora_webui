@@ -502,8 +502,13 @@ class RMSNorm(torch.nn.Module):
         return x * torch.rsqrt(x.pow(2).mean(-1, keepdim=True) + self.eps)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        output = self._norm(x.float())
-        return (output * self.weight).to(x.dtype)
+        # Variance in fp32 for numerical stability, then immediately restore
+        # ``x.dtype`` *before* the affine multiply so inductor cannot keep a
+        # float32 Q/K path into FlashAttention (compile + ConvRot scope=all).
+        # Equivalent to ``(self._norm(x.float()) * weight).to(x.dtype)`` up to
+        # half-precision rounding on the final mul.
+        output = self._norm(x.float()).to(dtype=x.dtype)
+        return output * self.weight.to(dtype=x.dtype)
 
 
 class GPT2FeedForward(nn.Module):
@@ -651,14 +656,36 @@ class Attention(nn.Module):
         rope_cos_sin: Optional[tuple[torch.Tensor, torch.Tensor]] = None,
     ) -> torch.Tensor:
         q, k, v = self.compute_qkv(x, context, rope_cos_sin=rope_cos_sin)
-        if q.dtype != v.dtype:
-            if (
-                not attn_params.supports_fp32 or attn_params.requires_same_dtype
-            ) and torch.is_autocast_enabled():
-                # FlashAttention requires fp16/bf16, xformers require same dtype; only cast when autocast is active.
-                target_dtype = v.dtype  # v has fp16/bf16 dtype
-                q = q.to(target_dtype)
-                k = k.to(target_dtype)
+        # Align Q/K/V dtypes for backends that reject mixed or fp32 stacks.
+        # Flash hard-cast also lives in attention_dispatch (compile can still
+        # promote all three to fp32); this covers mixed-dtype before dispatch.
+        if not attn_params.supports_fp32 or attn_params.requires_same_dtype:
+            half = (torch.float16, torch.bfloat16)
+            if q.dtype != v.dtype or k.dtype != v.dtype or q.dtype not in half:
+                if v.dtype in half:
+                    target_dtype = v.dtype
+                elif torch.is_autocast_enabled():
+                    get_dtype = getattr(torch, "get_autocast_dtype", None)
+                    if get_dtype is not None:
+                        try:
+                            target_dtype = get_dtype("cuda")
+                        except (TypeError, RuntimeError, ValueError):
+                            target_dtype = torch.bfloat16
+                    else:
+                        get_gpu = getattr(torch, "get_autocast_gpu_dtype", None)
+                        target_dtype = (
+                            get_gpu() if get_gpu is not None else torch.bfloat16
+                        )
+                    if target_dtype not in half:
+                        target_dtype = torch.bfloat16
+                else:
+                    target_dtype = torch.bfloat16
+                if q.dtype != target_dtype:
+                    q = q.to(dtype=target_dtype)
+                if k.dtype != target_dtype:
+                    k = k.to(dtype=target_dtype)
+                if v.dtype != target_dtype:
+                    v = v.to(dtype=target_dtype)
         # return self.compute_attention(q, k, v)
         qkv = [q, k, v]
         del q, k, v

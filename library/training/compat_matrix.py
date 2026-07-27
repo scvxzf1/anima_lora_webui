@@ -251,6 +251,54 @@ def check_training_compat(config: Mapping[str, Any] | object) -> TrainingCompatR
             "w8a16_convrot | w8a8_convrot",
         )
 
+    # ConvRot on attention linears + flash + torch.compile can materialize
+    # float32 Q/K/V into FlashAttention (FA only accepts fp16/bf16). The
+    # dispatcher now hard-casts at the flash entry, so this is informational
+    # rather than a hard block — still surface so operators know the combo is
+    # on the known-risk path.
+    attn_mode = str(_get(config, "attn_mode", "") or "").strip().lower()
+    convrot_scope = str(_get(config, "convrot_scope", "mlp") or "mlp").strip().lower()
+    convrot_touches_attn = False
+    if convrot_active:
+        scope_tokens = {item.strip() for item in convrot_scope.split(",") if item.strip()}
+        attn_scope_tokens = {
+            "all",
+            "attention",
+            "attn",
+            "self",
+            "self_attn",
+            "self_attn_qkv",
+            "self_qkv",
+            "self_attn_out",
+            "self_out",
+            "cross",
+            "cross_attn",
+            "cross_attn_q",
+            "cross_q",
+            "cross_attn_kv",
+            "cross_kv",
+            "cross_attn_out",
+            "cross_out",
+            "attention_out",
+            "attn_out",
+        }
+        convrot_touches_attn = bool(scope_tokens & attn_scope_tokens)
+    if (
+        convrot_active
+        and convrot_touches_attn
+        and attn_mode in {"flash", "flash4"}
+        and torch_compile
+    ):
+        out.warning(
+            "convrot_attn_flash_compile_dtype",
+            "base_compute",
+            "base_compute ConvRot with convrot_scope covering attention "
+            f"({convrot_scope!r}) + attn_mode={attn_mode!r} + torch_compile can "
+            "materialize float32 Q/K/V; FlashAttention only accepts fp16/bf16. "
+            "The flash dispatcher hard-casts at entry as a safety net. Prefer "
+            "convrot_scope=mlp to avoid the cast tax if attention quant is not required.",
+        )
+
     if block_swap_enabled:
         if torch_compile and dynamo_backend == "cudagraphs":
             out.warning(
