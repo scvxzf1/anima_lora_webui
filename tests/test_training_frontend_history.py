@@ -266,6 +266,39 @@ def test_history_task_dialog_busy_state_uses_toml_state() -> None:
     assert "sharedDialogBusy" not in dialog_section.replace("tomlState.sharedDialogBusy", "")
 
 
+def test_history_manager_extra_filter_controls_are_wired() -> None:
+    html = INDEX_HTML.read_text(encoding="utf-8")
+    assert 'id="history-filter-training-variant"' in html
+    assert 'id="history-filter-preprocess-precision"' in html
+    assert 'id="history-filter-block-swap-precision"' in html
+    assert "<span>训练变体</span>" in html
+    assert "<span>预处理精度</span>" in html
+    assert "<span>块交换精度</span>" in html
+
+    state_src = _frontend_module_text("js/features/anima-app/state/history-state.js")
+    assert "trainingVariant: 'all'" in state_src
+    assert "preprocessPrecision: 'all'" in state_src
+    assert "blockSwapPrecision: 'all'" in state_src
+
+    setup = _frontend_module_text("js/features/app-shell/event-listeners-setup.js")
+    assert "'history-filter-training-variant': 'trainingVariant'" in setup
+    assert "'history-filter-preprocess-precision': 'preprocessPrecision'" in setup
+    assert "'history-filter-block-swap-precision': 'blockSwapPrecision'" in setup
+
+    coll = _frontend_module_text("js/features/history-list/task-collections.js")
+    assert "'history-filter-training-variant': 'trainingVariant'" in coll
+
+    contract = _frontend_module_text("js/features/app-shell/event-listeners-contract.js")
+    assert "'history-filter-training-variant'" in contract
+    assert "'history-filter-preprocess-precision'" in contract
+    assert "'history-filter-block-swap-precision'" in contract
+
+    tips = _frontend_module_text("js/features/app-shell/beginner-tooltips.js")
+    assert "'history-filter-training-variant'" in tips
+    assert "'history-filter-preprocess-precision'" in tips
+    assert "'history-filter-block-swap-precision'" in tips
+
+
 def test_history_manager_frontend_hooks_are_present() -> None:
     source = APP_JS.read_text(encoding="utf-8")
     legacy_source = _anima_app_container_text()
