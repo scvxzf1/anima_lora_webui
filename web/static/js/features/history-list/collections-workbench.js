@@ -480,6 +480,8 @@ export function applyHistoryStatFilter(state) {
         trainingVariant: 'all',
         preprocessPrecision: 'all',
         blockSwapPrecision: 'all',
+        baseCompute: 'all',
+        precisionPreference: 'all',
         sort: historyState.historyManagerFilters.sort || 'newest',
     };
     if (state === 'training' || state === 'preprocess') {
@@ -507,6 +509,8 @@ export function historyStatFilterIsActive(state) {
         (historyState.historyManagerFilters.trainingVariant || 'all') === 'all' &&
         (historyState.historyManagerFilters.preprocessPrecision || 'all') === 'all' &&
         (historyState.historyManagerFilters.blockSwapPrecision || 'all') === 'all' &&
+        (historyState.historyManagerFilters.baseCompute || 'all') === 'all' &&
+        (historyState.historyManagerFilters.precisionPreference || 'all') === 'all' &&
         (state === 'archived'
             ? historyState.historyManagerFilters.archived === 'archived'
             : (historyState.historyManagerFilters.archived || 'active') === 'all');
@@ -616,6 +620,16 @@ export function historyTaskMatchesChipFilters(task, filters = {}) {
         const value = String(task?.block_swap_precision || '').trim().toLowerCase();
         if (value !== blockSwapPrecision) return false;
     }
+    const baseCompute = filters.baseCompute || 'all';
+    if (baseCompute !== 'all') {
+        const value = String(task?.base_compute || '').trim().toLowerCase();
+        if (value !== baseCompute) return false;
+    }
+    const precisionPreference = filters.precisionPreference || 'all';
+    if (precisionPreference !== 'all') {
+        const value = String(task?.precision_preference || '').trim().toLowerCase();
+        if (value !== precisionPreference) return false;
+    }
     return true;
 }
 
@@ -633,6 +647,8 @@ export function historyTaskSearchText(task) {
         task.training_variant,
         task.preprocess_precision,
         task.block_swap_precision,
+        task.base_compute,
+        task.precision_preference,
         task.preset,
         task.run_dir,
         task.training_output_dir,

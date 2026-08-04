@@ -88,6 +88,8 @@ export const SETUP_EVENT_DOM_CONTRACT = Object.freeze({
         'history-filter-training-variant',
         'history-filter-preprocess-precision',
         'history-filter-block-swap-precision',
+        'history-filter-base-compute',
+        'history-filter-precision-preference',
         'history-sort-mode',
         'history-collection-search',
         'history-config-group-search',

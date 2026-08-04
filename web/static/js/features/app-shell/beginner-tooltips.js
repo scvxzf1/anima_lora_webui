@@ -118,6 +118,8 @@ export function installBeginnerTooltips() {
         'history-filter-training-variant': '按历史详情概览中的训练变体（方法族，如 lokr / lora）筛选。',
         'history-filter-preprocess-precision': '按预处理精度偏好（preprocess_precision_preference）筛选。',
         'history-filter-block-swap-precision': '按块交换传输精度（block_swap_transfer_dtype）筛选。',
+        'history-filter-base-compute': '按底模计算路径（base_compute，如 bf16 / w8a16_convrot）筛选。',
+        'history-filter-precision-preference': '按训练精度倾向（由表单精度倾向反推：bf16 / fp16 / fp32）筛选。',
         'history-sort-mode': '调整历史任务排序方式。',
         'btn-refresh-history-view': '重新读取当前正在查看的历史日志和 Loss；适合训练仍在写日志时手动更新。',
         'btn-merge-config-group-history': '按同一个配置文件分组合并查看训练日志和 Loss 曲线；预处理任务不会参与合并。',

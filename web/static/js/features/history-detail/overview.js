@@ -12,7 +12,9 @@ import {
     formatHistoryTrainingVariant,
     formatHistoryPreprocessPrecision,
     formatHistoryBlockSwapPrecision,
-} from './config-chips.js?v=module-bootstrap-20260714-stage-dataset5';
+    formatHistoryBaseCompute,
+    formatHistoryPrecisionPreference,
+} from './config-chips.js?v=module-bootstrap-20260728-precision-pref';
 
 export function createHistoryOverviewRenderer({ ctx, state, deps, renderHistoryDetailResume }) {
     const {
@@ -70,6 +72,8 @@ export function createHistoryOverviewRenderer({ ctx, state, deps, renderHistoryD
                 ['训练变体', formatHistoryTrainingVariant(task, payload.config_toml), 'chip'],
                 ['预处理精度', formatHistoryPreprocessPrecision(payload.config_toml), 'chip'],
                 ['块交换精度', formatHistoryBlockSwapPrecision(payload.config_toml), 'chip'],
+                ['底模计算路径', formatHistoryBaseCompute(payload.config_toml), 'chip'],
+                ['精度倾向', formatHistoryPrecisionPreference(payload.config_toml), 'chip'],
             ];
         for (const [label, value, iconName] of rows) stats.appendChild(renderHistoryStat(label, value, iconName));
 
@@ -206,6 +210,8 @@ export function createHistoryOverviewRenderer({ ctx, state, deps, renderHistoryD
             '训练变体',
             '预处理精度',
             '块交换精度',
+            '底模计算路径',
+            '精度倾向',
         ]);
         if (primaryLabels.has(text)) classes.push('is-primary');
         if (secondaryLabels.has(text)) classes.push('is-secondary');
@@ -221,7 +227,14 @@ export function createHistoryOverviewRenderer({ ctx, state, deps, renderHistoryD
             classes.push('stat-time');
         } else if (text.includes('步')) {
             classes.push('stat-steps');
-        } else if (text === '训练精度' || text === '预处理精度' || text === '块交换精度' || text === '训练变体') {
+        } else if (
+            text === '训练精度'
+            || text === '预处理精度'
+            || text === '块交换精度'
+            || text === '训练变体'
+            || text === '底模计算路径'
+            || text === '精度倾向'
+        ) {
             classes.push('stat-config');
         }
         return classes.filter(Boolean);

@@ -19,6 +19,8 @@ export function createHistoryState() {
             trainingVariant: 'all',
             preprocessPrecision: 'all',
             blockSwapPrecision: 'all',
+            baseCompute: 'all',
+            precisionPreference: 'all',
             sort: 'newest',
         },
         historyCollectionWorkbenchTarget: '',

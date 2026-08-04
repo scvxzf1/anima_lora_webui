@@ -336,6 +336,8 @@ export function syncHistoryFilterControls() {
         'history-filter-training-variant': 'trainingVariant',
         'history-filter-preprocess-precision': 'preprocessPrecision',
         'history-filter-block-swap-precision': 'blockSwapPrecision',
+        'history-filter-base-compute': 'baseCompute',
+        'history-filter-precision-preference': 'precisionPreference',
         'history-sort-mode': 'sort',
     };
     for (const [id, key] of Object.entries(controls)) {

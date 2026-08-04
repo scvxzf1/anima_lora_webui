@@ -271,32 +271,46 @@ def test_history_manager_extra_filter_controls_are_wired() -> None:
     assert 'id="history-filter-training-variant"' in html
     assert 'id="history-filter-preprocess-precision"' in html
     assert 'id="history-filter-block-swap-precision"' in html
+    assert 'id="history-filter-base-compute"' in html
+    assert 'id="history-filter-precision-preference"' in html
     assert "<span>训练变体</span>" in html
     assert "<span>预处理精度</span>" in html
     assert "<span>块交换精度</span>" in html
+    assert "<span>底模计算路径</span>" in html
+    assert "<span>精度倾向</span>" in html
 
     state_src = _frontend_module_text("js/features/anima-app/state/history-state.js")
     assert "trainingVariant: 'all'" in state_src
     assert "preprocessPrecision: 'all'" in state_src
     assert "blockSwapPrecision: 'all'" in state_src
+    assert "baseCompute: 'all'" in state_src
+    assert "precisionPreference: 'all'" in state_src
 
     setup = _frontend_module_text("js/features/app-shell/event-listeners-setup.js")
     assert "'history-filter-training-variant': 'trainingVariant'" in setup
     assert "'history-filter-preprocess-precision': 'preprocessPrecision'" in setup
     assert "'history-filter-block-swap-precision': 'blockSwapPrecision'" in setup
+    assert "'history-filter-base-compute': 'baseCompute'" in setup
+    assert "'history-filter-precision-preference': 'precisionPreference'" in setup
 
     coll = _frontend_module_text("js/features/history-list/task-collections.js")
     assert "'history-filter-training-variant': 'trainingVariant'" in coll
+    assert "'history-filter-base-compute': 'baseCompute'" in coll
+    assert "'history-filter-precision-preference': 'precisionPreference'" in coll
 
     contract = _frontend_module_text("js/features/app-shell/event-listeners-contract.js")
     assert "'history-filter-training-variant'" in contract
     assert "'history-filter-preprocess-precision'" in contract
     assert "'history-filter-block-swap-precision'" in contract
+    assert "'history-filter-base-compute'" in contract
+    assert "'history-filter-precision-preference'" in contract
 
     tips = _frontend_module_text("js/features/app-shell/beginner-tooltips.js")
     assert "'history-filter-training-variant'" in tips
     assert "'history-filter-preprocess-precision'" in tips
     assert "'history-filter-block-swap-precision'" in tips
+    assert "'history-filter-base-compute'" in tips
+    assert "'history-filter-precision-preference'" in tips
 
 
 def test_history_manager_base_filter_includes_config_chip_fields() -> None:
@@ -308,24 +322,34 @@ def test_history_manager_base_filter_includes_config_chip_fields() -> None:
     assert "trainingVariant" in chip
     assert "preprocessPrecision" in chip
     assert "blockSwapPrecision" in chip
+    assert "baseCompute" in chip
+    assert "precisionPreference" in chip
     assert "training_variant" in chip
     assert "preprocess_precision" in chip
     assert "block_swap_precision" in chip
+    assert "base_compute" in chip
+    assert "precision_preference" in chip
 
     apply = _section(src, "export function applyHistoryStatFilter", "export function historyStatFilterIsActive")
     assert "trainingVariant: 'all'" in apply
     assert "preprocessPrecision: 'all'" in apply
     assert "blockSwapPrecision: 'all'" in apply
+    assert "baseCompute: 'all'" in apply
+    assert "precisionPreference: 'all'" in apply
 
     active = _section(src, "export function historyStatFilterIsActive", "export function historyManagerFilteredTasks")
     assert "trainingVariant" in active
     assert "preprocessPrecision" in active
     assert "blockSwapPrecision" in active
+    assert "baseCompute" in active
+    assert "precisionPreference" in active
 
     search = _section(src, "export function historyTaskSearchText", "export function historyTaskMatchesCollectionSearch")
     assert "task.training_variant" in search
     assert "task.preprocess_precision" in search
     assert "task.block_swap_precision" in search
+    assert "task.base_compute" in search
+    assert "task.precision_preference" in search
 
 
 def test_history_manager_frontend_hooks_are_present() -> None:
@@ -1449,6 +1473,8 @@ def test_history_detail_overview_uses_full_copyable_paths_and_resume_weights() -
     assert "['训练变体', formatHistoryTrainingVariant(task, payload.config_toml), 'chip']" in overview
     assert "['预处理精度', formatHistoryPreprocessPrecision(payload.config_toml), 'chip']" in overview
     assert "['块交换精度', formatHistoryBlockSwapPrecision(payload.config_toml), 'chip']" in overview
+    assert "['底模计算路径', formatHistoryBaseCompute(payload.config_toml), 'chip']" in overview
+    assert "['精度倾向', formatHistoryPrecisionPreference(payload.config_toml), 'chip']" in overview
     assert "function formatHistoryAverageSpeed(record)" in overview_source
     assert "function formatHistoryTaskDuration(record)" in overview_source
     chips_source = _frontend_module_text("js/features/history-detail/config-chips.js")
@@ -1456,10 +1482,17 @@ def test_history_detail_overview_uses_full_copyable_paths_and_resume_weights() -
     assert "export function formatHistoryPreprocessPrecision" in chips_source
     assert "export function formatHistoryBlockSwapPrecision" in chips_source
     assert "export function formatHistoryTrainingPrecision" in chips_source
+    assert "export function formatHistoryBaseCompute" in chips_source
+    assert "export function formatHistoryPrecisionPreference" in chips_source
     assert "use_lokr" in chips_source
     assert "preprocess_precision_preference" in chips_source
     assert "block_swap_transfer_dtype" in chips_source
-    assert "from './config-chips.js?v=module-bootstrap-20260714-stage-dataset5'" in overview_source
+    assert "base_compute" in chips_source
+    assert "precision_preference" in chips_source
+    # Snapshot never stores precision_preference; rebuild like the form UI.
+    assert "mixedPrecision === 'no') return 'fp32'" in chips_source
+    assert "mixedPrecision === 'fp16' || readConfigBool(configText, 'full_fp16')" in chips_source
+    assert "from './config-chips.js?v=module-bootstrap-20260728-precision-pref'" in overview_source
     assert "formatHistoryTrainingVariant(task, payload.config_toml)" in overview
     # 内联定义应消失
     assert "function formatHistoryTrainingVariant(task, configText)" not in overview_source
@@ -1469,6 +1502,9 @@ def test_history_detail_overview_uses_full_copyable_paths_and_resume_weights() -
     assert "'训练变体'" in overview_source
     assert "'预处理精度'" in overview_source
     assert "'块交换精度'" in overview_source
+    assert "'底模计算路径'" in overview_source
+    assert "'精度倾向'" in overview_source
+    assert "repeat(6, minmax(96px, 1fr))" in css
     assert "section.classList.toggle('is-complete', finished);" in progress
     assert "historyCurveStatGroup('速度组'" in curve_index_source
     assert "['平均速度', formatHistoryAverageSpeed(task)]" in curve_index_source

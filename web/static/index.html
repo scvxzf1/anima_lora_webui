@@ -500,6 +500,24 @@
                                 </select>
                             </label>
                             <label>
+                                <span>底模计算路径</span>
+                                <select id="history-filter-base-compute">
+                                    <option value="all">全部</option>
+                                    <option value="bf16">bf16</option>
+                                    <option value="w8a16_convrot">w8a16_convrot</option>
+                                    <option value="w8a8_convrot">w8a8_convrot</option>
+                                </select>
+                            </label>
+                            <label>
+                                <span>精度倾向</span>
+                                <select id="history-filter-precision-preference">
+                                    <option value="all">全部</option>
+                                    <option value="bf16">bf16</option>
+                                    <option value="fp16">fp16</option>
+                                    <option value="fp32">fp32</option>
+                                </select>
+                            </label>
+                            <label>
                                 <span>排序</span>
                                 <select id="history-sort-mode">
                                     <option value="newest">最新优先</option>

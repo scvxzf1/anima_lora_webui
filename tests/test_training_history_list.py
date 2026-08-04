@@ -610,6 +610,7 @@ def test_history_summary_includes_config_chip_fields_from_snapshot(tmp_path, mon
             'preprocess_precision_preference = "bf16"',
             'block_swap_transfer_dtype = "fp8_e4m3"',
             'mixed_precision = "bf16"',
+            'base_compute = "w8a16_convrot"',
         ]
     ) + "\n"
     task_dir = _write_group_task(
@@ -628,6 +629,8 @@ def test_history_summary_includes_config_chip_fields_from_snapshot(tmp_path, mon
     assert summary["training_variant"] == "lokr"
     assert summary["preprocess_precision"] == "bf16"
     assert summary["block_swap_precision"] == "fp8_e4m3"
+    assert summary["base_compute"] == "w8a16_convrot"
+    assert summary["precision_preference"] == "bf16"
     # 配置 stem 仍是 variant，不能被 chip 覆盖
     assert summary["variant"] == "okkotsu_goddess_demo"
 
@@ -647,6 +650,8 @@ def test_history_summary_config_chips_empty_without_snapshot(tmp_path, monkeypat
     assert summary["training_variant"] == ""
     assert summary["preprocess_precision"] == ""
     assert summary["block_swap_precision"] == ""
+    assert summary["base_compute"] == ""
+    assert summary["precision_preference"] == ""
 
 
 def test_history_config_chips_hydralora_and_tlora_from_text():
@@ -670,3 +675,28 @@ def test_history_config_chips_hydralora_and_tlora_from_text():
     )
     assert chimera["training_variant"] == "chimera"
 
+
+def test_history_config_chips_base_compute_and_precision_preference_from_text():
+    from web.services.training.history_config_chips import history_config_chips_from_snapshot_text
+
+    chips = history_config_chips_from_snapshot_text(
+        "\n".join(
+            [
+                'base_compute = "w8a8_convrot"',
+                'mixed_precision = "no"',
+                'preprocess_precision_preference = "fp16"',
+            ]
+        )
+        + "\n",
+        variant="lora",
+    )
+    assert chips["base_compute"] == "w8a8_convrot"
+    assert chips["precision_preference"] == "fp32"
+    assert chips["preprocess_precision"] == "fp16"
+
+    fp16 = history_config_chips_from_snapshot_text(
+        'mixed_precision = "fp16"\nfull_fp16 = true\n',
+        variant="lora",
+    )
+    assert fp16["precision_preference"] == "fp16"
+    assert fp16["base_compute"] == ""

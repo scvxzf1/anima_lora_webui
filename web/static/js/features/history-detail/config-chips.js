@@ -36,6 +36,31 @@ export function formatHistoryBlockSwapPrecision(configText) {
     return value ? value.toLowerCase() : '-';
 }
 
+export function formatHistoryBaseCompute(configText) {
+    const value = readConfigString(configText, 'base_compute');
+    return value ? value.toLowerCase() : '-';
+}
+
+export function formatHistoryPrecisionPreference(configText) {
+    // WebUI virtual field: save path expands precision_preference into
+    // mixed_precision (+ clears full_fp16/full_bf16) and drops the key.
+    // Rebuild with the same rules as precisionPreferenceFromConfig().
+    const explicit = readConfigString(configText, 'precision_preference');
+    if (explicit) {
+        const normalized = explicit.toLowerCase();
+        if (normalized === 'fp16' || normalized === 'fp32' || normalized === 'bf16') {
+            return normalized;
+        }
+    }
+    const mixedPrecision = String(readConfigString(configText, 'mixed_precision') || '').trim().toLowerCase();
+    if (mixedPrecision === 'no') return 'fp32';
+    if (mixedPrecision === 'fp16' || readConfigBool(configText, 'full_fp16')) return 'fp16';
+    if (mixedPrecision === 'bf16' || readConfigBool(configText, 'full_bf16')) return 'bf16';
+    // No precision signals in the snapshot at all.
+    if (!mixedPrecision && explicit === undefined) return '-';
+    return 'bf16';
+}
+
 export function formatHistoryTrainingVariant(task, configText) {
     const text = String(configText || '');
     const hasSnapshot = Boolean(text.trim())

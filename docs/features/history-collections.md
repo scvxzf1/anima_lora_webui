@@ -31,19 +31,20 @@
 
 当前历史模式只保留 **collection / collections**，不再使用旧的 config/flat 主模式。
 
-### 概览「实时指标」第三行
+### 概览「实时指标」网格
 
-训练任务详情「概览」页的实时指标网格固定为 5 列。第三行展示配置摘要，数据来自任务的 `config.snapshot.toml`（API 字段 `config_toml`），不是运行中实时采样：
+训练任务详情「概览」页的实时指标网格固定为 **6 列**，按从左到右、从上到下自然换行；当前共 16 格，排成约 3 行（末行留 2 个空位）。后 6 个配置摘要格来自任务的 `config.snapshot.toml`（API 字段 `config_toml`），不是运行中实时采样：
 
 | 格子 | 含义 | 取值 |
 | --- | --- | --- |
-| 训练精度 | 训练精度倾向 / 混合精度 | 优先 `precision_preference`，否则 `mixed_precision` |
+| 训练精度 | 训练精度倾向 / 混合精度 | 优先 `precision_preference`，否则原始 `mixed_precision` |
 | 训练变体 | 方法短名 | 由 snapshot 标志推断，如 `lora` / `lokr` / `loha` / `vera` / `glora` / `hydralora` / `tlora` / `reft` / `chimera`；识别不出时为 `-`，不回退导入配置文件名 |
 | 预处理精度 | 预处理缓存精度 | `preprocess_precision_preference` |
 | 块交换精度 | 块交换传输精度 | `block_swap_transfer_dtype` |
-| （空位） | 预留 | 不渲染第五格，靠 5 列 grid 自然留白 |
+| 底模计算路径 | base 前向计算路径 | `base_compute`（如 `bf16` / `w8a16_convrot` / `w8a8_convrot`）；缺省显示 `-` |
+| 精度倾向 | 表单「精度倾向」语义 | **不是** snapshot 直读字段：WebUI 保存时会把 `precision_preference` 展开成 `mixed_precision` 并删除；概览按 `precisionPreferenceFromConfig` 规则反推：`mixed_precision=no` → `fp32`，`fp16`/`full_fp16` → `fp16`，否则 `bf16` |
 
-相关代码：`web/static/js/features/history-detail/overview.js`。
+相关代码：`web/static/js/features/history-detail/overview.js`、`config-chips.js`。
 
 ---
 
@@ -61,6 +62,11 @@
 - 状态：完成 / 运行中 / 异常 / 已中断
 - 归档：未归档 / 全部 / 已归档
 - 来源：队列 / 续训 / 权重热启动
+- 训练变体：`lora` / `lokr` / …
+- 预处理精度：`bf16` / `fp16` / `fp32`
+- 块交换精度：`bf16` / `fp8_e4m3`
+- 底模计算路径：`bf16` / `w8a16_convrot` / `w8a8_convrot`
+- 精度倾向：`bf16` / `fp16` / `fp32`（由 snapshot 的 `mixed_precision` 等反推）
 - 排序：最新、最早、Loss 点数、日志行数、名称
 
 搜索支持任务名、配置名、目录，以及如 `组:骨女`、`配置:lora` 这类快捷写法。

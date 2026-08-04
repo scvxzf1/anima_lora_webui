@@ -34,6 +34,8 @@ _EMPTY = {
     "training_variant": "",
     "preprocess_precision": "",
     "block_swap_precision": "",
+    "base_compute": "",
+    "precision_preference": "",
 }
 
 
@@ -63,6 +65,8 @@ def history_config_chips_from_snapshot_text(text: str, *, variant: str = "") -> 
         "training_variant": _infer_training_variant(flat, raw, variant=variant),
         "preprocess_precision": _norm_precision(flat.get("preprocess_precision_preference")),
         "block_swap_precision": _norm_precision(flat.get("block_swap_transfer_dtype")),
+        "base_compute": _norm_precision(flat.get("base_compute")),
+        "precision_preference": _infer_precision_preference(flat),
     }
 
 
@@ -89,6 +93,27 @@ def _truthy(value: Any) -> bool:
 def _norm_precision(value: Any) -> str:
     text = str(value or "").strip().lower()
     return text
+
+
+def _infer_precision_preference(flat: dict[str, Any]) -> str:
+    """Match formatHistoryPrecisionPreference / precisionPreferenceFromConfig.
+
+    Snapshot usually drops the virtual ``precision_preference`` key and only
+    keeps ``mixed_precision`` (+ optional full_fp16/full_bf16).
+    """
+    explicit = _norm_precision(flat.get("precision_preference"))
+    if explicit in {"bf16", "fp16", "fp32"}:
+        return explicit
+    mixed = _norm_precision(flat.get("mixed_precision"))
+    if mixed == "no":
+        return "fp32"
+    if mixed == "fp16" or _truthy(flat.get("full_fp16")):
+        return "fp16"
+    if mixed == "bf16" or _truthy(flat.get("full_bf16")):
+        return "bf16"
+    if not mixed and not explicit:
+        return ""
+    return "bf16"
 
 
 def _infer_training_variant(flat: dict[str, Any], raw_text: str, *, variant: str) -> str:

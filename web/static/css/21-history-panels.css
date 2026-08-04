@@ -1304,7 +1304,8 @@ body.history-detail-window-open {
     display: grid;
     gap: 0.34rem;
     grid-auto-rows: minmax(50px, auto);
-    grid-template-columns: repeat(5, minmax(116px, 1fr));
+    /* Training overview: 3 rows x 6 cols (16 chips leave 2 trailing empty cells). */
+    grid-template-columns: repeat(6, minmax(96px, 1fr));
 }
 .history-detail-stat {
     background: var(--history-detail-field);

@@ -318,6 +318,8 @@ def _history_summary(meta: dict[str, Any], task_dir: Path) -> dict[str, Any]:
     out["training_variant"] = chips["training_variant"]
     out["preprocess_precision"] = chips["preprocess_precision"]
     out["block_swap_precision"] = chips["block_swap_precision"]
+    out["base_compute"] = chips["base_compute"]
+    out["precision_preference"] = chips["precision_preference"]
     return out
 
 
