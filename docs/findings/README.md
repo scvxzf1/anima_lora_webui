@@ -41,6 +41,7 @@
 
 | 文档 | 说明 |
 | --- | --- |
+| [convrot_longrun_bf16_w8a8_w8a16_20260727.md](convrot_longrun_bf16_w8a8_w8a16_20260727.md) | RTX 3080 上 BF16/W8A8/W8A16 三组 1710-step 长训审计（速度、显存、loss、样图及最终保存回归修复） |
 | [loha_hot_test_20260725.md](loha_hot_test_20260725.md) | LoHa 在 RTX 3080 10GB 上的 12-step 热测与检查点验证 |
 | [training_profiling_hot_test_20260629.md](training_profiling_hot_test_20260629.md) | 训练 profiling 热测记录 |
 | [mfu_plain_lora_vs_lokr_blockswap_20260629_022138.md](mfu_plain_lora_vs_lokr_blockswap_20260629_022138.md) | Plain LoRA 与 LoKr block swap MFU 对比 |
