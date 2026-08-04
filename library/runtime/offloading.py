@@ -39,6 +39,7 @@ from library.runtime.block_swap_masters import (
     _weight_device_type,
 )
 from library.runtime.block_swap_profiler import BlockSwapProfiler, _resolve_profiler
+from library.runtime.block_swap_payload import set_block_swap_payload_placement
 
 logger = logging.getLogger(__name__)
 
@@ -1361,6 +1362,7 @@ class Offloader:
                     non_blocking=True,
                 )
             weighs_to_device(block, device, include_trainable=True)
+            set_block_swap_payload_placement(block, active=False)
         synchronize_device(device)
 
     def _submit_move_blocks(
@@ -1673,6 +1675,9 @@ class ModelOffloader(Offloader):
         self.profile_step += 1
         self._ensure_cpu_weight_masters(blocks)
         self._warm_swap_plan_cache(blocks)
+
+        for block in blocks:
+            set_block_swap_payload_placement(block, active=True)
 
         for b in blocks[0 : self.num_blocks - self.blocks_to_swap]:
             b.to(self.device)

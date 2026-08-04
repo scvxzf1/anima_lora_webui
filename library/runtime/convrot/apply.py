@@ -30,6 +30,7 @@ from library.runtime.convrot.rht import (
     rht_backend,
 )
 from library.runtime.convrot.scope import classify_convrot_linear_module
+from library.runtime.block_swap_payload import BlockSwapManagedTensor
 
 logger = logging.getLogger(__name__)
 
@@ -93,6 +94,21 @@ def _set_buffer(module: nn.Module, name: str, tensor: torch.Tensor) -> None:
         module.register_buffer(name, tensor, persistent=False)
 
 
+def _set_swap_payload(module: nn.Module, name: str, tensor: torch.Tensor) -> None:
+    current = module._modules.get(name)
+    if isinstance(current, BlockSwapManagedTensor):
+        current.weight = tensor.detach().contiguous()
+        return
+    module.add_module(name, BlockSwapManagedTensor(tensor))
+
+
+def _swap_payload(module: nn.Module, name: str) -> torch.Tensor:
+    payload = module._modules.get(name)
+    if not isinstance(payload, BlockSwapManagedTensor):
+        raise RuntimeError(f"missing ConvRot block payload {name!r}")
+    return payload.weight
+
+
 def _resolve_base_linear(lora: nn.Module) -> nn.Linear | None:
     refs = getattr(lora, "org_module_ref", None)
     if refs:
@@ -152,6 +168,7 @@ def _maybe_attach_hadamard(
 def _install_org_forward(
     lora: nn.Module,
     *,
+    payload_owner: nn.Module,
     mode: ConvRotMode,
     group_size: int,
 ) -> None:
@@ -165,6 +182,7 @@ def _install_org_forward(
             x: torch.Tensor,
             *,
             _lora=lora,
+            _owner=payload_owner,
             _gs=group_size,
             _h=hadamard,
         ) -> torch.Tensor:
@@ -173,8 +191,8 @@ def _install_org_forward(
                 h = _h
             return w8a16_forward_from_buffers(
                 x,
-                _lora._convrot_quantized_weight,
-                _lora._convrot_scale,
+                _swap_payload(_owner, _BUFFER_Q),
+                _swap_payload(_owner, _BUFFER_SCALE),
                 group_size=_gs,
                 hadamard=h,
             )
@@ -185,6 +203,7 @@ def _install_org_forward(
             x: torch.Tensor,
             *,
             _lora=lora,
+            _owner=payload_owner,
             _gs=group_size,
             _h=hadamard,
             _layout=weight_layout,
@@ -195,8 +214,8 @@ def _install_org_forward(
             layout = getattr(_lora, _ATTR_WEIGHT_LAYOUT, _layout)
             return w8a8_forward_from_buffers(
                 x,
-                _lora._convrot_quantized_weight,
-                _lora._convrot_scale,
+                _swap_payload(_owner, _BUFFER_Q),
+                _swap_payload(_owner, _BUFFER_SCALE),
                 group_size=_gs,
                 hadamard=h,
                 weight_layout=str(layout),
@@ -608,7 +627,7 @@ def apply_convrot_to_lora_network(
         else:
             q_store = q.contiguous()
             setattr(lora, _ATTR_WEIGHT_LAYOUT, "nk")
-        _set_buffer(lora, _BUFFER_Q, q_store)
+        _set_swap_payload(base_module, _BUFFER_Q, q_store)
         # P1.10: W8A16 can store scale as bf16 on CUDA (dequant/(gy*scale) skip
         # a cast). W8A8 keeps float32 — bf16 scale alone pushed seed0 grad_rel
         # over the 5% full-ckpt gate (P1.11d diagnosis vs p18 3/3).
@@ -619,8 +638,8 @@ def apply_convrot_to_lora_network(
             scale_dtype = torch.bfloat16
         else:
             scale_dtype = torch.float32
-        _set_buffer(
-            lora,
+        _set_swap_payload(
+            base_module,
             _BUFFER_SCALE,
             scale.to(dtype=scale_dtype).contiguous(),
         )
@@ -633,7 +652,12 @@ def apply_convrot_to_lora_network(
             device=base_module.weight.device,
             shared_cache=hadamard_share,
         )
-        _install_org_forward(lora, mode=layer_mode, group_size=group_size)
+        _install_org_forward(
+            lora,
+            payload_owner=base_module,
+            mode=layer_mode,
+            group_size=group_size,
+        )
 
     freed_modules = 0
     freed_bytes = 0

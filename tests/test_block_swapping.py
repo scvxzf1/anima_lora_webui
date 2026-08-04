@@ -24,6 +24,10 @@ from library.runtime.block_swap_masters import (
     _can_swap_frozen_weight_to_cpu,
     _ensure_weight_on_device,
 )
+from library.runtime.block_swap_payload import (
+    BlockSwapManagedTensor,
+    block_swap_payload_residency,
+)
 
 
 class _TinyBlock(nn.Module):
@@ -57,6 +61,20 @@ class _Int8CandidateBlock(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         hidden = torch.nn.functional.gelu(self.mlp.layer1(x))
         return self.mlp.layer2(hidden) + self.adapter(x)
+
+
+class _ConvRotPayloadBlock(nn.Module):
+    def __init__(self, value: int, *, device: torch.device) -> None:
+        super().__init__()
+        self.base = nn.Linear(4, 4, bias=False, device=device)
+        self.base.weight.requires_grad_(False)
+        payload = torch.full((4, 4), value, dtype=torch.int8, device=device)
+        scale = torch.full((4,), float(value), dtype=torch.float32, device=device)
+        self.base.add_module(
+            "_convrot_quantized_weight", BlockSwapManagedTensor(payload)
+        )
+        self.base.add_module("_convrot_scale", BlockSwapManagedTensor(scale))
+        free_linear_weight_storage(self.base)
 
 
 def test_cpu_block_swap_policy_skips_trainable_weights() -> None:
@@ -107,6 +125,57 @@ def test_prepare_block_devices_skips_free_base_masters() -> None:
         assert "base" not in block_masters
     for b in blocks:
         assert b.base.weight.device.type == "meta"
+
+
+def test_convrot_payload_uses_existing_block_swap_master_protocol() -> None:
+    blocks = nn.ModuleList(
+        [_ConvRotPayloadBlock(i + 1, device=torch.device("cpu")) for i in range(3)]
+    )
+    offloader = ModelOffloader(
+        blocks, blocks_to_swap=1, device=torch.device("cpu"), supports_backward=False
+    )
+    try:
+        offloader.prepare_block_devices_before_forward(blocks, free_cache=False)
+
+        assert offloader._cpu_weight_masters is not None
+        for masters in offloader._cpu_weight_masters:
+            assert "base._convrot_quantized_weight" in masters
+            assert "base._convrot_scale" in masters
+            assert "base" not in masters
+        assert all("_convrot" not in key for key in blocks.state_dict())
+        residency = block_swap_payload_residency(blocks)
+        assert residency["total_tensors"] == 6
+        assert residency["tensors_by_device"] == {"cpu": 6}
+    finally:
+        offloader.thread_pool.shutdown(wait=False)
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA residency swap")
+def test_convrot_payload_moves_with_block_swap() -> None:
+    device = torch.device("cuda")
+    blocks = nn.ModuleList(
+        [_ConvRotPayloadBlock(i + 1, device=device) for i in range(3)]
+    )
+    expected_target = blocks[2].base._convrot_quantized_weight.weight.cpu().clone()
+    offloader = ModelOffloader(
+        blocks, blocks_to_swap=1, device=device, supports_backward=False
+    )
+    try:
+        offloader.prepare_block_devices_before_forward(blocks, free_cache=False)
+        assert blocks[0].base._convrot_quantized_weight.weight.device.type == "cuda"
+        assert blocks[2].base._convrot_quantized_weight.weight.device.type == "cpu"
+
+        offloader.swap_weight_devices(0, blocks[0], 2, blocks[2])
+        torch.cuda.synchronize(device)
+
+        assert blocks[0].base._convrot_quantized_weight.weight.device.type == "cpu"
+        target = blocks[2].base._convrot_quantized_weight.weight
+        assert target.device.type == "cuda"
+        assert torch.equal(target.cpu(), expected_target)
+        residency = block_swap_payload_residency(blocks)
+        assert residency["tensors_by_device"] == {"cpu": 2, "cuda:0": 4}
+    finally:
+        offloader.thread_pool.shutdown(wait=False)
 
 
 def test_prepare_block_devices_keeps_trainable_weights_on_main_device() -> None:

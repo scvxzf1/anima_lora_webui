@@ -56,7 +56,7 @@ def test_maybe_apply_convrot_base_noop_for_bf16() -> None:
     network = _FakeNetwork([_FakeLoRAModule("blocks.0.mlp.layer1", linear)])
     applied = TrainingBootstrap.maybe_apply_convrot_base(_args(), network)
     assert applied is False
-    assert not hasattr(network.unet_loras[0], "_convrot_quantized_weight")
+    assert not hasattr(linear, "_convrot_quantized_weight")
 
 
 def test_maybe_apply_convrot_base_patches_w8a16() -> None:
@@ -66,7 +66,7 @@ def test_maybe_apply_convrot_base_patches_w8a16() -> None:
     args = _args(base_compute="w8a16_convrot")
     applied = TrainingBootstrap.maybe_apply_convrot_base(args, network)
     assert applied is True
-    assert hasattr(network.unet_loras[0], "_convrot_quantized_weight")
+    assert hasattr(linear, "_convrot_quantized_weight")
     assert args.base_compute == "w8a16_convrot"
 
 
@@ -113,7 +113,7 @@ def test_maybe_apply_convrot_base_freezes_unet_before_quant() -> None:
     applied = TrainingBootstrap.maybe_apply_convrot_base(args, network, unet=unet)
     assert applied is True
     assert linear.weight.requires_grad is False
-    assert hasattr(network.unet_loras[0], "_convrot_quantized_weight")
+    assert hasattr(linear, "_convrot_quantized_weight")
 
 
 def test_maybe_apply_convrot_base_freezes_org_refs_when_unet_missing() -> None:
@@ -127,7 +127,7 @@ def test_maybe_apply_convrot_base_freezes_org_refs_when_unet_missing() -> None:
     )
     assert applied is True
     assert linear.weight.requires_grad is False
-    assert hasattr(network.unet_loras[0], "_convrot_quantized_weight")
+    assert hasattr(linear, "_convrot_quantized_weight")
 
 
 def test_maybe_apply_convrot_base_honors_min_in_and_largest() -> None:
@@ -173,4 +173,4 @@ def test_maybe_apply_convrot_base_wires_hadamard_env(monkeypatch) -> None:
     applied = TrainingBootstrap.maybe_apply_convrot_base(args, network)
     assert applied is True
     assert os.environ.get("ANIMA_CONVROT_HADAMARD") == "regular"
-    assert hasattr(network.unet_loras[0], "_convrot_quantized_weight")
+    assert hasattr(linear, "_convrot_quantized_weight")

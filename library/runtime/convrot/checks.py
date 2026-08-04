@@ -116,11 +116,10 @@ def warn_convrot_blocks_to_swap(
     """Return an informational warning when ConvRot free-base stacks with swap.
 
     Free-base marks patched ``Linear.weight`` as meta / ``_convrot_weight_freed``.
-    Block-swap skips those tensors (see ``is_weight_swap_excluded``) and only
-    masters residual frozen weights (adaln, unpatched linears, …). Quant buffers
-    on the LoRA network stay GPU-resident under the minimal fix — so swap is a
-    *residual* VRAM path, not a second free-base. Prefer ``blocks_to_swap=0`` +
-    ``convrot_scope=all`` + larger rank/batch for the main VRAM story; int8
+    Block-swap skips those tensors (see ``is_weight_swap_excluded``), while the
+    runtime-only quantized weight and scale carriers are owned by the base
+    Linear inside each DiT block and follow that block's residency. This saves
+    GPU memory at the cost of transferring the payload on every swap. Int8
     transfer dtype remains hard-mutex with ConvRot.
     """
     mode = normalize_base_compute(base_compute)
@@ -128,8 +127,9 @@ def warn_convrot_blocks_to_swap(
     if mode == "bf16" or n <= 0:
         return None
     return (
-        f"base_compute={mode} with blocks_to_swap={n}: free-base Linear.weight "
-        "is skipped by block-swap masters (residual frozen weights only; "
-        "ConvRot int8 payloads stay on GPU). Prefer blocks_to_swap=0 for the "
-        "main VRAM path (docs/experimental/convrot_int8_training.md §G.22)."
+        f"base_compute={mode} with blocks_to_swap={n}: ConvRot quantized weight "
+        "and scale payloads follow their DiT blocks between CPU and GPU. This "
+        "reduces GPU residency but adds transfer/step latency; "
+        "block_swap_transfer_dtype=int8 remains incompatible "
+        "(docs/experimental/convrot_int8_training.md §G.23)."
     )

@@ -83,8 +83,8 @@ def test_apply_convrot_patches_mlp_scope_only() -> None:
 
     assert result.patched_count == 1
     assert result.patches[0].name == "blocks.0.mlp.layer1"
-    assert hasattr(network.unet_loras[0], "_convrot_quantized_weight")
-    assert not hasattr(network.unet_loras[1], "_convrot_quantized_weight")
+    assert hasattr(mlp, "_convrot_quantized_weight")
+    assert not hasattr(attn, "_convrot_quantized_weight")
     rel = (actual - expected).norm() / expected.norm().clamp_min(1e-8)
     assert rel.item() < 0.05
 
@@ -96,7 +96,7 @@ def test_apply_convrot_dry_run_does_not_mutate() -> None:
         network, mode="w8a16", scope="mlp", group_size=16, dry_run=True
     )
     assert result.patched_count == 1
-    assert not hasattr(network.unet_loras[0], "_convrot_quantized_weight")
+    assert not hasattr(mlp, "_convrot_quantized_weight")
 
 
 def test_apply_convrot_skips_adaln_and_trainable() -> None:
@@ -157,7 +157,7 @@ def test_apply_convrot_w8a8_mode() -> None:
     )
     assert result.mode == "w8a8"
     # P1.6: W8A8 stores contiguous [K,N] (= weight.T) for torch._int_mm.
-    q = network.unet_loras[0]._convrot_quantized_weight
+    q = mlp._convrot_quantized_weight.weight
     assert tuple(q.shape) == (32, 16)
     assert getattr(network.unet_loras[0], "_convrot_weight_layout") == "kn"
     x = torch.randn(2, 32)
@@ -173,7 +173,8 @@ def test_apply_convrot_buffers_do_not_collide_with_int8_names() -> None:
     network = _FakeLoRANetwork([lora])
     apply_convrot_to_lora_network(network, mode="w8a16", scope="mlp", group_size=16)
     assert hasattr(lora, "_int8_base_quantized_weight")
-    assert hasattr(lora, "_convrot_quantized_weight")
+    assert hasattr(mlp, "_convrot_quantized_weight")
+    assert not hasattr(lora, "_convrot_quantized_weight")
 
 
 def test_apply_convrot_raises_if_compiled_flag() -> None:
@@ -202,8 +203,8 @@ def test_normalize_and_mutex() -> None:
     assert warn_convrot_blocks_to_swap(base_compute="w8a16_convrot", blocks_to_swap=0) is None
     msg = warn_convrot_blocks_to_swap(base_compute="w8a16_convrot", blocks_to_swap=8)
     assert msg is not None and "blocks_to_swap=8" in msg
-    # Post A-fix: free-base weights are skipped by masters; warn is residual-path note.
-    assert "skipped by block-swap" in msg or "residual" in msg
+    assert "payloads follow their DiT blocks" in msg
+    assert "transfer/step latency" in msg
 
 
 def test_metadata_stamp_and_merge_reject() -> None:
@@ -266,8 +267,8 @@ def test_apply_min_in_features_skips_small() -> None:
     assert result.patched_count == 1
     assert result.patches[0].name == "blocks.0.mlp.layer2"
     assert any("min_in_features" in (s.skipped_reason or "") for s in result.skipped)
-    assert hasattr(network.unet_loras[1], "_convrot_quantized_weight")
-    assert not hasattr(network.unet_loras[0], "_convrot_quantized_weight")
+    assert hasattr(large, "_convrot_quantized_weight")
+    assert not hasattr(small, "_convrot_quantized_weight")
 
 
 def test_apply_largest_in_features_only() -> None:
@@ -339,7 +340,7 @@ def test_apply_stores_scale_bf16_on_cuda_w8a16_only() -> None:
     apply_convrot_to_lora_network(
         _FakeLoRANetwork([lora16]), mode="w8a16", scope="mlp", group_size=16
     )
-    assert lora16._convrot_scale.dtype == torch.bfloat16
+    assert linear16._convrot_scale.weight.dtype == torch.bfloat16
 
     linear8 = nn.Linear(32, 16, bias=False).to(device)
     linear8.weight.requires_grad_(False)
@@ -347,7 +348,7 @@ def test_apply_stores_scale_bf16_on_cuda_w8a16_only() -> None:
     apply_convrot_to_lora_network(
         _FakeLoRANetwork([lora8]), mode="w8a8", scope="mlp", group_size=16
     )
-    assert lora8._convrot_scale.dtype == torch.float32
+    assert linear8._convrot_scale.weight.dtype == torch.float32
     x = torch.randn(2, 32, device=device, dtype=torch.bfloat16)
     assert torch.isfinite(lora16.org_forward(x)).all()
     assert torch.isfinite(lora8.org_forward(x)).all()
