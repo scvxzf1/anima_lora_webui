@@ -28,6 +28,7 @@ from library.datasets import (
     load_arbitrary_dataset,
 )
 from library.runtime.accelerator import patch_accelerator_for_fp16_training
+from library.training.gradient_sync import prepare_network_for_manual_gradient_sync
 from library.training.optimizers import get_optimizer, get_optimizer_train_eval_fn
 from library.training.schedulers import get_scheduler_fix
 from library.training.stage_schedule import attach_stage_schedule_from_config
@@ -862,11 +863,21 @@ class TrainingBootstrap:
             else:
                 text_encoder = text_encoders[0]
 
-        network, optimizer, train_dataloader, val_dataloader, lr_scheduler = (
-            accelerator.prepare(
-                network, optimizer, train_dataloader, val_dataloader, lr_scheduler
+        if accelerator.num_processes > 1:
+            network = prepare_network_for_manual_gradient_sync(
+                accelerator, network, optimizer
             )
-        )
+            optimizer, train_dataloader, val_dataloader, lr_scheduler = (
+                accelerator.prepare(
+                    optimizer, train_dataloader, val_dataloader, lr_scheduler
+                )
+            )
+        else:
+            network, optimizer, train_dataloader, val_dataloader, lr_scheduler = (
+                accelerator.prepare(
+                    network, optimizer, train_dataloader, val_dataloader, lr_scheduler
+                )
+            )
         training_model = network
 
         if args.gradient_checkpointing:

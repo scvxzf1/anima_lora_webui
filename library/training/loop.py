@@ -34,6 +34,7 @@ from library.training.finite_checks import (
     check_trainable_grads_finite,
     debug_finite_enabled,
 )
+from library.training.gradient_sync import synchronize_optimizer_gradients
 
 from library.training.stage_schedule import (
     active_subset_indices_for_step,
@@ -647,8 +648,8 @@ def _run_epoch_steps(trainer, state: LoopState, epoch: int) -> None:
 
 def _run_step(trainer, state: LoopState, batch) -> torch.Tensor:
     """The accumulate-scope body: on_step_start hooks, cudagraph mark, forward,
-    backward gating, sync_gradients hooks (hydra warmup, grad capture, clip),
-    optimizer step + zero_grad. Returns the loss (detached or live)."""
+    backward gating, manual adapter sync, grad capture/clip, optimizer step +
+    zero_grad. Returns the loss (detached or live)."""
     args = state.args
     accelerator = state.accelerator
     network = state.network
@@ -732,6 +733,22 @@ def _run_step(trainer, state: LoopState, batch) -> torch.Tensor:
         except Exception as exc:
             _probe_step(memory_probe, state, "after_backward_hook_exception", **_probe_exception_fields(exc))
             raise
+
+        if accelerator.sync_gradients:
+            try:
+                # Keep loss-scaled gradients scaled until every rank has the
+                # same reduced values. Any FP16 overflow then propagates to all
+                # ranks before GradScaler decides whether to skip the step.
+                synchronize_optimizer_gradients(accelerator, state.optimizer)
+            except Exception as exc:
+                _probe_step(
+                    memory_probe,
+                    state,
+                    "gradient_sync_exception",
+                    **_probe_exception_fields(exc),
+                )
+                raise
+
         if debug_finite_enabled(args):
             check_trainable_grads_finite(accelerator.unwrap_model(network))
 
