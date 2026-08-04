@@ -35,6 +35,7 @@ from library.training.finite_checks import (
     debug_finite_enabled,
 )
 from library.training.gradient_sync import synchronize_optimizer_gradients
+from library.training.method_adapter import MethodAdapter
 
 from library.training.stage_schedule import (
     active_subset_indices_for_step,
@@ -66,6 +67,23 @@ def _memory_probe_for_step(trainer, state) -> Any | None:
     if not probe.should_record_step(state.global_step):
         return None
     return probe
+
+
+def _async_gradient_sync_for_step(trainer, state):
+    """Return the hook-based synchronizer when no adapter adds post-backward grads."""
+    synchronizer = getattr(
+        state.accelerator.unwrap_model(state.network),
+        "_anima_async_gradient_sync",
+        None,
+    )
+    if synchronizer is None or not state.accelerator.sync_gradients:
+        return None
+    if any(
+        type(adapter).after_backward is not MethodAdapter.after_backward
+        for adapter in getattr(trainer, "_adapters", ())
+    ):
+        return None
+    return synchronizer
 
 
 def _peak_probe_for_step(trainer, state) -> Any | None:
@@ -655,6 +673,9 @@ def _run_step(trainer, state: LoopState, batch) -> torch.Tensor:
     network = state.network
     memory_probe = _memory_probe_for_step(trainer, state)
     peak_probe = _peak_probe_for_step(trainer, state)
+    async_gradient_sync = _async_gradient_sync_for_step(trainer, state)
+    if async_gradient_sync is not None:
+        async_gradient_sync.begin_step()
 
     _probe_step(memory_probe, state, "step_enter")
     if peak_probe is not None:
@@ -739,7 +760,10 @@ def _run_step(trainer, state: LoopState, batch) -> torch.Tensor:
                 # Keep loss-scaled gradients scaled until every rank has the
                 # same reduced values. Any FP16 overflow then propagates to all
                 # ranks before GradScaler decides whether to skip the step.
-                synchronize_optimizer_gradients(accelerator, state.optimizer)
+                if async_gradient_sync is not None:
+                    async_gradient_sync.finish_step()
+                else:
+                    synchronize_optimizer_gradients(accelerator, state.optimizer)
             except Exception as exc:
                 _probe_step(
                     memory_probe,

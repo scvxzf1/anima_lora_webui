@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from typing import Any
 
 import torch
+import torch.distributed as dist
 from accelerate.utils import broadcast
 
 
@@ -30,6 +31,197 @@ class StateSyncResult:
     parameter_count: int = 0
     buffer_count: int = 0
     bucket_count: int = 0
+
+
+@dataclass
+class _AsyncBucket:
+    parameters: list[torch.nn.Parameter]
+    payload: torch.Tensor | None = None
+    work: Any = None
+    event: Any = None
+    launched: bool = False
+
+
+class AsyncGradientSynchronizer:
+    """Launch fixed-order NCCL gradient buckets while backward is running.
+
+    The synchronizer is deliberately opt-in. Methods that add gradients in
+    ``after_backward`` use the existing synchronous path so those contributions
+    cannot race an already-launched collective.
+    """
+
+    def __init__(self, accelerator: Any, optimizer: Any, *, bucket_bytes: int = 16 << 20):
+        self.accelerator = accelerator
+        self.parameters = optimizer_parameters(optimizer)
+        self.buckets = self._make_buckets(bucket_bytes)
+        self._handles = []
+        self._active: list[_AsyncBucket] | None = None
+        self._prior_grads: dict[int, torch.Tensor] = {}
+        self._next_launch = 0
+        self._comm_streams: dict[torch.device, torch.cuda.Stream] = {}
+        self._register_hooks()
+
+    def _make_buckets(self, bucket_bytes: int) -> list[list[torch.nn.Parameter]]:
+        # Backward visits leaf gradients roughly in reverse registration order;
+        # matching that order lets early buckets start communication sooner.
+        buckets: list[list[torch.nn.Parameter]] = []
+        current: list[torch.nn.Parameter] = []
+        current_bytes = 0
+        for parameter in reversed(self.parameters):
+            size = max(1, parameter.numel() * parameter.element_size())
+            if current and current_bytes + size > bucket_bytes:
+                buckets.append(current)
+                current, current_bytes = [], 0
+            current.append(parameter)
+            current_bytes += size
+        if current:
+            buckets.append(current)
+        return buckets
+
+    def _register_hooks(self) -> None:
+        if not hasattr(torch.autograd.graph, "register_multi_grad_hook"):
+            return
+        for index, parameters in enumerate(self.buckets):
+            tensors = tuple(parameter for parameter in parameters if parameter.requires_grad)
+            if not tensors:
+                continue
+
+            def callback(grads, bucket_index=index, bucket_parameters=tensors):
+                self._mark_ready(bucket_index, bucket_parameters, grads)
+
+            self._handles.append(
+                torch.autograd.graph.register_multi_grad_hook(tensors, callback, mode="all")
+            )
+
+    def _stream_for(self, device: torch.device) -> torch.cuda.Stream:
+        stream = self._comm_streams.get(device)
+        if stream is None:
+            stream = torch.cuda.Stream(device=device)
+            self._comm_streams[device] = stream
+        return stream
+
+    def begin_step(self) -> None:
+        if int(getattr(self.accelerator, "num_processes", 1)) <= 1:
+            self._active = None
+            return
+        self._active = [_AsyncBucket(parameters=bucket) for bucket in self.buckets]
+        self._prior_grads = {
+            id(parameter): parameter.grad.detach().clone()
+            for parameter in self.parameters
+            if parameter.grad is not None
+        }
+        self._next_launch = 0
+
+    def _mark_ready(
+        self,
+        index: int,
+        parameters: tuple[torch.nn.Parameter, ...],
+        grads: Iterable[torch.Tensor | None],
+    ) -> None:
+        if self._active is None:
+            return
+        self._active[index].payload = self._pack(
+            self._active[index].parameters,
+            grads=grads,
+            parameters_for_grads=parameters,
+        )
+        self._launch_ready_buckets()
+
+    def _pack(
+        self,
+        parameters: list[torch.nn.Parameter],
+        *,
+        grads: Iterable[torch.Tensor | None] | None = None,
+        parameters_for_grads: tuple[torch.nn.Parameter, ...] | None = None,
+    ) -> torch.Tensor:
+        gradient_map = (
+            {id(parameter): grad for parameter, grad in zip(parameters_for_grads or (), grads or ())}
+            if grads is not None
+            else {}
+        )
+        parts: list[torch.Tensor] = []
+        presence: list[float] = []
+        for parameter in parameters:
+            incoming = gradient_map.get(id(parameter))
+            prior = self._prior_grads.get(id(parameter))
+            if incoming is not None and prior is not None:
+                grad = prior + incoming.detach()
+            elif incoming is not None:
+                grad = incoming
+            else:
+                grad = parameter.grad
+            if grad is None:
+                parts.append(parameter.detach().new_zeros(parameter.numel()))
+                presence.append(0.0)
+            else:
+                if grad.layout != torch.strided or grad.device != parameter.device or grad.dtype != parameter.dtype:
+                    raise RuntimeError("adapter gradient device/dtype/layout is not synchronizable")
+                parts.append(grad.detach().reshape(-1))
+                presence.append(1.0)
+        return torch.cat([*parts, parameters[0].new_tensor(presence)])
+
+    def _launch_ready_buckets(self) -> None:
+        if self._active is None:
+            return
+        while self._next_launch < len(self._active):
+            bucket = self._active[self._next_launch]
+            if bucket.payload is None:
+                break
+            payload = bucket.payload
+            if payload.is_cuda and dist.is_initialized() and dist.get_backend() == "nccl":
+                current = torch.cuda.current_stream(payload.device)
+                stream = self._stream_for(payload.device)
+                stream.wait_stream(current)
+                with torch.cuda.stream(stream):
+                    bucket.work = dist.all_reduce(payload, op=dist.ReduceOp.SUM, async_op=True)
+                    bucket.event = torch.cuda.Event()
+                    bucket.event.record(stream)
+            else:
+                bucket.work = None
+                bucket.event = None
+            bucket.launched = True
+            self._next_launch += 1
+
+    def finish_step(self) -> GradientSyncResult:
+        active = self._active
+        if active is None:
+            return GradientSyncResult()
+        for bucket in active:
+            if bucket.payload is None:
+                bucket.payload = self._pack(bucket.parameters)
+        self._launch_ready_buckets()
+        reduced_parameter_count = 0
+        materialized = 0
+        for bucket in active:
+            if bucket.work is not None:
+                bucket.work.wait()
+                bucket.event.synchronize()
+                bucket.payload.div_(int(self.accelerator.num_processes))
+            else:
+                bucket.payload = self.accelerator.reduce(bucket.payload, reduction="mean")
+            payload = bucket.payload
+            offset = 0
+            numel = sum(parameter.numel() for parameter in bucket.parameters)
+            global_presence = payload[numel:].ne(0).to(device="cpu").tolist()
+            for index, parameter in enumerate(bucket.parameters):
+                end = offset + parameter.numel()
+                if global_presence[index]:
+                    synced = payload[offset:end].view_as(parameter)
+                    if parameter.grad is None:
+                        parameter.grad = synced.clone()
+                        materialized += 1
+                    else:
+                        parameter.grad.copy_(synced)
+                    reduced_parameter_count += 1
+                offset = end
+        self._active = None
+        self._prior_grads.clear()
+        return GradientSyncResult(len(self.parameters), reduced_parameter_count, materialized, len(active))
+
+    def close(self) -> None:
+        for handle in self._handles:
+            handle.remove()
+        self._handles.clear()
 
 
 def optimizer_parameters(optimizer: Any) -> list[torch.nn.Parameter]:
@@ -111,11 +303,16 @@ def prepare_network_for_manual_gradient_sync(
     """Move/register an adapter network without applying a DDP wrapper."""
     network = accelerator.prepare_model(network, evaluation_mode=True)
     state = synchronize_optimizer_state(accelerator, network, optimizer)
+    if all(parameter.requires_grad for parameter in optimizer_parameters(optimizer)):
+        network._anima_async_gradient_sync = AsyncGradientSynchronizer(
+            accelerator, optimizer
+        )
+    overlap = "cuda-stream-overlap" if hasattr(network, "_anima_async_gradient_sync") else "sync-after-backward"
     accelerator.print(
         "manual adapter gradient sync enabled: "
         f"world_size={accelerator.num_processes}, "
         f"parameters={state.parameter_count}, buffers={state.buffer_count}, "
-        f"state_buckets={state.bucket_count}"
+        f"state_buckets={state.bucket_count}, mode={overlap}"
     )
     return network
 

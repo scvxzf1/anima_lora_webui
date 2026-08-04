@@ -14,10 +14,59 @@ import library.training.bootstrap as bootstrap_mod
 import library.training.loop as training_loop
 from library.training.bootstrap import TrainingBootstrap
 from library.training.gradient_sync import (
+    AsyncGradientSynchronizer,
     prepare_network_for_manual_gradient_sync,
     synchronize_optimizer_gradients,
     synchronize_optimizer_state,
 )
+
+
+def test_async_gradient_synchronizer_starts_from_backward_hook_and_finishes_mean_reduce():
+    first = torch.nn.Parameter(torch.tensor([1.0, 2.0]))
+    second = torch.nn.Parameter(torch.tensor([3.0]))
+
+    class FakeAccelerator:
+        num_processes = 2
+
+        @staticmethod
+        def reduce(tensor, reduction):
+            assert reduction == "mean"
+            return tensor * 0.5
+
+    optimizer = _OptimizerView([first, second])
+    synchronizer = AsyncGradientSynchronizer(FakeAccelerator(), optimizer, bucket_bytes=1)
+    synchronizer.begin_step()
+    (first.sum() * 2 + second.sum() * 4).backward()
+    assert all(bucket.payload is not None for bucket in synchronizer._active or [])
+    result = synchronizer.finish_step()
+
+    assert first.grad.tolist() == pytest.approx([1.0, 1.0])
+    assert second.grad.tolist() == pytest.approx([2.0])
+    assert result.reduced_parameter_count == 2
+    synchronizer.close()
+
+
+def test_async_gradient_synchronizer_preserves_prior_accumulation():
+    parameter = torch.nn.Parameter(torch.tensor([1.0]))
+    parameter.grad = torch.tensor([3.0])
+
+    class FakeAccelerator:
+        num_processes = 2
+
+        @staticmethod
+        def reduce(tensor, reduction):
+            assert reduction == "mean"
+            return tensor * 0.5
+
+    synchronizer = AsyncGradientSynchronizer(
+        FakeAccelerator(), _OptimizerView([parameter]), bucket_bytes=1
+    )
+    synchronizer.begin_step()
+    (parameter.sum() * 2).backward()
+    synchronizer.finish_step()
+
+    assert parameter.grad.tolist() == pytest.approx([2.5])
+    synchronizer.close()
 
 
 class _OptimizerView:
@@ -504,12 +553,16 @@ def _accelerate_probe_main() -> None:
             accelerator, network, optimizer
         )
         optimizer = accelerator.prepare(optimizer)
+        async_sync = getattr(network, "_anima_async_gradient_sync", None)
+        if async_sync is None:
+            raise RuntimeError("async gradient synchronizer was not installed")
+        async_sync.begin_step()
 
         loss = network.shared.sum() * float(accelerator.process_index + 1)
         if accelerator.process_index == 1:
             loss = loss + network.conditional.sum() * 4.0
         accelerator.backward(loss)
-        result = synchronize_optimizer_gradients(accelerator, optimizer)
+        result = async_sync.finish_step()
         optimizer.step()
 
         local = torch.cat(
