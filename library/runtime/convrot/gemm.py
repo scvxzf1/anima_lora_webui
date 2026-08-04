@@ -6,10 +6,14 @@ import os
 from typing import Literal
 
 import torch
+from torch.nn import functional as F
 
 # torch._int_mm requires M (rows of A) > 16 on current CUDA builds; some shapes
-# also trip cublasLt NOT_SUPPORTED. Prefer true path when safe, else float.
+# also trip cublasLt NOT_SUPPORTED. Ampere's cuBLASLt int8 path requires M to
+# be 32-aligned (Anima's 4200-token family is not), so the hot path pads rows
+# before GEMM and slices the result back to the native token count.
 _INT_MM_MIN_M = 17
+_INT_MM_M_ALIGNMENT = 32
 _BACKEND_ENV = "ANIMA_CONVROT_INT8_GEMM"
 # Opt-in TF32 for the large fp32 STE matmul. Default OFF: seed0 grad_rel can
 # exceed the 5% full-ckpt gate on 3080 (P1.11c). Speed seekers may set =1.
@@ -147,7 +151,14 @@ def int8_mm_scaled(
             else:
                 b = w_q.t().contiguous()
             a = flat if flat.is_contiguous() else flat.contiguous()
+            # Keep native flatten shapes at the model boundary while satisfying
+            # SM86 cuBLASLt. Zero rows contribute zero accumulators and are
+            # removed before post-scaling, so model numerics are unchanged.
+            pad_rows = (-m) % _INT_MM_M_ALIGNMENT
+            if pad_rows:
+                a = F.pad(a, (0, 0, 0, pad_rows))
             acc = torch._int_mm(a, b)
+            acc = acc[:m]
             # int32→fp32 required before scale (bf16 mantissa too short for raw acc).
             y = acc.to(torch.float32)
             y.mul_(x_scale_flat)

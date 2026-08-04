@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import os
-
 import pytest
 import torch
 from torch import nn
@@ -16,7 +14,6 @@ from library.runtime.convrot.gemm import (
 )
 from library.runtime.convrot.linear_w8a8 import ConvRotW8A8Linear
 from library.runtime.convrot.quant import rotate_and_quantize_weight
-from library.runtime.convrot.rht import group_rht, normalized_hadamard
 
 
 def test_int8_mm_scaled_float_matches_dequant_matmul() -> None:
@@ -146,3 +143,70 @@ def test_int8_mm_scaled_kn_cuda_int_mm_matches_nk() -> None:
     )
     rel = (y_kn - y_nk).norm() / y_nk.norm().clamp_min(1e-8)
     assert rel.item() < 1e-5
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA for SM86 row padding")
+def test_int8_mm_scaled_cuda_pads_4200_token_family() -> None:
+    """4200 rows must stay on the int8 path on Ampere instead of failing cuBLASLt."""
+    torch.manual_seed(8)
+    m, k, n = 4200, 64, 64
+    device = torch.device("cuda")
+    x_q = torch.randint(-127, 128, (m, k), device=device, dtype=torch.int8)
+    w_q = torch.randint(-127, 128, (k, n), device=device, dtype=torch.int8)
+    x_scale = torch.rand(m, 1, device=device, dtype=torch.float32)
+    w_scale = torch.rand(n, device=device, dtype=torch.float32)
+
+    y_int = int8_mm_scaled(
+        x_q,
+        x_scale,
+        w_q,
+        w_scale,
+        prefer="int_mm",
+        weight_layout="kn",
+    )
+    y_ref = int8_mm_scaled(
+        x_q,
+        x_scale,
+        w_q,
+        w_scale,
+        prefer="float",
+        weight_layout="kn",
+    )
+
+    assert y_int.shape == (m, n)
+    assert torch.allclose(y_int, y_ref, atol=1e-3, rtol=1e-5)
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA for compiled padding")
+def test_int8_mm_scaled_compiled_4200_token_family() -> None:
+    torch.manual_seed(9)
+    m, k, n = 4200, 64, 64
+    device = torch.device("cuda")
+    x_q = torch.randint(-127, 128, (m, k), device=device, dtype=torch.int8)
+    w_q = torch.randint(-127, 128, (k, n), device=device, dtype=torch.int8)
+    x_scale = torch.rand(m, 1, device=device, dtype=torch.float32)
+    w_scale = torch.rand(n, device=device, dtype=torch.float32)
+
+    def run(xq, xs, wq, ws):
+        return int8_mm_scaled(
+            xq,
+            xs,
+            wq,
+            ws,
+            prefer="int_mm",
+            weight_layout="kn",
+        )
+
+    compiled = torch.compile(run, backend="inductor")
+    y = compiled(x_q, x_scale, w_q, w_scale)
+    y_ref = int8_mm_scaled(
+        x_q,
+        x_scale,
+        w_q,
+        w_scale,
+        prefer="float",
+        weight_layout="kn",
+    )
+
+    assert y.shape == (m, n)
+    assert torch.allclose(y, y_ref, atol=1e-3, rtol=1e-5)
