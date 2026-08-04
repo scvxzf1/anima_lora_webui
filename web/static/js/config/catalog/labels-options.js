@@ -3,6 +3,9 @@ export const FIELD_LABEL_ZH = {
     alpha_rank_scale: '秩日程幂指数',
     apply_ffn_lora: 'EasyControl FFN LoRA',
     attn_mode: '注意力后端',
+    v100_flash_stability: 'V100 Flash 诊断模式',
+    debug_finite_checks: '有限值快速失败',
+    compile_dynamic_seq: '动态令牌序列编译',
     balance_loss_warmup_ratio: '均衡损失预热比例',
     balance_loss_weight: '均衡损失权重',
     balance_w_content: '内容池均衡权重',
@@ -231,6 +234,7 @@ export const FIELD_LABEL_ZH = {
 
 export const FIELD_OPTIONS = {
     attn_mode: ['torch', 'mem_efficient', 'xformers', 'flash', 'sageattn', 'flex', 'sdpa'],
+    v100_flash_stability: ['off', 'hybrid', 'safe'],
     compile_block_scope: ['resident', 'all'],
     compile_inductor_mode: ['default', 'reduce-overhead', 'max-autotune', 'max-autotune-no-cudagraphs'],
     block_swap_restore_mode: ['foreach', 'slab'],

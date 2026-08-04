@@ -1,25 +1,61 @@
 # Unified attention function supporting various implementations
 
+import importlib
+import warnings
 from contextlib import nullcontext
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import torch
 from torch.nn.attention import SDPBackend, sdpa_kernel
 from typing import Optional, Union
 
 try:
     import flash_attn
-    from flash_attn.flash_attn_interface import _flash_attn_forward
-    from flash_attn.flash_attn_interface import flash_attn_varlen_func
-    from flash_attn.flash_attn_interface import flash_attn_func
-    from flash_attn.flash_attn_interface import _wrapped_flash_attn_forward
-    from flash_attn.flash_attn_interface import _wrapped_flash_attn_backward
+    from flash_attn.flash_attn_interface import flash_attn_func, flash_attn_varlen_func
 except ImportError:
     flash_attn = None
     flash_attn_varlen_func = None
-    _flash_attn_forward = None
     flash_attn_func = None
-    _wrapped_flash_attn_forward = None
-    _wrapped_flash_attn_backward = None
+
+def _is_v100_flash_provider(module, func) -> bool:
+    provider_module = getattr(func, "__module__", "")
+    doc = getattr(module, "__doc__", None) or ""
+    return provider_module.startswith("flash_attn_v100.") or "Tesla V100" in doc
+
+
+flash_attn_v100_provider = _is_v100_flash_provider(flash_attn, flash_attn_func)
+flash_attn_v100_compat_active = False
+if flash_attn_v100_provider:
+    try:
+        from networks.flash_attn_v100_compat import (
+            flash_attn_func,
+            flash_attn_varlen_func,
+        )
+
+        flash_attn_v100_compat_active = True
+    except (ImportError, AttributeError) as exc:
+        warnings.warn(
+            "flash-attention-v100 is installed, but anima_lora could not enable "
+            f"its torch.compile compatibility layer: {exc}",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+
+# The V100 fork exposes the public FA2 facade but not all Tri Dao private
+# wrappers. Keep those optional so their absence does not disable Flash.
+_flash_interface = None
+if flash_attn is not None:
+    try:
+        _flash_interface = importlib.import_module("flash_attn.flash_attn_interface")
+    except ImportError:
+        pass
+
+_flash_attn_forward = getattr(_flash_interface, "_flash_attn_forward", None)
+_wrapped_flash_attn_forward = getattr(
+    _flash_interface, "_wrapped_flash_attn_forward", None
+)
+_wrapped_flash_attn_backward = getattr(
+    _flash_interface, "_wrapped_flash_attn_backward", None
+)
 
 # Flash Attention 4 (flash-attention-sm120) is disabled; see docs/optimizations/fa4.md.
 _flash_attn_4_func_raw = None
@@ -63,6 +99,15 @@ def sdpa_backend_context(attn_mode: Optional[str]):
     return nullcontext()
 
 
+def flash_attn_available_for_dtype(dtype: torch.dtype) -> bool:
+    """Return whether the imported Flash provider supports this input dtype."""
+    if flash_attn_func is None or flash_attn_varlen_func is None:
+        return False
+    if dtype == torch.float16:
+        return True
+    return dtype == torch.bfloat16 and not flash_attn_v100_provider
+
+
 _FLASH_HALF_DTYPES = (torch.float16, torch.bfloat16)
 
 
@@ -74,6 +119,8 @@ def _preferred_flash_dtype(*tensors: torch.Tensor) -> torch.dtype:
     2. Active autocast GPU dtype when it is half
     3. bfloat16 (default mixed-precision training target)
     """
+    if flash_attn_v100_provider:
+        return torch.float16
     for tensor in tensors:
         if tensor is not None and tensor.dtype in _FLASH_HALF_DTYPES:
             return tensor.dtype
@@ -106,6 +153,12 @@ def _cast_qkv_for_flash(
     (cast only when q.dtype != v.dtype *and* autocast is on) does not fire.
     Casting here is the safety net for that four-lock combo.
     """
+    if flash_attn_v100_provider and any(
+        tensor.dtype == torch.bfloat16 for tensor in (q, k, v)
+    ):
+        raise RuntimeError(
+            "flash-attention-v100 only supports FP16; BF16 Q/K/V are invalid"
+        )
     target = _preferred_flash_dtype(q, k, v)
     if q.dtype != target:
         q = q.to(dtype=target)
@@ -136,6 +189,8 @@ class AttentionParams:
     uniform_seqlens: bool = (
         False  # caller guarantees all seqlens are equal (skips GPU sync check)
     )
+    v100_flash_stability: str = "off"
+    debug_finite_checks: bool = False
 
     @property
     def supports_fp32(self) -> bool:
@@ -146,12 +201,30 @@ class AttentionParams:
     def requires_same_dtype(self) -> bool:
         return self.attn_mode in ["xformers"]
 
+    def for_attention_kind(self, *, is_selfattn: bool) -> "AttentionParams":
+        """Specialize shared parameters for one self/cross attention call."""
+        if (
+            self.v100_flash_stability == "hybrid"
+            and self.attn_mode == "flash"
+            and not is_selfattn
+        ):
+            return replace(self, attn_mode="torch")
+        return self
+
     @staticmethod
     def create_attention_params(
         attn_mode: Optional[str],
         softmax_scale: Optional[float] = None,
+        *,
+        v100_flash_stability: str = "off",
+        debug_finite_checks: bool = False,
     ) -> "AttentionParams":
-        return AttentionParams(attn_mode, softmax_scale=softmax_scale)
+        return AttentionParams(
+            attn_mode,
+            softmax_scale=softmax_scale,
+            v100_flash_stability=v100_flash_stability,
+            debug_finite_checks=debug_finite_checks,
+        )
 
     @staticmethod
     def create_attention_params_from_mask(
@@ -299,7 +372,10 @@ def dispatch_attention(
             v = v[:, :seqlen]
             max_seqlen = attn_params.max_seqlen
             attn_params = AttentionParams.create_attention_params(
-                attn_params.attn_mode, softmax_scale=attn_params.softmax_scale
+                attn_params.attn_mode,
+                softmax_scale=attn_params.softmax_scale,
+                v100_flash_stability=attn_params.v100_flash_stability,
+                debug_finite_checks=attn_params.debug_finite_checks,
             )  # do not in-place modify
             attn_params.max_seqlen = max_seqlen  # keep max_seqlen for padding
             seqlen_trimmed = True

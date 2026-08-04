@@ -29,6 +29,12 @@ import torch
 from accelerate import Accelerator
 from tqdm import tqdm
 
+from library.training.finite_checks import (
+    check_loss_finite,
+    check_trainable_grads_finite,
+    debug_finite_enabled,
+)
+
 from library.training.stage_schedule import (
     active_subset_indices_for_step,
     apply_active_subsets_to_dataset,
@@ -688,6 +694,11 @@ def _run_step(trainer, state: LoopState, batch) -> torch.Tensor:
         except Exception as exc:
             _probe_step(memory_probe, state, "forward_exception", **_probe_exception_fields(exc))
             raise
+        if debug_finite_enabled(args):
+            check_loss_finite(
+                loss,
+                mixed_precision=getattr(accelerator, "mixed_precision", None),
+            )
         _probe_step(
             memory_probe,
             state,
@@ -719,6 +730,8 @@ def _run_step(trainer, state: LoopState, batch) -> torch.Tensor:
         except Exception as exc:
             _probe_step(memory_probe, state, "after_backward_hook_exception", **_probe_exception_fields(exc))
             raise
+        if debug_finite_enabled(args):
+            check_trainable_grads_finite(accelerator.unwrap_model(network))
 
         if accelerator.sync_gradients:
             net_unwrapped = accelerator.unwrap_model(network)

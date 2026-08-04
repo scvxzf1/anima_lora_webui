@@ -17,6 +17,10 @@ from torch.utils.checkpoint import (
 )
 
 from library.runtime import offloading as custom_offloading_utils
+from library.anima.finite_checks import (
+    assert_finite_tensor as _assert_finite_tensor,
+    finite_checks_enabled as _finite_checks_enabled,
+)
 from library.runtime.peak_probe import record_peak_probe_event
 from library.runtime.token_counts import (
     ANIMA_VAE_SPATIAL_COMPRESSION,
@@ -655,7 +659,24 @@ class Attention(nn.Module):
         context: torch.Tensor,
         rope_cos_sin: Optional[tuple[torch.Tensor, torch.Tensor]] = None,
     ) -> torch.Tensor:
+        attn_params = attn_params.for_attention_kind(is_selfattn=self.is_selfattn)
+        kind = "self_attn" if self.is_selfattn else "cross_attn"
+        check_finite = _finite_checks_enabled(attn_params.debug_finite_checks) or (
+            attn_params.v100_flash_stability == "safe"
+            and attn_params.attn_mode == "flash"
+        )
+
         q, k, v = self.compute_qkv(x, context, rope_cos_sin=rope_cos_sin)
+        if check_finite:
+            _assert_finite_tensor(
+                q, f"{kind}.q before attention backend={attn_params.attn_mode}"
+            )
+            _assert_finite_tensor(
+                k, f"{kind}.k before attention backend={attn_params.attn_mode}"
+            )
+            _assert_finite_tensor(
+                v, f"{kind}.v before attention backend={attn_params.attn_mode}"
+            )
         # Align Q/K/V dtypes for backends that reject mixed or fp32 stacks.
         # Flash hard-cast also lives in attention_dispatch (compile can still
         # promote all three to fp32); this covers mixed-dtype before dispatch.
@@ -690,7 +711,18 @@ class Attention(nn.Module):
         qkv = [q, k, v]
         del q, k, v
         result = attention_dispatch.dispatch_attention(qkv, attn_params=attn_params)
-        return self.output_dropout(self.output_proj(result))
+        if check_finite:
+            _assert_finite_tensor(
+                result,
+                f"{kind}.attention_output backend={attn_params.attn_mode}",
+            )
+        out = self.output_dropout(self.output_proj(result))
+        if check_finite:
+            _assert_finite_tensor(
+                out,
+                f"{kind}.output_projection backend={attn_params.attn_mode}",
+            )
+        return out
 
 
 # Positional Embeddings
@@ -1509,6 +1541,10 @@ class Block(nn.Module):
         x_B_T_H_W_D = self._gated_residual_add(
             x_B_T_H_W_D, gate_self_attn_B_T_1_1_D, result
         )
+        if _finite_checks_enabled(attn_params.debug_finite_checks):
+            _assert_finite_tensor(
+                x_B_T_H_W_D, "self_attn_residual", block=self
+            )
         if record_ops:
             record_peak_probe_event(
                 peak_probe,
@@ -1553,6 +1589,10 @@ class Block(nn.Module):
         x_B_T_H_W_D = self._gated_residual_add(
             x_B_T_H_W_D, gate_cross_attn_B_T_1_1_D, result
         )
+        if _finite_checks_enabled(attn_params.debug_finite_checks):
+            _assert_finite_tensor(
+                x_B_T_H_W_D, "cross_attn_residual", block=self
+            )
         if record_ops:
             record_peak_probe_event(
                 peak_probe,
@@ -1596,6 +1636,8 @@ class Block(nn.Module):
         x_B_T_H_W_D = self._gated_residual_add(
             x_B_T_H_W_D, gate_mlp_B_T_1_1_D, result
         )
+        if _finite_checks_enabled(attn_params.debug_finite_checks):
+            _assert_finite_tensor(x_B_T_H_W_D, "mlp_residual", block=self)
         if record_ops:
             record_peak_probe_event(
                 peak_probe,
@@ -1746,6 +1788,8 @@ class Anima(nn.Module):
         use_llm_adapter: bool = True,
         attn_mode: str = "torch",
         attn_softmax_scale: Optional[float] = None,
+        v100_flash_stability: str = "off",
+        debug_finite_checks: bool = False,
     ) -> None:
         super().__init__()
         self.max_img_h = max_img_h
@@ -1771,6 +1815,8 @@ class Anima(nn.Module):
 
         self.attn_mode = attn_mode
         self.attn_softmax_scale = attn_softmax_scale
+        self.v100_flash_stability = v100_flash_stability
+        self.debug_finite_checks = debug_finite_checks
 
         # Block swap support
         self.blocks_to_swap = None
@@ -2537,7 +2583,10 @@ class Anima(nn.Module):
         }
 
         attn_params = attention_dispatch.AttentionParams.create_attention_params(
-            self.attn_mode, self.attn_softmax_scale
+            self.attn_mode,
+            self.attn_softmax_scale,
+            v100_flash_stability=self.v100_flash_stability,
+            debug_finite_checks=self.debug_finite_checks,
         )
 
         # Pre-compute cross-attention BlockMask once for all blocks (flex mode only)
@@ -2825,9 +2874,8 @@ class LLMAdapterAttention(nn.Module):
                 key_states.transpose(1, 2), cos, sin
             ).transpose(1, 2)
 
-        can_use_flash = (
-            attention_dispatch.flash_attn_varlen_func is not None
-            and query_states.dtype in (torch.float16, torch.bfloat16)
+        can_use_flash = attention_dispatch.flash_attn_available_for_dtype(
+            query_states.dtype
         )
 
         if can_use_flash and q_mask is None and kv_mask is None:

@@ -35,6 +35,7 @@ from scripts.tasks import (
     tagger,
     training,
     utilities,
+    v100_flash,
     web,
 )
 
@@ -71,6 +72,14 @@ COMMANDS = {
     "daemon-terminate": (
         daemon.cmd_daemon_terminate,
         "Stop the daemon entirely (active job killed, GPU freed, queue discarded).",
+    ),
+    "v100-flash-install": (
+        v100_flash.cmd_install,
+        "Build and install the pinned flash-attention-v100 cp313 wheel.",
+    ),
+    "v100-flash-validate": (
+        v100_flash.cmd_validate,
+        "Run the strict V100 FlashAttention acceptance suite.",
     ),
     # ── Inference ─────────────────────────────────────────────────────
     "test": (

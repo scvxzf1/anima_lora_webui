@@ -295,6 +295,22 @@ export const FIELD_HELP_TRAINING_ZH = {    learning_rate: help(
         ["不兼容时可能启动失败、报 CUDA 错，或速度异常变慢。"],
         "新手先用配置默认；显存紧可试 mem_efficient；flash 报错时再切到 flex 或 torch。"
     ),
+    v100_flash_stability: help(
+        "Tesla V100 使用 FlashAttention 时的诊断模式。",
+        "off 保持全部 Flash；hybrid 只把 cross-attention 切到 Torch SDPA；safe 保持 Flash 并在关键张量边界检查 NaN/Inf。",
+        ["hybrid 可区分 self-attention 与 cross-attention 问题，safe 可尽早报告首个非有限值位置。"],
+        ["这些模式只帮助诊断，不会修复 kernel 的数值误差。"],
+        ["V100 Flash 尚未通过严格验收，生产训练仍应使用 torch 后端。"],
+        "非 V100 保持 off；排查 V100 Flash 时先用 safe，生产配置将注意力后端设为 torch。"
+    ),
+    debug_finite_checks: help(
+        "在训练关键边界检查张量是否包含 NaN 或 Inf。",
+        "开启后会检查注意力输入/输出、残差、loss 和梯度，并在首次发现非有限值时立即中止。",
+        ["能保留最接近故障源的位置，便于定位数值问题。"],
+        ["每步增加同步和检查开销，只适合短时诊断。"],
+        ["它不会替换或隐藏无效值，也不能让不稳定训练继续安全运行。"],
+        "正常训练保持关闭；复现 NaN/Inf 时临时开启并保留报错上下文。"
+    ),
     gradient_checkpointing: help(
         "用更多计算换更低显存的训练开关。",
         "开启后，反向传播时会重新计算一部分中间结果，而不是全部存在显存里。",

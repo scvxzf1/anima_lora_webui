@@ -178,6 +178,18 @@ FIELD_HELP: dict[str, dict[str, str]] = {
         "en": "Attention backend. flash4: FlashAttention-4 (Linux, fastest). flash: FlashAttention-2. flex: PyTorch flex attention (cross-platform).",
         "ko": "어텐션 백엔드. flash4: FlashAttention-4 (Linux, 최속). flash: FlashAttention-2. flex: PyTorch flex attention (크로스 플랫폼).",
     },
+    "v100_flash_stability": {
+        "en": "V100 Flash diagnostic mode. off keeps full Flash; hybrid routes cross-attention through Torch SDPA; safe enables fail-fast finite checks. Flash remains diagnostic-only until strict validation passes.",
+        "ko": "V100 Flash 진단 모드. off는 전체 Flash, hybrid는 크로스 어텐션을 Torch SDPA로 라우팅, safe는 유한성 검사를 즉시 수행합니다.",
+    },
+    "debug_finite_checks": {
+        "en": "Abort when attention tensors, residuals, loss, or gradients contain NaN/Inf. Diagnostic only; invalid values are never replaced or hidden.",
+        "ko": "어텐션 텐서, 잔차, 손실 또는 그라디언트에 NaN/Inf가 있으면 즉시 중단합니다. 진단 전용으로 값을 숨기지 않습니다.",
+    },
+    "compile_dynamic_seq": {
+        "en": "Mark the native token-sequence axis dynamic inside compiled DiT blocks so compatible buckets reuse one graph.",
+        "ko": "컴파일된 DiT 블록의 토큰 시퀀스 축을 동적으로 표시해 호환 버킷이 하나의 그래프를 재사용합니다.",
+    },
     "gradient_checkpointing": {
         "en": "Recompute activations during backward pass instead of storing them. Trades compute for VRAM. Essential for low-VRAM setups.",
         "ko": "역전파 시 활성값을 저장 대신 재계산. 연산으로 VRAM 절약. 저사양 필수.",
@@ -363,6 +375,9 @@ FORM_GROUPS = {
     },
     "Performance": {
         "attn_mode",
+        "v100_flash_stability",
+        "debug_finite_checks",
+        "compile_dynamic_seq",
         "gradient_checkpointing",
         "unsloth_offload_checkpointing",
         "blocks_to_swap",

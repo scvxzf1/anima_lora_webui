@@ -61,6 +61,8 @@ def test_schema_has_known_keys(populated_parser):
         "max_train_epochs",
         "mixed_precision",
         "attn_mode",
+        "v100_flash_stability",
+        "debug_finite_checks",
         "compile_block_scope",
         "block_swap_transfer_dtype",
         "block_swap_restore_mode",
@@ -103,6 +105,11 @@ def test_schema_accepts_stage_schedule_target_groups(populated_parser):
 
 def test_choices_preserved(populated_parser):
     assert "mem_efficient" in config_schema.get_schema()["attn_mode"].choices
+    assert list(config_schema.get_schema()["v100_flash_stability"].choices) == [
+        "off",
+        "hybrid",
+        "safe",
+    ]
     mp = config_schema.get_schema()["mixed_precision"]
     assert "bf16" in mp.choices
     assert "no" in mp.choices
@@ -737,4 +744,3 @@ def test_base_config_merges_within_root(tmp_path, monkeypatch):
     merged = config_io._load_toml_with_base(str(child))
     assert merged["network_dim"] == 16
     assert merged["network_alpha"] == 1.0
-

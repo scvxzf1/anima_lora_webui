@@ -52,6 +52,10 @@ def test_config_metadata_exports_remain_available_from_legacy_facade():
     groups = config_metadata.get_groups()
     assert "Architecture" in groups["groups"]
     assert "learning_rate" in groups["basic"]
+    performance = groups["groups"]["Performance"]
+    assert "compile_dynamic_seq" in performance
+    assert "v100_flash_stability" in performance
+    assert "debug_finite_checks" in performance
 
 def test_metadata_module_imports_without_facade_cycle():
     env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}

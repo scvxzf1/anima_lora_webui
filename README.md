@@ -161,6 +161,16 @@ http://127.0.0.1:20102/
 .venv/bin/python tasks.py web --host 0.0.0.0 --port 20102
 ```
 
+Tesla V100 必须使用独立的 Python 3.13 / Torch 2.10 + CUDA 12.9
+环境，不要在该环境中执行普通 `uv sync`：
+
+```bash
+./setup-v100-linux.sh
+```
+
+V100 生产训练仍建议 `attn_mode="torch"`。源码版 Flash 只用于诊断和
+严格验收，详见 [V100 FlashAttention 支持边界](docs/findings/v100_flash_attention_support.md)。
+
 ## Windows 部署启动
 
 建议使用 PowerShell。先安装：

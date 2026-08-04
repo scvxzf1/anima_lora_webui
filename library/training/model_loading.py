@@ -15,6 +15,11 @@ from library.anima import weights as anima_utils
 from library.models import qwen_vae as qwen_image_autoencoder_kl
 from library.training.probes import maybe_probe_components as _maybe_probe_components
 from library.training.train_bootstrap import resolve_block_swap_profile_jsonl
+from library.training.v100_flash import (
+    flash_attn_v100_doc,
+    resolve_debug_finite_checks,
+    resolve_v100_flash_stability,
+)
 import logging
 
 logger = logging.getLogger(__name__)
@@ -71,6 +76,11 @@ def load_unet_lazily(trainer, args, weight_dtype, accelerator, text_encoders) ->
     if args.attn_mode is not None:
         attn_mode = args.attn_mode
 
+    v100_flash_stability = resolve_v100_flash_stability(args)
+    debug_finite_checks = resolve_debug_finite_checks(
+        args, v100_flash_stability
+    )
+
     if attn_mode == "flash4":
         # Flash Attention 4 (flash-attention-sm120) is not supported yet.
         raise RuntimeError(
@@ -79,15 +89,43 @@ def load_unet_lazily(trainer, args, weight_dtype, accelerator, text_encoders) ->
             "'sageattn', or 'xformers' instead."
         )
     elif attn_mode == "flash":
-        from networks.attention_dispatch import flash_attn, flash_attn_func
+        from networks.attention_dispatch import (
+            flash_attn,
+            flash_attn_func,
+            flash_attn_v100_provider,
+        )
 
-        if flash_attn_func is not None:
-            logger.info(
-                f"Using Flash Attention 2 (flash_attn {flash_attn.__version__})"
-            )
-        else:
+        if flash_attn_func is None:
             raise RuntimeError(
                 "attn_mode='flash' requested but flash_attn is not available."
+            )
+        flash_doc, doc_reports_v100 = flash_attn_v100_doc(flash_attn)
+        is_v100_fork = flash_attn_v100_provider or doc_reports_v100
+        try:
+            major, minor = torch.cuda.get_device_capability(accelerator.device)
+        except Exception:
+            major, minor = -1, -1
+        logger.info(
+            "Using Flash Attention 2 (flash_attn %s), gpu_sm=%s.%s, "
+            "v100_fork=%s, v100_flash_stability=%s, debug_finite_checks=%s%s",
+            getattr(flash_attn, "__version__", "unknown"),
+            major,
+            minor,
+            is_v100_fork,
+            v100_flash_stability,
+            debug_finite_checks,
+            f", doc={flash_doc}" if flash_doc else "",
+        )
+        if major == 7 and minor == 0 and is_v100_fork:
+            if loading_dtype != torch.float16:
+                raise RuntimeError(
+                    "flash-attention-v100 only supports FP16 inputs; use "
+                    "mixed_precision='fp16' or attn_mode='torch'."
+                )
+            logger.warning(
+                "Detected flash-attention-v100 on Volta/V100. Its strict "
+                "production validation is not approved; use attn_mode='torch' "
+                "for production and Flash only for diagnostics."
             )
     else:
         logger.info(f"Using attention mode: {attn_mode}")
@@ -122,6 +160,8 @@ def load_unet_lazily(trainer, args, weight_dtype, accelerator, text_encoders) ->
         lora_weights_list=lora_weights_list,
         lora_multipliers=lora_multipliers,
         attn_softmax_scale=attn_softmax_scale,
+        v100_flash_stability=v100_flash_stability,
+        debug_finite_checks=debug_finite_checks,
     )
     _maybe_probe_components(
         trainer,
@@ -217,4 +257,3 @@ def load_unet_lazily(trainer, args, weight_dtype, accelerator, text_encoders) ->
         )
 
     return model, text_encoders
-

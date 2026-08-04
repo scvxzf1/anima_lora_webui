@@ -470,7 +470,11 @@ export const CONFIG_COMPACT_FIELD_GROUPS = {
         },
         {
             className: 'config-field-grid-4col',
-            keys: ['attn_mode', 'torch_compile', 'compile_block_scope', 'compile_inductor_mode'],
+            keys: ['attn_mode', 'v100_flash_stability', 'torch_compile', 'compile_block_scope', 'compile_inductor_mode'],
+        },
+        {
+            className: 'config-field-grid-2col config-field-grid-inline-flags',
+            keys: ['compile_dynamic_seq', 'debug_finite_checks'],
         },
         {
             className: 'config-field-grid-3col',

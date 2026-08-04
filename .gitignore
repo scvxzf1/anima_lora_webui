@@ -7,6 +7,8 @@ dist/
 build/
 output/
 *.safetensors
+# Fixed, hashed T5("") sidecar used by the V100 acceptance suite.
+!library/anima/assets/_anima_uncond_te.safetensors
 # Ship the SmoothQuant-style per-channel calibration as a vendored asset —
 # small (~3.5MB), strictly an input-magnitude prior on the base DiT, not a
 # checkpoint. Regenerate via `bench/channel_stats/analyze_lora_input_channels.py`.

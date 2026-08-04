@@ -439,6 +439,20 @@ def add_anima_training_arguments(parser: argparse.ArgumentParser):
         " For head_dim=128, default is ~0.088. Try 0.1-0.15 for better low-precision stability.",
     )
     parser.add_argument(
+        "--v100_flash_stability",
+        choices=["off", "hybrid", "safe"],
+        default=None,
+        help="V100 Flash diagnostic mode: off uses full Flash, hybrid routes "
+        "cross-attention to torch SDPA, and safe enables fail-fast finite checks. "
+        "ANIMA_V100_FLASH_STABILITY may provide the default.",
+    )
+    parser.add_argument(
+        "--debug_finite_checks",
+        action="store_true",
+        help="Fail fast when attention tensors, block residuals, loss, or "
+        "gradients contain NaN/Inf. Also enabled by ANIMA_DEBUG_FINITE=1.",
+    )
+    parser.add_argument(
         "--vae_chunk_size",
         type=int,
         default=None,
