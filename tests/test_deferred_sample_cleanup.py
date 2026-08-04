@@ -38,6 +38,30 @@ def test_deferred_sample_decode_still_runs_on_normal_completion() -> None:
     assert "decode_deferred_samples_safely(accelerator, args, loop_state, vae)" in train_tail
 
 
+def test_normal_completion_writes_final_model() -> None:
+    source = (ROOT / "library" / "training" / "train_session.py").read_text(
+        encoding="utf-8"
+    )
+    train_tail = source[source.index("accelerator.end_training()") :]
+
+    assert "saver.cleanup_resumable()" in train_tail
+    assert (
+        "saver.save_final(loop_state.network, loop_state.global_step, num_train_epochs)"
+        in train_tail
+    )
+
+
+def test_step_limit_runs_epoch_end_artifacts_before_break() -> None:
+    source = (ROOT / "library" / "training" / "loop.py").read_text(encoding="utf-8")
+    loop_body = _section(source, "def run_training_loop(", "def _current_stage_fields(")
+
+    limit_index = loop_body.index("reached_step_limit =")
+    save_index = loop_body.index("state.saver.maybe_save_epoch(")
+    sample_index = loop_body.index("trainer.sample_images(")
+    break_index = loop_body.index("if reached_step_limit:")
+    assert limit_index < save_index < sample_index < break_index
+
+
 def test_sigterm_uses_keyboard_interrupt_cleanup_path() -> None:
     source = TRAIN_PY.read_text(encoding="utf-8")
 

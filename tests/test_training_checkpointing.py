@@ -55,6 +55,17 @@ def test_save_last_n_epochs_minus_one_keeps_all_weight_files(tmp_path):
     assert (tmp_path / "demo-000002.safetensors").exists()
     assert (tmp_path / "demo-000003.safetensors").exists()
 
+
+def test_final_epoch_writes_numbered_weight_file(tmp_path):
+    args = _weight_checkpoint_args(tmp_path, keep_last=-1)
+    saver = _weight_checkpoint_saver(args)
+
+    saver.maybe_save_epoch(
+        _TinySaveNetwork(), global_step=60, epoch=5, num_train_epochs=6
+    )
+
+    assert (tmp_path / "demo-000006.safetensors").exists()
+
 def test_save_checkpoint_state_replaces_state_after_success(tmp_path):
     state_dir = tmp_path / "demo-checkpoint-state"
     state_dir.mkdir()
@@ -167,6 +178,30 @@ def test_checkpointing_last_n_epochs_keeps_recent_resumable_states(tmp_path):
     _resume_saver(completed_args).auto_resume()
     assert completed_args.resume is None
     assert latest_state.exists()
+
+
+def test_final_epoch_writes_numbered_resumable_checkpoint(tmp_path):
+    args = _checkpointing_args(tmp_path, keep_last=1)
+    accelerator = _FakeAccelerator(step=60)
+    saver = CheckpointSaver(
+        args=args,
+        accelerator=accelerator,
+        save_dtype=None,
+        metadata={},
+        minimum_metadata={},
+        get_sai_model_spec_fn=lambda _args: {},
+        current_epoch=SimpleNamespace(value=6),
+        current_step=SimpleNamespace(value=59),
+    )
+
+    saver.maybe_save_resumable(
+        _TinySaveNetwork(), global_step=60, epoch=5, num_train_epochs=6
+    )
+
+    state_dir = tmp_path / "demo-checkpoint-000006-state"
+    assert (tmp_path / "demo-checkpoint-000006.safetensors").exists()
+    state = json.loads((state_dir / "train_state.json").read_text(encoding="utf-8"))
+    assert state["current_step"] == 60
 
 def test_checkpointing_cleanup_does_not_remove_preexisting_resume_points(tmp_path):
     old_state = tmp_path / "demo-checkpoint-000001-state"

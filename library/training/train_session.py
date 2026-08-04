@@ -659,3 +659,4 @@ def run_training_session(trainer, args) -> None:
             save_state_on_train_end(args, accelerator)
 
         saver.cleanup_resumable()
+        saver.save_final(loop_state.network, loop_state.global_step, num_train_epochs)

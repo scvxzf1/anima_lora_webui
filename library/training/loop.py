@@ -442,8 +442,7 @@ def run_training_loop(trainer, state: LoopState) -> None:
         )
 
         _run_epoch_steps(trainer, state, epoch)
-        if state.global_step >= args.max_train_steps:
-            break
+        reached_step_limit = state.global_step >= args.max_train_steps
         _run_epoch_validation(trainer, state, epoch)
         _log_epoch_average(trainer, state, epoch)
         _run_adapter_epoch_hooks(trainer, state)
@@ -471,6 +470,9 @@ def run_training_loop(trainer, state: LoopState) -> None:
             network=state.network,
         )
         state.optimizer_train_fn()
+
+        if reached_step_limit:
+            break
 
     state.metadata["ss_training_finished_at"] = str(time.time())
 

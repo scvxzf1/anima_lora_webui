@@ -117,9 +117,7 @@ def save_sd_model_on_epoch_end_or_stepwise_common(
 ):
     if on_epoch_end:
         epoch_no = epoch + 1
-        saving = (
-            epoch_no % args.save_every_n_epochs == 0 and epoch_no < num_train_epochs
-        )
+        saving = epoch_no % args.save_every_n_epochs == 0
         if not saving:
             return
 
@@ -877,9 +875,7 @@ class CheckpointSaver:
         if args.save_every_n_epochs is None:
             return
         epoch_no = epoch + 1
-        saving = (
-            epoch_no % args.save_every_n_epochs == 0 and epoch_no < num_train_epochs
-        )
+        saving = epoch_no % args.save_every_n_epochs == 0
         if not saving or not accelerator.is_main_process:
             return
         ckpt_name = get_epoch_ckpt_name(args, "." + args.save_model_as, epoch_no)
@@ -906,9 +902,7 @@ class CheckpointSaver:
         ):
             return
         epoch_no = epoch + 1
-        if not (
-            epoch_no % args.checkpointing_epochs == 0 and epoch_no < num_train_epochs
-        ):
+        if epoch_no % args.checkpointing_epochs != 0:
             return
         if accelerator.is_main_process:
             ckpt_name = get_checkpoint_ckpt_name(
