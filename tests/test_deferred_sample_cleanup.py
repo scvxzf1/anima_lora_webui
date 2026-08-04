@@ -69,16 +69,17 @@ def test_sigterm_uses_keyboard_interrupt_cleanup_path() -> None:
     assert "_install_stop_signal_handlers()" in source
 
 
-def test_live_sample_preview_decode_runs_after_latent_save() -> None:
+def test_live_sample_preview_decode_runs_after_all_ranks_finish() -> None:
     source = ANIMA_TRAINING.read_text(encoding="utf-8")
     sample_body = source[
         source.index("def sample_images(")
         : source.index("def _sample_image_inference(")
     ]
 
-    assert "saved_latents: list[str] = []" in sample_body
-    assert "saved_latents.append(latent_path)" in sample_body
-    assert "decode_samples_for_live_preview(accelerator, args, vae" in sample_body
+    first_wait = sample_body.index("accelerator.wait_for_everyone()")
+    decode = sample_body.index("decode_samples_for_live_preview(accelerator, args, vae")
+    second_wait = sample_body.index("accelerator.wait_for_everyone()", first_wait + 1)
+    assert first_wait < decode < second_wait
 
 
 def test_live_sample_preview_restores_block_swap_safely() -> None:

@@ -974,23 +974,74 @@ def sample_images(
         if not sample_this_call:
             return
 
-    logger.info(f"Generating sample images at step {steps}")
+    process_index = int(getattr(accelerator, "process_index", 0))
+    num_processes = max(int(getattr(accelerator, "num_processes", 1)), 1)
+    if getattr(accelerator, "is_main_process", True):
+        logger.info(
+            "Generating sample images at step %s across %s process(es)",
+            steps,
+            num_processes,
+        )
     use_cached_prompt_snapshot = (
         sample_prompts_snapshot is not None
         and sample_prompts_te_outputs is not None
         and text_encoder is None
     )
-    if not use_cached_prompt_snapshot and not os.path.isfile(args.sample_prompts):
-        logger.error(f"No prompt file: {args.sample_prompts}")
+    prompt_file_missing = not use_cached_prompt_snapshot and not os.path.isfile(
+        args.sample_prompts
+    )
+    if _sample_failed_on_any_process(
+        accelerator, prompt_file_missing, num_processes
+    ):
+        if getattr(accelerator, "is_main_process", True):
+            logger.error(
+                "Sample prompt file is unavailable on at least one process: %s",
+                args.sample_prompts,
+            )
         return
+
+    prompt_error: Optional[Exception] = None
+    prompts = []
+    try:
+        if use_cached_prompt_snapshot:
+            prompts = [dict(prompt) for prompt in sample_prompts_snapshot]
+        else:
+            prompts = train_util.load_prompts(args.sample_prompts)
+    except Exception as exc:  # keep all ranks on the same collective path
+        prompt_error = exc
+    if _sample_failed_on_any_process(
+        accelerator, prompt_error is not None, num_processes
+    ):
+        if prompt_error is not None:
+            raise prompt_error
+        raise RuntimeError("Sample prompt loading failed on another process")
+
+    local_prompts = prompts[process_index::num_processes]
 
     # Unwrap models
     dit = accelerator.unwrap_model(dit)
     if text_encoder is not None:
         text_encoder = accelerator.unwrap_model(text_encoder)
+    net = accelerator.unwrap_model(network) if network is not None else None
+
+    # Before the block-swap pause below: pause_block_swap() zeroes
+    # blocks_to_swap, and a recompile under that would treat every block as
+    # resident and compile the swapped tail too — silently widening
+    # compile_block_scope="resident" for the rest of the run.
+    compile_error: Optional[Exception] = None
+    try:
+        _ensure_sample_compile_range(dit, net, prompts)
+    except Exception as exc:  # keep all ranks on the same collective path
+        compile_error = exc
+    if _sample_failed_on_any_process(
+        accelerator, compile_error is not None, num_processes
+    ):
+        if compile_error is not None:
+            raise compile_error
+        raise RuntimeError("Sample compile preparation failed on another process")
+
     # Adapter to eval for the duration — same as the validation phase, so
     # dropout / rank-dropout don't perturb the previews. Restored in finally.
-    net = accelerator.unwrap_model(network) if network is not None else None
     if net is not None:
         net.eval()
         # Sample does not go through apply_router_conditioning; force full
@@ -998,16 +1049,6 @@ def sample_images(
         # multiplies the mask outside a training-only guard.
         if hasattr(net, "clear_timestep_mask"):
             net.clear_timestep_mask()
-
-    if use_cached_prompt_snapshot:
-        prompts = [dict(prompt) for prompt in sample_prompts_snapshot]
-    else:
-        prompts = train_util.load_prompts(args.sample_prompts)
-    # Before the block-swap pause below: pause_block_swap() zeroes
-    # blocks_to_swap, and a recompile under that would treat every block as
-    # resident and compile the swapped tail too — silently widening
-    # compile_block_scope="resident" for the rest of the run.
-    _ensure_sample_compile_range(dit, net, prompts)
 
     block_swap_paused = False
     if getattr(args, "disable_block_swap_for_eval", False) and hasattr(
@@ -1032,12 +1073,12 @@ def sample_images(
     except Exception:
         pass
 
-    saved_latents: list[str] = []
+    sample_error: Optional[Exception] = None
     try:
         with torch.no_grad(), accelerator.autocast():
-            for prompt_dict in prompts:
+            for prompt_dict in local_prompts:
                 dit.prepare_block_swap_before_forward()
-                latent_path = _sample_image_inference(
+                _sample_image_inference(
                     accelerator,
                     args,
                     dit,
@@ -1052,8 +1093,8 @@ def sample_images(
                     sample_prompts_te_outputs,
                     prompt_replacement,
                 )
-                if latent_path:
-                    saved_latents.append(latent_path)
+    except Exception as exc:  # coordinate failures before any rank enters a barrier
+        sample_error = exc
     finally:
         # Restore RNG + model state even if a prompt errors, so training
         # resumes exactly where it left off (mirrors run_validation's finally).
@@ -1072,8 +1113,40 @@ def sample_images(
         # Letting the caching allocator hold its blocks keeps usage flat (peak
         # settles at max(training, sampling) and stays there).
 
-    if saved_latents:
+    if sample_error is not None and _is_cuda_oom(sample_error):
+        clean_memory_on_device(accelerator.device)
+    if _sample_failed_on_any_process(
+        accelerator, sample_error is not None, num_processes
+    ):
+        if sample_error is not None:
+            raise sample_error
+        raise RuntimeError("Sample generation failed on another process")
+
+    # Each rank writes its prompt shard. Decode only after every latent is
+    # visible, then keep the other ranks parked until the main rank restores
+    # the VAE/DiT devices and removes the staging files.
+    accelerator.wait_for_everyone()
+    if getattr(accelerator, "is_main_process", True):
         decode_samples_for_live_preview(accelerator, args, vae, dit=dit, network=net)
+    accelerator.wait_for_everyone()
+
+
+def _sample_failed_on_any_process(
+    accelerator: Accelerator,
+    failed: bool,
+    num_processes: int,
+) -> bool:
+    if num_processes <= 1:
+        return failed
+    failure_count = accelerator.reduce(
+        torch.tensor(
+            [int(failed)],
+            device=accelerator.device,
+            dtype=torch.int32,
+        ),
+        reduction="sum",
+    )
+    return bool(failure_count.item())
 
 
 def _sample_image_inference(
