@@ -234,4 +234,3 @@ def test_is_loopback_bind_helpers() -> None:
     assert web_server._is_loopback_bind("localhost")
     assert not web_server._is_loopback_bind("0.0.0.0")
     assert not web_server._is_loopback_bind("192.168.1.10")
-

@@ -367,4 +367,3 @@ async def _start_pending_training(self, pending: dict[str, Any]) -> None:
             "queue_item_id": queue_item_id,
         })
         self._schedule_queue_dispatch()
-

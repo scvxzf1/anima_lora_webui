@@ -231,4 +231,3 @@ def test_workflow_dom_contracts_match_index_html() -> None:
         missing_optional = missing_dom_ids_in_html(html, contract["optional"])
         assert not missing_optional, f"{name} optional missing: {sorted(missing_optional)}"
 
-

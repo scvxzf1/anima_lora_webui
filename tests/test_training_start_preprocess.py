@@ -580,4 +580,3 @@ def test_handle_start_blocks_spd_cli_only_variant(monkeypatch):
     payload = json.loads(response.text)
     assert payload["ok"] is False
     assert "CLI" in payload["error"]
-
