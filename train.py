@@ -44,6 +44,10 @@ from library.training.probes import (  # noqa: E402
     maybe_probe as _maybe_probe,
     maybe_probe_components as _maybe_probe_components,
 )
+from library.training.v100_flash import (  # noqa: E402, F401
+    flash_attn_v100_doc as _flash_attn_v100_doc,
+    resolve_v100_flash_stability as _resolve_v100_flash_stability,
+)
 
 
 def _install_stop_signal_handlers() -> None:
