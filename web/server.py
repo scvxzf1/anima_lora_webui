@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 
 from aiohttp import web
+from aiohttp.web_log import AccessLogger
 
 ROOT = Path(__file__).resolve().parents[1]
 STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -16,6 +17,15 @@ MAX_UPLOAD_BYTES = 512 * 1024 * 1024
 AUTH_COOKIE = "anima_webui_token"
 AUTH_HEADER = "X-Anima-Token"
 TOKEN_ENV = "ANIMA_WEBUI_TOKEN"
+
+
+class _WebAccessLogger(AccessLogger):
+    """Log failed HTTP requests without printing successful request traffic."""
+
+    def log(self, request, response, time) -> None:
+        if response is not None and response.status < 400:
+            return
+        super().log(request, response, time)
 
 
 async def index_handler(request: web.Request) -> web.FileResponse:
@@ -203,4 +213,12 @@ def main():
             "Auth required for external bind "
             f"(Authorization: Bearer / {AUTH_HEADER} / ?token=)."
         )
-    web.run_app(app, host=args.host, port=args.port, print=None)
+    # Successful browser traffic is noisy; HTTP failures remain visible while
+    # application, training, warning, and error loggers are unaffected.
+    web.run_app(
+        app,
+        host=args.host,
+        port=args.port,
+        print=None,
+        access_log_class=_WebAccessLogger,
+    )

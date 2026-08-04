@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import sys
+from types import SimpleNamespace
 
 import pytest
 from aiohttp import web
@@ -74,6 +76,41 @@ def test_web_main_defaults_to_loopback(monkeypatch) -> None:
     assert captured["app"] is app
     assert captured["host"] == "127.0.0.1"
     assert captured["port"] == 20102
+    assert captured["access_log_class"] is web_server._WebAccessLogger
+
+
+def test_web_access_logger_suppresses_successful_requests_only(monkeypatch) -> None:
+    logged = []
+    monkeypatch.setattr(
+        web_server.AccessLogger,
+        "log",
+        lambda _self, request, response, _time: logged.append(
+            (request.path, response.status)
+        ),
+    )
+    access_logger = web_server._WebAccessLogger(logging.getLogger("test.web.access"))
+
+    access_logger.log(
+        SimpleNamespace(path="/ws/training"), SimpleNamespace(status=101), 0.0
+    )
+    access_logger.log(
+        SimpleNamespace(path="/static/app.js"), SimpleNamespace(status=304), 0.0
+    )
+    access_logger.log(
+        SimpleNamespace(path="/api/training/history"),
+        SimpleNamespace(status=200),
+        0.0,
+    )
+    access_logger.log(
+        SimpleNamespace(path="/api/missing"), SimpleNamespace(status=404), 0.0
+    )
+    access_logger.log(
+        SimpleNamespace(path="/api/training/start"),
+        SimpleNamespace(status=500),
+        0.0,
+    )
+
+    assert logged == [("/api/missing", 404), ("/api/training/start", 500)]
 
 
 def test_web_main_allows_explicit_network_bind(monkeypatch) -> None:
