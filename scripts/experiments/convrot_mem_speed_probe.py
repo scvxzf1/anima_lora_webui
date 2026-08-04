@@ -28,6 +28,7 @@ from torch.nn import functional as F
 
 from library.runtime.convrot.apply import apply_convrot_to_lora_network
 from library.runtime.convrot.checks import warn_convrot_blocks_to_swap
+from library.runtime.block_swap_payload import block_swap_payload_residency
 from library.runtime.int8_linear import selected_int8_linear_modules
 from scripts.experiments.int8_linear_equivalence_probe import (
     DEFAULT_DATA_DIR,
@@ -287,6 +288,7 @@ def run_case(
     meta_bases = 0
     peak = 0
     allocated = 0
+    payload_residency_after_apply = None
 
     try:
         anima = load_anima_model(
@@ -385,6 +387,7 @@ def run_case(
         torch.cuda.synchronize()
         torch.cuda.reset_peak_memory_stats()
         storage_after_apply = torch.cuda.memory_allocated()
+        payload_residency_after_apply = block_swap_payload_residency(anima)
         host_rss_after_apply = _host_rss_bytes()
 
         params = [p for p in network.parameters() if p.requires_grad]
@@ -515,6 +518,10 @@ def run_case(
         "free_stats": free_stats,
         "meta_base_linears": meta_bases,
         "network_param_buffer_bytes": net_bytes,
+        "convrot_payload_residency_after_apply": payload_residency_after_apply,
+        "convrot_payload_residency": (
+            block_swap_payload_residency(anima) if anima is not None else None
+        ),
         "scope": scope,
     }
     loss_s = "nan" if last_loss is None else f"{last_loss:.4f}"
@@ -675,6 +682,15 @@ def main() -> int:
         ),
     )
     parser.add_argument(
+        "--blocks-to-swap-grid",
+        type=str,
+        default=None,
+        help=(
+            "Comma-separated residency ablation values, e.g. 0,12,26. "
+            "Overrides --blocks-to-swap and suffixes result labels with _swapN."
+        ),
+    )
+    parser.add_argument(
         "--block-swap-transfer-dtype",
         type=str,
         default="bf16",
@@ -801,49 +817,68 @@ def main() -> int:
     unknown = [k for k in case_keys if k not in all_cases]
     if unknown:
         raise SystemExit(f"unknown cases: {unknown}; known={sorted(all_cases)}")
+    if args.blocks_to_swap_grid:
+        swap_values = [
+            int(value.strip())
+            for value in args.blocks_to_swap_grid.split(",")
+            if value.strip()
+        ]
+        if not swap_values:
+            raise SystemExit("--blocks-to-swap-grid must contain at least one value")
+        if any(value < 0 for value in swap_values):
+            raise SystemExit("--blocks-to-swap-grid values must be >= 0")
+    else:
+        swap_values = [int(args.blocks_to_swap or 0)]
+
     results = []
     import gc
 
-    for key in case_keys:
-        case = all_cases[key]
-        print(f"=== {case['label']} ===", flush=True)
-        gc.collect()
-        torch.cuda.empty_cache()
-        torch.cuda.synchronize()
-        results.append(
-            run_case(
-                **case,
-                dit_path=args.dit_path,
-                data_dir=args.data_dir,
-                device=device,
-                dtype=dtype,
-                steps=args.steps,
-                scope=args.scope,
-                group_size=args.group_size,
-                seed=args.seed,
-                torch_compile=bool(args.torch_compile),
-                compile_mode=args.compile_mode,
-                lora_rank=int(args.lora_rank),
-                lora_alpha=args.lora_alpha,
-                batch_size=int(args.batch_size),
-                cache_index=int(args.cache_index),
-                min_latent_tokens=int(args.min_latent_tokens or 0),
-                gradient_checkpointing=not bool(args.no_gradient_checkpointing),
-                blocks_to_swap=int(args.blocks_to_swap or 0),
-                block_swap_transfer_dtype=str(args.block_swap_transfer_dtype),
+    for n_swap in swap_values:
+        for key in case_keys:
+            case = dict(all_cases[key])
+            if args.blocks_to_swap_grid:
+                case["label"] = f"{case['label']}_swap{n_swap}"
+            print(f"=== {case['label']} ===", flush=True)
+            gc.collect()
+            torch.cuda.empty_cache()
+            torch.cuda.synchronize()
+            results.append(
+                run_case(
+                    **case,
+                    dit_path=args.dit_path,
+                    data_dir=args.data_dir,
+                    device=device,
+                    dtype=dtype,
+                    steps=args.steps,
+                    scope=args.scope,
+                    group_size=args.group_size,
+                    seed=args.seed,
+                    torch_compile=bool(args.torch_compile),
+                    compile_mode=args.compile_mode,
+                    lora_rank=int(args.lora_rank),
+                    lora_alpha=args.lora_alpha,
+                    batch_size=int(args.batch_size),
+                    cache_index=int(args.cache_index),
+                    min_latent_tokens=int(args.min_latent_tokens or 0),
+                    gradient_checkpointing=not bool(args.no_gradient_checkpointing),
+                    blocks_to_swap=n_swap,
+                    block_swap_transfer_dtype=str(args.block_swap_transfer_dtype),
+                )
             )
-        )
 
     args.json_out.parent.mkdir(parents=True, exist_ok=True)
     # merge with existing if partial
-    payload = {"results": results}
+    payload = {"blocks_to_swap_grid": swap_values, "results": results}
     if args.json_out.exists() and args.cases.strip().lower() != "all":
         try:
             prev = json.loads(args.json_out.read_text())
             by_label = {r["label"]: r for r in prev.get("results", [])}
             for r in results:
                 by_label[r["label"]] = r
-            payload = {"results": list(by_label.values())}
+            payload = {
+                "blocks_to_swap_grid": swap_values,
+                "results": list(by_label.values()),
+            }
         except Exception:
             pass
     args.json_out.write_text(json.dumps(payload, indent=2), encoding="utf-8")
