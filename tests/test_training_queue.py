@@ -755,7 +755,9 @@ def test_queue_history_metadata_is_written_on_launch(tmp_path, monkeypatch):
     assert meta["queue_attempt"] == 3
 
 
-def test_start_queue_item_applies_gpu_whitelist_to_child_env(tmp_path):
+def test_start_queue_item_applies_multi_gpu_launch_to_child_env(tmp_path, monkeypatch):
+    monkeypatch.delenv("ANIMA_ACCELERATE_LAUNCH", raising=False)
+    monkeypatch.delenv("ANIMA_ACCELERATE_NUM_PROCESSES", raising=False)
     runtime = _runtime_payload(tmp_path)
     svc = TrainingService(web.Application())
     captured = {}
@@ -777,14 +779,18 @@ def test_start_queue_item_applies_gpu_whitelist_to_child_env(tmp_path):
         "runtime_config_file": runtime["runtime_config_file"],
         "source_config_file": "configs/imported/source.toml",
         "extra_args": [],
-        "gpu_whitelist": [1],
+        "gpu_whitelist": [1, 0],
         "continue_info": {},
         "resume_info": {},
     }))
 
     assert captured["env"]["CUDA_DEVICE_ORDER"] == "PCI_BUS_ID"
-    assert captured["env"]["CUDA_VISIBLE_DEVICES"] == "1"
-    assert captured["kwargs"]["gpu_whitelist"] == [1]
+    assert captured["env"]["CUDA_VISIBLE_DEVICES"] == "1,0"
+    assert captured["env"]["ANIMA_ACCELERATE_LAUNCH"] == "1"
+    assert captured["env"]["ANIMA_ACCELERATE_NUM_PROCESSES"] == "2"
+    assert "accelerate.commands.accelerate_cli" in captured["cmd"]
+    assert captured["cmd"][captured["cmd"].index("--num_processes") + 1] == "2"
+    assert captured["kwargs"]["gpu_whitelist"] == [1, 0]
     assert captured["kwargs"]["queue_item_id"] == "q-gpu"
 
 

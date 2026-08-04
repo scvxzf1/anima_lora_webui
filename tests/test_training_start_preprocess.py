@@ -308,6 +308,8 @@ def test_start_training_extra_args_override_accelerate_mixed_precision(tmp_path,
     assert captured["cmd"][captured["cmd"].index("--mixed_precision") + 1] == "no"
 
 def test_start_preprocess_keeps_continue_info_for_pending_training(tmp_path, monkeypatch):
+    monkeypatch.delenv("ANIMA_ACCELERATE_LAUNCH", raising=False)
+    monkeypatch.delenv("ANIMA_ACCELERATE_NUM_PROCESSES", raising=False)
     _write_runtime_config_tree(tmp_path)
     _patch_runtime_service_paths(monkeypatch, tmp_path)
     runtime_config = tmp_path / "output" / "runs" / "522-20260523-114514" / "config.runtime.toml"
@@ -329,7 +331,11 @@ def test_start_preprocess_keeps_continue_info_for_pending_training(tmp_path, mon
 
     svc = TrainingService(web.Application())
 
-    async def fake_launch(*args, **kwargs):
+    captured = {}
+
+    async def fake_launch(cmd, env, **kwargs):
+        captured["cmd"] = cmd
+        captured["env"] = env
         return None
 
     svc._launch_job = fake_launch
@@ -339,11 +345,15 @@ def test_start_preprocess_keeps_continue_info_for_pending_training(tmp_path, mon
             "default",
             "gui-methods",
             train_after=True,
+            gpu_whitelist=[0, 1],
             continue_info={"continue_from_weight_abs_path": str(weight)},
         )
     )
 
     assert svc._pending_train_after_preprocess["continue_info"]["continue_from_weight_abs_path"] == str(weight.resolve())
+    assert svc._pending_train_after_preprocess["gpu_whitelist"] == [0, 1]
+    assert captured["env"]["CUDA_VISIBLE_DEVICES"] == "0,1"
+    assert "accelerate.commands.accelerate_cli" not in captured["cmd"]
 
 def test_handle_start_returns_400_for_missing_config_file(tmp_path, monkeypatch):
     _write_runtime_config_tree(tmp_path)

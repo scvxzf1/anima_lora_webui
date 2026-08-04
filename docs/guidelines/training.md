@@ -203,22 +203,41 @@ To enable paired CMMD² (PE-Core MMD between paired samples), set
 or `validation_split` (fraction). CMMD adds sampling and PE-encoder cost; with
 CMMD disabled, a positive validation split uses FM-MSE instead.
 
-## Multi-GPU (removed)
+## Multi-GPU
 
-The repo is single-GPU only. `scripts/tasks/_common.py::accelerate_launch`
-hardcodes a single-process invocation, and the trainer no longer carries
-DDP plumbing — the `--ddp_*` flags, `InitProcessGroupKwargs` /
-`DistributedDataParallelKwargs` setup, and manual `all_reduce_network()`
-sync are all gone. Accelerate's collectives still work harmlessly at
-1 process.
+The standard `train.py` path supports data-parallel adapter training through
+an Accelerate launch. In the WebUI, selecting two or more GPUs automatically
+starts one worker per selected GPU. The "all GPUs" choice is expanded to the
+GPU indices returned by the WebUI GPU inventory, so it follows the same rule.
+Preprocessing remains single-process; its selected GPU list is carried into
+the training launch.
 
-If you re-add multi-GPU later, the non-obvious design choice to preserve is
-**don't `accelerator.prepare(network)` and rely on the default DDP wrap.**
-With the DiT frozen and only the adapter trainable, wrapping the LoRA
-`nn.Module` directly is awkward (the buckets don't match the frozen base)
-and wrapping the DiT wastes bandwidth on params that never get gradients.
-The previous approach was: leave the network unwrapped, run a manual fused
-all-reduce on `[p.grad for p in network.parameters() if p.grad is not None]`
-once per `sync_gradients` step (`_flatten_dense_tensors` avoids N serialized
-collectives). Any grad-clip must run *after* that all-reduce so it sees
-global-mean grads.
+For CLI launches, opt in explicitly with both variables:
+
+```bash
+ANIMA_ACCELERATE_LAUNCH=1 \
+ANIMA_ACCELERATE_NUM_PROCESSES=2 \
+.venv/bin/python tasks.py web --host 127.0.0.1 --port 20102
+```
+
+The adapter network is registered with Accelerate for device placement and
+checkpoint state, but deliberately is not DDP-wrapped. Adapter forwards run
+through monkey-patched frozen DiT/text-encoder modules rather than through the
+network container's root `forward`, so a normal DDP wrapper has the wrong
+forward boundary. `library/training/gradient_sync.py` instead:
+
+- broadcasts optimizer parameters and network buffers from rank zero once;
+- mean-reduces coalesced adapter gradients once per `sync_gradients` step;
+- contributes zeros for a rank-local `grad=None`, while preserving `None` when
+  a parameter is unused on every rank;
+- synchronizes before router statistics, finite checks, and gradient clipping.
+
+Gradients remain loss-scaled during the collective. This propagates FP16
+overflow to every rank before GradScaler unscales/checks the gradients, keeping
+the optimizer skip decision consistent. The effective global batch is
+`train_batch_size * num_processes * gradient_accumulation_steps`; retune LR or
+accumulation when changing the process count.
+
+This support applies to commands that use the standard `train.py` launcher.
+Bespoke experimental loops that bypass it remain single-GPU unless their own
+documentation says otherwise.

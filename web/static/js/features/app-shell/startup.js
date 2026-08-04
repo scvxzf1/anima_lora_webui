@@ -3,7 +3,7 @@
  * Moved out of anima-app mechanical chunks.
  */
 import { MetricsChart } from '../../../chart.js?v=module-bootstrap-20260714-stage-dataset5';
-import { createGpuPicker } from './gpu-picker.js?v=module-bootstrap-20260714-stage-dataset5';
+import { createGpuPicker } from './gpu-picker.js?v=module-bootstrap-20260804-multigpu1';
 import { createTabController } from './tabs.js?v=module-bootstrap-20260714-stage-dataset5';
 import { createThemeController } from './theme.js?v=module-bootstrap-20260714-stage-dataset5';
 import { createLanguageController } from './language.js?v=module-bootstrap-20260714-stage-dataset5';

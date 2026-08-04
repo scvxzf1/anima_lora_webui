@@ -9,6 +9,7 @@ from library.runtime.launch import (
     ACCELERATE_MIXED_PRECISION_ENV,
     ACCELERATE_NUM_PROCESSES_ENV,
     accelerate_training_command_prefix,
+    configure_accelerate_for_gpu_selection,
     resolve_accelerate_mixed_precision,
     resolve_accelerate_num_processes,
 )
@@ -135,6 +136,37 @@ def test_accelerate_num_processes_defaults_to_single_process(monkeypatch):
 def test_accelerate_num_processes_env_override():
     env = {ACCELERATE_NUM_PROCESSES_ENV: "2"}
     assert resolve_accelerate_num_processes(env) == "2"
+
+
+def test_multi_gpu_selection_defaults_to_matching_accelerate_workers():
+    env = {}
+
+    configure_accelerate_for_gpu_selection(env, [2, 0])
+
+    assert env[ACCELERATE_LAUNCH_ENV] == "1"
+    assert env[ACCELERATE_NUM_PROCESSES_ENV] == "2"
+
+
+def test_single_gpu_selection_keeps_direct_launch_defaults():
+    env = {}
+
+    configure_accelerate_for_gpu_selection(env, [0])
+
+    assert env == {}
+
+
+def test_multi_gpu_selection_preserves_explicit_launch_overrides():
+    env = {
+        ACCELERATE_LAUNCH_ENV: "0",
+        ACCELERATE_NUM_PROCESSES_ENV: "4",
+    }
+
+    configure_accelerate_for_gpu_selection(env, [0, 1])
+
+    assert env == {
+        ACCELERATE_LAUNCH_ENV: "0",
+        ACCELERATE_NUM_PROCESSES_ENV: "4",
+    }
 
 
 @pytest.mark.parametrize("value", ["no", "fp16", "bf16"])

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Mapping
+from typing import Mapping, MutableMapping, Sequence
 
 ACCELERATE_NUM_PROCESSES_ENV = "ANIMA_ACCELERATE_NUM_PROCESSES"
 ACCELERATE_LAUNCH_ENV = "ANIMA_ACCELERATE_LAUNCH"
@@ -45,6 +45,22 @@ def resolve_accelerate_mixed_precision(env: Mapping[str, str] | None = None) -> 
             f"{sorted(_ACCELERATE_MIXED_PRECISION_CHOICES)}, got {raw!r}"
         )
     return raw
+
+
+def configure_accelerate_for_gpu_selection(
+    env: MutableMapping[str, str],
+    gpu_selection: Sequence[int],
+) -> None:
+    """Default WebUI multi-GPU selections to one Accelerate worker per GPU."""
+    if len(gpu_selection) < 2:
+        return
+
+    launch_value = env.get(ACCELERATE_LAUNCH_ENV, "").strip()
+    if not launch_value:
+        env[ACCELERATE_LAUNCH_ENV] = "1"
+        launch_value = "1"
+    if _env_flag_enabled(launch_value) and not env.get(ACCELERATE_NUM_PROCESSES_ENV, "").strip():
+        env[ACCELERATE_NUM_PROCESSES_ENV] = str(len(gpu_selection))
 
 
 def accelerate_training_command_prefix(

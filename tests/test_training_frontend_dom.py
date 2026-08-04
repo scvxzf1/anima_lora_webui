@@ -121,6 +121,34 @@ def test_app_shell_gpu_picker_contract_matches_index_html() -> None:
     assert ".gpu-picker-toggle[aria-expanded=\"true\"]" in css
 
 
+def test_gpu_picker_all_selection_expands_available_gpu_indices() -> None:
+    if not shutil.which("node"):
+        pytest.skip("node is required for GPU picker payload checks")
+    script = r"""
+const { gpuPayloadForSelection } = await import('./web/static/js/features/app-shell/gpu-picker.js');
+const payload = {
+    all: gpuPayloadForSelection([], [{ index: 1 }, { index: 0 }]),
+    explicit: gpuPayloadForSelection([1], [{ index: 0 }, { index: 1 }]),
+    unavailable: gpuPayloadForSelection([], []),
+};
+console.log(JSON.stringify(payload));
+"""
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", script],
+        cwd=str(REPO_ROOT),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout) == {
+        "all": [0, 1],
+        "explicit": [1],
+        "unavailable": [],
+    }
+
+
 def test_top_level_tab_buttons_have_matching_content_sections() -> None:
     html = INDEX_HTML.read_text(encoding="utf-8")
     source = _frontend_module_text("js/features/app-shell/tabs.js")

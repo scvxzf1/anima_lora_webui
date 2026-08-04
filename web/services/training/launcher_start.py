@@ -11,6 +11,7 @@ from typing import Any
 from library.runtime.launch import (
     ACCELERATE_MIXED_PRECISION_ENV,
     accelerate_training_command_prefix,
+    configure_accelerate_for_gpu_selection,
 )
 from web.services.training.common import _format_ts
 from web.services.training.launch_support import (
@@ -108,6 +109,7 @@ async def _start_unlocked(
     env = os.environ.copy()
     gpu_selection = _normalize_gpu_whitelist(gpu_whitelist)
     _apply_gpu_whitelist(env, gpu_selection)
+    configure_accelerate_for_gpu_selection(env, gpu_selection)
     mixed_precision = _accelerate_mixed_precision_for_training(config_file, extra_args)
     if mixed_precision:
         env[ACCELERATE_MIXED_PRECISION_ENV] = mixed_precision

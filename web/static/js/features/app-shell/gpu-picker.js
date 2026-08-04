@@ -1,3 +1,14 @@
+export function gpuPayloadForSelection(selectedGpuWhitelist, availableGpus) {
+    const explicit = Array.isArray(selectedGpuWhitelist) ? selectedGpuWhitelist : [];
+    const selected = explicit.length
+        ? explicit
+        : (Array.isArray(availableGpus) ? availableGpus.map((gpu) => Number(gpu.index)) : []);
+    return selected
+        .map((item) => Number(item))
+        .filter((item, index, list) => Number.isInteger(item) && item >= 0 && list.indexOf(item) === index)
+        .sort((a, b) => a - b);
+}
+
 export function createGpuPicker({
     storageKey,
     api,
@@ -145,7 +156,7 @@ export function createGpuPicker({
     }
 
     function selectedGpuPayload() {
-        return selectedGpuWhitelist.slice().sort((a, b) => a - b);
+        return gpuPayloadForSelection(selectedGpuWhitelist, availableGpus);
     }
 
     function closeGpuPickerPanel() {
