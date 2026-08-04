@@ -554,6 +554,8 @@ configs/sample_prompts.txt
 ```
 
 一行一个提示词。未设置采样频率时，不会生成训练中样张。
+多 GPU 训练会按提示词行将采样任务分配给各个 rank，再由主 rank 统一解码为
+PNG；只有一行提示词时，仅一张 GPU 执行采样，其余 rank 等待。
 
 
 ### 15.6 Hugging Face 下载失败

@@ -18,10 +18,10 @@ prompt，本次结果只能证明“可稳定长训”，不能证明严格质�
 - W8A8 比 BF16 慢约 **15.5%**，比 W8A16 慢约 **6.7%**。
 - 两种 ConvRot 的峰值 allocated 都约 **4.10 GB**，而 BF16 仅约 **2.03 GB**。
 
-因此，本次长训不支持“ConvRot 在重度 block swap 下节省显存”的说法。最符合实现
-结构的解释是：ConvRot INT8 权重 buffer 挂在 LoRA patch 上并常驻 GPU，没有随 DiT
-block 一起交换，因而抵消了冻结 base weight 的节省。这个解释需要后续 profiler 或
-buffer residency probe 最终确认。
+因此，本次长训不支持“当时的 ConvRot 在重度 block swap 下节省显存”的说法。后续
+residency probe 已确认根因：ConvRot INT8 权重 buffer 挂在 LoRA patch 上并常驻 GPU，
+没有随 DiT block 一起交换，因而抵消了冻结 base weight 的节省。该结构性问题已于
+2026-08-04 修复，见“Residency 修复与消融”。
 
 三组还共同暴露出一个产物完整性问题：虽然训练到 epoch 6 / step 1710，但普通权重、
 checkpoint state 和 sample 都只保存到 epoch 5 / step 1425。最后 285 steps 没有可用
@@ -80,6 +80,34 @@ INT8 base buffers 看起来仍然常驻。
 W8A8 相对 W8A16 多出的约 6.7% 稳态时间，与当前实现中的在线 activation RHT、动态
 absmax INT8 量化、`torch._int_mm`、FP32 post-scale 以及 FP32 STE backward 一致。
 SM86 不能使用 `torch._scaled_mm`，所以本结果不能直接类比 SM89 RTX 4070 的融合实现。
+
+## Residency 修复与 `0/12/26` 消融（2026-08-04）
+
+量化 weight/scale 现由实际 base `Linear` 下的 runtime-only carrier 持有，归属对应
+DiT block，并复用 offloader 的 frozen-weight protocol 随 block 在 CPU/GPU 间迁移。
+carrier 不进入 optimizer 或 `state_dict`。8-step 独立进程复测如下：
+
+| 模式 | swap | sec/step | peak VRAM | apply 后 allocated | payload CPU/GPU tensors |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| BF16 | 0 | 1.954 | 5.200 GB | 4.031 GB | 0 / 0 |
+| W8A16 | 0 | 2.039 | 3.634 GB | 2.402 GB | 0 / 392 |
+| W8A8 | 0 | 3.019 | 3.679 GB | 2.466 GB | 0 / 392 |
+| BF16 | 12 | 2.849 | 3.669 GB | 2.464 GB | 0 / 0 |
+| W8A16 | 12 | 2.748 | 2.776 GB | 1.541 GB | 168 / 224 |
+| W8A8 | 12 | 3.988 | 3.093 GB | 1.606 GB | 168 / 224 |
+| BF16 | 26 | 3.613 | 1.839 GB | 0.635 GB | 0 / 0 |
+| W8A16 | 26 | 3.148 | 1.771 GB | 0.535 GB | 364 / 28 |
+| W8A8 | 26 | 4.884 | 2.085 GB | 0.599 GB | 364 / 28 |
+
+每个 ConvRot case 有 196 个 patched Linear × weight/scale = 392 payload tensors；swap12
+和 swap26 的 CPU/GPU 计数精确匹配 `12/16` 与 `26/2` 个 block。apply 后与 step 后
+residency 不变，所有 case 均 `status=ok`、`math_ok=true`。这证明 residency 修复有效。
+
+显存和速度是明确交换关系：W8A16 swap0→26 的 peak 减少约 1.86 GB，step 慢约 54%；
+W8A8 peak 减少约 1.59 GB，step 慢约 62%。因此不能用旧长训的 4.10 GB 判断当前实现；
+显存允许时选 swap0，受限时用 swap12/26 换取更低 residency。
+
+原始结果：`output/tests/convrot_residency_ablation_swap{0,12,26}_20260804.json`。
 
 ## Loss
 
@@ -145,8 +173,9 @@ epoch 5 均保持完整构图和一致角色特征。模式间构图差异明显
 1. **稳定性：通过。** W8A8/W8A16 都完成真实 1710-step 长训，无数值崩溃。
 2. **质量：暂定不劣化，尚未严格验收。** loss 和样图没有明显退化，但证据设计不足。
 3. **速度：W8A16 可接受，W8A8 仍非速度方案。** 本配置分别比 BF16 慢 8.3% 和 15.5%。
-4. **显存：本配置失败。** 与 26-block swap 组合时，ConvRot 峰值 allocated 约为 BF16
-   的 2 倍，应先解决 quant buffer residency，再谈显存收益。
+4. **显存：旧实现失败，residency 已修复。** 旧长训与 26-block swap 组合时 ConvRot
+   峰值约为 BF16 的 2 倍；修复后独立复测 W8A16/W8A8 swap26 为 1.77/2.09 GB，
+   payload CPU/GPU 计数与 block 布局严格一致。
 5. **历史产物：不完整；保存回归：已修复。** 三组旧运行实际可用的最终
    LoRA 都停在 epoch 5；修复仅对后续运行生效。
 
@@ -154,8 +183,8 @@ epoch 5 均保持完整构图和一致角色特征。模式间构图差异明显
 
 后续 Agent 或实验不得只引用早期 microbench，应同时记住以下边界：
 
-- “ConvRot 省显存”只在 no/low-block-swap profile 中成立；`blocks_to_swap=26` 的本次长训
-  得到相反结果。
+- 旧长训的 quant payload 全量常驻 GPU 问题已修复；当前 payload 随实际 DiT block
+  迁移，swap0/12/26 的 CPU/GPU 计数已实证。
 - W8A8 在 RTX 3080 SM86 上使用 `_int_mm + FP32 post-scale`，不是 RTX 4070 SM89 的
   `_scaled_mm` 路径。
 - 当前最可靠的长训速度结论是 BF16 `1.2662`、W8A16 `1.3708`、W8A8 `1.4626` s/step。
@@ -164,5 +193,5 @@ epoch 5 均保持完整构图和一致角色特征。模式间构图差异明显
 - sample prompt 文件必须去重并扩展到多个 prompt/seed；本次每 epoch 只有 1 张唯一图。
 - 下一次长训需实机复核已修复的 epoch 6 保存/采样，验收条件必须包含最终
   checkpoint 的 `current_step == final_step`。
-- 下一轮性能实验应增加 quant buffer residency probe，并比较 blocks swap `0/12/26`，避免
-  把 block swap 和 ConvRot 的收益混在一起。
+- 后续性能引用应同时给出 `blocks_to_swap`：当前 8-step 复测已覆盖 `0/12/26`，证明
+  residency 正确，也证明更重 swap 会显著增加 step latency。

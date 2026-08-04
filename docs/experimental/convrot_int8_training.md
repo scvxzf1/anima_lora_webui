@@ -764,18 +764,21 @@ METHODS_SUBDIR=gui-methods .venv/bin/python tasks.py print-config \
   METHOD=lora-convrot-vram PRESET=default | rg convrot
 ```
 
-**与 `blocks_to_swap` 叠用（方案 A，2026-07-26 后）：**
+**与 `blocks_to_swap` 叠用（2026-08-04 residency 修复后）：**
 
 - 训练顺序仍是 `enable_block_swap` → ConvRot free-base → 首次 prepare。
 - free-base 把 patched `Linear.weight` 置 meta；offloader **跳过**
   `_convrot_weight_freed` / meta（`is_weight_swap_excluded`），只 master **残余**
   冻结权重（adaln 等）。CPU masters 实测约 **0.33 GiB**（scope=all）。
-- ConvRot int8 payload 仍在 LoRA network 上、**默认常驻 GPU**（方案 A 不搬 quant buffer）。
+- ConvRot quantized weight/scale 由实际 base `Linear` 下的 runtime-only carrier 持有；
+  carrier 属于对应 DiT block，并复用 frozen-weight swap protocol 在 CPU/GPU 间迁移。
+- carrier 不注册为 parameter/buffer，不进入 optimizer 或 `state_dict`；普通 `.to()` 与
+  offloader-owned placement 的边界由 `BlockSwapManagedTensor` 管理。
 - `block_swap_transfer_dtype=int8` 与 ConvRot **仍硬互斥**。
 - 主 VRAM 叙事仍是 `scope=all` + 更大 rank/batch + GC；swap 是残余路径，不是速度档。
 - 热测见 §G.22。
 
-### G.22 `scope=all` × GC × `blocks_to_swap=20`（方案 A 前后）
+### G.22 `scope=all` × GC × `blocks_to_swap=20`（历史方案 A）
 
 探针：`scripts/experiments/convrot_mem_speed_probe.py`（`--blocks-to-swap`、
 `--no-gradient-checkpointing`、host RSS）。顺序：`enable_block_swap` →
@@ -825,7 +828,77 @@ gate 2/3（syl@256 历史水平）。JSON：`output/tests/convrot_ckpt_all_gc.js
 1. **默认仍 `all+GC`、`blocks_to_swap=0`**（速度/简单/主 VRAM 叙事）。
 2. **极限再抠 ~0.3 GB** 可开 `blocks_to_swap`（须 **GC on** + transfer **bf16**）；接受更慢与更高 host RSS。
 3. **禁止** `all+swap` 且关 GC（本机 OOM）。
-4. quant buffer 随 block 卸 CPU = 方案 B（P2），本轮不做。
+4. 本节数据产生于 quant payload residency 修复前；当前行为和结论以 §G.23 为准。
+
+### G.23 block-owned payload residency × `blocks_to_swap=0/12/26`（2026-08-04）
+
+实现：`library/runtime/block_swap_payload.py`、`library/runtime/convrot/apply.py`、
+`library/runtime/offloading.py`。探针新增 `--blocks-to-swap-grid 0,12,26`，并记录
+apply 后和 step 后的 payload bytes/count。RTX 3080，compile，GC on，scope=all，r32，
+8-step 独立进程复测：
+
+| 模式 | swap | sec/step | peak VRAM | apply 后 allocated | payload CPU/GPU tensors |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| BF16 | 0 | 1.954 | 5.200 GB | 4.031 GB | 0 / 0 |
+| W8A16 | 0 | 2.039 | 3.634 GB | 2.402 GB | 0 / 392 |
+| W8A8 | 0 | 3.019 | 3.679 GB | 2.466 GB | 0 / 392 |
+| BF16 | 12 | 2.849 | 3.669 GB | 2.464 GB | 0 / 0 |
+| W8A16 | 12 | 2.748 | 2.776 GB | 1.541 GB | 168 / 224 |
+| W8A8 | 12 | 3.988 | 3.093 GB | 1.606 GB | 168 / 224 |
+| BF16 | 26 | 3.613 | 1.839 GB | 0.635 GB | 0 / 0 |
+| W8A16 | 26 | 3.148 | 1.771 GB | 0.535 GB | 364 / 28 |
+| W8A8 | 26 | 4.884 | 2.085 GB | 0.599 GB | 364 / 28 |
+
+共 196 个 patched Linear，每个包含 quantized weight/scale 两个 carrier，即 392 tensors。
+计数严格符合 block 布局：swap12 为 `12×7×2=168` 个 CPU、`16×7×2=224` 个 GPU；
+swap26 为 `26×7×2=364` 个 CPU、`2×7×2=28` 个 GPU。W8A16 payload bytes 在 swap12
+为 CPU/GPU `755,613,696 / 1,007,484,928`，swap26 为
+`1,637,163,008 / 125,935,616`。apply 后与 step 后 residency 相同，全部 case
+`status=ok`、`math_ok=true`。
+
+结论：residency 修复成立，不再存在“ConvRot payload 全量常驻 GPU”的结构性问题。
+代价是交换越重，step latency 越高；W8A16 从 swap0 到 swap26 的 peak 降约 1.86 GB，
+但 step 慢约 54%，W8A8 peak 降约 1.59 GB、step 慢约 62%。因此 swap0 是显存允许时
+的速度档，swap12/26 是按显存预算换速度；`block_swap_transfer_dtype=int8` 仍禁止。
+
+JSON：
+
+- `output/tests/convrot_residency_ablation_swap0_20260804.json`
+- `output/tests/convrot_residency_ablation_swap12_20260804.json`
+- `output/tests/convrot_residency_ablation_swap26_20260804.json`
+
+### G.24 SM86 `_int_mm` 4200-token 对齐修复（2026-08-05）
+
+失败任务：`anima缓存/84-sk-20260804-231854-retry-20260805-002201`。RTX 3080，
+W8A8、scope=all、rank64、compile、swap26。任务完成 step 1 后在 4200-token family
+的 compiled `_int_mm([4200,2048], [2048,6144])` 失败：
+
+```text
+CUDA error: CUBLAS_STATUS_NOT_SUPPORTED when calling cublasLtMatmul
+m 6144 n 4200 k 2048
+```
+
+这不是 OOM：失败前 peak allocated/reserved 仅 `2.42/2.87 GB`。`config.runtime.toml`
+中的 `block_swap_transfer_dtype` 为 `bf16`，block swap 本身也没有报错。根因是 SM86
+cuBLASLt INT8 路径要求 activation GEMM 的 M 维按 32 对齐：同卡实测 4032 成功，
+4200/4208 失败，4224/4256 成功。原来的 Python `try/except RuntimeError` 在 eager
+可回退，但 Inductor 会把 `_int_mm` 提升成外部 kernel，运行期错误无法由该分支捕获。
+
+修复位于 `library/runtime/convrot/gemm.py::int8_mm_scaled`：仅当 `M % 32 != 0` 时，
+把 INT8 activation 零填充到下一个 32 倍数，执行 `_int_mm` 后裁回原 M，再做 scale。
+4200 因此以 4224 行进入 GEMM，模型边界 shape、数值和梯度 shape 不变；4032 已对齐，
+不会额外复制。
+
+验证：
+
+- eager/Inductor `4200×64×64` 与 float reference 对齐。
+- 失败日志的精确 compiled shape `4200×2048×6144` 输出 BF16、全 finite。
+- 使用失败任务自身 cache 的真实 DiT 单步：latent `[1,16,1,150,112]`，即 4200
+  DiT tokens；W8A8/r64/swap26/compile 为 `status=ok`、`math_ok=true`，peak
+  `2.31 GB`，payload residency CPU/GPU `364/28`。
+
+探针：`output/tests/convrot_w8a8_4200_fix_20260805.json`。原失败任务只完成 step 1，
+没有 checkpoint 或权重，修复后必须 fresh retry，不能 resume。
 
 ### H. P0-C prequant 实现注记
 

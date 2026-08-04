@@ -227,10 +227,15 @@ network container's root `forward`, so a normal DDP wrapper has the wrong
 forward boundary. `library/training/gradient_sync.py` instead:
 
 - broadcasts optimizer parameters and network buffers from rank zero once;
-- mean-reduces coalesced adapter gradients once per `sync_gradients` step;
+- mean-reduces adapter gradients in fixed buckets once per `sync_gradients`
+  step; CUDA/NCCL buckets launch from backward hooks on a communication stream
+  and overlap the remaining backward work;
 - contributes zeros for a rank-local `grad=None`, while preserving `None` when
   a parameter is unused on every rank;
 - synchronizes before router statistics, finite checks, and gradient clipping.
+
+Methods that inject additional gradients from `after_backward` intentionally
+use the synchronous fallback so those contributions are included exactly once.
 
 Gradients remain loss-scaled during the collective. This propagates FP16
 overflow to every rank before GradScaler unscales/checks the gradients, keeping

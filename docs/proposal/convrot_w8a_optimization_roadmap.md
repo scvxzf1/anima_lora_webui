@@ -310,3 +310,4 @@ JSON 证据：
 | 2026-07-26 | **否决** ConvRot∥block_swap 作为下一刀：apply 顺序 free-base 在 swap 后；meta weight 与 offloader 未审计 |
 | 2026-07-26 | **热测 §G.22**：`all+GC` 可叠（3.43GB / 1.75s eager / math ok）；`all±GC+swap20` free-base 后首次 prepare **硬挂** meta master（`convrot_stack_*.json`）；probe 增 `--blocks-to-swap` / RSS |
 | 2026-07-26 | **方案 A**：`is_weight_swap_excluded` 跳过 free-base/meta；`all+GC+swap20` **3.17GB / 2.04s / RSS 2.33GB**（vs all+GC 3.43/1.76/1.57）；无 GC+swap **OOM**；§G.22.2 |
+| 2026-08-04 | **block-owned residency 完成**：ConvRot weight/scale carrier 归属实际 DiT block 并随 swap 迁移；0/12/26 的 payload CPU/GPU 计数严格匹配 block 布局；8-step 消融见实验文档 §G.23 |
