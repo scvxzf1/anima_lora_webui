@@ -14,7 +14,11 @@ from library.runtime.convrot.checks import (
     raise_if_compiled,
     validate_base_linear_for_convrot,
 )
-from library.runtime.convrot.free_base import free_base_weights_for_patches
+from library.runtime.convrot.free_base import (
+    free_base_weights_for_patches,
+    free_linear_weight_storage,
+    is_base_weight_freed,
+)
 from library.runtime.convrot.linear_w8a16 import w8a16_forward_from_buffers
 from library.runtime.convrot.linear_w8a8 import w8a8_forward_from_buffers
 from library.runtime.convrot.prequant import (
@@ -514,6 +518,9 @@ def apply_convrot_to_lora_network(
     # Share one Hadamard buffer across all modules with the same
     # (group_size, device, dtype, kind) — group=256 → 256×256 bf16 ≈ 128 KiB total.
     hadamard_share: dict[tuple[int, str, str, str], torch.Tensor] = {}
+    # Incremental free-base accounting (per-module free inside the loop below).
+    incremental_freed_bytes = 0
+    incremental_freed_module_ids: set[int] = set()
 
     for lora, base_module, block_idx, family, original_name in kept:
         lora_name = str(getattr(lora, "lora_name", original_name))
@@ -658,13 +665,36 @@ def apply_convrot_to_lora_network(
             mode=layer_mode,
             group_size=group_size,
         )
+        # Free this base weight's bf16 storage as soon as its int8 payload is
+        # installed. Batching the free until after the whole loop keeps the full
+        # bf16 base AND every accumulated payload resident at once (a transient
+        # apply peak of ~2.2GB on top of steady state). Freeing incrementally
+        # bounds the overlap to one module. ``free_linear_weight_storage`` is
+        # idempotent (0 for already-freed / meta), so shared Linears and the
+        # trailing safety-net call below stay correct.
+        if not dry_run and free_base_weights:
+            freed_now = free_linear_weight_storage(base_module)
+            if freed_now:
+                incremental_freed_bytes += freed_now
+                incremental_freed_module_ids.add(id(base_module))
 
-    freed_modules = 0
-    freed_bytes = 0
+    # Safety net: free any patched base weight missed above (e.g. a shared
+    # Linear deduped out of the incremental path). ``free_linear_weight_storage``
+    # is idempotent (0 bytes for already-freed / meta), so bytes never double
+    # count; module count is deduped by base-module id across both paths.
     if not dry_run and free_base_weights and patches:
         free_stats = free_base_weights_for_patches(network, patches)
-        freed_modules = int(free_stats.get("freed_modules", 0))
-        freed_bytes = int(free_stats.get("freed_bytes", 0))
+        incremental_freed_bytes += int(free_stats.get("freed_bytes", 0))
+        incremental_freed_module_ids.update(
+            id(lora.org_module_ref[0])
+            for lora in getattr(network, "unet_loras", []) or []
+            if getattr(lora, "org_module_ref", None)
+            and isinstance(lora.org_module_ref[0], torch.nn.Linear)
+            and is_base_weight_freed(lora.org_module_ref[0])
+        )
+
+    freed_modules = len(incremental_freed_module_ids)
+    freed_bytes = incremental_freed_bytes
 
     result = ConvRotApplyResult(
         patches=patches,

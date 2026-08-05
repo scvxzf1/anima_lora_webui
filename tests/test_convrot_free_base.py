@@ -82,6 +82,40 @@ def test_apply_can_keep_base_weights() -> None:
     assert linear.weight.device.type != "meta"
 
 
+def test_apply_frees_base_weights_incrementally_across_modules() -> None:
+    """Incremental free-base: every patched base is meta as soon as apply returns.
+
+    The apply loop frees each base weight right after installing its int8
+    payload (instead of one batch free at the end) to avoid the transient
+    "full bf16 base + all payloads" overlap peak. ``freed_modules``/``freed_bytes``
+    must still reflect the true totals and the math must stay within tolerance.
+    """
+    torch.manual_seed(0)
+    linears = [nn.Linear(32, 32, bias=False) for _ in range(3)]
+    for lin in linears:
+        lin.weight.requires_grad_(False)
+    loras = [
+        _FakeLoRAModule(f"blocks.{i}.mlp.layer1", lin)
+        for i, lin in enumerate(linears)
+    ]
+    network = _FakeLoRANetwork(loras)
+    x = torch.randn(2, 32)
+    y_before = [lin(x) for lin in linears]
+
+    result = apply_convrot_to_lora_network(
+        network, mode="w8a16", scope="mlp", group_size=16
+    )
+    assert result.patched_count == 3
+    assert result.freed_modules == 3
+    expected_bytes = sum(32 * 32 * 4 for _ in linears)
+    assert result.freed_bytes == expected_bytes
+    for lora, lin, ref in zip(loras, linears, y_before):
+        assert is_base_weight_freed(lin)
+        assert lin.weight.device.type == "meta"
+        rel = (lora.org_forward(x) - ref).norm() / ref.norm().clamp_min(1e-8)
+        assert rel.item() < 0.05
+
+
 def test_dry_run_does_not_free_base_weights() -> None:
     linear = nn.Linear(32, 32, bias=False)
     linear.weight.requires_grad_(False)
