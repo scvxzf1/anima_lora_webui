@@ -900,6 +900,91 @@ cuBLASLt INT8 路径要求 activation GEMM 的 M 维按 32 对齐：同卡实测
 探针：`output/tests/convrot_w8a8_4200_fix_20260805.json`。原失败任务只完成 step 1，
 没有 checkpoint 或权重，修复后必须 fresh retry，不能 resume。
 
+### G.25 ConvRot × distributed（Accelerate 数据并行）热测（2026-08-06）
+
+冻结后落地的 distributed adapter 训练（`library/training/gradient_sync.py`，
+adapter 故意不 DDP-wrap、改为手动 mean-reduce）与 ConvRot 的交互此前从未热测。
+代码审计结论：量化 payload 跟随 `weight.device`（无 `cuda:0` 硬编码）、被 free 的
+meta base 不进 optimizer / `network.buffers()`、grad sync 只碰 adapter 参数、
+FEI/routing 无 collective（per-rank 本地路由是正确数据并行语义）、GlobalRouter 参数
+进 optimizer——五项均 SAFE。本节用热测验证集成行为。
+
+新探针 `scripts/experiments/convrot_distributed_probe.py`（torchrun 多进程，复用
+`build` 路径加载缓存 latent + 真实 `prepare_network_for_manual_gradient_sync` /
+`synchronize_optimizer_gradients`）。每个 rank 喂**同一**缓存样本（等价于 global
+batch = world × 重复样本），使 distributed 结果可与单进程参考逐位对比。
+
+```bash
+.venv/bin/torchrun --standalone --nproc_per_node=2 \
+  scripts/experiments/convrot_distributed_probe.py \
+  --mode w8a16 --steps 4 --rank-dim 32 --scope all \
+  --json-out output/tests/convrot_dist_w8a16.json
+```
+
+2-GPU（GPU0 CMP 90HX + GPU1 RTX 3080，均 sm86；scope=all / rank32 / batch1 / GC on /
+4-step）。`manual adapter gradient sync enabled: world_size=2, parameters=392,
+buffers=393, mode=cuda-stream-overlap`：
+
+| mode | loss_last | sec/step | peak/rank | vs bf16 | payload_ok | cross_rank_diff |
+| --- | --- | --- | --- | --- | --- | --- |
+| bf16 | 0.086509 | 2.28 | 5.23 GB | 1.0× | True | 0 |
+| W8A16 | 0.086503 | 2.43 | 5.85 GB | 1.07× | True | 0 |
+| W8A8 | 0.086546 | 3.77 | 5.87 GB | 1.65× | True | 0 |
+
+- **数学偏移**：单进程参考（`--no-sync-each-step`）loss_last `0.086505`；2-rank
+  mean-reduce 后 `0.086503`（W8A16），差 ~2e-6 浮点噪声。两 rank 间 sync 后
+  `cross_rank_param_max_diff = 0`（逐位一致）→ mean-reduce + 一致 AdamW 正确。
+- **payload 归属**：两 rank `payload_on_local_device=True`，量化 `w_q`/`w_scale`
+  落在各自的 `cuda:0` / `cuda:1`（非全被 broadcast 到 cuda:0）。
+- **W8A8 `_int_mm`** 在非默认设备 `cuda:1` 上正确，无 cublasLt/NCCL 报错。
+- **速度/显存**：W8A16 速度税 ~1.07×（与单卡一致），NCCL overlap 无可见额外开销；
+  peak 见下节说明（本探针 `enable_gradient_checkpointing` 默认不开 unsloth offload）。
+
+证据：`output/tests/convrot_dist_{bf16,w8a16,w8a8}_rank{0,1}.json`、
+`convrot_ref_w8a16_nosync_rank0.json`。block_swap + ConvRot + 多进程三者叠加本仓
+默认不触发（`lora-convrot-vram.toml` 默认 `blocks_to_swap=0`），如需启用另行热测。
+
+### G.26 apply 期在线量化瞬时峰 + incremental free-base（2026-08-06）
+
+**根因**：`apply_convrot_to_lora_network` 此前在**全部** patched module 量化完之后
+才一次性 `free_base_weights_for_patches`。apply 期间 GPU 同时驻留「全部 bf16 base
+权重（~3.97GB）」+「累积的全部 int8 payload（~1.9GB）」，形成一次性瞬时峰。
+
+这解释了一个长期的测量口径矛盾：`convrot_mem_speed_probe` 报 W8A16 peak **3.64GB**
+（apply+warm 后才 `reset_peak_memory_stats`，丢弃瞬时峰），而
+`convrot_short_train_probe` 报 **5.86GB**（加载前 reset、之后从不 reset，把 apply
+瞬时峰计入全局峰）。两者都「对」，只是测的不是同一阶段。
+
+**优化（incremental free-base）**：apply 循环内，每个 module 的 int8 payload 装好、
+`org_forward` patch 就位后，立即 `free_linear_weight_storage` 释放该 module 的 bf16
+base（幂等，0 表示已 free/meta），把「全量共存」收敛为「单 module 共存」。末尾保留
+一次幂等的批量 free 作兜底；`freed_modules`/`freed_bytes` 仍按 base-module id 去重、
+bytes 幂等累加，metadata 语义不变。纯提前释放，不改任何数值。
+
+| 指标（scope=all/rank32/batch1，GPU0） | 改前 | 改后 |
+| --- | --- | --- |
+| apply 后 GPU 驻留（`allocated_after_apply_gb`） | 4.03 GB（bf16 base 未释放期） | **2.41 GB** |
+| 全局 peak（含 apply 瞬时峰，短训口径） | 5.86 GB | **5.24 GB**（=bf16 全局峰） |
+| 训练稳态 peak（mem_speed 口径） | 3.64 GB | 3.64 GB（不变） |
+| 数学偏移（loss_last rel vs bf16） | — | 0.0002 |
+
+收益：**apply 瞬时峰 −0.62GB**，ConvRot 加载路径不再比 bf16 多付一次性峰值；稳态
+显存优势（offload 下 3.32 vs bf16 4.91GB，省 1.58GB）不受影响。「same-VRAM larger
+rank」在真实训练（`lora-convrot-vram.toml` 开 `unsloth_offload_checkpointing`）
+依旧成立。offload 与 ConvRot 正交：frozen `w_q`/`w_scale` 挂 `ctx` 普通属性、不走
+`save_for_backward`，host offload 只迁移激活。
+
+证据：`output/tests/convrot_short_r32_incrfree/short_train_w8a16_seed0.json`、
+`convrot_incrfree_memspeed.json`。测试：`tests/test_convrot_free_base.py::
+test_apply_frees_base_weights_incrementally_across_modules`（全套 convrot 91 passed）。
+
+### G.27 本机两代卡说明（2026-08-06）
+
+冻结基线（§G.16–G.24）多在 RTX 3080 上测；本节 §G.25–G.26 部分数据在 CMP 90HX
+（同 sm86、同 10GB、无显示输出）上测。二者 compute capability 相同，单卡结论互相
+吻合（§G.25 单卡 sweep 复现 §G.23），但绝对 sec/step 因卡个体差异略有出入，跨卡
+对比时以相对倍率为准。
+
 ### H. P0-C prequant 实现注记
 
 实现：`library/runtime/convrot/prequant.py` + `apply.py` 接线；导出：`scripts/experiments/convrot_export_prequant.py`。

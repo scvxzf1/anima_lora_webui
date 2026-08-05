@@ -311,3 +311,6 @@ JSON 证据：
 | 2026-07-26 | **热测 §G.22**：`all+GC` 可叠（3.43GB / 1.75s eager / math ok）；`all±GC+swap20` free-base 后首次 prepare **硬挂** meta master（`convrot_stack_*.json`）；probe 增 `--blocks-to-swap` / RSS |
 | 2026-07-26 | **方案 A**：`is_weight_swap_excluded` 跳过 free-base/meta；`all+GC+swap20` **3.17GB / 2.04s / RSS 2.33GB**（vs all+GC 3.43/1.76/1.57）；无 GC+swap **OOM**；§G.22.2 |
 | 2026-08-04 | **block-owned residency 完成**：ConvRot weight/scale carrier 归属实际 DiT block 并随 swap 迁移；0/12/26 的 payload CPU/GPU 计数严格匹配 block 布局；8-step 消融见实验文档 §G.23 |
+| 2026-08-05 | **SM86 `_int_mm` 4200-token 修复**：`int8_mm_scaled` 对 M%32≠0 零填充到 32 倍数再裁回，compiled 4200 家族不再 `CUBLAS_STATUS_NOT_SUPPORTED`；实验文档 §G.24 |
+| 2026-08-06 | **ConvRot × distributed 热测**：新探针 `convrot_distributed_probe.py`；2-GPU mean-reduce 数学等价（cross_rank_diff=0）、payload 落各自 rank、W8A8 `_int_mm` 在 cuda:1 正确；实验文档 §G.25 |
+| 2026-08-06 | **incremental free-base**：apply 循环内装好 payload 即 free bf16 base（原批量 free 留作幂等兜底），apply 瞬时峰 5.86→5.24GB（−0.62GB）、apply 后驻留 4.03→2.41GB，稳态/数学不变；实验文档 §G.26 |
