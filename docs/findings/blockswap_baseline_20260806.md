@@ -74,6 +74,36 @@ CUDA_VISIBLE_DEVICES=0 .venv/bin/python scripts/experiments/blockswap_restore_pa
 | 4 int8 端到端 | **已验证，不建议默认开** | 见下「方向 4 验证结论」 | 传输侧收益真实，但 restore 调度/显存开销抵消，端到端不占优。 |
 | 5 prepare 去 empty_cache | **已落地** | `library/training/unet_prepare.py`（`free_cache=False`） | 去掉每步 prepare 末尾的 `empty_cache`，消除 5060 Ti 上每步 ~1GB 的显存摆动。 |
 
+### 组合叠加矩阵（真实 Block×28 + ModelOffloader，RTX 3080）
+
+`scripts/experiments/blockswap_combo_ab_probe.py`，blocks_to_swap=12、seq=4096、checkpoint 开，每模式独立子进程测 fwd+bwd step time。它同时是方向 1 回归的复现与修复验证。
+
+**修复前（方向 1 落地 K=2 默认时）**：所有 K=2 模式 fwd+bwd 必崩 `mat2 is on cpu`——
+
+| 模式 | K | restore | dtype | step_ms | 结果 |
+| --- | --- | --- | --- | ---: | --- |
+| base | 1 | foreach | bf16 | 1451.15 | OK |
+| k2 | 2 | foreach | bf16 | — | **ERROR mat2 is on cpu** |
+| slab | 1 | slab | bf16 | 1419.02 | OK（1.023×） |
+| k2slab | 2 | slab | bf16 | — | **ERROR** |
+| int8 | 1 | foreach | int8 | 1354.09 | OK（1.072×） |
+| int8_k2 | 2 | foreach | int8 | — | **ERROR** |
+| all | 2 | slab | int8 | — | **ERROR** |
+
+**修复后（K 钳 1，提交 `ac13590b`）**：7 模式全过、零崩溃；K=2 模式退化为 K=1，step 与对应 K=1 模式一致（run 间噪声内）——
+
+| 模式 | K（请求） | restore | dtype | step_ms | speedup vs base |
+| --- | --- | --- | --- | ---: | ---: |
+| base | 1 | foreach | bf16 | 1408.41 | 1.000× |
+| k2 | 2→钳1 | foreach | bf16 | 1402.27 | 1.004×（≈base，证明钳制生效） |
+| slab | 1 | slab | bf16 | 1407.32 | 1.001× |
+| k2slab | 2→钳1 | slab | bf16 | 1403.75 | 1.003×（≈slab） |
+| int8 | 1 | foreach | int8 | 1348.12 | 1.045× |
+| int8_k2 | 2→钳1 | foreach | int8 | 1339.76 | 1.051×（≈int8） |
+| all | 2→钳1 | slab→foreach | int8 | 1343.69 | 1.048×（int8 时 slab 自动回退） |
+
+**读法**：① 所有 K=2 请求被钳到 1，不再崩且与同 restore/dtype 的 K=1 模式几乎同速——钳制无回归。② K=1 各模式间差异（slab 1.001×、int8 1.045×）在合成矩阵的 run 间噪声内：这里传输（13.4ms/块）已被单块 fwd+bwd+checkpoint（≈50ms）完全覆盖，叠加增益本就接近噪声。③ int8 仍一致略快（传输量减半），但端到端 audit（wait/显存）结论不变——不建议默认开。④ 叠加矩阵结论：方向 3×4 互斥（int8 禁 slab），方向 5 与一切正交，方向 1/2 已撤回。
+
 ### `ANIMA_BLOCK_SWAP_PREFETCH_DEPTH`
 
 **已停用（钳 1），仅作兼容旋钮。** 2026-08-07 复核发现，K≥2 的预取深度与块交换的核心设计**根本冲突**，不是边界条件：
