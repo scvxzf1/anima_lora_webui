@@ -1731,14 +1731,23 @@ class ModelOffloader(Offloader):
         if self.blocks_to_swap is None or self.blocks_to_swap == 0:
             return
 
-        # Prefetch with a lead of ``_prefetch_depth`` blocks so the H2D restore
-        # stays ahead of compute (training path only). Baseline (docs/findings/
-        # blockswap_baseline_20260806.md): bf16 block transfer slightly exceeds
-        # one block's forward compute on RTX 3080, so a lead of 1 stalls each
-        # block by ~2ms. Forward-only (inference) keeps the exact lead of 1:
-        # its slot rotation reuses GPU storage immediately and a deeper lead
-        # would overwrite a slot before its block has run.
-        depth = 1 if self.forward_only else max(1, int(self._prefetch_depth))
+        # Training and forward-only both use an exact prefetch lead of 1: the H2D
+        # restore retires the block that just finished (block_idx) and loads the
+        # block ``blocks_to_swap`` ahead into its freed GPU storage. A deeper lead
+        # is fundamentally incompatible with this design — the number of resident
+        # GPU slots is fixed at ``num_blocks - blocks_to_swap`` and each retired
+        # block's storage is the H2D target for exactly one incoming block
+        # (``to_cuda = num_blocks - blocks_to_swap + to_cpu``). To prefetch deeper
+        # the lead job would have to retire a block that has NOT run yet
+        # (``block_idx + step >= block_idx + 1``), parking its live weights to CPU
+        # right before the main thread runs its forward -> ``mat2 is on cpu``
+        # (or, worse, silently overwriting its storage with another block's
+        # weights). A correct deep prefetch requires a separate GPU staging
+        # buffer per in-flight lead job, which costs +1 resident block and so
+        # defeats the memory saving that block swap exists for. We therefore pin
+        # the lead to 1 on every path. ``ANIMA_BLOCK_SWAP_PREFETCH_DEPTH`` is
+        # retained only as a no-op compatibility knob (values >1 are ignored).
+        depth = 1
         for step in range(depth):
             # if backward is enabled, we do not swap blocks in forward pass more
             # than blocks_to_swap, because it should be on GPU

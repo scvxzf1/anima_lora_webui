@@ -42,15 +42,17 @@ def _make_training_offloader(blocks, blocks_to_swap, monkeypatch=None, depth=Non
 
 
 def test_submit_move_blocks_prefetch_depth_training_mode(monkeypatch) -> None:
-    # Training mode (forward_only=False) prefetches ``depth`` blocks ahead.
+    # Training mode pins the prefetch lead to 1 even when a deeper depth is
+    # requested: the fixed slot mapping means a deeper lead would retire a block
+    # that has not run yet. See submit_move_blocks / _block_swap_prefetch_depth.
     blocks = nn.ModuleList([_TinyBlock() for _ in range(6)])
     offloader = _make_training_offloader(blocks, 2, monkeypatch, depth=2)
     offloader.prepare_block_devices_before_forward(blocks, free_cache=False)
 
     offloader.submit_move_blocks(blocks, 0)
 
-    # depth=2 → futures for both block_idx_to_cuda = 4 (step0) and 5 (step1)
-    assert set(offloader.futures.keys()) == {4, 5}
+    # depth is clamped to 1 → only the single next block_idx_to_cuda = 4
+    assert set(offloader.futures.keys()) == {4}
 
 
 def test_submit_move_blocks_prefetch_depth_default_one_in_forward_only(monkeypatch) -> None:
@@ -109,6 +111,59 @@ class _Int8CandidateBlock(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         hidden = torch.nn.functional.gelu(self.mlp.layer1(x))
         return self.mlp.layer2(hidden) + self.adapter(x)
+
+
+def test_prefetch_depth_does_not_park_unrun_block_cpu(monkeypatch) -> None:
+    """Regression: a requested depth of 2 must be clamped to a lead of 1, so the
+    only block retired after running block 0 is block 0 itself. With an
+    unclamped depth=2 the block_idx=0 step=1 job would also target the not-yet-
+    run block 1 (to_cuda = num_blocks - blocks_to_swap + 1), producing two
+    pending futures instead of one. Assert the clamp keeps exactly the single
+    lead-of-1 job in flight."""
+    monkeypatch.setenv("ANIMA_BLOCK_SWAP_PREFETCH_DEPTH", "2")
+    blocks = nn.ModuleList([_TinyBlock() for _ in range(6)])
+    offloader = ModelOffloader(
+        blocks, blocks_to_swap=2, device=torch.device("cpu"), supports_backward=True
+    )
+    try:
+        offloader.prepare_block_devices_before_forward(blocks, free_cache=False)
+        offloader.submit_move_blocks(blocks, 0)
+        # Clamped lead of 1 -> only the deepest single job (to_cuda == 4). An
+        # unclamped depth=2 would also submit to_cuda == 5 (parking live block 1).
+        assert set(offloader.futures.keys()) == {4}
+        offloader.thread_pool.shutdown(wait=True)
+        # The not-yet-run block 1 was never parked: its frozen base master is
+        # still the original tensor, not a parked placeholder.
+        assert isinstance(offloader._cpu_weight_masters[1]["base"], torch.Tensor)
+    finally:
+        offloader.thread_pool.shutdown(wait=False)
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA block swap")
+def test_prefetch_depth_forward_backward_cuda(monkeypatch) -> None:
+    """End-to-end regression on CUDA: a full forward+backward under a requested
+    depth of 2 must run cleanly. With an unclamped depth=2, the step=1 job runs
+    in a worker thread and parks the not-yet-run block ``block_idx+1`` to CPU
+    concurrently with the main thread's forward of that block — a genuine race
+    that surfaces as ``mat2 is on cpu`` when the worker wins (reliably
+    reproducible on the real 28-block model). The clamped lead of 1 submits only
+    the deepest single job, so no not-yet-run block is ever touched."""
+    monkeypatch.setenv("ANIMA_BLOCK_SWAP_PREFETCH_DEPTH", "2")
+    device = torch.device("cuda")
+    blocks = nn.ModuleList([_TinyBlock().to(device) for _ in range(6)])
+    offloader = ModelOffloader(
+        blocks, blocks_to_swap=2, device=device, supports_backward=True
+    )
+    try:
+        offloader.prepare_block_devices_before_forward(blocks, free_cache=False)
+        x = torch.randn(1, 2, device=device)
+        for i, blk in enumerate(blocks):
+            offloader.wait_for_block(i)
+            x = blk(x)
+            offloader.submit_move_blocks(blocks, i)
+        x.sum().backward()
+    finally:
+        offloader.thread_pool.shutdown(wait=False)
 
 
 class _ConvRotPayloadBlock(nn.Module):

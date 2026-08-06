@@ -4,7 +4,7 @@
 适用版本：当前 main
 日期：2026-08-06
 
-本文是块交换（block swap）优化工作的**基准参照基线**。后续所有改动（预取深度、copy stream、slab、int8、prepare 同步）都应以本表为对照判断收益。测量脚本已固化进仓库，可在任意 GPU 上重跑复现。
+本文是块交换（block swap）优化工作的**基准参照基线**。后续所有改动（copy stream、slab、int8、prepare 同步）都应以本表为对照判断收益。测量脚本已固化进仓库，可在任意 GPU 上重跑复现。注：预取深度 K（方向 1）经实测撤回，见「方向落地状态」。
 
 ## 测量环境
 
@@ -58,9 +58,9 @@ CUDA_VISIBLE_DEVICES=0 .venv/bin/python scripts/experiments/blockswap_restore_pa
 
 ## 关键结论（驱动后续优化方向）
 
-1. **3080 上 bf16 传输（13.4ms）略大于单块计算（11.8ms）**：当前领先量 K=1 的预取**藏不住传输**，每块约空转 2ms。→ **方向 1（预取深度 K）有效**，把 K 提到 ≥2 即可让传输完全藏进多块计算。
+1. **3080 上 bf16 传输（13.4ms）略大于单块计算（11.8ms）**：领先量 K=1 的预取**藏不住传输**，每块约空转 2ms。~~方向 1（预取深度 K）~~ **经实测撤回**：K≥2 与该设计根本冲突（见「方向落地状态」方向1），不能用加深 lead 解决；该缺口改由方向 3（slab）与方向 4（int8 减传输量）弥补。
 2. **int8 传输（6.7ms）远小于单块计算（11.8ms）**：压缩后 `overlap_ratio=1.755`，传输可被轻松隐藏。→ **方向 4（int8）在 3080 上传输侧有收益**（但端到端被 restore 调度抵消，见下「方向 4 验证结论」）。
-3. **host issue 成本极小（<0.4ms）**：瓶颈在 PCIe 传输与调度窗口，不在 Python 侧。方向 2（多 copy stream）的收益主要体现在配合方向 1 形成多级流水线。
+3. **host issue 成本极小（<0.4ms）**：瓶颈在 PCIe 传输与调度窗口，不在 Python 侧。方向 2（多 copy stream）原本为配合方向 1 的多级流水线；方向 1 撤回后，K=1 每步只有一个 H2D job 在飞，per-slot copy stream 不再构成并行收益，仅保留为无害的实现细节。
 4. **slab（方向 3）** 在 3080 上每块省约 0.7ms，叠加 12 块约 8ms/step，值得在无非 int8 路径默认化。
 5. CMP 90HX 这类 Gen1 卡上，唯一有意义的手段是**减少传输量（int8）与尽量重叠**，拷贝路径优化无意义。
 
@@ -68,21 +68,22 @@ CUDA_VISIBLE_DEVICES=0 .venv/bin/python scripts/experiments/blockswap_restore_pa
 
 | 方向 | 状态 | 落点 | 说明 |
 | --- | --- | --- | --- |
-| 1 预取深度 K | **已落地** | `library/runtime/offloading.py::submit_move_blocks`、`library/runtime/block_swap_config.py::_block_swap_prefetch_depth` | 训练路径默认 K=2（`ANIMA_BLOCK_SWAP_PREFETCH_DEPTH`，`max(1,…)`），forward-only（推理）固定 K=1（旋转 slot 不允许更深）。 |
-| 2 多 copy stream | **已落地** | `library/runtime/offloading.py::_get_copy_stream_for_slot` | 每个 swap slot 一条 copy stream，配合方向 1 让多个 H2D 并行入队。 |
+| 1 预取深度 K | **已撤回（钳 1）** | `library/runtime/offloading.py::submit_move_blocks`、`library/runtime/block_swap_config.py::_block_swap_prefetch_depth` | K≥2 经实测是真实训练回归（fwd+bwd 必崩 `mat2 is on cpu`），且与该设计根本冲突（见下「`ANIMA_BLOCK_SWAP_PREFETCH_DEPTH`」）。训练/推理 prefetch lead 统一钳 1；env 仅作兼容旋钮（`>1` 被忽略）。 |
+| 2 多 copy stream | **已落地（作用收窄）** | `library/runtime/offloading.py::_get_copy_stream_for_slot` | 每个 swap slot 一条 copy stream。原为配合方向 1 让多个 H2D 并行；方向 1 撤回后 K=1 每步单 job 在飞，不再构成并行收益，仅保留为无害实现细节。 |
 | 3 slab 默认 | **已落地** | `library/training/cli_args.py`、`configs/base.toml`、WebUI `defaults.js`/`app-constants.js` | `--block_swap_restore_mode` 默认 `slab`；int8 或混合 dtype 时自动回退 foreach/copy。 |
 | 4 int8 端到端 | **已验证，不建议默认开** | 见下「方向 4 验证结论」 | 传输侧收益真实，但 restore 调度/显存开销抵消，端到端不占优。 |
 | 5 prepare 去 empty_cache | **已落地** | `library/training/unet_prepare.py`（`free_cache=False`） | 去掉每步 prepare 末尾的 `empty_cache`，消除 5060 Ti 上每步 ~1GB 的显存摆动。 |
 
 ### `ANIMA_BLOCK_SWAP_PREFETCH_DEPTH`
 
-环境变量，整数，默认 `2`，取下限 `max(1, …)`。**仅训练路径生效**：
+**已停用（钳 1），仅作兼容旋钮。** 2026-08-07 复核发现，K≥2 的预取深度与块交换的核心设计**根本冲突**，不是边界条件：
 
-- 训练（有反向）：`submit_move_blocks` 一次预取 K 个后续块的 H2D，让传输藏进多块计算。3080 上 K=2 把 `overlap_ratio 0.878` 的缺口补平。
-- 推理（`forward_only=True`）：固定 K=1。推理用旋转 slot，退役 slot 立即被下一个块复用，K>1 会在块运行前覆写其 slot。
-- 设为 `1` 退回旧的「领先 1」行为（排查回归时可用）。
+- **冲突根源**：这套机制不做 D2H 拷贝，resident GPU slot 数恒等于 `num_blocks - blocks_to_swap`，且每个退役块的 storage 恰好是「`to_cuda = num_blocks - blocks_to_swap + to_cpu`」这一块传入块的 H2D 目标。预取想提前，就只能「提前 retire 未来的块」——但未来块还没跑、不能 retire。
+- **实测崩溃**：K=2 时 `submit_move_blocks` 的 `step=1` job 把「尚未运行的块 `block_idx+1`」当退役块，在 worker 线程把它 park 到 CPU（`offloading.py:1210`/`:1232`），主线程紧接着对它跑 forward → `RuntimeError: mat2 is on cpu`。且 `step=1` 与下一步的 `step=0` 还指向同一个 `to_cuda`，同 slot 双 job 竞争。真实训练路径（`_run_blocks` + backward hook + `loss.backward()`）与合成探针驱动序列一致，**fwd+bwd 必崩，K=1 正常**（均已实测）。
+- **先前注记有误**：本节曾写「真实 Anima 模型不触发、仅 toy 模型可复现」，经真实 `Block×28 + ModelOffloader` 组合探针证伪——**真实训练稳定复现**。据此撤回。
+- **为何不回退到「K≥2 + 独立 staging buffer」**：正确做法是给超前 job 配独立 GPU 暂存 buffer，代价是 +1 块常驻显存，恰好抵消 block swap 省显存的目的，不划算。
 
-边界（toy 模型实测，真实 Anima 模型不触发）：K≥2 时 worker 的两阶段 rebinding（先 park 成 CPU、后绑 GPU 视图）非原子，若消费方 host 代码能插进该窗口会读到 CPU 权重。真实 Anima 单块 host+GPU 时间远大于 worker rebinding 的 µs 级，窗口实际不存在；仅极小 toy 模型在 K=2 下可复现。设 `ANIMA_BLOCK_SWAP_PREFETCH_DEPTH=1` 可规避。
+**结论**：`submit_move_blocks` 已把训练/推理的 prefetch lead 统一钳到 `1`；`ANIMA_BLOCK_SWAP_PREFETCH_DEPTH` 保留仅为兼容旧 env 设置（`>1` 被忽略，默认 `1`）。3080 上 K=1 的 ~2ms/块传输缺口由方向 3（slab）与方向 4（int8 减传输量）弥补，而非加深 lead。
 
 ### 方向 4 验证结论（int8 端到端）
 

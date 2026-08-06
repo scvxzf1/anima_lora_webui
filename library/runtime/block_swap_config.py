@@ -39,12 +39,15 @@ def _block_swap_profile_poll_interval_s() -> float:
 def _block_swap_prefetch_depth() -> int:
     """Forward prefetch lead (number of blocks ahead to start H2D restore).
 
-    Baseline (RTX 3080, docs/findings/blockswap_baseline_20260806.md): a single
-    block's bf16 H2D (~13.4ms) slightly exceeds its forward compute (~11.8ms),
-    so a lead of 1 cannot fully hide the transfer. Depth >= 2 lets the copy
-    stream stay ahead. Default 2; clamped by the caller to the free-slot count.
+    Retained only as a compatibility knob. The block-swap design keeps a fixed
+    ``num_blocks - blocks_to_swap`` resident GPU slots and maps each retired
+    block's storage to exactly one incoming block, so a lead greater than 1 must
+    retire a block that has not run yet — parking its live weights to CPU right
+    before its forward (``mat2 is on cpu``) or silently overwriting its storage.
+    The lead is therefore pinned to 1 in ``submit_move_blocks`` regardless of
+    this value. Kept >= 1 so existing env settings parse without error.
     """
-    return max(1, _env_int("ANIMA_BLOCK_SWAP_PREFETCH_DEPTH", default=2))
+    return max(1, _env_int("ANIMA_BLOCK_SWAP_PREFETCH_DEPTH", default=1))
 
 
 def _env_int(name: str, *, default: int = 0) -> int:
