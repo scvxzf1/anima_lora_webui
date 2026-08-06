@@ -67,7 +67,7 @@ def assert_training_extra_args(
         getattr(args, "block_swap_transfer_dtype", "bf16")
     )
     args.block_swap_restore_mode = normalize_block_swap_restore_mode(
-        getattr(args, "block_swap_restore_mode", "foreach")
+        getattr(args, "block_swap_restore_mode", "slab")
     )
 
     compat = check_training_compat(args)

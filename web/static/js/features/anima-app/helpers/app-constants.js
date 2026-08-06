@@ -8,7 +8,7 @@ export const RESOURCE_QUICK_PRESETS = [
         values: {
             blocks_to_swap: 0,
             block_swap_transfer_dtype: 'bf16',
-            block_swap_restore_mode: 'foreach',
+            block_swap_restore_mode: 'slab',
             selective_checkpoint: 'off',
             block_swap_profile_jsonl: 'off',
             memory_probe_jsonl: 'off',
@@ -25,7 +25,7 @@ export const RESOURCE_QUICK_PRESETS = [
         values: {
             blocks_to_swap: 12,
             block_swap_transfer_dtype: 'bf16',
-            block_swap_restore_mode: 'foreach',
+            block_swap_restore_mode: 'slab',
             selective_checkpoint: 'off',
             block_swap_profile_jsonl: 'off',
             memory_probe_jsonl: 'off',
@@ -42,7 +42,7 @@ export const RESOURCE_QUICK_PRESETS = [
         values: {
             blocks_to_swap: 12,
             block_swap_transfer_dtype: 'fp8_e4m3',
-            block_swap_restore_mode: 'foreach',
+            block_swap_restore_mode: 'slab',
             selective_checkpoint: 'off',
             block_swap_profile_jsonl: 'auto',
             memory_probe_jsonl: 'auto',
@@ -59,7 +59,7 @@ export const RESOURCE_QUICK_PRESETS = [
         values: {
             blocks_to_swap: 16,
             block_swap_transfer_dtype: 'bf16',
-            block_swap_restore_mode: 'foreach',
+            block_swap_restore_mode: 'slab',
             selective_checkpoint: 'off',
             block_swap_profile_jsonl: 'off',
             gradient_checkpointing: false,
@@ -75,7 +75,7 @@ export const RESOURCE_QUICK_PRESETS = [
         values: {
             blocks_to_swap: 23,
             block_swap_transfer_dtype: 'bf16',
-            block_swap_restore_mode: 'foreach',
+            block_swap_restore_mode: 'slab',
             selective_checkpoint: 'off',
             block_swap_profile_jsonl: 'off',
             memory_probe_jsonl: 'auto',
@@ -94,7 +94,7 @@ export const RESOURCE_QUICK_PRESETS = [
         values: {
             blocks_to_swap: 12,
             block_swap_transfer_dtype: 'bf16',
-            block_swap_restore_mode: 'foreach',
+            block_swap_restore_mode: 'slab',
             selective_checkpoint: 'mlp_only',
             block_swap_profile_jsonl: 'off',
             gradient_checkpointing: false,

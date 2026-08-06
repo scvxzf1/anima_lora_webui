@@ -618,7 +618,7 @@ def test_balanced_16g_preset_is_block_swap_first(populated_parser):
     assert merged["selective_checkpoint"] == "off"
     assert merged["block_swap_profile_jsonl"] == "off"
     assert merged["block_swap_transfer_dtype"] == "bf16"
-    assert merged.get("block_swap_restore_mode", "foreach") == "foreach"
+    assert merged.get("block_swap_restore_mode", "slab") == "slab"
     assert merged["compile_block_scope"] == "resident"
 
 

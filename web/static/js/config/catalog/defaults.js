@@ -17,7 +17,7 @@ export const FORM_UI_DEFAULTS = {
     convrot_large_layer_mode: '',
     convrot_large_min_in_features: '',
     block_swap_transfer_dtype: 'bf16',
-    block_swap_restore_mode: 'foreach',
+    block_swap_restore_mode: 'slab',
     block_swap_profile_jsonl: 'off',
     compile_block_scope: 'resident',
     preprocess_memory_profile: 'auto',

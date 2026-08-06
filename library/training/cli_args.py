@@ -1029,12 +1029,14 @@ def add_dit_training_arguments(parser: argparse.ArgumentParser):
     parser.add_argument(
         "--block_swap_restore_mode",
         type=str,
-        default="foreach",
+        default="slab",
         choices=["foreach", "slab"],
         help=(
-            "Restore path for cached CUDA block swap. foreach keeps the default "
-            "per-weight restore path; slab experiments with slot-slab restore "
-            "to collapse many small H2D copies into a larger copy."
+            "Restore path for cached CUDA block swap. slab (default) collapses the "
+            "block's frozen-weight H2D into one contiguous slab copy; on RTX 3080 "
+            "this is ~0.7ms/block faster than per-tensor foreach (see "
+            "docs/findings/blockswap_baseline_20260806.md). Slab requires uniform "
+            "non-int8 dtype and falls back to foreach automatically otherwise."
         ),
     )
     parser.add_argument(

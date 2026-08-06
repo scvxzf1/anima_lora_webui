@@ -285,7 +285,7 @@ class Offloader:
         self.device = device
         self.debug = debug
         self.transfer_dtype = normalize_block_swap_transfer_dtype(transfer_dtype)
-        restore_mode = restore_mode or os.getenv("ANIMA_BLOCK_SWAP_RESTORE_MODE", "foreach")
+        restore_mode = restore_mode or os.getenv("ANIMA_BLOCK_SWAP_RESTORE_MODE", "slab")
         self.restore_mode = normalize_block_swap_restore_mode(restore_mode)
         int8_restore_mode = int8_restore_mode or os.getenv(
             "ANIMA_BLOCK_SWAP_INT8_RESTORE_MODE",

@@ -414,11 +414,11 @@ export const FIELD_HELP_TRAINING_ZH = {    learning_rate: help(
     ),
     block_swap_restore_mode: help(
         "块交换 restore 阶段如何把 frozen base 权重恢复回 GPU。",
-        "foreach 是当前默认正式路径；slab 会把同一 slot 的多个小 weight 恢复合并成更少的大 H2D，减少小 kernel / 小 copy 调度。",
-        ["slab 在当前 LoKr 热测里能进一步降低 enqueue 和 H2D restore 开销。"],
+        "slab 是当前默认正式路径：把同一 slot 的多个小 weight 恢复合并成一段连续大 H2D，减少小 kernel / 小 copy 调度；foreach 逐 weight 恢复，仅作对照/回退。",
+        ["slab 在 RTX 3080 基线上每块比 foreach 快约 0.7ms（见 docs/findings/blockswap_baseline_20260806.md）。"],
         ["slab 会额外引入少量 GPU slab storage，占用一点显存余量。"],
-        ["这仍属于更激进的 block swap 存储布局优化，推荐先在热测或对照实验中启用。"],
-        "默认 foreach；做 block swap 性能验证时再试 slab。"
+        ["int8 传输模式或混合 dtype 时 slab 自动回退到 foreach，无需手动切换。"],
+        "默认 slab；如需对照旧行为可手动改回 foreach。"
     ),
     selective_checkpoint: help(
         "只对部分 DiT 计算做 activation 重算。",

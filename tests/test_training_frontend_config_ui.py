@@ -1513,7 +1513,7 @@ def test_config_form_uses_navigation_search_and_progressive_disclosure() -> None
         "blocks_to_swap: 23",
         "block_swap_transfer_dtype: 'bf16'",
         "block_swap_transfer_dtype: 'fp8_e4m3'",
-        "block_swap_restore_mode: 'foreach'",
+        "block_swap_restore_mode: 'slab'",
         "selective_checkpoint: 'mlp_only'",
         "block_swap_profile_jsonl: 'auto'",
         "memory_probe_jsonl: 'auto'",
