@@ -18,6 +18,7 @@ from library.runtime.block_swap_config import (
     _BLOCK_SWAP_RESTORE_MODES,
     _BLOCK_SWAP_TRANSFER_DTYPES,
     _DEFAULT_BLOCK_SWAP_PROFILE_POLL_INTERVAL_S,
+    _block_swap_prefetch_depth,
     _block_swap_profile_poll_interval_s,
     _env_flag,
     _env_int,
@@ -322,6 +323,13 @@ class Offloader:
             int, tuple[torch.Tensor, tuple[tuple[str, torch.Tensor], ...]]
         ] = {}
         self._copy_stream: Optional[Any] = None
+        # Per-slot copy streams let multiple in-flight H2D restores run on
+        # independent streams instead of queueing on one. Keyed by slot id.
+        self._copy_streams: dict[int, Any] = {}
+        # Forward prefetch lead (blocks ahead to begin H2D restore). See
+        # docs/findings/blockswap_baseline_20260806.md — bf16 transfer slightly
+        # exceeds single-block compute on RTX 3080, so depth 2 hides it.
+        self._prefetch_depth = _block_swap_prefetch_depth()
         self._timing_event_pool: list[Any] = []
         self._marker_event_pool: list[Any] = []
         self._event_pool_lock = threading.Lock()
@@ -792,6 +800,16 @@ class Offloader:
             self._copy_stream = torch.cuda.Stream(device=self.device)
         return self._copy_stream
 
+    def _get_copy_stream_for_slot(self, slot_id: Optional[int]) -> Any:
+        """Per-slot copy stream so parallel prefetches don't share one stream."""
+        if slot_id is None:
+            return self._get_copy_stream()
+        stream = self._copy_streams.get(slot_id)
+        if stream is None:
+            stream = torch.cuda.Stream(device=self.device)
+            self._copy_streams[slot_id] = stream
+        return stream
+
     def _acquire_cuda_event(self, *, enable_timing: bool) -> Any:
         with self._event_pool_lock:
             pool = self._timing_event_pool if enable_timing else self._marker_event_pool
@@ -1080,6 +1098,7 @@ class Offloader:
         block_to_cuda: nn.Module,
         *,
         ready_event: Optional[Any] = None,
+        slot_id: Optional[int] = None,
     ):
         if self._cpu_weight_masters is None:
             if self.cuda_available:
@@ -1113,6 +1132,7 @@ class Offloader:
                 block_to_cuda,
                 swap_plan,
                 ready_event=ready_event,
+                slot_id=slot_id,
             )
         return self._swap_weight_devices_cached_no_cuda(
             block_idx_to_cpu,
@@ -1131,6 +1151,7 @@ class Offloader:
         swap_plan: _SwapPlan,
         *,
         ready_event: Optional[Any] = None,
+        slot_id: Optional[int] = None,
     ) -> dict[str, float]:
         assert layer_to_cpu.__class__ == layer_to_cuda.__class__
         modules_to_cpu = self._get_block_module_map(block_idx_to_cpu, layer_to_cpu)
@@ -1156,7 +1177,7 @@ class Offloader:
         if not weight_swap_jobs:
             return timings
 
-        stream = self._get_copy_stream()
+        stream = self._get_copy_stream_for_slot(slot_id)
         slab_bundle = self._get_cached_restore_slab(
             block_idx_to_cpu,
             block_idx_to_cuda,
@@ -1389,6 +1410,7 @@ class Offloader:
             block_to_cuda,
             event,
             submitted_at,
+            slot_id,
         ):
             if self.debug:
                 start_time = time.perf_counter()
@@ -1403,6 +1425,7 @@ class Offloader:
                 bidx_to_cuda,
                 block_to_cuda,
                 ready_event=event,
+                slot_id=slot_id,
             )
             enqueued_at = time.time()
             timings["enqueue_ms"] = (time.perf_counter() - transfer_t0) * 1000.0
@@ -1444,6 +1467,7 @@ class Offloader:
                 block_to_cuda,
                 ready_event,
                 queued_at,
+                slot_id,
             ),
             {
                 "phase": phase,
@@ -1707,20 +1731,30 @@ class ModelOffloader(Offloader):
         if self.blocks_to_swap is None or self.blocks_to_swap == 0:
             return
 
-        # if backward is enabled, we do not swap blocks in forward pass more than blocks_to_swap, because it should be on GPU
-        if not self.forward_only and block_idx >= self.blocks_to_swap:
-            return
+        # Prefetch with a lead of ``_prefetch_depth`` blocks so the H2D restore
+        # stays ahead of compute (training path only). Baseline (docs/findings/
+        # blockswap_baseline_20260806.md): bf16 block transfer slightly exceeds
+        # one block's forward compute on RTX 3080, so a lead of 1 stalls each
+        # block by ~2ms. Forward-only (inference) keeps the exact lead of 1:
+        # its slot rotation reuses GPU storage immediately and a deeper lead
+        # would overwrite a slot before its block has run.
+        depth = 1 if self.forward_only else max(1, int(self._prefetch_depth))
+        for step in range(depth):
+            # if backward is enabled, we do not swap blocks in forward pass more
+            # than blocks_to_swap, because it should be on GPU
+            if not self.forward_only and (block_idx + step) >= self.blocks_to_swap:
+                break
 
-        block_idx_to_cpu = block_idx
-        block_idx_to_cuda = self.num_blocks - self.blocks_to_swap + block_idx
-        # this works for forward-only offloading. move upstream blocks to cuda
-        block_idx_to_cuda = block_idx_to_cuda % self.num_blocks
-        self._submit_move_blocks(
-            blocks,
-            block_idx_to_cpu,
-            block_idx_to_cuda,
-            phase="forward_prefetch",
-        )
+            block_idx_to_cpu = block_idx + step
+            block_idx_to_cuda = self.num_blocks - self.blocks_to_swap + block_idx_to_cpu
+            # this works for forward-only offloading. move upstream blocks to cuda
+            block_idx_to_cuda = block_idx_to_cuda % self.num_blocks
+            self._submit_move_blocks(
+                blocks,
+                block_idx_to_cpu,
+                block_idx_to_cuda,
+                phase="forward_prefetch",
+            )
 
 
 def to_device(x: Any, device: torch.device) -> Any:

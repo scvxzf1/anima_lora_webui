@@ -30,7 +30,10 @@ def prepare_unet_with_accelerator(
     accelerator.unwrap_model(model).move_to_device_except_swap_blocks(
         accelerator.device
     )
-    accelerator.unwrap_model(model).prepare_block_swap_before_forward()
+    # free_cache=False: steady-state training forward shapes are constant, so
+    # the per-step empty_cache()+gc.collect() only makes the caching allocator
+    # re-grow the same blocks each step (~1GB nvidia-smi swing on a 5060 Ti).
+    accelerator.unwrap_model(model).prepare_block_swap_before_forward(free_cache=False)
 
     return model
 
@@ -38,4 +41,6 @@ def prepare_unet_with_accelerator(
 def on_validation_step_end(trainer, ctx: TrainCtx, batch) -> None:
     if trainer.is_swapping_blocks:
         # prepare for next forward: because backward pass is not called, we need to prepare it here
-        ctx.accelerator.unwrap_model(ctx.unet).prepare_block_swap_before_forward()
+        ctx.accelerator.unwrap_model(ctx.unet).prepare_block_swap_before_forward(
+            free_cache=False
+        )

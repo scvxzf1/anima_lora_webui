@@ -30,6 +30,54 @@ from library.runtime.block_swap_payload import (
 )
 
 
+def _make_training_offloader(blocks, blocks_to_swap, monkeypatch=None, depth=None):
+    if depth is not None:
+        monkeypatch.setenv("ANIMA_BLOCK_SWAP_PREFETCH_DEPTH", str(depth))
+    return ModelOffloader(
+        blocks,
+        blocks_to_swap=blocks_to_swap,
+        device=torch.device("cpu"),
+        supports_backward=True,
+    )
+
+
+def test_submit_move_blocks_prefetch_depth_training_mode(monkeypatch) -> None:
+    # Training mode (forward_only=False) prefetches ``depth`` blocks ahead.
+    blocks = nn.ModuleList([_TinyBlock() for _ in range(6)])
+    offloader = _make_training_offloader(blocks, 2, monkeypatch, depth=2)
+    offloader.prepare_block_devices_before_forward(blocks, free_cache=False)
+
+    offloader.submit_move_blocks(blocks, 0)
+
+    # depth=2 → futures for both block_idx_to_cuda = 4 (step0) and 5 (step1)
+    assert set(offloader.futures.keys()) == {4, 5}
+
+
+def test_submit_move_blocks_prefetch_depth_default_one_in_forward_only(monkeypatch) -> None:
+    # Forward-only (inference) ignores depth and keeps the exact lead of 1, so
+    # the rotating slot storage is never overwritten before its block runs.
+    blocks = nn.ModuleList([_TinyBlock() for _ in range(3)])
+    offloader = _make_training_offloader(blocks, 1, monkeypatch, depth=3)
+    offloader.set_forward_only(True)
+    offloader.prepare_block_devices_before_forward(blocks, free_cache=False)
+
+    offloader.submit_move_blocks(blocks, 0)
+
+    assert set(offloader.futures.keys()) == {2}
+
+
+def test_submit_move_blocks_prefetch_depth_env_override(monkeypatch) -> None:
+    blocks = nn.ModuleList([_TinyBlock() for _ in range(6)])
+    offloader = _make_training_offloader(blocks, 3, monkeypatch, depth=1)
+    offloader.prepare_block_devices_before_forward(blocks, free_cache=False)
+
+    offloader.submit_move_blocks(blocks, 0)
+
+    # depth=1 → only the single next block
+    assert set(offloader.futures.keys()) == {3}
+
+
+
 class _TinyBlock(nn.Module):
     def __init__(self) -> None:
         super().__init__()
