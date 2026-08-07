@@ -31,6 +31,7 @@ import torch
 
 
 from library.anima import weights as anima_weights  # noqa: E402
+from library.env import assert_anima_only  # noqa: E402
 from library.inference.models import _classify_adapter_capability  # noqa: E402
 from library.log import setup_logging  # noqa: E402
 
@@ -206,6 +207,7 @@ def main() -> int:
         help="Network module providing create_network_from_weights.",
     )
     args = parser.parse_args()
+    assert_anima_only("merge_to_dit")
 
     adapter = args.adapter or pick_latest_adapter(args.adapter_dir)
     logger.info(f"adapter: {adapter}")

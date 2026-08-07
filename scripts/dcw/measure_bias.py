@@ -114,6 +114,7 @@ from tqdm import tqdm
 
 from bench._common import make_run_dir, write_result  # noqa: E402
 from library.anima import weights as anima_utils  # noqa: E402
+from library.env import assert_anima_only  # noqa: E402
 from library.inference import sampling as inference_utils  # noqa: E402
 from library.inference.adapters import clear_hydra_sigma  # noqa: E402
 from library.inference.text import (  # noqa: E402
@@ -143,6 +144,7 @@ log = logging.getLogger("dcw-bench")
 
 def main() -> None:
     args = parse_args(description=__doc__)
+    assert_anima_only("dcw measure_bias")
     if (args.image_h is None) != (args.image_w is None):
         raise SystemExit(
             "--image_h and --image_w must be set together (or both omitted)."

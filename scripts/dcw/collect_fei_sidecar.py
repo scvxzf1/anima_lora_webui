@@ -46,6 +46,7 @@ from tqdm import tqdm
 ROOT = Path(__file__).resolve().parents[2]
 
 from library.anima import weights as anima_utils  # noqa: E402
+from library.env import assert_anima_only  # noqa: E402
 from library.inference import sampling as inference_utils  # noqa: E402
 from library.inference.adapters import clear_hydra_sigma  # noqa: E402
 from library.inference.text import (  # noqa: E402
@@ -365,6 +366,7 @@ def main() -> None:
         "Default on.",
     )
     args = p.parse_args()
+    assert_anima_only("dcw collect_fei_sidecar")
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     dtype = torch.bfloat16

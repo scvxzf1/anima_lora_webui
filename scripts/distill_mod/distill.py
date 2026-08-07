@@ -40,6 +40,7 @@ from tqdm import tqdm  # noqa: E402
 from library.anima import weights as anima_utils  # noqa: E402
 from library.anima.models import Anima  # noqa: E402
 from library.datasets.distill import CachedDataset  # noqa: E402
+from library.env import assert_anima_only  # noqa: E402
 from library.runtime.harness import (  # noqa: E402
     compile_dit_blocks,
     enable_training_grad_ckpt,
@@ -281,6 +282,7 @@ def main():
         "subsequent pass skips teacher forwards entirely.",
     )
     args = parser.parse_args()
+    assert_anima_only("distill_mod")
 
     torch.manual_seed(args.seed)
     random.seed(args.seed)

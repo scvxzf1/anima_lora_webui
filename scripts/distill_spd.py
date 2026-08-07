@@ -39,6 +39,7 @@ from tqdm import tqdm  # noqa: E402
 from library.anima import weights as anima_utils  # noqa: E402
 from library.anima.models import Anima  # noqa: E402
 from library.datasets.distill import CachedDataset  # noqa: E402
+from library.env import assert_anima_only  # noqa: E402
 from library.runtime.harness import (  # noqa: E402
     compile_dit_blocks,
     enable_training_grad_ckpt,
@@ -201,6 +202,7 @@ def main():
         help="Build the schedule + iterate the dataloader without loading the DiT.",
     )
     args = parser.parse_args()
+    assert_anima_only("distill_spd")
 
     with open(args.config, "rb") as f:
         cfg = tomllib.load(f)

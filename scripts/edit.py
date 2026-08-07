@@ -44,6 +44,7 @@ from typing import Optional
 
 from library.anima import text_strategies  # noqa: E402
 from library.datasets.buckets import CONSTANT_TOKEN_BUCKETS  # noqa: E402
+from library.env import assert_anima_only  # noqa: E402
 from library.inference import sampling as inference_utils  # noqa: E402
 from library.inference.editing import directedit  # noqa: E402
 from library.inference.editing.directedit_splice import splice_crossattn_emb  # noqa: E402
@@ -257,6 +258,7 @@ def parse_args() -> argparse.Namespace:
 
     args = p.parse_args()
     args.compile = False
+    assert_anima_only("edit")
     return args
 
 

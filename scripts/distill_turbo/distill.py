@@ -23,6 +23,7 @@ from tqdm import tqdm
 from library.anima import weights as anima_utils
 from library.anima.models import Anima
 from library.datasets.distill import CachedDataset
+from library.env import assert_anima_only
 from library.inference.sampling import get_timesteps_sigmas
 from library.inference.uncond import (
     default_uncond_path,
@@ -141,6 +142,7 @@ def calibrate_mean_var(
 
 def main():
     args = build_argparser().parse_args()
+    assert_anima_only("distill_turbo")
     cfg = resolve_config(args, load_turbo_config(args.config))
 
     torch.manual_seed(cfg.seed)

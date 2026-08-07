@@ -227,6 +227,42 @@ def cmd_download_anima_variant(_extra):
     )
 
 
+def cmd_download_krea2(_extra):
+    # Krea-2-Raw base checkpoint for the krea2_raw model family
+    # (docs/proposal/krea2_raw_migration.md). Source is the Comfy-Org
+    # repackaged single-file layout — NOT the gated `krea/Krea-2-Raw`
+    # diffusers three-shard form, so no license acceptance is needed and the
+    # loader is single-file key-mapping (not index.json shard expansion).
+    # VAE filename `qwen_image_vae.safetensors` matches anima's exactly — same
+    # AutoencoderKLQwenImage (R2 encode/decode interop still needs verifying,
+    # but the file is byte-identical to anima's VAE download).
+    models = ROOT / "models"
+    finals = [
+        models / "diffusion_models" / "krea2_raw_bf16.safetensors",
+        models / "text_encoders" / "qwen3vl_4b_bf16.safetensors",
+        models / "vae" / "qwen_image_vae.safetensors",
+    ]
+    if _skip("Krea-2-Raw (DiT bf16 + Qwen3-VL + VAE, ~35GB)", finals, _extra):
+        return
+    for d in ["diffusion_models", "text_encoders", "vae"]:
+        (models / d).mkdir(parents=True, exist_ok=True)
+    # Comfy-Org lays files directly under diffusion_models/ / text_encoders/ /
+    # vae/, so `--local-dir models` lands them in the right place — no
+    # split_files/ move step needed (unlike cmd_download_anima).
+    run(
+        [
+            "hf",
+            "download",
+            "Comfy-Org/Krea-2",
+            "diffusion_models/krea2_raw_bf16.safetensors",
+            "text_encoders/qwen3vl_4b_bf16.safetensors",
+            "vae/qwen_image_vae.safetensors",
+            "--local-dir",
+            "models",
+        ]
+    )
+
+
 def cmd_download_sketch2manga(_extra):
     """Sketch2Manga screening weights for colorize EasyControl."""
     dst = ROOT / "models" / "sketch2manga"
@@ -269,6 +305,7 @@ def cmd_download_models(_extra):
     # non-zero subprocess, so we catch ``SystemExit`` per component.
     components = [
         ("Anima base", cmd_download_anima),
+        ("Krea-2-Raw", cmd_download_krea2),
         ("SAM3 (gated)", cmd_download_sam3),
         ("MIT", cmd_download_mit),
         ("PE-Core", cmd_download_pe),

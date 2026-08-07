@@ -183,6 +183,10 @@ COMMANDS = {
     # ── Downloads ─────────────────────────────────────────────────────
     "download-models": (downloads.cmd_download_models, "Download all models"),
     "download-anima": (downloads.cmd_download_anima, "Download Anima model"),
+    "download-krea2": (
+        downloads.cmd_download_krea2,
+        "Download Krea-2-Raw base (DiT bf16 + Qwen3-VL + VAE) for the krea2_raw family",
+    ),
     "download-anima-variant": (
         downloads.cmd_download_anima_variant,
         "Download an alternate Anima base DiT (aesthetic / turbo / preview); "
