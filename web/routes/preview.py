@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from urllib.parse import quote
 
 from aiohttp import web
@@ -56,7 +57,8 @@ async def handle_preview_images(request: web.Request) -> web.Response:
         days = _preview_days_filter(request)
         if source == "training" and request.query.get("mode") == "config_group":
             tasks = _selected_config_group_tasks(request)
-            payload = list_config_group_preview_images(
+            payload = await asyncio.to_thread(
+                list_config_group_preview_images,
                 tasks,
                 methods_subdir=str(request.query.get("methods_subdir") or ""),
                 variant=str(request.query.get("variant") or ""),
@@ -67,7 +69,8 @@ async def handle_preview_images(request: web.Request) -> web.Response:
 
         task = _selected_history_task(request)
         task_selected = _has_task_selection(request)
-        payload = list_preview_images(
+        payload = await asyncio.to_thread(
+            list_preview_images,
             source,
             current_task_sample_dir=_selected_sample_dir(request, task=task),
             sample_config=_selected_sample_config(request, task=task),
@@ -108,14 +111,16 @@ async def handle_preview_weights(request: web.Request) -> web.Response:
     try:
         if request.query.get("mode") == "config_group":
             tasks = _selected_config_group_tasks(request)
-            return web.json_response(list_config_group_training_weights(
+            return web.json_response(await asyncio.to_thread(
+                list_config_group_training_weights,
                 tasks,
                 methods_subdir=str(request.query.get("methods_subdir") or ""),
                 variant=str(request.query.get("variant") or ""),
                 preset=str(request.query.get("preset") or "default"),
             ))
         task = _selected_history_task(request)
-        return web.json_response(list_training_weights(
+        return web.json_response(await asyncio.to_thread(
+            list_training_weights,
             task,
             allow_latest_fallback=not _has_task_selection(request),
         ))

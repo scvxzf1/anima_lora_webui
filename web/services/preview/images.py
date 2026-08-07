@@ -9,8 +9,8 @@ from urllib.parse import quote
 import re
 
 import toml
-from PIL import Image
 
+from web.services.image_size import probe_image_size
 from web.services.preview.context import call, get
 
 
@@ -359,13 +359,7 @@ def _image_meta(
     step_index: dict[int, int] | None = None,
 ) -> dict[str, Any]:
     stat = path.stat()
-    width = None
-    height = None
-    try:
-        with Image.open(path) as img:
-            width, height = img.size
-    except Exception:
-        pass
+    width, height = probe_image_size(path)
     rel_path = call("_display_path", path)
     url = f"/api/preview/image?file={quote(rel_path)}"
     if task_id:

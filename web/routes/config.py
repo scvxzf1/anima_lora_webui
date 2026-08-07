@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from urllib.parse import quote
 
 from aiohttp import web
@@ -335,7 +336,8 @@ async def handle_dataset_preset_images(request: web.Request) -> web.Response:
     try:
         dataset_index = int(request.query.get("dataset_index", "0") or 0)
         limit = int(request.query.get("limit", "120") or 120)
-        return web.json_response(list_dataset_preset_images(
+        return web.json_response(await asyncio.to_thread(
+            list_dataset_preset_images,
             file,
             dataset_index,
             source=source,

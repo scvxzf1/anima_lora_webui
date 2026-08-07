@@ -13,7 +13,6 @@ from typing import Any
 from urllib.parse import quote
 
 import toml
-from PIL import Image, UnidentifiedImageError
 
 from library.env import expand_env_vars, get_configs_root, load_dotenv
 from library.preprocess._dataset import walk_images
@@ -23,6 +22,7 @@ from library.preprocess.captions import (
 )
 from web.services.config import paths as _config_paths
 from web.services.config.common import _positive_int
+from web.services.image_size import probe_image_size
 from web.services.config.dataset_rows import (
     _normalize_path_pattern,
     _single_dataset_config_from_cfg,
@@ -141,10 +141,8 @@ def _dataset_image_preview_meta(
 
 
 def _dataset_image_dimensions(path: Path) -> dict[str, int]:
-    try:
-        with Image.open(path) as image:
-            width, height = image.size
-    except (OSError, UnidentifiedImageError):
+    width, height = probe_image_size(path)
+    if width is None or height is None:
         return {}
     return {
         "width": int(width),
