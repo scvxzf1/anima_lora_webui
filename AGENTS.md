@@ -99,17 +99,17 @@
 
 ## Git 推送和回滚
 
-- 当前固定协作口径：本地 `main` 只和 `webui/main` 对齐。用户说“拉取线上更新”、
-  “同步线上 main”、“推送更新到线上”时，默认目标都是 `webui/main`
-  (`git@github.com:scvxzf1/anima_lora_webui.git`)。
+- 当前固定协作口径：本地 `main` 只和 `origin/main` 对齐。用户说“拉取线上更新”、
+  “同步线上 main”、“推送更新到线上”时，默认目标都是 `origin/main`
+  (`https://github.com/scvxzf1/krea2-webui`)。
 - `private/main` 不再作为默认同步或发布目标，只保留为个人主仓/历史镜像。除非用户明确点名
   `private`，不要向它 pull、push、reset 或拿它当“线上 main”。
-- `origin/main` 是上游参考仓，默认只读。需要从上游合入时，先单独做差异审计和合并计划，
+- `anima-upstream/main` 是旧仓库的只读上游参考。需要从上游合入时，先单独做差异审计和合并计划，
   不要把它和发布同步混在一起。
-- 推送前至少检查：`git status --short --branch`、`git fetch webui --prune`、
-  `git log webui/main..HEAD`，再跑和改动直接相关的测试。未跟踪文件默认不随推送发布，
+- 推送前至少检查：`git status --short --branch`、`git fetch origin --prune`、
+  `git log origin/main..HEAD`，再跑和改动直接相关的测试。未跟踪文件默认不随推送发布，
   除非用户明确要求或本次任务已确认需要纳入版本控制。
-- 用户说“推送更新到线上”时，默认执行 `git push webui main:main`。推送后要汇报目标远程/分支、
+- 用户说“推送更新到线上”时，默认执行 `git push origin main:main`。推送后要汇报目标远程/分支、
   最新提交 hash，以及本地是否还有未提交或未跟踪改动残留。
 - 用户说“回滚”时，先分清是哪一种：
   - 本地工作区回退：丢弃未提交改动。只有用户明确要求时才做，执行前说明会丢失哪些内容。

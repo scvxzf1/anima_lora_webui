@@ -55,7 +55,7 @@ timeout 60 .venv/bin/python -m pytest tests/test_documentation_integrity.py -q
 | [guidelines/README.md](guidelines/README.md) | Guidelines 分区索引 |
 | [guidelines/指南书.md](guidelines/指南书.md) | 历史中文 GUI/CLI 综合指南；桌面 GUI 命令已移除，当前入口以根 README 为准 |
 | [guidelines/linux-deployment.zh.md](guidelines/linux-deployment.zh.md) | Linux 部署与启动指南 |
-| [guidelines/git-sync-policy.md](guidelines/git-sync-policy.md) | 本地 `main` 与线上 `webui/main` 的同步规则 |
+| [guidelines/git-sync-policy.md](guidelines/git-sync-policy.md) | 本地 `main` 与线上 `origin/main` 的同步规则 |
 | [guidelines/training.md](guidelines/training.md) | 训练参考：LoRA 变体、caption shuffle、masked loss、数据集配置 |
 | [guidelines/inference.md](guidelines/inference.md) | 推理参考：推理命令、DCW、Spectrum、prompt 文件 |
 | [guidelines/difference_between_comfy.md](guidelines/difference_between_comfy.md) | anima_lora 与 ComfyUI 核心实现差异 |

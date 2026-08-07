@@ -124,8 +124,8 @@ uv --version
 克隆项目并安装依赖：
 
 ```bash
-git clone https://github.com/scvxzf1/anima_lora_webui.git
-cd anima_lora_webui
+git clone https://github.com/scvxzf1/krea2-webui.git
+cd krea2-webui
 git lfs pull
 uv sync
 ```
@@ -189,8 +189,8 @@ uv --version
 克隆项目并安装依赖：
 
 ```powershell
-git clone https://github.com/scvxzf1/anima_lora_webui.git
-cd anima_lora_webui
+git clone https://github.com/scvxzf1/krea2-webui.git
+cd krea2-webui
 git lfs pull
 uv sync
 ```
