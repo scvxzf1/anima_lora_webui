@@ -8,15 +8,16 @@
 """
 from __future__ import annotations
 
+import os
+# PCI_BUS_ID 让 index 与 nvidia-smi 一致; PG199 = device 1 (32GB).
+os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
+os.environ.setdefault("CUDA_VISIBLE_DEVICES", "1")
+
 import sys
 import time
 from pathlib import Path
 
 import torch
-
-# 用 PG199
-import os
-os.environ.setdefault("CUDA_VISIBLE_DEVICES", "1")
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
