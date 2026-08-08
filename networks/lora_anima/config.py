@@ -226,6 +226,11 @@ class LoRANetworkCfg:
     include_patterns: Optional[List[str]] = None
     layer_start: Optional[int] = None
     layer_end: Optional[int] = None
+    # Family-aware target container override (Krea-2-Raw migration).
+    # None → fall back to LoRANetwork.ANIMA_TARGET_REPLACE_MODULE (anima path,
+    # behavior unchanged). Set to e.g. ["SingleStreamBlock"] for Krea-2.
+    unet_target_replace_modules: Optional[List[str]] = None
+    text_encoder_target_replace_modules: Optional[List[str]] = None
 
     # dropouts
     dropout: Optional[float] = None
@@ -471,6 +476,18 @@ class LoRANetworkCfg:
         exclude_patterns = _as_str_list(kwargs.get("exclude_patterns")) or []
         exclude_patterns.append(_DEFAULT_EXCLUDE)
         include_patterns = _as_str_list(kwargs.get("include_patterns"))
+
+        # Family-aware target container override (Krea-2-Raw). None = anima default.
+        unet_target_replace_modules = _as_str_list(
+            kwargs.get("unet_target_replace_modules")
+        )
+        if not unet_target_replace_modules:
+            unet_target_replace_modules = None
+        text_encoder_target_replace_modules = _as_str_list(
+            kwargs.get("text_encoder_target_replace_modules")
+        )
+        if not text_encoder_target_replace_modules:
+            text_encoder_target_replace_modules = None
 
         # adaln convenience knobs: train_adaln adds the adaln_up_{branch}
         # Linears to the target set — they sit in _DEFAULT_EXCLUDE, so this
@@ -792,6 +809,8 @@ class LoRANetworkCfg:
             include_patterns=include_patterns,
             layer_start=layer_start,
             layer_end=layer_end,
+            unet_target_replace_modules=unet_target_replace_modules,
+            text_encoder_target_replace_modules=text_encoder_target_replace_modules,
             dropout=neuron_dropout,
             rank_dropout=rank_dropout,
             module_dropout=module_dropout,

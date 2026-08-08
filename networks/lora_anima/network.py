@@ -97,15 +97,27 @@ class LoRANetwork(torch.nn.Module):
         # entropy normalization (per-pool log(K_pool)). Same lifecycle.
         self._chimera_router_stats_cache: Optional[Dict[str, object]] = None
 
+        # Family-aware target containers (Krea-2-Raw migration). cfg fields
+        # default None → anima class-attribute defaults, behavior unchanged.
+        unet_targets = (
+            cfg.unet_target_replace_modules
+            if cfg.unet_target_replace_modules is not None
+            else LoRANetwork.ANIMA_TARGET_REPLACE_MODULE
+        )
+        text_encoder_targets = (
+            cfg.text_encoder_target_replace_modules
+            if cfg.text_encoder_target_replace_modules is not None
+            else LoRANetwork.TEXT_ENCODER_TARGET_REPLACE_MODULE
+        )
         builders.initialize_network_components(
             self,
             text_encoders,
             unet,
             cfg=cfg,
             multiplier=multiplier,
-            unet_target_replace_modules=LoRANetwork.ANIMA_TARGET_REPLACE_MODULE,
+            unet_target_replace_modules=unet_targets,
             adapter_target_replace_modules=LoRANetwork.ANIMA_ADAPTER_TARGET_REPLACE_MODULE,
-            text_encoder_target_replace_modules=LoRANetwork.TEXT_ENCODER_TARGET_REPLACE_MODULE,
+            text_encoder_target_replace_modules=text_encoder_targets,
             router_class=GlobalRouter,
             freq_router_class=FreqRouter,
             content_router_class=ContentRouter,
