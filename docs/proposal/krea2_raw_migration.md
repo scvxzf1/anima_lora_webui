@@ -194,7 +194,7 @@ model_family = "anima"   # 默认；切到 "krea2_raw" 走 Krea-2 路径
 | **2 DiT 本体 + 加载器** | `library/models/krea2_raw/dit.py` + `weights.py`（路径 B 裸移植 mmdit.py，非 diffusers；见 [R8](krea2_raw_migration_notes.md)） | 单 latent forward 通过，shape 对齐 | 阶段 0 ✅ 完成（[stage2 findings](../findings/krea2_raw_migration_stage2_findings.md)）|
 | **3 LoRA 注入** | `library/models/krea2_raw/lora_targets.py`，注入点按 single-stream 重做 | 单 block LoRA attach + forward 正常 | 阶段 2 ✅ 完成（[stage3 findings](../findings/krea2_raw_migration_stage3_findings.md)）|
 | **4 训练串通** | `family.forward_for_loss` + `noise_target.py` 改造 + 训练循环 | 单 prompt 过拟合 loss 下降；小数据集 sweep | 阶段 1+2+3 ✅ 完成（[stage4 findings](../findings/krea2_raw_migration_stage4_findings.md)）|
-| **5 推理串通** | `generation.py` + flow-matching sampler + mu shift | `python tasks.py test` 出图 | 阶段 2+3 |
+| **5 推理串通** | `generation.py` + flow-matching sampler + mu shift | `python tasks.py test` 出图 | 阶段 2+3 ✅ 完成（[stage5 findings](../findings/krea2_raw_migration_stage5_findings.md)）|
 | **6 配置/WebUI/下载/命名收口** | `model_family` 键 + 下载命令 + sidecar 命名 + WebUI 表单 + 测试 + docs | `model_family="krea2_raw"` 全链路可用，anima 路径回归通过 | 阶段 4+5 |
 
 ## 6. 验证计划
