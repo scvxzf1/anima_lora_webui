@@ -912,6 +912,12 @@ class LoRANetworkCfg:
         is_dora: bool = False,
         num_registers: int = 0,
         register_insert_block: int = 8,
+        # Family-aware target containers (Krea-2-Raw migration). None → fall
+        # back to LoRANetwork.ANIMA_TARGET_REPLACE_MODULE / TEXT_ENCODER_*
+        # class defaults (anima path behavior unchanged). Stamped only when the
+        # cfg field was non-None at save (see persistence.stamp_lora_save_metadata).
+        unet_target_replace_modules: Optional[List[str]] = None,
+        text_encoder_target_replace_modules: Optional[List[str]] = None,
     ) -> "LoRANetworkCfg":
         """Build cfg from a checkpoint key-sniff (warm-start / inference path).
 
@@ -1047,4 +1053,6 @@ class LoRANetworkCfg:
             chimera_centered_gate=bool(chimera_centered_gate),
             num_registers=int(num_registers),
             register_insert_block=int(register_insert_block),
+            unet_target_replace_modules=unet_target_replace_modules,
+            text_encoder_target_replace_modules=text_encoder_target_replace_modules,
         )

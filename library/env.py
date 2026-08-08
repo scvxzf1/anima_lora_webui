@@ -239,27 +239,37 @@ def get_training_queue_root() -> Path:
 # ── Model family (multi-model support, see docs/multi_model_support.md) ──
 #
 # `model_family` is the switch between Anima (default) and Krea-2-Raw
-# (docs/proposal/krea2_raw_migration.md). It is not yet wired into base.toml
-# (that lands in migration stage 6); for stage 0 the env var
-# `ANIMA_MODEL_FAMILY` is the single source of truth, and anima-only scripts
+# (docs/proposal/krea2_raw_migration.md). Stage 6 truth source chain (highest
+# wins): CLI `--model_family` → `args.model_family` (from base.toml merge) →
+# env var `ANIMA_MODEL_FAMILY` → DEFAULT_MODEL_FAMILY. anima-only scripts
 # (distill_turbo / distill_mod / distill_spd / dcw / edit / merge_to_dit)
 # read it via `resolve_model_family()` to refuse running under a non-anima
 # family instead of silently assuming Anima cross-attn / AdaLN geometry.
 DEFAULT_MODEL_FAMILY = "anima"
 _ANIMA_ONLY_FAMILIES = ("anima",)
+_KNOWN_FAMILIES = ("anima", "krea2_raw")
 
 
-def resolve_model_family() -> str:
-    """当前 model family（默认 "anima"，可被 ``ANIMA_MODEL_FAMILY`` 覆盖）。
+def _normalize_family(value: str) -> str:
+    return value.strip().lower()
 
-    阶段 0 过渡实现：最终真相源是 ``configs/base.toml`` 的 ``model_family``
-    键（阶段 6 落地），在那之前用环境变量作为单一来源，让 anima-only 脚本
-    能统一读取而不各自硬编码。
+
+def resolve_model_family(args=None) -> str:
+    """当前 model family（默认 "anima"）。
+
+    真相源优先级（阶段 6 落地）：CLI/TOML 的 ``args.model_family`` → 环境变量
+    ``ANIMA_MODEL_FAMILY`` → ``DEFAULT_MODEL_FAMILY``。``args`` 缺省或其
+    ``model_family`` 属性为 None 时回退到环境变量，保证 anima-only 脚本和旧
+    入口（不持 args）能统一读取而不各自硬编码。
     """
     load_dotenv()
+    if args is not None:
+        raw = getattr(args, "model_family", None)
+        if raw:
+            return _normalize_family(raw)
     value = os.environ.get("ANIMA_MODEL_FAMILY")
     if value:
-        return value.strip().lower()
+        return _normalize_family(value)
     return DEFAULT_MODEL_FAMILY
 
 

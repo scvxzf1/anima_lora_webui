@@ -1,0 +1,79 @@
+# Krea-2-Raw plain LoRA — stage 6 first-day config (single-stream MMDiT).
+#
+# docs/proposal/krea2_raw_migration.md §3 ModelFamily 边界: Krea-2 首日只做最简
+# rectified-flow 训练路径, 不实现 anima-only 能力 (LLM adapter / T5 uncond /
+# crossattn_emb 路由 / VR loss / shuffled caption variants). 这些键在这里显式
+# 关掉, 避免 train_session.py 走 anima T5 uncond sidecar 盲点 (见阶段 6 核实).
+#
+# 路由: use_moe_style=false (plain LoRA stack, 无 MoE). Krea-2 LoRA target 由
+# bootstrap.py::build_net_kwargs 的 krea2_target_kwargs() 注入 (SingleStreamBlock
+# 容器 + exclude_patterns 精确排除 attn.gate/mod/norms), 不在此重复配置.
+#
+# 与 anima lora.toml 的区别:
+#   - model_family = "krea2_raw" (驱动 DiT loader / text-strategy / forward_for_loss)
+#   - pretrained_model_name_or_path = Krea-2 DiT
+#   - use_shuffled_caption_variants / cache_llm_adapter_outputs / caption_dropout_rate
+#     全关 (anima-only; Krea-2 单 variant + 无 T5 adapter)
+#   - use_ortho / use_timestep_mask / 三轴路由全关 (首日只跑 plain LoRA)
+#   - cache_text_encoder_outputs = true (复用 _krea2_te 缓存, 不 live encode)
+
+model_family = "krea2_raw"
+pretrained_model_name_or_path = "models/diffusion_models/krea2_raw_bf16.safetensors"
+
+network_dim = 16
+network_alpha = 8
+
+learning_rate = 2e-4
+max_train_steps = 50            # 首日热测: 50 步验 loss 下降, 不追求收敛
+save_every_n_steps = 50
+save_last_n_steps = 1
+
+# anima-only 能力显式关掉 (Krea-2 首日非目标).
+use_shuffled_caption_variants = false
+cache_llm_adapter_outputs = false
+caption_dropout_rate = 0.0
+cache_text_encoder_outputs = true
+
+# 路由 / 正交 / 时间步 mask 全关 (plain LoRA stack).
+# 三轴验证 (config.py:88): use_moe_style=False 时 route_per_layer 必须 False,
+# router_source 必须 "none".
+use_ortho = false
+use_timestep_mask = false
+use_moe_style = false
+route_per_layer = false
+router_source = "none"
+
+output_name = "krea2_lora_test"
+
+logging_dir = "output/logs"
+log_with = "tensorboard"
+
+# Krea-2 DiT 没有 anima 的 native-flatten / per-block compile / fp32-residual
+# 接口, 但 SingleStreamBlock 现已移植 enable_gradient_checkpointing (标准
+# torch.utils.checkpoint, 无 cpu/unsloth offload 变体). bootstrap.py:564 在
+# args.gradient_checkpointing=true 时调 unet.enable_gradient_checkpointing().
+# torch_compile=true 仍会 AttributeError (无 compile_blocks), 保持关.
+torch_compile = false
+gradient_checkpointing = true
+unsloth_offload_checkpointing = false
+selective_checkpoint = "off"
+
+# Block swap 关掉: 28 块 CPU master (22.64 GiB) + DiT bf16 CPU 副本叠加会
+# 压爆系统内存 (62GB, swap 满载被 OOM kill). grad-ckpt 省激活才是 1024 训练
+# 的正解 (阶段6 findings: block swap 只搬权重救不了激活瓶颈).
+blocks_to_swap = 0
+
+[[datasets]]
+resolution = 1024
+batch_size = 1
+caption_extension = ".txt"
+enable_bucket = true
+min_bucket_reso = 672
+max_bucket_reso = 1536
+bucket_reso_steps = 64
+bucket_no_upscale = true
+
+[[datasets.subsets]]
+image_dir = "post_image_dataset/resized"
+cache_dir = "post_image_dataset/lora"
+num_repeats = 1

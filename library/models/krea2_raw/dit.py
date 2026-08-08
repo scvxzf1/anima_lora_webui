@@ -24,6 +24,7 @@ import torch.nn.functional as F
 from einops import rearrange
 from torch import Tensor
 from torch.nn.attention import SDPBackend, sdpa_kernel
+from torch.utils.checkpoint import checkpoint as torch_checkpoint
 
 from library.runtime import offloading as custom_offloading_utils
 
@@ -350,8 +351,20 @@ class SingleStreamBlock(nn.Module):
         self.postnorm = RMSNorm(features)
         self.attn = Attention(dim=features, heads=heads, bias=bias, kvheads=kvheads)
         self.mlp = SwiGLU(features, multiplier, bias)
+        # Gradient checkpointing (移植自 anima models.py:1329/1342). SingleStream
+        # block 是 1024×1024 训练显存主因 (28 blocks × 激活), grad-ckpt 用重算换
+        # 激活显存——block swap 只搬权重救不了激活 (阶段6 findings). Krea-2 首
+        # 日只实现标准 grad-ckpt (无 cpu_offload / unsloth / adapter-aware 变体,
+        # 那些是 anima 专属优化路径).
+        self.gradient_checkpointing = False
 
-    def forward(
+    def enable_gradient_checkpointing(self) -> None:
+        self.gradient_checkpointing = True
+
+    def disable_gradient_checkpointing(self) -> None:
+        self.gradient_checkpointing = False
+
+    def _forward(
         self, x: Tensor, vec: Tensor, freqs: Tensor, mask: Tensor | None = None
     ) -> Tensor:
         prescale, preshift, pregate, postscale, postshift, postgate = self.mod(vec)
@@ -359,8 +372,25 @@ class SingleStreamBlock(nn.Module):
             (1 + prescale) * self.prenorm(x) + preshift, freqs, mask
         )
         x = x + postgate * self.mlp((1 + postscale) * self.postnorm(x) + postshift)
-
         return x
+
+    def forward(
+        self, x: Tensor, vec: Tensor, freqs: Tensor, mask: Tensor | None = None
+    ) -> Tensor:
+        if (
+            torch.is_grad_enabled()
+            and self.training
+            and self.gradient_checkpointing
+        ):
+            return torch_checkpoint(
+                self._forward,
+                x,
+                vec,
+                freqs,
+                mask,
+                use_reentrant=False,
+            )
+        return self._forward(x, vec, freqs, mask)
 
 
 class SingleStreamDiT(nn.Module):
@@ -441,6 +471,32 @@ class SingleStreamDiT(nn.Module):
     @property
     def num_blocks(self) -> int:
         return len(self.blocks)
+
+    # Symmetric with anima DiT (models.py:2200-2206): training loop and
+    # harness read .device/.dtype off the unet for logging + dispatch.
+    @property
+    def device(self) -> torch.device:
+        return next(self.parameters()).device
+
+    @property
+    def dtype(self) -> torch.dtype:
+        return next(self.parameters()).dtype
+
+    # === Gradient checkpointing 接口 (移植自 anima models.py:1942-1946) ===
+    # 遍历 SingleStreamBlock 调其 enable_gradient_checkpointing. 训练侧
+    # model_loading.py 读 args.gradient_checkpointing 后调此方法 (鸭子类型,
+    # 与 anima DiT 同名). Krea-2 首 日只支持标准 grad-ckpt (无 cpu/unsloth
+    # offload 变体). block swap 与 grad-ckpt 可共存 (swap 搬权重, grad-ckpt
+    # 省激活, 两个维度独立).
+    def enable_gradient_checkpointing(self) -> None:
+        for block in self.blocks:
+            if hasattr(block, "enable_gradient_checkpointing"):
+                block.enable_gradient_checkpointing()
+
+    def disable_gradient_checkpointing(self) -> None:
+        for block in self.blocks:
+            if hasattr(block, "disable_gradient_checkpointing"):
+                block.disable_gradient_checkpointing()
 
     # === Block swap 接口 (移植自 anima models.py:2291-2387, 复用 ModelOffloader) ===
     # ModelOffloader 只遍历 block.named_modules() 取 .weight + .to(device) +

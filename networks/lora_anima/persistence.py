@@ -154,6 +154,20 @@ def stamp_lora_save_metadata(
         if getattr(cfg, "chimera_centered_gate", False):
             metadata["ss_chimera_centered_gate"] = "true"
 
+    # Family-aware target containers (Krea-2-Raw migration). Stamp only when
+    # the cfg field is non-None — anima's None sentinel means "use the
+    # ANIMA_TARGET_REPLACE_MODULE class default", so we omit the key to keep
+    # anima checkpoints byte-identical and let old unstamped checkpoints fall
+    # back to the anima default at load (from_weights leaves the field None).
+    if cfg.unet_target_replace_modules is not None:
+        metadata["ss_unet_target_replace_modules"] = json.dumps(
+            list(cfg.unet_target_replace_modules)
+        )
+    if cfg.text_encoder_target_replace_modules is not None:
+        metadata["ss_text_encoder_target_replace_modules"] = json.dumps(
+            list(cfg.text_encoder_target_replace_modules)
+        )
+
 
 def strip_orig_mod_keys(state_dict):
     """Strip torch.compile '_orig_mod_' from state_dict keys."""

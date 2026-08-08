@@ -201,15 +201,79 @@ train.py resume / ComfyUI loader 需要:
 
 这是阶段 6 配置收口 (train.py / generation.py 正式串通) 的工作, 不在本轮探针范围.
 
+## 1024×1024 梯度检查点正式训练 (PG199 bf16, lora_dim=16/alpha=8)
+
+阶段 6 配置收口里程碑: `forward_for_loss` + `model_family` 正式串通 train.py 路径,
+首个真实 1024×1024 LoRA 训练完成. 前置修复 + grad-ckpt 移植如下.
+
+### 前置修复: cached TE outputs 末位 rate 约定 (mask 丢失 bug)
+
+**症状**: Krea-2 训练首步 `text_encoder_conds[1] out of range` — mask 丢失,
+`text_encoder_conds` 只剩 len=1 (仅 hiddens).
+
+**根因**: `library/training/batch_preprocess.py::split_cached_text_encoder_outputs`
+假设 cached TE list 末位是 `caption_dropout_rates` (anima cache 约定, strategy.py:416).
+Krea-2 `Krea2TextEncoderOutputsCachingStrategy.load_outputs_npz` 原返回 `[hiddens, mask]`,
+末位 mask 被错误拆成 `caption_dropout_rates`, teo_list 只剩 `[hiddens]`.
+
+**修复**: `load_outputs_npz` 改返回 `[hiddens, mask, caption_dropout_rate]` —
+与 anima cache 布局对齐 (rate 作末位 aux, split 拆到 `batch["caption_dropout_rates"]`,
+teo_list 留 `[hiddens, mask]`). caption_dropout_rate 本就由 `cache_batch_outputs`
+写盘 (strategy.py:239), 只是 load 时没读出来. Krea-2 caption_dropout_rate=0.0,
+rate 不参与 forward (family.compute_noise_pred_and_target 只 unpack hiddens/mask),
+`split` 的 by-product 对 Krea-2 是 no-op.
+
+### grad-ckpt 移植 (SingleStreamBlock)
+
+Krea-2 `SingleStreamBlock` 原只有 `forward`. 移植 anima models.py:1691-1740 的标准
+grad-ckpt 模式 (`library/models/krea2_raw/dit.py`):
+- `__init__` 加 `self.gradient_checkpointing = False`
+- 原计算逻辑挪到 `_forward` (纯计算, 无 checkpoint)
+- `forward` 改为: `torch.is_grad_enabled() and self.training and
+  self.gradient_checkpointing` 时 `torch_checkpoint(self._forward, ...,
+  use_reentrant=False)`, 否则直调 `_forward`
+- `SingleStreamDiT.enable_gradient_checkpointing` / `disable` 遍历 blocks 调子方法
+  (移植自 anima models.py:1942-1946)
+
+Krea-2 首日只支持标准 grad-ckpt (无 cpu_offload / unsloth / adapter-aware 变体,
+那些是 anima 专属优化路径). `bootstrap.py:564` 已通过鸭子类型调
+`unet.enable_gradient_checkpointing()` (无参数), 签名兼容, 无需改 bootstrap.
+
+### 基线 (PG199 bf16, 1024×1024, lora_dim=16/alpha=8, grad-ckpt on, swap off)
+
+| 指标 | 值 |
+|---|---|
+| 显存 peak (allocated) | 27.9 GB |
+| 显存 peak (reserved) | 28.1 GB |
+| 显存 allocated (稳态) | 24.5 GB |
+| step 时间 (稳态) | 3.47 s/it |
+| 50 步总耗时 | ~173 s |
+| loss (step 2 → 50) | 0.465 → 0.198 (下降 57%) |
+| loss (末 10 步) | 稳定在 0.199–0.214 |
+| checkpoint | 92 MB (`output/ckpt/krea2_lora_test.safetensors`) |
+
+**对比 256×256 无 grad-ckpt (probe_train 基线)**:
+- 显存: 27.9 GB (1024+grad-ckpt) vs 32.62 GB (256 无 grad-ckpt) — grad-ckpt 把
+  1024 激活压到比 256 无 grad-ckpt 还低, 留 ~4 GB 余量.
+- 速度: 3.47 s/it (1024+grad-ckpt) vs 0.4 s/it (256 无 grad-ckpt) — 8.7× 慢,
+  符合 grad-ckpt 重算 + 1024 计算量 16× 的预期.
+- loss 量级: 0.2 (1024 5.6B DiT, 60 图) vs 0.001 (256 探针固定 σ=0.5 玩具) —
+  不可直接比, 1024 是真实 flow-matching 全 σ 范围训练.
+
+**结论**: grad-ckpt 是 1024×1024 训练在 PG199 32GB 上 fit 的正解 (block swap 救不了
+激活瓶颈, 见上). 训练 loss 稳定下降, checkpoint 落盘, 机制真实可用.
+
 ## 已知限制 / 后续
 
 - **未串通 train.py / generation.py**: 块交换和检查点都仅探针验证 (反上帝守则,
   不动 train.py / generation.py 热点文件). 正式串通是阶段 6 配置收口.
 - **create_network_from_weights family gap**: 如上, 需 metadata stamp + 读回.
 - **block swap 大分辨率训练受限**: 32GB 卡靠 block swap 救不了 512×512+ 训练
-  (激活瓶颈); 需 gradient checkpointing 或更大显存卡.
+  (激活瓶颈); 1024×1024 已通过 grad-ckpt 移植解决 (见上"1024×1024 梯度检查点
+  正式训练"章节), block swap 仍只在权重显存不够的场景有用.
 - **未测 train.py resume**: checkpoint save/load round-trip 验证了数值一致性,
   但没测 train.py 从 checkpoint resume 训练 (optimizer state / scheduler state
-  未在本探针范围 — 探针只存 LoRA 权重, 不存 optimizer state).
+  未在本探针范围 — 探针只存 LoRA 权重, 不存 optimizer state). 1024 正式训练的
+  checkpoint (92 MB) 已落盘, 可作为 resume 测试的输入.
 - **未挂 LoRA 推理对比**: 阶段 5 推理探针只测 base model; 阶段 6 配置收口应验证
   加载 checkpoint → attach → sample → 与 base 对比风格可控.

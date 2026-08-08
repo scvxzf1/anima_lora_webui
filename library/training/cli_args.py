@@ -39,6 +39,15 @@ def add_sd_models_arguments(parser: argparse.ArgumentParser):
         help="pretrained model to train, directory to Diffusers model or StableDiffusion checkpoint",
     )
     parser.add_argument(
+        "--model_family",
+        type=str,
+        default=None,
+        choices=["anima", "krea2_raw"],
+        help="model family switch: anima (default, Qwen3+T5 cross-attn DiT) or "
+        "krea2_raw (Qwen3-VL single-stream MMDiT, docs/proposal/krea2_raw_migration.md). "
+        "None → fall back to resolve_model_family() (env/base.toml, stage 6 truth source).",
+    )
+    parser.add_argument(
         "--tokenizer_cache_dir",
         type=str,
         default=None,

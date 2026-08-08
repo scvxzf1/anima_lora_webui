@@ -39,6 +39,7 @@ from library.anima.text_strategies import (
 )
 from library.io.cache import resolve_cache_path
 from library.log import setup_logging
+from safetensors.torch import save_file as _save_safetensors
 
 setup_logging()
 logger = logging.getLogger(__name__)
@@ -188,12 +189,20 @@ class Krea2TextEncoderOutputsCachingStrategy(TextEncoderOutputsCachingStrategy):
         )
 
     def load_outputs_npz(self, npz_path: str) -> List[np.ndarray]:
-        # 懒加载 (同 anima, load_file 全量物化会卡 dataloader)
-        out = []
+        # Lazy per-tensor read via safe_open (same pattern as anima's
+        # AnimaTextEncoderOutputsCachingStrategy.load_outputs_npz). Returns
+        # torch tensors in the [hiddens, mask, caption_dropout_rate] order
+        # that family.compute_noise_pred_and_target unpacks
+        # (conds[0]=hiddens, conds[1]=mask; the trailing rate mirrors anima's
+        # cache layout so split_cached_text_encoder_outputs can surface it as
+        # batch["caption_dropout_rates"] instead of eating the mask).
+        # bfloat16 hiddens have no numpy representation; the anima base class
+        # signature is nominal — the real contract carries torch tensors.
         with safe_open(npz_path, framework="pt") as f:
-            for k in sorted(f.keys()):
-                out.append(f.get_tensor(k).numpy())
-        return out
+            hiddens = f.get_tensor("hiddens")
+            mask = f.get_tensor("mask")
+            caption_dropout_rate = f.get_tensor("caption_dropout_rate")
+        return [hiddens, mask, caption_dropout_rate]
 
     def is_disk_cached_outputs_expected(self, npz_path: str) -> bool:
         if not os.path.exists(npz_path):
@@ -213,12 +222,34 @@ class Krea2TextEncoderOutputsCachingStrategy(TextEncoderOutputsCachingStrategy):
         text_encoding_strategy: TextEncodingStrategy,
         batch: List,
     ) -> None:
-        # 阶段 1 不实现完整 caching (那是阶段 4 训练 cache 的事);
-        # 这里先留接口, 阶段 4 补 multi-variant + per-sample 拆分.
-        raise NotImplementedError(
-            "Krea2 caching full impl deferred to stage 4; use encode_tokens "
-            "directly for stage 1 single-prompt verification"
+        """缓存 Krea-2 文本编码 (hiddens + mask) 到 safetensors.
+
+        与 anima 的 _cache_batch_outputs_single 同构: 批量 encode 一组 caption,
+        拆回 per-sample 写盘 (或塞 info.text_encoder_outputs 供 in-memory 使用).
+        不二次置零 padding (R1 契约: mask 屏蔽即可).
+        """
+        captions = [info.caption for info in batch]
+        # Krea2TextEncodingStrategy.encode_tokens 返回 [hiddens (B,L,12,2560),
+        # mask (B,L) bool]. 一次 encode 整批, CPU 上 no_grad.
+        encoded = text_encoding_strategy.encode_tokens(
+            tokenize_strategy, models, tokenize_strategy.tokenize(captions)
         )
+        hiddens, mask = encoded[0], encoded[1]
+        for i, info in enumerate(batch):
+            h_i = hiddens[i].clone()
+            m_i = mask[i].clone()
+            caption_dropout_rate = torch.tensor(
+                info.caption_dropout_rate, dtype=torch.float32
+            )
+            if self.cache_to_disk:
+                save_dict = {
+                    "hiddens": h_i.contiguous(),
+                    "mask": m_i.contiguous(),
+                    "caption_dropout_rate": caption_dropout_rate,
+                }
+                _save_safetensors(save_dict, info.text_encoder_outputs_npz)
+            else:
+                info.text_encoder_outputs = (h_i, m_i, caption_dropout_rate)
 
 
 def load_krea2_text_encoder(

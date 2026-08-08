@@ -17,6 +17,16 @@ from library.training.contexts import TrainCtx
 
 
 def _get_noise_pred_and_target(trainer, ctx, latents, batch, text_encoder_conds, *, is_train=True):
+    from library.env import resolve_model_family
+
+    if resolve_model_family(ctx.args) == "krea2_raw":
+        # Krea-2 single-stream MMDiT path (stage 6). Keeps noise_target.py
+        # (anima cross-attn path) untouched — reverse-god rule.
+        from library.models.krea2_raw.family import (
+            compute_noise_pred_and_target as _krea2,
+        )
+
+        return _krea2(trainer, ctx, latents, batch, text_encoder_conds, is_train=is_train)
     return compute_noise_pred_and_target(
         trainer, ctx, latents, batch, text_encoder_conds, is_train=is_train
     )

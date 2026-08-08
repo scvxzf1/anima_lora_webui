@@ -5,8 +5,9 @@ Krea-2 在训练侧的承重接口: forward_for_loss 把 (5D latent, 文本 hidd
 timestep) 转成 Krea-2 single-stream DiT 需要的 (patchified img, context, pos,
 mask) 并跑 forward, 还原成与 latent 同形的 velocity (5D).
 
-阶段 4 仅在自包含训练探针里验证; 正式串通 train.py / noise_target.py 是阶段 6
-配置收口的事 (反上帝守则: 不在一轮里同时改架构和改行为).
+阶段 4 在自包含训练探针里验证; 阶段 6 配置收口把 train.py 的 batch_step 通过
+``compute_noise_pred_and_target`` 接到本模块 (反上帝守则: 热点文件 noise_target.py
+保持 anima 路径, Krea-2 走 family 模块独立函数).
 
 关键不变量:
 - latent 5D (B, C, T=1, H, W), 单例时间轴 dim 2 (同 anima, AGENTS.md 不可破坏).
@@ -14,6 +15,8 @@ mask) 并跑 forward, 还原成与 latent 同形的 velocity (5D).
 - text_emb = (hiddens (B, L, 12, 2560), mask (B, L) bool) — R1 契约: mask 屏蔽
   padding, 不二次置零 (与 anima zero-sink 不同, 见 stage1 findings).
 - timestep = σ ∈ [0, 1] float, DiT 内部 temb 做 t*tfactor(1e3) sinusoidal embedding.
+- target = noise - latents (rectified-flow velocity; 与 anima flow-matching 同构,
+  阶段 4 子代理核实 noise_target.py:381).
 """
 from __future__ import annotations
 
@@ -114,3 +117,123 @@ def forward_for_loss(
     )
     velocity_5d = velocity_4d.unsqueeze(2)
     return velocity_5d
+
+
+def compute_noise_pred_and_target(
+    trainer,
+    ctx,
+    latents: Tensor,
+    batch,
+    text_encoder_conds,
+    *,
+    is_train: bool = True,
+):
+    """Krea-2 训练 noise pred + target (阶段 6 配置收口).
+
+    与 anima ``library.training.noise_target.compute_noise_pred_and_target``
+    同返回契约: ``(model_pred, target, timesteps, weighting)`` — 这样
+    batch_step 的下游 (loss composer, prior-preservation observer) 可保持
+    共享. Krea-2 首日不实现 crossattn_emb / postfix / method-adapter extra
+    forwards / VR loss / affine / observer (那些是 anima-only 能力, 见提案 §1
+    非目标); 只做最简 rectified-flow 训练路径.
+
+    复用 anima 的 sampler registry (M1) 取 noisy_input + timesteps + sigmas —
+    sampler 只做 ``x_t = (1-σ)x0 + σ·noise``, 与 family 无关. target 走
+    rectified-flow velocity (``noise - latents``), 与 anima flow-matching 同构.
+    """
+    args = ctx.args
+    accelerator = ctx.accelerator
+    unet = ctx.unet
+    network = ctx.network
+    weight_dtype = ctx.weight_dtype
+
+    # 5D 不变量: 4D cache → 5D. 老 5D cache 兼容 squeeze.
+    if latents.ndim == 5:
+        latents = latents.squeeze(2)
+    noise = torch.randn_like(latents)
+
+    from library.training.samplers import SAMPLER_REGISTRY, SamplerContext
+
+    sampler_fn = SAMPLER_REGISTRY[getattr(args, "sampler", "default") or "default"]
+    sampler_out = sampler_fn(
+        SamplerContext(
+            args=args,
+            noise_scheduler=ctx.noise_scheduler,
+            latents=latents,
+            noise=noise,
+            device=accelerator.device,
+            weight_dtype=weight_dtype,
+        )
+    )
+    noisy_model_input = sampler_out.noisy_input
+    timesteps = sampler_out.timesteps
+    sigmas = sampler_out.sigmas
+
+    # Per-step network conditioning (timestep masks / σ-FEI routers). Krea-2
+    # 复用 anima LoRA network — apply_router_conditioning 对 SingleStreamBlock
+    # 的 Linear 透明 (只 set_timestep_mask / set_fei by reference).
+    from library.training.router_conditioning import apply_router_conditioning
+
+    trainer._hydra_warmup_step = apply_router_conditioning(
+        network=network,
+        noisy_model_input=noisy_model_input,
+        timesteps=timesteps,
+        is_train=is_train,
+        warmup_step=int(getattr(trainer, "_hydra_warmup_step", 0)),
+        max_train_steps=int(getattr(args, "max_train_steps", 0) or 0),
+        gradient_accumulation_steps=int(
+            getattr(args, "gradient_accumulation_steps", 1) or 1
+        ),
+    )
+
+    if args.gradient_checkpointing:
+        noisy_model_input.requires_grad_(True)
+
+    # Unpack Krea-2 text conds. Cache format: [hiddens (B,L,12,2560),
+    # mask (B,L) bool]; live-encode path returns the same via
+    # Krea2TextEncodingStrategy.encode_tokens.
+    if not text_encoder_conds or text_encoder_conds[0] is None:
+        # Live encode (uncached / TE training) — reuses the shared singleton.
+        from library.training.anima_strategies import _is_krea2  # noqa: F401
+
+        text_encoding_strategy = ctx.text_encoding_strategy
+        tokenize_strategy = ctx.tokenize_strategy
+        with torch.set_grad_enabled(is_train and False), accelerator.autocast():
+            input_ids = [
+                ids.to(accelerator.device) for ids in batch["input_ids_list"]
+            ]
+            encoded = text_encoding_strategy.encode_tokens(
+                tokenize_strategy,
+                trainer.get_models_for_text_encoding(
+                    args, accelerator, ctx.text_encoders
+                ),
+                input_ids,
+            )
+        text_encoder_conds = encoded
+    hiddens, mask = text_encoder_conds[0], text_encoder_conds[1]
+    hiddens = hiddens.to(device=accelerator.device, dtype=weight_dtype)
+    mask = mask.to(device=accelerator.device)
+
+    # 4D → 5D (anima 5D 不变量, DiT 承重接口入参).
+    noisy_model_input = noisy_model_input.unsqueeze(2)
+
+    with torch.set_grad_enabled(is_train), accelerator.autocast():
+        model_pred = forward_for_loss(
+            unet, noisy_model_input, (hiddens, mask), timesteps
+        )
+    model_pred = model_pred.squeeze(2)  # 5D → 4D
+
+    # Rectified-flow target: noise - latents (velocity; anima 同构).
+    target = noise - latents
+
+    # Loss weighting (复用 anima 的 min-snr / p2 加权; Krea-2 首日沿用).
+    from library.anima import training as anima_train_utils
+
+    weighting = anima_train_utils.compute_loss_weighting_for_anima(
+        weighting_scheme=args.weighting_scheme,
+        sigmas=sigmas,
+        min_snr_gamma=getattr(args, "min_snr_gamma", None),
+        p2_gamma=getattr(args, "p2_gamma", 1.0),
+        p2_k=getattr(args, "p2_k", 1.0),
+    )
+    return model_pred, target, timesteps, weighting

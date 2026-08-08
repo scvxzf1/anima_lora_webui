@@ -144,6 +144,34 @@ class TrainingBootstrap:
                 and getattr(args, key) is not None
             ):
                 net_kwargs[key] = str(getattr(args, key))
+
+        # Family-aware target containers (Krea-2-Raw migration, stage 6).
+        # Injects SingleStreamBlock + Krea-2 exclude patterns into LoRANetworkCfg
+        # via net_kwargs. Anima path (default) leaves these unset so the cfg
+        # falls back to ANIMA_TARGET_REPLACE_MODULE + _DEFAULT_EXCLUDE (unchanged).
+        # Thin dispatch only — the actual target spec lives in
+        # library.models.krea2_raw.lora_targets. Explicit --network_args /
+        # TOML keys still win (don't override user-provided values).
+        from library.env import resolve_model_family
+
+        if resolve_model_family(args) == "krea2_raw":
+            from library.models.krea2_raw.lora_targets import krea2_target_kwargs
+
+            for k, v in krea2_target_kwargs().items():
+                if k not in net_kwargs:
+                    if v is None:
+                        # None means "use from_kwargs default" (e.g. empty
+                        # include_patterns → no exempt). Skip so from_kwargs
+                        # sees the absent key, not the string "None".
+                        continue
+                    if isinstance(v, (list, tuple)):
+                        import json
+
+                        net_kwargs[k] = json.dumps(list(v))
+                    elif isinstance(v, bool):
+                        net_kwargs[k] = "true" if v else "false"
+                    else:
+                        net_kwargs[k] = str(v)
         return net_kwargs
 
     @staticmethod

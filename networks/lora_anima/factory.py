@@ -805,6 +805,31 @@ def create_network_from_weights(
         == "true"
     )
 
+    # Family-aware target containers (Krea-2-Raw migration). Stamped only when
+    # the cfg field was non-None at save (anima omits the key). Absent → leave
+    # None so from_weights / LoRANetwork.__init__ fall back to the anima
+    # ANIMA_TARGET_REPLACE_MODULE class default (anima path behavior unchanged).
+    unet_target_replace_modules_meta: Optional[List[str]] = None
+    text_encoder_target_replace_modules_meta: Optional[List[str]] = None
+    raw_unet_targets = file_metadata.get("ss_unet_target_replace_modules")
+    if raw_unet_targets:
+        try:
+            unet_target_replace_modules_meta = list(json.loads(raw_unet_targets))
+        except (json.JSONDecodeError, TypeError):
+            logger.warning(
+                "ss_unet_target_replace_modules metadata present but not valid "
+                f"JSON ({raw_unet_targets!r}); falling back to anima default."
+            )
+    raw_te_targets = file_metadata.get("ss_text_encoder_target_replace_modules")
+    if raw_te_targets:
+        try:
+            text_encoder_target_replace_modules_meta = list(json.loads(raw_te_targets))
+        except (json.JSONDecodeError, TypeError):
+            logger.warning(
+                "ss_text_encoder_target_replace_modules metadata present but not "
+                f"valid JSON ({raw_te_targets!r}); falling back to anima default."
+            )
+
     # ChimeraHydra stamps. Presence of ``ss_use_chimera_hydra="true"``
     # flips the loader to the chimera spec. The chimera-native save format
     # preserves the Cayley params (S_p / S_q / P_bases / Q_basis /
@@ -962,6 +987,8 @@ def create_network_from_weights(
         is_dora=has_dora,
         num_registers=num_registers,
         register_insert_block=register_insert_block,
+        unet_target_replace_modules=unet_target_replace_modules_meta,
+        text_encoder_target_replace_modules=text_encoder_target_replace_modules_meta,
     )
 
     network = LoRANetwork(text_encoders, unet, cfg, multiplier=multiplier)

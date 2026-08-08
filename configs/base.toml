@@ -8,6 +8,12 @@ output_dir = "output/ckpt"
 output_name = "anima_lora"
 save_model_as = "safetensors"
 
+# Model family switch (stage 6, docs/proposal/krea2_raw_migration.md):
+# "anima" (default, Qwen3+T5 cross-attn DiT) | "krea2_raw" (Qwen3-VL single-stream
+# MMDiT). CLI --model_family / presets / methods may override. Drives DiT loader,
+# text-strategy, and forward_for_loss dispatch in train.py + generation.py.
+model_family = "anima"
+
 network_module = "networks.lora_anima"
 network_train_unet_only = true
 
