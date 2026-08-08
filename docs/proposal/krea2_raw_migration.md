@@ -190,7 +190,7 @@ model_family = "anima"   # 默认；切到 "krea2_raw" 走 Krea-2 路径
 | 阶段 | 目标 | 退出条件 | 依赖 |
 |---|---|---|---|
 | **0 可行性确认** | 跑通官方推理 + dump key + 验证 VAE encode 互逆 | transformer state_dict key 清单到手；`AutoencoderKLQwenImage` encode→decode 互逆无损 | HF license + ~33GB 下载 ✅ 完成（[stage0 findings](../findings/krea2_raw_migration_stage0_findings.md)）|
-| **1 文本链路** | `library/models/krea2_raw/strategy.py` 跑通 Qwen3-VL tokenize + MFA + caching | 单 prompt encode 出 context，padding 行为确认（[R1](krea2_raw_migration_notes.md)） | 阶段 0 |
+| **1 文本链路** | `library/models/krea2_raw/strategy.py` 跑通 Qwen3-VL tokenize + MFA + caching | 单 prompt encode 出 context，padding 行为确认（[R1](krea2_raw_migration_notes.md)） | 阶段 0 ✅ 完成（[stage1 findings](../findings/krea2_raw_migration_stage1_findings.md)）|
 | **2 DiT 本体 + 加载器** | `library/models/krea2_raw/dit.py` + `weights.py`（路径 B 裸移植 mmdit.py，非 diffusers；见 [R8](krea2_raw_migration_notes.md)） | 单 latent forward 通过，shape 对齐 | 阶段 0 ✅ 完成（[stage2 findings](../findings/krea2_raw_migration_stage2_findings.md)）|
 | **3 LoRA 注入** | `library/models/krea2_raw/lora_targets.py`，注入点按 single-stream 重做 | 单 block LoRA attach + forward 正常 | 阶段 2 ✅ 完成（[stage3 findings](../findings/krea2_raw_migration_stage3_findings.md)）|
 | **4 训练串通** | `family.forward_for_loss` + `noise_target.py` 改造 + 训练循环 | 单 prompt 过拟合 loss 下降；小数据集 sweep | 阶段 1+2+3 |

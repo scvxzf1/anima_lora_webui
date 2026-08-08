@@ -133,7 +133,7 @@
 - `anima_lora/`：可安装包门面，给嵌入式调用暴露精选 API。
 - `library/`：训练、推理、配置、数据、runtime、模型、captioning、vision 等核心逻辑。
 - `library/anima/`：Anima DiT、权重加载、token/text strategy 和模型配置。
-- `library/models/krea2_raw/`：Krea-2-Raw 第二模型族（迁移进行中，见 `docs/proposal/krea2_raw_migration.md`）。`dit.py` 是 single-stream MMDiT 裸移植，`weights.py` 是单文件 strict 加载器（路径 B，非 diffusers），`lora_targets.py` 是 Krea-2 LoRA 注入点 spec（family-aware target，复用 anima LoRA network）。
+- `library/models/krea2_raw/`：Krea-2-Raw 第二模型族（迁移进行中，见 `docs/proposal/krea2_raw_migration.md`）。`dit.py` 是 single-stream MMDiT 裸移植，`weights.py` 是单文件 strict 加载器（路径 B，非 diffusers），`lora_targets.py` 是 Krea-2 LoRA 注入点 spec（family-aware target，复用 anima LoRA network），`strategy.py` 是 Qwen3-VL 文本链路（ChatML tokenize + 12 层 MFA + R1 mask 屏蔽 padding 契约，复用 anima text_strategies 基类）。
 - `library/config/`：TOML 读取、合并、normalize、schema 校验。
 - `library/training/`：训练 bootstrap、loop、optimizer、scheduler、checkpoint、loss 等。
 - `library/inference/`：generation、sampling、adapter 加载、DirectEdit、DCW、输出处理。
