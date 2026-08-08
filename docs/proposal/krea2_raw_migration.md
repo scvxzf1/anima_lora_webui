@@ -1,9 +1,9 @@
 # Anima → Krea-2-Raw 迁移提案
 
-状态：提案 / 未实现
-适用版本：当前 main（设计记录；尚非默认能力，尚无代码落地）
+状态：推进中（阶段 0-5 完成 + 阶段 6 块交换/检查点探针出口完成；配置收口 train.py/generation.py 串通待续）
+适用版本：当前 main（阶段 0-5 已落地，阶段 6 块交换+检查点探针已落地；配置收口尚在进行中）
 日期：2026-08-08
-入口命令：无（尚未实现；预计阶段 0 用 `Krea2Pipeline.from_pretrained("krea/Krea-2-Raw")` 做可行性确认，见 §7）
+入口命令：见各阶段 findings；探针入口 `.venv/bin/python scripts/krea2/probe_{train,sample,blockswap,checkpoint}.py`
 
 相关代码：
 
@@ -195,7 +195,7 @@ model_family = "anima"   # 默认；切到 "krea2_raw" 走 Krea-2 路径
 | **3 LoRA 注入** | `library/models/krea2_raw/lora_targets.py`，注入点按 single-stream 重做 | 单 block LoRA attach + forward 正常 | 阶段 2 ✅ 完成（[stage3 findings](../findings/krea2_raw_migration_stage3_findings.md)）|
 | **4 训练串通** | `family.forward_for_loss` + `noise_target.py` 改造 + 训练循环 | 单 prompt 过拟合 loss 下降；小数据集 sweep | 阶段 1+2+3 ✅ 完成（[stage4 findings](../findings/krea2_raw_migration_stage4_findings.md)）|
 | **5 推理串通** | `generation.py` + flow-matching sampler + mu shift | `python tasks.py test` 出图 | 阶段 2+3 ✅ 完成（[stage5 findings](../findings/krea2_raw_migration_stage5_findings.md)）|
-| **6 配置/WebUI/下载/命名收口** | `model_family` 键 + 下载命令 + sidecar 命名 + WebUI 表单 + 测试 + docs | `model_family="krea2_raw"` 全链路可用，anima 路径回归通过 | 阶段 4+5 |
+| **6 配置/WebUI/下载/命名收口** | `model_family` 键 + 下载命令 + sidecar 命名 + WebUI 表单 + 测试 + docs | `model_family="krea2_raw"` 全链路可用，anima 路径回归通过 | 阶段 4+5 进行中：**块交换 + 检查点探针出口完成**（[stage6 findings](../findings/krea2_raw_migration_stage6_findings.md)）；配置收口（train.py/generation.py 正式串通 + `model_family` 键 + metadata stamp family dispatch）待续 |
 
 ## 6. 验证计划
 

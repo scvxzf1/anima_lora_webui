@@ -25,6 +25,8 @@ from einops import rearrange
 from torch import Tensor
 from torch.nn.attention import SDPBackend, sdpa_kernel
 
+from library.runtime import offloading as custom_offloading_utils
+
 
 def rope(pos: Tensor, dim: int, theta: float = 1e4, ntk: float = 1.0) -> Tensor:
     scale = torch.arange(0, dim, 2, dtype=torch.float64, device=pos.device) / dim
@@ -430,6 +432,97 @@ class SingleStreamDiT(nn.Module):
             nn.GELU(approximate="tanh"), nn.Linear(config.features, config.features * 6)
         )
 
+        # Block swap 状态 (同 anima DiT, AGENTS.md lazy loading 不变量);
+        # offloader 复用 anima ModelOffloader, 对 block forward 零假设.
+        self.blocks_to_swap: int | None = None
+        self.offloader = None
+        self._paused_blocks_to_swap: int | None = None
+
+    @property
+    def num_blocks(self) -> int:
+        return len(self.blocks)
+
+    # === Block swap 接口 (移植自 anima models.py:2291-2387, 复用 ModelOffloader) ===
+    # ModelOffloader 只遍历 block.named_modules() 取 .weight + .to(device) +
+    # register_full_backward_hook, 对 block forward 签名零假设, SingleStreamBlock 满足.
+    # 训练/推理管线 (harness.place_dit_for_training 等) 鸭子类型调这些方法.
+
+    def enable_block_swap(
+        self,
+        num_blocks: int,
+        device: torch.device,
+        *,
+        profile_jsonl: str | None = None,
+        transfer_dtype: str | None = None,
+        restore_mode: str | None = None,
+    ):
+        self.blocks_to_swap = num_blocks
+        assert self.blocks_to_swap <= self.num_blocks - 2, (
+            f"Cannot swap more than {self.num_blocks - 2} blocks. "
+            f"Requested: {self.blocks_to_swap} blocks."
+        )
+        self.offloader = custom_offloading_utils.ModelOffloader(
+            self.blocks,
+            self.blocks_to_swap,
+            device,
+            profile_jsonl=profile_jsonl,
+            transfer_dtype=transfer_dtype,
+            restore_mode=restore_mode,
+        )
+
+    def move_to_device_except_swap_blocks(self, device: torch.device):
+        if self.blocks_to_swap:
+            save_blocks = self.blocks
+            self.blocks = None  # skip .to() on blocks (offloader 管理)
+        self.to(device)
+        if self.blocks_to_swap:
+            self.blocks = save_blocks
+
+    def switch_block_swap_for_inference(self):
+        if not self.blocks_to_swap:
+            return
+        self.offloader.set_forward_only(True)
+        self.prepare_block_swap_before_forward()
+
+    def switch_block_swap_for_training(self):
+        if not self.blocks_to_swap:
+            return
+        self.offloader.set_forward_only(False)
+        self.prepare_block_swap_before_forward()
+
+    def prepare_block_swap_before_forward(self, free_cache: bool = True):
+        if not self.blocks_to_swap:
+            return
+        self.offloader.prepare_block_devices_before_forward(
+            self.blocks, free_cache=free_cache
+        )
+
+    def flush_block_swap_profile(self, blocking: bool = False) -> None:
+        if not self.blocks_to_swap or self.offloader is None:
+            return
+        self.offloader.flush_profile_events(blocking=blocking)
+
+    def _run_blocks(
+        self,
+        combined: Tensor,
+        tvec: Tensor,
+        freqs: Tensor,
+        mask: Tensor,
+    ) -> Tensor:
+        """Block 循环 + swap 钩子 (移植自 anima _run_blocks, 改 Krea-2 签名).
+
+        SingleStreamBlock.forward(x, vec, freqs, mask) — 与 anima Block.forward
+        签名不同, 但 swap 钩子 (wait_for_block / submit_move_blocks) 对 forward
+        透明, 只夹在 block 调用前后.
+        """
+        for block_idx, block in enumerate(self.blocks):
+            if self.blocks_to_swap:
+                self.offloader.wait_for_block(block_idx)
+            combined = block(combined, tvec, freqs, mask)
+            if self.blocks_to_swap:
+                self.offloader.submit_move_blocks(self.blocks, block_idx)
+        return combined
+
     def forward(
         self,
         img: Tensor,
@@ -467,8 +560,7 @@ class SingleStreamDiT(nn.Module):
 
         freqs = self.posemb(pos)
 
-        for block in self.blocks:
-            combined = block(combined, tvec, freqs, mask)
+        combined = self._run_blocks(combined, tvec, freqs, mask)
 
         final = self.last(combined, t)
         output = final[:, txtlen : txtlen + imglen, :]

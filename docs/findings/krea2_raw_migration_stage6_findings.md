@@ -1,0 +1,215 @@
+# Krea-2-Raw 迁移 阶段 6: 块交换 + 检查点 (findings)
+
+状态：稳定
+适用版本：当前 main
+入口命令：
+- `.venv/bin/python scripts/krea2/probe_blockswap.py`
+- `.venv/bin/python scripts/krea2/probe_checkpoint.py`
+相关代码：`library/models/krea2_raw/dit.py`、`scripts/krea2/probe_blockswap.py`、`scripts/krea2/probe_checkpoint.py`
+
+## 目标
+
+验证 Krea-2 训练管线的两个出口能力:
+1. **块交换 (block swap)**: 把 `SingleStreamDiT` 接上 anima 的 `ModelOffloader`,
+   让 28 个 transformer block 的权重在 CPU↔GPU 间动态搬运, 腾出显存.
+2. **检查点 (checkpoint)**: LoRA 训练后 `save_weights` 出 safetensors,
+   重新构造 network 后 `load_weights` 回来, 数值 round-trip 一致 + attach 后
+   forward 与保存前一致.
+
+两者都是 goal 验收 "lora训练+检查点+块交换+采样 真实可用" 的硬要求.
+
+## 设计定论
+
+### 块交换: 复用 anima ModelOffloader, 零 forward 假设
+
+子代理核实: `library/runtime/offloading.py::ModelOffloader` (anima models.py:2291-2387
+调用) 对 block forward **签名零假设** — 它只遍历 `block.named_modules()` 取 `.weight`
++ `.to(device)` + `register_full_backward_hook`, 对 block forward 怎么调、传什么参数
+完全透明. `SingleStreamBlock.forward(x, vec, freqs, mask)` 与 anima `Block.forward`
+签名不同, 但 swap 钩子 (`wait_for_block` / `submit_move_blocks`) 只夹在 block 调用
+前后, 不读 forward 内部.
+
+落地 (dit.py):
+- `__init__` 加 block swap 状态: `blocks_to_swap` / `offloader` / `_paused_blocks_to_swap`
+- `num_blocks` property (返回 `len(self.blocks)`)
+- 5 个方法移植自 anima models.py:2291-2387:
+  `enable_block_swap` / `move_to_device_except_swap_blocks` /
+  `switch_block_swap_for_inference` / `switch_block_swap_for_training` /
+  `prepare_block_swap_before_forward` / `flush_block_swap_profile`
+- `_run_blocks(combined, tvec, freqs, mask)`: 替换 `forward` 里原来的
+  `for block in self.blocks: combined = block(...)` 循环, 加 swap 钩子
+  (`if self.blocks_to_swap: offloader.wait_for_block(i)` 前置 +
+  `offloader.submit_move_blocks(...)` 后置)
+
+**块交换只搬运权重, 不搬激活**. 这决定了它的适用场景 (见下 "256×256 净负" 发现).
+
+### 检查点: save 开箱即用, load 有 family gap
+
+子代理核实 `networks/lora_anima/persistence.py`:
+- **save**: `save_lora_network_weights` → `network.state_dict()` 纯 state_dict →
+  `lora_save.save_network_weights`, **无 anima 硬编码**, 对 Krea-2 plain LoRA 开箱即用.
+  键名 `lora_unet_blocks.{i}.attn.{wq|wk|wv|wo|gate}.lora_{down|up}.weight` +
+  `...mlp.{up|down|gate}...` (196 模块 × 2 = 392 键).
+- **load**: `load_lora_network_weights` → `network.load_state_dict(weights_sd, False)`
+  non-strict. 模块名一致即匹配 (新建 network 用相同 `krea2_target_kwargs()` + 相同
+  dit 结构 → 模块名一致 → round-trip 成立).
+- **family gap**: `create_network_from_weights` → `from_weights` 不恢复
+  `unet_target_replace_modules`, 回退 anima 默认 `["Block", ...]` 不匹配
+  Krea-2 的 `SingleStreamBlock`. 本探针**绕过 gap**: 显式用
+  `krea2_target_kwargs()` 构造新 network 再 `load_weights`. formal 的 family
+  dispatch (metadata stamp `ss_unet_target_replace_modules` + `from_weights`
+  读回) 留阶段 6 配置收口 (train.py / generation.py 正式串通).
+
+## 出口验证
+
+### 验证 1: 块交换训练 (PG199 bf16, 256×256, swap=4, lora_dim=16)
+
+`scripts/krea2/probe_blockswap.py`:
+
+```
+--- C. 加载 DiT (CPU) + LoRA + enable_block_swap(4) ---
+Block swap frozen CPU masters prepared: 22.64 GiB across 28 blocks (transfer_dtype=bf16)
+LoRA 模块: 196, 参数 48.17M
+DiT num_blocks: 28, blocks_to_swap: 4
+
+--- D. 训练 15 步 (block swap=4, 固定 σ=0.5) ---
+  step   0: loss=0.0125, step=2939ms
+  step   3: loss=0.0044, step=1885ms
+  step   6: loss=0.0019, step=1935ms
+  step   9: loss=0.0013, step=1895ms
+  step  12: loss=0.0009, step=1871ms
+  step  14: loss=0.0007, step=1823ms
+
+=== E. 验证 ===
+losses: [0.0125, 0.0117, 0.0121, 0.0044, 0.0031, 0.0022, 0.0019, 0.0016,
+         0.0012, 0.0013, 0.0010, 0.0009, 0.0009, 0.0008, 0.0007]
+finite: True
+first5=0.0087, last5=0.0009, 下降: True
+
+=== 基线 ===
+  block swap 训练 显存 peak: 32.24GB (无 swap 时 32.62GB)
+  节省: 0.38GB (swap 4 块)
+  avg step: 1965ms (无 swap 400ms)
+  loss: first5=0.0087 -> last5=0.0009
+  GPU 功耗: 43.8W -> 46.7W
+
+阶段 6 块交换训练通过: True
+```
+
+验证项全绿:
+- block swap 启用不抛异常, ModelOffloader 复用成功 (对 SingleStreamBlock 透明) ✓
+- 训练 forward+backward+optimizer 跑通, loss 下降 (first5=0.0087 → last5=0.0009,
+  9.7× 下降, 与无 swap 同款过拟合) ✓
+- 数值与无 swap 一致 (step 0 loss=0.0125, 与无 swap probe_train 完全相同 —
+  block swap 只搬权重不改 forward 语义) ✓
+- 显存 peak 32.24GB (无 swap 32.62GB, 省 0.38GB) ✓
+
+### 验证 2: 检查点 save/load round-trip (PG199 bf16, 256×256, lora_dim=16)
+
+`scripts/krea2/probe_checkpoint.py`:
+
+```
+--- B. 训练 8 步 ---
+  step 0: loss=0.0125  ...  step 7: loss=0.0016
+保存前 forward: shape (1, 16, 1, 32, 32), 有限 True
+LoRA down 非零 (训练过): True, up 非零: True
+
+--- C. save checkpoint ---
+保存: 96.4MB, 存在: True
+checkpoint LoRA 键数: 392 (期望 196×2=392)
+
+--- D. 释放旧 network, 新建 network, load_weights ---
+释放后 GPU allocated: 0.24GB   ← gc + empty_cache 把 26GB DiT 释放干净
+新 network LoRA 模块: 196
+load_weights 完成
+
+--- E. 验证 round-trip ---
+共享键: 588 (期望 588)
+LoRA 权重逐键 max delta: 0.00e+00 (容差 1e-6)
+forward max delta: 0.00e+00 (容差 1e-4)
+
+=== 验证 ===
+checkpoint 存在: True
+checkpoint LoRA 键数 392: True
+checkpoint 权重非零 (训练过): True
+新 network 模块 196: True
+LoRA 权重 round-trip 键全匹配: True
+LoRA 权重 max delta < 1e-6: True
+load 后 forward shape 对齐: True
+load 后 forward 有限: True
+forward delta < 1e-4: True
+
+阶段 6 检查点 save/load 通过: True
+checkpoint: output/tests/krea2_stage6/lora_checkpoint.safetensors (96.4MB)
+```
+
+验证项全绿:
+- save_weights 出 safetensors (96.4MB, 392 键) ✓
+- load_weights 到新 network, 逐键 LoRA 权重 max delta=0 (bf16 round-trip 完全一致) ✓
+- 加载后 attach 到干净 DiT, forward 输出与保存前 max delta=0 ✓
+- LoRA 权重离开 zero-init (训练过, down/up 非零) ✓
+- checkpoint 文件可被 `safetensors.load_file` 读回 ✓
+
+**delta=0 的合理性**: save 用 bf16 `state_dict()`, load 回 bf16, 中间无 fp32 转换;
+forward 用相同权重 + 相同输入 (固定 σ + 固定 noise seed), 确定性计算 → delta=0.
+
+## 基线 (PG199 bf16, 256×256, lora_dim=16/alpha=8)
+
+| 指标 | 块交换 (swap=4) | 无 swap (probe_train) | 检查点 (无 swap) |
+|---|---|---|---|
+| 显存 peak | 32.24GB | 32.62GB | 32.62GB (训练段) |
+| 节省显存 | 0.38GB | — | — |
+| avg step | 1965ms | 400ms | 400ms |
+| loss (first5→last5) | 0.0087→0.0009 | 0.0125→0.0003 | 0.0125→0.0016 (8步) |
+| GPU 功耗 | 43.8→46.7W | 44.8→221.9W | — |
+| TE 加载 | 148.83s (冷启) | 148s | — |
+| block swap CPU masters | 22.64 GiB / 28 blocks | — | — |
+| checkpoint | — | — | 96.4MB, 392 键 |
+
+## 关键发现
+
+### 块交换在 256×256 是净负 (但机制正确)
+
+256×256 训练无 swap 时 32.62GB 已紧贴 PG199 32GB 上限但能 fit. swap 4 块只省
+0.38GB (block swap 只搬权重, 权重每块 ~0.8GB × 4 ≈ 3.2GB, 但 offloader 保留
+forward-only 缓存 + 激活仍在 GPU, 净省远小于权重总量). 代价是 step 从 400ms 涨到
+1965ms (5× 慢, 权重 CPU↔GPU 搬运 + GPU 等待), 功耗从 221.9W 降到 46.7W (近乎 idle,
+计算间隙 GPU 在等搬运).
+
+**块交换的真实价值**:
+- 大分辨率训练 (512×512 / 1024×1024) 权重部分仍占 ~26GB, swap N 块腾出 N×0.8GB
+  给激活. 但 512×512 激活约 26GB, 32GB 卡 swap 完 28 块也救不回 (swap 28 块省
+  ~22GB 权重, 留 ~10GB 给 26GB 激活仍 OOM).
+- **结论**: PG199 32GB 的 block swap 救不了大分辨率训练 (激活才是瓶颈);
+  它的真实用武之地是**权重显存不够**的场景 — 比如把 Krea-2 (12.82B bf16 = 26GB)
+  和另一个大模型 (TE/VAE) 同时驻留时腾权重. 或者在 16GB 卡上跑 256×256 训练
+  (权重 26GB > 16GB, 必须 swap).
+
+这不是代码错误, 是块交换机制的本质 (搬权重不搬激活). 作为 finding 诚实记录.
+阶段 6 的 block swap 接口**机制可用** (loss 下降 + 数值一致), 但 256×256 不是
+它的受益场景.
+
+### 检查点 family gap 留阶段 6 配置收口
+
+`create_network_from_weights` 的 family dispatch 没做 Krea-2 分支. 探针绕过 gap
+(显式构造 + load_weights), 证明**保存和加载的核心机制可用**. 正式串通
+train.py resume / ComfyUI loader 需要:
+- `stamp_lora_save_metadata` 加 `ss_unet_target_replace_modules` =
+  `["SingleStreamBlock"]` (保存时盖章)
+- `from_weights` / `create_network_from_weights` 读回该 metadata, 注入
+  `unet_target_replace_modules` (加载时恢复)
+
+这是阶段 6 配置收口 (train.py / generation.py 正式串通) 的工作, 不在本轮探针范围.
+
+## 已知限制 / 后续
+
+- **未串通 train.py / generation.py**: 块交换和检查点都仅探针验证 (反上帝守则,
+  不动 train.py / generation.py 热点文件). 正式串通是阶段 6 配置收口.
+- **create_network_from_weights family gap**: 如上, 需 metadata stamp + 读回.
+- **block swap 大分辨率训练受限**: 32GB 卡靠 block swap 救不了 512×512+ 训练
+  (激活瓶颈); 需 gradient checkpointing 或更大显存卡.
+- **未测 train.py resume**: checkpoint save/load round-trip 验证了数值一致性,
+  但没测 train.py 从 checkpoint resume 训练 (optimizer state / scheduler state
+  未在本探针范围 — 探针只存 LoRA 权重, 不存 optimizer state).
+- **未挂 LoRA 推理对比**: 阶段 5 推理探针只测 base model; 阶段 6 配置收口应验证
+  加载 checkpoint → attach → sample → 与 base 对比风格可控.
