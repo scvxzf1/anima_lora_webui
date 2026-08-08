@@ -241,6 +241,54 @@ def test_compile_blocks_for_training_compiles_adapter_cond_stream(
     }
 
 
+def test_compile_blocks_for_training_skips_unet_without_compile_blocks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A DiT with no compile_blocks() (e.g. Krea-2 SingleStreamDiT) runs eager.
+
+    Krea-2 drops the @torch.compile decorator and pads the combined sequence
+    to a multiple of 256 in forward, so it has no anima native-shape flatten +
+    per-block compile surface. compile_blocks_for_training must duck-type this
+    and skip the whole anima-specific preamble (partitioner tuning, per-
+    signature cache isolation, dynamo budget pinning) — none of which has a
+    compile target on a compile_blocks-less DiT — instead of AttributeError-ing
+    on the missing method.
+    """
+    from library.runtime import harness
+
+    class Krea2LikeUnet:
+        # No compile_blocks attribute — the family gate must detect this.
+        pass
+
+    touched: list[str] = []
+
+    # None of these anima-specific helpers should run when the unet is eager.
+    monkeypatch.setattr(
+        harness,
+        "_apply_activation_memory_budget",
+        lambda *a, **k: touched.append("activation_budget"),
+    )
+    monkeypatch.setattr(
+        harness,
+        "_apply_partitioner_tuning",
+        lambda *a, **k: touched.append("partitioner"),
+    )
+    monkeypatch.setattr(
+        harness, "isolate_compile_cache", lambda *a, **k: touched.append("isolate")
+    )
+
+    unet = Krea2LikeUnet()
+    result = harness.compile_blocks_for_training(
+        unet, object(), backend="eager", n_token_families=2, dynamic_seq=True,
+    )
+
+    assert result is None  # early return
+    assert touched == []  # no anima compile preamble ran
+    assert not hasattr(unet, "_training_compile_config")  # no config stamped
+    # and the downstream seq-range guard stays a safe no-op
+    assert harness.ensure_training_compile_seq_range(unet, object(), {9999}) is False
+
+
 class _SeqRangeFakeUnet:
     """Records compile_blocks calls and mimics the live-range write-back."""
 

@@ -754,6 +754,22 @@ def compile_blocks_for_training(
          the cond LoRA projections). Same backend/mode, same
          compile-after-apply ordering.
     """
+    # Family gate (duck-typed): Krea-2's SingleStreamDiT has no compile_blocks
+    # — its dit.py drops the @torch.compile decorator and pads the combined
+    # sequence to a multiple of 256 in forward instead of anima's native-shape
+    # flatten keyed on CONSTANT_TOKEN_BUCKETS. The partitioner/cache-isolation
+    # preamble below is anima-specific dynamo tuning (cudagraph skip, per-
+    # signature persistent-cache dir) with no compile target to apply to here,
+    # so skip the whole sequence; Krea-2 runs eager. No family-name hardcode:
+    # any DiT without compile_blocks is left eager, matching each family's own
+    # dit.py contract (see library/models/krea2_raw/dit.py header notes).
+    if not hasattr(unet, "compile_blocks"):
+        logger.info(
+            "torch.compile skipped: unet has no compile_blocks() (family runs "
+            "eager; native-shape flatten + per-block compile is anima-only)."
+        )
+        return
+
     if bucket_resolutions and (
         n_token_families is None or (dynamic_seq and seq_range is None)
     ):
