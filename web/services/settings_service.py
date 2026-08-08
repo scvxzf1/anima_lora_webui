@@ -58,6 +58,18 @@ GLOBAL_IMAGE_TEST_KEYS = (
 GLOBAL_IMAGE_TEST_PATH_KEYS = (
     "image_test_save_root",
 )
+# Model family selector (Krea-2-Raw migration, stage 6). Whose value picks the
+# base model the LoRA is trained against. Empty → anima default (resolve_model_family
+# falls back to env / DEFAULT_MODEL_FAMILY), so anima-only deployments leave it
+# unset and nothing changes. ``model_family`` is a single enum string, not a
+# path, so it has its own whitelist tuple rather than GLOBAL_MODEL_PATH_KEYS.
+GLOBAL_FAMILY_KEYS = (
+    "model_family",
+)
+# Known families (mirror library/env.py::_KNOWN_FAMILIES). Unknown values fall
+# back to empty (== anima) rather than raising, so a hand-edited typo doesn't
+# brick the settings panel.
+_KNOWN_MODEL_FAMILIES = ("anima", "krea2_raw")
 
 
 
@@ -152,6 +164,19 @@ def _normalize_bool_setting(value: Any, *, default: bool = False) -> bool:
         return value
     return str(value).strip().lower() in {"1", "true", "yes", "on"}
 
+
+def _normalize_model_family(value: Any) -> str:
+    """Normalize the ``model_family`` selector. Empty / unknown → anima default.
+
+    Stored as a lowercase family string. Empty string means "use the
+    resolve_model_family() fallback (env / DEFAULT_MODEL_FAMILY=anima)" so
+    anima-only deployments leave the field unset and behavior is unchanged.
+    """
+    raw = str(value or "").strip().lower()
+    if raw in _KNOWN_MODEL_FAMILIES:
+        return raw
+    return ""
+
 def get_global_settings() -> dict[str, Any]:
     settings = _load_settings()
     defaults = _default_global_settings()
@@ -215,6 +240,28 @@ def save_global_settings(data: dict[str, Any]) -> dict[str, Any]:
             next_global[key] = _normalize_image_test_save_root(data.get(key))
         elif key not in next_global:
             next_global[key] = str(current.get(key, defaults.get(key, "")) or "")
+    # Model family (Krea-2-Raw migration). Stored as "" for anima (the default)
+    # so the resolve_model_family() fallback chain (env / DEFAULT_MODEL_FAMILY)
+    # still governs when the panel leaves it unset. A non-empty non-anima value
+    # pins the family for new preset generation; explicit base.toml
+    # ``model_family`` keys still win at training time
+    # (bootstrap.build_net_kwargs re-resolves). ``anima`` is normalized to empty
+    # on save too — writing an explicit ``model_family = "anima"`` would mask
+    # the env-var override path, so the panel's Anima option emits ``""`` and we
+    # defensively collapse "anima" to "" as well.
+    if "model_family" in data:
+        normalized_family = _normalize_model_family(data.get("model_family"))
+        if normalized_family and normalized_family != "anima":
+            next_global["model_family"] = normalized_family
+        else:
+            # Empty / unknown / anima → drop the key so anima-default holds.
+            next_global.pop("model_family", None)
+    elif "model_family" in next_global:
+        existing = _normalize_model_family(next_global.get("model_family"))
+        if existing and existing != "anima":
+            next_global["model_family"] = existing
+        else:
+            next_global.pop("model_family", None)
     raw = {
         **current_raw,
         **target_raw,
@@ -324,6 +371,12 @@ def _load_settings(settings_file: Path | None = None) -> dict[str, Any]:
                 settings[key] = str(defaults.get(key, "") or "")
         else:
             settings[key] = str(defaults.get(key, "") or "")
+    # Model family: stored as "" (anima default) when unset so the
+    # resolve_model_family() fallback chain still governs at training time.
+    # An explicit on-disk ``model_family = "anima"`` also reads back as "" so
+    # the env-var override path stays unmasked.
+    normalized_family = _normalize_model_family(section.get("model_family"))
+    settings["model_family"] = "" if normalized_family == "anima" else normalized_family
 
     # 显示当前实际使用的配置根目录（包括环境变量）
     actual_configs_root = settings_file.parent.resolve()
@@ -371,6 +424,7 @@ def _default_global_settings(*, settings_file: Path | None = None) -> dict[str, 
         "ui_scale": DEFAULT_UI_SCALE,
         "image_test_allow_home_search": False,
         "image_test_save_root": "",
+        "model_family": "",
         **{key: DEFAULT_UI_SCALE_OVERRIDE for key in GLOBAL_UI_OVERRIDE_KEYS},
         **_load_base_model_path_defaults(settings_file=settings_file),
     }

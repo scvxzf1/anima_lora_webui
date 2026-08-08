@@ -830,6 +830,22 @@ def create_network_from_weights(
                 f"valid JSON ({raw_te_targets!r}); falling back to anima default."
             )
 
+    # Model family stamp (Krea-2-Raw migration). Absent → anima default so
+    # anima checkpoints and old unstamped checkpoints load as anima. The
+    # inference loader has no args; this is the only signal it gets for DiT /
+    # text-encoder / forward family dispatch.
+    model_family_meta: Optional[str] = None
+    raw_family = file_metadata.get("ss_model_family")
+    if raw_family:
+        normalized = str(raw_family).strip().lower()
+        if normalized in ("anima", "krea2_raw"):
+            model_family_meta = normalized
+        else:
+            logger.warning(
+                f"ss_model_family metadata present but unknown ({raw_family!r}); "
+                "falling back to anima default."
+            )
+
     # ChimeraHydra stamps. Presence of ``ss_use_chimera_hydra="true"``
     # flips the loader to the chimera spec. The chimera-native save format
     # preserves the Cayley params (S_p / S_q / P_bases / Q_basis /
@@ -989,6 +1005,7 @@ def create_network_from_weights(
         register_insert_block=register_insert_block,
         unet_target_replace_modules=unet_target_replace_modules_meta,
         text_encoder_target_replace_modules=text_encoder_target_replace_modules_meta,
+        model_family=model_family_meta,
     )
 
     network = LoRANetwork(text_encoders, unet, cfg, multiplier=multiplier)

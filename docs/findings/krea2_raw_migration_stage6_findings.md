@@ -263,11 +263,93 @@ Krea-2 首日只支持标准 grad-ckpt (无 cpu_offload / unsloth / adapter-awar
 **结论**: grad-ckpt 是 1024×1024 训练在 PG199 32GB 上 fit 的正解 (block swap 救不了
 激活瓶颈, 见上). 训练 loss 稳定下降, checkpoint 落盘, 机制真实可用.
 
+## metadata stamp family dispatch + WebUI model_family 表单 (阶段 6 配置收口)
+
+阶段 6 配置收口的两个未闭合合取项: LoRA checkpoint metadata 不携带 family 标识
+(加载侧 `create_network_from_weights` 无 `args`, 无法 family-dispatch), WebUI 全局
+设置无 family 选择器。本轮闭合。
+
+### A. ss_model_family stamp 闭环 (networks 层)
+
+**定论**: target container stamp (`ss_unet_target_replace_modules`) 在阶段 6 探针
+阶段已闭环 (`persistence.py:162` 写 / `factory.py:808` 读回), 探针靠它绕过 family
+gap。但缺 family 标识本身 — metadata 无任何 `ss_model_family` 键, 加载侧拿不到 args,
+只能从 `ss_unet_target_replace_modules` 间接推断, 无法支撑推理侧 DiT/TE/forward
+family dispatch。
+
+**落地**:
+- `LoRANetworkCfg` 加 `model_family: str = "anima"` 字段 (`config.py:236`)。`from_kwargs`
+  读 `kwargs["model_family"]` (bootstrap 注入, 见 B), 未知值回退 anima (不抛 — 错 TOML
+  应训练 anima 路径而非中途 abort)。`from_weights` 加 `model_family` 形参, None/absent
+  → "anima" 默认。
+- `persistence.stamp_lora_save_metadata` 写 `ss_model_family` (`persistence.py:171-178`),
+  **仅非 anima 时盖** — anima 省略 key 保 checkpoint 字节不变 (anima 是 load 默认,
+  缺失即 anima, 见 `factory.py` 读回逻辑)。这是探针绕过 gap 的同款"省略即默认"约定。
+- `factory.create_network_from_weights` 从 `file_metadata["ss_model_family"]` 读回
+  (`factory.py:824-834`), 未知值 warn + 回退 anima, 传入 `from_weights(model_family=)`。
+
+**smoke 验证** (无 GPU, 纯 metadata 路径):
+- Krea-2 cfg stamp → `ss_model_family=krea2_raw` + `ss_unet_target_replace_modules=["SingleStreamBlock"]` ✓
+- Anima cfg stamp → 空 metadata dict (无 `ss_model_family` 键, 字节不变) ✓
+
+**测试** (`tests/test_factory_metadata_flow.py` 加 4 项):
+- `test_ss_model_family_krea2_read_into_cfg` — Krea-2 stamp 进 cfg ✓
+- `test_ss_model_family_absent_defaults_to_anima` — 缺失 = anima ✓
+- `test_ss_model_family_unknown_falls_back_to_anima` — 未知值不抛 ✓
+- `test_ss_model_family_round_trip_through_stamp` — stamp save 侧 anima 省略 key / Krea-2 写 key ✓
+
+### B. bootstrap 注入 model_family (训练侧)
+
+`library/training/bootstrap.py::build_net_kwargs` 在 net_kwargs 注入
+`model_family = resolve_model_family(args)` (bootstrap.py:148-157)。**显式注入**而非
+走 `NETWORK_KWARG_ALLOWLIST`, 因为 `resolve_model_family` 的 env 兜底 (`ANIMA_MODEL_FAMILY`)
+不进 `args.model_family` — allowlist 循环只在 `args.model_family` 非 None 时注入,
+会漏掉 env-only 的 family 选择。`from_kwargs` 见到该键即落到 cfg, save 时 stamp。
+显式 `--network_args model_family=...` / TOML `model_family` 仍优先 (`if k not in net_kwargs`)。
+
+### C. WebUI model_family 表单 (web 层)
+
+**后端** (`web/services/settings_service.py`):
+- 加 `GLOBAL_FAMILY_KEYS = ("model_family",)` + `_KNOWN_MODEL_FAMILIES = ("anima", "krea2_raw")`
+  (镜像 `library/env.py::_KNOWN_FAMILIES`)。
+- `_normalize_model_family`: 已知值返回小写, 未知/空 → `""` (不抛, 防 typo 砸面板)。
+- save: `model_family` 存为 `""` (anima 默认) — 写显式 `model_family = "anima"` 会
+  mask env 兜底链, 故 anima 选项存空, 面板选 Anima 即"留空走默认"。非 anima 写键,
+  空/未知/anima → 删键。
+- load: on-disk `anima` 也读回 `""` (env 兜底不被 mask)。`_default_global_settings` 含
+  `model_family: ""`。
+
+**前端** (`web/static/`):
+- `index.html` 基础模型路径卡片 (02) 加 `<select id="global-model-family">` 两选项:
+  `""` = Anima(默认) / `"krea2_raw"` = Krea-2-Raw。放 02 卡片避免动卡片 01-04 编号
+  (`test_global_settings_cards_follow_requested_numbering_order` 守的契约)。
+- `defaults.js` 加 `GLOBAL_FAMILY_FIELDS = [['model_family', 'global-model-family']]`,
+  并入 `GLOBAL_SETTING_INPUTS`。settings.js 的 apply/collect 循环用 `.value` 对
+  `<select>` 同样适用, 无需改 settings.js。
+
+**测试** (`tests/test_settings_model_family.py`, 5 项):
+- 默认空 / krea2 round-trip (save 返回 + on-disk toml + get 重读) / anima 存空 / 未知值
+  存空 / on-disk 未知值读空。全过。
+
+### 后续
+
+- **推理侧 family dispatch 未串通**: `library/inference/{generation,models,text}.py`
+  全部硬编码 anima (DiT 加载走 `anima_utils.load_anima_model`, denoise loop 调 anima
+  forward 签名, 文本走 `AnimaTokenizeStrategy`)。子代理核实 generation.py 零
+  `resolve_model_family` / 零 krea2 import。`ss_model_family` stamp 已让加载侧能识别
+  family, 但 generation.py 的 DiT 加载 + 文本链路 + denoise loop family fork 是独立工作
+  (非本轮 goal 五条件), 留阶段 6 后续。
+- **WebUI 预设生成未接 model_family**: 当前新建空白预设从方法 TOML 继承
+  `model_family` (base.toml=anima / krea2_lora.toml=krea2_raw)。全局设置的 `model_family`
+  选择器是面板默认值, 尚未流入新预设生成的 TOML — 该连接是增强项, 非五条件要求。
+
 ## 已知限制 / 后续
 
 - **未串通 train.py / generation.py**: 块交换和检查点都仅探针验证 (反上帝守则,
   不动 train.py / generation.py 热点文件). 正式串通是阶段 6 配置收口.
-- **create_network_from_weights family gap**: 如上, 需 metadata stamp + 读回.
+  - **create_network_from_weights family gap 已闭合**: `ss_model_family` stamp 闭环
+    (见上 "metadata stamp family dispatch" 章节), 加载侧可从 checkpoint 识别 family。
+    train.py/generation.py 的 DiT/TE/forward family fork 仍待续 (推理侧)。
 - **block swap 大分辨率训练受限**: 32GB 卡靠 block swap 救不了 512×512+ 训练
   (激活瓶颈); 1024×1024 已通过 grad-ckpt 移植解决 (见上"1024×1024 梯度检查点
   正式训练"章节), block swap 仍只在权重显存不够的场景有用.
@@ -276,4 +358,5 @@ Krea-2 首日只支持标准 grad-ckpt (无 cpu_offload / unsloth / adapter-awar
   未在本探针范围 — 探针只存 LoRA 权重, 不存 optimizer state). 1024 正式训练的
   checkpoint (92 MB) 已落盘, 可作为 resume 测试的输入.
 - **未挂 LoRA 推理对比**: 阶段 5 推理探针只测 base model; 阶段 6 配置收口应验证
-  加载 checkpoint → attach → sample → 与 base 对比风格可控.
+  加载 checkpoint → attach → sample → 与 base 对比风格可控. 推理侧 family dispatch
+  (generation.py fork) 是前置 (见上 "后续").

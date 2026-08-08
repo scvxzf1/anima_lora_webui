@@ -231,6 +231,15 @@ class LoRANetworkCfg:
     # behavior unchanged). Set to e.g. ["SingleStreamBlock"] for Krea-2.
     unet_target_replace_modules: Optional[List[str]] = None
     text_encoder_target_replace_modules: Optional[List[str]] = None
+    # Model family stamp (Krea-2-Raw migration, stage 6). Identifies which base
+    # model the LoRA was trained against, so the inference loader — which has no
+    # ``args`` — can dispatch DiT / text-encoder / forward path from the
+    # checkpoint metadata alone. Default "anima" preserves the anima path;
+    # stamped to "krea2_raw" only on Krea-2 checkpoints (see
+    # persistence.stamp_lora_save_metadata, which omits the key for anima so
+    # anima checkpoints stay byte-identical and old unstamped checkpoints load
+    # as anima by default).
+    model_family: str = "anima"
 
     # dropouts
     dropout: Optional[float] = None
@@ -488,6 +497,18 @@ class LoRANetworkCfg:
         )
         if not text_encoder_target_replace_modules:
             text_encoder_target_replace_modules = None
+
+        # Model family (Krea-2-Raw migration). bootstrap.build_net_kwargs
+        # injects it from resolve_model_family(args) so the cfg carries the
+        # family into the save metadata stamp. Unknown values fall back to
+        # the anima default rather than raising — a typo'd TOML value should
+        # train the anima path, not abort a long run partway through.
+        raw_model_family = str(kwargs.get("model_family") or "").strip().lower()
+        model_family = (
+            raw_model_family
+            if raw_model_family in ("anima", "krea2_raw")
+            else "anima"
+        )
 
         # adaln convenience knobs: train_adaln adds the adaln_up_{branch}
         # Linears to the target set — they sit in _DEFAULT_EXCLUDE, so this
@@ -811,6 +832,7 @@ class LoRANetworkCfg:
             layer_end=layer_end,
             unet_target_replace_modules=unet_target_replace_modules,
             text_encoder_target_replace_modules=text_encoder_target_replace_modules,
+            model_family=model_family,
             dropout=neuron_dropout,
             rank_dropout=rank_dropout,
             module_dropout=module_dropout,
@@ -918,6 +940,11 @@ class LoRANetworkCfg:
         # cfg field was non-None at save (see persistence.stamp_lora_save_metadata).
         unet_target_replace_modules: Optional[List[str]] = None,
         text_encoder_target_replace_modules: Optional[List[str]] = None,
+        # Model family stamp (Krea-2-Raw migration). factory reads
+        # ``ss_model_family`` from the checkpoint metadata and passes it here.
+        # None / absent / unknown → "anima" default, so old unstamped
+        # checkpoints and anima checkpoints (key omitted) load as anima.
+        model_family: Optional[str] = None,
     ) -> "LoRANetworkCfg":
         """Build cfg from a checkpoint key-sniff (warm-start / inference path).
 
@@ -1055,4 +1082,9 @@ class LoRANetworkCfg:
             register_insert_block=int(register_insert_block),
             unet_target_replace_modules=unet_target_replace_modules,
             text_encoder_target_replace_modules=text_encoder_target_replace_modules,
+            model_family=(
+                str(model_family).strip().lower()
+                if model_family
+                else "anima"
+            ),
         )

@@ -218,3 +218,64 @@ def test_old_global_hydra_router_keys_are_rejected() -> None:
     with pytest.raises(RuntimeError, match="old global HydraLoRA router") as exc:
         _build(file=None, weights_sd=state_dict, metadata=dict(_MOE_META))
     assert "_hydra_router" in str(exc.value)
+
+
+# ── Model family stamp (Krea-2-Raw migration, stage 6) ──
+
+def _plain_lora_state_dict() -> dict[str, torch.Tensor]:
+    """Synthetic plain-LoRA state dict for the ``_Block.proj`` Linear."""
+    return {
+        f"{_LORA}.lora_down.weight": torch.randn(_RANK, 8),
+        f"{_LORA}.lora_up.weight": torch.randn(8, _RANK),
+        f"{_LORA}.alpha": torch.tensor(float(_RANK)),
+    }
+
+
+def test_ss_model_family_krea2_read_into_cfg() -> None:
+    """A Krea-2 checkpoint's ss_model_family stamp lands on the cfg."""
+    meta = {"ss_model_family": "krea2_raw"}
+    net = _build(file=None, weights_sd=_plain_lora_state_dict(), metadata=meta)
+    assert net.cfg.model_family == "krea2_raw"
+
+
+def test_ss_model_family_absent_defaults_to_anima() -> None:
+    """Anima / old unstamped checkpoints load as anima (absence = anima)."""
+    net = _build(file=None, weights_sd=_plain_lora_state_dict(), metadata={})
+    assert net.cfg.model_family == "anima"
+
+
+def test_ss_model_family_unknown_falls_back_to_anima() -> None:
+    """An unknown family value falls back to anima (no raise on load)."""
+    meta = {"ss_model_family": "unknown_family"}
+    net = _build(file=None, weights_sd=_plain_lora_state_dict(), metadata=meta)
+    assert net.cfg.model_family == "anima"
+
+
+def test_ss_model_family_round_trip_through_stamp(tmp_path) -> None:
+    """stamp_lora_save_metadata writes ss_model_family only for non-anima."""
+    from networks.lora_anima.config import LoRANetworkCfg
+    from networks.lora_anima.persistence import stamp_lora_save_metadata
+    from networks.registry import NETWORK_REGISTRY
+
+    # Build a Krea-2 cfg (family set + SingleStreamBlock target container).
+    krea2_cfg = LoRANetworkCfg(
+        unet_target_replace_modules=["SingleStreamBlock"],
+        model_family="krea2_raw",
+    )
+    krea2_meta: dict[str, str] = {}
+    stamp_lora_save_metadata(
+        krea2_meta, krea2_cfg, NETWORK_REGISTRY["lora"], network=None
+    )
+    assert krea2_meta.get("ss_model_family") == "krea2_raw"
+    assert krea2_meta.get("ss_unet_target_replace_modules") == '["SingleStreamBlock"]'
+
+    # Anima cfg: family field left default → stamp must OMIT ss_model_family
+    # so anima checkpoints stay byte-identical (key absent, not "anima").
+    anima_cfg = LoRANetworkCfg()
+    anima_meta: dict[str, str] = {}
+    stamp_lora_save_metadata(
+        anima_meta, anima_cfg, NETWORK_REGISTRY["lora"], network=None
+    )
+    assert "ss_model_family" not in anima_meta
+    assert "ss_unet_target_replace_modules" not in anima_meta
+

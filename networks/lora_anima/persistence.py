@@ -168,6 +168,15 @@ def stamp_lora_save_metadata(
             list(cfg.text_encoder_target_replace_modules)
         )
 
+    # Model family stamp (Krea-2-Raw migration). Stamped only for non-anima
+    # families so anima checkpoints stay byte-identical (anima is the implicit
+    # default at load — absence is read as "anima"). The inference loader has
+    # no ``args``; this is the only way it can dispatch DiT / text-encoder /
+    # forward path from the checkpoint alone.
+    model_family = str(getattr(cfg, "model_family", "anima") or "anima").strip().lower()
+    if model_family and model_family != "anima":
+        metadata["ss_model_family"] = model_family
+
 
 def strip_orig_mod_keys(state_dict):
     """Strip torch.compile '_orig_mod_' from state_dict keys."""

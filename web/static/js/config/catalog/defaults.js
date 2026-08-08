@@ -324,6 +324,12 @@ export const GLOBAL_MODEL_PATH_FIELDS = [
     ['qwen3', 'global-qwen3-path'],
     ['vae', 'global-vae-path'],
 ];
+// Model family selector (Krea-2-Raw migration). Renders as a <select> with
+// options anima / krea2_raw (mirrors library/env.py::_KNOWN_FAMILIES). Empty
+// value == anima default so resolve_model_family() fallback still governs.
+export const GLOBAL_FAMILY_FIELDS = [
+    ['model_family', 'global-model-family'],
+];
 export const GLOBAL_CONFIG_PATH_FIELDS = [
     ['configs_root', 'global-configs-root'],
 ];
@@ -356,6 +362,7 @@ export const GLOBAL_UI_FIELDS = [
 ];
 export const GLOBAL_SETTING_INPUTS = [
     ['output_root', 'global-output-root'],
+    ...GLOBAL_FAMILY_FIELDS,
     ...GLOBAL_MODEL_PATH_FIELDS,
     ...GLOBAL_CONFIG_PATH_FIELDS,
     ...GLOBAL_UI_BASE_FIELDS,

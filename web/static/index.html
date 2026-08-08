@@ -1089,6 +1089,35 @@
                             <div class="global-setting-grid">
                                 <div class="preview-setting-field global-setting-field">
                                     <div class="global-setting-label-row">
+                                        <label for="global-model-family">模型族</label>
+                                        <button
+                                            id="btn-global-model-family-help"
+                                            class="info-toggle global-setting-help-toggle"
+                                            type="button"
+                                            title="查看作用和为什么"
+                                            aria-expanded="false"
+                                            aria-controls="global-model-family-help"
+                                        >?</button>
+                                    </div>
+                                    <select id="global-model-family">
+                                        <option value="">Anima（默认）</option>
+                                        <option value="krea2_raw">Krea-2-Raw</option>
+                                    </select>
+                                    <div id="global-model-family-help" class="field-help global-setting-help">
+                                        <div class="help-content">
+                                            <section class="help-section help-summary">
+                                                <div class="help-heading">作用</div>
+                                                <p>选择训练所基于的底模族；Anima 是默认的 cross-attn 单流 DiT，Krea-2-Raw 是 single-stream MMDiT（迁移进行中）。留空走 Anima 默认。</p>
+                                            </section>
+                                            <section class="help-section">
+                                                <div class="help-heading">为什么</div>
+                                                <p>不同模型族的 DiT 几何、文本链路、采样公式都不同；选错会在训练/推理时产生难定位的错误。该选项仅作为新建空白预设的默认写入值，单次训练配置仍可单独覆盖。</p>
+                                            </section>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="preview-setting-field global-setting-field">
+                                    <div class="global-setting-label-row">
                                         <label for="global-pretrained-model-path">基础 DiT 模型</label>
                                         <button
                                             id="btn-global-pretrained-model-path-help"

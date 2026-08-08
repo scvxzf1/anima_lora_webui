@@ -9,6 +9,7 @@
 
 - 迁移目标 DiT：`library/anima/models.py`、`library/anima/weights.py`、`library/anima/strategy.py`
 - 训练前向路径（迁移最大阻塞点）：`library/training/noise_target.py`、`library/training/model_loading.py`、`library/training/trainer_network_mixin.py`
+- 梯度检查点（阶段 4 子设计）：`library/anima/models.py::UnslothOffloadedGradientCheckpointer`、`library/runtime/offloading.py`、`tests/test_compile_checkpoint_block_swap_hot.py`，落地见 [`krea2_raw_gradient_checkpointing.md`](krea2_raw_gradient_checkpointing.md)
 - 推理路径：`library/inference/generation.py`、`library/inference/models.py`、`library/inference/text.py`
 - LoRA 挂载与配置：`networks/lora_anima/network.py`、`networks/lora_anima/config.py`、`networks/attn_fuse.py`、`library/runtime/token_counts.py`、`library/io/cache.py`
 - 配置与下载：`configs/base.toml`、`scripts/tasks/downloads.py`、`scripts/tasks/_common.py`
@@ -193,7 +194,7 @@ model_family = "anima"   # 默认；切到 "krea2_raw" 走 Krea-2 路径
 | **1 文本链路** | `library/models/krea2_raw/strategy.py` 跑通 Qwen3-VL tokenize + MFA + caching | 单 prompt encode 出 context，padding 行为确认（[R1](krea2_raw_migration_notes.md)） | 阶段 0 ✅ 完成（[stage1 findings](../findings/krea2_raw_migration_stage1_findings.md)）|
 | **2 DiT 本体 + 加载器** | `library/models/krea2_raw/dit.py` + `weights.py`（路径 B 裸移植 mmdit.py，非 diffusers；见 [R8](krea2_raw_migration_notes.md)） | 单 latent forward 通过，shape 对齐 | 阶段 0 ✅ 完成（[stage2 findings](../findings/krea2_raw_migration_stage2_findings.md)）|
 | **3 LoRA 注入** | `library/models/krea2_raw/lora_targets.py`，注入点按 single-stream 重做 | 单 block LoRA attach + forward 正常 | 阶段 2 ✅ 完成（[stage3 findings](../findings/krea2_raw_migration_stage3_findings.md)）|
-| **4 训练串通** | `family.forward_for_loss` + `noise_target.py` 改造 + 训练循环 | 单 prompt 过拟合 loss 下降；小数据集 sweep | 阶段 1+2+3 ✅ 完成（[stage4 findings](../findings/krea2_raw_migration_stage4_findings.md)）|
+| **4 训练串通** | `family.forward_for_loss` + `noise_target.py` 改造 + 训练循环（含 grad-ckpt，落地见 [krea2_raw_gradient_checkpointing.md](krea2_raw_gradient_checkpointing.md)） | 单 prompt 过拟合 loss 下降；小数据集 sweep | 阶段 1+2+3 ✅ 完成（[stage4 findings](../findings/krea2_raw_migration_stage4_findings.md)）|
 | **5 推理串通** | `generation.py` + flow-matching sampler + mu shift | `python tasks.py test` 出图 | 阶段 2+3 ✅ 完成（[stage5 findings](../findings/krea2_raw_migration_stage5_findings.md)）|
 | **6 配置/WebUI/下载/命名收口** | `model_family` 键 + 下载命令 + sidecar 命名 + WebUI 表单 + 测试 + docs | `model_family="krea2_raw"` 全链路可用，anima 路径回归通过 | 阶段 4+5 进行中：**块交换 + 检查点探针出口完成**（[stage6 findings](../findings/krea2_raw_migration_stage6_findings.md)）；配置收口（train.py/generation.py 正式串通 + `model_family` 键 + metadata stamp family dispatch）待续 |
 
