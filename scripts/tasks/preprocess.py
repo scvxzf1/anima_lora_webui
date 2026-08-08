@@ -634,6 +634,81 @@ def _run_preprocess_te(
 ) -> None:
     if backup_captions:
         _run_caption_backup(row)
+    family = _model_family()
+    if family == "krea2_raw":
+        _run_preprocess_te_krea2(row, extra)
+        return
+    _run_preprocess_te_anima(row, extra, shuffle_variants, tag_dropout_rate)
+
+
+def _model_family() -> str:
+    """Preprocess-side model family (anima default; krea2_raw → _krea2_te).
+
+    Mirrors ``library.env.resolve_model_family`` but reads from the same
+    ``_path_overrides`` merge chain the preprocess task already uses (runtime
+    config / base.toml / method) so a WebUI run with ``model_family =
+    "krea2_raw"`` in its runtime config dispatches TE caching to the Krea-2
+    Qwen3-VL ChatML path + ``_krea2_te.safetensors`` suffix. Anim-only scripts
+    and runs without the key fall back to anima.
+    """
+    raw = _path_overrides_value().get("model_family")
+    if isinstance(raw, str) and raw.strip().lower() in ("anima", "krea2_raw"):
+        return raw.strip().lower()
+    return "anima"
+
+
+def _path_overrides_value() -> dict[str, Any]:
+    from ._common import _path_overrides  # local import: avoids unused circular
+
+    return _path_overrides()
+
+
+def _run_preprocess_te_krea2(row: dict[str, Any], extra: list[str]) -> None:
+    """Krea-2 TE cache: writes ``{stem}_krea2_te.safetensors`` via the
+    Qwen3-VL ChatML path (single-variant; no T5/LLM-adapter/crossattn/uncond —
+    anima-only, see docs/proposal/krea2_raw_migration.md §1 非目标)."""
+    _, text_batch_size = _preprocess_cache_batch_sizes()
+    dtype = _preprocess_precision_dtype()
+    run(
+        [
+            PY,
+            "-m",
+            "scripts.krea2.preprocess_te_cache",
+            "--dir",
+            # TE encode only needs captions (no image pixels); run on the source
+            # dir so ``captions.json`` / ``.txt`` sidecars are found (the resize
+            # step mirrors ``.txt`` sidecars but not the ``captions.json`` master,
+            # so the resized dir may have no captions at all). The cache file's
+            # stem is derived from the image path sans extension, so a source
+            # ``foo.jpg`` writes ``foo_krea2_te.safetensors`` into ``cache_dir`` —
+            # matching the resized ``.png``'s latent ``foo_{WxH}_anima.npz`` stem
+            # (resize keeps the stem, only swaps the extension). Mirrors anima's
+            # ``_run_preprocess_te_anima`` which also uses ``source_image_dir``.
+            str(row.get("source_image_dir") or _path("source_image_dir", "image_dataset")),
+            "--cache_dir",
+            str(row.get("lora_cache_dir") or _path("lora_cache_dir", "post_image_dataset/lora")),
+            "--qwen3",
+            _path("qwen3", "models/text_encoders/qwen3vl_4b_bf16.safetensors"),
+            "--batch_size",
+            str(text_batch_size),
+            "--dtype",
+            dtype,
+            *_recursive_args(row),
+            # Krea-2's preprocess_te_cache.py only accepts the flags above; the
+            # anima-style extras (path_pattern / lowres / overwrite / caption
+            # shuffle / DOP) are anima-only and would trip its argparse, so we
+            # do NOT forward them. Krea-2 single-variant cache skips existing
+            # valid sidecars internally (is_disk_cached_outputs_expected).
+        ]
+    )
+
+
+def _run_preprocess_te_anima(
+    row: dict[str, Any],
+    extra: list[str],
+    shuffle_variants: str | None = None,
+    tag_dropout_rate: str | None = None,
+) -> None:
     shuffle_variants = shuffle_variants or os.environ.get("CAPTION_SHUFFLE_VARIANTS", "4")
     tag_dropout_rate = tag_dropout_rate or os.environ.get("CAPTION_TAG_DROPOUT_RATE", "0.1")
     mp_args, extra = _resolve_lowres_filter(extra)
