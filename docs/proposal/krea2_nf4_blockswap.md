@@ -325,3 +325,9 @@ swap20 仅 8 常驻块可编译，12.140→11.744s（-3.3%），约 60 步回本
 正常下降；但报告峰值 31.55GB 无安全余量，仅作 PG199 实验点。安全档仍是
 full checkpoint + compile（2.726s/it / 11.06GB）。见
 [krea2_3080_speed_stage4.md](../findings/krea2_3080_speed_stage4.md)。
+
+阶段 5 修正 3080 compile 结论：20 步从 12.06s 漂到 12.65s，120 秒纯 BF16
+GEMM 在 84°C/约 1800MHz 也退化 7-9%，因此 3.3% 只是冷态短窗口，不是
+持续加速。当前 eager swap20 在首个 backward OOM，compiled 则完成 20 步，其可靠
+价值是显存余量。长训速度的下一主因是 3080 散热/频率曲线。见
+[krea2_3080_speed_stage5.md](../findings/krea2_3080_speed_stage5.md)。

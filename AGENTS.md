@@ -138,6 +138,7 @@
 - Krea-2 选择性 checkpoint：PG199 32GB 可用 `gradient_checkpointing=false` + `selective_checkpoint="every_other"`，1024² NF4 实测 28.46GB / 2.90s，比 full checkpoint 快 13.9%。RTX 3080 swap20 放开单 block 仍 OOM，10GB 卡必须保持 full checkpoint。Krea 目前只支持 `off/every_other`，其他 Anima selective 模式显式拒绝，见 `docs/findings/krea2_3080_speed_stage2.md`。
 - Krea-2 compile：固定 1024² 可 opt-in `torch_compile=true` + `compile_dynamic_seq=false` + `compile_block_scope="resident"`。PG199 NF4 full-ckpt 实测 3.370→2.726s（-19.1%）；RTX 3080 swap20 只编译 8 个常驻块，12.140→11.744s（-3.3%），约 60 步回本。编译目标必须是 adapter apply/load 后的 block `_forward`，不要编译 checkpoint wrapper 或 swapped tail。动态序列/多 bucket 尚未验证，默认配置不变，见 `docs/findings/krea2_3080_speed_stage3.md`。
 - Krea-2 PG199 叠加边界：compile + every-other（14/28 checkpoint）会 OOM；compile + 16/28 checkpoint 的 20 步稳态为 2.408s/it（-28.5%），但峰值 31.55GB 无余量，仅作 PG199 探针实验点，不进默认配置或通用 CLI。安全档仍是 full checkpoint + compile（2.726s/it / 11.06GB）。RTX 3080 不适用 selective 叠加，见 `docs/findings/krea2_3080_speed_stage4.md`。
+- Krea-2 RTX 3080 长窗口修正：resident compile 的冷态 11.744s/it（+3.3%）不是持续收益；20 步从 12.06 漂到 12.65s。120 秒 BF16 GEMM 达 84°C，时钟约 1800MHz，同样退化 7-9%。compile 的已证价值是训练 peak 6.15GB 且 20 步通过，而当前 eager swap20 首个 backward OOM。不要再宣称 3080 compile 持续加速 3.3%；长训主瓶颈包含散热/频率曲线，修改功耗、风扇或降压前必须取得明确同意，见 `docs/findings/krea2_3080_speed_stage5.md`。
 - `library/config/`：TOML 读取、合并、normalize、schema 校验。
 - `library/training/`：训练 bootstrap、loop、optimizer、scheduler、checkpoint、loss 等。
 - `library/inference/`：generation、sampling、adapter 加载、DirectEdit、DCW、输出处理。

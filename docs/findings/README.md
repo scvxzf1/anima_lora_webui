@@ -58,6 +58,7 @@
 | [krea2_3080_speed_stage2.md](krea2_3080_speed_stage2.md) | Krea-2 速度阶段 2：PG199 every-other checkpoint 快 13.9%；RTX 3080 放开单 block 仍 OOM，NOT_FEASIBLE |
 | [krea2_3080_speed_stage3.md](krea2_3080_speed_stage3.md) | Krea-2 速度阶段 3：per-block compile 在 PG199 快 19.1%，RTX 3080 resident-only 快 3.3%（约 11.74s/it） |
 | [krea2_3080_speed_stage4.md](krea2_3080_speed_stage4.md) | Krea-2 速度阶段 4：PG199 compile+16/28 checkpoint 20 步稳态 2.408s/it（-28.5%），但 31.55GB 仅实验用 |
+| [krea2_3080_speed_stage5.md](krea2_3080_speed_stage5.md) | Krea-2 速度阶段 5：RTX 3080 compile 20 步 12.06→12.65s 热漂移；纯 GEMM 84°C 复现，compile 主价值修正为显存余量 |
 
 ## 方法和研究结论
 

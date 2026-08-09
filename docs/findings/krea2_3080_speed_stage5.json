@@ -1,0 +1,27 @@
+{
+  "date": "2026-08-09",
+  "compiled_training_20_steps": {
+    "config": "RTX3080,1024,NF4,swap20,full_ckpt,resident_compile",
+    "first_step_s": 25.167,
+    "stable_steps_s": [12.062,12.046,12.134,12.194,12.217,12.277,12.259,12.272,12.324,12.410,12.394,12.498,12.517,12.548,12.557,12.571,12.570,12.574,12.647],
+    "loss_first": 0.011963,
+    "loss_last": 0.002274,
+    "reported_training_peak_gb": 6.153
+  },
+  "eager_control": {
+    "config": "RTX3080,1024,NF4,swap20,full_ckpt,eager",
+    "result": "OOM on first backward",
+    "failed_allocation_mib": 144,
+    "allocated_gib": 6.94,
+    "reserved_unallocated_mib": 576.54
+  },
+  "gemm_thermal_probe_120s": {
+    "shape": "4608x6144 @ 6144x6144 BF16",
+    "early_ms": "6.87-7.00",
+    "late_ms": "7.3-7.5",
+    "max_temperature_c": 84,
+    "ending_sm_clock_mhz": 1800,
+    "average_power_w": 304.7
+  },
+  "verdict": "compile short-window speedup is not sustained under thermal saturation; compile remains valuable for memory headroom"
+}
