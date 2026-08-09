@@ -5,7 +5,6 @@
 import {
     configureDatasetRenderBridge,
     createDatasetPresetGroupNode,
-    readDatasetPresetGroupState,
     renderDatasetEditor,
 } from '../anima-app/helpers/dataset-render-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
 import { datasetPresetGroupsForDisplay } from '../anima-app/helpers/dataset-presets.js?v=module-bootstrap-20260714-stage-dataset5';
@@ -62,9 +61,8 @@ export function createDatasetEditor() {
             list.appendChild(empty);
             return;
         }
-        const stored = readDatasetPresetGroupState();
         for (const group of groups) {
-            list.appendChild(createDatasetPresetGroupNode(group, stored));
+            list.appendChild(createDatasetPresetGroupNode(group));
         }
     }
 

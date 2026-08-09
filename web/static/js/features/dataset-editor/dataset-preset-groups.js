@@ -2,7 +2,6 @@
  * Dataset preset group list rendering, drag/drop, and header action state.
  */
 
-import { DATASET_PRESET_GROUP_STATE_KEY } from '../anima-app/helpers/app-constants.js?v=module-bootstrap-20260714-stage-dataset5';
 import {
     deleteDatasetPresetGroup,
     placeDatasetPresetFile,
@@ -46,21 +45,14 @@ function currentFileGroupDragState() {
     return datasetState.fileGroupDragState || null;
 }
 
-export function createDatasetPresetGroupNode(group, stored) {
+export function createDatasetPresetGroupNode(group) {
     const datasetPresetState = currentDatasetPresetState();
     const files = group.files || [];
     const details = document.createElement('details');
     details.className = ['dataset-preset-group', !files.length ? 'empty' : '', group.locked ? 'readonly' : ''].filter(Boolean).join(' ');
     details.dataset.groupId = group.id || '';
-    const containsSelected = files.some((preset) => preset.path === datasetPresetState.selectedFile);
-    const shouldForceOpen = containsSelected || Boolean(datasetPresetState.search.trim());
-    const defaultOpen = isUnfiledDatasetGroup(group);
-    details.open = shouldForceOpen || (stored[group.id] ?? defaultOpen);
-    details.addEventListener('toggle', () => {
-        const next = readDatasetPresetGroupState();
-        next[group.id] = details.open;
-        writeDatasetPresetGroupState(next);
-    });
+    // 分组默认折叠；只有搜索时强制展开，方便逐项过目。切换界面重新渲染后回到默认折叠。
+    details.open = Boolean(datasetPresetState.search.trim());
 
     const summary = document.createElement('summary');
     const groupHandle = createDatasetPresetGroupDragHandle(group, details);
@@ -244,22 +236,6 @@ function createDatasetPresetGroupFileRow(preset, group) {
     row.appendChild(btn);
 
     return row;
-}
-
-export function readDatasetPresetGroupState() {
-    try {
-        return JSON.parse(localStorage.getItem(DATASET_PRESET_GROUP_STATE_KEY) || '{}') || {};
-    } catch (_) {
-        return {};
-    }
-}
-
-function writeDatasetPresetGroupState(state) {
-    try {
-        localStorage.setItem(DATASET_PRESET_GROUP_STATE_KEY, JSON.stringify(state || {}));
-    } catch (_) {
-        // 忽略本地存储不可用；分组折叠状态不是关键数据。
-    }
 }
 
 export function renderDatasetPresetHeader() {

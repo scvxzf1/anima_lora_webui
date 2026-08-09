@@ -223,7 +223,6 @@ export const HIDDEN_DATASET_PRESET_FILES = new Set([
     'configs/datasets/ip_adapter.toml',
 ]);
 export const DATASET_PRESET_REQUEST_TIMEOUT_MS = 15000;
-export const DATASET_PRESET_GROUP_STATE_KEY = 'anima_lora_dataset_preset_groups_v2';
 export const DEFAULT_SAMPLE_PROMPTS_PATH = 'configs/sample_prompts.txt';
 export const STAGE_RESOLUTION_STEPS_PER_EPOCH = 1000;
 export const HISTORY_UNGROUPED_COLLECTION_KEY = 'collection:__ungrouped__';

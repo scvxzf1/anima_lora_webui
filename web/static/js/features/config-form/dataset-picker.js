@@ -61,9 +61,6 @@ export function renderConfigDatasetPicker(existingPanel = null) {
     body.className = 'config-dataset-picker-body';
     body.appendChild(createConfigDatasetCurrentSummary());
     panel.appendChild(body);
-    if (isConfigDatasetPickerDialogOpen()) {
-        renderConfigDatasetPickerDialog();
-    }
     ensureConfigDatasetPreview();
 }
 

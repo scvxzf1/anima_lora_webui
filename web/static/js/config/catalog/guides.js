@@ -130,6 +130,16 @@ export const LEGACY_VARIANT_ALIASES = Object.freeze({
         status: 'experimental',
         note: 'SPD CLI 实验配置入口；不走普通 train.py。',
     },
+    mfu_rokkotsu_cached: {
+        family: 'lokr',
+        status: 'historical',
+        note: '历史 MFU LoKr 缓存对照；现网 gui-methods 已移除。',
+    },
+    mfu_rokkotsu_plain_lora_ckpt: {
+        family: 'lora',
+        status: 'historical',
+        note: '历史 MFU plain LoRA 对照；现网 gui-methods 已移除。',
+    },
 });
 
 export const VARIANT_GUIDE_ZH = {
@@ -162,6 +172,12 @@ export const VARIANT_GUIDE_ZH = {
         '面向 Tesla V100 16GB 的 plain LoRA：fp16、torch SDPA、梯度检查点与 block swap，rank 默认 16。',
         '优先稳定不炸显存；表达力和速度都比默认 lora 保守，也不依赖 bf16/flash-attn。',
         '只有在 V100 或同类 pre-Ampere 卡上需要稳定起步时选。'
+    ),
+    'lora-convrot-vram': choiceHelp(
+        'LoRA + ConvRot W8A16（显存档）',
+        '在全部 Linear scope 上启用 W8A16 ConvRot，并以 rank 32 作为低显存实验起点。',
+        '可为更大 rank 或 batch 腾出显存，但不会加速；长训前需要先做短训质量对照。',
+        '10GB 级显卡需要显式评估 ConvRot 质量时选。'
     ),
     ortholora: choiceHelp(
         'OrthoLoRA',

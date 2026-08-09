@@ -5,7 +5,6 @@
 import { configureDatasetRenderBridge } from '../anima-app/helpers/dataset-render-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
 import {
     createDatasetPresetGroupNode,
-    readDatasetPresetGroupState,
     renderDatasetPresetHeader,
 } from './dataset-preset-groups.js?v=module-bootstrap-20260714-stage-dataset5';
 import {
@@ -21,7 +20,6 @@ import {
 
 export {
     createDatasetPresetGroupNode,
-    readDatasetPresetGroupState,
     renderDatasetPresetHeader,
 } from './dataset-preset-groups.js?v=module-bootstrap-20260714-stage-dataset5';
 
@@ -40,7 +38,6 @@ configureDatasetRenderBridge({
     createDatasetPresetGroupNode,
     datasetEditorStateForActivePanel,
     isDatasetTabActive,
-    readDatasetPresetGroupState,
     refreshDatasetEditorItem,
     refreshDatasetEditorItems,
     renderDatasetEditor,

@@ -2,7 +2,6 @@ const datasetRenderers = {
     createDatasetPresetGroupNode: () => null,
     datasetEditorStateForActivePanel: () => ({ datasets: [], defaults: {} }),
     renderConfigDatasetPickerDialog: () => {},
-    readDatasetPresetGroupState: () => ({}),
     ensureConfigDatasetPreview: () => {},
     isDatasetTabActive: () => false,
     refreshDatasetEditorItem: () => false,
@@ -21,9 +20,6 @@ export function configureDatasetRenderBridge(renderers = {}) {
     }
     if (typeof renderers.renderConfigDatasetPickerDialog === 'function') {
         datasetRenderers.renderConfigDatasetPickerDialog = renderers.renderConfigDatasetPickerDialog;
-    }
-    if (typeof renderers.readDatasetPresetGroupState === 'function') {
-        datasetRenderers.readDatasetPresetGroupState = renderers.readDatasetPresetGroupState;
     }
     if (typeof renderers.ensureConfigDatasetPreview === 'function') {
         datasetRenderers.ensureConfigDatasetPreview = renderers.ensureConfigDatasetPreview;
@@ -58,10 +54,6 @@ export function datasetEditorStateForActivePanel(...args) {
 
 export function renderConfigDatasetPickerDialog(...args) {
     return datasetRenderers.renderConfigDatasetPickerDialog(...args);
-}
-
-export function readDatasetPresetGroupState(...args) {
-    return datasetRenderers.readDatasetPresetGroupState(...args);
 }
 
 export function ensureConfigDatasetPreview(...args) {

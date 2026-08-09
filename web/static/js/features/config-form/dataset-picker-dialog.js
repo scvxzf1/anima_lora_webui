@@ -46,23 +46,23 @@ function currentConfigDatasetPreviewState() {
         search.placeholder = '搜索数据集预设、路径或原始目录';
         search.value = datasetState.configDatasetPickerSearch;
         search.addEventListener('input', () => {
-            const cursor = search.selectionStart ?? search.value.length;
             datasetState.configDatasetPickerSearch = search.value;
-            renderConfigDatasetPickerDialog();
-            const nextSearch = document.querySelector('#config-dataset-picker-dialog .config-dataset-search');
-            if (nextSearch) {
-                nextSearch.focus();
-                nextSearch.setSelectionRange(cursor, cursor);
-            }
+            renderConfigDatasetPickerResults(body);
         });
         toolbar.appendChild(search);
         body.appendChild(toolbar);
 
+        renderConfigDatasetPickerResults(body);
+    }
+
+    function renderConfigDatasetPickerResults(body) {
         const workspace = document.createElement('div');
         workspace.className = 'config-dataset-workspace config-dataset-dialog-workspace';
         workspace.appendChild(createConfigDatasetPresetList());
         workspace.appendChild(createConfigDatasetPresetPreview());
-        body.appendChild(workspace);
+        const currentWorkspace = body.querySelector('.config-dataset-dialog-workspace');
+        if (currentWorkspace) currentWorkspace.replaceWith(workspace);
+        else body.appendChild(workspace);
     }
 
     function createConfigDatasetPresetList() {
@@ -214,6 +214,14 @@ function currentConfigDatasetPreviewState() {
         return wrap;
     }
 
+    function updateConfigDatasetPresetListActive() {
+        const buttons = document.querySelectorAll('#config-dataset-picker-dialog .config-dataset-preset-option');
+        buttons.forEach((btn) => {
+            const file = btn.dataset.file || '';
+            btn.classList.toggle('active', file === datasetState.selectedConfigDatasetFile);
+        });
+    }
+
     async function selectConfigDatasetPreset(file) {
         datasetState.selectedConfigDatasetFile = file || '';
         datasetState.selectedConfigDatasetSummary = datasetPresetSummaryByFile(datasetState.selectedConfigDatasetFile);
@@ -224,7 +232,9 @@ function currentConfigDatasetPreviewState() {
             error: '',
         };
         renderConfigDatasetPicker();
-        renderConfigDatasetPickerDialog();
+        updateConfigDatasetPresetListActive();
+        renderConfigDatasetPreviewArea();
+        ensureConfigDatasetPreview();
         updateTomlDirtyState();
         await loadStepEstimate();
     }

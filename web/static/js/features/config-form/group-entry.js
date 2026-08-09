@@ -23,7 +23,7 @@ import {
     createNoDatasetRegularizationQuickPresetsButton,
     createResourceQuickPresetPanel,
     createResourceQuickPresetsButton,
-} from './stage-resolution.js?v=module-bootstrap-20260714-stage-dataset5';
+} from './stage-resolution.js?v=model-configs-20260809-1';
 import { appendFieldRows } from './field-rows.js?v=module-bootstrap-20260714-stage-dataset5';
 import { createConfigDatasetPicker } from './dataset-picker.js?v=module-bootstrap-20260714-stage-dataset5';
 import { debounce } from '../../shared/debounce.js?v=module-bootstrap-20260714-stage-dataset5';
@@ -84,9 +84,8 @@ export function appendConfigGroupsByCategory(container, groups) {
     updateConfigStickyDirectory(categories, buckets, activeCategory, searchText);
     updateConfigStickyPlacement();
     const renderedGroups = [];
-    const sourceCategories = searchText
-        ? categories
-        : categories.filter((category) => category.id === activeCategory);
+    const sourceCategories = categories.filter((category) => category.id === activeCategory);
+    const scopedGroups = sourceCategories.flatMap((category) => buckets.get(category.id) || []);
     for (const category of FORM_CATEGORY_DEFS) {
         if (!sourceCategories.some((item) => item.id === category.id)) continue;
         for (const group of buckets.get(category.id) || []) {
@@ -100,7 +99,7 @@ export function appendConfigGroupsByCategory(container, groups) {
 
     const main = document.createElement('div');
     main.className = 'config-form-main';
-    main.appendChild(createConfigFormControls(groups, renderedGroups, searchText));
+    main.appendChild(createConfigFormControls(scopedGroups, renderedGroups, searchText));
     const groupList = document.createElement('div');
     groupList.className = 'config-form-group-list';
     if (!renderedGroups.length) {
@@ -150,7 +149,6 @@ export function selectConfigCategory(categoryId, options = {}) {
         configFormState.showAdvanced = true;
     }
     configFormState.activeCategory = categoryId;
-    configFormState.search = '';
     renderConfigForm(currentConfigState());
     if (options.scrollToForm) {
         requestAnimationFrame(() => scrollConfigFormContentToTop('smooth'));
@@ -174,8 +172,8 @@ export function selectConfigCategory(categoryId, options = {}) {
             const fieldCount = categoryGroups.reduce((sum, group) => sum + group.fields.length, 0);
             btn.hidden = !category || !STICKY_CONFIG_CATEGORY_IDS.has(categoryId);
             btn.disabled = !enabled;
-            btn.classList.toggle('active', enabled && categoryId === activeCategory && !searchText);
-            btn.setAttribute('aria-current', enabled && categoryId === activeCategory && !searchText ? 'true' : 'false');
+            btn.classList.toggle('active', enabled && categoryId === activeCategory);
+            btn.setAttribute('aria-current', enabled && categoryId === activeCategory ? 'true' : 'false');
             btn.title = enabled ? `切换到${category.title}配置` : '当前配置没有这个分类';
             const count = btn.querySelector('em');
             if (count) count.textContent = `${fieldCount} 项`;
@@ -228,9 +226,17 @@ export function updateConfigStickyPlacement() {
         search.placeholder = '输入学习率、caption、network_dim 或中文名称';
         search.value = configFormState.search;
         search.addEventListener('input', (event) => {
+            if (event.isComposing) return;
+            applyConfigSearch(event.target.value || '');
+        });
+        search.addEventListener('compositionstart', () => {
+            applyConfigSearch.cancel();
+        });
+        search.addEventListener('compositionend', (event) => {
             applyConfigSearch(event.target.value || '');
         });
         search.addEventListener('keydown', (event) => {
+            if (event.isComposing || event.keyCode === 229) return;
             if (event.key !== 'Escape') return;
             if (!search.value) {
                 search.blur();
@@ -293,9 +299,9 @@ export function updateConfigStickyPlacement() {
         scope.className = 'config-form-scope';
 
         const caption = document.createElement('span');
-        caption.textContent = searchText ? '搜索结果' : '当前目录';
+        caption.textContent = '当前目录';
         const title = document.createElement('strong');
-        title.textContent = searchText ? '筛选中' : active?.title || '配置';
+        title.textContent = active?.title || '配置';
         const meta = document.createElement('em');
         meta.textContent = searchText ? `${visible} / ${total} 项匹配` : active?.description || '';
         scope.append(caption, title, meta);
@@ -304,10 +310,7 @@ export function updateConfigStickyPlacement() {
 
     function filterConfigGroupEntry(group, searchText) {
         if (!searchText) return group;
-        const groupMatched = configTextMatches([group.name, group.description, group.categoryId], searchText);
-        const fields = groupMatched
-            ? group.fields
-            : group.fields.filter(([key, value]) => configFieldMatchesSearch(key, value, searchText));
+        const fields = group.fields.filter(([key, value]) => configFieldMatchesSearch(key, value, searchText));
         if (!fields.length) return null;
         return { ...group, fields };
     }
@@ -347,6 +350,7 @@ export function updateConfigStickyPlacement() {
     }
 
     function createGroup(name, fields, extraClass = '', description = '', searchText = '', defaultOpen = undefined, notice = '') {
+        const filtering = Boolean(searchText);
         const section = document.createElement('section');
         section.className = ['config-group', extraClass].filter(Boolean).join(' ');
         section.dataset.groupName = name;
@@ -430,33 +434,33 @@ export function updateConfigStickyPlacement() {
         }
         const titleActions = document.createElement('div');
         titleActions.className = 'config-group-title-actions';
-        if (extraClass === 'config-group-model') {
+        if (!filtering && extraClass === 'config-group-model') {
             titleActions.appendChild(createFillGlobalModelPathsButton());
         }
-        if (extraClass === 'config-group-resource') {
+        if (!filtering && extraClass === 'config-group-resource') {
             titleActions.appendChild(createResourceQuickPresetsButton(content, collapseBtn));
         }
-        if (extraClass === 'config-group-no-dataset-regularization') {
+        if (!filtering && extraClass === 'config-group-no-dataset-regularization') {
             titleActions.appendChild(createNoDatasetRegularizationQuickPresetsButton(content, collapseBtn));
         }
         titleActions.appendChild(collapseBtn);
         header.appendChild(titleActions);
         section.appendChild(header);
-        if (extraClass === 'config-group-data') {
+        if (!filtering && extraClass === 'config-group-data') {
             content.appendChild(createConfigDatasetPicker());
             // 分阶段调度入口只保留在数据集页顶栏，配置页不再显示课表摘要卡片。
         }
-        if (extraClass === 'config-group-resource') {
+        if (!filtering && extraClass === 'config-group-resource') {
             content.appendChild(createResourceQuickPresetPanel());
         }
-        if (extraClass === 'config-group-no-dataset-regularization') {
+        if (!filtering && extraClass === 'config-group-no-dataset-regularization') {
             content.appendChild(createNoDatasetRegularizationQuickPresetPanel());
             content.appendChild(createNoDatasetRegularizationModePanel());
             content.appendChild(createNoDatasetRegularizationAdvancedFields(fields, extraClass));
         } else {
             appendFieldRows(content, fields, extraClass);
         }
-        if (extraClass === 'config-group-steps') {
+        if (!filtering && extraClass === 'config-group-steps') {
             content.appendChild(createStepEstimatePanel());
             scheduleStepEstimatePanelRefresh();
         }
