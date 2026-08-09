@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from tests.test_web_config_service import _write_selected_checkpoint_preflight_config
+from tests.web_config_test_support import _write_selected_checkpoint_preflight_config
 from web.services import config_service
 
 

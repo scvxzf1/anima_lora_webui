@@ -12,9 +12,9 @@
 
 | 方向 | 目标 | 当前痛点 | 可能方案 | 影响范围 | 难度 | 验证方式 | 优先级 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| 统一配置命名和说明 | 让用户能区分 `low_vram`、`lora-8gb`、`balanced_16g`、`LoKr 16G`、`graft` | 硬件档、GUI 变体和快捷按钮命名来自不同层，含义容易混淆 | 在 `configs/presets.toml`、Web guide、GUI guide 和文档中统一术语：硬件 preset、方法 variant、资源快捷按钮分层说明 | 文档、WebUI catalog、GUI 文案 | 低 | `timeout 60 python -m pytest tests/test_training_frontend_state.py -k "config or guide"`；人工检查 guide | P0 |
+| 统一配置命名和说明 | 让用户能区分 `low_vram`、`lora-8gb`、`balanced_16g`、`LoKr 16G`、`graft` | 硬件档、GUI 变体和快捷按钮命名来自不同层，含义容易混淆 | 在 `configs/presets.toml`、Web guide、GUI guide 和文档中统一术语：硬件 preset、方法 variant、资源快捷按钮分层说明 | 文档、WebUI catalog、GUI 文案 | 低 | `timeout 60 python -m pytest tests/test_training_frontend_config_ui.py -k "config or guide"`；人工检查 guide | P0 |
 | 清理重复/过期配置清单 | 降低维护文档与实时目录不一致风险 | 方法/变体列表散落在 `CLAUDE.md`、skill reference、Web guide、GUI guide | 以 `rg --files configs/methods configs/gui-methods` 为源生成或检查列表；文档只写“以目录实时列表为准” | 文档、测试辅助脚本 | 低 | 新增或扩展配置列表测试；检查文档无已删除变体名 | P0 |
-| 显式标注兼容边界 | 防止把互斥优化项一起打开 | block swap、Unsloth、CPU offload、selective checkpoint、Soft Tokens、functional loss 有硬边界 | 在 WebUI 字段帮助、preflight、文档矩阵中统一展示“不能同用” | WebUI preflight、训练启动、文档 | 中 | `timeout 60 python -m pytest tests/test_config.py tests/test_training_frontend_state.py -k "block_swap or resource"` | P0 |
+| 显式标注兼容边界 | 防止把互斥优化项一起打开 | block swap、Unsloth、CPU offload、selective checkpoint、Soft Tokens、functional loss 有硬边界 | 在 WebUI 字段帮助、preflight、文档矩阵中统一展示“不能同用” | WebUI preflight、训练启动、文档 | 中 | `timeout 60 python -m pytest tests/test_config.py tests/test_training_frontend_config_ui.py -k "block_swap or resource"` | P0 |
 | 对齐表单默认值与合并值 | 让用户知道当前值来自 base、preset、method 还是表单默认 | Web 表单有 `FORM_UI_DEFAULTS`，训练实际值来自 merge chain，来源不总是直观 | 在表单字段旁显示来源：base/preset/method/runtime/用户改动；保存前展示 diff | WebUI config form、runtime config | 中 | WebUI frontend state 测试；保存后 `print-config` 对比 | P0 |
 | 补齐关键 CLI-only 开关说明 | 让只在 CLI 存在的性能开关可被发现 | `dataloader_prefetch_factor`、`profile_steps`、`cpu_offload_checkpointing` 等未进入常用 UI | 文档列出 CLI-only；只把低风险字段加入高级区，危险/诊断字段留 CLI | 文档、WebUI advanced form | 低到中 | `timeout 60 python -m pytest tests/test_config.py`；手动检查 `train.py --help` | P1 |
 | 建立“事实记录”模板 | 后续新增优化项能按同一格式记录 | 当前配置字段多，新增实验容易只写 findings 不回填清单 | 在 docs 中固定字段：名称、位置、作用、默认/候选、场景、风险、UI 暴露 | 文档维护流程 | 低 | 文档 review checklist | P0 |
@@ -51,7 +51,7 @@
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | 自动显存探测 | 启动前识别 GPU 显存、当前空闲、后台占用 | 用户需要手动判断选 8GB/16GB/LoKr 档 | WebUI 调用 GPU service/NVML，结合模型和方法估算推荐档 | WebUI backend、frontend、preflight | 高 | mock GPU 单测；实卡 dry-run；不启动长训 | P2 |
 | 自动推荐配置 | 根据方法、显存、目标速度自动生成配置 | 目前用户在 preset、variant、快捷按钮之间手选 | 规则引擎：输入 GPU、方法、数据集尺寸、是否 LoKr/IP/Easy；输出字段 diff 和解释 | WebUI config form、runtime config | 高 | 推荐结果 snapshot tests；真实短跑验证 | P2 |
-| 自动风险预检 | 在训练前拦截高风险组合 | 训练入口已有硬错误，但 WebUI 可以更早提示 | 将 `train.py` 兼容规则前移到 config preflight API：互斥、路径、缓存、显存档 | WebUI preflight、config schema | 中到高 | `tests/test_web_config_service.py`、`tests/test_training_resume.py` | P1 |
+| 自动风险预检 | 在训练前拦截高风险组合 | 训练入口已有硬错误，但 WebUI 可以更早提示 | 将 `train.py` 兼容规则前移到 config preflight API：互斥、路径、缓存、显存档 | WebUI preflight、config schema | 中到高 | `tests/test_web_config_preflight.py`、`tests/test_web_preflight_compat_matrix.py` | P1 |
 | 性能基准对比库 | 形成可查询的硬件/方法/配置基准 | findings 是文档型，难横向查询 | 保存 benchmark manifest：GPU、driver、method、preset、metrics、commit、dataset fingerprint | docs/findings、Web history、scripts | 高 | 基准 JSON schema 测试；重复 benchmark 方差检查 | P2 |
 | 自适应训练记录分析 | 从历史任务自动发现 OOM、变慢、过拟合信号 | 用户需要手动读日志和样张 | 规则：OOM 阶段 -> 推荐 probe 或 fallback；sec/step 飙升 -> profile；validation/sample 退化 -> 降采样频率或调质量参数 | WebUI history、analysis service | 高 | 用历史任务 fixture 做规则单测；人工审核建议 | P2 |
 | 自动缓存失效判断 | 减少 caption/图像/分桶变化后缓存错配 | 目前依赖用户理解何时重建缓存 | 缓存 sidecar 增加 fingerprint，preprocess/training 对比数据源和配置摘要 | preprocess、dataset、training bootstrap | 高 | 修改 caption/image 后应提示重建；旧缓存兼容测试 | P2 |
@@ -66,7 +66,7 @@
 ## 验证原则
 
 - 文档和配置表改动：至少运行 `timeout 60 python -m pytest tests/test_config.py`。
-- WebUI 表单/文案/快捷按钮改动：运行 `timeout 60 python -m pytest tests/test_training_frontend_state.py`。
-- block swap runtime 改动：运行 `timeout 60 python -m pytest tests/test_block_swapping.py tests/test_training_resume.py -k "block_swap or progress_jsonl"`。
+- WebUI 表单/文案/快捷按钮改动：运行 `timeout 60 python -m pytest tests/test_training_frontend_config_ui.py tests/test_training_frontend_dom.py`。
+- block swap runtime 改动：运行 `timeout 60 python -m pytest tests/test_block_swapping.py tests/test_training_runtime_config_core.py tests/test_training_runtime_config_start.py tests/test_training_runtime_config_probes.py tests/test_training_progress_metrics.py -k "block_swap or progress_jsonl"`。
 - LoKr 相关改动：运行 `timeout 60 python -m pytest tests/test_lokr.py tests/test_network_registry.py -k lokr`。
 - 真实 GPU 短跑或长跑会占用显卡，应单独确认后执行，不作为普通文档维护默认步骤。

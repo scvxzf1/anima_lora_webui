@@ -145,8 +145,8 @@
 - Krea-2 multi-bucket compile：24 个 `CONSTANT_TOKEN_BUCKETS` 加固定 512 文本后只形成 4608/4864 两张 block 图，同 token family 的不同宽高比可直接复用，实测稳态 2.731/2.956s、峰值 <=11.35GB。`configs/methods/krea2_lora.toml` 因此默认 `torch_compile=true`、`compile_dynamic_seq=false`、resident scope、default mode。不要启用 dynamic_seq/其他 preset/编译 swapped tail，见 `docs/findings/krea2_3080_speed_stage9.md`。
 - Krea-2 compile 续训：PG199 NF4 中途保存/reload LoRA 96.4MB + optimizer 193.0MB 后，LoRA/forward round-trip delta=0，loss jump=0.000214，续训步时 2.728-2.730s 无重编译。reload 后不需再调 `compile_blocks()`，默认 fixed resident compile 可用于正常 checkpoint/resume，见 `docs/findings/krea2_3080_speed_stage10.md`。
 - Krea-2 compiled 算子天花板：PG199 profile 中 eager→compiled 为 3.398→2.746s；GEMM 1593ms 和 cuDNN attention 847ms 前后不变，收益来自融合约 601ms 的 mul/copy/add 及将可见 NF4 dequant 706→486 次。compiled 后 GEMM+attention 约占 89%，不要再期待 Python/prepare/padding 小修获得两位数加速，见 `docs/findings/krea2_3080_speed_stage11.md`。
-- Krea-2 packed varlen FlashAttention 候选：有效 token 打包 + native GQA 在 PG199 全模型/双 token-family 快 11-13%，50 步保持 2.417-2.439s（末步 2.429s）；RTX 3080 swap20 的 20 步热稳态约 12.145s（比历史 cuDNN compile 12.65s 快 4%），checkpoint LoRA/forward delta=0，GPU peak 6.09GB。当前仅为 `scripts/krea2/probe_nf4_flash_varlen.py` 实验路径；未补显式 backend、可选依赖/V100 BF16 fallback、batch/CFG 和 Dynamo 动态输出边界前，不得改生产默认，见 `docs/findings/krea2_3080_speed_stage12.md`。
-- Krea-2 RTX 3080 速度研究最终摘要：根因、有效配置、否决路径和实验候选的权威总表见 `docs/findings/krea2_3080_speed_final.md`，跨 PG199/3080 的 step、it/min、显存、冷/热稳态和 swap/checkpoint/compile/Flash 统一矩阵见 `docs/findings/krea2_3080_speed_comparison_extended.md`。简述为“大矩阵吞吐主导 + 长窗口热降频叠加”；当前生产配置保留 NF4、full checkpoint、fixed resident compile 与按显存选择 swap，Flash varlen 仍只作候选。
+- Krea-2 packed varlen FlashAttention：有效 token 打包 + native GQA 在 PG199 全模型/双 token-family 快 11-13%，50 步保持 2.417-2.439s（末步 2.429s）；RTX 3080 swap20 的 20 步热稳态约 12.145s（比历史 cuDNN compile 12.65s 快 4%），checkpoint LoRA/forward delta=0，GPU peak 6.09GB。已通过 `library/models/krea2_raw/attention_backend.py` 生产化为 `attn_mode="flash"` 显式 opt-in，包含 provider/dtype 前置拒绝、batch>1/GQA/padding 契约、训练/推理接线与 WebUI family 过滤；默认仍为 `attn_mode="torch"` cuDNN SDPA，见 `docs/findings/krea2_3080_speed_stage12.md`。
+- Krea-2 RTX 3080 速度研究最终摘要：根因、有效配置、否决路径和可选后端的权威总表见 `docs/findings/krea2_3080_speed_final.md`，跨 PG199/3080 的 step、it/min、显存、冷/热稳态和 swap/checkpoint/compile/Flash 统一矩阵见 `docs/findings/krea2_3080_speed_comparison_extended.md`。简述为“大矩阵吞吐主导 + 长窗口热降频叠加”；生产默认保留 NF4、full checkpoint、fixed resident compile 与按显存选择 swap，Flash varlen 为显式 opt-in。
 - `library/config/`：TOML 读取、合并、normalize、schema 校验。
 - `library/training/`：训练 bootstrap、loop、optimizer、scheduler、checkpoint、loss 等。
 - `library/inference/`：generation、sampling、adapter 加载、DirectEdit、DCW、输出处理。
@@ -451,7 +451,7 @@ T-LoRA mask 是共享 buffer，每个 denoising step 更新一次。
 常用 WebUI 验证：
 
 - 前端模块图、DOM、事件钩子、CSS import：
-  `timeout 60 .venv/bin/python -m pytest tests/test_training_frontend_state.py`
+  `timeout 60 .venv/bin/python -m pytest tests/test_training_frontend_modules.py tests/test_training_frontend_dom.py tests/test_training_frontend_history.py`
 - sample prompts/config：
   `timeout 60 .venv/bin/python -m pytest tests/test_web_config_service.py`
 - preview/global settings/output root：
@@ -587,7 +587,8 @@ T-LoRA mask 是共享 buffer，每个 denoising step 更新一次。
 - Web config/sample prompts：`tests/test_web_config_service.py`、`tests/test_config.py`。
 - Web global settings/preview paths：`tests/test_preview_service.py`。
 - Web training queue/runtime：`tests/test_training_queue.py`、`tests/test_training_resume_*.py`、`tests/test_training_runtime_config_*.py`、`tests/test_training_history_*.py`。
-- Web frontend modules/history/preview hooks：`tests/test_training_frontend_state.py`。
+- Web frontend modules/history/preview hooks：`tests/test_training_frontend_modules.py`、
+  `tests/test_training_frontend_dom.py`、`tests/test_training_frontend_history.py`。
 - Web weight analysis：`tests/test_weight_analysis_service.py`。
 - daemon/CLI launch：`tests/test_daemon.py`、`tests/test_runtime_harness_cli.py`、
   `tests/test_launch_config.py`。

@@ -242,10 +242,6 @@ COMMANDS = {
         utilities.cmd_test_focused,
         "Run an explicit pytest target or selector; refuses empty target lists.",
     ),
-    "test-slow": (
-        utilities.cmd_test_slow,
-        "Run pytest tests marked slow.",
-    ),
     "type-check": (
         utilities.cmd_type_check,
         "Run the configured pyright pilot gate.",

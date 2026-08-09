@@ -127,7 +127,7 @@ cp -r configs /path/to/new/configs
 echo "ANIMA_CONFIGS_ROOT=/path/to/new/configs" > .env
 
 # 3. 验证并备份原目录
-python test_config_migration.py
+.venv/bin/python tasks.py print-config METHOD=lora PRESET=default
 mv configs configs.backup
 ```
 
@@ -135,10 +135,10 @@ mv configs configs.backup
 
 ### 检查当前配置
 
-运行测试脚本查看实际使用的路径：
+通过正式配置入口确认外置目录可被读取和合并：
 
 ```bash
-python test_config_migration.py
+.venv/bin/python tasks.py print-config METHOD=lora PRESET=default
 ```
 
 ### 常见问题
@@ -180,7 +180,7 @@ A: 不会。外置是通过环境变量切换路径，不会自动删除任何�
 ### 测试覆盖
 
 - `tests/test_env_config_paths.py` - 路径解析单元测试
-- `test_config_migration.py` - 端到端验证脚本
+- `tests/test_global_settings_runtime.py` - WebUI 配置根热切换与运行时路径测试
 
 ## 反馈和支持
 

@@ -9,6 +9,7 @@
 
 | 文档 | 说明 |
 | --- | --- |
+| [test_script_audit_20260809.md](test_script_audit_20260809.md) | 2026-08-09 测试脚本审计、精简结果与 probe 保护边界 |
 | [documentation_consolidation_20260706.md](documentation_consolidation_20260706.md) | 2026-07-06 文档库合并整理报告 |
 | [project_cleanup_checkpoint_20260705.md](project_cleanup_checkpoint_20260705.md) | 项目清理检查点 |
 | [project_cleanup_long_running_goal_20260705.md](project_cleanup_long_running_goal_20260705.md) | 跨系统长期清理目标 |
@@ -44,7 +45,6 @@
 | [convrot_longrun_bf16_w8a8_w8a16_20260727.md](convrot_longrun_bf16_w8a8_w8a16_20260727.md) | RTX 3080 上 BF16/W8A8/W8A16 三组 1710-step 长训审计（速度、显存、loss、样图及最终保存回归修复） |
 | [loha_hot_test_20260725.md](loha_hot_test_20260725.md) | LoHa 在 RTX 3080 10GB 上的 12-step 热测与检查点验证 |
 | [training_profiling_hot_test_20260629.md](training_profiling_hot_test_20260629.md) | 训练 profiling 热测记录 |
-| [mfu_plain_lora_vs_lokr_blockswap_20260629_022138.md](mfu_plain_lora_vs_lokr_blockswap_20260629_022138.md) | Plain LoRA 与 LoKr block swap MFU 对比 |
 | [anima_lokr_blockswap_oom_report.md](anima_lokr_blockswap_oom_report.md) | LoKr 16G block swap OOM 报告 |
 | [anima_lokr_16g_next_goal.md](anima_lokr_16g_next_goal.md) | LoKr 16G 下一步目标 |
 | [lokr_anima_shaojianV1_run_report.md](lokr_anima_shaojianV1_run_report.md) | lokr-anima-shaojianV1 运行报告 |
@@ -53,6 +53,8 @@
 | [anima_fp8_blockswap_transfer_report.md](anima_fp8_blockswap_transfer_report.md) | FP8 block swap transfer 最终报告 |
 | [blockswap_baseline_20260806.md](blockswap_baseline_20260806.md) | 块交换优化基线测量（计算 vs 传输，RTX 3080 / CMP 90HX，标准参考） |
 | [krea2_nf4_ablation_findings.md](krea2_nf4_ablation_findings.md) | Krea-2 NF4 × {完整检查点, 块交换} 消融矩阵（5 格六维指标：显存/内存/速度/loss/数学实现/数学偏移，PG199 1024×1024 30 步） |
+| [krea2_nf4_self_contained.md](krea2_nf4_self_contained.md) | Krea-2 自包含 NF4 v2：无重新量化构建、版本化严格加载、v1 兼容与 PG199/RTX 3080 训练验证 |
+| [krea2_nf4_correction_pg199.md](krea2_nf4_correction_pg199.md) | Krea-2 NF4 激活加权 rank-16 回补实测：层级误差下降但端到端收益不足，暂不生产化 |
 | [krea2_nf4_h2d_bottleneck_findings.md](krea2_nf4_h2d_bottleneck_findings.md) | Krea-2 方向 B 前置诊断：NF4+swap H2D 搬运占比双口径实测 0% + 理论上界 2% → NOT_WORTH 归档（含口径缺陷诚实记录 + 与消融矩阵矛盾核验） |
 | [krea2_3080_speed_stage1.md](krea2_3080_speed_stage1.md) | Krea-2 RTX 3080 12s/it 阶段 1：同机双卡 Linear/attention 消融、满功耗核验、prepare 口径修正、padding 尾裁剪 NOT_WORTH |
 | [krea2_3080_speed_stage2.md](krea2_3080_speed_stage2.md) | Krea-2 速度阶段 2：PG199 every-other checkpoint 快 13.9%；RTX 3080 放开单 block 仍 OOM，NOT_FEASIBLE |
@@ -65,8 +67,8 @@
 | [krea2_3080_speed_stage9.md](krea2_3080_speed_stage9.md) | Krea-2 速度阶段 9：24 buckets 折叠为 4608/4864 两张可复用 compile 图，默认开启 fixed resident compile |
 | [krea2_3080_speed_stage10.md](krea2_3080_speed_stage10.md) | Krea-2 速度阶段 10：compile 与 LoRA+optimizer checkpoint round-trip delta=0，reload 后 2.73s 无重编译续训 |
 | [krea2_3080_speed_stage11.md](krea2_3080_speed_stage11.md) | Krea-2 速度阶段 11：compile 融合 mul/copy/add 并减少 dequant；GEMM+attention 不变且占 compiled 约 89% |
-| [krea2_3080_speed_stage12.md](krea2_3080_speed_stage12.md) | Krea-2 速度阶段 12：packed varlen FlashAttention 在 PG199 快 11-13%，3080 长稳态快 4%；扩展验证通过但暂不生产化 |
-| [krea2_3080_speed_final.md](krea2_3080_speed_final.md) | Krea-2 RTX 3080 速度研究最终审计：根因、生产建议、实验候选、否决路径与证据边界总表 |
+| [krea2_3080_speed_stage12.md](krea2_3080_speed_stage12.md) | Krea-2 速度阶段 12：packed varlen FlashAttention 在 PG199 快 11-13%，3080 长稳态快 4%；现为显式 opt-in 生产后端 |
+| [krea2_3080_speed_final.md](krea2_3080_speed_final.md) | Krea-2 RTX 3080 速度研究最终审计：根因、生产建议、可选后端、否决路径与证据边界总表 |
 | [krea2_3080_speed_comparison_extended.md](krea2_3080_speed_comparison_extended.md) | Krea-2 PG199/RTX 3080 扩展速度矩阵：step、it/min、显存、冷/热稳态、swap、checkpoint、compile 与 Flash 对比 |
 
 ## 方法和研究结论

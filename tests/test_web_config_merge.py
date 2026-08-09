@@ -19,9 +19,9 @@ from web.routes import config as config_routes
 from web.services import config_service
 from web.services.config import _legacy as legacy_config
 from web.services.config import datasets as config_datasets
+from web.services.config import merge as config_merge
 from web.services.config import metadata as config_metadata
 from web.services.config import paths as config_paths
-
 
 
 # Split: raw_files / merge / legacy shims
@@ -35,6 +35,7 @@ globals().update(
         if name == "Path" or not name.startswith("__")
     }
 )
+
 
 def test_merge_module_imports_without_facade_cycle():
     env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
@@ -308,3 +309,39 @@ def test_web_and_library_merge_agree_on_gui_method_defaults(tmp_path: Path, monk
     for key in core_keys:
         assert web_cfg.get(key) == lib_cfg.get(key), key
 
+
+def test_list_methods_omits_missing_known_files(tmp_path: Path, monkeypatch) -> None:
+    methods = tmp_path / "methods"
+    methods.mkdir()
+    (methods / "lora.toml").write_text("[network]\n", encoding="utf-8")
+    monkeypatch.setattr(config_merge, "CONFIGS_DIR", tmp_path)
+
+    names = config_merge.list_methods.__wrapped__()
+
+    assert "lora" in names
+    assert "lokr" not in names
+    assert "tlora" not in names
+    assert "hydralora" not in names
+    assert "spd" not in names
+
+
+def test_list_methods_includes_disk_extras(tmp_path: Path, monkeypatch) -> None:
+    methods = tmp_path / "methods"
+    methods.mkdir()
+    (methods / "turbo.toml").write_text("[network]\n", encoding="utf-8")
+    (methods / "lora.toml").write_text("[network]\n", encoding="utf-8")
+    monkeypatch.setattr(config_merge, "CONFIGS_DIR", tmp_path)
+
+    names = config_merge.list_methods.__wrapped__()
+
+    assert "turbo" in names
+    assert "lora" in names
+    assert names.index("lora") < names.index("turbo")
+
+
+def test_list_methods_empty_dir_returns_empty(tmp_path: Path, monkeypatch) -> None:
+    methods = tmp_path / "methods"
+    methods.mkdir()
+    monkeypatch.setattr(config_merge, "CONFIGS_DIR", tmp_path)
+
+    assert config_merge.list_methods.__wrapped__() == []

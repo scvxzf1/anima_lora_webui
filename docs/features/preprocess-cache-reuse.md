@@ -85,7 +85,7 @@ timeout 60 .venv/bin/python -m pytest \
   tests/test_cache_pool_store.py \
   tests/test_cache_pool_policy.py \
   tests/test_cache_pool_gc.py \
-  tests/test_training_runtime_cache_reuse.py \
+  tests/test_training_runtime_config_start.py \
   tests/test_preprocess_reuse_flags.py \
   tests/test_training_history_delete.py \
   -q

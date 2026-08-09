@@ -247,3 +247,19 @@ def test_configuration_and_training_docs_match_current_defaults():
     if not base["use_cmmd"] and dataset["validation_split_num"] == 0:
         assert "Validation is **disabled by default**" in training
     assert '"crossattn_emb"' in training
+
+
+def test_archived_proposals_are_listed_in_archive_indexes() -> None:
+    archived = sorted(
+        path.name
+        for path in (ARCHIVE_DOCS_ROOT / "proposal").glob("*.md")
+        if path.name != "README.md"
+    )
+    archive_index = (DOCS_ROOT / "archive-index.md").read_text(encoding="utf-8")
+    proposal_index = (ARCHIVE_DOCS_ROOT / "proposal" / "README.md").read_text(
+        encoding="utf-8"
+    )
+
+    assert archived
+    assert [name for name in archived if name not in archive_index] == []
+    assert [name for name in archived if name not in proposal_index] == []

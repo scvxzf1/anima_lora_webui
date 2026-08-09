@@ -3,8 +3,11 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import toml
+
 from web.services import environment_check_service as env_service
 from web.services import project_python
+from web.services import settings_service
 from web.services.config.metadata import PREPROCESS_ENV_REQUIRED_FILES
 from web.services.environment_check_service import (
     check_preprocess_environment_for_preflight,
@@ -177,3 +180,58 @@ def test_preflight_preprocess_ok_when_files_present(tmp_path: Path, monkeypatch)
 
     check_preprocess_environment_for_preflight(add)
     assert any(item["key"] == "preprocess_environment" and item["level"] == "ok" for item in captured)
+
+
+def test_run_environment_check_includes_effective_roots(tmp_path, monkeypatch):
+    monkeypatch.setattr(env_service, "ROOT", tmp_path)
+    monkeypatch.setattr(settings_service, "ROOT", tmp_path)
+    settings_file = tmp_path / "configs" / "web-ui-settings.toml"
+    settings_file.parent.mkdir(parents=True)
+    settings_file.write_text(
+        toml.dumps(
+            {
+                "global": {
+                    "output_root": "output/runs",
+                    "configs_root": "configs",
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(settings_service, "SETTINGS_FILE", settings_file)
+    monkeypatch.setattr(env_service, "_probe_imports", lambda _py: {"modules": {}, "torch_cuda": {}})
+    monkeypatch.setattr(env_service, "_check_model_paths", lambda add: None)
+    monkeypatch.setattr(env_service, "_run_cmd", lambda *_args, **_kwargs: (True, "ok"))
+    monkeypatch.setattr(
+        env_service, "venv_python_path", lambda: tmp_path / ".venv" / "bin" / "python"
+    )
+    monkeypatch.setattr(
+        env_service,
+        "resolve_web_python_executable",
+        lambda: str(tmp_path / ".venv" / "bin" / "python"),
+    )
+    python = tmp_path / ".venv" / "bin" / "python"
+    python.parent.mkdir(parents=True)
+    python.write_text("", encoding="utf-8")
+    for relative in ("pyproject.toml", "uv.lock"):
+        (tmp_path / relative).write_text("x", encoding="utf-8")
+    monkeypatch.setattr(env_service, "PROJECT_FILE_CHECKS", ("pyproject.toml", "uv.lock"))
+
+    result = run_environment_check()
+
+    roots = result["platform"]["effective_roots"]
+    for key in (
+        "project_root",
+        "configs_root",
+        "output_root",
+        "history_root",
+        "queue_root",
+    ):
+        assert roots[key]
+    keys = {check["key"] for check in result["checks"]}
+    assert {
+        "effective_configs_root",
+        "effective_output_root",
+        "effective_history_root",
+        "effective_queue_root",
+    } <= keys

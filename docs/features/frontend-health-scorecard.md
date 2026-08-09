@@ -8,7 +8,6 @@
 timeout 60 .venv/bin/python -m pytest \
   tests/test_training_frontend_modules.py \
   tests/test_training_frontend_dom.py \
-  tests/test_training_frontend_state.py \
   -q
 ```
 

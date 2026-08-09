@@ -30,6 +30,7 @@
 | [specs/2026-07-12-fp16-training-parity-design.md](specs/2026-07-12-fp16-training-parity-design.md) | FP16 训练一致性设计 |
 | [specs/2026-07-12-webui-design-system-console-upgrade-design.md](specs/2026-07-12-webui-design-system-console-upgrade-design.md) | WebUI 设计系统控制台升级设计 |
 | [specs/2026-07-12-webui-instrument-panel-reskin-design.md](specs/2026-07-12-webui-instrument-panel-reskin-design.md) | WebUI 仪表面板重绘设计 |
+| [specs/2026-07-27-history-manager-extra-filters-design.md](specs/2026-07-27-history-manager-extra-filters-design.md) | 历史任务全局搜索扩展筛选设计 |
 
 ## Plans
 
@@ -51,6 +52,7 @@
 | [plans/2026-07-12-webui-instrument-panel-reskin.md](plans/2026-07-12-webui-instrument-panel-reskin.md) | WebUI 仪表面板重绘执行计划 |
 | [plans/2026-07-12-webui-instrument-panel-reskin-iteration-log.md](plans/2026-07-12-webui-instrument-panel-reskin-iteration-log.md) | WebUI 仪表面板重绘迭代日志 |
 | [plans/2026-07-12-webui-instrument-panel-reskin-final-review.md](plans/2026-07-12-webui-instrument-panel-reskin-final-review.md) | WebUI 仪表面板重绘最终评审 |
+| [plans/2026-07-27-history-manager-extra-filters.md](plans/2026-07-27-history-manager-extra-filters.md) | 历史任务全局搜索扩展筛选执行计划 |
 
 ## 维护规则
 

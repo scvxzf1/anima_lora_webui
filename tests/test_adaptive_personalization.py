@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -11,8 +12,9 @@ from library.training.adaptive_personalization import (
     should_probe,
     update_observation,
 )
-from library.training.losses import add_custom_train_arguments
+from library.training.losses import LOSS_REGISTRY, LossContext, add_custom_train_arguments
 from library.training.progress import ProgressSink
+from library.training.stage_schedule import parse_stage_specs, resolve_stage_index
 
 
 def _args(**overrides):
@@ -161,3 +163,99 @@ def test_observer_cli_fields_are_explicit_and_parseable():
     assert parsed.adaptive_personalization_observe is True
     assert parsed.adaptive_personalization_timestep_bins == 8
     assert parsed.adaptive_personalization_probe_every_n_steps == 3
+
+
+def _personalization_loss_context(*, mask=None, normalize="none", prior=False):
+    prediction = torch.tensor([[[[1.0, 3.0], [5.0, 7.0]]]])
+    batch = {} if mask is None else {"alpha_masks": mask}
+    args = SimpleNamespace(
+        loss_type="l2",
+        masked_loss=mask is not None,
+        mask_loss_normalize=normalize,
+        foreground_loss_weight=1.0,
+        prior_preservation_weight=0.1 if prior else 0.0,
+        inverted_mask_prior_weight=0.0,
+    )
+    auxiliary = {}
+    if prior:
+        auxiliary["prior_preservation"] = {
+            "prior_pred": torch.zeros_like(prediction)
+        }
+    return LossContext(
+        args=args,
+        batch=batch,
+        model_pred=prediction,
+        target=torch.zeros_like(prediction),
+        timesteps=torch.zeros(1),
+        weighting=None,
+        huber_c=None,
+        loss_weights=torch.ones(1),
+        network=SimpleNamespace(),
+        aux=auxiliary,
+    )
+
+
+@pytest.mark.parametrize(
+    "name,context_factory",
+    [
+        ("full_image", lambda: _personalization_loss_context()),
+        (
+            "region_foreground_mean",
+            lambda: _personalization_loss_context(
+                mask=torch.tensor([[[1.0, 1.0], [0.0, 0.0]]]),
+                normalize="foreground_mean",
+            ),
+        ),
+        (
+            "region_to_full_stage",
+            lambda: _personalization_loss_context(
+                mask=torch.tensor([[[1.0, 1.0], [0.0, 0.0]]]),
+                normalize="foreground_mean",
+            ),
+        ),
+        (
+            "region_to_full_with_prior",
+            lambda: _personalization_loss_context(
+                mask=torch.tensor([[[1.0, 1.0], [0.0, 0.0]]]),
+                normalize="foreground_mean",
+                prior=True,
+            ),
+        ),
+    ],
+)
+def test_personalization_baselines_are_finite(name, context_factory):
+    context = context_factory()
+    total = LOSS_REGISTRY["flow_match"](context)
+    if "prior" in name:
+        total = total + LOSS_REGISTRY["prior_preservation"](context)
+
+    assert total.shape == (1,), name
+    assert torch.isfinite(total).all(), name
+
+
+def test_personalization_stage_and_dual_cache_contract(tmp_path: Path):
+    stages = parse_stage_specs(
+        [
+            {
+                "name": "region",
+                "subset_index": 0,
+                "start_pct": 0.0,
+                "end_pct": 0.35,
+            },
+            {
+                "name": "full",
+                "subset_index": 1,
+                "start_pct": 0.35,
+                "end_pct": 1.0,
+            },
+        ]
+    )
+    assert resolve_stage_index(stages, 0.0) == 0
+    assert resolve_stage_index(stages, 0.35) == 1
+
+    region_cache = tmp_path / "lora_region"
+    full_cache = tmp_path / "lora_full"
+    region_cache.mkdir()
+    full_cache.mkdir()
+    assert region_cache != full_cache
+    assert region_cache.exists() and full_cache.exists()

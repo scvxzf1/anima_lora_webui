@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import pickle
 from pathlib import Path
 
 import pytest
@@ -28,12 +29,173 @@ from library.config.io import (
     load_preset_section,
     list_presets,
 )
+from library.config.loader import load_user_config
+from library.config.provenance import explain_key, trace_method_config
+from library.datasets.subsets import DreamBoothSubset
 from library.env import project_root
 from tests.conftest import iter_method_names
 
 
 def _repo_configs_root() -> Path:
     return project_root() / "configs"
+
+
+def test_cuda_track_stays_bitsandbytes_compatible():
+    root = project_root()
+    pyproject = (root / "pyproject.toml").read_text(encoding="utf-8")
+    lock = (root / "uv.lock").read_text(encoding="utf-8")
+
+    assert "https://download.pytorch.org/whl/cu130" in pyproject
+    assert "https://download.pytorch.org/whl/cu132" not in pyproject
+    assert "bitsandbytes>=0.49.2" in pyproject
+    assert 'name = "bitsandbytes"' in lock
+    assert 'name = "cuda-toolkit"\nversion = "13.0.2"' in lock
+    assert "flash_attn-2.8.3+cu130torch2.12" in lock
+    assert "flash_attn-2.8.3+cu132torch2.12" not in lock
+
+
+def test_dataset_inline_table_config_is_pickle_safe(tmp_path: Path) -> None:
+    config_path = tmp_path / "dataset.toml"
+    config_path.write_text(
+        "\n".join(
+            [
+                "[[datasets]]",
+                "",
+                "[[datasets.subsets]]",
+                'image_dir = "images"',
+                'custom_attributes = {source_dir = "raw/images"}',
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    raw = toml.load(config_path)
+    raw_attributes = raw["datasets"][0]["subsets"][0]["custom_attributes"]
+    try:
+        pickle.dumps(raw_attributes)
+    except AttributeError:
+        pass
+    else:
+        raise AssertionError("test fixture no longer reproduces toml inline table")
+
+    loaded = load_user_config(str(config_path))
+    attributes = loaded["datasets"][0]["subsets"][0]["custom_attributes"]
+
+    assert type(attributes) is dict
+    assert attributes == {"source_dir": "raw/images"}
+    pickle.dumps(attributes)
+
+
+def test_subset_custom_attributes_are_pickle_safe(tmp_path: Path) -> None:
+    raw = toml.loads('custom_attributes = {source_dir = "raw/images"}')
+    subset = DreamBoothSubset(
+        image_dir=str(tmp_path),
+        is_reg=False,
+        class_tokens=None,
+        caption_extension=".txt",
+        cache_info=False,
+        alpha_mask=False,
+        num_repeats=1,
+        sample_ratio=1.0,
+        caption_separator=",",
+        keep_tokens=0,
+        keep_tokens_separator=None,
+        secondary_separator=None,
+        enable_wildcard=False,
+        color_aug=False,
+        flip_aug=False,
+        face_crop_aug_range=None,
+        random_crop=False,
+        caption_dropout_rate=0.0,
+        caption_dropout_every_n_epochs=0,
+        caption_tag_dropout_rate=0.0,
+        caption_prefix=None,
+        caption_suffix=None,
+        token_warmup_min=1,
+        token_warmup_step=0,
+        custom_attributes=raw["custom_attributes"],
+    )
+
+    assert type(subset.custom_attributes) is dict
+    assert subset.custom_attributes == {"source_dir": "raw/images"}
+    pickle.dumps(subset.custom_attributes)
+
+
+def _write_provenance_config_tree(root: Path) -> None:
+    (root / "methods").mkdir(parents=True)
+    (root / "base.toml").write_text(
+        "\n".join(
+            [
+                'network_module = "networks.lora_anima"',
+                "network_dim = 8",
+                "blocks_to_swap = 0",
+                "learning_rate = 0.0001",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (root / "presets.toml").write_text(
+        "\n".join(
+            [
+                "[default]",
+                "blocks_to_swap = 0",
+                "[low]",
+                "blocks_to_swap = 12",
+                "learning_rate = 0.0002",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (root / "methods" / "demo.toml").write_text(
+        "network_dim = 32\nlearning_rate = 0.0003\n",
+        encoding="utf-8",
+    )
+
+
+def test_trace_method_config_records_layer_history(tmp_path: Path) -> None:
+    _write_provenance_config_tree(tmp_path)
+
+    trace = trace_method_config("demo", "low", configs_dir=tmp_path)
+
+    assert trace["values"]["network_dim"] == 32
+    assert trace["values"]["blocks_to_swap"] == 12
+    assert trace["values"]["learning_rate"] == 0.0003
+    learning_rate = explain_key(trace, "learning_rate")
+    assert [item["kind"] for item in learning_rate["history"]] == [
+        "base",
+        "preset",
+        "method",
+    ]
+    assert learning_rate["source"].endswith("configs/methods/demo.toml") or learning_rate[
+        "source"
+    ].endswith("/methods/demo.toml")
+
+
+def test_trace_method_config_layers_runtime_and_overrides(tmp_path: Path) -> None:
+    _write_provenance_config_tree(tmp_path)
+    runtime = tmp_path / "runtime.toml"
+    runtime.write_text("network_dim = 48\nblocks_to_swap = 20\n", encoding="utf-8")
+
+    trace = trace_method_config(
+        "demo",
+        "low",
+        configs_dir=tmp_path,
+        runtime_config=runtime,
+        overrides={"network_dim": 64},
+    )
+
+    assert trace["values"]["network_dim"] == 64
+    assert trace["values"]["blocks_to_swap"] == 20
+    network_dim = explain_key(trace, "network_dim")
+    assert [item["kind"] for item in network_dim["history"]] == [
+        "base",
+        "method",
+        "runtime",
+        "override",
+    ]
+    assert network_dim["source"] == "CLI/override"
 
 
 # ---------------------------------------------------------------------------

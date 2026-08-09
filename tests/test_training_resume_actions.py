@@ -1,4 +1,4 @@
-"""Resume-from-history actions tests split from test_training_resume.py."""
+"""Resume-from-history and continue-from-weight action tests."""
 
 from __future__ import annotations
 
@@ -13,6 +13,7 @@ globals().update(
 )
 
 # Split: resume_actions
+
 
 def test_handle_resume_passes_duration_overrides():
     class FakeService:
@@ -50,6 +51,7 @@ def test_handle_resume_passes_duration_overrides():
     assert payload["checkpoint"] == "state-dir"
     assert payload["duration_overrides"] == {"max_train_epochs": 1}
     assert payload["gpu_whitelist"] == [0]
+
 
 def test_resume_from_history_allows_remaining_steps_and_clones_runtime(tmp_path, monkeypatch):
     history_dir, task_id, state_dir = _write_resume_history(tmp_path)
@@ -98,6 +100,7 @@ def test_resume_from_history_allows_remaining_steps_and_clones_runtime(tmp_path,
     assert runtime_cfg["output_dir"] != str(state_dir.parent)
     assert "network_weights" not in runtime_cfg
     assert "dim_from_weights" not in runtime_cfg
+
 
 def test_resume_from_history_duration_epoch_override_appends_steps(tmp_path, monkeypatch):
     history_dir, task_id, state_dir = _write_resume_history(tmp_path)
@@ -155,6 +158,7 @@ def test_resume_from_history_duration_epoch_override_appends_steps(tmp_path, mon
     }
     assert captured["resume_info"]["remaining_steps"] == 3
 
+
 def test_resume_from_history_rejects_other_directory_state(tmp_path, monkeypatch):
     history_dir, task_id, state_dir = _write_resume_history(tmp_path)
     other_state = state_dir.parent / "other-checkpoint-state"
@@ -174,6 +178,7 @@ def test_resume_from_history_rejects_other_directory_state(tmp_path, monkeypatch
         assert "未找到指定的检查点" in str(e)
     else:
         raise AssertionError("不应允许从同目录其他训练状态续训")
+
 
 def test_resume_from_history_uses_snapshot_and_resume_args(tmp_path, monkeypatch):
     history_dir, task_id, state_dir = _write_resume_history(tmp_path)
@@ -217,6 +222,7 @@ def test_resume_from_history_uses_snapshot_and_resume_args(tmp_path, monkeypatch
     assert captured["resume_info"]["history_group_key"] == "legacy:imported\u0001demo\u0001default"
     assert captured["resume_info"]["history_group_label"] == "imported / demo / default"
 
+
 def test_resume_from_history_forwards_gpu_whitelist(tmp_path, monkeypatch):
     history_dir, task_id, state_dir = _write_resume_history(tmp_path)
     monkeypatch.setattr(training_service, "HISTORY_DIR", history_dir)
@@ -237,6 +243,7 @@ def test_resume_from_history_forwards_gpu_whitelist(tmp_path, monkeypatch):
     assert result["ok"] is True
     assert captured["gpu_whitelist"] == ["1", "bad", 2, 2]
 
+
 def test_resume_from_history_requires_config_snapshot(tmp_path, monkeypatch):
     history_dir, task_id, state_dir = _write_resume_history(tmp_path)
     monkeypatch.setattr(training_service, "HISTORY_DIR", history_dir)
@@ -250,6 +257,7 @@ def test_resume_from_history_requires_config_snapshot(tmp_path, monkeypatch):
         assert "配置快照" in str(e)
     else:
         raise AssertionError("缺少配置快照时不应允许续训")
+
 
 def test_resume_history_meta_inherits_source_group(tmp_path, monkeypatch):
     history_dir = tmp_path / "history"
@@ -336,3 +344,223 @@ def test_resume_from_history_duration_override_reports_stage_shift(tmp_path, mon
     assert resume_info["stage_after"]["progress"] == result["stage_after"]["progress"]
     assert resume_info["warning"] == result["warning"]
 
+
+def test_inspect_continue_lora_weight_detects_supported_variants(tmp_path, monkeypatch):
+    _write_runtime_config_tree(tmp_path)
+    _patch_runtime_service_paths(monkeypatch, tmp_path)
+    lora_path = _write_continue_lora_weight(
+        tmp_path / "weights" / "demo.safetensors",
+        kind="LoRA",
+    )
+    dora_path = _write_continue_lora_weight(
+        tmp_path / "weights" / "demo_dora.safetensors",
+        kind="DoRA",
+    )
+    loha_path = _write_continue_lora_weight(
+        tmp_path / "weights" / "demo_loha.safetensors",
+        kind="LoHa",
+    )
+    lokr_path = _write_continue_lora_weight(
+        tmp_path / "weights" / "demo_lokr.safetensors",
+        kind="LoKr",
+    )
+    glora_path = _write_continue_lora_weight(
+        tmp_path / "weights" / "demo_glora.safetensors",
+        kind="GLoRA",
+    )
+
+    lora_payload = training_service.inspect_continue_lora_weight(
+        str(lora_path),
+        variant="lora",
+        preset="default",
+        methods_subdir="gui-methods",
+    )
+    dora_payload = training_service.inspect_continue_lora_weight(
+        str(dora_path),
+        variant="dora",
+        preset="default",
+        methods_subdir="gui-methods",
+    )
+    dora_blocked = training_service.inspect_continue_lora_weight(
+        str(dora_path),
+        variant="lora",
+        preset="default",
+        methods_subdir="gui-methods",
+    )
+    loha_payload = training_service.inspect_continue_lora_weight(
+        str(loha_path),
+        variant="loha",
+        preset="default",
+        methods_subdir="gui-methods",
+    )
+    loha_blocked = training_service.inspect_continue_lora_weight(
+        str(loha_path),
+        variant="lora",
+        preset="default",
+        methods_subdir="gui-methods",
+    )
+    lokr_payload = training_service.inspect_continue_lora_weight(
+        str(lokr_path),
+        variant="lokr",
+        preset="default",
+        methods_subdir="gui-methods",
+    )
+    lokr_blocked = training_service.inspect_continue_lora_weight(
+        str(lokr_path),
+        variant="lora",
+        preset="default",
+        methods_subdir="gui-methods",
+    )
+    glora_payload = training_service.inspect_continue_lora_weight(
+        str(glora_path),
+        variant="glora",
+        preset="default",
+        methods_subdir="gui-methods",
+    )
+    glora_blocked = training_service.inspect_continue_lora_weight(
+        str(glora_path),
+        variant="lora",
+        preset="default",
+        methods_subdir="gui-methods",
+    )
+
+    assert lora_payload["kind"] == "LoRA"
+    assert lora_payload["compatible"] is True
+    assert dora_payload["kind"] == "DoRA"
+    assert dora_payload["compatible"] is True
+    assert dora_payload["metadata"]["ss_adapter_variant"] == "dora"
+    assert dora_blocked["compatible"] is False
+    assert "dora" in dora_blocked["message"].lower()
+    assert loha_payload["kind"] == "LoHa"
+    assert loha_payload["compatible"] is True
+    assert loha_blocked["compatible"] is False
+    assert "loha" in loha_blocked["message"].lower()
+    assert lokr_payload["kind"] == "LoKr"
+    assert lokr_payload["compatible"] is True
+    assert lokr_blocked["compatible"] is False
+    assert "lokr" in lokr_blocked["message"].lower()
+    assert glora_payload["kind"] == "GLoRA"
+    assert glora_payload["compatible"] is True
+    assert glora_blocked["compatible"] is False
+    assert "glora" in glora_blocked["message"].lower()
+
+
+def test_inspect_continue_lora_weight_rejects_complex_lora_like_weights(
+    tmp_path,
+    monkeypatch,
+):
+    _write_runtime_config_tree(tmp_path)
+    _patch_runtime_service_paths(monkeypatch, tmp_path)
+    plain_lora_tensors = {
+        "lora_unet_blocks_0_self_attn_q_proj.lora_down.weight": torch.randn(4, 8),
+        "lora_unet_blocks_0_self_attn_q_proj.lora_up.weight": torch.randn(12, 4),
+        "lora_unet_blocks_0_self_attn_q_proj.alpha": torch.tensor(4.0),
+    }
+    cases = [
+        (
+            "hydra_keys",
+            {
+                "lora_unet_blocks_0_self_attn_q_proj.lora_down.weight": torch.randn(
+                    4, 8
+                ),
+                "lora_unet_blocks_0_self_attn_q_proj.lora_ups.0.weight": torch.randn(
+                    12, 4
+                ),
+                "lora_unet_blocks_0_self_attn_q_proj.router.weight": torch.randn(2, 4),
+            },
+            None,
+        ),
+        (
+            "stacked_keys",
+            {
+                "lora_unet_blocks_0_self_attn_q_proj.lora_down_weight": torch.randn(
+                    2, 4, 8
+                ),
+                "lora_unet_blocks_0_self_attn_q_proj.lora_up_weight": torch.randn(
+                    2, 12, 4
+                ),
+            },
+            None,
+        ),
+        ("hydra_spec", plain_lora_tensors, {"ss_network_spec": "hydra"}),
+        (
+            "stacked_spec",
+            plain_lora_tensors,
+            {"ss_network_spec": "stacked_experts_global_fei"},
+        ),
+        ("chimera_spec", plain_lora_tensors, {"ss_network_spec": "chimera_hydra"}),
+        (
+            "reft_key",
+            {"reft_unet_blocks_0.rotate_layer.weight": torch.randn(4, 4)},
+            {"ss_network_spec": "reft"},
+        ),
+    ]
+
+    for name, tensors, metadata in cases:
+        path = _write_continue_lora_weight(
+            tmp_path / "weights" / f"{name}.safetensors",
+            tensors=tensors,
+            metadata=metadata,
+        )
+        with pytest.raises(
+            ValueError, match="未识别为 LoRA、DoRA、LoHa、LoKr 或 GLoRA"
+        ):
+            training_service.inspect_continue_lora_weight(
+                str(path),
+                variant="lora",
+                preset="default",
+                methods_subdir="gui-methods",
+            )
+
+
+def test_inspect_continue_lora_weight_reports_path_errors(tmp_path, monkeypatch):
+    _write_runtime_config_tree(tmp_path)
+    _patch_runtime_service_paths(monkeypatch, tmp_path)
+
+    with pytest.raises(FileNotFoundError, match="权重文件不存在"):
+        training_service.inspect_continue_lora_weight(
+            str(tmp_path / "weights" / "missing.safetensors"),
+            variant="lora",
+            preset="default",
+            methods_subdir="gui-methods",
+        )
+
+    txt_path = tmp_path / "weights" / "demo.txt"
+    txt_path.parent.mkdir(parents=True, exist_ok=True)
+    txt_path.write_text("not a safetensors file", encoding="utf-8")
+    with pytest.raises(ValueError, match="只支持 .safetensors"):
+        training_service.inspect_continue_lora_weight(
+            str(txt_path),
+            variant="lora",
+            preset="default",
+            methods_subdir="gui-methods",
+        )
+
+    directory_path = tmp_path / "weights" / "directory.safetensors"
+    directory_path.mkdir()
+    with pytest.raises(ValueError, match="权重路径不是文件"):
+        training_service.inspect_continue_lora_weight(
+            str(directory_path),
+            variant="lora",
+            preset="default",
+            methods_subdir="gui-methods",
+        )
+
+    unreadable_path = _write_continue_lora_weight(
+        tmp_path / "weights" / "unreadable.safetensors"
+    )
+    real_access = os.access
+
+    def fake_access(path, mode):
+        if Path(path) == unreadable_path and mode == os.R_OK:
+            return False
+        return real_access(path, mode)
+
+    monkeypatch.setattr(training_service.os, "access", fake_access)
+    with pytest.raises(ValueError, match="权重文件不可读取"):
+        training_service.inspect_continue_lora_weight(
+            str(unreadable_path),
+            variant="lora",
+            preset="default",
+            methods_subdir="gui-methods",
+        )

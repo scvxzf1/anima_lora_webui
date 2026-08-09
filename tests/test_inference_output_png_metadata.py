@@ -3,6 +3,8 @@ from __future__ import annotations
 from argparse import Namespace
 from pathlib import Path
 
+import pytest
+import torch
 from PIL import Image
 
 from library.inference import output
@@ -70,3 +72,22 @@ def test_save_images_filename_keeps_legacy_shape(tmp_path) -> None:
     name = Path(f"{saved}.png").name
 
     assert name.startswith("20") and name.endswith("_42.png")
+
+
+def test_decode_latent_rejects_batch_gt_one():
+    class FakeVae:
+        dtype = torch.float32
+
+        def to(self, *_args, **_kwargs):
+            return self
+
+        def decode_to_pixels(self, latent):
+            batch, channels, _frames, height, width = latent.shape
+            return torch.zeros(batch, channels, height, width)
+
+    with pytest.raises(ValueError, match="batch size 1"):
+        output.decode_latent(
+            FakeVae(),
+            torch.zeros(2, 16, 1, 4, 4),
+            torch.device("cpu"),
+        )

@@ -18,6 +18,20 @@ from PIL import Image
 from web.routes import config as config_routes
 from web.services import config_service
 from web.services.config import _legacy as legacy_config
+from web.services.config import (
+    dataset_editor,
+    dataset_media,
+    dataset_preset_paths,
+    dataset_presets_api,
+    dataset_rows,
+    file_group_runtime,
+    file_groups,
+    merge,
+    output_runs,
+    preflight_runtime,
+    raw_files,
+    sample_prompts,
+)
 from web.services.config import datasets as config_datasets
 from web.services.config import metadata as config_metadata
 from web.services.config import paths as config_paths
@@ -484,3 +498,44 @@ class _JsonRequest:
 class _QueryRequest:
     def __init__(self, query: dict[str, str] | None = None) -> None:
         self.query = query or {}
+
+
+CONFIG_ROOT_DOMAIN_MODULES = (
+    merge,
+    preflight_runtime,
+    raw_files,
+    sample_prompts,
+    file_groups,
+    file_group_runtime,
+    config_datasets,
+    dataset_media,
+    dataset_editor,
+    dataset_rows,
+    dataset_preset_paths,
+    dataset_presets_api,
+    output_runs,
+)
+
+
+def test_set_configs_root_broadcasts_to_all_domain_modules(tmp_path, monkeypatch):
+    target = (tmp_path / "broadcast-configs").resolve()
+    target.mkdir(parents=True)
+
+    for module in (config_service, *CONFIG_ROOT_DOMAIN_MODULES):
+        if hasattr(module, "CONFIGS_DIR"):
+            monkeypatch.setattr(
+                module, "CONFIGS_DIR", getattr(module, "CONFIGS_DIR"), raising=False
+            )
+
+    resolved = config_service.set_configs_root(target)
+
+    assert resolved == target
+    assert config_service.CONFIGS_DIR == target
+    for module in CONFIG_ROOT_DOMAIN_MODULES:
+        assert getattr(module, "CONFIGS_DIR") == target
+        if hasattr(module, "DATASET_PRESETS_DIR"):
+            assert Path(getattr(module, "DATASET_PRESETS_DIR")) == target / "datasets"
+        if hasattr(module, "IMPORTED_CONFIGS_DIR"):
+            assert Path(getattr(module, "IMPORTED_CONFIGS_DIR")) == target / "imported"
+        if hasattr(module, "GUI_METHODS_DIR"):
+            assert Path(getattr(module, "GUI_METHODS_DIR")) == target / "gui-methods"

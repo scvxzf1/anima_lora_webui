@@ -83,6 +83,7 @@
 ```bash
 timeout 60 .venv/bin/python -m pytest \
   tests/test_preview_service.py \
-  tests/test_training_frontend_state.py \
+  tests/test_training_frontend_modules.py \
+  tests/test_training_frontend_history.py \
   -q
 ```

@@ -5,9 +5,6 @@ from __future__ import annotations
 import importlib.util
 from pathlib import Path
 
-import pytest
-import torch
-
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "experiments" / "convrot_fusion_microbench.py"
 
@@ -79,23 +76,3 @@ def test_recommend_gates():
     assert d2["recommend_w8a16_cheap_dequant_elim"] is True
     assert d2["recommend_w8a16_kloop_fusion_impl"] is False
     assert d2["recommend_bwd_chunk_for_speed"] is True
-
-
-@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA for tiny live bench")
-def test_bench_shape_tiny_smoke():
-    mod = _load_mod()
-    device = torch.device("cuda")
-    row = mod.bench_shape(
-        m=32,
-        k=64,
-        n=64,
-        device=device,
-        dtype=torch.bfloat16,
-        warmup=2,
-        iters=5,
-        bwd_chunk=16,
-    )
-    assert row["fwd_bf16_linear"]["ms"] > 0
-    assert row["fwd_w8a16_dequant_linear"]["ms"] > 0
-    assert "upper_bounds" in row
-    assert row["bwd_chunked_rel_err"] < 1e-2

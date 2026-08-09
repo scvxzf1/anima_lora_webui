@@ -1,12 +1,13 @@
-"""T-R2: per-item retry override above queue runtime policy."""
+"""Queue-level and per-item retry policy contracts."""
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from aiohttp import web
 
-from web.services import training_service
+from web.services import settings_service, training_service
 from web.services.training.service_state import resolve_item_retry_policy
 from web.services.training_service import TrainingService
 
@@ -204,3 +205,138 @@ def test_enqueue_training_persists_item_retry_fields(tmp_path, monkeypatch):
     snap_item = next(i for i in payload["items"] if i["id"] == item["id"])
     assert snap_item["max_attempts"] == 4
 
+
+def test_manual_retry_marks_item_and_resets_attempt(tmp_path, monkeypatch):
+    import asyncio
+
+    _patch_queue_paths(tmp_path, monkeypatch)
+    runtime = _runtime_payload(tmp_path)
+    service = TrainingService(web.Application())
+    service._queue = {
+        "paused": True,
+        "items": [
+            {
+                "id": "q-failed",
+                "state": "error",
+                "kind": "training",
+                "attempt": 3,
+                "variant": "demo",
+                "preset": "default",
+                "methods_subdir": "imported",
+                "runtime_config_file": runtime["runtime_config_file"],
+                "source_config_file": "configs/imported/source.toml",
+                "extra_args": [],
+                "gpu_whitelist": [],
+                "continue_info": {},
+                "resume_info": {},
+                "requires_preprocess": False,
+                "message": "boom",
+            }
+        ],
+    }
+    service._queue_paused = True
+    monkeypatch.setattr(service, "_schedule_queue_dispatch", lambda: None)
+
+    payload = asyncio.run(service.retry_queue_item("q-failed"))
+
+    assert payload["ok"] is True
+    retry = payload["item"]
+    assert retry["retry_of"] == "q-failed"
+    assert retry.get("manual_retry") is True
+    assert retry.get("retry_source") == "manual"
+    assert int(retry.get("attempt") or 0) == 1
+    assert retry.get("state") == "queued"
+    assert retry.get("next_run_at") in (None, 0, "")
+
+
+def _patch_queue_and_settings(tmp_path: Path, monkeypatch):
+    queue_dir = tmp_path / "queue"
+    queue_dir.mkdir(parents=True)
+    history_dir = tmp_path / "history"
+    history_dir.mkdir(parents=True)
+    settings_file = tmp_path / "configs" / "web-ui-settings.toml"
+    settings_file.parent.mkdir(parents=True)
+    settings_file.write_text(
+        '[global]\noutput_root = "output/runs"\n',
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(training_service, "QUEUE_DIR", queue_dir)
+    monkeypatch.setattr(training_service, "QUEUE_FILE", queue_dir / "queue.json")
+    monkeypatch.setattr(training_service, "HISTORY_DIR", history_dir)
+    monkeypatch.setattr(settings_service, "ROOT", tmp_path)
+    monkeypatch.setattr(settings_service, "SETTINGS_FILE", settings_file)
+    return queue_dir / "queue.json"
+
+
+def test_queue_seeds_retry_policy_when_keys_missing(tmp_path, monkeypatch):
+    queue_file = _patch_queue_and_settings(tmp_path, monkeypatch)
+    queue_file.write_text(
+        json.dumps({"paused": False, "items": []}),
+        encoding="utf-8",
+    )
+    settings_service.save_training_policy(
+        {
+            "auto_retry": True,
+            "max_attempts": 4,
+            "retry_backoff_sec": 12.5,
+        }
+    )
+
+    svc = TrainingService(web.Application())
+    assert svc._queue_auto_retry is True
+    assert svc._queue_max_attempts == 4
+    assert svc._queue_retry_backoff_sec == 12.5
+    raw = json.loads(queue_file.read_text(encoding="utf-8"))
+    assert "auto_retry" not in raw
+    assert "max_attempts" not in raw
+    assert "retry_backoff_sec" not in raw
+
+
+def test_queue_runtime_keys_not_overwritten_by_policy_change(tmp_path, monkeypatch):
+    queue_file = _patch_queue_and_settings(tmp_path, monkeypatch)
+    queue_file.write_text(
+        json.dumps(
+            {
+                "paused": False,
+                "auto_retry": False,
+                "max_attempts": 2,
+                "retry_backoff_sec": 1.0,
+                "items": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+    settings_service.save_training_policy(
+        {
+            "auto_retry": True,
+            "max_attempts": 9,
+            "retry_backoff_sec": 99.0,
+        }
+    )
+
+    svc = TrainingService(web.Application())
+    assert svc._queue_auto_retry is False
+    assert svc._queue_max_attempts == 2
+    assert svc._queue_retry_backoff_sec == 1.0
+
+
+def test_queue_settings_clamp_match_policy_bounds(tmp_path, monkeypatch):
+    import asyncio
+
+    queue_file = _patch_queue_and_settings(tmp_path, monkeypatch)
+    queue_file.write_text(
+        json.dumps({"paused": False, "items": []}),
+        encoding="utf-8",
+    )
+    svc = TrainingService(web.Application())
+
+    snapshot = asyncio.run(
+        svc.set_queue_settings(max_attempts=999, retry_backoff_sec=99999)
+    )
+
+    assert snapshot["max_attempts"] == 10
+    assert snapshot["retry_backoff_sec"] == 3600.0
+    raw = json.loads(queue_file.read_text(encoding="utf-8"))
+    assert raw["max_attempts"] == 10
+    assert float(raw["retry_backoff_sec"]) == 3600.0

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import torch
 
-from library.anima.models import Anima, Block, FinalLayer
+from library.anima.models import Anima, Block, FinalLayer, RMSNorm
 
 _FP16_MAX = torch.finfo(torch.float16).max
 
@@ -108,3 +108,28 @@ def test_enable_fp32_residual_propagates_to_all_modules():
 
     assert all(b.fp32_residual for b in anima.blocks)
     assert anima.final_layer.fp32_residual is True
+
+
+def test_rmsnorm_preserves_half_dtype() -> None:
+    norm = RMSNorm(16)
+    for dtype in (torch.bfloat16, torch.float16):
+        inputs = torch.randn(2, 4, 16, dtype=dtype)
+        output = norm(inputs)
+        assert output.dtype == dtype
+        assert output.shape == inputs.shape
+        assert torch.isfinite(output.float()).all()
+
+
+def test_rmsnorm_matches_legacy_fp32_affine_up_to_half_rounding() -> None:
+    torch.manual_seed(0)
+    norm = RMSNorm(32)
+    inputs = torch.randn(3, 8, 32, dtype=torch.bfloat16)
+
+    current = norm(inputs)
+    legacy = (norm._norm(inputs.float()) * norm.weight).to(inputs.dtype)
+    relative_error = (
+        (current.float() - legacy.float()).norm()
+        / legacy.float().norm().clamp_min(1e-8)
+    )
+
+    assert relative_error.item() < 1e-3

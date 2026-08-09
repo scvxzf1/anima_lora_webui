@@ -100,7 +100,6 @@
 
 ```bash
 timeout 60 .venv/bin/python -m pytest \
-  tests/test_training_history_service.py \
   tests/test_training_history_list.py \
   tests/test_training_history_delete.py \
   tests/test_training_history_artifacts.py \

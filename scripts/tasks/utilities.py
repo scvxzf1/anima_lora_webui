@@ -1,5 +1,5 @@
 """Misc utility entry-points: merge, comfy-batch, distill-prep, distill-mod,
-test-unit, test-fast, test-focused, test-slow, type-check, update, export-logs,
+test-unit, test-fast, test-focused, type-check, update, export-logs,
 print-config, explain-config, config-compat, training-hot."""
 
 from __future__ import annotations
@@ -127,18 +127,14 @@ def cmd_test_backend_smoke(extra):
     targets = [
         "tests/test_web_http_contracts.py",
         "tests/test_web_route_registry.py",
-        "tests/test_queue_manual_retry.py",
-        "tests/test_environment_effective_roots.py",
-        "tests/test_configs_root_broadcast_matrix.py",
+        "tests/test_environment_check_service.py",
+        "tests/test_web_config_service.py",
+        "tests/test_web_config_merge.py",
         "tests/test_training_websocket.py",
         "tests/test_training_queue_retry_wake.py",
-        "tests/test_training_retry_classification.py",
         "tests/test_training_retry_integration.py",
-        "tests/test_queue_policy_layers.py",
-        "tests/test_settings_image_test_flags.py",
+        "tests/test_settings_image_test.py",
         "tests/test_path_safety.py",
-        "tests/test_path_resolve_unified.py",
-        "tests/test_method_discovery.py",
         "tests/test_cross_domain_delete_boundaries.py",
         "tests/test_stage_schedule.py",
         "tests/test_env_config_paths.py",
@@ -147,8 +143,6 @@ def cmd_test_backend_smoke(extra):
         "tests/test_schema_gate_observability.py",
         "tests/test_raw_file_warnings_contract.py",
         "tests/test_queue_item_retry_override.py",
-        "tests/test_settings_image_test_save_root.py",
-        "tests/test_path_allowlist_freeze.py",
         "tests/test_image_test_service.py",
     ]
     run([PY, "-m", "pytest", "-q", *targets, *extra])
@@ -156,7 +150,7 @@ def cmd_test_backend_smoke(extra):
 
 def cmd_test_fast(extra):
     """Run the fast smoke layer for task runners and bench safety guards."""
-    run([PY, "-m", "pytest", "-q", "-m", "fast and not slow", *FAST_TEST_TARGETS, *extra])
+    run([PY, "-m", "pytest", "-q", "-m", "fast", *FAST_TEST_TARGETS, *extra])
 
 
 def cmd_test_focused(extra):
@@ -173,11 +167,6 @@ def cmd_test_focused(extra):
         )
         raise SystemExit(2)
     run([PY, "-m", "pytest", "-q", *extra])
-
-
-def cmd_test_slow(extra):
-    """Run tests explicitly marked as slow."""
-    run([PY, "-m", "pytest", "-q", "-m", "slow", "tests/", *extra])
 
 
 def cmd_type_check(extra):

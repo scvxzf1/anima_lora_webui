@@ -513,3 +513,17 @@ def test_plan_resume_start_stage_initial_epoch_keeps_progress_aligned():
     assert plan.initial_step == 0
     assert plan.epoch_to_start == 2
     assert plan.global_step == 200
+
+
+def test_unsloth_checkpoint_propagates_parameter_gradients_via_input():
+    import torch.nn as nn
+
+    from library.anima.models import unsloth_checkpoint
+
+    linear = nn.Linear(4, 4)
+    inputs = torch.randn(2, 4, requires_grad=True)
+
+    unsloth_checkpoint(linear, inputs).sum().backward()
+
+    assert linear.weight.grad is not None
+    assert linear.weight.grad.abs().sum() > 0

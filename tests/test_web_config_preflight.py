@@ -202,33 +202,6 @@ def test_preflight_rejects_selective_checkpoint_with_full_checkpointing(
     assert "selective_checkpoint" in errors[-1]["message"]
 
 
-def _write_selected_checkpoint_preflight_config(
-    tmp_path: Path, monkeypatch, extra_lines: list[str]
-) -> None:
-    configs, _dataset_path = _write_minimal_config_tree(tmp_path)
-    _patch_config_service_paths(monkeypatch, tmp_path)
-    source_dir = tmp_path / "image_dataset" / "selected"
-    source_dir.mkdir(parents=True)
-    Image.new("RGB", (8, 8), color=(20, 40, 60)).save(source_dir / "sample.png")
-    (tmp_path / "models").mkdir()
-    (tmp_path / "models" / "anima.safetensors").write_bytes(b"model")
-    (tmp_path / "models" / "qwen.safetensors").write_bytes(b"qwen")
-    (tmp_path / "models" / "vae.safetensors").write_bytes(b"vae")
-    selected_config = configs / "imported" / "selected.toml"
-    selected_config.write_text(
-        "\n".join(
-            [
-                'source_image_dir = "image_dataset/selected"',
-                'pretrained_model_name_or_path = "models/anima.safetensors"',
-                'qwen3 = "models/qwen.safetensors"',
-                'vae = "models/vae.safetensors"',
-                *extra_lines,
-            ]
-        ),
-        encoding="utf-8",
-    )
-
-
 def test_preflight_remains_available_from_legacy_module(tmp_path: Path, monkeypatch):
     _write_selected_checkpoint_preflight_config(
         tmp_path,
