@@ -66,6 +66,7 @@
 | [krea2_3080_speed_stage10.md](krea2_3080_speed_stage10.md) | Krea-2 速度阶段 10：compile 与 LoRA+optimizer checkpoint round-trip delta=0，reload 后 2.73s 无重编译续训 |
 | [krea2_3080_speed_stage11.md](krea2_3080_speed_stage11.md) | Krea-2 速度阶段 11：compile 融合 mul/copy/add 并减少 dequant；GEMM+attention 不变且占 compiled 约 89% |
 | [krea2_3080_speed_stage12.md](krea2_3080_speed_stage12.md) | Krea-2 速度阶段 12：packed varlen FlashAttention 在 PG199 快 11-13%，3080 长稳态快 4%；扩展验证通过但暂不生产化 |
+| [krea2_3080_speed_final.md](krea2_3080_speed_final.md) | Krea-2 RTX 3080 速度研究最终审计：根因、生产建议、实验候选、否决路径与证据边界总表 |
 
 ## 方法和研究结论
 
