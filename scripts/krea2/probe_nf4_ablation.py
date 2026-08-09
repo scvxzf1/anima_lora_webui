@@ -26,6 +26,7 @@
   K2_ABL_TAG=name         (消融格标签, 写进 JSONL + 文件名)
   K2_ABL_REF=path         (bf16 reference velocity .pt, 数学偏移基准; bf16 格
                             自身用 K2_ABL_REF_OUT 落盘 reference)
+  K2_ABL_OUT=path         (JSONL 输出; 默认 docs/findings/krea2_nf4_ablation.jsonl)
 
 消融矩阵 (每格一个 JSONL 记录):
   bf16基线      NF4=0 SWAP=0 CKPT=0  ← 落盘 reference velocity
@@ -464,7 +465,12 @@ def main() -> int:
     }
 
     FINDINGS_DIR.mkdir(parents=True, exist_ok=True)
-    jsonl_path = FINDINGS_DIR / "krea2_nf4_ablation.jsonl"
+    jsonl_path = Path(
+        os.environ.get(
+            "K2_ABL_OUT", str(FINDINGS_DIR / "krea2_nf4_ablation.jsonl")
+        )
+    )
+    jsonl_path.parent.mkdir(parents=True, exist_ok=True)
     with open(jsonl_path, "a") as f:
         f.write(json.dumps(record, ensure_ascii=False) + "\n")
     print(f"\n=== JSONL 落盘: {jsonl_path} (tag={tag}) ===")

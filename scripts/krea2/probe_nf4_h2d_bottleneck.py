@@ -81,23 +81,27 @@ def make_network(dit):
 
 
 def timed_train_steps(dit, network, opt, latents_5d, text_emb, fixed_noise, fixed_target,
-                      n_steps, device, dtype, with_profile=False):
-    """跑 n_steps, CUDA event 测 forward/backward 段 + 墙钟单步.
+                      n_steps, device, dtype, with_profile=False, free_cache=False):
+    """跑 n_steps, 分段测 prepare/forward/backward + 墙钟单步.
 
     with_profile=True 时每步调 flush_block_swap_profile(blocking=False) 刷 nf4_ms.
+    free_cache 默认 False，与真实训练的稳态路径一致。
     """
     b = latents_5d.shape[0]
-    losses, step_times, fwd_evt_ms, bwd_evt_ms = [], [], [], []
+    losses, step_times, prepare_times, fwd_evt_ms, bwd_evt_ms = [], [], [], [], []
 
     for step in range(n_steps):
         sigma = torch.full((b,), FIXED_SIGMA, device=device, dtype=dtype)
         x_t = (1.0 - sigma) * latents_5d + sigma * fixed_noise
 
         opt.zero_grad(set_to_none=True)
+        torch.cuda.synchronize()
+        t_step = time.perf_counter()
         if dit.blocks_to_swap and dit.blocks_to_swap > 0:
-            dit.prepare_block_swap_before_forward()
+            dit.prepare_block_swap_before_forward(free_cache=free_cache)
+        torch.cuda.synchronize()
+        prepare_t = time.perf_counter() - t_step
 
-        t_sync = time.time()
         fwd_start = torch.cuda.Event(enable_timing=True)
         fwd_end = torch.cuda.Event(enable_timing=True)
         bwd_start = torch.cuda.Event(enable_timing=True)
@@ -115,23 +119,26 @@ def timed_train_steps(dit, network, opt, latents_5d, text_emb, fixed_noise, fixe
         torch.nn.utils.clip_grad_norm_(network.parameters(), 1.0)
         opt.step()
         torch.cuda.synchronize()
-        step_t = time.time() - t_sync
+        step_t = time.perf_counter() - t_step
 
         if with_profile and dit.blocks_to_swap and dit.blocks_to_swap > 0:
             dit.flush_block_swap_profile(blocking=False)
 
         losses.append(loss.item())
         step_times.append(step_t)
+        prepare_times.append(prepare_t)
         fwd_evt_ms.append(fwd_start.elapsed_time(fwd_end))
         bwd_evt_ms.append(bwd_start.elapsed_time(bwd_end))
 
         if step % 5 == 0 or step == n_steps - 1:
             print(f"  step {step:3d}: loss={losses[-1]:.4f} step={step_t:.2f}s "
+                  f"prepare={prepare_t*1000:.0f}ms "
                   f"fwd={fwd_evt_ms[-1]:.0f}ms bwd={bwd_evt_ms[-1]:.0f}ms")
 
     return {
         "losses": losses,
         "step_times": step_times,
+        "prepare_times": prepare_times,
         "fwd_evt_ms": fwd_evt_ms,
         "bwd_evt_ms": bwd_evt_ms,
     }
@@ -178,6 +185,7 @@ def main() -> int:
     swap = _env_int("K2_H2D_SWAP", 4)
     img_size = _env_int("K2_H2D_IMG", 1024)
     n_steps = _env_int("K2_H2D_STEPS", 20)
+    free_cache = _env_bool("K2_H2D_FREE_CACHE", False)
     nf4_path = os.environ.get("K2_ABL_NF4_PATH", "") or str(
         ROOT / "models" / "diffusion_models" / "krea2_raw_nf4.safetensors"
     )
@@ -187,7 +195,8 @@ def main() -> int:
     dtype = torch.bfloat16
 
     print(f"=== 方向B 前置诊断: NF4+swap H2D 占比 ===")
-    print(f"  swap={swap} {img_size}×{img_size} steps={n_steps} GPU={gpu_id} te={te_device}")
+    print(f"  swap={swap} {img_size}×{img_size} steps={n_steps} GPU={gpu_id} "
+          f"te={te_device} free_cache={free_cache}")
     print(f"  nf4_path={nf4_path}")
 
     # A. TE + VAE
@@ -218,7 +227,7 @@ def main() -> int:
     rss_before = host_rss_gb()
     m_swap = timed_train_steps(
         dit, network, opt, latents_5d, text_emb, fixed_noise, fixed_target,
-        n_steps, device, dtype, with_profile=True,
+        n_steps, device, dtype, with_profile=True, free_cache=free_cache,
     )
     if swap > 0:
         dit.flush_block_swap_profile(blocking=True)
@@ -248,6 +257,8 @@ def main() -> int:
 
     swap_avg = avg(m_swap["step_times"])
     base_avg = avg(m_base["step_times"])
+    swap_prepare_avg = avg(m_swap["prepare_times"])
+    base_prepare_avg = avg(m_base["prepare_times"])
     swap_fwd_avg = avg(m_swap["fwd_evt_ms"])
     base_fwd_avg = avg(m_base["fwd_evt_ms"])
     swap_bwd_avg = avg(m_swap["bwd_evt_ms"])
@@ -275,6 +286,8 @@ def main() -> int:
     print(f"\n=== 方向B 前置诊断结果 ===")
     print(f"  swap=0 基线:  step={base_avg:.3f}s  (fwd {base_fwd_avg:.0f}ms + bwd {base_bwd_avg:.0f}ms = {seg_base_ms:.0f}ms)")
     print(f"  swap={swap}:     step={swap_avg:.3f}s  (fwd {swap_fwd_avg:.0f}ms + bwd {swap_bwd_avg:.0f}ms = {seg_swap_ms:.0f}ms)")
+    print(f"  prepare 墙钟: swap={swap_prepare_avg*1000:.1f}ms / base={base_prepare_avg*1000:.1f}ms "
+          f"(free_cache={free_cache})")
     print(f"  --- 双口径 H2D 占比 ---")
     print(f"  口径A (step, 含recompute分母, 下界): {h2d_overhead_step*1000:.0f}ms / {swap_avg*1000:.0f}ms = {ratio_step*100:.1f}%")
     print(f"  口径B (segment, 只看fwd+bwd):        {h2d_seg_ms:.0f}ms / {seg_swap_ms:.0f}ms = {ratio_seg*100:.1f}%")
@@ -307,11 +320,13 @@ def main() -> int:
             "nf4": True, "swap": swap, "img_size": img_size, "n_steps": n_steps,
             "nf4_source": nf4_source, "te_device": te_device, "gpu": gpu_id,
             "lora_dim": LORA_DIM, "grad_ckpt": True, "fixed_sigma": FIXED_SIGMA,
-            "warmup_skip": 3,
+            "warmup_skip": 3, "free_cache": free_cache,
         },
         "metrics": {
             "base_avg_step_s": base_avg,
             "swap_avg_step_s": swap_avg,
+            "base_prepare_avg_s": base_prepare_avg,
+            "swap_prepare_avg_s": swap_prepare_avg,
             "base_seg_ms": seg_base_ms,
             "swap_seg_ms": seg_swap_ms,
             # 口径 A (step, 下界): 分母含 recompute+opt+sync

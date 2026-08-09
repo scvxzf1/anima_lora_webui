@@ -296,3 +296,15 @@ swap=0 不受影响，swap>0 的三轴全开格首次因此崩溃，补 prepare 
 - **如何控制侵入**：`isinstance(Params4bit)` 早返回分支，不碰现有 bf16 路径；
   改动集中在 master 捕获/停放/恢复 + 赋值点。
 - **测试**：`probe_nf4_blockswap.py` 端到端 + 现有 anima bf16 block swap 探针回归。
+
+## 3080 速度扩展研究（阶段 1）
+
+2026-08-09 同机 PG199/RTX 3080 消融已定位 `12s/it` 的主因：3080 代表性
+BF16 大矩阵比 PG199 慢 4.4-5.2×，NF4 大矩阵慢 4.1-4.6×，attention 慢
+2.83×；3080 已满频、满功耗、100% utilization，不是运行时降频。
+
+探针口径修正：`prepare_block_swap_before_forward(free_cache=False)` 若每步强制
+调用会多计约 196ms，但生产训练只在 accelerator prepare/验证恢复时调用，
+所以这不是可变现的生产加速。文本 padding 尾裁剪将序列 4608→4107，但
+PG199/3080 都无可测收益，行为改动已回退。完整数据与下阶段见
+[krea2_3080_speed_stage1.md](../findings/krea2_3080_speed_stage1.md)。
