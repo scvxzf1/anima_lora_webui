@@ -170,6 +170,8 @@ def test_is_mergeable_rejects_dynamic_adapters():
     from networks.lora_anima import merge as merge_ops
 
     plain = SimpleNamespace(
+        text_encoder_loras=[],
+        unet_loras=[],
         cfg=SimpleNamespace(
             num_registers=0,
             add_reft=False,
@@ -182,6 +184,8 @@ def test_is_mergeable_rejects_dynamic_adapters():
     assert merge_ops.is_mergeable(plain)
 
     moe = SimpleNamespace(
+        text_encoder_loras=[],
+        unet_loras=[],
         cfg=SimpleNamespace(
             num_registers=0,
             add_reft=False,
@@ -194,6 +198,8 @@ def test_is_mergeable_rejects_dynamic_adapters():
     assert not merge_ops.is_mergeable(moe)
 
     reft = SimpleNamespace(
+        text_encoder_loras=[],
+        unet_loras=[],
         cfg=SimpleNamespace(
             num_registers=0,
             add_reft=True,
@@ -206,6 +212,8 @@ def test_is_mergeable_rejects_dynamic_adapters():
     assert not merge_ops.is_mergeable(reft)
 
     routed = SimpleNamespace(
+        text_encoder_loras=[],
+        unet_loras=[],
         cfg=SimpleNamespace(
             num_registers=0,
             add_reft=False,
@@ -216,4 +224,3 @@ def test_is_mergeable_rejects_dynamic_adapters():
         )
     )
     assert not merge_ops.is_mergeable(routed)
-
