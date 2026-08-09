@@ -230,6 +230,7 @@ def main() -> int:
     losses = []
     grad_norms = []
     step_times = []
+    phase_times: dict[str, float] = {}
     print(
         f"\n--- D. 训练 {n_steps} 步 (NF4 + block_swap={blocks_to_swap} + grad-ckpt, "
         f"固定 σ={FIXED_SIGMA}) ---"
@@ -240,15 +241,27 @@ def main() -> int:
         target = fixed_target
 
         opt.zero_grad(set_to_none=True)
-        t_sync = time.time()
+        t_swap = time.perf_counter()
         dit.prepare_block_swap_before_forward()
+        torch.cuda.synchronize()
+        t_swap_end = time.perf_counter()
         velocity = forward_for_loss(dit, x_t, text_emb, sigma)
         loss = torch.nn.functional.mse_loss(velocity, target)
+        torch.cuda.synchronize()
+        t_fwd_end = time.perf_counter()
         loss.backward()
+        torch.cuda.synchronize()
+        t_bwd_end = time.perf_counter()
         grad_norm = torch.nn.utils.clip_grad_norm_(network.parameters(), 1.0)
         opt.step()
         torch.cuda.synchronize()
-        step_t = time.time() - t_sync
+        t_opt_end = time.perf_counter()
+        step_t = t_opt_end - t_swap
+
+        # 阶段累加: swap_prepare / forward / backward / opt
+        for _k, _t in (("swap", t_swap_end - t_swap), ("fwd", t_fwd_end - t_swap_end),
+                       ("bwd", t_bwd_end - t_fwd_end), ("opt", t_opt_end - t_bwd_end)):
+            phase_times[_k] = phase_times.get(_k, 0.0) + _t
 
         lv = loss.item()
         losses.append(lv)
@@ -257,7 +270,9 @@ def main() -> int:
         if step % 5 == 0 or step == n_steps - 1:
             print(
                 f"  step {step:3d}: loss={lv:.4f}, grad_norm={grad_norms[-1]:.4f}, "
-                f"step={step_t:.2f}s"
+                f"step={step_t:.2f}s "
+                f"(swap={t_swap_end-t_swap:.2f}s fwd={t_fwd_end-t_swap_end:.2f}s "
+                f"bwd={t_bwd_end-t_fwd_end:.2f}s opt={t_opt_end-t_bwd_end:.2f}s)"
             )
         if not torch.isfinite(torch.tensor(lv)):
             print(f"  loss 非有限, 提前终止")
