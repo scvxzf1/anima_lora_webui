@@ -546,6 +546,11 @@ class SingleStreamDiT(nn.Module):
                 "Krea-2 compile_blocks currently supports fixed padded "
                 "sequence lengths only"
             )
+        if mode not in {None, "default"}:
+            raise ValueError(
+                "Krea-2 compile_blocks supports only the default Inductor "
+                f"mode; got {mode!r}"
+            )
         if compile_block_scope not in {"resident", "all"}:
             raise ValueError(
                 "compile_block_scope must be 'resident' or 'all'; "

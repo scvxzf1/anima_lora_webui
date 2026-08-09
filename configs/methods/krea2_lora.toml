@@ -48,11 +48,10 @@ output_name = "krea2_lora_test"
 logging_dir = "output/logs"
 log_with = "tensorboard"
 
-# Krea-2 DiT 没有 anima 的 native-flatten / per-block compile / fp32-residual
-# 接口, 但 SingleStreamBlock 现已移植 enable_gradient_checkpointing (标准
-# torch.utils.checkpoint, 无 cpu/unsloth offload 变体). bootstrap.py:564 在
-# args.gradient_checkpointing=true 时调 unet.enable_gradient_checkpointing().
-# torch_compile=true 仍会 AttributeError (无 compile_blocks), 保持关.
+# Krea-2 支持固定 padded 序列的 per-block compile opt-in，但多 bucket /
+# dynamic_seq 未验证，默认保持关。启用时必须同时设
+# compile_dynamic_seq=false、compile_block_scope="resident"，Inductor mode 仅支持
+# default；reduce-overhead 的 CUDA Graph 与 checkpoint recompute 不兼容。
 torch_compile = false
 gradient_checkpointing = true
 unsloth_offload_checkpointing = false

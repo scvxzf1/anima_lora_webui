@@ -140,6 +140,7 @@
 - Krea-2 PG199 叠加边界：compile + every-other（14/28 checkpoint）会 OOM；compile + 16/28 checkpoint 的 20 步稳态为 2.408s/it（-28.5%），但峰值 31.55GB 无余量，仅作 PG199 探针实验点，不进默认配置或通用 CLI。安全档仍是 full checkpoint + compile（2.726s/it / 11.06GB）。RTX 3080 不适用 selective 叠加，见 `docs/findings/krea2_3080_speed_stage4.md`。
 - Krea-2 RTX 3080 长窗口修正：resident compile 的冷态 11.744s/it（+3.3%）不是持续收益；20 步从 12.06 漂到 12.65s。120 秒 BF16 GEMM 达 84°C，时钟约 1800MHz，同样退化 7-9%。compile 的已证价值是训练 peak 6.15GB 且 20 步通过，而当前 eager swap20 首个 backward OOM。不要再宣称 3080 compile 持续加速 3.3%；长训主瓶颈包含散热/频率曲线，修改功耗、风扇或降压前必须取得明确同意，见 `docs/findings/krea2_3080_speed_stage5.md`。
 - Krea-2 NF4 dtype 边界：不要绕过 `weights.py`/`quantize.py` 的 BF16 compute 强制检查。RTX 3080 FP16 Linear 虽快 13.7%、NF4 层 backward 虽从 27.07 降到 10.02ms，但同权重/同输入的输入梯度 rel-L2=35.6%、cos=0.943，已 REJECT。不要新增全局 FP16 NF4 开关，见 `docs/findings/krea2_3080_speed_stage6.md`。
+- Krea-2 Inductor mode：只支持 None/default。`reduce-overhead` 的 CUDA Graph 在 non-reentrant checkpoint backward recompute 时会报 output overwritten RuntimeError；`max-autotune*` 未验证也显式拒绝。不要为 Krea 复用通用 WebUI 中的其他 compile preset，见 `docs/findings/krea2_3080_speed_stage7.md`。
 - `library/config/`：TOML 读取、合并、normalize、schema 校验。
 - `library/training/`：训练 bootstrap、loop、optimizer、scheduler、checkpoint、loss 等。
 - `library/inference/`：generation、sampling、adapter 加载、DirectEdit、DCW、输出处理。

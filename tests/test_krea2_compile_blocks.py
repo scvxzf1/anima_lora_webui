@@ -59,3 +59,11 @@ def test_krea2_compile_blocks_reuses_unwrapped_base() -> None:
 def test_krea2_compile_blocks_rejects_dynamic_sequence() -> None:
     with pytest.raises(ValueError, match="fixed padded"):
         _tiny_dit().compile_blocks(backend="eager", dynamic_seq=True)
+
+
+@pytest.mark.parametrize(
+    "mode", ["reduce-overhead", "max-autotune", "max-autotune-no-cudagraphs"]
+)
+def test_krea2_compile_blocks_rejects_unverified_inductor_modes(mode: str) -> None:
+    with pytest.raises(ValueError, match="only the default"):
+        _tiny_dit().compile_blocks(backend="eager", mode=mode)

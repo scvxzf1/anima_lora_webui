@@ -336,3 +336,8 @@ GEMM 在 84°C/约 1800MHz 也退化 7-9%，因此 3.3% 只是冷态短窗口，
 NF4 层 backward 27.07→10.02ms，但同权重/同输入的输入梯度 rel-L2 达 35.6%、
 cos=0.943。不值得以训练轨迹换速度，保留 `weights.py` 强制 BF16 契约。见
 [krea2_3080_speed_stage6.md](../findings/krea2_3080_speed_stage6.md)。
+
+阶段 7 拒绝 `compile_inductor_mode="reduce-overhead"`：CUDA Graph 输出在 non-reentrant
+checkpoint backward recompute 的第二次调用中被覆盖，直接 RuntimeError。Krea-2
+`compile_blocks` 现仅接受 None/default mode，其他未验证 preset 同样显式拒绝。见
+[krea2_3080_speed_stage7.md](../findings/krea2_3080_speed_stage7.md)。
