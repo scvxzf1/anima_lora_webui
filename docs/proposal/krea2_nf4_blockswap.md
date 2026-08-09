@@ -356,3 +356,8 @@ dynamic_seq 仍关闭。见 [krea2_3080_speed_stage9.md](../findings/krea2_3080_
 optimizer reload 后 loss jump 0.000214，续训仍 2.728-2.730s，无重编译或峰值退化。
 默认 compile 可用于正常保存/续训。见
 [krea2_3080_speed_stage10.md](../findings/krea2_3080_speed_stage10.md)。
+
+阶段 11 CUDA profile 定位 compile 收益：GEMM 1593ms 与 attention 847ms 前后不变；
+eager 的 mul/copy/add 约 601ms 被 Triton 融合，可见 dequant 706→486 次、
+102→68ms。compiled 后 GEMM+attention 约占 89%，是后续软件优化天花板。见
+[krea2_3080_speed_stage11.md](../findings/krea2_3080_speed_stage11.md)。

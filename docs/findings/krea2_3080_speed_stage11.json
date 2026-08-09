@@ -1,0 +1,29 @@
+{
+  "date": "2026-08-09",
+  "gpu": "PG199 32GB",
+  "shape": [1008,1024],
+  "config": "NF4,full_checkpoint,synthetic shape-real inputs",
+  "eager": {
+    "step_s": 3.3984,
+    "peak_gb": 10.494,
+    "aten_mm_ms": 1593.316,
+    "attention_backward_ms": 577.014,
+    "attention_forward_ms": 270.410,
+    "aten_mul_ms": 284.880,
+    "aten_copy_ms": 185.169,
+    "aten_add_ms": 131.401,
+    "dequantize_4bit_ms": 102.237,
+    "dequantize_4bit_count": 706
+  },
+  "compiled": {
+    "step_s": 2.7456,
+    "peak_gb": 11.057,
+    "aten_mm_ms": 1593.246,
+    "attention_backward_ms": 576.418,
+    "attention_forward_ms": 270.436,
+    "dequantize_4bit_ms": 68.378,
+    "dequantize_4bit_count": 486,
+    "fused_triton_examples": ["add_mul_silu","silu_backward_view"]
+  },
+  "verdict": "compile gains come from elementwise/copy fusion and fewer visible dequant calls; GEMM plus attention remain unchanged and dominate"
+}
