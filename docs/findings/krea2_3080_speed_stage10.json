@@ -1,0 +1,18 @@
+{
+  "date": "2026-08-09",
+  "gpu": "PG199 32GB",
+  "config": "1024,NF4,swap0,full_checkpoint,compile_default,10 steps",
+  "gpu_peak_gb": 11.058,
+  "checkpoint": {
+    "lora_mb": 96.403,
+    "optimizer_mb": 193.004,
+    "save_s": 1.304,
+    "lora_roundtrip_max_delta": 0.0,
+    "forward_roundtrip_max_delta": 0.0,
+    "loss_before": 0.00424194,
+    "loss_after": 0.00445557,
+    "loss_jump": 0.00021362
+  },
+  "step_times_s": [15.303,2.731,2.731,2.731,2.731,2.730,2.728,2.729,2.729,2.730],
+  "verdict": "PASS: checkpoint reload preserves compiled graph, exact state/output round-trip, and stable continuation speed"
+}

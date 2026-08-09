@@ -351,3 +351,8 @@ checkpoint backward recompute 的第二次调用中被覆盖，直接 RuntimeErr
 4608/4864 两张 block 图；同 family 不同宽高比首次即稳态 2.731/2.956s，
 回访无重编译，峰值 <=11.35GB。Krea 方法默认开 fixed/default/resident compile，
 dynamic_seq 仍关闭。见 [krea2_3080_speed_stage9.md](../findings/krea2_3080_speed_stage9.md)。
+
+阶段 10 验证 compile × 完整 checkpoint：LoRA/forward round-trip max delta 均为 0，
+optimizer reload 后 loss jump 0.000214，续训仍 2.728-2.730s，无重编译或峰值退化。
+默认 compile 可用于正常保存/续训。见
+[krea2_3080_speed_stage10.md](../findings/krea2_3080_speed_stage10.md)。
