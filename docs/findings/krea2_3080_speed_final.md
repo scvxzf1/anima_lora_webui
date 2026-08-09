@@ -37,6 +37,8 @@
 packed valid-token FlashAttention varlen 是唯一在 3080 长窗口仍测得正收益的新增软件
 attention 候选：PG199 全模型/双 token family 快 11-13%，3080 swap20 末五步均值
 `12.145s`，相对历史 cuDNN compile `12.65s` 快约 4%，GPU peak `6.09GB`。
+PG199 50 步复核除一个 `2.804s` 抖动外保持 `2.417-2.439s`，末步 `2.429s`，
+loss 和梯度均正常，证明收益不是短窗口偶然值。
 
 它尚未生产化，因为仍缺显式 Krea backend、可选依赖与 V100 BF16 fallback、batch>1/
 CFG、训练/推理 multi-bucket 和 Dynamo 动态输出配置边界。默认继续使用 cuDNN SDPA。

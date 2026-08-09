@@ -31,6 +31,17 @@
     "loss_finite": true,
     "grad_nonzero": true
   },
+  "pg199_50_step_stability": {
+    "first_compile_step_s": 17.013,
+    "last_step_s": 2.429,
+    "steady_range_s": [2.417, 2.439],
+    "single_outlier_s": 2.804,
+    "gpu_peak_gb": 10.867,
+    "loss_first5": 0.008386,
+    "loss_last5": 0.000784,
+    "loss_finite": true,
+    "grad_nonzero": true
+  },
   "checkpoint_reload": {
     "lora_roundtrip_max_delta": 0.0,
     "forward_roundtrip_max_delta": 0.0,
