@@ -1,13 +1,41 @@
 from __future__ import annotations
 
 import ast
-import importlib
+import subprocess
 import sys
 from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 LORA_MODULES_DIR = REPO_ROOT / "networks" / "lora_modules"
+
+
+_IMPORT_ORDER_CHECK = """
+import importlib
+import sys
+
+for name in sys.argv[1:]:
+    importlib.import_module(name)
+
+networks = importlib.import_module("networks")
+lora_modules = importlib.import_module("networks.lora_modules")
+registry = importlib.import_module("networks.registry")
+
+assert "lora" in networks.NETWORK_REGISTRY
+assert hasattr(lora_modules, "LoRAModule")
+assert registry.NETWORK_REGISTRY is networks.NETWORK_REGISTRY
+"""
+
+
+def _assert_import_order(*module_names: str) -> None:
+    result = subprocess.run(
+        [sys.executable, "-c", _IMPORT_ORDER_CHECK, *module_names],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        timeout=30,
+    )
+    assert result.returncode == 0, result.stderr or result.stdout
 
 
 def _iter_absolute_imports(path: Path) -> list[str]:
@@ -52,17 +80,7 @@ def test_registry_module_body_does_not_import_lora_modules_eagerly():
 
 def test_import_networks_then_lora_modules_is_stable():
     """包根和实现层应可按任意顺序导入，且 registry 可用。"""
-    for name in list(sys.modules):
-        if name == "networks" or name.startswith("networks."):
-            del sys.modules[name]
-
-    networks = importlib.import_module("networks")
-    lora_modules = importlib.import_module("networks.lora_modules")
-    registry = importlib.import_module("networks.registry")
-
-    assert "lora" in networks.NETWORK_REGISTRY
-    assert hasattr(lora_modules, "LoRAModule")
-    assert registry.NETWORK_REGISTRY is networks.NETWORK_REGISTRY
+    _assert_import_order("networks", "networks.lora_modules")
 
 
 def test_public_facade_still_exports_registry_api():
@@ -109,14 +127,4 @@ def test_registry_leaf_path_has_no_absolute_networks_imports():
 
 def test_import_lora_modules_before_networks_is_stable():
     """Reverse import order should also leave registry usable."""
-    for name in list(sys.modules):
-        if name == "networks" or name.startswith("networks."):
-            del sys.modules[name]
-
-    lora_modules = importlib.import_module("networks.lora_modules")
-    networks = importlib.import_module("networks")
-    registry = importlib.import_module("networks.registry")
-
-    assert hasattr(lora_modules, "LoRAModule")
-    assert "lora" in networks.NETWORK_REGISTRY
-    assert registry.NETWORK_REGISTRY is networks.NETWORK_REGISTRY
+    _assert_import_order("networks.lora_modules", "networks")

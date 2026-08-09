@@ -154,8 +154,8 @@ def test_live_status_merges_current_history_task_without_full_history_fetch() ->
     if not shutil.which("node"):
         pytest.skip("node is required for live history merge checks")
     script = r"""
-import { configureHistoryStateBridge } from './web/static/js/features/anima-app/helpers/history-state-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
-import { configureTrainingStateBridge } from './web/static/js/features/anima-app/helpers/training-state-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { configureHistoryStateBridge } from './web/static/js/features/anima-app/helpers/history-state-bridge.js?v=module-bootstrap-20260809-nf4-v2';
+import { configureTrainingStateBridge } from './web/static/js/features/anima-app/helpers/training-state-bridge.js?v=module-bootstrap-20260809-nf4-v2';
 
 const historyState = {
     historyTasks: [{
@@ -1492,7 +1492,7 @@ def test_history_detail_overview_uses_full_copyable_paths_and_resume_weights() -
     # Snapshot never stores precision_preference; rebuild like the form UI.
     assert "mixedPrecision === 'no') return 'fp32'" in chips_source
     assert "mixedPrecision === 'fp16' || readConfigBool(configText, 'full_fp16')" in chips_source
-    assert "from './config-chips.js?v=module-bootstrap-20260728-precision-pref'" in overview_source
+    assert "from './config-chips.js?v=module-bootstrap-20260809-nf4-v2'" in overview_source
     assert "formatHistoryTrainingVariant(task, payload.config_toml)" in overview
     # 内联定义应消失
     assert "function formatHistoryTrainingVariant(task, configText)" not in overview_source
