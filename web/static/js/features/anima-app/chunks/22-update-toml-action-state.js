@@ -351,7 +351,9 @@ const trainingRuntime = trainingState.trainingRuntime;
     export async function applyTomlToConfig(options = {}) {
         const file = tomlState.currentTomlFile || val('toml-file-select');
         const meta = tomlState.tomlFileMeta[file];
-        if (hasPendingConfigChanges(file)) {
+        // Confirmed switch/save-as flows resolve the pending changes before reaching
+        // this step, but their form drafts are only cleared by loadConfig below.
+        if (!options.pendingChangesResolved && hasPendingConfigChanges(file)) {
             setTomlStatus('error', '当前配置尚未保存，请先保存更新当前选中配置或另存新配置，再加载选中配置');
             updateTomlActionState(file);
             return;

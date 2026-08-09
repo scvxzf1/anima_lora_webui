@@ -264,7 +264,7 @@ function currentTrainingSourceState() {
                 return;
             }
             await loadTomlFileList(file);
-            await applyTomlToConfig({ silent: true });
+            await applyTomlToConfig({ silent: true, pendingChangesResolved: true });
             updateTomlDirtyState();
             const groupLabel = saveAsTargetGroups().find((group) => group.id === targetGroupId)?.label || targetGroupId;
             setTomlStatus('ok', `已另存新配置: ${file} → ${groupLabel}`);
@@ -293,9 +293,9 @@ function currentTrainingSourceState() {
 
         const target = await showTomlSaveAsDialog(BLANK_PRESET_TEMPLATE_FILE, {
             title: '创建空白预设配置',
-            description: `以 ${BLANK_PRESET_TEMPLATE_LABEL} 为模板，并套用全局基础模型路径，创建一个新的可编辑项目预设。`,
+            description: `以 ${BLANK_PRESET_TEMPLATE_LABEL} 为模板，并套用默认全局模型配置，创建一个新的可编辑项目预设。`,
             confirmText: '创建空白预设配置',
-            hint: '新文件默认创建到 configs/imported/；分组只影响右侧列表归类。全局模型路径只作为初始默认值，创建后仍可在配置页覆盖。',
+            hint: '新文件默认创建到 configs/imported/；分组只影响右侧列表归类。默认全局模型配置只作为初始值，创建后仍可在配置页覆盖。',
             currentText: `模板: ${BLANK_PRESET_TEMPLATE_LABEL} (${BLANK_PRESET_TEMPLATE_FILE})`,
         });
         if (target === null) return;
@@ -319,7 +319,7 @@ function currentTrainingSourceState() {
         if (!canSwitch) return;
 
         try {
-            // 空白预设先复用模板，再把全局默认基础模型路径灌进去，减少新建后手工改三项的次数。
+            // 空白预设先复用模板，再写入默认全局模型配置，减少新建后的重复填写。
             const globalModelPathOverrides = getGlobalModelPathOverrides();
             const content = Object.keys(globalModelPathOverrides).length
                 ? await previewPatchedTomlContent(file, templateContent, globalModelPathOverrides)
@@ -340,7 +340,7 @@ function currentTrainingSourceState() {
                 return;
             }
             await loadTomlFileList(file, { force: true });
-            await applyTomlToConfig({ silent: true });
+            await applyTomlToConfig({ silent: true, pendingChangesResolved: true });
             updateTomlDirtyState();
             const groupLabel = saveAsTargetGroups().find((group) => group.id === targetGroupId)?.label || targetGroupId;
             setTomlStatus('ok', `已创建空白预设配置: ${file} → ${groupLabel}`, { persist: true });

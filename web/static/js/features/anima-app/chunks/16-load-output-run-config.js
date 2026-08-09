@@ -384,7 +384,7 @@ function currentTrainingSourceState() {
             setTomlStatus('error', '已打开该配置文件，但它不是完整训练配置，不能加载为当前训练入口');
             return false;
         }
-        await applyTomlToConfig({ silent: true });
+        await applyTomlToConfig({ silent: true, pendingChangesResolved: true });
         rememberSelectionSnapshot();
         setTomlStatus('ok', `已加载选中配置: ${meta.path || filePath}`);
         return true;
