@@ -202,6 +202,10 @@ def _normalize_image_test_request(
 
     sampler = _normalize_choice(payload.get("sampler") or cfg.get("sample_sampler") or "euler", ALLOWED_SAMPLERS, "采样器")
     attn_mode = _normalize_choice(payload.get("attn_mode") or cfg.get("attn_mode") or "flash", ALLOWED_ATTN_MODES, "注意力后端")
+    # model_family 走全局设置 (settings_service), 不在训练 config 快照里. 空值
+    # (= anima 默认) 不注入 flag, 走 inference.py 的 resolve_model_family() env
+    # 兜底链, 与训练侧 bootstrap.build_net_kwargs 同款 — 不靠路径名字符串猜测.
+    model_family = str(settings_service.get_global_settings().get("model_family") or "").strip().lower()
     seed = _normalize_optional_int(payload.get("seed"))
     width = _normalize_positive_int(payload.get("width"), default=1024, label="宽度")
     height = _normalize_positive_int(payload.get("height"), default=1024, label="高度")
@@ -270,6 +274,7 @@ def _normalize_image_test_request(
         "flow_shift": flow_shift,
         "sampler": sampler,
         "attn_mode": attn_mode,
+        "model_family": model_family,
         "runtime_dtype": runtime_dtype,
         "text_encoder_dtype": text_encoder_dtype,
         "device": device,
@@ -663,6 +668,13 @@ def _build_generation_env(request: dict[str, Any]) -> dict[str, str]:
 
 def _build_generation_command(request: dict[str, Any]) -> list[str]:
     cfg = request["config"]
+    # model_family 来自全局设置 (空值 = anima 默认), 空则不注入 flag,
+    # 走 inference.py 的 resolve_model_family() env 兜底链.
+    family_argv = (
+        ["--model_family", request["model_family"]]
+        if request.get("model_family")
+        else []
+    )
     generation_request = GenerationRequest(
         prompt=request["prompt"],
         negative_prompt=request["negative_prompt"],
@@ -685,6 +697,7 @@ def _build_generation_command(request: dict[str, Any]) -> list[str]:
             request["runtime_dtype"],
             "--text_encoder_dtype",
             request["text_encoder_dtype"],
+            *family_argv,
             *_build_selective_lora_argv(request),
         ],
     )

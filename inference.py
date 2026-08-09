@@ -39,6 +39,7 @@ from library.inference.precision import (
     resolve_text_encoder_dtype,
 )
 from library.inference.text import MAX_CROSSATTN_TOKENS
+from library.env import resolve_model_family
 
 # Side-effect import: registers spectrum_denoise with library.inference.generation
 # so --spectrum dispatches without library.inference holding a hard edge into networks/.
@@ -67,6 +68,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="HunyuanImage inference script")
 
     parser.add_argument("--dit", type=str, default=None, help="DiT directory or path")
+    parser.add_argument(
+        "--model_family",
+        type=str,
+        default=None,
+        choices=["anima", "krea2_raw"],
+        help="DiT model family (anima default, krea2_raw for Krea-2-Raw). "
+        "Unset falls back to env ANIMA_MODEL_FAMILY then 'anima'.",
+    )
     parser.add_argument("--vae", type=str, default=None, help="VAE directory or path")
     parser.add_argument(
         "--vae_chunk_size",
@@ -992,6 +1001,34 @@ def process_interactive(args: argparse.Namespace) -> None:
 # region Main
 
 
+def _generate_krea2_latent(args, gen_settings) -> torch.Tensor:
+    """Krea-2-Raw 单 prompt 推理路径 (family dispatch).
+
+    绕过 anima 的 generate() (硬编码 Anima DiT 加载/forward/denoise), 走
+    library.models.krea2_raw.inference_runner 的独立路径: 加载 SingleStreamDiT
+    + attach LoRA + Qwen3-VL 文本编码 + mu-shift Euler ODE 采样. 返回 5D latent,
+    VAE decode + 存图仍走 main 的 anima save_output 路径 (R2: VAE 同一)。
+    """
+    from library.models.krea2_raw import inference_runner
+
+    device = gen_settings.device
+    runtime_dtype = gen_settings.runtime_dtype
+    inference_runner._reject_anima_only_extras(args)
+
+    # Lazy loading 不变量 (AGENTS.md): TE -> encode -> free -> DiT.
+    # 26GB DiT + 8.9GB TE 同时驻留 PG199 会 OOM, 必须 TE 先释放再加载 DiT.
+    cond_emb, uncond_emb = inference_runner.prepare_krea2_text(
+        args, device, runtime_dtype
+    )
+    dit, network = inference_runner.load_krea2_dit_for_inference(
+        args, device, runtime_dtype
+    )
+    latent = inference_runner.generate_krea2(
+        args, dit, network, cond_emb, uncond_emb, device, args.seed, runtime_dtype
+    )
+    return latent
+
+
 def main():
     args = parse_args()
 
@@ -1095,7 +1132,10 @@ def main():
             # generate() no longer writes the resolved seed back to args, so
             # pin it here for save_output()'s filename + metadata.
             args.seed = resolve_seed(args)
-            latent = generate(args, gen_settings)
+            if resolve_model_family(args) == "krea2_raw":
+                latent = _generate_krea2_latent(args, gen_settings)
+            else:
+                latent = generate(args, gen_settings)
 
             clean_memory_on_device(device)
 
