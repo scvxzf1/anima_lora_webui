@@ -341,7 +341,11 @@ def update_anima_metadata(metadata: dict[str, Any], args) -> None:
     # Optional ConvRot W8A* training base path (default bf16 → still stamp for clarity).
     base_compute = str(getattr(args, "base_compute", "bf16") or "bf16")
     metadata["ss_base_compute"] = base_compute
-    if base_compute.strip().lower() not in {"bf16", "fp16", "none", "off", ""}:
+    # NF4 (Krea-2 QLoRA) 只盖 ss_base_compute; ConvRot 元数据 (group/scope/
+    # hadamard/...) 是 anima 专用量化参数, 不适用 NF4. 跳过避免误导.
+    if base_compute.strip().lower() not in {
+        "bf16", "fp16", "none", "off", "", "nf4"
+    }:
         metadata["ss_convrot_group_size"] = str(
             getattr(args, "convrot_group_size", 256)
         )

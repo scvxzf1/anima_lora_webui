@@ -2450,7 +2450,7 @@ def test_block_swap_profile_uses_strict_select_options() -> None:
     assert "Boolean(FIELD_OPTIONS[key])" in select_gate
     assert "!Array.isArray(value)" in select_gate
     assert "if (shouldRenderSelectInput(key, value))" in input_factory
-    assert "return createSelectInput(key, value, fieldOptions);" in input_factory
+    assert "createSelectInput(key, value, filterFieldOptionsForFamily(key, fieldOptions, value))" in input_factory
     assert "function selectUsesStrictOptions(key)" in option_source
     assert "FIELD_STRICT_SELECT_OPTIONS?.has?.(key)" in option_source
     assert "select.dataset.strictOptions = '1';" in option_source
@@ -3493,6 +3493,10 @@ const convrot = collectLiveCompatIssues({
   base_compute: 'w8a16_convrot',
   block_swap_transfer_dtype: 'int8',
 });
+const nf4swap = collectLiveCompatIssues({
+  base_compute: 'nf4',
+  blocks_to_swap: 4,
+});
 const ok = collectLiveCompatIssues({
   selective_checkpoint: 'off',
   gradient_checkpointing: true,
@@ -3503,6 +3507,7 @@ console.log(JSON.stringify({
   selectiveCodes: selective.map((i) => i.code),
   softCodes: soft.map((i) => i.code),
   convrotCodes: convrot.map((i) => i.code),
+  nf4swapIssue: nf4swap.find((i) => i.code === 'nf4_block_swap_host_ram'),
   okCount: ok.length,
   formatted: formatLiveCompatStatus(selective),
 }));
@@ -3519,6 +3524,9 @@ console.log(JSON.stringify({
     assert "selective_full_gradient_checkpointing" in payload["selectiveCodes"]
     assert "block_swap_soft_tokens" in payload["softCodes"]
     assert "convrot_block_swap_int8_mutex" in payload["convrotCodes"]
+    nf4swap = payload["nf4swapIssue"]
+    assert nf4swap is not None, "NF4 × block_swap 应产出 nf4_block_swap_host_ram"
+    assert nf4swap["severity"] == "warning", "NF4 × block_swap 应为 warning 不再硬拒"
     assert payload["okCount"] == 0
     assert "live 兼容" in payload["formatted"]
 
@@ -3590,3 +3598,25 @@ def test_loha_variant_method_family_maps_to_loha():
     assert "loha: 'lora'" not in layout
     guides = _frontend_module_text("js/config/catalog/guides.js")
     assert "兼容可用、非主力" in guides
+
+
+def test_base_compute_nf4_option_scoped_to_krea2_family() -> None:
+    """NF4 是 Krea-2 专属: 选项列表含 nf4, 但渲染时按 model_family 过滤,
+    anima 不显示 nf4 (anima loader 不接 nf4, 选了会静默忽略却盖元数据)."""
+    labels_options = _frontend_module_text("js/config/catalog/labels-options.js")
+    assert "base_compute: ['bf16', 'w8a16_convrot', 'w8a8_convrot', 'nf4']" in labels_options
+
+    factory = _frontend_module_text("js/features/config-form/form-fields-ui.js")
+    # 家族感知过滤函数存在, 且在 select 渲染处替换裸 fieldOptions 直传.
+    assert "function filterFieldOptionsForFamily(key, options, currentValue)" in factory
+    assert "filterFieldOptionsForFamily(key, fieldOptions, value)" in factory
+    # 只在 krea2_raw 时保留 nf4; anima 过滤掉.
+    assert "family === 'krea2_raw'" in factory
+    assert "opt !== 'nf4'" in factory
+    # 当前值兜底: 即使被过滤也加回, 防 select 显示空 (config 残留 nf4 又切 anima).
+    assert "!filtered.includes(currentValue)" in factory
+
+    help_src = _frontend_module_text("js/config/catalog/field-help-training.js")
+    # 帮助文案提及 NF4 是 Krea-2 专属 + 与 ConvRot/block_swap 互斥.
+    assert "nf4（仅 Krea-2）" in help_src
+    assert "与 ConvRot、block_swap 互斥" in help_src

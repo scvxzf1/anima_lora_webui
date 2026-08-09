@@ -76,10 +76,15 @@ def normalize_base_compute(value: Any) -> str:
         "w8a16_convrot": "w8a16_convrot",
         "w8a8": "w8a8_convrot",
         "w8a8_convrot": "w8a8_convrot",
+        # NF4 (Krea-2 QLoRA) 直通: 不映射到 ConvRot, convrot_mode_from_base_compute
+        # 返回 None 让 maybe_apply_convrot_base 跳过 ConvRot 应用. 量化已在
+        # load_krea2_dit 内完成 (quantize_dit_to_nf4), 此处不应再碰权重.
+        "nf4": "nf4",
     }
     if text not in aliases:
         raise ValueError(
-            f"unknown base_compute={value!r}; expected bf16 | w8a16_convrot | w8a8_convrot"
+            f"unknown base_compute={value!r}; expected bf16 | "
+            "w8a16_convrot | w8a8_convrot | nf4"
         )
     return aliases[text]
 

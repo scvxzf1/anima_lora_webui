@@ -73,6 +73,7 @@ export function collectLiveCompatIssues(config = {}) {
 
     const baseCompute = String(config.base_compute ?? 'bf16').trim().toLowerCase() || 'bf16';
     const convrotActive = baseCompute === 'w8a16_convrot' || baseCompute === 'w8a8_convrot';
+    const nf4Active = baseCompute === 'nf4';
     const transferDtype = String(config.block_swap_transfer_dtype ?? 'bf16').trim().toLowerCase() || 'bf16';
     if (convrotActive && (transferDtype === 'int8' || transferDtype === 'int8_linear' || transferDtype === 'i8')) {
         issues.push({
@@ -81,6 +82,20 @@ export function collectLiveCompatIssues(config = {}) {
             severity: 'error',
             message:
                 'live 兼容：base_compute 的 ConvRot 路径与 block_swap_transfer_dtype=int8 互斥（preflight 仍会正式校验）。',
+        });
+    }
+    // NF4 × block_swap 已验证通过 (方向 A: deepcopy master + Params4bit.to()
+    // 整体搬运, offloading.py isinstance 分流不碰 bf16/int8/fp8 路径). 端到端
+    // 探针绿 (PG199, 1024, swap=4, 30 步): host RAM 18.18GB, GPU 10.26GB, loss
+    // 单调下降. 主战场是 host RAM (pinned NF4 master ~5.7GB vs bf16 22.64GB),
+    // 与后端 compat_matrix 的 nf4_block_swap_host_ram warning 对齐, 不再硬拒.
+    if (nf4Active && blockSwapEnabled) {
+        issues.push({
+            code: 'nf4_block_swap_host_ram',
+            key: 'base_compute',
+            severity: 'warning',
+            message:
+                'live 兼容：base_compute=nf4 + blocks_to_swap 已验证通过（offloader NF4 路径整体搬运，端到端探针绿）；主约束是 host RAM，pinned NF4 master ~5.7GB（bf16 路径 22.64GB），低内存主机请关注 pinned master 预算。',
         });
     }
 

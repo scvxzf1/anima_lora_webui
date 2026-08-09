@@ -239,7 +239,7 @@ export const FIELD_OPTIONS = {
     compile_inductor_mode: ['default', 'reduce-overhead', 'max-autotune', 'max-autotune-no-cudagraphs'],
     block_swap_restore_mode: ['foreach', 'slab'],
     block_swap_transfer_dtype: ['bf16', 'fp8_e4m3'],
-    base_compute: ['bf16', 'w8a16_convrot', 'w8a8_convrot'],
+    base_compute: ['bf16', 'w8a16_convrot', 'w8a8_convrot', 'nf4'],
     convrot_group_size: [64, 256, 1024],
     // Product profiles: mlp (speed default), all (VRAM), attention_out (mid).
     convrot_scope: ['mlp', 'all', 'attention_out', 'attn', 'mlp,attn'],

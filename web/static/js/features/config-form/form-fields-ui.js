@@ -65,6 +65,20 @@ function currentConfigState() {
     return configState.currentConfig || {};
 }
 
+// NF4 (Krea-2 QLoRA) 是 krea2_raw 专属: anima loader 不接 nf4, 选了会被
+// 静默忽略却盖 ss_base_compute=nf4 元数据, 误导. 故 base_compute 的 nf4 选项
+// 只在 model_family=krea2_raw 时露出. 当前值即使被过滤也兜底加回, 防 select
+// 显示空 (如 config 残留 nf4 又切回 anima 时仍可见当前值, 由 live-compat/
+// preflight 提示用户改回 bf16).
+function filterFieldOptionsForFamily(key, options, currentValue) {
+    if (key !== 'base_compute' || !Array.isArray(options)) return options;
+    const family = String(currentConfigState()?.model_family ?? '').trim().toLowerCase();
+    const isKrea2 = family === 'krea2_raw';
+    const filtered = isKrea2 ? options.slice() : options.filter((opt) => opt !== 'nf4');
+    if (currentValue != null && !filtered.includes(currentValue)) filtered.push(currentValue);
+    return filtered;
+}
+
 export function configureNoDatasetRegularizationModePanelUpdater(updater) {
     updateNoDatasetRegularizationModePanelCallback = typeof updater === 'function' ? updater : () => {};
 }
@@ -311,7 +325,7 @@ function createFieldInput(key, value, options = {}) {
     }
     const fieldOptions = FIELD_OPTIONS[key];
     if (shouldRenderSelectInput(key, value)) {
-        return createSelectInput(key, value, fieldOptions);
+        return createSelectInput(key, value, filterFieldOptionsForFamily(key, fieldOptions, value));
     }
 
     let input;

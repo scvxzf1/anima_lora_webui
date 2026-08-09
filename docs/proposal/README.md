@@ -12,6 +12,7 @@
 | [auto_vram_v1.md](auto_vram_v1.md) | 提案 / 未实现 | AutoVram v1 自动显存档位搜索与可审计协议 |
 | [krea2_raw_migration.md](krea2_raw_migration.md) | 提案 / 未实现 | Anima → Krea-2-Raw 迁移提案（`ModelFamily` 边界首实例；配套注意事项见 [krea2_raw_migration_notes.md](krea2_raw_migration_notes.md)） |
 | [krea2_raw_gradient_checkpointing.md](krea2_raw_gradient_checkpointing.md) | 提案 / 未实现 | Krea-2-Raw 梯度检查点落地方案（阶段 4 子设计；官方无训练代码，移植 anima block 级 `use_reentrant=False` 机制） |
+| [krea2_nf4_blockswap.md](krea2_nf4_blockswap.md) | 提案 / 已完成 | NF4 × block swap 落地方案（方向 A deepcopy 已落地 + 落盘/小卡链路 + compat_matrix 放开 + train.py 接线 + 5 格消融矩阵六维基准，见 [krea2_nf4_ablation_findings.md](../findings/krea2_nf4_ablation_findings.md)；方向 B slab+手动重建作为速度进阶存储） |
 | [adapter-aware-checkpoint.md](adapter-aware-checkpoint.md) | 半活跃 | Adapter-aware activation checkpoint 可行性探索 |
 | [turbo_anima_dmd_lora.md](turbo_anima_dmd_lora.md) | 半活跃 | Turbo Anima / DMD LoRA 蒸馏提案 |
 | [prior_preservation_from_synth_pool.md](prior_preservation_from_synth_pool.md) | 半活跃 | synth pool prior preservation 提案 |

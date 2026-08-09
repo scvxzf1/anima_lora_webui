@@ -9,6 +9,7 @@ from torch import nn
 from library.runtime.convrot.apply import apply_convrot_to_lora_network
 from library.runtime.convrot.checks import (
     assert_convrot_block_swap_mutex,
+    convrot_mode_from_base_compute,
     normalize_base_compute,
     warn_convrot_blocks_to_swap,
 )
@@ -192,6 +193,9 @@ def test_normalize_and_mutex() -> None:
     assert normalize_base_compute("bf16") == "bf16"
     with pytest.raises(ValueError):
         normalize_base_compute("int8")
+    # NF4 直通: 不映射到 ConvRot, convrot_mode_from_base_compute 返回 None.
+    assert normalize_base_compute("nf4") == "nf4"
+    assert convrot_mode_from_base_compute("nf4") is None
     assert_convrot_block_swap_mutex(
         base_compute="w8a16_convrot", block_swap_transfer_dtype="bf16"
     )

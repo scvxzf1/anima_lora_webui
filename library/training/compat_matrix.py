@@ -226,6 +226,7 @@ def check_training_compat(config: Mapping[str, Any] | object) -> TrainingCompatR
         "w8a16",
         "w8a8",
     }
+    nf4_active = base_compute == "nf4"
     if convrot_active and block_swap_transfer_dtype in {"int8", "int8_linear", "i8"}:
         out.error(
             "convrot_block_swap_int8_mutex",
@@ -233,6 +234,42 @@ def check_training_compat(config: Mapping[str, Any] | object) -> TrainingCompatR
             "base_compute ConvRot paths are mutually exclusive with "
             "block_swap_transfer_dtype=int8 (double dequant / confused semantics). "
             "Use block_swap_transfer_dtype=bf16 when enabling ConvRot.",
+        )
+    # NF4 (Krea-2 QLoRA) 与 ConvRot 互斥: ConvRot 是 anima cross-attn/AdaLN 专属
+    # 量化路径, NF4 是 Krea-2 single-stream 通用 bnb 4-bit, 两者架构假设不同.
+    if nf4_active and convrot_active:
+        out.error(
+            "nf4_convrot_mutex",
+            "base_compute",
+            "base_compute=nf4 is mutually exclusive with ConvRot paths "
+            "(w8a16_convrot/w8a8_convrot). NF4 is the Krea-2 QLoRA path; "
+            "ConvRot is anima-specific. Pick one.",
+        )
+    # NF4 × block_swap 已验证通过 (方向 A: deepcopy master + Params4bit.to() 整体
+    # 搬运, offloading.py isinstance 分流不碰 bf16/int8/fp8 路径). 端到端探针
+    # (probe_nf4_blockswap.py, PG199, 1024, swap=4, 30 步): host RAM 18.18GB
+    # (bf16 路径 22.64GB master 单项超它曾在 62GB 机宕机), GPU 10.26GB, loss
+    # 0.0084->0.0017 单调下降, LoRA grad 非零, DiT frozen 不变. 保留 warning:
+    # NF4 block swap 主战场是 host RAM (master 5.66GB) 而非 GPU, 提醒用户关注
+    # pinned master 内存预算.
+    if nf4_active and block_swap_enabled:
+        out.warning(
+            "nf4_block_swap_host_ram",
+            "base_compute",
+            "base_compute=nf4 + blocks_to_swap verified (offloader NF4 path "
+            "via Params4bit integral transport, end-to-end probe green). "
+            "Main constraint is host RAM: pinned NF4 masters ~5.7GB (bf16 "
+            "path 22.64GB), watch pinned-master memory budget on low-RAM hosts.",
+        )
+    # nf4_prequantized_path: 只在 base_compute=nf4 时生效. 给了路径但 base_compute
+    # 不是 nf4 → 路径被静默忽略, 提醒用户 (常见于从 NF4 配置切回 bf16 忘删路径).
+    nf4_path = _get(config, "nf4_prequantized_path", None)
+    if nf4_path and not nf4_active:
+        out.warning(
+            "nf4_path_ignored",
+            "nf4_prequantized_path",
+            "--nf4_prequantized_path only takes effect with --base_compute nf4; "
+            "ignored under current base_compute. Drop the path or switch to nf4.",
         )
     if base_compute not in {
         "bf16",
@@ -243,12 +280,13 @@ def check_training_compat(config: Mapping[str, Any] | object) -> TrainingCompatR
         "w8a8_convrot",
         "w8a16",
         "w8a8",
+        "nf4",
     }:
         out.error(
             "invalid_base_compute",
             "base_compute",
             f"unknown base_compute={base_compute!r}; expected bf16 | "
-            "w8a16_convrot | w8a8_convrot",
+            "w8a16_convrot | w8a8_convrot | nf4",
         )
 
     # ConvRot on attention linears + flash + torch.compile can materialize

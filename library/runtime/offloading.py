@@ -29,6 +29,7 @@ from library.runtime.block_swap_config import (
 )
 from library.runtime.block_swap_masters import (
     Int8BlockSwapCpuMaster,
+    Params4bitBlockSwapCpuMaster,
     _can_swap_frozen_weight_to_cpu,
     _capture_cpu_master,
     _CpuMaster,
@@ -36,8 +37,10 @@ from library.runtime.block_swap_masters import (
     _parked_cpu_master_tensor,
     _restore_cpu_master_tensor,
     _restore_int8_cpu_master_into_tensor,
+    _restore_params4bit_master,
     _tensor_nbytes,
     _weight_device_type,
+    is_params4bit_weight,
 )
 from library.runtime.block_swap_profiler import BlockSwapProfiler, _resolve_profiler
 from library.runtime.block_swap_payload import set_block_swap_payload_placement
@@ -257,7 +260,9 @@ def swap_weight_devices_no_cuda(
 
 
 _SwapPlanEntry = Tuple[str, _CpuMaster, _CpuMaster, torch.dtype, torch.dtype]
-_SwapPlan = tuple[tuple[_SwapPlanEntry, ...], tuple[str, ...]]
+# 第三元组 nf4_jobs: Params4bit master (NF4 量化权重), 不能进 slab/foreach 路径
+# (.data 赋值会丢 quant_state), 走独立整体搬运循环. 见 docs/proposal/krea2_nf4_blockswap.md.
+_SwapPlan = tuple[tuple[_SwapPlanEntry, ...], tuple[str, ...], tuple[_SwapPlanEntry, ...]]
 _SwapSlabView = Tuple[int, int, Tuple[int, ...], torch.dtype]
 _SwapSlabPlan = tuple[tuple[tuple[str, _SwapSlabView], ...], int]
 
@@ -644,6 +649,7 @@ class Offloader:
         modules_to_cuda = self._get_block_module_map(block_idx_to_cuda, block_to_cuda)
         swap_jobs: list[_SwapPlanEntry] = []
         fallback_names: list[str] = []
+        nf4_jobs: list[_SwapPlanEntry] = []
         for module_name, module_to_cuda in modules_to_cuda.items():
             weight = getattr(module_to_cuda, "weight", None)
             if weight is None:
@@ -661,18 +667,25 @@ class Offloader:
                 and target_dtype is not None
                 and module_to_cpu.weight.shape == module_to_cuda.weight.shape
             ):
-                swap_jobs.append(
-                    (
-                        module_name,
-                        source_master,
-                        target_master,
-                        source_dtype,
-                        target_dtype,
-                    )
+                entry = (
+                    module_name,
+                    source_master,
+                    target_master,
+                    source_dtype,
+                    target_dtype,
                 )
+                # NF4 (Params4bit) master 走独立搬运: Params4bit 是复合容器
+                # (4-bit 码 + quant_state), 不能进 slab/foreach 的 .data 赋值
+                # 路径 (会丢 quant_state, forward 崩). 见 docs/proposal/krea2_nf4_blockswap.md.
+                if isinstance(source_master, Params4bitBlockSwapCpuMaster) or isinstance(
+                    target_master, Params4bitBlockSwapCpuMaster
+                ):
+                    nf4_jobs.append(entry)
+                else:
+                    swap_jobs.append(entry)
             else:
                 fallback_names.append(module_name)
-        return tuple(swap_jobs), tuple(fallback_names)
+        return tuple(swap_jobs), tuple(fallback_names), tuple(nf4_jobs)
 
     def _get_swap_plan(
         self,
@@ -702,11 +715,14 @@ class Offloader:
         return plan
 
     def _build_swap_slab_plan(self, swap_plan: _SwapPlan) -> _SwapSlabPlan:
-        weight_swap_jobs, _ = swap_plan
+        weight_swap_jobs, _, _nf4_jobs = swap_plan
         slab_entries: list[tuple[str, _SwapSlabView]] = []
         slab_numel = 0
         for module_name, _, target_master, _, target_dtype in weight_swap_jobs:
             if isinstance(target_master, Int8BlockSwapCpuMaster):
+                return (), 0
+            if isinstance(target_master, Params4bitBlockSwapCpuMaster):
+                # NF4 master 不进 slab (复合容器, 体积/shape 不匹配 bf16 slab).
                 return (), 0
             flat_numel = int(target_master.numel())
             slab_entries.append(
@@ -744,10 +760,12 @@ class Offloader:
     ) -> Optional[tuple[torch.Tensor, torch.Tensor, tuple[tuple[str, torch.Tensor], ...]]]:
         if self.restore_mode != "slab":
             return None
-        weight_swap_jobs, _ = swap_plan
+        weight_swap_jobs, _fallback, _nf4_jobs = swap_plan
         if any(
             isinstance(source_master, Int8BlockSwapCpuMaster)
             or isinstance(target_master, Int8BlockSwapCpuMaster)
+            or isinstance(source_master, Params4bitBlockSwapCpuMaster)
+            or isinstance(target_master, Params4bitBlockSwapCpuMaster)
             for _, source_master, target_master, _, _ in weight_swap_jobs
         ):
             return None
@@ -1156,7 +1174,7 @@ class Offloader:
         assert layer_to_cpu.__class__ == layer_to_cuda.__class__
         modules_to_cpu = self._get_block_module_map(block_idx_to_cpu, layer_to_cpu)
         modules_to_cuda = self._get_block_module_map(block_idx_to_cuda, layer_to_cuda)
-        weight_swap_jobs, fallback_names = swap_plan
+        weight_swap_jobs, fallback_names, nf4_jobs = swap_plan
         for module_name in fallback_names:
             module_to_cuda = modules_to_cuda.get(module_name)
             module_to_cpu = modules_to_cpu.get(module_name)
@@ -1165,11 +1183,44 @@ class Offloader:
             if module_to_cpu is not None:
                 _ensure_weight_on_device(module_to_cpu, self.device)
 
+        # NF4 (Params4bit) 整体搬运: bnb Linear4bit.to() 原地搬 4-bit 码+quant_state.
+        # 不能走 slab/foreach 的 .data 赋值 (会丢 quant_state, forward 崩), 必须
+        # deepcopy master 再 .to(device), 整体挂回 module.weight (非 .data).
+        # 探针 probe_nf4_blockswap_compat 已证此模式 delta=0.
+        # 见 docs/proposal/krea2_nf4_blockswap.md 方向 A.
+        nf4_ms = 0.0
+        if nf4_jobs:
+            nf4_t0 = time.perf_counter()
+            stream = self._get_copy_stream_for_slot(slot_id)
+            with torch.cuda.stream(stream):
+                if ready_event is not None:
+                    stream.wait_event(ready_event)
+                for (
+                    module_name,
+                    source_master,
+                    target_master,
+                    _source_dtype,
+                    _target_dtype,
+                ) in nf4_jobs:
+                    module_to_cpu = modules_to_cpu[module_name]
+                    module_to_cuda = modules_to_cuda[module_name]
+                    # inactive 块停放: 用 master 的 4-bit 码占位回 inactive.weight.data,
+                    # 释放其原 GPU Params4bit 占的显存 (Params4bit.data 本就是 uint8 码).
+                    module_to_cpu.weight.data = _parked_cpu_master_tensor(source_master)
+                    # active 块整体重建: 从 target master deepcopy 出新 Params4bit 搬到 GPU,
+                    # 整体赋回 module.weight (非 .data, 保留 quant_state). bnb 契约:
+                    # Linear4bit.to() 原地改 device, 故必须 deepcopy master 再 .to().
+                    restored = _restore_params4bit_master(target_master, self.device)
+                    module_to_cuda.weight = restored
+            synchronize_device(self.device)
+            nf4_ms = (time.perf_counter() - nf4_t0) * 1000.0
+
         profile_timings = self.profiler is not None
         timings: dict[str, Any] = {
             "d2h_ms": 0.0,
             "h2d_ms": 0.0,
             "event_wait_ms": 0.0,
+            "nf4_ms": nf4_ms,
             "_event_timing": profile_timings,
         }
         if ready_event is not None:
@@ -1329,7 +1380,7 @@ class Offloader:
         t0 = time.perf_counter()
         modules_to_cpu = self._get_block_module_map(block_idx_to_cpu, layer_to_cpu)
         modules_to_cuda = self._get_block_module_map(block_idx_to_cuda, layer_to_cuda)
-        weight_swap_jobs, fallback_names = swap_plan
+        weight_swap_jobs, fallback_names, nf4_jobs = swap_plan
         for module_name in fallback_names:
             module_to_cuda = modules_to_cuda.get(module_name)
             module_to_cpu = modules_to_cpu.get(module_name)
@@ -1337,6 +1388,18 @@ class Offloader:
                 _ensure_weight_on_device(module_to_cuda, self.device)
             if module_to_cpu is not None:
                 _ensure_weight_on_device(module_to_cpu, self.device)
+        for (
+            module_name,
+            source_master,
+            target_master,
+            _source_dtype,
+            _target_dtype,
+        ) in nf4_jobs:
+            module_to_cpu = modules_to_cpu[module_name]
+            module_to_cuda = modules_to_cuda[module_name]
+            module_to_cpu.weight.data = _parked_cpu_master_tensor(source_master)
+            # NF4 整体重建: deepcopy master 再 .to(device), 整体挂回 (非 .data).
+            module_to_cuda.weight = _restore_params4bit_master(target_master, self.device)
         for (
             module_name,
             source_master,
@@ -1376,12 +1439,17 @@ class Offloader:
                 if weight is None:
                     continue
                 dtype = dtypes.get(name, weight.data.dtype)
-                weight.data = _restore_cpu_master_tensor(
-                    master,
-                    device=device,
-                    dtype=dtype,
-                    non_blocking=True,
-                )
+                if isinstance(master, Params4bitBlockSwapCpuMaster):
+                    # NF4: 整体 deepcopy master 再 .to(device), 挂回 module.weight
+                    # (非 .data, 保留 quant_state). 见 docs/proposal/krea2_nf4_blockswap.md.
+                    module.weight = _restore_params4bit_master(master, device)
+                else:
+                    weight.data = _restore_cpu_master_tensor(
+                        master,
+                        device=device,
+                        dtype=dtype,
+                        non_blocking=True,
+                    )
             weighs_to_device(block, device, include_trainable=True)
             set_block_swap_payload_placement(block, active=False)
         synchronize_device(device)

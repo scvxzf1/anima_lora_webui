@@ -1,9 +1,9 @@
 # Krea-2-Raw 梯度检查点落地方案
 
-状态：提案 / 未实现（配套 [`krea2_raw_migration.md`](krea2_raw_migration.md) 阶段 4 训练串通；调查结论已核实，落地代码尚无）
-适用版本：当前 main（Krea-2 训练路径尚未落地；anima 侧引用基于 2026-08-08 main，执行前以实时源码为准）
-日期：2026-08-08
-入口命令：无（设计文档；落地后训练入口为 `python tasks.py lora` + `model_family="krea2_raw"`）
+状态：已实现（配套 [`krea2_raw_migration.md`](krea2_raw_migration.md) 阶段 4 训练串通；落地见 `library/models/krea2_raw/dit.py`，1024×1024 真实训练实测通过，见 [`../findings/krea2_raw_migration_stage6_findings.md`](../findings/krea2_raw_migration_stage6_findings.md)）
+适用版本：当前 main（grad-ckpt 已落地，提交 `0f8f934c`；本文档作设计背景，部分假设已与实现分叉——见 §11 落地核对）
+日期：2026-08-08（原调查稿）；2026-08-09 补落地核对 §11
+入口命令：`python tasks.py lora model_family=krea2_raw` + `gradient_checkpointing=true`（落地后训练入口）
 
 相关代码：
 
@@ -70,7 +70,7 @@ def forward(self, x, vec, freqs, mask=None):
 | `UnslothOffloadedGradientCheckpointer` | `library/anima/models.py:88`（`forward` 95-109，`backward` 111-134） | CPU offload 档位的 autograd.Function |
 | `unsloth_checkpoint` | `library/anima/models.py:137-140`（`@torch._disable_dynamo` 在 `:137`） | 包装函数，**带 `@torch._disable_dynamo`**——这是 compile 必须编译 `_forward` 而非 `forward` 的根因 |
 | `ADAPTER_AWARE_CHECKPOINT_MAX_SAVE_NUMEL` | `library/anima/models.py:204` | `1_048_576`（1 MiB elements），adapter_aware 档位的小张量保存阈值 |
-| `_adapter_aware_checkpoint_policy` | `library/anima/models.py:381-393` | `MUST_SAVE`（小且可训练）/ `PREFER_RECOMPUTE`（默认/无梯度）判定 |
+| `_adapter_aware_checkpoint_policy` | `library/anima/models.py:381-394` | `MUST_SAVE`（小且可训练）/ `PREFER_RECOMPUTE`（默认/无梯度）判定 |
 | `Block._forward`（被 checkpoint 包装的内层） | `library/anima/models.py:1432` 起 | 注意 compile 后被替换，原始存于 `block._anima_compile_base_forward`（`:2175`） |
 | `Block.forward` checkpoint 分支 | `library/anima/models.py:1662` 起 | 4 分支：adapter_aware(`:1677`) / unsloth(`:1694`) / cpu_offload(`:1718`) / 普通(`:1731`)，全部 `use_reentrant=False`（`:1686,1727,1740`） |
 | `Block.enable_gradient_checkpointing` | `library/anima/models.py:1342-1350` | 接受 `cpu_offload` / `unsloth_offload` 标志 |
@@ -78,7 +78,7 @@ def forward(self, x, vec, freqs, mask=None):
 | `Block.enable_mlp_checkpointing` / `enable_mlp_layer1_checkpointing` | `library/anima/models.py:1360-1374` | MLP 子粒度档位（针对 GPT2 FeedForward，Krea-2 SwiGLU 需重写） |
 | `Anima.enable_gradient_checkpointing` | `library/anima/models.py:1942-1948` | 聚合到所有 block |
 | `Anima.enable_selective_checkpointing` | `library/anima/models.py:2001-2046` | 8 种 mode 分发（off/adapter_aware/every_other/mlp_only/mlp_layer1_only/peak_blocks_*） |
-| `Anima.compile_blocks` | `library/anima/models.py:2048-2101` | **编译 `_forward` 不编译 `forward`**（注释 `:2071-2075`）；block-swap coexistence 注释 `:2077-2084`（默认 `compile_block_scope="resident"`，swap 出去的 tail block 保持 eager） |
+| `Anima.compile_blocks` | `library/anima/models.py:2048` 起（方法体延续至 ~2190+） | **编译 `_forward` 不编译 `forward`**（注释 `:2071-2075`）；block-swap coexistence 注释 `:2077-2084`（默认 `compile_block_scope="resident"`，swap 出去的 tail block 保持 eager） |
 
 ### 3.2 加载顺序不变量
 
@@ -91,9 +91,9 @@ def forward(self, x, vec, freqs, mask=None):
 5. `train()` / `eval()`（`:183-190`）
 6. **compile last**（`:194-200`，注释 `:192-193` "Adapter monkey-patches must be installed first or torch.compile traces the wrong forward"）
 
-`library/training/bootstrap.py` 同序：apply_to(`:552`) → load(`:555`) → grad-ckpt(`:560-572`) → fp32_residual(`:578`) → convrot(`:590`) → compile(`:619`)。
+`library/training/bootstrap.py` 同序：apply_to(`:561`) → load(`:564`) → grad-ckpt(`:569-581`) → fp32_residual(`:587`) → convrot(`:599`) → compile(`:628`)。注意 `:569-573` 的 `cpu_offload_checkpointing` 分支调 `unet.enable_gradient_checkpointing(cpu_offload=True)`，Krea-2 的 `enable_gradient_checkpointing(self)` 不接受该参数——见 §11.2 兼容缺口。
 
-`enable_training_grad_ckpt`（`harness.py:1025-1037`）**只走 unsloth_offload 路径**（`:1033-1035`），不分支 cpu_offload/普通——三路分支实际在 `Block.forward`（`:1691-1741`）按 block 上的标志自洽选择。
+`enable_training_grad_ckpt`（`harness.py:1041-1053`）**只走 unsloth_offload 路径**（`:1050`），不分支 cpu_offload/普通——三路分支实际在 `Block.forward`（`:1691-1741`）按 block 上的标志自洽选择。
 
 ### 3.3 compile 编译 `_forward` 不编译 `forward`
 
@@ -113,7 +113,7 @@ Krea-2 DiT 移植后**必须沿用此结构**：`forward` 做 checkpoint 包装�
 
 ### 调度时序
 
-**forward 主循环**（`library/anima/models.py:2419-2458`，`_run_blocks`）：
+**forward 主循环**（`library/anima/models.py` `_run_blocks`，def 在 `:2389`，循环主体 `:2419-2458`）：
 
 - `:2421` `self.offloader.wait_for_block(block_idx)` —— block 级 forward 前**等待该 block 权重 H2D 完成**
 - `:2439-2445` `x = block(x, ...)` —— 实际 forward，checkpoint 在此触发（保存 input 到 CPU / 重算在 backward）
@@ -135,7 +135,7 @@ swap out **不会抢先于 recompute**：被 checkpoint 的 block 重算时，�
 
 ### 测试守护
 
-`tests/test_compile_checkpoint_block_swap_hot.py`：三因子（compile × grad-ckpt × block swap）全组合 8 scenario（`:35-49`，含 `compile_full_checkpoint_block_swap` 三因子全开 `:44-48`），每个跑 `loss.backward()`（`:209`），校验 block_swap profile 含 `phase == "backward_wait"` + `submit_phase == "backward_prefetch"`（`:231-242`）。Krea-2 落地后需补等价矩阵测试。
+`tests/test_compile_checkpoint_block_swap_hot.py`：三因子（compile × grad-ckpt × block swap）全组合 8 scenario（`:35-49`，含 `compile_full_checkpoint_block_swap` 三因子全开 `:44-48`），每个跑 `loss.backward()`（`:209`），校验 block_swap profile 含 `phase == "backward_wait"` + `submit_phase == "backward_prefetch"`（`:239-244`）。Krea-2 落地后需补等价矩阵测试。
 
 ## 5. 迁移落地清单
 
@@ -235,3 +235,30 @@ swap out **不会抢先于 recompute**：被 checkpoint 的 block 重算时，�
 - NF4 量化的具体实现（diffusers `prepare_krea2_model_for_4bit` 路径，落地时参照 diffusers `train_dreambooth_lora_krea2.py`，不在本文件展开）。
 - text encoder（Qwen3-VL）侧的 grad-ckpt（anima 在 `bootstrap.py:566-571`/`:911-923` 有 text-encoder grad-ckpt workaround，Krea-2 文本链路见 [`krea2_raw_migration.md`](krea2_raw_migration.md) 阶段 1，本文件只覆盖 DiT block 级）。
 - ConvRot / Turbo / DCW 等与 grad-ckpt 的交互（Krea-2 首日不做这些，见 [`krea2_raw_migration.md`](krea2_raw_migration.md) §1 非目标）。
+
+## 11. 落地核对（2026-08-09 补）
+
+本节对照 §5 落地清单与实际代码，记录分叉。原文档 §1-§10 是落地前的调查设计稿；实际落地走了更保守的策略，下列条目以实际代码为准。
+
+### 11.1 已落地（与 §5.2 一致）
+
+- **`SingleStreamBlock._forward` 重写**（§5.2.1）：`library/models/krea2_raw/dit.py:367-375`，attn+mlp 两段，`self.mod(vec)` 在 `_forward` 内部计算，无 anima 的 `adaln_lora_B_T_3D` 注入参数。
+- **checkpoint 调用签名**（§5.2.2）：`dit.py:385-392`，`torch_checkpoint(self._forward, x, vec, freqs, mask, use_reentrant=False)`，`vec`/`freqs`/`mask` 作位置参数。全文件唯一 checkpoint 调用，`use_reentrant=False` 贯穿。
+- **RoPE/freqs 边界**（§5.2.5）：`freqs` 作位置参数传入（`dit.py:389`），3-axis Axial RoPE（`PositionalEncoding` `:166-180`，axes `[96,16,16]` @ headdim=128）。固定 bucket，`_make_dynamic_seq_forward`/`mark_dynamic` 未移植——符合 §5.2.5 "固定 bucket 则删"。
+- **MLP 子粒度省略**（§5.2.3）+ **adapter_aware 省略**（§5.2.4）：`dit.py:357-358` 注释自述"首日只标准 grad-ckpt（无 cpu_offload/unsloth/adapter-aware 变体）"，符合 §5.2.3/§5.2.4 "首日省略"建议。
+- **block swap 调度复用**（§5.1.5）：`dit.py:506-527` `enable_block_swap` 复用 `library.runtime.offloading.ModelOffloader`；`:561-580` `_run_blocks` 移植自 anima，调度时序与 §4 一致（`wait_for_block` → block forward → `submit_move_blocks`）。
+
+### 11.2 与设计的分叉
+
+- **compile 路径全程 eager**（§5.1.3/§5.2.6/§7.2/§7.3 不适用）：`SingleStreamDiT` **没有 `compile_blocks` 方法**（`dit.py:5-6` 注释说"anima 的 compile_blocks() 统一编译"是设计意图，但未实现），`library/runtime/harness.py:766` 用鸭子类型 `if not hasattr(unet, "compile_blocks"): return` 跳过整个 compile 序列（commit `b7afaba5` 固化）。`_forward` 仅作 grad-ckpt 的 recompute 函数，不被 compile。因此 §7.2 "compile × grad-ckpt 共存"、§7.3 "compile × grad-ckpt × block swap 三因子矩阵"对 Krea-2 **不适用**，三因子退化为 grad-ckpt × block swap 二因子。`compile_block_scope="resident"` 默认值在 `harness.py:721`/`bootstrap.py:650-651` 保留，但对 Krea-2 不生效。
+- **`UnslothOffloadedGradientCheckpointer` 未复用**（§5.1.4）：Krea-2 走标准 `torch.utils.checkpoint`，未移植 anima 的 CPU offload 档位 autograd.Function。
+- **compile-after-grad-ckpt 运行时断言未实现**（§5.1.2/R3）：顺序正确（`bootstrap.py:569` grad-ckpt → `:628` compile），但只有注释，无 `assert network._applied` 之类防呆。
+- **`cpu_offload` 签名缺口**（§8 风险清单未覆盖）：`bootstrap.py:570-571` 通用分支 `if args.cpu_offload_checkpointing: unet.enable_gradient_checkpointing(cpu_offload=True)` 对 Krea-2 不兼容——`SingleStreamDiT.enable_gradient_checkpointing(self)`（`dit.py:491`）只收 `self`。用户若对 Krea-2 同时传 `--gradient_checkpointing --cpu_offload_checkpointing` 会 `TypeError: unexpected keyword argument 'cpu_offload'`。默认路径（`:573` 无参调用）正常。缓解：Krea-2 preset/文档应明确禁用 `cpu_offload_checkpointing`，或在 DiT 侧加 `**kwargs` 兜底吸收。
+
+### 11.3 实测结论
+
+阶段 6 配置收口里程碑：`forward_for_loss` + `model_family` 正式串通 `train.py`，1024×1024 grad-ckpt 真实 flow-matching LoRA 训练实测通过——loss 0.465→0.198（50 步），显存 peak 27.9GB（PG199 32GB bf16，稳态 24.5GB，余量 ~4GB），step 3.47s/it，checkpoint 92MB。本次为 **grad-ckpt on, swap off**，未叠加 block swap 实测（二者正交，findings 文档明确未叠加）；未测 NF4 路径（仅 §6 作为 24GB 4090 保底方案提及）。详见 [`../findings/krea2_raw_migration_stage6_findings.md`](../findings/krea2_raw_migration_stage6_findings.md)。
+
+### 11.4 行号订正
+
+本文档 anima 侧引用基于 2026-08-08 main，落地后部分文件局部增长导致系统性偏移，已订正：`bootstrap.py` 引用组整体 +9 行（apply_to `:561`/load `:564`/grad-ckpt `:569-581`/fp32_residual `:587`/convrot `:599`/compile `:628`）；`harness.py::enable_training_grad_ckpt` +16 行（`:1041-1053`）；另 `_adapter_aware_checkpoint_policy` 末行 `:394`、`_run_blocks` def 起点 `:2389`、测试 backward 校验段 `:239-244`。结构性/顺序性断言全部仍然正确。

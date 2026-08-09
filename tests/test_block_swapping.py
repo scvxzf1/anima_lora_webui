@@ -1026,6 +1026,7 @@ def test_block_swap_slab_plan_tracks_offsets_and_total_numel() -> None:
             ("base1", torch.randn(4, 1), torch.randn(4, 1), torch.float32, torch.float32),
         ),
         (),
+        (),
     )
     try:
         slab_plan = offloader._get_swap_slab_plan(0, 2, swap_plan)
@@ -1873,6 +1874,7 @@ def test_block_swap_slab_gpu_cache_reuses_physical_slot() -> None:
     )
     swap_plan = (
         (("base", torch.randn(2, 2), torch.randn(2, 2), torch.float32, torch.float32),),
+        (),
         (),
     )
     try:

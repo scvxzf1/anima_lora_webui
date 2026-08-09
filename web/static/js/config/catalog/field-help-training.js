@@ -346,15 +346,16 @@ export const FIELD_HELP_TRAINING_ZH = {    learning_rate: help(
     ),
     base_compute: help(
         "冻结 DiT 底模 Linear 的计算路径（实验）。",
-        "bf16 是默认高精度路径。w8a16_convrot / w8a8_convrot 对选定 scope（默认 mlp）做 group Regular Hadamard + int8 权重，用于省显存；不保证比 bf16 更快。与 block_swap_transfer_dtype=int8 互斥。",
+        "bf16 是默认高精度路径。w8a16_convrot / w8a8_convrot 对选定 scope（默认 mlp）做 group Regular Hadamard + int8 权重，用于省显存；不保证比 bf16 更快。与 block_swap_transfer_dtype=int8 互斥。nf4（仅 Krea-2）用 bnb 4-bit NormalFloat 量化冻结底模，13B→6.6GB，PG199 实测 peak 10.2GB / 3.6s/step（bf16 27.9GB / 3.47s），适配 24GB 卡；与 ConvRot、block_swap 互斥。",
         [
             "W8A16+mlp+compile：peak ~4.1GB（bf16~4.95），step ~1.05×；scope=all ~3.4GB / ~1.08×。",
             "同显存可抬 rank：W8A16@r32 仍 ~4.2GB，低于 bf16@r4。质量 opt-in regular@64。",
             "同显存更大 batch 仅 scope=all：all@b2 ~4.4GB、all@r32@b2 ~4.6GB 仍低于 bf16@b1；mlp@b2 会越峰。",
+            "NF4 量化一次性 ~150s（启动期，含 Linear4bit 替换）；训练中 dequant 开销不可见（3.6s vs bf16 3.47s）。",
         ],
-        ["W8A8 默认质量路径更慢（~1.4×）；half/TF32 STE 会破 grad gate。"],
+        ["W8A8 默认质量路径更慢（~1.4×）；half/TF32 STE 会破 grad gate。", "NF4 仅 Krea-2 可用；anima 不显示该选项。"],
         ["正式训练保持 bf16。开启后请先做短训对照，不要默认用于生产长训。"],
-        "默认 bf16；显存吃紧时再选 w8a16_convrot + compile，优先换更大 network_dim 或 all+更大 batch。"
+        "默认 bf16；显存吃紧时再选 w8a16_convrot + compile，优先换更大 network_dim 或 all+更大 batch。Krea-2 想压显存可选 nf4（13B→6.6GB）。"
     ),
     convrot_group_size: help(
         "ConvRot 分组大小（RHT 的 group size）。",

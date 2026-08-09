@@ -103,15 +103,36 @@ def _load_krea2_dit(trainer, args, weight_dtype, accelerator, text_encoders):
 
     loading_dtype = weight_dtype
     loading_device = "cpu" if trainer.is_swapping_blocks else accelerator.device
+    # NF4 (Krea-2 QLoRA): compat_matrix 对 nf4×block_swap 已降级 warning (方向 A
+    # 端到端探针验证通过). nf4 时若给了 nf4_prequantized_path (save_nf4_dit 产物),
+    # 走磁盘加载 (load_nf4_dit_into), 跳过在线量化要的 26GB bf16 在 GPU, 让 3080
+    # 等 8-12GB 卡也能训; 否则回退在线 quantize_dit_to_nf4 (需能放 26GB bf16 的卡).
+    nf4_active = (
+        str(getattr(args, "base_compute", "bf16") or "bf16").strip().lower()
+        == "nf4"
+    )
+    nf4_path = getattr(args, "nf4_prequantized_path", None)
+    if nf4_active and nf4_path:
+        import os as _os
+
+        if not _os.path.exists(str(nf4_path)):
+            raise FileNotFoundError(
+                f"--nf4_prequantized_path 不存在: {nf4_path}. "
+                f"先用 scripts/krea2/probe_nf4_save.py 生成, 或去掉该参数走在线量化."
+            )
+        logger.info(f"  [NF4 磁盘加载] {nf4_path} (跳过在线量化)")
     logger.info(
         f"Loading Krea-2 DiT (family=krea2_raw) from "
         f"{args.pretrained_model_name_or_path}..."
+        + (" [NF4]" if nf4_active else "")
     )
     model = load_krea2_dit(
         args.pretrained_model_name_or_path,
         device=loading_device,
         dtype=loading_dtype,
         eval=False,
+        nf4=nf4_active,
+        nf4_path=nf4_path if nf4_active else None,
     )
     _maybe_probe_components(
         trainer,

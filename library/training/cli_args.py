@@ -933,14 +933,30 @@ def add_dit_training_arguments(parser: argparse.ArgumentParser):
         "--base_compute",
         type=str,
         default="bf16",
-        choices=["bf16", "w8a16_convrot", "w8a8_convrot"],
+        choices=["bf16", "w8a16_convrot", "w8a8_convrot", "nf4"],
         help=(
             "[EXPERIMENTAL] Frozen DiT base Linear compute path. "
             "bf16 is the default high-precision path. "
             "w8a16_convrot applies group Regular Hadamard (ConvRot) + int8 "
             "weights with bf16/fp16 activations on selected scope (default mlp). "
             "w8a8_convrot additionally fake-quants activations (default off). "
-            "Not the same as --block_swap_transfer_dtype int8."
+            "Not the same as --block_swap_transfer_dtype int8. "
+            "nf4 (Krea-2 only) quantizes frozen base to 4-bit NormalFloat via bnb, "
+            "13B->6.6GB, enables 24GB training; verified with block_swap (offloader "
+            "NF4 path via Params4bit integral transport). Mutually exclusive with "
+            "ConvRot.",
+        ),
+    )
+    parser.add_argument(
+        "--nf4_prequantized_path",
+        type=str,
+        default=None,
+        help=(
+            "[EXPERIMENTAL] Path to a pre-quantized NF4 safetensors (save_nf4_dit "
+            "product, e.g. models/diffusion_models/krea2_raw_nf4.safetensors). "
+            "Only used with --base_compute nf4. Skips in-line quantization (which "
+            "needs the full 26GB bf16 DiT on GPU) so 8-12GB cards can load the 6.6GB "
+            "NF4 file directly. When None, falls back to in-line quantize_dit_to_nf4."
         ),
     )
     parser.add_argument(

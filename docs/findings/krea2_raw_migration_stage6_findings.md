@@ -155,26 +155,47 @@ forward 用相同权重 + 相同输入 (固定 σ + 固定 noise seed), 确定�
 
 ## 基线 (PG199 bf16, 256×256, lora_dim=16/alpha=8)
 
-| 指标 | 块交换 (swap=4) | 无 swap (probe_train) | 检查点 (无 swap) |
-|---|---|---|---|
-| 显存 peak | 32.24GB | 32.62GB | 32.62GB (训练段) |
-| 节省显存 | 0.38GB | — | — |
-| avg step | 1965ms | 400ms | 400ms |
-| loss (first5→last5) | 0.0087→0.0009 | 0.0125→0.0003 | 0.0125→0.0016 (8步) |
-| GPU 功耗 | 43.8→46.7W | 44.8→221.9W | — |
-| TE 加载 | 148.83s (冷启) | 148s | — |
-| block swap CPU masters | 22.64 GiB / 28 blocks | — | — |
-| checkpoint | — | — | 96.4MB, 392 键 |
+| 指标 | 块交换 探针 (swap=4, free_cache=True) | 块交换 稳态 (swap=4, free_cache=False) | 无 swap (probe_train) | 检查点 (无 swap) |
+|---|---|---|---|---|
+| 显存 peak | 32.24GB | 29.15GB | 32.62GB | 32.62GB (训练段) |
+| 节省显存 | 0.38GB | 3.47GB | — | — |
+| avg step | 1965ms | 1404ms | 400ms | 400ms |
+| step 稳态区间 | — | 1393-1433ms | 363-411ms | — |
+| loss (first5→last5) | 0.0087→0.0009 | 0.0028→0.0007 | 0.0125→0.0003 | 0.0125→0.0016 (8步) |
+| GPU 功耗 | 43.8→46.7W | 47.5→48.5W | 44.8→221.9W | — |
+| TE 加载 | 148.83s (冷启) | 162.96s | 148s | — |
+| block swap CPU masters | 22.64 GiB / 28 blocks | 22.64 GiB / 28 blocks | — | — |
+| checkpoint | — | — | — | 96.4MB, 392 键 |
+
+> **探针路径 vs 稳态路径区分**: `probe_blockswap.py` 每步调
+> `prepare_block_swap_before_forward()` 默认 `free_cache=True`
+> (`dit.py:549`), 触发 `gc.collect()`+`torch.cuda.empty_cache()`
+> (`offloading.py:1718-1720`), 放大 step 并推高显存 peak 统计.
+> 真实训练路径 `library/training/unet_prepare.py:36` 显式 `free_cache=False`
+> 跳过此开销. 对照探针 `scripts/krea2/probe_blockswap_steady.py` 复刻真实
+> 路径 (free_cache=False + profile_jsonl=None + 3 步预热后计时稳态 15 步):
+> step 1965→1404ms (省 561ms/步, 28%), 显存 peak 32.24→29.15GB (省 3GB).
+> `free_cache` 放大占探针开销的 28%, 不是主因; 主开销是 H2D 串行化
+> (1404-400=1004ms/步, depth=1 硬钉 `offloading.py:1763` + 单 worker
+> `offloading.py:306` + 256×256 forward 太快无重叠窗口).
 
 ## 关键发现
 
 ### 块交换在 256×256 是净负 (但机制正确)
 
-256×256 训练无 swap 时 32.62GB 已紧贴 PG199 32GB 上限但能 fit. swap 4 块只省
-0.38GB (block swap 只搬权重, 权重每块 ~0.8GB × 4 ≈ 3.2GB, 但 offloader 保留
-forward-only 缓存 + 激活仍在 GPU, 净省远小于权重总量). 代价是 step 从 400ms 涨到
-1965ms (5× 慢, 权重 CPU↔GPU 搬运 + GPU 等待), 功耗从 221.9W 降到 46.7W (近乎 idle,
-计算间隙 GPU 在等搬运).
+256×256 训练无 swap 时 32.62GB 已紧贴 PG199 32GB 上限但能 fit. swap 4 块稳态
+(`free_cache=False`) 省显存 3.47GB (peak 29.15GB), 但 step 从 400ms 涨到 1404ms
+(3.5× 慢). 功耗从 221.9W 降到 48.5W (近乎 idle, 计算间隙 GPU 在等搬运).
+
+**step 开销归因** (稳态 1404ms = 400ms 计算 + 1004ms 块交换):
+- H2D 串行化 1004ms/步是主开销, 非 `free_cache`. 根因: depth=1 硬钉
+  (`offloading.py:1763`, >1 会退役未执行块致 `mat2 is on cpu`) +
+  `ThreadPoolExecutor(max_workers=1)` (`offloading.py:306`) + 256×256 forward
+  单块计算太短, H2D 拷贝 (`offloading.py:330-331` 自承 bf16 transfer 略超
+  单块计算) 无法重叠 → `wait_for_block` 的 `future.result()` host 侧串行等待.
+- 纯 H2D 拷贝仅 ~26ms/步 (4 块 × 132MiB ÷ 20GB/s), 串行化开销是纯拷贝的 38×,
+  即"调度结构在小分辨率被放大", 非带宽瓶颈.
+- `free_cache=True` 额外加 561ms/步 (探针 1965ms vs 稳态 1404ms), 是次要放大源.
 
 **块交换的真实价值**:
 - 大分辨率训练 (512×512 / 1024×1024) 权重部分仍占 ~26GB, swap N 块腾出 N×0.8GB

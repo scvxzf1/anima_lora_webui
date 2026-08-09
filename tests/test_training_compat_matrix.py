@@ -164,6 +164,47 @@ def test_matrix_accepts_convrot_with_bf16_transfer() -> None:
     assert "invalid_base_compute" not in _codes(result.errors)
 
 
+def test_matrix_accepts_nf4_alone() -> None:
+    result = check_training_compat({"base_compute": "nf4"})
+    assert result.ok
+    assert "invalid_base_compute" not in _codes(result.errors)
+    assert "nf4_block_swap_unverified" not in _codes(result.errors)
+    # nf4 单独 (无 blocks_to_swap) 不应触发 host_ram 告警
+    assert "nf4_block_swap_host_ram" not in _codes(result.warnings)
+
+
+def test_matrix_accepts_nf4_with_block_swap_warns_host_ram() -> None:
+    """NF4 × block_swap 已端到端验证通过 (方向 A, offloader Params4bit 搬运),
+    不再硬拒; 保留 warning 提醒主战场是 host RAM (pinned NF4 master)."""
+    result = check_training_compat(
+        {"base_compute": "nf4", "blocks_to_swap": 4}
+    )
+    # 不再拒: errors 不含旧的 unverified 码, 也不含新的 host_ram 码 (warning 而非 error)
+    assert "nf4_block_swap_unverified" not in _codes(result.errors)
+    assert "nf4_block_swap_host_ram" not in _codes(result.errors)
+    # 告警: 提醒 host RAM 主战场
+    assert "nf4_block_swap_host_ram" in _codes(result.warnings)
+
+
+def test_matrix_rejects_unknown_base_compute_after_nf4_added() -> None:
+    result = check_training_compat({"base_compute": "zzz"})
+    assert "invalid_base_compute" in _codes(result.errors)
+
+
+def test_matrix_warns_nf4_path_ignored_without_nf4_base_compute() -> None:
+    """--nf4_prequantized_path 只在 base_compute=nf4 时生效; 给了路径但 base_compute
+    不是 nf4 → warning (路径被静默忽略, 提醒用户配错)."""
+    result = check_training_compat(
+        {"base_compute": "bf16", "nf4_prequantized_path": "/path/to/nf4.safetensors"}
+    )
+    assert "nf4_path_ignored" in _codes(result.warnings)
+    # base_compute=nf4 时给了路径不应触发该告警
+    result_nf4 = check_training_compat(
+        {"base_compute": "nf4", "nf4_prequantized_path": "/path/to/nf4.safetensors"}
+    )
+    assert "nf4_path_ignored" not in _codes(result_nf4.warnings)
+
+
 def test_matrix_warns_convrot_attn_flash_compile_combo() -> None:
     """Four-lock path: scope covering attn + flash + compile + w8a16.
 
