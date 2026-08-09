@@ -18,6 +18,10 @@
   K2_ABL_SWAP=N           (块交换 blocks_to_swap; 0=off)
   K2_ABL_CKPT=0/1         (完整检查点: 训练中途存 LoRA+opt state, reload 续训,
                             验证 loss 连续性 + round-trip delta)
+  K2_ABL_GRAD_CKPT=full|every_other|full_except|off
+                           (激活检查点消融; 默认 full)
+  K2_ABL_UNCKPT_BLOCKS=26,27
+                           (full_except 模式下不 checkpoint 的 block)
   K2_ABL_IMG=1024         (分辨率)
   K2_ABL_STEPS=30         (训练步数; CKPT 模式下中途存+续训各跑一半)
   K2_ABL_GPU=1            (PG199)
@@ -221,6 +225,14 @@ def main() -> int:
     nf4 = _env_bool("K2_ABL_NF4", False)
     swap = _env_int("K2_ABL_SWAP", 0)
     ckpt = _env_bool("K2_ABL_CKPT", False)
+    grad_ckpt = os.environ.get("K2_ABL_GRAD_CKPT", "full").strip().lower()
+    if grad_ckpt not in {"full", "every_other", "full_except", "off"}:
+        raise ValueError(f"invalid K2_ABL_GRAD_CKPT={grad_ckpt!r}")
+    unckpt_blocks = {
+        int(value)
+        for value in os.environ.get("K2_ABL_UNCKPT_BLOCKS", "").split(",")
+        if value.strip()
+    }
     img_size = _env_int("K2_ABL_IMG", 1024)
     n_steps = _env_int("K2_ABL_STEPS", 30)
     nf4_path = os.environ.get("K2_ABL_NF4_PATH", "") or None
@@ -247,7 +259,8 @@ def main() -> int:
         "lora_dim": LORA_DIM,
         "lora_alpha": LORA_ALPHA,
         "lr": LR,
-        "grad_ckpt": True,
+        "grad_ckpt": grad_ckpt,
+        "unckpt_blocks": sorted(unckpt_blocks),
         "fixed_sigma": FIXED_SIGMA,
         "flow_matching_formula": "x_t=(1-σ)*latent+σ*noise; target=noise-latent; loss=mse(velocity,target); 5D latent (B,C,T=1,H,W)",
         "seed": 123,
@@ -281,7 +294,20 @@ def main() -> int:
         # swap=0: DiT 全量上 GPU (load_dit 统一用 cpu 加载, 这里显式搬).
         dit = dit.to(device)
         network = network.to(device).to(dtype)
-    dit.enable_gradient_checkpointing()
+    dit.disable_gradient_checkpointing()
+    if grad_ckpt == "full":
+        dit.enable_gradient_checkpointing()
+    elif grad_ckpt == "every_other":
+        for block_idx, block in enumerate(dit.blocks):
+            if block_idx % 2 == 0:
+                block.enable_gradient_checkpointing()
+    elif grad_ckpt == "full_except":
+        invalid = unckpt_blocks.difference(range(len(dit.blocks)))
+        if invalid:
+            raise ValueError(f"invalid K2_ABL_UNCKPT_BLOCKS={sorted(invalid)}")
+        for block_idx, block in enumerate(dit.blocks):
+            if block_idx not in unckpt_blocks:
+                block.enable_gradient_checkpointing()
 
     n_lora = len(network.unet_loras)
     n_train = sum(p.numel() for p in network.parameters() if p.requires_grad)

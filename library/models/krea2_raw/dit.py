@@ -498,6 +498,32 @@ class SingleStreamDiT(nn.Module):
             if hasattr(block, "disable_gradient_checkpointing"):
                 block.disable_gradient_checkpointing()
 
+    def enable_selective_checkpointing(
+        self,
+        mode: str = "off",
+        blocks: str | None = None,
+    ) -> None:
+        """Enable Krea-2 selective activation checkpointing.
+
+        Krea-2 currently has only whole-block checkpointing. ``every_other``
+        is therefore the sole selective mode with matching semantics; the
+        Anima adapter/MLP/peak modes require checkpoint surfaces that these
+        blocks do not expose.
+        """
+        del blocks
+        mode = str(mode or "off").strip().lower()
+        if mode not in {"off", "every_other"}:
+            raise ValueError(
+                "Krea-2 selective_checkpoint supports only 'off' and "
+                f"'every_other'; got {mode!r}"
+            )
+        self.selective_checkpoint = mode
+        self.disable_gradient_checkpointing()
+        if mode == "every_other":
+            for block_idx, block in enumerate(self.blocks):
+                if block_idx % 2 == 0:
+                    block.enable_gradient_checkpointing()
+
     # === Block swap 接口 (移植自 anima models.py:2291-2387, 复用 ModelOffloader) ===
     # ModelOffloader 只遍历 block.named_modules() 取 .weight + .to(device) +
     # register_full_backward_hook, 对 block forward 签名零假设, SingleStreamBlock 满足.

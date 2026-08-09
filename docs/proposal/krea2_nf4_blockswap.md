@@ -308,3 +308,8 @@ BF16 大矩阵比 PG199 慢 4.4-5.2×，NF4 大矩阵慢 4.1-4.6×，attention �
 所以这不是可变现的生产加速。文本 padding 尾裁剪将序列 4608→4107，但
 PG199/3080 都无可测收益，行为改动已回退。完整数据与下阶段见
 [krea2_3080_speed_stage1.md](../findings/krea2_3080_speed_stage1.md)。
+
+阶段 2 选择性 checkpoint 结果：PG199 `every_other` 将稳态步时
+3.370→2.901s（-13.9%），峰值 10.49→28.46GB，适合 32GB opt-in。RTX 3080
+swap20 即使只放开 1 个 block 也 OOM，故该路径无法优化 10GB 工作点。见
+[krea2_3080_speed_stage2.md](../findings/krea2_3080_speed_stage2.md)。

@@ -1,0 +1,14 @@
+{
+  "date": "2026-08-09",
+  "matrix": [
+    {"gpu": "PG199", "swap": 0, "grad_checkpoint": "full", "gpu_peak_gb": 10.494, "stable_step_s": 3.37, "result": "PASS"},
+    {"gpu": "PG199", "swap": 0, "grad_checkpoint": "every_other", "gpu_peak_gb": 28.462, "stable_step_s": 2.901, "result": "PASS"},
+    {"gpu": "PG199", "swap": 0, "grad_checkpoint": "full_except_26_27", "gpu_peak_gb": 11.83, "stable_step_s": 3.299, "result": "PASS"},
+    {"gpu": "RTX 3080", "swap": 22, "grad_checkpoint": "full_except_26_27", "result": "OOM", "failed_allocation_mib": 144, "allocated_gib": 6.99, "reserved_unallocated_mib": 681.42},
+    {"gpu": "RTX 3080", "swap": 20, "grad_checkpoint": "full_except_27", "result": "OOM", "failed_allocation_mib": 144, "allocated_gib": 6.98, "reserved_unallocated_mib": 603.97}
+  ],
+  "verdicts": {
+    "pg199_every_other": "WORTH_IT: 13.9% faster, 28.46GB peak fits 32GB",
+    "rtx_3080_selective": "NOT_FEASIBLE: even one uncheckpointed block OOMs"
+  }
+}
