@@ -23,6 +23,8 @@
   K2_ABL_UNCKPT_BLOCKS=26,27
                            (full_except 模式下不 checkpoint 的 block)
   K2_ABL_COMPILE=0/1       (在 LoRA + grad-ckpt 之后编译 block._forward)
+  K2_ABL_LORA_DIM=N        (LoRA rank; 默认 16)
+  K2_ABL_LORA_ALPHA=N      (LoRA alpha; 默认 8)
   K2_ABL_IMG=1024         (分辨率)
   K2_ABL_STEPS=30         (训练步数; CKPT 模式下中途存+续训各跑一半)
   K2_ABL_GPU=1            (PG199)
@@ -115,12 +117,14 @@ def meminfo_available_gb() -> float:
     return -1.0
 
 
-def make_network(dit) -> LoRANetwork:
-    kwargs = {**krea2_target_kwargs(), "lora_dim": LORA_DIM, "alpha": LORA_ALPHA}
+def make_network(
+    dit, lora_dim: int = LORA_DIM, lora_alpha: float = LORA_ALPHA
+) -> LoRANetwork:
+    kwargs = {**krea2_target_kwargs(), "lora_dim": lora_dim, "alpha": lora_alpha}
     cfg = LoRANetworkCfg.from_kwargs(
         kwargs,
-        network_dim=LORA_DIM,
-        network_alpha=LORA_ALPHA,
+        network_dim=lora_dim,
+        network_alpha=lora_alpha,
         neuron_dropout=None,
         module_class=LoRAModule,
     )
@@ -235,6 +239,8 @@ def main() -> int:
         if value.strip()
     }
     compile_blocks = _env_bool("K2_ABL_COMPILE", False)
+    lora_dim = _env_int("K2_ABL_LORA_DIM", LORA_DIM)
+    lora_alpha = float(os.environ.get("K2_ABL_LORA_ALPHA", LORA_ALPHA))
     img_size = _env_int("K2_ABL_IMG", 1024)
     n_steps = _env_int("K2_ABL_STEPS", 30)
     nf4_path = os.environ.get("K2_ABL_NF4_PATH", "") or None
@@ -258,8 +264,8 @@ def main() -> int:
         "te_device": te_device,
         "gpu": gpu_id,
         "dtype": str(dtype),
-        "lora_dim": LORA_DIM,
-        "lora_alpha": LORA_ALPHA,
+        "lora_dim": lora_dim,
+        "lora_alpha": lora_alpha,
         "lr": LR,
         "grad_ckpt": grad_ckpt,
         "unckpt_blocks": sorted(unckpt_blocks),
@@ -287,7 +293,7 @@ def main() -> int:
     for p in dit.parameters():
         p.requires_grad_(False)
 
-    network = make_network(dit)
+    network = make_network(dit, lora_dim=lora_dim, lora_alpha=lora_alpha)
     if swap > 0:
         dit.enable_block_swap(swap, device)
         dit.move_to_device_except_swap_blocks(device)

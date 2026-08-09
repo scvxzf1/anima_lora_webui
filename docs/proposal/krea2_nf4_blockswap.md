@@ -341,3 +341,8 @@ cos=0.943。不值得以训练轨迹换速度，保留 `weights.py` 强制 BF16 
 checkpoint backward recompute 的第二次调用中被覆盖，直接 RuntimeError。Krea-2
 `compile_blocks` 现仅接受 None/default mode，其他未验证 preset 同样显式拒绝。见
 [krea2_3080_speed_stage7.md](../findings/krea2_3080_speed_stage7.md)。
+
+阶段 8 rank 消融：PG199 compile 安全档中 rank16→8 将可训参数 48.17M→
+24.08M，但步时 2.726s→2.73s 持平，峰值仅省 145MB。rank 不是速度旋钮，
+不应以 adapter 容量换不存在的加速。见
+[krea2_3080_speed_stage8.md](../findings/krea2_3080_speed_stage8.md)。
