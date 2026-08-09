@@ -841,3 +841,102 @@ class _PreviewHistoryService:
             if task.get("id") == task_id:
                 return {"ok": True, "task": task}
         raise FileNotFoundError(task_id)
+
+
+def _write_inference_png(path: Path, *, info: dict[str, str]) -> None:
+    from PIL.PngImagePlugin import PngInfo
+
+    pnginfo = PngInfo()
+    for key, value in info.items():
+        pnginfo.add_text(key, str(value))
+    Image.new("RGB", (8, 8), color=(12, 34, 56)).save(path, pnginfo=pnginfo)
+
+
+def test_inference_preview_reads_png_metadata(tmp_path, monkeypatch):
+    settings_file = tmp_path / "configs" / "web-ui-settings.toml"
+    settings_file.parent.mkdir(parents=True)
+    settings_file.write_text("", encoding="utf-8")
+    _patch_preview_settings_file(monkeypatch, settings_file, root=tmp_path)
+
+    preview_dir = tmp_path / "output" / "tests"
+    preview_dir.mkdir(parents=True)
+    image_path = preview_dir / "20260809-024743-688_1062064380_.png"
+    _write_inference_png(
+        image_path,
+        info={
+            "seed": "1062064380",
+            "sampler": "euler",
+            "infer_steps": "28",
+            "guidance_scale": "4.0",
+            "flow_shift": "1.0",
+            "prompt": "1girl, masterpiece",
+            "negative_prompt": "low quality",
+            "width": "1024",
+            "height": "1024",
+            "timestamp": "20260809-024743-688",
+        },
+    )
+
+    payload = preview_service.list_preview_images("inference")
+
+    assert payload["count"] == 1
+    sample = payload["images"][0]["sample"]
+    assert sample["seed"] == 1062064380
+    assert sample["sampler"] == "euler"
+    assert sample["parameters"]["sample_steps"] == 28
+    assert sample["parameters"]["guidance_scale"] == 4.0
+    assert sample["parameters"]["flow_shift"] == 1.0
+    assert sample["parameters"]["width"] == 1024
+    assert sample["parameters"]["height"] == 1024
+    assert sample["prompt"] == "1girl, masterpiece"
+    assert sample["negative_prompt"] == "low quality"
+    assert sample["generated_at_text"].startswith("2026-08-09")
+    assert sample["epoch"] is None
+    assert sample["source"]["from_png"] is True
+
+
+def test_inference_preview_without_png_metadata_returns_empty_sample(tmp_path, monkeypatch):
+    settings_file = tmp_path / "configs" / "web-ui-settings.toml"
+    settings_file.parent.mkdir(parents=True)
+    settings_file.write_text("", encoding="utf-8")
+    _patch_preview_settings_file(monkeypatch, settings_file, root=tmp_path)
+
+    preview_dir = tmp_path / "output" / "tests"
+    preview_dir.mkdir(parents=True)
+    Image.new("RGB", (8, 8), color=(12, 34, 56)).save(preview_dir / "plain.png")
+
+    payload = preview_service.list_preview_images("inference")
+
+    assert payload["count"] == 1
+    assert payload["images"][0]["sample"] == {}
+
+
+def test_training_sample_still_prefers_filename_parsing(tmp_path, monkeypatch):
+    sample_dir = tmp_path / "sample"
+    sample_dir.mkdir()
+    image_path = sample_dir / "rokkotsu_e000004_01_20260516114757_1234.png"
+    _write_inference_png(
+        image_path,
+        info={"seed": "999", "sampler": "lcm", "infer_steps": "1"},
+    )
+
+    prompt_file = tmp_path / "sample_prompts.txt"
+    prompt_file.write_text("second prompt --s 28 --g 4.0 --d 1234", encoding="utf-8")
+    monkeypatch.setattr(preview_service, "_resolve_display_path", lambda _value: prompt_file)
+    monkeypatch.setattr(preview_service, "_training_step_index", lambda _task: {})
+
+    payload = preview_service.list_preview_images(
+        "training",
+        current_task_sample_dir=str(sample_dir),
+        sample_config={
+            "sample_prompts": "configs/sample_prompts.txt",
+            "sample_sampler": "euler",
+        },
+        task={"output_dir": str(tmp_path), "variant": "rokkotsu"},
+    )
+
+    sample = payload["images"][0]["sample"]
+    assert sample["source"]["from_filename"] is True
+    assert sample["epoch"] == 4
+    assert sample["seed"] == 1234
+    assert sample["sampler"] == "euler"

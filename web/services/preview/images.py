@@ -9,6 +9,7 @@ from urllib.parse import quote
 import re
 
 import toml
+from PIL import Image
 
 from web.services.image_size import probe_image_size
 from web.services.preview.context import call, get
@@ -391,9 +392,20 @@ def _sample_image_meta(
     step_index: dict[int, int],
 ) -> dict[str, Any]:
     parsed = _parse_sample_image_name(path)
-    if not parsed:
-        return {}
+    if parsed:
+        return _sample_meta_from_filename(parsed, sample_config, prompt_entries, step_index)
+    png_meta = _read_png_metadata(path)
+    if png_meta:
+        return _sample_meta_from_png(png_meta, path)
+    return {}
 
+
+def _sample_meta_from_filename(
+    parsed: dict[str, Any],
+    sample_config: dict[str, Any] | None,
+    prompt_entries: list[dict[str, Any]],
+    step_index: dict[int, int],
+) -> dict[str, Any]:
     cfg = sample_config or {}
     prompt_index = parsed.get("prompt_index")
     prompt_entry = (
@@ -431,6 +443,93 @@ def _sample_image_meta(
             "step_from_weight": bool(step is not None and parsed.get("step") is None),
         },
     }
+
+
+def _read_png_metadata(path: Path) -> dict[str, str]:
+    """Read PNG tEXt chunks written by ``library.inference.output._build_png_info``.
+    Only PNG is supported (the inference output format); other exts return {}.
+    Uses ``Image.open`` which reads tEXt from the header without decoding pixels.
+    """
+    if path.suffix.lower() != ".png":
+        return {}
+    try:
+        with Image.open(path) as img:
+            raw = dict(getattr(img, "text", None) or img.info or {})
+    except Exception:
+        return {}
+    return {str(k): str(v) for k, v in raw.items() if v not in (None, "")}
+
+
+def _sample_meta_from_png(png_meta: dict[str, str], path: Path) -> dict[str, Any]:
+    """Build ``sample`` for inference images from embedded PNG params.
+
+    Inference images carry seed/sampler/steps/cfg/flow_shift/prompt/size/timestamp
+    in tEXt (written at generation time). Epoch/step/prompt_index are training
+    concepts and have no source here, so they stay None — the dialog renders `-`.
+    """
+    def _int(key: str) -> int | None:
+        return call("_int_or_none", png_meta.get(key))
+
+    def _float(key: str) -> float | None:
+        return call("_float_or_none", png_meta.get(key))
+
+    seed = _int("seed")
+    width = _int("width")
+    height = _int("height")
+    infer_steps = _int("infer_steps")
+    guidance_scale = _float("guidance_scale")
+    flow_shift = _float("flow_shift")
+    sampler = str(png_meta.get("sampler") or "")
+    prompt = str(png_meta.get("prompt") or "")
+    negative_prompt = str(png_meta.get("negative_prompt") or "")
+
+    parameters: dict[str, Any] = {}
+    if seed is not None:
+        parameters["seed"] = seed
+    if width is not None:
+        parameters["width"] = width
+    if height is not None:
+        parameters["height"] = height
+    if infer_steps is not None:
+        parameters["sample_steps"] = infer_steps
+    if guidance_scale is not None:
+        parameters["guidance_scale"] = guidance_scale
+    if flow_shift is not None:
+        parameters["flow_shift"] = flow_shift
+    if sampler:
+        parameters["sample_sampler"] = sampler
+
+    generated_at, generated_at_text = _png_timestamp(png_meta.get("timestamp"))
+
+    return {
+        "epoch": None,
+        "step": None,
+        "prompt_index": None,
+        "generated_at": generated_at,
+        "generated_at_text": generated_at_text,
+        "seed": seed,
+        "sampler": sampler,
+        "prompt": prompt,
+        "negative_prompt": negative_prompt,
+        "raw_prompt": "",
+        "parameters": parameters,
+        "source": {
+            "from_png": True,
+            "prompt_file": "",
+        },
+    }
+
+
+def _png_timestamp(value: str | None) -> tuple[float | None, str]:
+    """Parse the ``YYYYMMDD-HHMMSS-mmm`` timestamp written by ``get_time_flag``."""
+    raw = str(value or "").strip()
+    if not raw:
+        return None, ""
+    try:
+        dt = datetime.strptime(raw, "%Y%m%d-%H%M%S-%f")
+    except ValueError:
+        return None, ""
+    return dt.timestamp(), dt.strftime("%Y-%m-%d %H:%M:%S")
 
 
 def _load_sample_prompt_entries(sample_config: dict[str, Any] | None) -> list[dict[str, Any]]:

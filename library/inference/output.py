@@ -10,6 +10,7 @@ from typing import Optional, Tuple
 import torch
 from safetensors.torch import save_file
 from PIL import Image
+from PIL.PngImagePlugin import PngInfo
 
 from library.models import qwen_vae as qwen_image_autoencoder_kl
 
@@ -149,11 +150,42 @@ def save_images(
     image_name = f"{time_flag}_{seed}{original_name}"
 
     image = pixels_to_pil(sample)
-    image.save(os.path.join(save_path, f"{image_name}.png"))
+    image.save(
+        os.path.join(save_path, f"{image_name}.png"),
+        pnginfo=_build_png_info(args, seed, time_flag),
+    )
 
     logger.info(f"Sample images saved to: {save_path}/{image_name}")
 
     return f"{save_path}/{image_name}"
+
+
+def _build_png_info(args: argparse.Namespace, seed, time_flag: str) -> PngInfo:
+    """PNG tEXt metadata for generated images — the read side is
+    ``web.services.preview.images._read_png_metadata``. Keep these keys in sync.
+    Respects ``args.no_metadata`` (returns an empty PngInfo so nothing is
+    embedded but PIL still gets a valid object).
+    """
+    info = PngInfo()
+    if getattr(args, "no_metadata", False):
+        return info
+
+    def _add(key: str, value) -> None:
+        text = "" if value is None else str(value)
+        info.add_text(key, text)
+
+    height, width = check_inputs(args)
+    _add("seed", seed)
+    _add("sampler", getattr(args, "sampler", None))
+    _add("infer_steps", getattr(args, "infer_steps", None))
+    _add("guidance_scale", getattr(args, "guidance_scale", None))
+    _add("flow_shift", getattr(args, "flow_shift", None))
+    _add("prompt", getattr(args, "prompt", None))
+    _add("negative_prompt", getattr(args, "negative_prompt", None))
+    _add("width", width)
+    _add("height", height)
+    _add("timestamp", time_flag)
+    return info
 
 
 def save_output(
