@@ -137,6 +137,7 @@
 - Krea-2 3080 速度诊断：1024² NF4+swap20 约 12s/it 的主因是 3080 大矩阵吞吐，非 H2D 或降频；同机对照中 3080 BF16 Linear 比 PG199 慢 4.4-5.2×，NF4 Linear 慢 4.1-4.6×，attention 慢 2.83×。生产稳态不每步调 `prepare_block_swap_before_forward`；探针每步调会多计约 196ms。文本 padding 尾裁剪在两卡均无收益，不要重复投入。后续优先做选择性 grad-checkpoint 与 Krea-2 per-block compile 前置消融，见 `docs/findings/krea2_3080_speed_stage1.md`。
 - Krea-2 选择性 checkpoint：PG199 32GB 可用 `gradient_checkpointing=false` + `selective_checkpoint="every_other"`，1024² NF4 实测 28.46GB / 2.90s，比 full checkpoint 快 13.9%。RTX 3080 swap20 放开单 block 仍 OOM，10GB 卡必须保持 full checkpoint。Krea 目前只支持 `off/every_other`，其他 Anima selective 模式显式拒绝，见 `docs/findings/krea2_3080_speed_stage2.md`。
 - Krea-2 compile：固定 1024² 可 opt-in `torch_compile=true` + `compile_dynamic_seq=false` + `compile_block_scope="resident"`。PG199 NF4 full-ckpt 实测 3.370→2.726s（-19.1%）；RTX 3080 swap20 只编译 8 个常驻块，12.140→11.744s（-3.3%），约 60 步回本。编译目标必须是 adapter apply/load 后的 block `_forward`，不要编译 checkpoint wrapper 或 swapped tail。动态序列/多 bucket 尚未验证，默认配置不变，见 `docs/findings/krea2_3080_speed_stage3.md`。
+- Krea-2 PG199 叠加边界：compile + every-other（14/28 checkpoint）会 OOM；compile + 16/28 checkpoint 的 20 步稳态为 2.408s/it（-28.5%），但峰值 31.55GB 无余量，仅作 PG199 探针实验点，不进默认配置或通用 CLI。安全档仍是 full checkpoint + compile（2.726s/it / 11.06GB）。RTX 3080 不适用 selective 叠加，见 `docs/findings/krea2_3080_speed_stage4.md`。
 - `library/config/`：TOML 读取、合并、normalize、schema 校验。
 - `library/training/`：训练 bootstrap、loop、optimizer、scheduler、checkpoint、loss 等。
 - `library/inference/`：generation、sampling、adapter 加载、DirectEdit、DCW、输出处理。

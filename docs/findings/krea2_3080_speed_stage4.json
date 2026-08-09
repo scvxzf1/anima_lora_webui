@@ -1,0 +1,23 @@
+{
+  "date": "2026-08-09",
+  "gpu": "NVIDIA DRIVE-PG199-PROD 32GB",
+  "baseline": {"nf4": true, "compile": false, "checkpoint_blocks": 28, "stable_step_s": 3.370, "gpu_peak_gb": 10.494},
+  "failed_combination": {"compile": true, "checkpoint_pattern": "every_other_14_of_28", "result": "OOM", "allocated_gib": 30.20, "free_mib": 39.94, "failed_allocation_mib": 144},
+  "best_experimental": {
+    "compile": true,
+    "checkpoint_blocks": 16,
+    "uncheckpointed_blocks": "16-27",
+    "steps": 20,
+    "first_step_s": 15.034,
+    "stable_steps_min_s": 2.406,
+    "stable_steps_max_s": 2.409,
+    "stable_mean_s": 2.408,
+    "speedup_pct": 28.55,
+    "reported_gpu_peak_gb": 31.55,
+    "loss_first": 0.011841,
+    "loss_last": 0.002274,
+    "loss_first5_mean": 0.008398,
+    "loss_last5_mean": 0.002438
+  },
+  "verdict": "EXPERIMENTAL_ONLY: fast and stable, but compile peak consumes the full reported 32GB capacity"
+}

@@ -319,3 +319,9 @@ swap20 即使只放开 1 个 block 也 OOM，故该路径无法优化 10GB 工�
 swap20 仅 8 常驻块可编译，12.140→11.744s（-3.3%），约 60 步回本。
 `compile_dynamic_seq=true` 尚不支持，默认配置不变。见
 [krea2_3080_speed_stage3.md](../findings/krea2_3080_speed_stage3.md)。
+
+阶段 4 叠加结果：compile + every-other（14/28 checkpoint）在 PG199 首步 OOM。
+改为 16/28 checkpoint 后 20 步稳态 `2.408s/it`，比 3.370s 快 28.5%，loss
+正常下降；但报告峰值 31.55GB 无安全余量，仅作 PG199 实验点。安全档仍是
+full checkpoint + compile（2.726s/it / 11.06GB）。见
+[krea2_3080_speed_stage4.md](../findings/krea2_3080_speed_stage4.md)。
