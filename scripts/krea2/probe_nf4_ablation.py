@@ -23,6 +23,7 @@
   K2_ABL_UNCKPT_BLOCKS=26,27
                            (full_except 模式下不 checkpoint 的 block)
   K2_ABL_COMPILE=0/1       (在 LoRA + grad-ckpt 之后编译 block._forward)
+  K2_ABL_ATTN_MODE=torch|flash
   K2_ABL_LORA_DIM=N        (LoRA rank; 默认 16)
   K2_ABL_LORA_ALPHA=N      (LoRA alpha; 默认 8)
   K2_ABL_IMG=1024         (分辨率)
@@ -239,6 +240,7 @@ def main() -> int:
         if value.strip()
     }
     compile_blocks = _env_bool("K2_ABL_COMPILE", False)
+    attn_mode = os.environ.get("K2_ABL_ATTN_MODE", "torch")
     lora_dim = _env_int("K2_ABL_LORA_DIM", LORA_DIM)
     lora_alpha = float(os.environ.get("K2_ABL_LORA_ALPHA", LORA_ALPHA))
     img_size = _env_int("K2_ABL_IMG", 1024)
@@ -270,6 +272,7 @@ def main() -> int:
         "grad_ckpt": grad_ckpt,
         "unckpt_blocks": sorted(unckpt_blocks),
         "compile_blocks": compile_blocks,
+        "attn_mode": attn_mode,
         "fixed_sigma": FIXED_SIGMA,
         "flow_matching_formula": "x_t=(1-σ)*latent+σ*noise; target=noise-latent; loss=mse(velocity,target); 5D latent (B,C,T=1,H,W)",
         "seed": 123,
@@ -287,6 +290,11 @@ def main() -> int:
     print(f"\n--- B. DiT + LoRA + block_swap={swap} + grad-ckpt ---")
     t1 = time.time()
     dit, nf4_source = load_dit(nf4, nf4_path, device, dtype)
+    from library.models.krea2_raw.attention_backend import prepare_krea2_attention
+
+    prepare_krea2_attention(
+        dit, attn_mode, dtype=dtype, compile_enabled=compile_blocks
+    )
     config["nf4_source"] = nf4_source
     print(f"  DiT 加载 ({nf4_source}): {time.time()-t1:.1f}s")
 

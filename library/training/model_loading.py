@@ -8,10 +8,7 @@ is the default and unchanged; Krea-2 loads via ``library.models.krea2_raw``.
 
 from __future__ import annotations
 
-from typing import Any
-
 import torch
-from accelerate import Accelerator
 from torch import nn
 
 from library.anima import weights as anima_utils
@@ -95,23 +92,31 @@ def _load_krea2_dit(trainer, args, weight_dtype, accelerator, text_encoders):
     Reuses the anima block-swap / probe / selective-checkpoint / VR-loss
     plumbing where the SingleStreamDiT exposes the same hooks as Anima
     (enable_block_swap / enable_selective_checkpointing / enable_peak_probe —
-    added in stage 6 block-swap probe). attn_mode / v100 flash guards are
-    anima-specific; Krea-2 uses sdpa_kernel(CUDNN_ATTENTION) internally and
-    ignores them (logs once).
+    added in stage 6 block-swap probe). ``attn_mode=torch`` selects the original
+    cuDNN SDPA path; ``attn_mode=flash`` selects packed FlashAttention varlen.
     """
+    from library.models.krea2_raw.attention_backend import (
+        prepare_krea2_attention,
+        validate_krea2_attention_mode,
+    )
     from library.models.krea2_raw.weights import load_krea2_dit
 
     loading_dtype = weight_dtype
     loading_device = "cpu" if trainer.is_swapping_blocks else accelerator.device
     # NF4 (Krea-2 QLoRA): compat_matrix 对 nf4×block_swap 已降级 warning (方向 A
-    # 端到端探针验证通过). nf4 时若给了 nf4_prequantized_path (save_nf4_dit 产物),
-    # 走磁盘加载 (load_nf4_dit_into), 跳过在线量化要的 26GB bf16 在 GPU, 让 3080
-    # 等 8-12GB 卡也能训; 否则回退在线 quantize_dit_to_nf4 (需能放 26GB bf16 的卡).
+    # 端到端探针验证通过). NF4 v1 通过 nf4_prequantized_path 覆盖 BF16;
+    # 自包含 v2 可用同一参数，也可直接作为 pretrained_model_name_or_path，
+    # 两者都跳过在线量化。未给磁盘 NF4 时才回退 quantize_dit_to_nf4。
     nf4_active = (
         str(getattr(args, "base_compute", "bf16") or "bf16").strip().lower()
         == "nf4"
     )
     nf4_path = getattr(args, "nf4_prequantized_path", None)
+    requested_attn_mode = validate_krea2_attention_mode(
+        getattr(args, "attn_mode", None),
+        dtype=loading_dtype,
+        compile_enabled=bool(getattr(args, "torch_compile", False)),
+    )
     if nf4_active and nf4_path:
         import os as _os
 
@@ -134,6 +139,13 @@ def _load_krea2_dit(trainer, args, weight_dtype, accelerator, text_encoders):
         nf4=nf4_active,
         nf4_path=nf4_path if nf4_active else None,
     )
+    attn_mode = prepare_krea2_attention(
+        model,
+        requested_attn_mode,
+        dtype=loading_dtype,
+        compile_enabled=bool(getattr(args, "torch_compile", False)),
+    )
+    logger.info("Krea-2 attention mode: %s", attn_mode)
     _maybe_probe_components(
         trainer,
         "dit_loaded",
@@ -142,6 +154,7 @@ def _load_krea2_dit(trainer, args, weight_dtype, accelerator, text_encoders):
         phase="setup",
         loading_device=loading_device,
         loading_dtype=loading_dtype,
+        attn_mode=attn_mode,
     )
     if trainer.peak_probe is not None and hasattr(model, "enable_peak_probe"):
         model.enable_peak_probe(trainer.peak_probe)

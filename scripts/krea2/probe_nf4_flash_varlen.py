@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
-"""Run the unified NF4 probe with experimental FlashAttention varlen GQA.
+"""Run the unified NF4 probe with the Krea-2 FlashAttention varlen backend.
 
-This is a research wrapper, not the production attention backend. It packs the
-valid part of Krea-2's dense padding mask before calling FlashAttention 2 and
-then re-expands the result so the surrounding DiT contract stays unchanged.
+This wrapper selects the production ``attn_mode=flash`` path while retaining the
+unified NF4 ablation harness and its metrics.
 
 Example::
 
@@ -21,59 +20,11 @@ from pathlib import Path
 os.environ.setdefault("CUDA_DEVICE_ORDER", "PCI_BUS_ID")
 os.environ.setdefault("CUDA_VISIBLE_DEVICES", os.environ.get("K2_ABL_GPU", "1"))
 
-import torch
-from einops import rearrange
-from flash_attn import flash_attn_varlen_func
-
-torch._dynamo.config.capture_dynamic_output_shape_ops = True
-
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-import library.models.krea2_raw.dit as krea_dit  # noqa: E402
-
-
-def attention_varlen(
-    q: torch.Tensor,
-    k: torch.Tensor,
-    v: torch.Tensor,
-    mask: torch.Tensor | None = None,
-    scale: float | None = None,
-    gqa: bool = False,
-) -> torch.Tensor:
-    del gqa
-    batch, _heads, sequence, _dim = q.shape
-    if mask is None:
-        valid = torch.ones(batch, sequence, device=q.device, dtype=torch.bool)
-    else:
-        valid = mask[:, 0].diagonal(dim1=-2, dim2=-1).to(torch.bool)
-
-    lengths = valid.sum(dim=1, dtype=torch.int32)
-    cu_seqlens = torch.zeros(batch + 1, device=q.device, dtype=torch.int32)
-    cu_seqlens[1:] = lengths.cumsum(dim=0)
-    q_packed = rearrange(q, "b h l d -> b l h d")[valid].contiguous()
-    k_packed = rearrange(k, "b h l d -> b l h d")[valid].contiguous()
-    v_packed = rearrange(v, "b h l d -> b l h d")[valid].contiguous()
-    output_packed = flash_attn_varlen_func(
-        q_packed,
-        k_packed,
-        v_packed,
-        cu_seqlens,
-        cu_seqlens,
-        sequence,
-        sequence,
-        softmax_scale=scale,
-    )
-    output = torch.zeros(
-        batch, sequence, q.shape[1], q.shape[-1],
-        device=q.device, dtype=q.dtype,
-    )
-    output[valid] = output_packed
-    return rearrange(output, "b l h d -> b l (h d)")
-
-
-krea_dit.attention = attention_varlen
+os.environ["K2_ABL_ATTN_MODE"] = "flash"
 
 from probe_nf4_ablation import main  # noqa: E402
 

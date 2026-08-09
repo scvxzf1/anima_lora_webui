@@ -40,6 +40,54 @@ export function collectLiveCompatIssues(config = {}) {
     const selectiveEnabled = selective !== 'off' && selective !== '';
     const blockSwapEnabled = blocksToSwap > 0;
     const softTokens = /soft_tokens/i.test(networkModule);
+    const modelFamily = String(config.model_family ?? '').trim().toLowerCase();
+    const krea2Family = modelFamily === 'krea2_raw';
+
+    if (krea2Family) {
+        const attnMode = String(config.attn_mode ?? 'torch').trim().toLowerCase() || 'torch';
+        if (!['torch', 'flash', 'sdpa'].includes(attnMode)) {
+            issues.push({
+                code: 'krea2_invalid_attn_mode',
+                key: 'attn_mode',
+                severity: 'error',
+                message: 'live 兼容：Krea-2 注意力后端仅支持 torch 或 flash（sdpa 是 torch 别名）。',
+            });
+        }
+        if (boolValue(config.compile_dynamic_seq, false)) {
+            issues.push({
+                code: 'krea2_compile_dynamic_seq',
+                key: 'compile_dynamic_seq',
+                severity: 'warning',
+                message: 'live 兼容：Krea-2 使用固定 token-family 编译图，训练启动时会自动关闭 compile_dynamic_seq。',
+            });
+        }
+        const compileMode = String(config.compile_inductor_mode ?? 'default').trim().toLowerCase() || 'default';
+        if (compileMode !== 'default') {
+            issues.push({
+                code: 'krea2_compile_inductor_mode',
+                key: 'compile_inductor_mode',
+                severity: 'error',
+                message: 'live 兼容：Krea-2 仅支持 compile_inductor_mode=default。',
+            });
+        }
+        if (!['off', 'every_other'].includes(selective)) {
+            issues.push({
+                code: 'krea2_selective_checkpoint',
+                key: 'selective_checkpoint',
+                severity: 'error',
+                message: 'live 兼容：Krea-2 选择性检查点仅支持 off 或 every_other。',
+            });
+        }
+        const v100Mode = String(config.v100_flash_stability ?? 'off').trim().toLowerCase() || 'off';
+        if (v100Mode !== 'off') {
+            issues.push({
+                code: 'krea2_v100_flash_stability',
+                key: 'v100_flash_stability',
+                severity: 'error',
+                message: 'live 兼容：v100_flash_stability 是 Anima 专用项，Krea-2 下必须关闭。',
+            });
+        }
+    }
 
     if (selectiveEnabled && gradientCheckpointing) {
         issues.push({

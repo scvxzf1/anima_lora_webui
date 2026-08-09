@@ -25,11 +25,12 @@ LoRA 和 full gradient checkpoint。`it/min=60/step_s`；“耗时变化”比�
 | every-other ckpt + eager | 2.901s | 20.68 | -13.9% | +16.2% | 28.46GB | 32GB opt-in |
 | full ckpt + cuDNN compile | 2.726s | 22.01 | -19.1% | +23.6% | 11.06GB | 生产安全档 |
 | 16/28 ckpt + cuDNN compile | 2.408s | 24.92 | -28.5% | +40.0% | 31.55GB | 无余量实验档 |
-| full ckpt + Flash varlen compile | 2.421s | 24.78 | -28.2% | +39.2% | 10.87GB | 实验候选 |
+| full ckpt + Flash varlen compile | 2.421s | 24.78 | -28.2% | +39.2% | 10.87GB | 显式 opt-in |
 
 Flash varlen 相对生产 cuDNN compile 进一步降低 11.2% 单步耗时、提高 12.6% 吞吐，
 但只多使用 eager 基准约 0.38GB。它以 10.87GB 峰值达到接近 31.55GB selective
-实验档的速度；当前差距仅 `0.013s/it`，但 Flash 尚未完成生产 backend 契约。
+实验档的速度；当前差距仅 `0.013s/it`。Flash 生产 backend 契约现已完成，
+但仍保持显式 opt-in 而非默认。
 
 Flash 的 50 步复核通常保持 `2.417-2.439s`，末步 `2.429s`，因此表中不是短窗口
 峰值。compile 首步受 Inductor cache 影响较大：历史记录为 `15.303-28.644s`，不应
@@ -74,7 +75,7 @@ RTX 3080 会在 20 步内出现约 5% 热漂移，所以短窗口与热稳态必
 | swap20 eager，历史 10 步 | 12.14s | 4.94 | 7.65GB | 冷/短窗口边界点 |
 | swap20 resident compile，4 步 | 11.744s | 5.11 | 约 6.15GB | 冷态，不能外推 |
 | swap20 resident compile，20 步末段 | 12.50-12.65s | 4.74-4.80 | 6.153GB | cuDNN 热稳态 |
-| swap20 Flash varlen compile，20 步末五步 | 12.145s | 4.94 | 6.094GB | 实验热稳态 |
+| swap20 Flash varlen compile，20 步末五步 | 12.145s | 4.94 | 6.094GB | opt-in 热稳态 |
 
 Flash 相对同口径 cuDNN 长窗口 `12.65s` 降低约 4.0% 延迟、提高约 4.2% 吞吐。
 它只是把热稳态恢复到早期 eager 冷态约 `12.14s` 的水平，并未消除大矩阵瓶颈。
@@ -131,5 +132,5 @@ Flash varlen 的独立 forward+backward attention 微基准为 PG199 `27.93→14
 - PG199 极限研究档：16/28 checkpoint + compile，`2.408s/it / 31.55GB`，不适合长训。
 - RTX 3080 生产档：NF4 + full checkpoint + resident compile + swap24；预期热稳态仍约
   `12.5-13s/it` 量级，但显存余量比 swap20 更可靠。
-- Flash varlen：PG199 `2.421s/it`、3080 热稳态 `12.145s/it`，是当前最强软件候选，
-  但在 backend/fallback/batch/CFG 契约完成前不进入生产默认。
+- Flash varlen：PG199 `2.421s/it`、3080 热稳态 `12.145s/it`，现为受支持的
+  `attn_mode="flash"` 显式 opt-in；生产默认仍是 `attn_mode="torch"`。

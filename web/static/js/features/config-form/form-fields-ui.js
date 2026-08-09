@@ -4,7 +4,7 @@
 import { updateChoiceGuide } from './choice-guide-ui.js?v=module-bootstrap-20260714-stage-dataset5';
 import { updateStepEstimatePanel } from './step-estimate.js?v=module-bootstrap-20260714-stage-dataset5';
 import { valuesEqual } from '../anima-app/helpers/form-values.js?v=module-bootstrap-20260714-stage-dataset5';
-import { collectLiveCompatIssues, formatLiveCompatStatus } from './live-compat.js?v=module-bootstrap-20260714-stage-dataset5';
+import { collectLiveCompatIssues, formatLiveCompatStatus } from './live-compat.js?v=module-bootstrap-20260809-config-switch1';
 import { setTomlStatus } from '../anima-app/helpers/toml-action-state-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
 import { buildFieldPresentation, fieldSourceBadgeLabel } from './field-presentation.js?v=module-bootstrap-20260714-stage-dataset5';
 import {
@@ -31,7 +31,7 @@ import {
     FIELD_OPTIONS,
     FORM_UI_DEFAULTS,
     help,
-} from '../../config/catalog.js?v=module-bootstrap-20260714-stage-dataset5';
+} from '../../config/catalog.js?v=module-bootstrap-20260809-config-switch1';
 import { LOSS_WEIGHTING_DEPENDENT_FIELDS } from '../anima-app/helpers/app-constants.js?v=module-bootstrap-20260714-stage-dataset5';
 import {
     applyLossWeightingFieldInputState,
@@ -70,13 +70,64 @@ function currentConfigState() {
 // 只在 model_family=krea2_raw 时露出. 当前值即使被过滤也兜底加回, 防 select
 // 显示空 (如 config 残留 nf4 又切回 anima 时仍可见当前值, 由 live-compat/
 // preflight 提示用户改回 bf16).
+function currentModelFamily() {
+    const drafts = configState.configFormState?.draftValues;
+    const value = drafts?.has('model_family')
+        ? drafts.get('model_family')
+        : currentConfigState()?.model_family;
+    const family = String(value ?? '').trim().toLowerCase();
+    return family;
+}
+
 function filterFieldOptionsForFamily(key, options, currentValue) {
-    if (key !== 'base_compute' || !Array.isArray(options)) return options;
-    const family = String(currentConfigState()?.model_family ?? '').trim().toLowerCase();
+    if (!Array.isArray(options)) return options;
+    const family = currentModelFamily();
     const isKrea2 = family === 'krea2_raw';
-    const filtered = isKrea2 ? options.slice() : options.filter((opt) => opt !== 'nf4');
-    if (currentValue != null && !filtered.includes(currentValue)) filtered.push(currentValue);
-    return filtered;
+    if (key === 'base_compute') {
+        const filtered = isKrea2 ? options.slice() : options.filter((opt) => opt !== 'nf4');
+        if (currentValue != null && !filtered.includes(currentValue)) filtered.push(currentValue);
+        return filtered;
+    }
+    if (!isKrea2) return options;
+    const supportedByKey = {
+        attn_mode: new Set(['torch', 'flash']),
+        compile_inductor_mode: new Set(['default']),
+        selective_checkpoint: new Set(['off', 'every_other']),
+        v100_flash_stability: new Set(['off']),
+    };
+    const supported = supportedByKey[key];
+    if (!supported) return options;
+    return options.filter((option) => supported.has(String(option)));
+}
+
+function applyFamilyFieldConstraints(input, key) {
+    if (currentModelFamily() !== 'krea2_raw') return input;
+    const supportedSelectValues = {
+        attn_mode: new Set(['torch', 'flash']),
+        selective_checkpoint: new Set(['off', 'every_other']),
+    };
+    const supported = supportedSelectValues[key];
+    if (supported && input.tagName === 'SELECT') {
+        [...input.options].forEach((option) => {
+            if (!supported.has(option.value)) option.disabled = true;
+        });
+    }
+    if (key === 'compile_dynamic_seq') {
+        input.checked = false;
+        input.disabled = true;
+        input.title = 'Krea-2 使用固定 token-family 编译图，不支持动态序列编译';
+    }
+    if (key === 'compile_inductor_mode') {
+        input.value = 'default';
+        input.disabled = true;
+        input.title = 'Krea-2 当前仅验证 default Inductor mode';
+    }
+    if (key === 'v100_flash_stability') {
+        input.value = 'off';
+        input.disabled = true;
+        input.title = 'V100 Flash 稳定性诊断仅用于 Anima attention';
+    }
+    return input;
 }
 
 export function configureNoDatasetRegularizationModePanelUpdater(updater) {
@@ -241,6 +292,7 @@ export function handleFormFieldChange(event) {
     if (
         event?.target?.dataset?.key === 'lora_adapter_kind'
         || event?.target?.dataset?.key === 'base_compute'
+        || event?.target?.dataset?.key === 'model_family'
     ) {
         try {
             renderConfigForm(liveConfigFromForm());
@@ -325,7 +377,12 @@ function createFieldInput(key, value, options = {}) {
     }
     const fieldOptions = FIELD_OPTIONS[key];
     if (shouldRenderSelectInput(key, value)) {
-        return createSelectInput(key, value, filterFieldOptionsForFamily(key, fieldOptions, value));
+        const input = createSelectInput(
+            key,
+            value,
+            filterFieldOptionsForFamily(key, fieldOptions, value),
+        );
+        return applyFamilyFieldConstraints(input, key);
     }
 
     let input;
@@ -358,6 +415,7 @@ function createFieldInput(key, value, options = {}) {
         input.disabled = !readVeRAEnabled();
         input.title = input.disabled ? '启用 VeRA 后生效' : '';
     }
+    applyFamilyFieldConstraints(input, key);
     applyLossWeightingFieldInputState(input, key);
     return input;
 }

@@ -21,6 +21,8 @@ VALID_SELECTIVE_CHECKPOINTS = {
     "peak_blocks_mlp",
     "peak_blocks_mlp_layer1",
 }
+KREA2_ATTN_MODES = {"", "torch", "flash", "sdpa"}
+KREA2_SELECTIVE_CHECKPOINTS = {"off", "every_other"}
 
 
 @dataclass(frozen=True)
@@ -123,6 +125,12 @@ def check_training_compat(config: Mapping[str, Any] | object) -> TrainingCompatR
     functional_loss_weight = _float_value(_get(config, "functional_loss_weight"), 0.0)
     dynamo_backend = str(_get(config, "dynamo_backend", "") or "")
     compile_inductor_mode = _get(config, "compile_inductor_mode", None)
+    model_family = str(_get(config, "model_family", "") or "").strip().lower()
+    krea2_family = model_family == "krea2_raw"
+    compile_dynamic_seq = _bool_value(_get(config, "compile_dynamic_seq"), False)
+    v100_flash_stability = str(
+        _get(config, "v100_flash_stability", "off") or "off"
+    ).strip().lower()
 
     if selective_checkpoint not in VALID_SELECTIVE_CHECKPOINTS:
         out.error(
@@ -131,6 +139,53 @@ def check_training_compat(config: Mapping[str, Any] | object) -> TrainingCompatR
             "--selective_checkpoint must be one of: "
             + ", ".join(sorted(VALID_SELECTIVE_CHECKPOINTS)),
         )
+
+    if krea2_family:
+        krea2_attn_mode = str(_get(config, "attn_mode", "") or "").strip().lower()
+        if krea2_attn_mode not in KREA2_ATTN_MODES:
+            out.error(
+                "krea2_invalid_attn_mode",
+                "attn_mode",
+                "Krea-2 attn_mode supports only torch or flash (sdpa is a "
+                f"torch alias); got {krea2_attn_mode!r}.",
+            )
+        if compile_dynamic_seq:
+            message = (
+                "Krea-2 compile uses two fixed padded token-family graphs; "
+                "compile_dynamic_seq will be disabled."
+            )
+            out.warning(
+                "krea2_compile_dynamic_seq",
+                "compile_dynamic_seq",
+                message,
+            )
+            out.mutate(
+                "krea2_compile_dynamic_seq",
+                "compile_dynamic_seq",
+                False,
+                message,
+            )
+        normalized_inductor_mode = str(compile_inductor_mode or "default").strip().lower()
+        if normalized_inductor_mode != "default":
+            out.error(
+                "krea2_compile_inductor_mode",
+                "compile_inductor_mode",
+                "Krea-2 compile supports only compile_inductor_mode=default; "
+                f"got {compile_inductor_mode!r}.",
+            )
+        if selective_checkpoint not in KREA2_SELECTIVE_CHECKPOINTS:
+            out.error(
+                "krea2_selective_checkpoint",
+                "selective_checkpoint",
+                "Krea-2 selective_checkpoint supports only off or every_other; "
+                f"got {selective_checkpoint!r}.",
+            )
+        if v100_flash_stability != "off":
+            out.error(
+                "krea2_v100_flash_stability",
+                "v100_flash_stability",
+                "v100_flash_stability is Anima-only and must be off for Krea-2.",
+            )
 
     if blocks_to_swap < 0:
         out.error(

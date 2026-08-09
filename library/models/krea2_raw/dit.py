@@ -23,9 +23,12 @@ import torch.nn as nn
 import torch.nn.functional as F
 from einops import rearrange
 from torch import Tensor
-from torch.nn.attention import SDPBackend, sdpa_kernel
 from torch.utils.checkpoint import checkpoint as torch_checkpoint
 
+from library.models.krea2_raw.attention_backend import (
+    normalize_krea2_attention_mode,
+    run_krea2_attention,
+)
 from library.runtime import offloading as custom_offloading_utils
 
 
@@ -47,27 +50,6 @@ def ropeapply(xq: Tensor, xk: Tensor, freqs: Tensor) -> tuple[Tensor, Tensor]:
     xq_ = freqs[..., 0] * xq_[..., 0] + freqs[..., 1] * xq_[..., 1]
     xk_ = freqs[..., 0] * xk_[..., 0] + freqs[..., 1] * xk_[..., 1]
     return xq_.reshape(*xq.shape).to(xq.dtype), xk_.reshape(*xk.shape).to(xk.dtype)
-
-
-def attention(
-    q: Tensor,
-    k: Tensor,
-    v: Tensor,
-    mask: Tensor | None = None,
-    scale: float | None = None,
-    gqa: bool = False,
-) -> Tensor:
-    # Krea-2 原始用 CUDNN_ATTENTION；不可用时退回默认 SDPA（自动选 flash/cudnn/math）。
-    try:
-        with sdpa_kernel(SDPBackend.CUDNN_ATTENTION):
-            x = F.scaled_dot_product_attention(
-                q, k, v, attn_mask=mask, scale=scale, enable_gqa=gqa
-            )
-    except (RuntimeError, NotImplementedError):
-        x = F.scaled_dot_product_attention(
-            q, k, v, attn_mask=mask, scale=scale, enable_gqa=gqa
-        )
-    return rearrange(x, "B H L D -> B L (H D)")
 
 
 def _mask(mask: Tensor) -> Tensor:
@@ -238,6 +220,7 @@ class Attention(torch.nn.Module):
         self.qknorm = QKNorm(self.headdim)
         self.gqa = self.heads != self.kvheads
         self.wo = torch.nn.Linear(dim, dim, bias=bias)
+        self.attn_mode = "torch"
 
     def forward(
         self, qkv: Tensor, freqs: Tensor | None = None, mask: Tensor | None = None
@@ -253,7 +236,12 @@ class Attention(torch.nn.Module):
         q, k, v = self.qknorm(q, k, v)
         if freqs is not None:
             q, k = ropeapply(q, k, freqs)
-        out = self.wo(attention(q, k, v, mask=mask, gqa=self.gqa) * F.sigmoid(gate))
+        out = self.wo(
+            run_krea2_attention(
+                q, k, v, mask=mask, gqa=self.gqa, mode=self.attn_mode
+            )
+            * F.sigmoid(gate)
+        )
 
         return out
 
@@ -481,6 +469,13 @@ class SingleStreamDiT(nn.Module):
     @property
     def dtype(self) -> torch.dtype:
         return next(self.parameters()).dtype
+
+    def set_attention_mode(self, mode: str) -> None:
+        normalized = normalize_krea2_attention_mode(mode)
+        for module in self.modules():
+            if isinstance(module, Attention):
+                module.attn_mode = normalized
+        self.attn_mode = normalized
 
     # === Gradient checkpointing 接口 (移植自 anima models.py:1942-1946) ===
     # 遍历 SingleStreamBlock 调其 enable_gradient_checkpointing. 训练侧

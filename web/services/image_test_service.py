@@ -215,6 +215,13 @@ def _normalize_image_test_request(
     lora_multiplier = _normalize_float(payload.get("lora_multiplier"), default=1.0, label="LoRA 强度")
     runtime_dtype = _normalize_runtime_dtype(payload.get("runtime_dtype"), cfg)
     text_encoder_dtype = _normalize_text_encoder_dtype(payload.get("text_encoder_dtype"))
+    if model_family == "krea2_raw":
+        if attn_mode == "sdpa":
+            attn_mode = "torch"
+        elif attn_mode not in {"torch", "flash"}:
+            raise ValueError("Krea-2 注意力后端仅支持 torch 或 flash")
+        if attn_mode == "flash" and runtime_dtype not in {"fp16", "bf16"}:
+            raise ValueError("Krea-2 FlashAttention 仅支持 fp16 或 bf16 推理精度")
     device, gpu_index, gpu_label = _normalize_image_test_gpu_selection(
         payload.get("gpu_index"),
         available_gpus=available_gpus,

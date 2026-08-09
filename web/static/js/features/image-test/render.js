@@ -4,7 +4,8 @@ import {
     IMAGE_TEST_RUNTIME_DTYPE_OPTIONS,
     IMAGE_TEST_SAMPLER_OPTIONS,
     IMAGE_TEST_TEXT_ENCODER_DTYPE_OPTIONS,
-} from './state.js?v=module-bootstrap-20260714-stage-dataset5';
+    imageTestAttnModeOptionsForFamily,
+} from './state.js?v=module-bootstrap-20260809-config-switch1';
 import { createImageTestGallery } from './gallery.js?v=module-bootstrap-20260714-stage-dataset5';
 
 export function createImageTestRenderer({
@@ -35,6 +36,11 @@ export function createImageTestRenderer({
         renderRuntime(null);
         setImageEmpty('打开本页后会读取 output/tests 中的结果图。');
         renderWeightOptions({ ok: true, weights: [], message: '点击刷新后读取可选权重。' });
+    }
+
+    function setAttentionModeOptions(modelFamily, preferred = '') {
+        const options = imageTestAttnModeOptionsForFamily(modelFamily);
+        populateSelect('image-test-attn-mode', options, preferred || options[0]?.value || '');
     }
 
     function renderRuntime(payload) {
@@ -331,6 +337,7 @@ export function createImageTestRenderer({
         setImageLoading,
         setImageEmpty,
         setImageTestStatus,
+        setAttentionModeOptions,
         syncButtons,
     };
 }

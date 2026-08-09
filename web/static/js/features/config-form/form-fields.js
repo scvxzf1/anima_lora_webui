@@ -18,4 +18,4 @@ export {
     configureNoDatasetRegularizationModePanelUpdater,
     createFieldRow,
     handleFormFieldChange,
-} from './form-fields-ui.js?v=module-bootstrap-20260714-stage-dataset5';
+} from './form-fields-ui.js?v=module-bootstrap-20260809-config-switch1';

@@ -52,6 +52,7 @@ log_with = "tensorboard"
 # padded block 图 (4608/4864), 同 token family 的宽高比可直接复用。
 # PG199 NF4 full-ckpt 实测 3.370 -> 2.726s; 3080 主要收益是显存余量。
 # dynamic_seq 仍关闭，block swap 只编译 resident 块，Inductor mode 仅 default。
+attn_mode = "torch"              # cuDNN SDPA 默认；flash 为显式 opt-in
 torch_compile = true
 compile_dynamic_seq = false
 compile_block_scope = "resident"

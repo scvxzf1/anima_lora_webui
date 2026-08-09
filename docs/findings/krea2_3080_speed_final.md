@@ -28,21 +28,23 @@
 | multi-bucket | 24 buckets 只形成 4608/4864 两张复用图 | 阶段 9 |
 | checkpoint/resume | LoRA/forward delta=0，reload 无重编译 | 阶段 10 |
 | block swap | 3080 建议 swap24，约 5.91GB peak，速度代价约 2% | NF4 block-swap 提案 |
+| Flash varlen compile | PG199 2.421s/it；3080 热稳态 12.145s/it | 显式 opt-in，阶段 12 |
 
 当前 3080 的稳妥训练组合是磁盘 NF4 + full checkpoint + fixed/default/resident compile，
 再按实际可用显存选择 swap20-24。swap20 是临界速度点；桌面进程或其他 CUDA 占用不
 稳定时优先 swap24。
 
-## 实验候选
+## 可选生产后端
 
 packed valid-token FlashAttention varlen 是唯一在 3080 长窗口仍测得正收益的新增软件
-attention 候选：PG199 全模型/双 token family 快 11-13%，3080 swap20 末五步均值
+attention 路径：PG199 全模型/双 token family 快 11-13%，3080 swap20 末五步均值
 `12.145s`，相对历史 cuDNN compile `12.65s` 快约 4%，GPU peak `6.09GB`。
 PG199 50 步复核除一个 `2.804s` 抖动外保持 `2.417-2.439s`，末步 `2.429s`，
 loss 和梯度均正常，证明收益不是短窗口偶然值。
 
-它尚未生产化，因为仍缺显式 Krea backend、可选依赖与 V100 BF16 fallback、batch>1/
-CFG、训练/推理 multi-bucket 和 Dynamo 动态输出配置边界。默认继续使用 cuDNN SDPA。
+它现已生产化为 Krea-2 `attn_mode="flash"` 显式 opt-in：独立 backend、可选
+provider/dtype 前置校验、batch>1/GQA/padding 契约、训练/推理接线与 WebUI
+family 过滤已闭环。默认仍继续使用 cuDNN SDPA，不会因升级自动改用可选依赖。
 
 ## 已否决或限定的方向
 
@@ -56,7 +58,7 @@ CFG、训练/推理 multi-bucket 和 Dynamo 动态输出配置边界。默认继
 
 ## 完成审计
 
-阶段 1-12 均有独立 findings 和阶段提交；生产代码变更已由定向单测覆盖，实验路径保留
+阶段 1-12 均有独立 findings 和阶段提交；生产代码变更已由定向单测和 PG199 全模型探针覆盖，实验路径保留
 可复现探针。最终审计修正了阶段 3 遗留的“3080 持续快 3.3%、约 60 步回本”旧表述：
-该数字仅是冷态短窗口，阶段 5 的长窗口结果优先。当前结论没有把 Flash varlen 的实验
-收益写成默认能力，也没有把 PG199 的结果外推成 3080 的两位数收益。
+该数字仅是冷态短窗口，阶段 5 的长窗口结果优先。Flash varlen 虽已成为显式
+opt-in，但当前结论没有将它改成默认，也没有把 PG199 的结果外推成 3080 的两位数收益。

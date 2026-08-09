@@ -8,9 +8,9 @@ import {
     startImageTestRequest,
     stopImageTestRequest,
 } from './api.js?v=module-bootstrap-20260714-stage-dataset5';
-import { createImageTestRenderer } from './render.js?v=module-bootstrap-20260714-stage-dataset5';
+import { createImageTestRenderer } from './render.js?v=module-bootstrap-20260809-config-switch1';
 import { createImageTestSelectiveLoraController } from './selective-lora.js?v=module-bootstrap-20260714-stage-dataset5';
-import { createImageTestState, IMAGE_TEST_DEFAULTS } from './state.js?v=module-bootstrap-20260714-stage-dataset5';
+import { createImageTestState, IMAGE_TEST_DEFAULTS } from './state.js?v=module-bootstrap-20260809-config-switch1';
 import { createImageTestUiStorage } from './storage.js?v=module-bootstrap-20260714-stage-dataset5';
 
 const IMAGE_TEST_IMAGE_LIMIT = 500;
@@ -87,6 +87,9 @@ export function createImageTestFeature(ctx, deps) {
             return false;
         }
         state.configSnapshot = deepClone(cfg);
+        const modelFamily = deps.getModelFamily?.() || cfg.model_family || '';
+        const normalizedAttnMode = normalizeAttnMode(cfg.attn_mode, modelFamily);
+        renderer.setAttentionModeOptions(modelFamily, normalizedAttnMode);
         setInputValue('image-test-width', resolvePositiveInt(cfg.resolution, IMAGE_TEST_DEFAULTS.width), { force: options.force });
         setInputValue('image-test-height', resolvePositiveInt(cfg.resolution, IMAGE_TEST_DEFAULTS.height), { force: options.force });
         setInputValue('image-test-infer-steps', resolvePositiveInt(cfg.sample_steps ?? cfg.infer_steps, IMAGE_TEST_DEFAULTS.inferSteps), { force: options.force });
@@ -94,7 +97,7 @@ export function createImageTestFeature(ctx, deps) {
         setInputValue('image-test-flow-shift', resolveNumber(cfg.flow_shift ?? cfg.discrete_flow_shift, IMAGE_TEST_DEFAULTS.flowShift), { force: options.force });
         setInputValue('image-test-seed', cfg.seed ?? '', { force: options.force });
         setInputValue('image-test-sampler', normalizeSampler(cfg.sample_sampler), { force: options.force });
-        setInputValue('image-test-attn-mode', normalizeAttnMode(cfg.attn_mode), { force: options.force });
+        setInputValue('image-test-attn-mode', normalizedAttnMode, { force: options.force });
         setInputValue('image-test-runtime-dtype', normalizeRuntimeDtype(cfg.precision_preference), { force: options.force });
         setInputValue('image-test-text-encoder-dtype', normalizeTextEncoderDtype(), { force: options.force });
         state.syncReady = true;
@@ -596,8 +599,12 @@ export function createImageTestFeature(ctx, deps) {
             : IMAGE_TEST_DEFAULTS.sampler;
     }
 
-    function normalizeAttnMode(value) {
+    function normalizeAttnMode(value, modelFamily = '') {
         const normalized = String(value || '').trim().toLowerCase();
+        if (String(modelFamily || '').trim().toLowerCase() === 'krea2_raw') {
+            if (normalized === 'sdpa') return 'torch';
+            return ['flash', 'torch'].includes(normalized) ? normalized : 'torch';
+        }
         return ['flash', 'torch', 'sageattn', 'flex', 'xformers', 'sdpa'].includes(normalized)
             ? normalized
             : IMAGE_TEST_DEFAULTS.attnMode;

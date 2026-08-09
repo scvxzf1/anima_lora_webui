@@ -4,7 +4,7 @@
  */
 import { ensurePreviewFeature } from '../helpers/feature-ensurers.js?v=module-bootstrap-20260714-stage-dataset5';
 import { precisionPreferenceFromConfig } from '../helpers/config-values.js?v=module-bootstrap-20260714-stage-dataset5';
-import { createImageTestFeature } from '../../image-test/index.js?v=module-bootstrap-20260714-stage-dataset5';
+import { createImageTestFeature } from '../../image-test/index.js?v=module-bootstrap-20260809-config-switch1';
 
 export function createImageTestFeatureBridge(runtime) {
     const ctx = runtime.ctx;
@@ -17,6 +17,11 @@ export function createImageTestFeatureBridge(runtime) {
         if (imageTestFeature) return imageTestFeature;
         imageTestFeature = createImageTestFeature(ctx, {
             getCurrentConfig: () => configState.currentConfig,
+            getModelFamily: () => {
+                const globalSettings = runtime.state.appShell.globalSettings;
+                if (globalSettings) return globalSettings.model_family || 'anima';
+                return configState.currentConfig?.model_family || '';
+            },
             getCurrentTomlFile: () => tomlState.currentTomlFile,
             getSelectionMeta: () => ({
                 method: dom.val('method-select'),

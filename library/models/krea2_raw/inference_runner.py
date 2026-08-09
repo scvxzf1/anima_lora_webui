@@ -35,6 +35,10 @@ from library.models.krea2_raw.strategy import (
     Krea2TokenizeStrategy,
     load_krea2_text_encoder,
 )
+from library.models.krea2_raw.attention_backend import (
+    prepare_krea2_attention,
+    validate_krea2_attention_mode,
+)
 from library.models.krea2_raw.weights import load_krea2_dit
 
 logger = logging.getLogger(__name__)
@@ -91,8 +95,23 @@ def load_krea2_dit_for_inference(
     from library.inference.precision import resolve_runtime_dtype
 
     runtime_dtype = dit_weight_dtype or resolve_runtime_dtype(args)
+    compile_enabled = bool(
+        getattr(args, "compile", False) or getattr(args, "compile_blocks", False)
+    )
+    requested_attn_mode = validate_krea2_attention_mode(
+        getattr(args, "attn_mode", None),
+        dtype=runtime_dtype,
+        compile_enabled=compile_enabled,
+    )
 
     dit = load_krea2_dit(args.dit, device="cpu", dtype=runtime_dtype, eval=True)
+    attn_mode = prepare_krea2_attention(
+        dit,
+        requested_attn_mode,
+        dtype=runtime_dtype,
+        compile_enabled=compile_enabled,
+    )
+    logger.info("Krea-2 inference attention mode: %s", attn_mode)
     dit = dit.to(device).eval()
     for p in dit.parameters():
         p.requires_grad_(False)

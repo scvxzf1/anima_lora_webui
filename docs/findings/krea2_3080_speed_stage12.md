@@ -1,7 +1,7 @@
-状态：阶段 12 已完成（FlashAttention varlen 候选通过扩展验证，暂不生产化）
+状态：阶段 12 已完成（FlashAttention varlen 已生产化为显式 opt-in，默认仍为 cuDNN SDPA）
 日期：2026-08-09
 原始摘要：`krea2_3080_speed_stage12.json`
-探针：`scripts/krea2/probe_nf4_flash_varlen.py`
+探针：`scripts/krea2/probe_nf4_flash_varlen.py`、`scripts/krea2/probe_nf4_ablation.py`
 
 # Krea-2 packed varlen FlashAttention 消融
 
@@ -64,16 +64,27 @@ Flash 路径没有消除 3080 的热漂移，也没有改变 GEMM 主瓶颈，�
 PG199。它把 `12.65s` 降到约 `12.15s`，是目前首个在 3080 长窗口仍有正收益的软件
 attention 候选，但不是数量级变化。
 
-## 决策
+## 生产化更新
 
-结论为 **PROMISING_EXPERIMENT_NOT_PRODUCTION**。本阶段保留可复现实验包装器，但不改
-默认 attention：
+后续更新已将结论升级为 **PRODUCTION_READY_EXPLICIT_OPT_IN**：
 
-1. `flash_attn` 是可选依赖，V100 fork 不支持 BF16；生产入口必须显式选择并可靠 fallback。
-2. 当前需要全局开启 Dynamo 动态输出捕获，必须限定只影响选中 backend 的 Krea block。
-3. 仍需覆盖 batch>1、推理 CFG、训练/推理 multi-bucket 和缺失 FlashAttention 的路径。
-4. 包装器通过 monkeypatch 便于消融，不应直接搬进 `dit.py` 热点；生产实现应拆到独立
-   attention backend 模块，再让 `dit.py` 做薄 dispatch。
+1. `library/models/krea2_raw/attention_backend.py` 承担 cuDNN SDPA 与 packed
+   FlashAttention varlen 实现；`dit.py` 只保留薄 dispatch。
+2. `attn_mode="torch"` 是默认和历史兼容路径；`attn_mode="flash"` 才会启用
+   varlen backend 与 Dynamo 动态输出捕获。缺失 provider、FP32 或 V100 BF16
+   会在加载 25GB DiT 前明确拒绝，不静默切换数值路径。
+3. 共享兼容矩阵会前置拒绝 Krea-2 的非法 attention、非 default
+   Inductor mode、Anima-only V100 诊断和非 `off/every_other` selective
+   checkpoint；从 `base.toml` 继承的 `compile_dynamic_seq=true` 会在启动时自动
+   归一为 `false`。WebUI 训练表单与图像测试下拉同步按 family 过滤。
+4. CPU 契约测试覆盖 batch>1、native GQA、变长打包、padding 输出/梯度为
+   0、provider/dtype 拒绝以及训练/推理接线。PG199 真实 batch=2 BF16
+   `torch.compile + checkpoint` 中，padding 输出与 Q/K/V 梯度最大值均为 0。
+5. 正式 backend 的 PG199 1024² NF4/full-checkpoint/28-block compile 六步探针：
+   首步含编译 `16.01s`，第 6 步 `2.42s`，GPU peak `10.86GB`，loss
+   `0.0083→0.0068`，与本文历史 monkeypatch 结果 `2.421s/it / 10.87GB`
+   一致。
 
-因此默认仍保留 cuDNN SDPA。下一生产化阶段必须先补上述契约测试，不能仅凭单卡速度
-把实验 monkeypatch 变成默认行为。
+因此 Flash varlen 已是受支持的 Krea-2 可选编译方案，但不是新默认。
+`configs/methods/krea2_lora.toml` 仍显式保留 `attn_mode="torch"`，升级不改变
+旧任务的 cuDNN 数值和依赖行为。

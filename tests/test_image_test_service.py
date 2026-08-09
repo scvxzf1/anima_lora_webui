@@ -13,6 +13,11 @@ def test_normalize_image_test_request_reads_config_and_overrides(monkeypatch) ->
     monkeypatch.setattr(image_test_service, "_apply_global_model_path_defaults", lambda cfg: cfg)
     monkeypatch.setattr(image_test_service, "_resolve_image_test_model_paths", lambda cfg: cfg)
     monkeypatch.setattr(
+        image_test_service.settings_service,
+        "get_global_settings",
+        lambda: {"model_family": "anima"},
+    )
+    monkeypatch.setattr(
         image_test_service,
         "_resolve_image_test_weight_path",
         lambda value, app=None: Path("/tmp/weights/test.safetensors"),

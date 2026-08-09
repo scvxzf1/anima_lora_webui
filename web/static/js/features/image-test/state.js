@@ -27,6 +27,12 @@ export const IMAGE_TEST_ATTN_MODE_OPTIONS = Object.freeze([
     { value: 'sdpa', label: 'sdpa' },
 ]);
 
+export function imageTestAttnModeOptionsForFamily(modelFamily) {
+    const family = String(modelFamily || '').trim().toLowerCase();
+    if (family !== 'krea2_raw') return IMAGE_TEST_ATTN_MODE_OPTIONS;
+    return IMAGE_TEST_ATTN_MODE_OPTIONS.filter((item) => ['torch', 'flash'].includes(item.value));
+}
+
 export const IMAGE_TEST_RUNTIME_DTYPE_OPTIONS = Object.freeze([
     { value: 'bf16', label: 'bf16' },
     { value: 'fp16', label: 'fp16' },

@@ -64,6 +64,22 @@ def _compat_web_message(item) -> str:
             "selective_checkpoint 取值不受支持；请改为 off、adapter_aware、"
             "mlp_only、peak_blocks_mlp 等已知模式。"
         ),
+        "krea2_invalid_attn_mode": (
+            "Krea-2 注意力后端仅支持 torch 或 flash（sdpa 作为 torch 别名）。"
+        ),
+        "krea2_compile_dynamic_seq": (
+            "Krea-2 使用两张固定 token-family 编译图；"
+            "训练启动时会自动关闭 compile_dynamic_seq。"
+        ),
+        "krea2_compile_inductor_mode": (
+            "Krea-2 仅支持 compile_inductor_mode=default。"
+        ),
+        "krea2_selective_checkpoint": (
+            "Krea-2 选择性检查点仅支持 off 或 every_other。"
+        ),
+        "krea2_v100_flash_stability": (
+            "v100_flash_stability 是 Anima 专用诊断项，Krea-2 下必须为 off。"
+        ),
         "negative_blocks_to_swap": "blocks_to_swap 不能小于 0。",
         "selective_full_gradient_checkpointing": (
             "selective_checkpoint 是 DiT 选择性检查点模式，不能同时开启完整 "
