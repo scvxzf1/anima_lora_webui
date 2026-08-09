@@ -313,3 +313,9 @@ PG199/3080 都无可测收益，行为改动已回退。完整数据与下阶段
 3.370→2.901s（-13.9%），峰值 10.49→28.46GB，适合 32GB opt-in。RTX 3080
 swap20 即使只放开 1 个 block 也 OOM，故该路径无法优化 10GB 工作点。见
 [krea2_3080_speed_stage2.md](../findings/krea2_3080_speed_stage2.md)。
+
+阶段 3 per-block compile 已实现固定长度 opt-in：编译 block `_forward`，block swap
+默认只编译 resident 块。PG199 NF4 full-ckpt 3.370→2.726s（-19.1%）；RTX 3080
+swap20 仅 8 常驻块可编译，12.140→11.744s（-3.3%），约 60 步回本。
+`compile_dynamic_seq=true` 尚不支持，默认配置不变。见
+[krea2_3080_speed_stage3.md](../findings/krea2_3080_speed_stage3.md)。

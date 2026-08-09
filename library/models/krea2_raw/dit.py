@@ -524,6 +524,50 @@ class SingleStreamDiT(nn.Module):
                 if block_idx % 2 == 0:
                     block.enable_gradient_checkpointing()
 
+    def compile_blocks(
+        self,
+        backend: str = "inductor",
+        mode: str | None = None,
+        bucket_resolutions=None,
+        n_token_families: int | None = None,
+        dynamic_seq: bool = False,
+        seq_range: tuple[int, int] | None = None,
+        compile_block_scope: str = "resident",
+    ) -> None:
+        """Compile block computation after adapters and checkpoint setup.
+
+        Krea-2 pads the combined text/image sequence to a multiple of 256, so
+        it does not use Anima's native-flatten bucket machinery. The matching
+        arguments remain in the signature for the shared training harness.
+        """
+        del bucket_resolutions, n_token_families, seq_range
+        if dynamic_seq:
+            raise ValueError(
+                "Krea-2 compile_blocks currently supports fixed padded "
+                "sequence lengths only"
+            )
+        if compile_block_scope not in {"resident", "all"}:
+            raise ValueError(
+                "compile_block_scope must be 'resident' or 'all'; "
+                f"got {compile_block_scope!r}"
+            )
+
+        resident = len(self.blocks)
+        if compile_block_scope == "resident" and self.blocks_to_swap:
+            resident -= int(self.blocks_to_swap)
+        compile_kwargs = {"backend": backend, "dynamic": False}
+        if mode:
+            compile_kwargs["mode"] = mode
+
+        for block_idx, block in enumerate(self.blocks):
+            if block_idx >= resident:
+                continue
+            base_forward = getattr(block, "_krea_compile_base_forward", None)
+            if base_forward is None:
+                base_forward = block._forward
+                block._krea_compile_base_forward = base_forward
+            block._forward = torch.compile(base_forward, **compile_kwargs)
+
     # === Block swap 接口 (移植自 anima models.py:2291-2387, 复用 ModelOffloader) ===
     # ModelOffloader 只遍历 block.named_modules() 取 .weight + .to(device) +
     # register_full_backward_hook, 对 block forward 签名零假设, SingleStreamBlock 满足.

@@ -22,6 +22,7 @@
                            (激活检查点消融; 默认 full)
   K2_ABL_UNCKPT_BLOCKS=26,27
                            (full_except 模式下不 checkpoint 的 block)
+  K2_ABL_COMPILE=0/1       (在 LoRA + grad-ckpt 之后编译 block._forward)
   K2_ABL_IMG=1024         (分辨率)
   K2_ABL_STEPS=30         (训练步数; CKPT 模式下中途存+续训各跑一半)
   K2_ABL_GPU=1            (PG199)
@@ -233,6 +234,7 @@ def main() -> int:
         for value in os.environ.get("K2_ABL_UNCKPT_BLOCKS", "").split(",")
         if value.strip()
     }
+    compile_blocks = _env_bool("K2_ABL_COMPILE", False)
     img_size = _env_int("K2_ABL_IMG", 1024)
     n_steps = _env_int("K2_ABL_STEPS", 30)
     nf4_path = os.environ.get("K2_ABL_NF4_PATH", "") or None
@@ -261,6 +263,7 @@ def main() -> int:
         "lr": LR,
         "grad_ckpt": grad_ckpt,
         "unckpt_blocks": sorted(unckpt_blocks),
+        "compile_blocks": compile_blocks,
         "fixed_sigma": FIXED_SIGMA,
         "flow_matching_formula": "x_t=(1-σ)*latent+σ*noise; target=noise-latent; loss=mse(velocity,target); 5D latent (B,C,T=1,H,W)",
         "seed": 123,
@@ -308,6 +311,12 @@ def main() -> int:
         for block_idx, block in enumerate(dit.blocks):
             if block_idx not in unckpt_blocks:
                 block.enable_gradient_checkpointing()
+    if compile_blocks:
+        dit.compile_blocks(
+            backend=os.environ.get("K2_ABL_COMPILE_BACKEND", "inductor"),
+            mode=os.environ.get("K2_ABL_COMPILE_MODE") or None,
+            compile_block_scope=os.environ.get("K2_ABL_COMPILE_SCOPE", "resident"),
+        )
 
     n_lora = len(network.unet_loras)
     n_train = sum(p.numel() for p in network.parameters() if p.requires_grad)

@@ -1,0 +1,31 @@
+{
+  "date": "2026-08-09",
+  "compile_target": "SingleStreamBlock._forward",
+  "backend": "inductor",
+  "dynamic_seq": false,
+  "preflight": {
+    "bf16": {"eager_ms": 13.3222, "compiled_ms": 7.8070, "speedup_pct": 70.65},
+    "nf4": {"eager_ms": 20.5483, "compiled_ms": 10.6903, "speedup_pct": 92.22},
+    "output_max_delta": 0.03125,
+    "gradient_max_delta": 0.00003052
+  },
+  "full_training": {
+    "pg199": {
+      "config": "1024,NF4,swap0,full_grad_ckpt,compile_all_resident",
+      "eager_stable_step_s": 3.370,
+      "compiled_stable_step_s": 2.726,
+      "speedup_pct": 19.11,
+      "first_step_s": 28.644,
+      "gpu_peak_gb": 11.057
+    },
+    "rtx_3080": {
+      "config": "1024,NF4,swap20,full_grad_ckpt,compile_resident_8_of_28",
+      "eager_historical_step_s": 12.14,
+      "compiled_steps_s": [11.645, 11.777, 11.809],
+      "compiled_stable_mean_s": 11.744,
+      "speedup_pct": 3.26,
+      "first_step_s": 35.903,
+      "break_even_steps_approx": 60
+    }
+  }
+}
