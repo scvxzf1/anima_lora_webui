@@ -331,3 +331,8 @@ GEMM 在 84°C/约 1800MHz 也退化 7-9%，因此 3.3% 只是冷态短窗口，
 持续加速。当前 eager swap20 在首个 backward OOM，compiled 则完成 20 步，其可靠
 价值是显存余量。长训速度的下一主因是 3080 散热/频率曲线。见
 [krea2_3080_speed_stage5.md](../findings/krea2_3080_speed_stage5.md)。
+
+阶段 6 FP16 compute 候选已拒绝：3080 代表性 FP16 Linear 比 BF16 快 13.7%，
+NF4 层 backward 27.07→10.02ms，但同权重/同输入的输入梯度 rel-L2 达 35.6%、
+cos=0.943。不值得以训练轨迹换速度，保留 `weights.py` 强制 BF16 契约。见
+[krea2_3080_speed_stage6.md](../findings/krea2_3080_speed_stage6.md)。

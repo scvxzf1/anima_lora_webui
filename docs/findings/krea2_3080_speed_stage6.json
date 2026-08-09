@@ -1,0 +1,19 @@
+{
+  "date": "2026-08-09",
+  "candidate": "NF4 compute_dtype float16 on RTX 3080",
+  "bf16_fp16_kernel_microbench": {
+    "pg199": {"bf16_linear_ms": 1.5174, "fp16_linear_ms": 1.5165, "bf16_attention_ms": 4.9382, "fp16_attention_ms": 4.8123},
+    "rtx_3080": {"bf16_linear_ms": 8.1758, "fp16_linear_ms": 7.0523, "bf16_attention_ms": 12.4894, "fp16_attention_ms": 12.4380}
+  },
+  "same_nf4_weight_same_input": {
+    "bf16_forward_ms": 8.5116,
+    "fp16_forward_ms": 8.2524,
+    "bf16_backward_ms": 27.0705,
+    "fp16_backward_ms": 10.0176,
+    "output_rel_l2": 0.002885,
+    "output_max_delta": 0.015625,
+    "input_gradient_rel_l2": 0.356458,
+    "input_gradient_cosine": 0.943384
+  },
+  "verdict": "REJECT: backward speed is attractive but gradient drift is too large; keep enforced BF16 compute dtype"
+}
