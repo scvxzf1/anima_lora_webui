@@ -111,6 +111,18 @@ NF4 forward 慢 4.6-7.2×（反量化是每步真开销），反量化产出完�
   存盘），同 path 4-bit 码逐字节一致，forward delta=0.00e+00。
 - 落盘文件：`models/diffusion_models/krea2_raw_nf4.safetensors`（6.61GB）。
 
+2026-08-09 增加自包含 NF4 v2：在不重新量化的前提下，将旧 NF4 的
+264 个 Linear4bit 与 BF16 底模中缺失的 159 个模型 tensor（5.44MiB）合并。
+`load_krea2_dit` 依据 safetensors metadata 自动识别 v2，可直接将它作为
+`pretrained_model_name_or_path`，不再读取 25GB BF16 payload。旧 v1 overlay 路径保持兼容。
+
+```bash
+.venv/bin/python scripts/krea2/build_self_contained_nf4.py
+```
+
+实现和 PG199/RTX 3080 验证记录见
+`docs/findings/krea2_nf4_self_contained.md`。
+
 ### 3080 小卡实测（8.6GB 可用，磁盘 NF4 + TE-CPU）
 
 3080（10GB，gnome-remote 残留后可用 ~8.6GB）用磁盘 NF4 + TE-CPU encode 链路实测，

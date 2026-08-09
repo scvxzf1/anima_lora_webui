@@ -944,7 +944,7 @@ def add_dit_training_arguments(parser: argparse.ArgumentParser):
             "nf4 (Krea-2 only) quantizes frozen base to 4-bit NormalFloat via bnb, "
             "13B->6.6GB, enables 24GB training; verified with block_swap (offloader "
             "NF4 path via Params4bit integral transport). Mutually exclusive with "
-            "ConvRot.",
+            "ConvRot."
         ),
     )
     parser.add_argument(
@@ -953,10 +953,10 @@ def add_dit_training_arguments(parser: argparse.ArgumentParser):
         default=None,
         help=(
             "[EXPERIMENTAL] Path to a pre-quantized NF4 safetensors (save_nf4_dit "
-            "product, e.g. models/diffusion_models/krea2_raw_nf4.safetensors). "
-            "Only used with --base_compute nf4. Skips in-line quantization (which "
-            "needs the full 26GB bf16 DiT on GPU) so 8-12GB cards can load the 6.6GB "
-            "NF4 file directly. When None, falls back to in-line quantize_dit_to_nf4."
+            "product). Legacy v1 files overlay the BF16 base; self-contained v2 files "
+            "do not read the BF16 payload. A v2 file may also be supplied directly as "
+            "--pretrained_model_name_or_path. Only used with --base_compute nf4. "
+            "When no NF4 file is supplied, falls back to in-line quantize_dit_to_nf4."
         ),
     )
     parser.add_argument(

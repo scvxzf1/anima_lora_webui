@@ -34,10 +34,10 @@ def load_krea2_dit(
     nf4: bool = False,
     nf4_path: Optional[Union[str, os.PathLike]] = None,
 ) -> SingleStreamDiT:
-    """加载 Krea-2-Raw DiT 单文件权重（路径 B，原生命名，strict 加载）。
+    """加载 Krea-2-Raw BF16、NF4 overlay 或自包含 NF4 v2 权重。
 
     Args:
-        dit_path: diffusion_models/krea2_raw_bf16.safetensors 路径。
+        dit_path: BF16 底模或自包含 NF4 v2 路径。
         device: 最终放置设备。权重在 CPU 上 strict 加载后再 to(device)。
         dtype: 目标 dtype；None 表示保持文件原 dtype。NF4 路径强制 bf16。
         config: 可选 config 覆盖；默认用 SingleMMDiTConfig.krea2_raw()。
@@ -46,24 +46,59 @@ def load_krea2_dit(
             13B DiT 权重显存 25.6GB->6.6GB (4x 压缩), 适配 24GB 4090 训练.
             量化在 strict 加载后、.to(device) 时由 Params4bit.to() 触发.
             三层验证见 library/models/krea2_raw/quantize.py 模块头注.
-        nf4_path: 已量化 NF4 权重文件路径 (save_nf4_dit 产物). 提供且文件存在时
-            优先从磁盘加载 (load_nf4_dit_into), 跳过在线量化 —— 这让 3080 等
-            小卡能直接加载 6.6GB NF4 文件, 无需在线量化要的 26GB bf16 在 GPU.
-            nf4/nf4_path 二选一: nf4_path 优先.
+        nf4_path: 预量化 NF4 权重路径。v1 是 BF16 overlay；v2 自包含并
+            忽略 ``dit_path`` 的 BF16 payload。``dit_path`` 自身指向 v2 时也会自动识别。
 
     Returns:
         SingleStreamDiT 模型（权重已加载，可选 NF4 量化）。
     """
-    dit_path = str(resolve_under_home(dit_path))
-    if not os.path.exists(dit_path):
-        raise FileNotFoundError(f"Krea-2 DiT 权重不存在: {dit_path}")
-
     if config is None:
         config = SingleMMDiTConfig.krea2_raw()
 
+    from library.models.krea2_raw.quantize import (
+        NF4_FORMAT_VERSION,
+        inspect_nf4_checkpoint,
+    )
+
+    dit_path = str(resolve_under_home(dit_path))
+    resolved_nf4_path = (
+        str(resolve_under_home(nf4_path)) if nf4_path is not None else None
+    )
+    if resolved_nf4_path and not os.path.exists(resolved_nf4_path):
+        raise FileNotFoundError(f"NF4 权重不存在: {resolved_nf4_path}")
+
+    nf4_info = (
+        inspect_nf4_checkpoint(resolved_nf4_path) if resolved_nf4_path else None
+    )
+    if nf4_info is not None and not nf4_info.is_nf4:
+        raise ValueError(f"nf4_path 不是 Krea-2 NF4 checkpoint: {resolved_nf4_path}")
+
+    dit_info = None
+    if os.path.exists(dit_path):
+        dit_info = inspect_nf4_checkpoint(dit_path)
+    elif not (nf4_info and nf4_info.self_contained):
+        raise FileNotFoundError(f"Krea-2 DiT 权重不存在: {dit_path}")
+
+    self_contained_path = None
+    if nf4_info and nf4_info.self_contained:
+        self_contained_path = resolved_nf4_path
+    elif dit_info and dit_info.self_contained:
+        self_contained_path = dit_path
+
+    if (
+        not self_contained_path
+        and dit_info
+        and dit_info.is_nf4
+        and not dit_info.self_contained
+    ):
+        raise ValueError(
+            f"{dit_path} 是 NF4 v1 overlay，不能单独作为底模；"
+            "请通过 nf4_path 配合 BF16 底模，或升级为自包含 NF4 v2"
+        )
+
     # NF4 量化要求 bf16 输入权重 (Params4bit 喂 bf16). 与 ConvRot 不同, NF4
     # 不接受 fp16 compute_dtype 训练路径, 这里强制对齐.
-    if nf4 and dtype is not None and dtype != torch.bfloat16:
+    if (nf4 or self_contained_path) and dtype is not None and dtype != torch.bfloat16:
         raise ValueError(
             f"NF4 量化要求 dtype=bfloat16, got dtype={dtype}. "
             f"NF4 compute_dtype 固定 bf16 (见 quantize.py COMPUTE_DTYPE)."
@@ -75,6 +110,28 @@ def load_krea2_dit(
         model = SingleStreamDiT(config)
         if dtype is not None:
             model = model.to(dtype)
+
+    if self_contained_path:
+        from library.models.krea2_raw.quantize import load_nf4_dit_into
+
+        logger.info(
+            "Loading self-contained Krea-2 NF4 v%d from %s, dtype=%s",
+            NF4_FORMAT_VERSION,
+            self_contained_path,
+            dtype,
+        )
+        load_nf4_dit_into(
+            model,
+            self_contained_path,
+            torch.device("cpu"),
+            require_self_contained=True,
+        )
+        if dtype is not None:
+            model = model.to(dtype)
+        model = model.to(device)
+        if eval:
+            model.eval()
+        return model
 
     # Krea-2 权重是 mmdit.py 原生命名，无 prefix、无 fuse——直接 strict 加载。
     # assign=True 让加载器直接接管 tensor storage，避免一次额外 copy。
@@ -99,13 +156,13 @@ def load_krea2_dit(
     if dtype is not None:
         model = model.to(dtype)
 
-    if nf4_path and os.path.exists(str(nf4_path)):
+    if resolved_nf4_path:
         # 磁盘 NF4: 从 save_nf4_dit 产物加载, 跳过在线量化. bf16 strict 加载
         # 后替换 Linear 为 Linear4bit (空壳) + from_prequantized 重建. 小卡
         # (3080 等) 可直接加载 6.6GB NF4, 无需在线量化要的 26GB bf16 在 GPU.
         from library.models.krea2_raw.quantize import load_nf4_dit_into
 
-        load_nf4_dit_into(model, str(nf4_path), torch.device("cpu"))
+        load_nf4_dit_into(model, resolved_nf4_path, torch.device("cpu"))
         model = model.to(device)
     elif nf4:
         # NF4: strict 加载后 (bf16 在 CPU) 替换所有 nn.Linear 为 Linear4bit,
