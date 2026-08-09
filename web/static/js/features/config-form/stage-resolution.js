@@ -42,4 +42,4 @@ export {
     createResourceQuickPresetPanel,
     createNoDatasetRegularizationQuickPresetsButton,
     createNoDatasetRegularizationQuickPresetPanel,
-} from './stage-resolution-presets.js?v=module-bootstrap-20260714-stage-dataset5';
+} from './stage-resolution-presets.js?v=model-configs-20260809-1';

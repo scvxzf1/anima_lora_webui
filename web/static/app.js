@@ -2,8 +2,8 @@
  * Anima LoRA Web UI — ES module bootstrap.
  */
 import { MetricsChart } from './chart.js?v=module-bootstrap-20260714-stage-dataset5';
-import { createCatalog } from './js/config/catalog.js?v=module-bootstrap-20260714-stage-dataset5';
-import { createAnimaApp } from './js/features/anima-app/index.js?v=module-bootstrap-20260804-multigpu1';
+import { createCatalog } from './js/config/catalog.js?v=module-bootstrap-20260809-nf4-v2';
+import { createAnimaApp } from './js/features/anima-app/index.js?v=module-bootstrap-20260809-config-switch1-model-config1';
 import { createApiClient } from './js/shared/api.js?v=module-bootstrap-20260714-stage-dataset5';
 import * as dom from './js/shared/dom.js?v=module-bootstrap-20260714-stage-dataset5';
 import * as download from './js/shared/download.js?v=module-bootstrap-20260714-stage-dataset5';

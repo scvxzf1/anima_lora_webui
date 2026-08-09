@@ -314,14 +314,14 @@ def test_state_bucket_bridges_reach_hotspot_chunks() -> None:
         assert snippet in dataset_runtime_source
 
     for snippet in (
-        "const appShellState = getAppShellState();",
         "const configState = getConfigState();",
         "const datasetState = getDatasetState();",
         "const historyState = getHistoryState();",
         "const tomlState = getTomlState();",
         "const trainingState = getTrainingState();",
         "function currentTrainingSourceState() {",
-        "if (!appShellState.globalSettings && location.protocol !== 'file:') {",
+        "const selected = await openModelConfigPickerDialog();",
+        "['model_family', selected.model_family]",
         "openBtn.textContent = datasetState.selectedConfigDatasetFile ? '更换预设' : '选择预设';",
         "const continueTrainingSource = currentContinueTrainingSource();",
         "updateTomlActionState(tomlState.currentTomlFile);",
@@ -519,7 +519,8 @@ def test_state_bucket_bridges_reach_hotspot_chunks() -> None:
         "const trainingState = getTrainingState();",
         "const trainingRuntime = trainingState.trainingRuntime;",
         "return currentTrainingSource.file || tomlState.currentTomlFile || val('toml-file-select') || '';",
-        "trainingState.ws = new WebSocket(",
+        "const ws = new WebSocket(",
+        "trainingState.ws = ws;",
     ):
         assert snippet in preflight_source
 
@@ -1081,20 +1082,19 @@ def test_global_settings_cards_follow_requested_numbering_order() -> None:
     html = INDEX_HTML.read_text(encoding="utf-8")
 
     output_index = html.index('id="global-output-settings-title"')
-    model_index = html.index('id="global-model-settings-title"')
     config_index = html.index('id="global-config-paths-title"')
     ui_index = html.index('id="global-ui-settings-title"')
 
-    assert output_index < model_index < config_index < ui_index
+    assert output_index < config_index < ui_index
+    assert 'id="global-model-settings-title"' not in html
     assert '<span class="global-settings-card-mark">01</span>' in html
     assert '<span class="global-settings-card-mark">02</span>' in html
     assert '<span class="global-settings-card-mark">03</span>' in html
-    assert '<span class="global-settings-card-mark">04</span>' in html
 
     summary_section = _section(html, '<div class="global-settings-summary" aria-label="全局设置范围">', '<div class="global-settings-summary-note">')
-    assert summary_section.index("输出根目录") < summary_section.index("基础模型路径")
-    assert summary_section.index("基础模型路径") < summary_section.index("配置目录路径")
+    assert summary_section.index("输出根目录") < summary_section.index("配置目录路径")
     assert summary_section.index("配置目录路径") < summary_section.index("界面设置")
+    assert "基础模型路径" not in summary_section
 
 
 def test_new_training_launch_enters_live_monitoring() -> None:
@@ -1368,10 +1368,11 @@ def test_config_form_uses_navigation_search_and_progressive_disclosure() -> None
     assert "appendConfigGroupsByCategory(container, sectionEntries);" in render_section
     assert "const buckets = new Map(FORM_CATEGORY_DEFS.map((category) => [category.id, []]));" in order_section
     assert "FORM_CATEGORY_SECTION_MAP.get(group.name) || 'advanced'" in order_section
-    assert "createConfigFormControls(groups, renderedGroups, searchText)" in order_section
+    assert "const scopedGroups = sourceCategories.flatMap" in order_section
+    assert "createConfigFormControls(scopedGroups, renderedGroups, searchText)" in order_section
     assert "filterConfigGroupEntry(group, searchText)" in order_section
     assert "configFormState.showAdvanced || !category.advanced" in source
-    assert "configFormState.search = event.target.value || ''" in source
+    assert "configFormState.search = rawValue || ''" in source
     assert "search.addEventListener('keydown'" in source
     assert "if (event.key !== 'Escape') return;" in source
     assert "configFormState.search = '';" in source
@@ -1655,7 +1656,7 @@ def test_config_form_uses_navigation_search_and_progressive_disclosure() -> None
     assert "convrot_group_size: 'ConvRot 组大小'" in source
     assert "convrot_scope: 'ConvRot 作用范围'" in source
     assert "convrot_hadamard: 'ConvRot Hadamard'" in source
-    assert "base_compute: ['bf16', 'w8a16_convrot', 'w8a8_convrot']" in source
+    assert "base_compute: ['bf16', 'w8a16_convrot', 'w8a8_convrot', 'nf4']" in source
     assert "convrot_group_size: [64, 256, 1024]" in source
     assert "convrot_scope: ['mlp', 'all', 'attention_out', 'attn', 'mlp,attn']" in source
     assert "convrot_hadamard: ['sylvester', 'regular']" in source
@@ -1677,7 +1678,7 @@ def test_config_form_uses_navigation_search_and_progressive_disclosure() -> None
     assert "这里不是显卡训练精度开关" in catalog_help_training
     assert "即使显卡本身不支持 bf16 训练，也可以继续使用这个默认值" in catalog_help_training
     assert "训练精度请看上面的“精度倾向”" in catalog_help_training
-    assert "同一 slot 的多个小 weight 恢复合并成更少的大 H2D" in catalog_help_training
+    assert "同一 slot 的多个小 weight 恢复合并成一段连续大 H2D" in catalog_help_training
     assert "precision_preference: '精度倾向'" in source
     assert "precision_preference: ['bf16', 'fp16', 'fp32']" in source
     assert "memory_probe_jsonl: '显存探针'" in source
@@ -1917,10 +1918,11 @@ def test_config_form_keeps_dora_as_lora_addon_and_merges_exclusive_adapters() ->
     assert "function updateDoRAFieldState" in state_section
     assert "input.checked = false" in state_section
     assert "DoRA 仅支持普通 LoRA；切到 LoHa/LoKr/GLoRA/VeRA 时会自动关闭" in source
-    assert "function focusConfigFieldInput" in source
-    assert "nameSpan.addEventListener('click', () => focusConfigFieldInput(input));" in source
-    assert "target.focus();" in source
-    assert "target.select();" in source
+    assert "function focusConfigFieldInput" in form_fields
+    assert "nameSpan.addEventListener('click', () => {" in form_fields
+    assert "focusConfigFieldInput(input);" in form_fields
+    assert "target.focus();" in form_fields
+    assert "target.select();" in form_fields
 
 
 def test_sample_prompts_save_uses_current_training_config_context() -> None:
@@ -1986,6 +1988,23 @@ def test_config_form_save_reload_and_launch_share_training_config_file() -> None
     assert "config_file: currentTrainingConfigFile()," in start_unchecked
     assert "return outputRunRuntimeFile();" in current_file
     assert "return currentTrainingSource.file || tomlState.currentTomlFile || val('toml-file-select') || '';" in current_file
+
+
+def test_confirmed_config_switch_is_not_blocked_by_stale_form_drafts() -> None:
+    output_run_source = _frontend_module_text("js/features/anima-app/chunks/16-load-output-run-config.js")
+    sample_prompts_source = _frontend_module_text("js/features/anima-app/chunks/19-current-sample-prompt-text.js")
+    action_source = _frontend_module_text("js/features/anima-app/chunks/22-update-toml-action-state.js")
+    select_and_apply = _section(output_run_source, "async function selectAndApplyTomlFile", "async function loadTomlFile")
+    apply_to_config = _section(action_source, "async function applyTomlToConfig", "async function toggleTomlUserLock")
+    save_as = _section(sample_prompts_source, "async function saveTomlAs", "async function createBlankPresetFromLoraTemplate")
+    create_blank = _section(sample_prompts_source, "async function createBlankPresetFromLoraTemplate", "async function previewPatchedTomlContent")
+
+    assert "await handlePendingConfigSwitch({ targetLabel })" in select_and_apply
+    assert "applyTomlToConfig({ silent: true, pendingChangesResolved: true })" in select_and_apply
+    assert "!options.pendingChangesResolved && hasPendingConfigChanges(file)" in apply_to_config
+    assert "applyTomlToConfig({ silent: true, pendingChangesResolved: true })" in save_as
+    assert "await handlePendingConfigSwitch({ targetLabel:" in create_blank
+    assert "applyTomlToConfig({ silent: true, pendingChangesResolved: true })" in create_blank
 
 
 def test_config_training_source_modes_are_audited_before_launch() -> None:
@@ -2086,9 +2105,10 @@ def test_optional_number_fields_can_be_cleared() -> None:
 
 def test_step_estimate_panel_shows_epoch_factor() -> None:
     source = APP_JS.read_text(encoding="utf-8")
+    group_entry = _frontend_module_text("js/features/config-form/group-entry.js")
     create_body = _section(source, "function createStepEstimatePanel", "function updateStepEstimatePanel")
     update_body = _section(source, "function updateStepEstimatePanel", "function liveDatasetRowsForEstimate")
-    group_body = _section(source, "if (extraClass === 'config-group-steps')", "section.appendChild(content);")
+    group_body = _section(group_entry, "if (!filtering && extraClass === 'config-group-steps')", "section.appendChild(content);")
 
     assert "最大训练轮数" in create_body
     assert "step-max-train-epochs" in create_body
@@ -2450,7 +2470,8 @@ def test_block_swap_profile_uses_strict_select_options() -> None:
     assert "Boolean(FIELD_OPTIONS[key])" in select_gate
     assert "!Array.isArray(value)" in select_gate
     assert "if (shouldRenderSelectInput(key, value))" in input_factory
-    assert "createSelectInput(key, value, filterFieldOptionsForFamily(key, fieldOptions, value))" in input_factory
+    assert "filterFieldOptionsForFamily(key, fieldOptions, value)," in input_factory
+    assert "return applyFamilyFieldConstraints(input, key);" in input_factory
     assert "function selectUsesStrictOptions(key)" in option_source
     assert "FIELD_STRICT_SELECT_OPTIONS?.has?.(key)" in option_source
     assert "select.dataset.strictOptions = '1';" in option_source
@@ -2530,7 +2551,7 @@ def test_dataset_preset_page_has_group_manager_controls() -> None:
     assert "btn-refresh-dataset-presets" in html
     assert "dataset-page-summary" in html
 
-    assert "createDatasetPresetGroupNode(group, stored)" in list_body
+    assert "createDatasetPresetGroupNode(group)" in list_body
     assert "createDatasetPresetGroupDragHandle" in list_body
     assert "createDatasetPresetGroupActions" in list_body
     assert "createDatasetPresetGroupFileRow" in list_body
@@ -2559,15 +2580,14 @@ def test_dataset_preset_page_has_group_manager_controls() -> None:
     assert "moveDatasetPresetToGroup" not in source
     assert "createDatasetPresetRowActionButton" not in source
     assert "dataset-preset-row-actions" not in source
-    assert "DATASET_PRESET_GROUP_STATE_KEY" in source
-    assert "anima_lora_dataset_preset_groups_v2" in source
+    assert "DATASET_PRESET_GROUP_STATE_KEY" not in source
+    assert "anima_lora_dataset_preset_groups_v2" not in source
     assert "kind: 'dataset'" in source
     assert "function isUnfiledDatasetGroup" in source
     assert "return sortDatasetPresetGroups(groups);" in source
     assert "orderDatasetPresetsForGroups(presets, sortedGroups)" in source
-    assert "const defaultOpen = isUnfiledDatasetGroup(group);" in source
-    assert "stored[group.id] ?? defaultOpen" in source
-    assert "!isUnfiledDatasetGroup(group)" in source
+    assert "Boolean(datasetPresetState.search.trim())" in source
+    assert "details.addEventListener('toggle'" not in list_body
     assert "JSON.stringify({ label: label.trim(), kind: 'dataset' })" in source
     assert "btn-create-dataset-preset-group" in listener_section
     assert "dataset-preset-search" in listener_section
@@ -3617,6 +3637,6 @@ def test_base_compute_nf4_option_scoped_to_krea2_family() -> None:
     assert "!filtered.includes(currentValue)" in factory
 
     help_src = _frontend_module_text("js/config/catalog/field-help-training.js")
-    # 帮助文案提及 NF4 是 Krea-2 专属 + 与 ConvRot/block_swap 互斥.
+    # 帮助文案提及 NF4 是 Krea-2 专属，并反映已验证的 block swap 组合。
     assert "nf4（仅 Krea-2）" in help_src
-    assert "与 ConvRot、block_swap 互斥" in help_src
+    assert "已验证可与 block swap 组合" in help_src

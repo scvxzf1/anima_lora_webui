@@ -160,6 +160,7 @@ def test_top_level_tab_buttons_have_matching_content_sections() -> None:
         "training",
         "weight-analysis",
         "settings",
+        "model-config",
         "environment",
         "image-test",
     ]
@@ -216,7 +217,7 @@ def test_optional_node_syntax_smoke_for_shared_dom_helper() -> None:
 def test_workflow_dom_contracts_match_index_html() -> None:
     """Queue/history/preview/settings required ids stay in index.html (no rename explosion)."""
     html = INDEX_HTML.read_text(encoding="utf-8")
-    expected_buckets = {"queue", "history", "preview", "settings"}
+    expected_buckets = {"queue", "history", "preview", "settings", "model_config"}
     assert set(WORKFLOW_DOM_CONTRACTS) == expected_buckets
 
     for name in sorted(expected_buckets):
@@ -230,4 +231,3 @@ def test_workflow_dom_contracts_match_index_html() -> None:
         assert not missing_required, f"{name} required missing: {sorted(missing_required)}"
         missing_optional = missing_dom_ids_in_html(html, contract["optional"])
         assert not missing_optional, f"{name} optional missing: {sorted(missing_optional)}"
-

@@ -6,7 +6,7 @@ export {
     strongerSelectiveCheckpointValue,
     resourceQuickCurrentValue,
     fillGlobalModelPathsIntoConfigForm,
-} from '../../config-form/resource-values.js?v=module-bootstrap-20260714-stage-dataset5';
+} from '../../config-form/resource-values.js?v=model-configs-20260809-1';
 export {
     appendFieldRows,
 } from '../../config-form/field-rows.js?v=module-bootstrap-20260714-stage-dataset5';

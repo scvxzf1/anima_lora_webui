@@ -146,7 +146,8 @@ Postfix 当前用户入口在 [guidelines/training.md#postfix](guidelines/traini
 | [features/training-queue.md](features/training-queue.md) | 训练队列管理 |
 | [features/history-collections.md](features/history-collections.md) | 历史任务与集合 |
 | [features/preview.md](features/preview.md) | 训练/推理预览与权重列表 |
-| [features/global-settings.md](features/global-settings.md) | 全局输出、模型、配置根与界面设置 |
+| [features/global-settings.md](features/global-settings.md) | 全局输出、配置根与界面设置 |
+| [features/global-model-configs.md](features/global-model-configs.md) | Anima / Krea-2 全局模型配置库与配置页选择 |
 | [features/ui-scale.md](features/ui-scale.md) | WebUI UI 缩放（默认与分页面） |
 | [features/frontend-health-scorecard.md](features/frontend-health-scorecard.md) | 前端健康度评分卡（维护用） |
 

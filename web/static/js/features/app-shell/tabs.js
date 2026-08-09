@@ -1,6 +1,7 @@
 export function createTabController({
     loadDatasetPresets,
     loadGlobalSettings,
+    loadModelConfigsPage,
     ensureWeightAnalysisFeature,
     ensureEnvironmentCheckFeature,
     ensureImageTestFeature,
@@ -54,6 +55,9 @@ export function createTabController({
                 }
                 if (nextTab === 'settings') {
                     loadGlobalSettings();
+                }
+                if (nextTab === 'model-config') {
+                    loadModelConfigsPage?.();
                 }
                 if (nextTab === 'environment') {
                     ensureEnvironmentCheckFeature?.().loadEnvironmentCheck();

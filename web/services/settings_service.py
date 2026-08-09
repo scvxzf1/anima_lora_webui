@@ -41,6 +41,7 @@ GLOBAL_UI_OVERRIDE_KEYS = (
     "ui_scale_weight_analysis",
     "ui_scale_image_test",
     "ui_scale_settings",
+    "ui_scale_model_config",
     "ui_scale_environment",
     "ui_scale_history_overview",
     "ui_scale_history_analysis",

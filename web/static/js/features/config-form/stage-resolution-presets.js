@@ -5,7 +5,7 @@
 import { NO_DATASET_REGULARIZATION_QUICK_PRESETS, RESOURCE_QUICK_PRESETS } from '../anima-app/helpers/app-constants.js?v=module-bootstrap-20260714-stage-dataset5';
 import { setFieldInputValue } from './field-input.js?v=module-bootstrap-20260714-stage-dataset5';
 import { handleFormFieldChange } from './form-fields.js?v=module-bootstrap-20260714-stage-dataset5';
-import { fillGlobalModelPathsIntoConfigForm, resourceQuickCurrentValue, strongerSelectiveCheckpointValue } from './resource-values.js?v=module-bootstrap-20260714-stage-dataset5';
+import { fillGlobalModelPathsIntoConfigForm, resourceQuickCurrentValue, strongerSelectiveCheckpointValue } from './resource-values.js?v=model-configs-20260809-1';
 import { setTomlStatus } from '../anima-app/helpers/toml-action-state-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
 import { getConfigState } from '../anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
 
@@ -194,7 +194,7 @@ export function createFillGlobalModelPathsButton() {
     btn.type = 'button';
     btn.className = 'btn btn-small config-group-title-action';
     btn.textContent = '填写全局路径配置';
-    btn.title = '用全局设置里的三项基础模型路径覆盖当前配置表单';
+    btn.title = '从全局模型配置中选择一项并填写当前配置表单';
     btn.addEventListener('click', () => {
         fillGlobalModelPathsIntoConfigForm().catch((e) => {
             setTomlStatus('error', '填写全局路径配置失败: ' + e.message);

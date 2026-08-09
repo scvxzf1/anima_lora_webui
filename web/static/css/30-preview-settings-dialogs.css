@@ -338,7 +338,7 @@
 
 #tab-settings .global-settings-meta {
     display: grid;
-    grid-template-columns: repeat(2, minmax(86px, auto));
+    grid-template-columns: repeat(3, minmax(86px, auto));
     gap: 0;
     min-width: 0;
     border: 1px solid var(--settings-border-strong);
@@ -1751,4 +1751,3 @@ body.history-task-dialog-fallback-open::before {
 .preview-dialog {
     box-shadow: var(--panel-shadow-soft, var(--shadow));
 }
-

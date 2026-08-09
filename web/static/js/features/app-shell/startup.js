@@ -4,13 +4,13 @@
  */
 import { MetricsChart } from '../../../chart.js?v=module-bootstrap-20260714-stage-dataset5';
 import { createGpuPicker } from './gpu-picker.js?v=module-bootstrap-20260804-multigpu1';
-import { createTabController } from './tabs.js?v=module-bootstrap-20260714-stage-dataset5';
+import { createTabController } from './tabs.js?v=model-configs-20260809-1';
 import { createThemeController } from './theme.js?v=module-bootstrap-20260714-stage-dataset5';
 import { createLanguageController } from './language.js?v=module-bootstrap-20260714-stage-dataset5';
 import { createUIScaleController } from './ui-scale.js?v=module-bootstrap-20260714-stage-dataset5';
 import { createHistoryDetailFeature } from '../history-detail/index.js?v=module-bootstrap-20260714-stage-dataset5';
 import { formatLr, lastValue } from '../live-training/index.js?v=module-bootstrap-20260714-stage-dataset5';
-import { setupEventListeners } from './event-listeners.js?v=module-bootstrap-20260714-stage-dataset5';
+import { setupEventListeners } from './event-listeners.js?v=model-configs-20260809-1';
 import {
     loadStepEstimate,
     scheduleStepEstimatePanelRefresh,
@@ -35,7 +35,7 @@ import { requestContinueLoraInspection } from '../training-source/continue-lora.
 import {
     GLOBAL_UI_HISTORY_DETAIL_OVERRIDE_FIELDS,
     GLOBAL_UI_TOP_LEVEL_OVERRIDE_FIELDS,
-} from '../../config/catalog.js?v=module-bootstrap-20260714-stage-dataset5';
+} from '../../config/catalog.js?v=module-bootstrap-20260809-config-switch1-model-config1';
 import { GPU_WHITELIST_STORAGE_KEY, LANGUAGE_STORAGE_KEY, THEME_STORAGE_KEY } from '../anima-app/helpers/app-constants.js?v=module-bootstrap-20260714-stage-dataset5';
 import { datasetPresetSummaryByFile } from '../anima-app/helpers/dataset-presets.js?v=module-bootstrap-20260714-stage-dataset5';
 import { isDatasetTabActive } from '../anima-app/helpers/dataset-render-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
@@ -89,6 +89,7 @@ import { getConfigState } from '../anima-app/helpers/config-state-bridge.js?v=mo
 import { getDatasetState } from '../anima-app/helpers/dataset-state-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
 import { getHistoryState } from '../anima-app/helpers/history-state-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
 import { loadGlobalSettings } from '../anima-app/helpers/global-settings-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { loadModelConfigsPage } from '../model-configs/index.js?v=model-configs-20260809-1';
 import { configureHistoryDetailBridge } from '../anima-app/helpers/history-detail-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
 import { ensureImageTestFeature } from '../anima-app/helpers/image-test-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
 import { confirmDiscardTomlChanges, updateTomlDirtyState } from '../anima-app/helpers/toml-selection-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
@@ -116,7 +117,7 @@ import {
     renderConfigForm,
     resetConfigFormDraft,
     syncConfigDraftFromForm,
-} from '../config-form/index.js?v=module-bootstrap-20260714-stage-dataset5';
+} from '../config-form/index.js?v=model-configs-20260809-1';
 
 const ctx = getAppContext();
 const appShellState = getAppShellState();
@@ -242,6 +243,7 @@ function setPreviewEmpty(message) {
         tabController = createTabController({
             loadDatasetPresets,
             loadGlobalSettings,
+            loadModelConfigsPage,
             ensureWeightAnalysisFeature: () => ensureWeightAnalysisFeature(ctx, appShellState),
             ensureEnvironmentCheckFeature: () => ensureEnvironmentCheckFeature(ctx, appShellState),
             ensureImageTestFeature,

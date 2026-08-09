@@ -7,7 +7,7 @@ import {
     GLOBAL_SETTING_INPUTS,
     GLOBAL_UI_OVERRIDE_FIELDS,
     help,
-} from '../../config/catalog.js?v=module-bootstrap-20260714-stage-dataset5';
+} from '../../config/catalog.js?v=module-bootstrap-20260809-config-switch1-model-config1';
 import { loadOutputRuns } from '../anima-app/helpers/toml-manager-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
 import { updateChoiceGuide } from '../config-form/choice-guide-ui.js?v=module-bootstrap-20260714-stage-dataset5';
 import { getUiScaleController } from '../anima-app/helpers/app-shell-startup-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
@@ -189,6 +189,7 @@ export function collectGlobalSettingsPayload() {
 export function getGlobalModelPathOverrides() {
         const overrides = {};
         const source = appShellState.globalSettings || {};
+        overrides.model_family = String(source.model_family || 'anima').trim() || 'anima';
         for (const [key] of GLOBAL_MODEL_PATH_FIELDS) {
             const value = source[key] ?? source.defaults?.[key] ?? '';
             if (String(value || '').trim()) {

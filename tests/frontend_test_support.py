@@ -108,15 +108,29 @@ WORKFLOW_DOM_CONTRACTS: dict[str, dict[str, frozenset[str]]] = {
                 "tab-settings",
                 "btn-save-global-settings",
                 "global-output-root",
-                "global-pretrained-model-path",
                 "global-configs-root",
             }
         ),
         "optional": frozenset(
             {
                 "global-ui-scale",
-                "global-qwen3-path",
-                "global-vae-path",
+            }
+        ),
+    },
+    "model_config": {
+        "required": frozenset(
+            {
+                "tab-model-config",
+                "model-config-list",
+                "model-config-editor-form",
+                "btn-model-config-create",
+                "btn-model-config-save",
+            }
+        ),
+        "optional": frozenset(
+            {
+                "btn-model-config-manage",
+                "global-model-config-picker-dialog",
             }
         ),
     },

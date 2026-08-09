@@ -49,7 +49,7 @@
 | 配置 | 作用 |
 | --- | --- |
 | 默认缩放比例 | 所有“跟随默认”的页面使用这个值 |
-| 配置 / 数据集 / 训练 / ΔW 分析 / 生图测试 / 全局设置 / 环境检测 | 主页面独立比例 |
+| 配置 / 数据集 / 训练 / ΔW 分析 / 生图测试 / 全局设置 / 全局模型配置 / 环境检测 | 主页面独立比例 |
 | 历史概览 / 训练分析 / 样张与权重 / 日志 / 配置与文件 | 历史详情内容区独立比例 |
 | 跟随默认 | 勾选后忽略该页独立值，回到默认比例 |
 
@@ -82,7 +82,7 @@ timeout 60 .venv/bin/python -m pytest \
 
 ```bash
 timeout 60 .venv/bin/python -m pytest \
-  tests/test_training_frontend_state.py \
+  tests/test_training_frontend_config_ui.py \
   tests/test_training_frontend_dom.py \
   -q
 ```

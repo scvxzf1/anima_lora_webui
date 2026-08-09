@@ -24,5 +24,6 @@ def test_v100_flash_fields_are_exposed_in_frontend_catalog() -> None:
     assert "'compile_dynamic_seq', 'debug_finite_checks'" in form_layout
     assert "v100_flash_stability: help(" in help_training
     assert "debug_finite_checks: help(" in help_training
-    assert "./catalog/field-help.js?v=v100-flash-20260804" in catalog
-    assert "./field-help-training.js?v=v100-flash-20260804" in field_help
+    token = "module-bootstrap-20260809-nf4-v2"
+    assert f"./catalog/field-help.js?v={token}" in catalog
+    assert f"./field-help-training.js?v={token}" in field_help

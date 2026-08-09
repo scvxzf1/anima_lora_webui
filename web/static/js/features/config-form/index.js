@@ -43,7 +43,7 @@ import {
 import { coerceNetworkArgValue, parseNetworkArgEntry } from '../anima-app/helpers/network-args.js?v=module-bootstrap-20260714-stage-dataset5';
 import { parseArrayValue, valuesEqual } from '../anima-app/helpers/form-values.js?v=module-bootstrap-20260714-stage-dataset5';
 import { activeMethodKey } from './method-key.js?v=module-bootstrap-20260714-stage-dataset5';
-import { appendConfigGroupsByCategory, createConfigGroupEntry } from './group-entry.js?v=module-bootstrap-20260714-stage-dataset5';
+import { appendConfigGroupsByCategory, createConfigGroupEntry } from './group-entry.js?v=model-configs-20260809-1';
 import { getConfigState } from '../anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
 import { currentSamplePromptText } from '../anima-app/helpers/sample-prompts-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
 

@@ -289,11 +289,11 @@ export const FIELD_HELP_TRAINING_ZH = {    learning_rate: help(
     ),
     attn_mode: help(
         "注意力计算使用的后端实现。",
-        "flash 通常更快、更省显存，但依赖显卡、CUDA 和 PyTorch 支持；mem_efficient 强制使用 PyTorch 省显存 SDPA；flex 更偏兼容。",
+        "Krea-2 仅提供 torch（cuDNN SDPA）和 flash（打包有效 token 的 FlashAttention varlen）；Anima 仍可使用 mem_efficient、xformers、sageattn 和 flex。",
         ["选对后端能明显影响训练速度和显存占用。"],
-        ["高性能后端首次启动或编译可能更慢。"],
-        ["不兼容时可能启动失败、报 CUDA 错，或速度异常变慢。"],
-        "新手先用配置默认；显存紧可试 mem_efficient；flash 报错时再切到 flex 或 torch。"
+        ["Krea-2 flash 需要 FlashAttention 2；V100 fork 只支持 FP16，BF16 会在加载大模型前拒绝。"],
+        ["高性能后端首次启动或编译可能更慢；缺少依赖时会明确报错。"],
+        "Krea-2 默认 torch 保持历史行为；已安装 FlashAttention 2 时可显式选 flash。"
     ),
     v100_flash_stability: help(
         "Tesla V100 使用 FlashAttention 时的诊断模式。",
@@ -346,12 +346,12 @@ export const FIELD_HELP_TRAINING_ZH = {    learning_rate: help(
     ),
     base_compute: help(
         "冻结 DiT 底模 Linear 的计算路径（实验）。",
-        "bf16 是默认高精度路径。w8a16_convrot / w8a8_convrot 对选定 scope（默认 mlp）做 group Regular Hadamard + int8 权重，用于省显存；不保证比 bf16 更快。与 block_swap_transfer_dtype=int8 互斥。nf4（仅 Krea-2）用 bnb 4-bit NormalFloat 量化冻结底模，13B→6.6GB，PG199 实测 peak 10.2GB / 3.6s/step（bf16 27.9GB / 3.47s），适配 24GB 卡；与 ConvRot、block_swap 互斥。",
+        "bf16 是默认高精度路径。w8a16_convrot / w8a8_convrot 对选定 scope（默认 mlp）做 group Regular Hadamard + int8 权重，用于省显存；不保证比 bf16 更快。与 block_swap_transfer_dtype=int8 互斥。nf4（仅 Krea-2）用 bnb 4-bit NormalFloat 量化冻结底模，13B→6.6GB，PG199 实测 peak 10.2GB / 3.6s/step（bf16 27.9GB / 3.47s），且已验证可与 block swap 组合。",
         [
             "W8A16+mlp+compile：peak ~4.1GB（bf16~4.95），step ~1.05×；scope=all ~3.4GB / ~1.08×。",
             "同显存可抬 rank：W8A16@r32 仍 ~4.2GB，低于 bf16@r4。质量 opt-in regular@64。",
             "同显存更大 batch 仅 scope=all：all@b2 ~4.4GB、all@r32@b2 ~4.6GB 仍低于 bf16@b1；mlp@b2 会越峰。",
-            "NF4 量化一次性 ~150s（启动期，含 Linear4bit 替换）；训练中 dequant 开销不可见（3.6s vs bf16 3.47s）。",
+            "自包含 NF4 v2 可直接作为基础模型，不读取 25GB BF16 底模，也不做在线量化。",
         ],
         ["W8A8 默认质量路径更慢（~1.4×）；half/TF32 STE 会破 grad gate。", "NF4 仅 Krea-2 可用；anima 不显示该选项。"],
         ["正式训练保持 bf16。开启后请先做短训对照，不要默认用于生产长训。"],
@@ -427,7 +427,7 @@ export const FIELD_HELP_TRAINING_ZH = {    learning_rate: help(
         ["能在 block swap 仍然接近 OOM 时补出一些显存余量。"],
         ["会增加 backward 重算成本，速度会下降。"],
         ["不要和 full gradient_checkpointing 或 Unsloth offload 叠加。"],
-        "LoKr/高 rank LoRA 可先试 adapter_aware 或 peak_blocks_adapter_aware；显存充足保持 off。"
+        "Krea-2 仅支持 off/every_other；Anima LoKr/高 rank LoRA 可先试 adapter_aware 或 peak_blocks_adapter_aware。"
     ),
     selective_checkpoint_blocks: help(
         "定点重算的 DiT block 编号列表。",
@@ -547,7 +547,7 @@ export const FIELD_HELP_TRAINING_ZH = {    learning_rate: help(
         ["可影响 compile 后性能。"],
         ["不同环境收益不稳定。"],
         ["模式不兼容时会导致编译失败。"],
-        "保持变体默认。"
+        "Krea-2 必须保持 default；Anima 保持变体默认。"
     ),
     cache_llm_adapter_outputs: help(
         "把 LLM adapter 输出缓存到磁盘。",
@@ -655,11 +655,11 @@ export const FIELD_HELP_TRAINING_ZH = {    learning_rate: help(
     ),
     pretrained_model_name_or_path: help(
         "基础 DiT 模型权重路径，也就是 LoRA 要挂在哪个底模上训练。",
-        "填写本机已有的 .safetensors 文件路径，通常在 models/diffusion_models 下。新建配置时可以用“填写全局路径配置”从全局设置自动带入。",
+        "填写本机已有的 .safetensors 文件路径，通常在 models/diffusion_models 下。Krea-2 在 base_compute=nf4 时可直接选择自包含 NF4 v2；旧 NF4 v1 只是 overlay，不能单独作为底模。",
         ["决定训练结果依附的底模，路径正确是启动训练的前提。"],
         ["模型文件很大，首次下载和读取都需要时间。"],
-        ["路径错会启动失败；换底模后，旧 LoRA 可能不能直接通用。"],
-        "新手先在“全局设置”填好基础 DiT 路径，再回配置页自动填入。"
+        ["路径错会启动失败；Krea-2 旧 NF4 v1 直接放在此处会被明确拒绝。"],
+        "新手先在“全局模型配置”维护常用模型，再回配置页选择并填入。"
     ),
     qwen3: help(
         "Qwen3 文本编码器路径，用来把 caption 和提示词变成模型能理解的条件。",

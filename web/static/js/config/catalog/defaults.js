@@ -324,9 +324,8 @@ export const GLOBAL_MODEL_PATH_FIELDS = [
     ['qwen3', 'global-qwen3-path'],
     ['vae', 'global-vae-path'],
 ];
-// Model family selector (Krea-2-Raw migration). Renders as a <select> with
-// options anima / krea2_raw (mirrors library/env.py::_KNOWN_FAMILIES). Empty
-// value == anima default so resolve_model_family() fallback still governs.
+// Legacy global-settings mapping retained for snapshot compatibility. The
+// interactive selector now belongs to the independent model-config library.
 export const GLOBAL_FAMILY_FIELDS = [
     ['model_family', 'global-model-family'],
 ];
@@ -343,6 +342,7 @@ export const GLOBAL_UI_TOP_LEVEL_OVERRIDE_FIELDS = Object.freeze([
     { key: 'ui_scale_weight_analysis', inputId: 'global-ui-scale-weight-analysis', followDefaultId: 'global-ui-scale-weight-analysis-follow-default', tab: 'weight-analysis' },
     { key: 'ui_scale_image_test', inputId: 'global-ui-scale-image-test', followDefaultId: 'global-ui-scale-image-test-follow-default', tab: 'image-test' },
     { key: 'ui_scale_settings', inputId: 'global-ui-scale-settings', followDefaultId: 'global-ui-scale-settings-follow-default', tab: 'settings' },
+    { key: 'ui_scale_model_config', inputId: 'global-ui-scale-model-config', followDefaultId: 'global-ui-scale-model-config-follow-default', tab: 'model-config' },
     { key: 'ui_scale_environment', inputId: 'global-ui-scale-environment', followDefaultId: 'global-ui-scale-environment-follow-default', tab: 'environment' },
 ]);
 export const GLOBAL_UI_HISTORY_DETAIL_OVERRIDE_FIELDS = Object.freeze([
@@ -362,8 +362,6 @@ export const GLOBAL_UI_FIELDS = [
 ];
 export const GLOBAL_SETTING_INPUTS = [
     ['output_root', 'global-output-root'],
-    ...GLOBAL_FAMILY_FIELDS,
-    ...GLOBAL_MODEL_PATH_FIELDS,
     ...GLOBAL_CONFIG_PATH_FIELDS,
     ...GLOBAL_UI_BASE_FIELDS,
 ];

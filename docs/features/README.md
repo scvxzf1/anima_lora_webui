@@ -12,7 +12,8 @@
 | [training-queue.md](training-queue.md) | 用户功能说明 | 训练页队列：排队、暂停、失败策略与批量中止 |
 | [history-collections.md](history-collections.md) | 用户功能说明 | 历史任务与集合：筛选、归档、批量操作与详情 |
 | [preview.md](preview.md) | 用户功能说明 | 训练样张 / 推理预览 / 权重列表 |
-| [global-settings.md](global-settings.md) | 用户功能说明 | 输出根、模型默认路径、配置根、界面缩放 |
+| [global-settings.md](global-settings.md) | 用户功能说明 | 输出根、配置根、界面缩放 |
+| [global-model-configs.md](global-model-configs.md) | 用户功能说明 | Anima / Krea-2 模型配置创建、排序、默认项和选择弹窗 |
 | [ui-scale.md](ui-scale.md) | 用户功能说明 | UI 缩放：默认比例与分页面独立比例 |
 | [frontend-health-scorecard.md](frontend-health-scorecard.md) | 维护用评分入口 | 快速审核当前分支前端健康度的规范评分结构、基线与五轮门禁 |
 

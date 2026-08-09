@@ -1,0 +1,235 @@
+"""Ordered global base-model configurations for the Web UI."""
+
+from __future__ import annotations
+
+from hashlib import sha256
+from pathlib import Path
+import re
+from typing import Any
+from uuid import uuid4
+
+import toml
+
+from library.env import resolve_model_family
+from web.services import settings_service
+from web.services.atomic_io import atomic_write_text
+
+MODEL_CONFIG_SECTION = "model_config_library"
+MODEL_PATH_KEYS = settings_service.GLOBAL_MODEL_PATH_KEYS
+MODEL_CONFIG_FIELDS = (
+    "id",
+    "name",
+    "model_family",
+    *MODEL_PATH_KEYS,
+)
+MODEL_FAMILY_ALIASES = {
+    "anima": "anima",
+    "krea2": "krea2_raw",
+    "krea2_raw": "krea2_raw",
+}
+MODEL_CONFIG_ID_PATTERN = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$")
+
+
+class ModelConfigConflictError(ValueError):
+    """Raised when the settings file changed after the client loaded it."""
+
+
+class ModelConfigFileError(ValueError):
+    """Raised when an existing settings file cannot be parsed safely."""
+
+
+def get_model_configs() -> dict[str, Any]:
+    settings_file = Path(settings_service.SETTINGS_FILE)
+    raw, revision = _load_raw_settings_strict(settings_file)
+    section = raw.get(MODEL_CONFIG_SECTION)
+    if section is None:
+        items, default_id = _legacy_model_configs(raw, settings_file)
+        return _response(items, default_id, revision=revision, migrated=True)
+    items, default_id = _normalize_library(section, allow_generated_ids=False)
+    return _response(items, default_id, revision=revision, migrated=False)
+
+
+def save_model_configs(data: dict[str, Any]) -> dict[str, Any]:
+    if not isinstance(data, dict):
+        raise ValueError("模型配置请求必须是对象")
+
+    settings_file = Path(settings_service.SETTINGS_FILE)
+    raw, current_revision = _load_raw_settings_strict(settings_file)
+    expected_revision = data.get("revision")
+    if not isinstance(expected_revision, str):
+        raise ValueError("缺少模型配置 revision")
+    if expected_revision != current_revision:
+        raise ModelConfigConflictError("模型配置已被其他页面修改，请刷新后重试")
+
+    items, default_id = _normalize_library(data, allow_generated_ids=True)
+    default_item = next(item for item in items if item["id"] == default_id)
+
+    next_raw = dict(raw)
+    next_raw[MODEL_CONFIG_SECTION] = {
+        "default_id": default_id,
+        "items": [{key: item[key] for key in MODEL_CONFIG_FIELDS} for item in items],
+    }
+    global_section = raw.get("global") if isinstance(raw.get("global"), dict) else {}
+    next_global = dict(global_section)
+    for key in MODEL_PATH_KEYS:
+        next_global[key] = default_item[key]
+    if default_item["model_family"] == "krea2_raw":
+        next_global["model_family"] = "krea2_raw"
+    else:
+        next_global.pop("model_family", None)
+    next_raw["global"] = next_global
+
+    settings_file.parent.mkdir(parents=True, exist_ok=True)
+    serialized = toml.dumps(next_raw)
+    atomic_write_text(settings_file, serialized)
+    return {
+        **_response(
+            items,
+            default_id,
+            revision=_revision_for_text(serialized),
+            migrated=False,
+        ),
+        "message": "全局模型配置已保存",
+    }
+
+
+def _load_raw_settings_strict(settings_file: Path) -> tuple[dict[str, Any], str]:
+    if not settings_file.exists():
+        return {}, _revision_for_text("")
+    try:
+        text = settings_file.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise ModelConfigFileError(f"无法读取全局设置文件: {exc}") from exc
+    try:
+        raw = toml.loads(text)
+    except toml.TomlDecodeError as exc:
+        raise ModelConfigFileError("全局设置 TOML 已损坏，已拒绝覆盖") from exc
+    if not isinstance(raw, dict):
+        raise ModelConfigFileError("全局设置 TOML 顶层必须是对象")
+    return raw, _revision_for_text(text)
+
+
+def _revision_for_text(text: str) -> str:
+    return sha256(text.encode("utf-8")).hexdigest()
+
+
+def _legacy_model_configs(
+    raw: dict[str, Any],
+    settings_file: Path,
+) -> tuple[list[dict[str, str]], str]:
+    global_section = raw.get("global") if isinstance(raw.get("global"), dict) else {}
+    base = _load_base_settings(settings_file.parent / "base.toml")
+    raw_family = str(
+        global_section.get("model_family")
+        or base.get("model_family")
+        or resolve_model_family()
+    )
+    family = MODEL_FAMILY_ALIASES.get(raw_family.strip().lower().replace("-", "_"), "anima")
+    item = {
+        "id": "legacy-default",
+        "name": "Krea-2 默认配置" if family == "krea2_raw" else "Anima 默认配置",
+        "model_family": family,
+    }
+    for key in MODEL_PATH_KEYS:
+        item[key] = _clean_path(global_section.get(key) or base.get(key) or "")
+    return [item], item["id"]
+
+
+def _load_base_settings(path: Path) -> dict[str, Any]:
+    if not path.exists():
+        return {}
+    try:
+        raw = toml.loads(path.read_text(encoding="utf-8"))
+    except (OSError, toml.TomlDecodeError):
+        return {}
+    return raw if isinstance(raw, dict) else {}
+
+
+def _normalize_library(
+    data: Any,
+    *,
+    allow_generated_ids: bool,
+) -> tuple[list[dict[str, str]], str]:
+    if not isinstance(data, dict):
+        raise ValueError("模型配置库必须是对象")
+    raw_items = data.get("items")
+    if not isinstance(raw_items, list) or not raw_items:
+        raise ValueError("至少需要保留一个全局模型配置")
+
+    items: list[dict[str, str]] = []
+    seen_ids: set[str] = set()
+    seen_names: set[str] = set()
+    for index, raw_item in enumerate(raw_items, start=1):
+        if not isinstance(raw_item, dict):
+            raise ValueError(f"第 {index} 个模型配置必须是对象")
+        item_id = str(raw_item.get("id") or "").strip()
+        if not item_id and allow_generated_ids:
+            item_id = f"model-{uuid4().hex[:12]}"
+        if not MODEL_CONFIG_ID_PATTERN.fullmatch(item_id):
+            raise ValueError(f"第 {index} 个模型配置 ID 无效")
+        if item_id in seen_ids:
+            raise ValueError("模型配置 ID 不能重复")
+        seen_ids.add(item_id)
+
+        name = str(raw_item.get("name") or "").strip()
+        if not name:
+            raise ValueError(f"第 {index} 个模型配置缺少名称")
+        if len(name) > 80:
+            raise ValueError("模型配置名称不能超过 80 个字符")
+        normalized_name = name.casefold()
+        if normalized_name in seen_names:
+            raise ValueError("模型配置名称不能重复")
+        seen_names.add(normalized_name)
+
+        item = {
+            "id": item_id,
+            "name": name,
+            "model_family": _normalize_family(raw_item.get("model_family")),
+        }
+        for key in MODEL_PATH_KEYS:
+            value = _clean_path(raw_item.get(key))
+            if not value:
+                raise ValueError(f"模型配置“{name}”缺少 {key}")
+            item[key] = value
+        items.append(item)
+
+    default_id = str(data.get("default_id") or "").strip()
+    if default_id not in seen_ids:
+        raise ValueError("默认模型配置必须指向现有配置")
+    return items, default_id
+
+
+def _normalize_family(value: Any) -> str:
+    raw = str(value or "").strip().lower().replace("-", "_")
+    normalized = MODEL_FAMILY_ALIASES.get(raw)
+    if normalized is None:
+        raise ValueError("模型格式仅支持 anima 或 krea2")
+    return normalized
+
+
+def _clean_path(value: Any) -> str:
+    if not isinstance(value, str):
+        return ""
+    return value.strip()
+
+
+def _response(
+    items: list[dict[str, str]],
+    default_id: str,
+    *,
+    revision: str,
+    migrated: bool,
+) -> dict[str, Any]:
+    return {
+        "ok": True,
+        "items": [
+            {
+                **item,
+                "complete": all(bool(item.get(key)) for key in MODEL_PATH_KEYS),
+            }
+            for item in items
+        ],
+        "default_id": default_id,
+        "revision": revision,
+        "migrated": migrated,
+    }

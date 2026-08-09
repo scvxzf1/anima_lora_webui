@@ -28,18 +28,18 @@ export async function createAnimaApp(ctx) {
     configureTomlStateBridge(runtime.state.toml);
     configureTrainingStateBridge(runtime.state.training);
     await import('./chunks/01-scope-state.js?v=module-bootstrap-20260714-stage-dataset5');
-    const imageTestFeatureModule = await import('./chunks/01a-image-test-feature.js?v=module-bootstrap-20260714-stage-dataset5');
+    const imageTestFeatureModule = await import('./chunks/01a-image-test-feature.js?v=module-bootstrap-20260809-config-switch1');
     const imageTestFeatureBridge = imageTestFeatureModule.createImageTestFeatureBridge(runtime);
     runtime.features.imageTest = imageTestFeatureBridge;
     configureImageTestBridge(imageTestFeatureBridge.ensureImageTestFeature);
-    const appShellModule = await import('./chunks/02-ensure-history-detail-feature.js?v=module-bootstrap-20260804-multigpu1');
+    const appShellModule = await import('./chunks/02-ensure-history-detail-feature.js?v=model-configs-20260809-1');
     // Mid-range chunks only register side-effect bridges / helpers; load them as one batch.
     await Promise.all([
         import('./chunks/03-parse-network-arg-entry.js?v=module-bootstrap-20260714-stage-dataset5'),
         import('./chunks/04-create-config-group-entry.js?v=module-bootstrap-20260714-stage-dataset5'),
         import('./chunks/05-create-stage-resolution-summary.js?v=module-bootstrap-20260714-stage-dataset5'),
         import('./chunks/05a-no-dataset-regularization-mode.js?v=module-bootstrap-20260714-stage-dataset5'),
-        import('./chunks/06-stronger-selective-checkpoint-value.js?v=module-bootstrap-20260714-stage-dataset5'),
+        import('./chunks/06-stronger-selective-checkpoint-value.js?v=model-configs-20260809-1'),
         import('./chunks/07-render-config-dataset-picker-dialog.js?v=module-bootstrap-20260714-stage-dataset5'),
         import('./chunks/08-origin-closest.js?v=module-bootstrap-20260714-stage-dataset5'),
         import('./chunks/09-setup-config-group-drop-target.js?v=module-bootstrap-20260714-stage-dataset5'),
@@ -48,15 +48,15 @@ export async function createAnimaApp(ctx) {
         import('./chunks/11-create-dataset-editor-row.js?v=module-bootstrap-20260714-stage-dataset5'),
         import('./chunks/12-create-dataset-row-caption-source-mode-editor.js?v=module-bootstrap-20260714-stage-dataset5'),
         import('./chunks/13-update-dataset-editor-rows-setting-value.js?v=module-bootstrap-20260714-stage-dataset5'),
-        import('./chunks/14-lora-adapter-kind-from-config.js?v=module-bootstrap-20260714-stage-dataset5'),
+        import('./chunks/14-lora-adapter-kind-from-config.js?v=module-bootstrap-20260809-config-switch1'),
         import('./chunks/15-append-sample-prompt-row.js?v=module-bootstrap-20260714-stage-dataset5'),
-        import('./chunks/16-load-output-run-config.js?v=module-bootstrap-20260714-stage-dataset5'),
+        import('./chunks/16-load-output-run-config.js?v=module-bootstrap-20260809-config-switch1'),
         import('./chunks/17-apply-selected-dataset-preset-to-current-config.js?v=module-bootstrap-20260714-stage-dataset5'),
         import('./chunks/18-delete-dataset-preset-group.js?v=module-bootstrap-20260714-stage-dataset5'),
-        import('./chunks/19-current-sample-prompt-text.js?v=module-bootstrap-20260714-stage-dataset5'),
+        import('./chunks/19-current-sample-prompt-text.js?v=module-bootstrap-20260809-config-switch1-model-config1'),
         import('./chunks/20-can-drop-toml-file-to-group.js?v=module-bootstrap-20260714-stage-dataset5'),
         import('./chunks/21-update-toml-selection-ui.js?v=module-bootstrap-20260714-stage-dataset5'),
-        import('./chunks/22-update-toml-action-state.js?v=module-bootstrap-20260714-stage-dataset5'),
+        import('./chunks/22-update-toml-action-state.js?v=module-bootstrap-20260809-config-switch1'),
         import('./chunks/23-move-current-toml-to-group.js?v=module-bootstrap-20260714-stage-dataset5'),
         import('./chunks/24-show-preflight-pending-dialog.js?v=module-bootstrap-20260714-stage-dataset5'),
         import('./chunks/25-update-progress.js?v=module-bootstrap-20260714-stage-dataset5'),
@@ -68,7 +68,7 @@ export async function createAnimaApp(ctx) {
         queueViewModule,
         historyListModule,
     ] = await Promise.all([
-        import('./chunks/26a-global-settings.js?v=module-bootstrap-20260714-stage-dataset5'),
+        import('./chunks/26a-global-settings.js?v=model-configs-20260809-1'),
         import('./chunks/26b-preview-view.js?v=module-bootstrap-20260714-stage-dataset5'),
         import('./chunks/26c-queue-view.js?v=module-bootstrap-20260714-stage-dataset5'),
         import('./chunks/26d-history-list.js?v=module-bootstrap-20260714-stage-dataset5'),
@@ -99,7 +99,7 @@ export async function createAnimaApp(ctx) {
         import('./chunks/35-render-config-group-timeline.js?v=module-bootstrap-20260714-stage-dataset5'),
     ]);
     await Promise.all([
-        import('./chunks/36-setup-event-listeners.js?v=module-bootstrap-20260714-stage-dataset5'),
+        import('./chunks/36-setup-event-listeners.js?v=model-configs-20260809-1'),
         import('./chunks/37-config-training-source.js?v=module-bootstrap-20260714-stage-dataset5'),
     ]);
     return appShellModule.startAnimaApp();

@@ -4,7 +4,7 @@
 import {
     GLOBAL_UI_OVERRIDE_FIELDS,
     help,
-} from '../../config/catalog.js?v=module-bootstrap-20260714-stage-dataset5';
+} from '../../config/catalog.js?v=module-bootstrap-20260809-config-switch1-model-config1';
 import {
     ensureEnvironmentCheckFeature,
     ensureQueueFeature,
@@ -95,6 +95,7 @@ import { installBeginnerTooltips } from './beginner-tooltips.js?v=module-bootstr
 import { SETUP_EVENT_DOM_CONTRACT } from './event-listeners-contract.js?v=module-bootstrap-20260714-stage-dataset5';
 import { debounce } from '../../shared/debounce.js?v=module-bootstrap-20260714-stage-dataset5';
 import { bindBrowseDialogBackdropClose } from '../../shared/dialog.js?v=module-bootstrap-20260714-stage-dataset5';
+import { bindModelConfigEvents, bindModelConfigPickerEvents } from '../model-configs/index.js?v=model-configs-20260809-1';
 
 const ctx = getAppContext();
 const appShellState = getAppShellState();
@@ -112,6 +113,7 @@ bindBrowseDialogBackdropClose([
     'preview-dialog',
     'dataset-preview-dialog',
     'config-dataset-picker-dialog',
+    'global-model-config-picker-dialog',
     'continue-lora-dialog',
     'dataset-experimental-dialog',
     'stage-resolution-dialog',
@@ -205,6 +207,8 @@ export function setupEventListeners() {
     ensureWeightAnalysisFeature(ctx, appShellState).bindWeightAnalysisEvents();
     ensureEnvironmentCheckFeature(ctx, appShellState).bindEnvironmentCheckEvents();
     ensureImageTestFeature().bindImageTestEvents();
+    bindModelConfigEvents();
+    bindModelConfigPickerEvents();
     on('btn-apply-toml', 'click', applyTomlToConfig);
     on('btn-move-toml-group', 'click', moveCurrentTomlToGroup);
     on('btn-create-blank-preset', 'click', createBlankPresetFromLoraTemplate);
