@@ -359,6 +359,28 @@ def test_second_prepare_reuses_pool_without_full_private_copy(tmp_path, monkeypa
     assert entries
 
 
+def test_runtime_caption_fingerprint_settings_follow_environment() -> None:
+    from web.services.training.runtime_datasets import _caption_fingerprint_settings
+
+    signature, mode, extension = _caption_fingerprint_settings(
+        {"caption_shuffle_variants": 2, "caption_tag_dropout_rate": 0.2},
+        {"caption_source_mode": "json", "caption_extension": ".caption"},
+        {},
+        environ={
+            "CAPTION_SOURCE_MODE": "txt",
+            "CAPTION_PREFER_JSON": "1",
+            "CAPTION_SHUFFLE_VARIANTS": "6",
+            "CAPTION_TAG_DROPOUT_RATE": "0.05",
+        },
+    )
+
+    assert mode == "txt"
+    assert extension == ".caption"
+    assert signature["caption_source_mode"] == "txt"
+    assert signature["caption_shuffle_variants"] == 6
+    assert signature["caption_tag_dropout_rate"] == 0.05
+
+
 def test_web_runtime_trigger_clone_materializes_extra_subset(tmp_path, monkeypatch):
     _write_runtime_config_tree(tmp_path)
     _patch_runtime_service_paths(monkeypatch, tmp_path)

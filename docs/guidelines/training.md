@@ -128,6 +128,12 @@ The shuffle preserves `@artist` tags and section markers (`On the ...`,
 `In the ...`); only intra-section tags rotate. Regenerate the cache after
 changing tokenizer or padding.
 
+Anima and Krea-2 both support this cache layout. Krea-2 stores Qwen3-VL
+`hiddens`/`mask` variants in `{stem}_krea2_te.safetensors`; changes to caption
+source mode, caption extension, variant count, or tag-drop rate invalidate the
+preprocess cache. `caption_dropout_rate` remains a training-time policy and does
+not require regenerating text embeddings.
+
 ## Masked loss (SAM / MIT)
 
 Exclude regions like text bubbles from the training loss. `masked_loss = true` is on by

@@ -13,7 +13,7 @@ mask) 并跑 forward, 还原成与 latent 同形的 velocity (5D).
 - latent 5D (B, C, T=1, H, W), 单例时间轴 dim 2 (同 anima, AGENTS.md 不可破坏).
 - 进 DiT 前 squeeze(2) 到 4D (B, C, H, W), 出 DiT 后 unsqueeze(2) 回 5D.
 - text_emb = (hiddens (B, L, 12, 2560), mask (B, L) bool) — R1 契约: mask 屏蔽
-  padding, 不二次置零 (与 anima zero-sink 不同, 见 stage1 findings).
+padding, 不二次置零 (与 anima zero-sink 不同, 见 stage1 findings).
 - timestep = σ ∈ [0, 1] float, DiT 内部 temb 做 t*tfactor(1e3) sinusoidal embedding.
 - target = noise - latents (rectified-flow velocity; 与 anima flow-matching 同构,
   阶段 4 子代理核实 noise_target.py:381).
@@ -119,6 +119,33 @@ def forward_for_loss(
     return velocity_5d
 
 
+def prepare_text_embedding_for_training(
+    text_encoder_conds,
+    batch,
+    text_encoding_strategy,
+    *,
+    device: torch.device,
+    weight_dtype: torch.dtype,
+) -> tuple[Tensor, Tensor]:
+    """Move Krea text conditions to device and apply cached-caption dropout."""
+    hiddens, mask = text_encoder_conds[0], text_encoder_conds[1]
+    caption_dropout_rates = (
+        batch.get("caption_dropout_rates") if isinstance(batch, dict) else None
+    )
+    # copy=True avoids mutating reusable in-memory caches when device already
+    # matches, without adding a second allocation to the normal CPU->GPU copy.
+    copy = caption_dropout_rates is not None
+    hiddens = hiddens.to(device=device, dtype=weight_dtype, copy=copy)
+    mask = mask.to(device=device, copy=copy)
+    if caption_dropout_rates is not None:
+        text_encoding_strategy.apply_caption_dropout_inplace(
+            caption_dropout_rates,
+            hiddens=hiddens,
+            mask=mask,
+        )
+    return hiddens, mask
+
+
 def compute_noise_pred_and_target(
     trainer,
     ctx,
@@ -210,9 +237,13 @@ def compute_noise_pred_and_target(
                 input_ids,
             )
         text_encoder_conds = encoded
-    hiddens, mask = text_encoder_conds[0], text_encoder_conds[1]
-    hiddens = hiddens.to(device=accelerator.device, dtype=weight_dtype)
-    mask = mask.to(device=accelerator.device)
+    hiddens, mask = prepare_text_embedding_for_training(
+        text_encoder_conds,
+        batch,
+        ctx.text_encoding_strategy,
+        device=accelerator.device,
+        weight_dtype=weight_dtype,
+    )
 
     # 4D → 5D (anima 5D 不变量, DiT 承重接口入参).
     noisy_model_input = noisy_model_input.unsqueeze(2)

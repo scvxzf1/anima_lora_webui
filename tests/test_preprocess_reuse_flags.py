@@ -98,6 +98,7 @@ def test_te_dispatches_to_krea2_script_when_model_family_krea2_raw(monkeypatch):
     monkeypatch.setattr(preprocess_task, "_preprocess_precision_dtype", lambda: "bfloat16")
     monkeypatch.setattr(preprocess_task, "_path", lambda key, default: default)
     monkeypatch.setattr(preprocess_task, "_recursive_args", lambda row: ["--recursive"])
+    monkeypatch.setattr(preprocess_task, "_resolve_lowres_filter", lambda extra: ([], extra))
     monkeypatch.setattr(preprocess_task, "_model_family", lambda: "krea2_raw")
     monkeypatch.setattr(preprocess_task, "_run_caption_backup", lambda row: None)
 
@@ -105,17 +106,33 @@ def test_te_dispatches_to_krea2_script_when_model_family_krea2_raw(monkeypatch):
         "source_image_dir": "image_dataset",
         "resized_image_dir": "post_image_dataset/resized",
         "lora_cache_dir": "post_image_dataset/lora",
+        "caption_source_mode": "captions_json",
+        "caption_extension": ".caption",
+        "path_pattern": "portraits/*",
+        "force_rebuild_preprocess_cache": True,
     }
-    preprocess_task._run_preprocess_te(row, [], "0", "0.0", backup_captions=False)
+    preprocess_task._run_preprocess_te(
+        row,
+        ["--diff_output_preservation_trigger", "class"],
+        "4",
+        "0.25",
+        backup_captions=False,
+    )
     assert captured, "expected krea2 TE invocation"
     cmd = captured[0]
     assert "scripts.krea2.preprocess_te_cache" in cmd
     # Krea-2 TE runs on the source dir (captions.json master lives there; the
     # resize step does not mirror captions.json into the resized dir).
     assert "--dir" in cmd and cmd[cmd.index("--dir") + 1] == "image_dataset"
-    # Krea-2 single-variant path must NOT carry anima-only flags.
-    assert "--caption_shuffle_variants" not in cmd
+    assert cmd[cmd.index("--caption_shuffle_variants") + 1] == "4"
+    assert cmd[cmd.index("--caption_tag_dropout_rate") + 1] == "0.25"
+    assert cmd[cmd.index("--caption_source_mode") + 1] == "captions_json"
+    assert cmd[cmd.index("--caption_extension") + 1] == ".caption"
+    assert cmd[cmd.index("--path_pattern") + 1] == "portraits/*"
+    assert "--overwrite" in cmd
+    # T5/LLM-adapter inputs remain anima-only.
     assert "--dit" not in cmd
+    assert "--diff_output_preservation_trigger" not in cmd
     assert "--batch_size" in cmd and cmd[cmd.index("--batch_size") + 1] == "2"
 
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 import shutil
 from typing import Any
@@ -534,6 +535,51 @@ def _is_materialized_runtime_source_dir(path: Path) -> bool:
     return path.name in {"source", "trigger-clone-source"} and "dataset_cache" in parts
 
 
+def _caption_fingerprint_settings(
+    cfg: dict[str, Any],
+    settings: dict[str, Any],
+    preprocess_settings: dict[str, Any],
+    *,
+    environ=None,
+) -> tuple[dict[str, Any], str, str]:
+    from library.preprocess.caption_cache_settings import resolve_caption_cache_settings
+
+    environ = os.environ if environ is None else environ
+    signature_settings = dict(preprocess_settings)
+    caption_mode_value = environ.get("CAPTION_SOURCE_MODE")
+    if caption_mode_value is None:
+        caption_mode_value = signature_settings.get(
+            "caption_source_mode", settings.get("caption_source_mode")
+        )
+    prefer_json_value = environ.get("CAPTION_PREFER_JSON")
+    if prefer_json_value is None:
+        prefer_json_value = signature_settings.get(
+            "prefer_json_caption", settings.get("prefer_json_caption")
+        )
+    caption_mode = normalize_caption_source_mode(
+        caption_mode_value,
+        _bool_value_for_row(prefer_json_value),
+    )
+    caption_extension = str(
+        signature_settings.get("caption_extension")
+        or settings.get("caption_extension")
+        or ".txt"
+    )
+    caption_variants, caption_tag_dropout_rate = resolve_caption_cache_settings(
+        {**cfg, **signature_settings},
+        environ,
+    )
+    signature_settings.update(
+        {
+            "caption_source_mode": caption_mode,
+            "caption_extension": caption_extension,
+            "caption_shuffle_variants": caption_variants,
+            "caption_tag_dropout_rate": caption_tag_dropout_rate,
+        }
+    )
+    return signature_settings, caption_mode, caption_extension
+
+
 def _bind_subset_to_cache_pool(
     *,
     cfg: dict[str, Any],
@@ -563,7 +609,6 @@ def _bind_subset_to_cache_pool(
         read_manifest,
         write_manifest,
     )
-
     policy = parse_cache_reuse_policy(cfg)
     source_path = _resolve_display_path(source_dir)
     resized_dst = group_dir / resized_name
@@ -592,12 +637,20 @@ def _bind_subset_to_cache_pool(
         if isinstance(settings.get("preprocess"), dict)
         else settings
     )
-    sig = build_preprocess_signature(cfg, preprocess_settings if isinstance(preprocess_settings, dict) else None)
+    signature_settings, caption_mode, caption_extension = (
+        _caption_fingerprint_settings(
+            cfg,
+            settings,
+            preprocess_settings if isinstance(preprocess_settings, dict) else {},
+        )
+    )
+    sig = build_preprocess_signature(cfg, signature_settings)
     inv = scan_input_inventory(
         source_path,
         recursive=_bool_value_for_row(row.get("recursive"), True),
         path_pattern=_normalize_path_pattern(row.get("path_pattern")),
-        caption_mode=str(settings.get("caption_source_mode") or "txt"),
+        caption_mode=caption_mode,
+        caption_extension=caption_extension,
     )
     fp = compute_fingerprint(
         mode=policy.fingerprint_mode,

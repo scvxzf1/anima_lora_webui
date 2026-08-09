@@ -615,14 +615,13 @@ def _run_preprocess_vae(row: dict[str, Any], extra: list[str]) -> None:
 
 
 def cmd_preprocess_te(extra):
-    # CAPTION_SHUFFLE_VARIANTS / CAPTION_TAG_DROPOUT_RATE let the GUI's
-    # Preprocessing tab control these without editing this file. Defaults
-    # match the historical hardcoded values so non-GUI invocations are
-    # unchanged.
-    shuffle_variants = os.environ.get("CAPTION_SHUFFLE_VARIANTS", "4")
-    tag_dropout_rate = os.environ.get("CAPTION_TAG_DROPOUT_RATE", "0.1")
+    from library.preprocess.caption_cache_settings import resolve_caption_cache_settings
+
+    shuffle_variants, tag_dropout_rate = resolve_caption_cache_settings(
+        _path_overrides_value()
+    )
     for row in _preprocess_rows():
-        _run_preprocess_te(row, extra, shuffle_variants, tag_dropout_rate)
+        _run_preprocess_te(row, extra, str(shuffle_variants), str(tag_dropout_rate))
 
 
 def _run_preprocess_te(
@@ -636,7 +635,7 @@ def _run_preprocess_te(
         _run_caption_backup(row)
     family = _model_family()
     if family == "krea2_raw":
-        _run_preprocess_te_krea2(row, extra)
+        _run_preprocess_te_krea2(row, extra, shuffle_variants, tag_dropout_rate)
         return
     _run_preprocess_te_anima(row, extra, shuffle_variants, tag_dropout_rate)
 
@@ -663,10 +662,29 @@ def _path_overrides_value() -> dict[str, Any]:
     return _path_overrides()
 
 
-def _run_preprocess_te_krea2(row: dict[str, Any], extra: list[str]) -> None:
+def _run_preprocess_te_krea2(
+    row: dict[str, Any],
+    extra: list[str],
+    shuffle_variants: str | None = None,
+    tag_dropout_rate: str | None = None,
+) -> None:
     """Krea-2 TE cache: writes ``{stem}_krea2_te.safetensors`` via the
-    Qwen3-VL ChatML path (single-variant; no T5/LLM-adapter/crossattn/uncond —
-    anima-only, see docs/proposal/krea2_raw_migration.md §1 非目标)."""
+    Qwen3-VL ChatML path. T5/LLM-adapter/crossattn remain anima-only, while
+    caption variants use the shared preprocessing contract."""
+    shuffle_variants = shuffle_variants or os.environ.get("CAPTION_SHUFFLE_VARIANTS", "4")
+    tag_dropout_rate = tag_dropout_rate or os.environ.get("CAPTION_TAG_DROPOUT_RATE", "0.1")
+    extra, _dop_args = _split_diff_output_preservation_args(list(extra))
+    mp_args, extra = _resolve_lowres_filter(extra)
+    prefer_json_env = os.environ.get("CAPTION_PREFER_JSON")
+    prefer_json = (
+        _truthy(prefer_json_env)
+        if prefer_json_env is not None
+        else _truthy(row.get("prefer_json_caption"))
+    )
+    source_mode_env = os.environ.get("CAPTION_SOURCE_MODE")
+    caption_source_value = source_mode_env if source_mode_env is not None else row.get("caption_source_mode")
+    json_args = ["--prefer_json_caption"] if prefer_json else []
+    source_args = _caption_source_args(caption_source_value, prefer_json)
     _, text_batch_size = _preprocess_cache_batch_sizes()
     dtype = _preprocess_precision_dtype()
     run(
@@ -693,12 +711,18 @@ def _run_preprocess_te_krea2(row: dict[str, Any], extra: list[str]) -> None:
             str(text_batch_size),
             "--dtype",
             dtype,
+            "--caption_shuffle_variants",
+            shuffle_variants,
+            "--caption_tag_dropout_rate",
+            tag_dropout_rate,
+            *source_args,
+            *_caption_extension_args_for_row(row),
+            *json_args,
             *_recursive_args(row),
-            # Krea-2's preprocess_te_cache.py only accepts the flags above; the
-            # anima-style extras (path_pattern / lowres / overwrite / caption
-            # shuffle / DOP) are anima-only and would trip its argparse, so we
-            # do NOT forward them. Krea-2 single-variant cache skips existing
-            # valid sidecars internally (is_disk_cached_outputs_expected).
+            *_path_pattern_args(row),
+            *mp_args,
+            *_reuse_overwrite_args(row, kind="te"),
+            *extra,
         ]
     )
 

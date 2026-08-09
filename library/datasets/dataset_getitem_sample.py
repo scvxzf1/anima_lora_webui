@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import os
 import random
-from typing import List, Optional
+from typing import List
 
 import numpy as np
 import torch
@@ -13,6 +13,20 @@ import torch
 from library.datasets.image_utils import trim_and_resize_if_required
 
 logger = logging.getLogger(__name__)
+
+
+def with_runtime_caption_dropout_rate(text_encoder_outputs, rate: float):
+    """Return cached outputs with the current subset's dropout rate.
+
+    Text embeddings are reusable across runs, while whole-caption dropout is a
+    training-time policy.  Cache writers therefore keep only a compatibility
+    placeholder in the trailing slot; the active subset config is authoritative.
+    """
+    if not isinstance(text_encoder_outputs, (list, tuple)) or not text_encoder_outputs:
+        return text_encoder_outputs
+    outputs = list(text_encoder_outputs)
+    outputs[-1] = torch.tensor(float(rate), dtype=torch.float32)
+    return outputs
 
 
 def load_visual_sample(dataset, image_info, subset, flipped: bool):
@@ -222,6 +236,13 @@ def load_text_fields(dataset, image_info, subset, *, sampler, target_stem: str, 
 
     if image_info.text_encoder_outputs is not None:
         text_encoder_outputs = image_info.text_encoder_outputs
+        select_in_memory = getattr(
+            dataset.text_encoder_output_caching_strategy,
+            "select_in_memory_outputs",
+            None,
+        )
+        if select_in_memory is not None:
+            text_encoder_outputs = select_in_memory(text_encoder_outputs)
     elif image_info.text_encoder_outputs_npz is not None:
         text_encoder_outputs = (
             dataset.text_encoder_output_caching_strategy.load_outputs_npz(
@@ -230,6 +251,12 @@ def load_text_fields(dataset, image_info, subset, *, sampler, target_stem: str, 
         )
     else:
         tokenization_required = True
+
+    if text_encoder_outputs is not None:
+        text_encoder_outputs = with_runtime_caption_dropout_rate(
+            text_encoder_outputs,
+            image_info.caption_dropout_rate,
+        )
 
     if tokenization_required:
         caption = dataset.process_caption(subset, image_info.caption)
@@ -327,4 +354,3 @@ def load_feature_sidecars(
         "neg_crossattn": neg_crossattn,
         "neg_jaccard": neg_jaccard,
     }
-

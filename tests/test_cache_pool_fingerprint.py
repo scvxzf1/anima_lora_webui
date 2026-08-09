@@ -113,6 +113,31 @@ def test_adapter_method_not_in_signature() -> None:
     assert a == b
 
 
+def test_caption_cache_content_settings_are_in_signature() -> None:
+    base = {
+        "resolution": 1024,
+        "caption_source_mode": "auto",
+        "caption_shuffle_variants": 4,
+        "caption_tag_dropout_rate": 0.1,
+    }
+    signature = build_preprocess_signature(base)
+
+    assert signature["schema_version"] == "2"
+    assert signature["caption_source_mode"] == "auto"
+    assert signature["caption_shuffle_variants"] == 4
+    assert signature["caption_tag_dropout_rate"] == 0.1
+    assert signature != build_preprocess_signature({**base, "caption_shuffle_variants": 2})
+    assert signature != build_preprocess_signature({**base, "caption_tag_dropout_rate": 0.25})
+
+
+def test_runtime_caption_dropout_does_not_change_preprocess_signature() -> None:
+    base = {"resolution": 1024, "caption_shuffle_variants": 4}
+
+    assert build_preprocess_signature(
+        {**base, "caption_dropout_rate": 0.0}
+    ) == build_preprocess_signature({**base, "caption_dropout_rate": 0.5})
+
+
 def test_captions_json_included_when_present(tmp_path: Path) -> None:
     src = tmp_path / "src"
     _touch_image(src / "a.png", b"img-a")
@@ -124,3 +149,30 @@ def test_captions_json_included_when_present(tmp_path: Path) -> None:
     kinds = {item["kind"] for item in inv}
     assert "image" in kinds
     assert "caption_index" in kinds
+
+
+def test_caption_inventory_tracks_all_supported_source_layouts(tmp_path: Path) -> None:
+    src = tmp_path / "src"
+    _touch_image(src / "nested" / "a.png", b"img-a")
+    (src / "nested" / "a.caption").write_text("text", encoding="utf-8")
+    (src / "nested" / "a.json").write_text('{"tags": ["json"]}', encoding="utf-8")
+    (src / "nested" / "captions.json").write_text(
+        '{"a.png": ["indexed"]}', encoding="utf-8"
+    )
+
+    inventory = scan_input_inventory(
+        src,
+        recursive=True,
+        path_pattern=None,
+        caption_mode="auto",
+        caption_extension=".caption",
+    )
+
+    caption_paths = {
+        item["relpath"] for item in inventory if item["kind"] != "image"
+    }
+    assert caption_paths == {
+        "nested/a.caption",
+        "nested/a.json",
+        "nested/captions.json",
+    }

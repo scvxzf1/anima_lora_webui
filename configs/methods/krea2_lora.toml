@@ -2,8 +2,8 @@
 #
 # docs/proposal/krea2_raw_migration.md §3 ModelFamily 边界: Krea-2 首日只做最简
 # rectified-flow 训练路径, 不实现 anima-only 能力 (LLM adapter / T5 uncond /
-# crossattn_emb 路由 / VR loss / shuffled caption variants). 这些键在这里显式
-# 关掉, 避免 train_session.py 走 anima T5 uncond sidecar 盲点 (见阶段 6 核实).
+# crossattn_emb 路由 / VR loss). Caption variants 和 whole-caption dropout 已由
+# Krea hiddens/mask 缓存路径独立支持, 不依赖 T5 sidecar.
 #
 # 路由: use_moe_style=false (plain LoRA stack, 无 MoE). Krea-2 LoRA target 由
 # bootstrap.py::build_net_kwargs 的 krea2_target_kwargs() 注入 (SingleStreamBlock
@@ -12,8 +12,8 @@
 # 与 anima lora.toml 的区别:
 #   - model_family = "krea2_raw" (驱动 DiT loader / text-strategy / forward_for_loss)
 #   - pretrained_model_name_or_path = Krea-2 DiT
-#   - use_shuffled_caption_variants / cache_llm_adapter_outputs / caption_dropout_rate
-#     全关 (anima-only; Krea-2 单 variant + 无 T5 adapter)
+#   - cache_llm_adapter_outputs 关闭 (Krea-2 无 T5 adapter)
+#   - caption variants / dropout 默认关闭，但可按训练配置开启
 #   - use_ortho / use_timestep_mask / 三轴路由全关 (首日只跑 plain LoRA)
 #   - cache_text_encoder_outputs = true (复用 _krea2_te 缓存, 不 live encode)
 
@@ -28,7 +28,7 @@ max_train_steps = 50            # 首日热测: 50 步验 loss 下降, 不追求
 save_every_n_steps = 50
 save_last_n_steps = 1
 
-# anima-only 能力显式关掉 (Krea-2 首日非目标).
+# 可选 caption 增强默认关闭；开启时由 Krea TE cache 路径消费。
 use_shuffled_caption_variants = false
 cache_llm_adapter_outputs = false
 caption_dropout_rate = 0.0

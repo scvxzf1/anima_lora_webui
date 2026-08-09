@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import logging
 import os
+import random
 from pathlib import Path
 from typing import Any, List, Optional, Union
 
@@ -54,7 +55,9 @@ KREA2_TE_BUNDLED_CONFIG_DIR = str(
 
 KREA2_SELECT_LAYERS = (2, 5, 8, 11, 14, 17, 20, 23, 26, 29, 32, 35)
 KREA2_NUM_TXT_LAYERS = len(KREA2_SELECT_LAYERS)  # 12
-KREA2_PREFIX_IDX = 34  # prompt_template_encode_start_idx: 切掉 system prompt 前 34 token
+KREA2_PREFIX_IDX = (
+    34  # prompt_template_encode_start_idx: 切掉 system prompt 前 34 token
+)
 KREA2_SUFFIX_START_IDX = 5  # prompt_template_encode_suffix_start_idx (padding 公式用)
 KREA2_MAX_LENGTH = 512  # user prompt 正文 max_length
 # padding 长度 = max_length + prefix_idx - suffix_start_idx = 512+34-5 = 541
@@ -70,6 +73,9 @@ KREA2_PROMPT_SUFFIX = "<|im_end|>\n<|im_start|>assistant\n"
 
 KREA2_TEXT_ENCODER_OUTPUTS_CACHE_SUFFIX = "_krea2_te.safetensors"
 KREA2_CACHE_DTYPE = torch.bfloat16
+
+_warned_legacy_variants_cache = False
+_IN_MEMORY_VARIANTS_KEY = "__krea2_caption_variants__"
 
 
 class Krea2TokenizeStrategy(TokenizeStrategy):
@@ -111,17 +117,13 @@ class Krea2TokenizeStrategy(TokenizeStrategy):
             add_special_tokens=False,
             return_tensors="pt",
         )
-        input_ids = torch.cat(
-            [inputs["input_ids"], suffix_inputs["input_ids"]], dim=1
-        )
+        input_ids = torch.cat([inputs["input_ids"], suffix_inputs["input_ids"]], dim=1)
         attn_mask = torch.cat(
             [inputs["attention_mask"], suffix_inputs["attention_mask"]], dim=1
         )
         return [input_ids, attn_mask]
 
-    def tokenize_with_weights(
-        self, text: Union[str, List[str]]
-    ) -> tuple:
+    def tokenize_with_weights(self, text: Union[str, List[str]]) -> tuple:
         # Krea-2 首日不支持 weighted prompt (无 T5 weighted tokenize). 直走 tokenize.
         tokens = self.tokenize(text)
         weights = [torch.ones_like(tokens[0], dtype=torch.float32)]
@@ -159,6 +161,24 @@ class Krea2TextEncodingStrategy(TextEncodingStrategy):
         # 注: 不二次置零 padding (R1 定论: Krea-2 用 mask 屏蔽, 非 anima zero-sink)
         return [hiddens, mask]
 
+    def apply_caption_dropout_inplace(
+        self,
+        caption_dropout_rates: torch.Tensor,
+        *,
+        hiddens: torch.Tensor,
+        mask: torch.Tensor,
+    ) -> None:
+        """Drop complete Krea text conditions per sample on the model device."""
+        rates = caption_dropout_rates.to(hiddens.device, non_blocking=True).reshape(-1)
+        if rates.numel() != hiddens.shape[0]:
+            raise ValueError(
+                "caption dropout rate batch does not match Krea text batch: "
+                f"{rates.numel()} != {hiddens.shape[0]}"
+            )
+        drop_mask = torch.rand(rates.shape[0], device=hiddens.device) < rates
+        hiddens[drop_mask] = 0
+        mask[drop_mask] = False
+
 
 class Krea2TextEncoderOutputsCachingStrategy(TextEncoderOutputsCachingStrategy):
     """{stem}_krea2_te.safetensors caching (suffix 隔离, 不污染 _anima_te)."""
@@ -168,12 +188,14 @@ class Krea2TextEncoderOutputsCachingStrategy(TextEncoderOutputsCachingStrategy):
         cache_to_disk: bool = True,
         batch_size: Optional[int] = None,
         skip_disk_cache_validity_check: bool = False,
+        use_shuffled_caption_variants: bool = False,
     ) -> None:
         super().__init__(
             cache_to_disk=cache_to_disk,
             batch_size=batch_size,
             skip_disk_cache_validity_check=skip_disk_cache_validity_check,
         )
+        self.use_shuffled_caption_variants = use_shuffled_caption_variants
 
     def get_outputs_npz_path(
         self,
@@ -199,21 +221,158 @@ class Krea2TextEncoderOutputsCachingStrategy(TextEncoderOutputsCachingStrategy):
         # bfloat16 hiddens have no numpy representation; the anima base class
         # signature is nominal — the real contract carries torch tensors.
         with safe_open(npz_path, framework="pt") as f:
-            hiddens = f.get_tensor("hiddens")
-            mask = f.get_tensor("mask")
-            caption_dropout_rate = f.get_tensor("caption_dropout_rate")
+            keys = set(f.keys())
+            if "num_variants" in keys:
+                num_variants = int(f.get_tensor("num_variants"))
+                vi = self._select_variant_index(
+                    num_variants,
+                    multi_source="caption_multi_source" in keys,
+                    v0_intact="v0_intact" in keys,
+                    cache_path=npz_path,
+                )
+                hiddens = f.get_tensor(f"hiddens_v{vi}")
+                mask = f.get_tensor(f"mask_v{vi}")
+            else:
+                hiddens = f.get_tensor("hiddens")
+                mask = f.get_tensor("mask")
+            caption_dropout_rate = (
+                f.get_tensor("caption_dropout_rate")
+                if "caption_dropout_rate" in keys
+                else torch.tensor(0.0, dtype=torch.float32)
+            )
         return [hiddens, mask, caption_dropout_rate]
 
-    def is_disk_cached_outputs_expected(self, npz_path: str) -> bool:
-        if not os.path.exists(npz_path):
+    def is_disk_cached_outputs_expected(
+        self,
+        npz_path: str,
+        *,
+        expected_num_variants: Optional[int] = None,
+        expected_caption_shuffle_variants: Optional[int] = None,
+        expected_caption_tag_dropout_rate: Optional[float] = None,
+        expected_multi_source: Optional[bool] = None,
+    ) -> bool:
+        if not self.cache_to_disk or not os.path.exists(npz_path):
             return False
+        if self.skip_disk_cache_validity_check:
+            return True
         try:
             with safe_open(npz_path, framework="pt") as f:
                 keys = set(f.keys())
-            # 最低要求: hiddens + mask
+                has_variants = "num_variants" in keys
+                num_variants = int(f.get_tensor("num_variants")) if has_variants else 0
+                if has_variants and num_variants < 1:
+                    return False
+                if self.use_shuffled_caption_variants and not has_variants:
+                    return False
+                if expected_num_variants is not None:
+                    if num_variants != expected_num_variants:
+                        return False
+                    if expected_multi_source is not None:
+                        has_multi_source = "caption_multi_source" in keys
+                        if has_multi_source != expected_multi_source:
+                            return False
+                    if expected_num_variants > 0:
+                        if "v0_intact" not in keys:
+                            return False
+                        if expected_caption_shuffle_variants is not None:
+                            if "caption_shuffle_variants" not in keys or int(
+                                f.get_tensor("caption_shuffle_variants")
+                            ) != int(expected_caption_shuffle_variants):
+                                return False
+                        if expected_caption_tag_dropout_rate is not None:
+                            if "caption_tag_dropout_rate" not in keys:
+                                return False
+                            cached_rate = float(
+                                f.get_tensor("caption_tag_dropout_rate")
+                            )
+                            if (
+                                abs(cached_rate - expected_caption_tag_dropout_rate)
+                                > 1e-7
+                            ):
+                                return False
+            if "caption_dropout_rate" not in keys:
+                return False
+            if num_variants > 0:
+                return all(
+                    f"hiddens_v{vi}" in keys and f"mask_v{vi}" in keys
+                    for vi in range(num_variants)
+                )
             return "hiddens" in keys and "mask" in keys
         except Exception:
             return False
+
+    def _select_variant_index(
+        self,
+        num_variants: int,
+        *,
+        multi_source: bool,
+        v0_intact: bool,
+        cache_path: str | None = None,
+    ) -> int:
+        if num_variants < 1:
+            raise ValueError(
+                f"invalid Krea caption variant count in {cache_path or 'memory'}: "
+                f"{num_variants}"
+            )
+        if multi_source:
+            return random.randint(0, num_variants - 1)
+        if not self.use_shuffled_caption_variants:
+            return 0
+        if not v0_intact:
+            global _warned_legacy_variants_cache
+            if not _warned_legacy_variants_cache:
+                logger.warning(
+                    "Loaded a legacy Krea multi-variant TE cache without "
+                    "`v0_intact` (%s); sampling variants uniformly. "
+                    "Re-run preprocess-te for 20%% pristine / 80%% "
+                    "shuffled sampling.",
+                    cache_path,
+                )
+                _warned_legacy_variants_cache = True
+            return random.randint(0, num_variants - 1)
+        if num_variants == 1 or random.random() < 0.2:
+            return 0
+        return random.randint(1, num_variants - 1)
+
+    def select_in_memory_outputs(self, outputs):
+        """Resolve one caption variant from an in-memory cache on each sample read."""
+        if not isinstance(outputs, dict) or not outputs.get(_IN_MEMORY_VARIANTS_KEY):
+            return outputs
+        num_variants = int(outputs["hiddens"].shape[0])
+        vi = self._select_variant_index(
+            num_variants,
+            multi_source=bool(outputs["caption_multi_source"]),
+            v0_intact=True,
+        )
+        return [
+            outputs["hiddens"][vi],
+            outputs["mask"][vi],
+            outputs["caption_dropout_rate"],
+        ]
+
+    def _encode_captions(
+        self,
+        tokenize_strategy: TokenizeStrategy,
+        models: List[Any],
+        text_encoding_strategy: TextEncodingStrategy,
+        captions: List[str],
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Encode flattened variants without multiplying the configured batch size."""
+        batch_size = max(1, int(self.batch_size or len(captions) or 1))
+        hidden_chunks: list[torch.Tensor] = []
+        mask_chunks: list[torch.Tensor] = []
+        for start in range(0, len(captions), batch_size):
+            caption_batch = captions[start : start + batch_size]
+            hiddens, mask = text_encoding_strategy.encode_tokens(
+                tokenize_strategy,
+                models,
+                tokenize_strategy.tokenize(caption_batch),
+            )
+            hidden_chunks.append(
+                hiddens.detach().to(dtype=KREA2_CACHE_DTYPE, device="cpu")
+            )
+            mask_chunks.append(mask.detach().to(dtype=torch.bool, device="cpu"))
+        return torch.cat(hidden_chunks, dim=0), torch.cat(mask_chunks, dim=0)
 
     def cache_batch_outputs(
         self,
@@ -228,28 +387,82 @@ class Krea2TextEncoderOutputsCachingStrategy(TextEncoderOutputsCachingStrategy):
         拆回 per-sample 写盘 (或塞 info.text_encoder_outputs 供 in-memory 使用).
         不二次置零 padding (R1 契约: mask 屏蔽即可).
         """
-        captions = [info.caption for info in batch]
-        # Krea2TextEncodingStrategy.encode_tokens 返回 [hiddens (B,L,12,2560),
-        # mask (B,L) bool]. 一次 encode 整批, CPU 上 no_grad.
-        encoded = text_encoding_strategy.encode_tokens(
-            tokenize_strategy, models, tokenize_strategy.tokenize(captions)
+        variants_by_info: list[list[str]] = []
+        variant_layout_by_info: list[bool] = []
+        for info in batch:
+            variants = list(getattr(info, "caption_variants", None) or [info.caption])
+            variants_by_info.append(variants)
+            variant_layout_by_info.append(
+                bool(getattr(info, "cache_caption_variants", False))
+                or len(variants) > 1
+            )
+
+        flattened_captions = [
+            caption for variants in variants_by_info for caption in variants
+        ]
+        hiddens, mask = self._encode_captions(
+            tokenize_strategy,
+            models,
+            text_encoding_strategy,
+            flattened_captions,
         )
-        hiddens, mask = encoded[0], encoded[1]
-        for i, info in enumerate(batch):
-            h_i = hiddens[i].clone()
-            m_i = mask[i].clone()
+
+        offset = 0
+        for info, variants, use_variant_layout in zip(
+            batch,
+            variants_by_info,
+            variant_layout_by_info,
+        ):
             caption_dropout_rate = torch.tensor(
                 info.caption_dropout_rate, dtype=torch.float32
             )
-            if self.cache_to_disk:
+            if use_variant_layout:
                 save_dict = {
-                    "hiddens": h_i.contiguous(),
-                    "mask": m_i.contiguous(),
+                    "num_variants": torch.tensor(len(variants), dtype=torch.int64),
+                    "v0_intact": torch.tensor(1, dtype=torch.int8),
+                    "caption_shuffle_variants": torch.tensor(
+                        int(getattr(info, "caption_shuffle_variants", len(variants))),
+                        dtype=torch.int64,
+                    ),
+                    "caption_tag_dropout_rate": torch.tensor(
+                        float(getattr(info, "caption_tag_dropout_rate", 0.0)),
+                        dtype=torch.float32,
+                    ),
                     "caption_dropout_rate": caption_dropout_rate,
                 }
-                _save_safetensors(save_dict, info.text_encoder_outputs_npz)
+                if getattr(info, "caption_multi_source", False):
+                    save_dict["caption_multi_source"] = torch.tensor(
+                        1, dtype=torch.int8
+                    )
+                for vi in range(len(variants)):
+                    save_dict[f"hiddens_v{vi}"] = hiddens[offset + vi].contiguous()
+                    save_dict[f"mask_v{vi}"] = mask[offset + vi].contiguous()
             else:
-                info.text_encoder_outputs = (h_i, m_i, caption_dropout_rate)
+                save_dict = {
+                    "hiddens": hiddens[offset].contiguous(),
+                    "mask": mask[offset].contiguous(),
+                    "caption_dropout_rate": caption_dropout_rate,
+                }
+            if self.cache_to_disk:
+                _save_safetensors(save_dict, info.text_encoder_outputs_npz)
+            elif use_variant_layout:
+                end = offset + len(variants)
+                info.text_encoder_outputs = {
+                    _IN_MEMORY_VARIANTS_KEY: True,
+                    "hiddens": hiddens[offset:end].clone(),
+                    "mask": mask[offset:end].clone(),
+                    "caption_multi_source": bool(
+                        getattr(info, "caption_multi_source", False)
+                    ),
+                    "caption_dropout_rate": caption_dropout_rate,
+                }
+            else:
+                info.text_encoder_outputs = (
+                    hiddens[offset].clone(),
+                    mask[offset].clone(),
+                    caption_dropout_rate,
+                )
+            offset += len(variants)
 
 
 def load_krea2_text_encoder(
@@ -288,9 +501,7 @@ def load_krea2_text_encoder(
     n_unexpected = len(info.unexpected_keys)
     # visual 权重在, 但若 config 没 visual 字段会 missing; 阶段 1 只用 LM 部分,
     # 视觉 missing/unexpected 在容忍范围. 这里只 log 不硬断.
-    logger.info(
-        f"Qwen3-VL state dict: missing={n_missing}, unexpected={n_unexpected}"
-    )
+    logger.info(f"Qwen3-VL state dict: missing={n_missing}, unexpected={n_unexpected}")
 
     model.config.use_cache = False
     model = model.to(device, dtype=dtype).eval().requires_grad_(False)

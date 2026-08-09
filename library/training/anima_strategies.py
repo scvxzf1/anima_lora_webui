@@ -66,6 +66,9 @@ def get_text_encoder_outputs_caching_strategy(args, weight_dtype: torch.dtype):
             args.cache_text_encoder_outputs_to_disk,
             args.text_encoder_batch_size,
             args.skip_cache_check,
+            use_shuffled_caption_variants=getattr(
+                args, "use_shuffled_caption_variants", False
+            ),
         )
     if not args.cache_text_encoder_outputs:
         return None

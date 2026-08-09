@@ -9,7 +9,7 @@ from typing import Any, Literal
 
 from library.preprocess._dataset import walk_images
 
-SCHEMA_VERSION = "1"
+SCHEMA_VERSION = "2"
 FingerprintMode = Literal["light", "content"]
 
 # Keys that affect resized / VAE / TE outputs. Adapter method, lr, seed must not appear.
@@ -23,6 +23,9 @@ _PREPROCESS_KEYS = (
     "max_bucket_reso",
     "bucket_reso_steps",
     "caption_extension",
+    "caption_source_mode",
+    "caption_shuffle_variants",
+    "caption_tag_dropout_rate",
     "keep_tokens",
 )
 
@@ -65,12 +68,38 @@ def _stat_entry(path: Path, *, relpath: str, kind: str) -> dict[str, Any]:
     }
 
 
+def _caption_candidates(
+    image_path: Path,
+    source_dir: Path,
+    *,
+    mode: str,
+    caption_extension: str,
+) -> list[tuple[Path, str]]:
+    candidates: list[tuple[Path, str]] = []
+    if mode in {"auto", "captions_json"}:
+        current = image_path.parent
+        while current == source_dir or source_dir in current.parents:
+            candidates.append((current / _CAPTIONS_JSON, "caption_index"))
+            if current == source_dir:
+                break
+            current = current.parent
+    if mode in {"auto", "json"}:
+        candidates.append((image_path.with_suffix(".json"), "caption"))
+    if mode in {"auto", "txt", "sidecar"}:
+        extension = caption_extension.strip() or ".txt"
+        if not extension.startswith("."):
+            extension = f".{extension}"
+        candidates.append((image_path.with_suffix(extension), "caption"))
+    return candidates
+
+
 def scan_input_inventory(
     source_dir: Path,
     *,
     recursive: bool,
     path_pattern: str | None,
     caption_mode: str | None,
+    caption_extension: str = ".txt",
 ) -> list[dict[str, Any]]:
     """Enumerate images + paired captions under ``source_dir``.
 
@@ -99,30 +128,26 @@ def scan_input_inventory(
     items: list[dict[str, Any]] = []
     mode = (caption_mode or "txt").strip().lower()
 
-    captions_json = source_dir / _CAPTIONS_JSON
-    if captions_json.is_file() and mode in {"captions_json", "auto", "json"}:
-        items.append(
-            _stat_entry(
-                captions_json,
-                relpath=_CAPTIONS_JSON,
-                kind="caption_index",
-            )
-        )
-
+    seen_caption_paths: set[Path] = set()
     for img in image_paths:
         rel = img.relative_to(source_dir).as_posix()
         items.append(_stat_entry(img, relpath=rel, kind="image"))
-        if mode in {None, "", "txt", "sidecar", "auto"}:
-            # Prefer .txt sidecar; caption_extension overrides could be added later.
-            cap = img.with_suffix(".txt")
-            if cap.is_file():
-                items.append(
-                    _stat_entry(
-                        cap,
-                        relpath=cap.relative_to(source_dir).as_posix(),
-                        kind="caption",
-                    )
+        for caption_path, kind in _caption_candidates(
+            img,
+            source_dir,
+            mode=mode,
+            caption_extension=caption_extension,
+        ):
+            if caption_path in seen_caption_paths or not caption_path.is_file():
+                continue
+            seen_caption_paths.add(caption_path)
+            items.append(
+                _stat_entry(
+                    caption_path,
+                    relpath=caption_path.relative_to(source_dir).as_posix(),
+                    kind=kind,
                 )
+            )
 
     items.sort(key=lambda x: (x["relpath"], x["kind"]))
     return items

@@ -240,9 +240,10 @@ Krea-2 `Krea2TextEncoderOutputsCachingStrategy.load_outputs_npz` 原返回 `[hid
 **修复**: `load_outputs_npz` 改返回 `[hiddens, mask, caption_dropout_rate]` —
 与 anima cache 布局对齐 (rate 作末位 aux, split 拆到 `batch["caption_dropout_rates"]`,
 teo_list 留 `[hiddens, mask]`). caption_dropout_rate 本就由 `cache_batch_outputs`
-写盘 (strategy.py:239), 只是 load 时没读出来. Krea-2 caption_dropout_rate=0.0,
-rate 不参与 forward (family.compute_noise_pred_and_target 只 unpack hiddens/mask),
-`split` 的 by-product 对 Krea-2 是 no-op.
+写盘 (strategy.py:239), 只是 load 时没读出来. 阶段 6 实测时 Krea-2
+caption_dropout_rate=0.0，所以 `split` 的结果当时是 no-op；当前实现已在
+`family.prepare_text_embedding_for_training` 中按当前 subset rate 对 hiddens/mask
+执行训练时整句 dropout，无需为 rate 变化重建 TE cache.
 
 ### grad-ckpt 移植 (SingleStreamBlock)
 
