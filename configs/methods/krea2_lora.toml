@@ -48,11 +48,14 @@ output_name = "krea2_lora_test"
 logging_dir = "output/logs"
 log_with = "tensorboard"
 
-# Krea-2 支持固定 padded 序列的 per-block compile opt-in，但多 bucket /
-# dynamic_seq 未验证，默认保持关。启用时必须同时设
-# compile_dynamic_seq=false、compile_block_scope="resident"，Inductor mode 仅支持
-# default；reduce-overhead 的 CUDA Graph 与 checkpoint recompute 不兼容。
-torch_compile = false
+# 24 个 constant-token buckets 在 Krea-2 combined sequence 中只形成两张
+# padded block 图 (4608/4864), 同 token family 的宽高比可直接复用。
+# PG199 NF4 full-ckpt 实测 3.370 -> 2.726s; 3080 主要收益是显存余量。
+# dynamic_seq 仍关闭，block swap 只编译 resident 块，Inductor mode 仅 default。
+torch_compile = true
+compile_dynamic_seq = false
+compile_block_scope = "resident"
+compile_inductor_mode = "default"
 gradient_checkpointing = true
 unsloth_offload_checkpointing = false
 selective_checkpoint = "off"

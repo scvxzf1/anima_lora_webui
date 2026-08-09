@@ -1,0 +1,16 @@
+{
+  "date": "2026-08-09",
+  "gpu": "PG199 32GB",
+  "config": "NF4,full_checkpoint,compile_default,synthetic shape-real inputs",
+  "sequence": ["4032_a","4200_a","4032_b","4200_b","4032_a","4200_a"],
+  "records": [
+    {"case":"4032_a","size":[1008,1024],"step_s":14.871,"peak_gb":10.964},
+    {"case":"4200_a","size":[960,1120],"step_s":11.064,"peak_gb":11.350},
+    {"case":"4032_b","size":[896,1152],"step_s":2.731,"peak_gb":11.156},
+    {"case":"4200_b","size":[1120,960],"step_s":2.956,"peak_gb":11.350},
+    {"case":"4032_a_revisit","step_s":2.730,"peak_gb":11.156},
+    {"case":"4200_a_revisit","step_s":2.955,"peak_gb":11.350}
+  ],
+  "padded_graphs": {"tokens4032":4608,"tokens4200":4864},
+  "verdict": "PASS: 24 aspect buckets collapse to two reusable compiled block graphs"
+}

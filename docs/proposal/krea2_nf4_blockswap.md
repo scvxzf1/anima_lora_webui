@@ -346,3 +346,8 @@ checkpoint backward recompute 的第二次调用中被覆盖，直接 RuntimeErr
 24.08M，但步时 2.726s→2.73s 持平，峰值仅省 145MB。rank 不是速度旋钮，
 不应以 adapter 容量换不存在的加速。见
 [krea2_3080_speed_stage8.md](../findings/krea2_3080_speed_stage8.md)。
+
+阶段 9 补齐 multi-bucket：24 个 constant-token buckets 在固定 512 文本后只产生
+4608/4864 两张 block 图；同 family 不同宽高比首次即稳态 2.731/2.956s，
+回访无重编译，峰值 <=11.35GB。Krea 方法默认开 fixed/default/resident compile，
+dynamic_seq 仍关闭。见 [krea2_3080_speed_stage9.md](../findings/krea2_3080_speed_stage9.md)。

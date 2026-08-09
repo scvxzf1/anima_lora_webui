@@ -142,6 +142,7 @@
 - Krea-2 NF4 dtype 边界：不要绕过 `weights.py`/`quantize.py` 的 BF16 compute 强制检查。RTX 3080 FP16 Linear 虽快 13.7%、NF4 层 backward 虽从 27.07 降到 10.02ms，但同权重/同输入的输入梯度 rel-L2=35.6%、cos=0.943，已 REJECT。不要新增全局 FP16 NF4 开关，见 `docs/findings/krea2_3080_speed_stage6.md`。
 - Krea-2 Inductor mode：只支持 None/default。`reduce-overhead` 的 CUDA Graph 在 non-reentrant checkpoint backward recompute 时会报 output overwritten RuntimeError；`max-autotune*` 未验证也显式拒绝。不要为 Krea 复用通用 WebUI 中的其他 compile preset，见 `docs/findings/krea2_3080_speed_stage7.md`。
 - Krea-2 LoRA rank 速度边界：PG199 NF4+compile 中 rank16→8 将可训参数 48.17M→24.08M，但步时 2.726→2.73s 持平、峰值仅省 145MB。rank 应按 adapter 容量/质量选择，不要当作 3080 速度优化，见 `docs/findings/krea2_3080_speed_stage8.md`。
+- Krea-2 multi-bucket compile：24 个 `CONSTANT_TOKEN_BUCKETS` 加固定 512 文本后只形成 4608/4864 两张 block 图，同 token family 的不同宽高比可直接复用，实测稳态 2.731/2.956s、峰值 <=11.35GB。`configs/methods/krea2_lora.toml` 因此默认 `torch_compile=true`、`compile_dynamic_seq=false`、resident scope、default mode。不要启用 dynamic_seq/其他 preset/编译 swapped tail，见 `docs/findings/krea2_3080_speed_stage9.md`。
 - `library/config/`：TOML 读取、合并、normalize、schema 校验。
 - `library/training/`：训练 bootstrap、loop、optimizer、scheduler、checkpoint、loss 等。
 - `library/inference/`：generation、sampling、adapter 加载、DirectEdit、DCW、输出处理。
