@@ -145,6 +145,7 @@
 - Krea-2 multi-bucket compile：24 个 `CONSTANT_TOKEN_BUCKETS` 加固定 512 文本后只形成 4608/4864 两张 block 图，同 token family 的不同宽高比可直接复用，实测稳态 2.731/2.956s、峰值 <=11.35GB。`configs/methods/krea2_lora.toml` 因此默认 `torch_compile=true`、`compile_dynamic_seq=false`、resident scope、default mode。不要启用 dynamic_seq/其他 preset/编译 swapped tail，见 `docs/findings/krea2_3080_speed_stage9.md`。
 - Krea-2 compile 续训：PG199 NF4 中途保存/reload LoRA 96.4MB + optimizer 193.0MB 后，LoRA/forward round-trip delta=0，loss jump=0.000214，续训步时 2.728-2.730s 无重编译。reload 后不需再调 `compile_blocks()`，默认 fixed resident compile 可用于正常 checkpoint/resume，见 `docs/findings/krea2_3080_speed_stage10.md`。
 - Krea-2 compiled 算子天花板：PG199 profile 中 eager→compiled 为 3.398→2.746s；GEMM 1593ms 和 cuDNN attention 847ms 前后不变，收益来自融合约 601ms 的 mul/copy/add 及将可见 NF4 dequant 706→486 次。compiled 后 GEMM+attention 约占 89%，不要再期待 Python/prepare/padding 小修获得两位数加速，见 `docs/findings/krea2_3080_speed_stage11.md`。
+- Krea-2 packed varlen FlashAttention 候选：有效 token 打包 + native GQA 在 PG199 全模型/双 token-family 快 11-13%，RTX 3080 swap20 的 20 步热稳态约 12.145s（比历史 cuDNN compile 12.65s 快 4%），checkpoint LoRA/forward delta=0，GPU peak 6.09GB。当前仅为 `scripts/krea2/probe_nf4_flash_varlen.py` 实验路径；未补显式 backend、可选依赖/V100 BF16 fallback、batch/CFG 和 Dynamo 动态输出边界前，不得改生产默认，见 `docs/findings/krea2_3080_speed_stage12.md`。
 - `library/config/`：TOML 读取、合并、normalize、schema 校验。
 - `library/training/`：训练 bootstrap、loop、optimizer、scheduler、checkpoint、loss 等。
 - `library/inference/`：generation、sampling、adapter 加载、DirectEdit、DCW、输出处理。

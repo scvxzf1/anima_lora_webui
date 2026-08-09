@@ -361,3 +361,11 @@ optimizer reload 后 loss jump 0.000214，续训仍 2.728-2.730s，无重编译�
 eager 的 mul/copy/add 约 601ms 被 Triton 融合，可见 dequant 706→486 次、
 102→68ms。compiled 后 GEMM+attention 约占 89%，是后续软件优化天花板。见
 [krea2_3080_speed_stage11.md](../findings/krea2_3080_speed_stage11.md)。
+
+阶段 12 packed varlen FlashAttention 候选：只打包有效 token 并使用 native GQA，
+attention micro 在 PG199/3080 分别快 47%/34%。PG199 全模型与两类 token family
+稳态快 11-13%；3080 swap20 的 20 步热稳态从历史 12.65 降到末五步均值 12.145s
+（约 4%），GPU peak 6.09GB。checkpoint reload 的 LoRA/forward delta 均为 0。
+由于仍缺显式 backend、可选依赖/V100 fallback、batch/CFG 和 Dynamo 配置边界，当前
+仅保留实验包装器，不改生产默认。见
+[krea2_3080_speed_stage12.md](../findings/krea2_3080_speed_stage12.md)。

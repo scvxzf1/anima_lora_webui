@@ -1,0 +1,75 @@
+{
+  "stage": 12,
+  "date": "2026-08-09",
+  "status": "PROMISING_EXPERIMENT_NOT_PRODUCTION",
+  "candidate": "packed valid tokens + FlashAttention 2.8.3 varlen native GQA",
+  "attention_microbenchmark": {
+    "sequence": 4608,
+    "pg199_dense_cudnn_ms": 27.93,
+    "pg199_flash_varlen_ms": 14.8,
+    "pg199_speedup_pct": 47.0,
+    "rtx3080_dense_cudnn_ms": 47.12,
+    "rtx3080_flash_varlen_ms": 30.94,
+    "rtx3080_speedup_pct": 34.3,
+    "output_rel_l2": 0.00303,
+    "output_cosine": 0.9999955,
+    "q_grad_rel_l2": 0.00361,
+    "q_grad_cosine": 0.9999934,
+    "k_grad_rel_l2": 0.00197,
+    "k_grad_cosine": 0.9999981,
+    "v_grad_rel_l2": 0.000703,
+    "v_grad_cosine": 0.9999996,
+    "invalid_padding_grad_max": 0.0,
+    "peak_increase_mb": 77
+  },
+  "pg199_1024_compile_full_checkpoint": {
+    "historical_cudnn_step_s": 2.726,
+    "flash_step_times_s": [2.422, 2.424, 2.42, 2.418, 2.421],
+    "flash_steady_median_s": 2.421,
+    "speedup_pct": 11.2,
+    "gpu_peak_gb": 10.867,
+    "loss_finite": true,
+    "grad_nonzero": true
+  },
+  "checkpoint_reload": {
+    "lora_roundtrip_max_delta": 0.0,
+    "forward_roundtrip_max_delta": 0.0,
+    "steady_step_s": 2.424
+  },
+  "token_families": {
+    "tokens4032": {
+      "historical_cudnn_step_s": 2.731,
+      "flash_steps_s": [2.389, 2.387],
+      "speedup_pct": 12.5,
+      "peak_gb": 10.965
+    },
+    "tokens4200": {
+      "historical_cudnn_step_s": 2.956,
+      "flash_representative_step_s": 2.569,
+      "speedup_pct": 13.1,
+      "peak_gb": 11.154,
+      "last_revisit_outlier_s": 3.011
+    }
+  },
+  "rtx3080_swap20_compile_full_checkpoint_20_steps": {
+    "historical_cudnn_last_step_s": 12.65,
+    "flash_first_compile_step_s": 24.692,
+    "flash_steps_1_to_5_s": [11.735, 11.725, 11.751, 11.829, 11.847],
+    "flash_steps_15_to_19_s": [12.119, 12.152, 12.202, 12.118, 12.136],
+    "flash_last5_mean_s": 12.145,
+    "steady_speedup_pct": 4.0,
+    "gpu_peak_gb": 6.094,
+    "host_rss_gb": 20.463,
+    "loss_first5": 0.008472,
+    "loss_last5": 0.002429,
+    "loss_finite": true,
+    "grad_nonzero": true
+  },
+  "production_gates": [
+    "explicit Krea-2 backend selection and optional dependency guard",
+    "batch greater than one and inference CFG coverage",
+    "V100 FlashAttention fork BF16 rejection with SDPA fallback",
+    "bounded Dynamo dynamic-output configuration",
+    "training and inference multi-bucket regression tests"
+  ]
+}
