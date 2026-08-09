@@ -1,15 +1,15 @@
 /**
  * Adapter-specific config form enablement and cleanup state.
  */
-import { FORM_UI_DEFAULTS } from '../../config/catalog.js?v=module-bootstrap-20260714-stage-dataset5';
-import { LOSS_WEIGHTING_DEPENDENT_FIELDS } from '../anima-app/helpers/app-constants.js?v=module-bootstrap-20260714-stage-dataset5';
-import { getConfigState } from '../anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { FORM_UI_DEFAULTS } from '../../config/catalog.js?v=module-bootstrap-20260809-nf4-v2';
+import { LOSS_WEIGHTING_DEPENDENT_FIELDS } from '../anima-app/helpers/app-constants.js?v=module-bootstrap-20260809-nf4-v2';
+import { getConfigState } from '../anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260809-nf4-v2';
 import {
     configDraftValueChanged,
     originalConfigFieldValue,
-} from '../anima-app/helpers/config-form-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
-import { readLiveLoraAdapterKind } from './form-fields-adapters.js?v=module-bootstrap-20260714-stage-dataset5';
-import { readFieldInputValue } from './config-value-collector.js?v=module-bootstrap-20260714-stage-dataset5';
+} from '../anima-app/helpers/config-form-bridge.js?v=module-bootstrap-20260809-nf4-v2';
+import { readLiveLoraAdapterKind } from './form-fields-adapters.js?v=module-bootstrap-20260809-nf4-v2';
+import { readFieldInputValue } from './config-value-collector.js?v=module-bootstrap-20260809-nf4-v2';
 
 const configState = getConfigState();
 

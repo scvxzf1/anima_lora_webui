@@ -1,4 +1,4 @@
-import { numberOrNull } from '../ui.js?v=module-bootstrap-20260714-stage-dataset5';
+import { numberOrNull } from '../ui.js?v=module-bootstrap-20260809-nf4-v2';
 
 export const HISTORY_CURVE_RENDER_POINT_LIMIT = 1600;
 

@@ -2,14 +2,14 @@
  * Config form dataset-preset picker panel.
  * Extracted from anima-app chunk 06.
  */
-import { getConfigState } from '../anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
-import { getDatasetState } from '../anima-app/helpers/dataset-state-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
-import { datasetPresetByFile } from '../anima-app/helpers/dataset-presets.js?v=module-bootstrap-20260714-stage-dataset5';
+import { getConfigState } from '../anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260809-nf4-v2';
+import { getDatasetState } from '../anima-app/helpers/dataset-state-bridge.js?v=module-bootstrap-20260809-nf4-v2';
+import { datasetPresetByFile } from '../anima-app/helpers/dataset-presets.js?v=module-bootstrap-20260809-nf4-v2';
 import {
     ensureConfigDatasetPreview,
     renderConfigDatasetPickerDialog,
-} from '../anima-app/helpers/dataset-render-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
-import { loadDatasetPresets } from '../dataset-editor/load.js?v=module-bootstrap-20260714-stage-dataset5';
+} from '../anima-app/helpers/dataset-render-bridge.js?v=module-bootstrap-20260809-nf4-v2';
+import { loadDatasetPresets } from '../dataset-editor/load.js?v=module-bootstrap-20260809-nf4-v2';
 
 const configState = getConfigState();
 const datasetState = getDatasetState();

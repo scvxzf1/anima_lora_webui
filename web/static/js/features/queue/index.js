@@ -1,14 +1,14 @@
-import { fetchTrainingQueue } from './api.js?v=module-bootstrap-20260714-stage-dataset5';
-import { createQueueActions } from './actions.js?v=module-bootstrap-20260714-stage-dataset5';
-import { createQueueEnqueue } from './enqueue.js?v=module-bootstrap-20260714-stage-dataset5';
-import { createQueueRenderer } from './render.js?v=module-bootstrap-20260714-stage-dataset5';
+import { fetchTrainingQueue } from './api.js?v=module-bootstrap-20260809-nf4-v2';
+import { createQueueActions } from './actions.js?v=module-bootstrap-20260809-nf4-v2';
+import { createQueueEnqueue } from './enqueue.js?v=module-bootstrap-20260809-nf4-v2';
+import { createQueueRenderer } from './render.js?v=module-bootstrap-20260809-nf4-v2';
 import {
     createQueueState,
     queueRenderSignature,
     setQueueError,
     setQueueLoading,
     updateQueueStateFromPayload,
-} from './state.js?v=module-bootstrap-20260714-stage-dataset5';
+} from './state.js?v=module-bootstrap-20260809-nf4-v2';
 
 export function createQueueFeature(ctx, deps) {
     const state = createQueueState();

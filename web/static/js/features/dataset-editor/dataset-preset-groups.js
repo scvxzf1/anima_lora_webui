@@ -8,14 +8,14 @@ import {
     placeDatasetPresetGroup,
     renameDatasetPresetGroup,
     setDatasetPresetStatus,
-} from '../anima-app/helpers/dataset-preset-actions-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+} from '../anima-app/helpers/dataset-preset-actions-bridge.js?v=module-bootstrap-20260809-nf4-v2';
 import {
     datasetPresetByFile,
     isUnfiledDatasetGroup,
-} from '../anima-app/helpers/dataset-presets.js?v=module-bootstrap-20260714-stage-dataset5';
-import { getDatasetState } from '../anima-app/helpers/dataset-state-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
-import { loadDatasetPreset } from './load.js?v=module-bootstrap-20260714-stage-dataset5';
-import { updateDatasetPresetPageSummary } from './preset-page.js?v=module-bootstrap-20260714-stage-dataset5';
+} from '../anima-app/helpers/dataset-presets.js?v=module-bootstrap-20260809-nf4-v2';
+import { getDatasetState } from '../anima-app/helpers/dataset-state-bridge.js?v=module-bootstrap-20260809-nf4-v2';
+import { loadDatasetPreset } from './load.js?v=module-bootstrap-20260809-nf4-v2';
+import { updateDatasetPresetPageSummary } from './preset-page.js?v=module-bootstrap-20260809-nf4-v2';
 import {
     clearFileGroupDropTarget,
     configGroupDropIndex,
@@ -27,9 +27,9 @@ import {
     setupFileGroupHeaderDropTarget,
     setupFileGroupListDropTarget,
     setupFileGroupRowDropTarget,
-} from '../toml-manager/file-group-drag.js?v=module-bootstrap-20260714-stage-dataset5';
-import { setupConfigGroupDropTarget } from '../toml-manager/config-group-drop-target.js?v=module-bootstrap-20260714-stage-dataset5';
-import { escapeHtml } from '../config-form/field-input.js?v=module-bootstrap-20260714-stage-dataset5';
+} from '../toml-manager/file-group-drag.js?v=module-bootstrap-20260809-nf4-v2';
+import { setupConfigGroupDropTarget } from '../toml-manager/config-group-drop-target.js?v=module-bootstrap-20260809-nf4-v2';
+import { escapeHtml } from '../config-form/field-input.js?v=module-bootstrap-20260809-nf4-v2';
 
 const datasetState = getDatasetState();
 

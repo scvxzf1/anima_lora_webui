@@ -1,6 +1,6 @@
-import { fetchEnvironmentCheck } from './api.js?v=module-bootstrap-20260714-stage-dataset5';
-import { createEnvironmentCheckRenderer } from './render.js?v=module-bootstrap-20260714-stage-dataset5';
-import { createEnvironmentCheckState } from './state.js?v=module-bootstrap-20260714-stage-dataset5';
+import { fetchEnvironmentCheck } from './api.js?v=module-bootstrap-20260809-nf4-v2';
+import { createEnvironmentCheckRenderer } from './render.js?v=module-bootstrap-20260809-nf4-v2';
+import { createEnvironmentCheckState } from './state.js?v=module-bootstrap-20260809-nf4-v2';
 
 export function createEnvironmentCheckFeature(ctx) {
     const state = createEnvironmentCheckState();

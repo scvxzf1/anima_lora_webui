@@ -1,11 +1,11 @@
-import { fetchHistoryTask } from './api.js?v=module-bootstrap-20260714-stage-dataset5';
-import { createHistoryAnalysisRenderer } from './analysis.js?v=module-bootstrap-20260714-stage-dataset5';
-import { createHistoryConfigFilesRenderer } from './config-files.js?v=module-bootstrap-20260714-stage-dataset5';
-import { createHistoryLogsRenderer } from './logs.js?v=module-bootstrap-20260714-stage-dataset5';
-import { createHistoryOverviewRenderer } from './overview.js?v=module-bootstrap-20260728-precision-pref';
-import { createHistoryResumeFeature } from './resume/index.js?v=module-bootstrap-20260714-stage-dataset5';
-import { HISTORY_DETAIL_TABS, normalizeHistoryDetailTab, setHistoryDetailTab } from './state.js?v=module-bootstrap-20260714-stage-dataset5';
-import { createHistoryDetailWorkspace } from './workspace.js?v=module-bootstrap-20260714-stage-dataset5';
+import { fetchHistoryTask } from './api.js?v=module-bootstrap-20260809-nf4-v2';
+import { createHistoryAnalysisRenderer } from './analysis.js?v=module-bootstrap-20260809-nf4-v2';
+import { createHistoryConfigFilesRenderer } from './config-files.js?v=module-bootstrap-20260809-nf4-v2';
+import { createHistoryLogsRenderer } from './logs.js?v=module-bootstrap-20260809-nf4-v2';
+import { createHistoryOverviewRenderer } from './overview.js?v=module-bootstrap-20260809-nf4-v2';
+import { createHistoryResumeFeature } from './resume/index.js?v=module-bootstrap-20260809-nf4-v2';
+import { HISTORY_DETAIL_TABS, normalizeHistoryDetailTab, setHistoryDetailTab } from './state.js?v=module-bootstrap-20260809-nf4-v2';
+import { createHistoryDetailWorkspace } from './workspace.js?v=module-bootstrap-20260809-nf4-v2';
 
 export function createHistoryDetailDialog({ ctx, state, deps }) {
     const slots = {};

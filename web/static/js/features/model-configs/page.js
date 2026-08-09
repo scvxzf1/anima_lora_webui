@@ -1,6 +1,6 @@
-import { loadGlobalSettings } from '../anima-app/helpers/global-settings-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
-import { showAppConfirmDialog } from '../anima-app/helpers/toml-selection-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
-import { fetchModelConfigLibrary, saveModelConfigLibrary } from './api.js?v=model-configs-20260809-1';
+import { loadGlobalSettings } from '../anima-app/helpers/global-settings-bridge.js?v=module-bootstrap-20260809-nf4-v2';
+import { showAppConfirmDialog } from '../anima-app/helpers/toml-selection-bridge.js?v=module-bootstrap-20260809-nf4-v2';
+import { fetchModelConfigLibrary, saveModelConfigLibrary } from './api.js?v=module-bootstrap-20260809-nf4-v2';
 import {
     MODEL_CONFIG_PATH_FIELDS,
     cleanModelConfigItem,
@@ -8,7 +8,7 @@ import {
     modelFamilyLabel,
     moveModelConfig,
     moveModelConfigByOffset,
-} from './model-config-data.js?v=model-configs-20260809-1';
+} from './model-config-data.js?v=module-bootstrap-20260809-nf4-v2';
 
 const state = {
     items: [],

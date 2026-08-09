@@ -8,41 +8,41 @@ import {
     NETWORK_ARG_FIELD_MAP,
     OPTIONAL_EMPTY_FIELDS,
     OPTIONAL_EMPTY_NUMBER_FIELDS,
-} from '../../config/catalog.js?v=module-bootstrap-20260714-stage-dataset5';
+} from '../../config/catalog.js?v=module-bootstrap-20260809-nf4-v2';
 import {
     coerceNetworkArgValue,
     formatNetworkArg,
     parseNetworkArgEntry,
-} from '../anima-app/helpers/network-args.js?v=module-bootstrap-20260714-stage-dataset5';
-import { getConfigState } from '../anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+} from '../anima-app/helpers/network-args.js?v=module-bootstrap-20260809-nf4-v2';
+import { getConfigState } from '../anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260809-nf4-v2';
 import {
     displayConfigFieldValue,
     isActiveNetworkArgFieldKey,
     originalConfigFieldValue,
     syncConfigDraftFromForm,
-} from '../anima-app/helpers/config-form-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
-import { fieldValueType } from '../anima-app/helpers/config-field-ui-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+} from '../anima-app/helpers/config-form-bridge.js?v=module-bootstrap-20260809-nf4-v2';
+import { fieldValueType } from '../anima-app/helpers/config-field-ui-bridge.js?v=module-bootstrap-20260809-nf4-v2';
 import {
     normalizeMultilineText,
     parseArrayValue,
     parseNumberValue,
     valuesEqual,
-} from '../anima-app/helpers/form-values.js?v=module-bootstrap-20260714-stage-dataset5';
+} from '../anima-app/helpers/form-values.js?v=module-bootstrap-20260809-nf4-v2';
 import {
     normalizePrecisionPreference,
     precisionPreferenceFromConfig,
     precisionPreferencePatch,
-} from '../anima-app/helpers/config-values.js?v=module-bootstrap-20260714-stage-dataset5';
+} from '../anima-app/helpers/config-values.js?v=module-bootstrap-20260809-nf4-v2';
 import {
     normalizeNetworkArgArray,
     parseNetworkArgMap,
-} from '../anima-app/helpers/app-shell-startup-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
-import { saveSamplePrompts } from '../anima-app/helpers/sample-prompts-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
-import { serializeSamplePromptsEditor } from '../sample-prompts/model.js?v=module-bootstrap-20260714-stage-dataset5';
+} from '../anima-app/helpers/app-shell-startup-bridge.js?v=module-bootstrap-20260809-nf4-v2';
+import { saveSamplePrompts } from '../anima-app/helpers/sample-prompts-bridge.js?v=module-bootstrap-20260809-nf4-v2';
+import { serializeSamplePromptsEditor } from '../sample-prompts/model.js?v=module-bootstrap-20260809-nf4-v2';
 import {
     applyLoraAdapterPatch,
     applyOptimizerCompatibilityPatch,
-} from './form-fields-adapters.js?v=module-bootstrap-20260714-stage-dataset5';
+} from './form-fields-adapters.js?v=module-bootstrap-20260809-nf4-v2';
 
 const configState = getConfigState();
 

@@ -6,28 +6,28 @@ import {
     formatSystemTemperature,
     formatSystemVram,
     historySystemSummary,
-} from '../history-detail/system.js?v=module-bootstrap-20260714-stage-dataset5';
-import { ensurePreviewFeature } from '../anima-app/helpers/feature-ensurers.js?v=module-bootstrap-20260714-stage-dataset5';
+} from '../history-detail/system.js?v=module-bootstrap-20260809-nf4-v2';
+import { ensurePreviewFeature } from '../anima-app/helpers/feature-ensurers.js?v=module-bootstrap-20260809-nf4-v2';
 import {
     historyCollectionOptionSearchText,
     historyCollectionSelectOptions,
     historyTaskDisplayName,
     moveHistoryCollectionValue,
-} from '../anima-app/helpers/history-collections-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
-import { clearResumeOptions, historyStateLabel, metricsWithProgressFallback, renderConfigGroupTimeline, renderHistoryPaths, renderResumePanelState } from '../anima-app/helpers/history-timeline-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
-import { renderTrainingRunSummary } from '../anima-app/helpers/live-status-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
-import { formatLr, lastValue, readConfigNumber } from '../live-training/index.js?v=module-bootstrap-20260714-stage-dataset5';
-import { getHistoryState } from '../anima-app/helpers/history-state-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
-import { api } from '../anima-app/helpers/runtime-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
-import { escapeHtml } from '../config-form/field-input.js?v=module-bootstrap-20260714-stage-dataset5';
-import { setEtaMetricText, setMetricText, setText, setTrainingDashboardHeadState, syncLossChartEmptyState, updateDashboardProgressIdleState, updateTrainingToolbarState } from '../live-training/dashboard-ui.js?v=module-bootstrap-20260714-stage-dataset5';
-import { ensureHistoryDetailFeature } from '../anima-app/helpers/history-detail-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
-import { closeSharedHistoryTaskDialog, openSharedHistoryTaskDialog, sharedHistoryTaskDialogIsOpen, sharedHistoryTaskDialogParts } from '../anima-app/helpers/toml-selection-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
-import { renderLogOutputLines, setLogStatus } from '../anima-app/helpers/live-log-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
-import { showTrainingView } from '../anima-app/helpers/queue-view-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
-import { loadTrainingHistoryList, renderHistoryManager, renderTrainingHistoryList, syncRecentHistorySidebarSelection } from '../anima-app/helpers/history-list-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
-import { getTrainingState } from '../anima-app/helpers/training-state-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
-import { getTomlState } from '../anima-app/helpers/toml-state-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+} from '../anima-app/helpers/history-collections-bridge.js?v=module-bootstrap-20260809-nf4-v2';
+import { clearResumeOptions, historyStateLabel, metricsWithProgressFallback, renderConfigGroupTimeline, renderHistoryPaths, renderResumePanelState } from '../anima-app/helpers/history-timeline-bridge.js?v=module-bootstrap-20260809-nf4-v2';
+import { renderTrainingRunSummary } from '../anima-app/helpers/live-status-bridge.js?v=module-bootstrap-20260809-nf4-v2';
+import { formatLr, lastValue, readConfigNumber } from '../live-training/index.js?v=module-bootstrap-20260809-nf4-v2';
+import { getHistoryState } from '../anima-app/helpers/history-state-bridge.js?v=module-bootstrap-20260809-nf4-v2';
+import { api } from '../anima-app/helpers/runtime-bridge.js?v=module-bootstrap-20260809-nf4-v2';
+import { escapeHtml } from '../config-form/field-input.js?v=module-bootstrap-20260809-nf4-v2';
+import { setEtaMetricText, setMetricText, setText, setTrainingDashboardHeadState, syncLossChartEmptyState, updateDashboardProgressIdleState, updateTrainingToolbarState } from '../live-training/dashboard-ui.js?v=module-bootstrap-20260809-nf4-v2';
+import { ensureHistoryDetailFeature } from '../anima-app/helpers/history-detail-bridge.js?v=module-bootstrap-20260809-nf4-v2';
+import { closeSharedHistoryTaskDialog, openSharedHistoryTaskDialog, sharedHistoryTaskDialogIsOpen, sharedHistoryTaskDialogParts } from '../anima-app/helpers/toml-selection-bridge.js?v=module-bootstrap-20260809-nf4-v2';
+import { renderLogOutputLines, setLogStatus } from '../anima-app/helpers/live-log-bridge.js?v=module-bootstrap-20260809-nf4-v2';
+import { showTrainingView } from '../anima-app/helpers/queue-view-bridge.js?v=module-bootstrap-20260809-nf4-v2';
+import { loadTrainingHistoryList, renderHistoryManager, renderTrainingHistoryList, syncRecentHistorySidebarSelection } from '../anima-app/helpers/history-list-bridge.js?v=module-bootstrap-20260809-nf4-v2';
+import { getTrainingState } from '../anima-app/helpers/training-state-bridge.js?v=module-bootstrap-20260809-nf4-v2';
+import { getTomlState } from '../anima-app/helpers/toml-state-bridge.js?v=module-bootstrap-20260809-nf4-v2';
 
 const historyState = getHistoryState();
 const trainingState = getTrainingState();

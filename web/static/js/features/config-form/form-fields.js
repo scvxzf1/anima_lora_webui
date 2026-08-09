@@ -7,15 +7,15 @@ export {
     readLiveLoraAdapterKind,
     applyLoraAdapterPatch,
     applyOptimizerCompatibilityPatch,
-} from './form-fields-adapters.js?v=module-bootstrap-20260714-stage-dataset5';
+} from './form-fields-adapters.js?v=module-bootstrap-20260809-nf4-v2';
 
 export {
     setSamplePromptsEditorContent,
     markSamplePromptsEditorTouched,
-} from './form-fields-sample.js?v=module-bootstrap-20260714-stage-dataset5';
+} from './form-fields-sample.js?v=module-bootstrap-20260809-nf4-v2';
 
 export {
     configureNoDatasetRegularizationModePanelUpdater,
     createFieldRow,
     handleFormFieldChange,
-} from './form-fields-ui.js?v=module-bootstrap-20260809-config-switch1';
+} from './form-fields-ui.js?v=module-bootstrap-20260809-nf4-v2';

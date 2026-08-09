@@ -5,7 +5,7 @@
 import {
     HISTORY_COLLECTION_DRAG_MIME,
     HISTORY_TASK_DRAG_MIME,
-} from '../helpers/app-constants.js?v=module-bootstrap-20260714-stage-dataset5';
+} from '../helpers/app-constants.js?v=module-bootstrap-20260809-nf4-v2';
 import {
     canBeginHistoryConfigGroupDrag,
     closeHistoryDropPopover,
@@ -26,15 +26,15 @@ import {
     reorderHistoryCollectionValue,
     setHistoryConfigGroupSortTarget,
     setHistoryDropFeedback,
-} from '../helpers/history-collection-drag-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+} from '../helpers/history-collection-drag-bridge.js?v=module-bootstrap-20260809-nf4-v2';
 import {
     configGroupKey,
     configGroupOrderValues,
     historyCollectionStorageKey,
     historyTaskCollectionValue,
-} from '../helpers/history-collections-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
-import { renderHistoryManager, saveHistoryCollectionSettings, uniqueStringList } from '../helpers/history-list-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
-import { getHistoryState } from '../helpers/history-state-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+} from '../helpers/history-collections-bridge.js?v=module-bootstrap-20260809-nf4-v2';
+import { renderHistoryManager, saveHistoryCollectionSettings, uniqueStringList } from '../helpers/history-list-bridge.js?v=module-bootstrap-20260809-nf4-v2';
+import { getHistoryState } from '../helpers/history-state-bridge.js?v=module-bootstrap-20260809-nf4-v2';
 
 const historyState = getHistoryState();
 

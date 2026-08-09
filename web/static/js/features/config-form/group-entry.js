@@ -5,28 +5,28 @@
 import {
     createNoDatasetRegularizationAdvancedFields,
     createNoDatasetRegularizationModePanel,
-} from './no-dataset-regularization.js?v=module-bootstrap-20260714-stage-dataset5';
+} from './no-dataset-regularization.js?v=module-bootstrap-20260809-nf4-v2';
 import {
     ADVANCED_CATEGORY_DEFAULT_OPEN_GROUPS,
     FORM_CATEGORY_DEFS,
     FORM_CATEGORY_SECTION_MAP,
     STICKY_CONFIG_CATEGORY_IDS,
-} from '../../config/catalog.js?v=module-bootstrap-20260714-stage-dataset5';
-import { reloadCurrentConfig, renderConfigForm, syncConfigDraftFromForm } from '../anima-app/helpers/app-shell-startup-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
-import { getConfigState } from '../anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
-import { formatFieldName } from '../anima-app/helpers/config-field-display.js?v=module-bootstrap-20260714-stage-dataset5';
-import { updateChangedFieldMarks } from '../anima-app/helpers/toml-selection-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
-import { createStepEstimatePanel, scheduleStepEstimatePanelRefresh } from './step-estimate.js?v=module-bootstrap-20260714-stage-dataset5';
+} from '../../config/catalog.js?v=module-bootstrap-20260809-nf4-v2';
+import { reloadCurrentConfig, renderConfigForm, syncConfigDraftFromForm } from '../anima-app/helpers/app-shell-startup-bridge.js?v=module-bootstrap-20260809-nf4-v2';
+import { getConfigState } from '../anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260809-nf4-v2';
+import { formatFieldName } from '../anima-app/helpers/config-field-display.js?v=module-bootstrap-20260809-nf4-v2';
+import { updateChangedFieldMarks } from '../anima-app/helpers/toml-selection-bridge.js?v=module-bootstrap-20260809-nf4-v2';
+import { createStepEstimatePanel, scheduleStepEstimatePanelRefresh } from './step-estimate.js?v=module-bootstrap-20260809-nf4-v2';
 import {
     createFillGlobalModelPathsButton,
     createNoDatasetRegularizationQuickPresetPanel,
     createNoDatasetRegularizationQuickPresetsButton,
     createResourceQuickPresetPanel,
     createResourceQuickPresetsButton,
-} from './stage-resolution.js?v=model-configs-20260809-1';
-import { appendFieldRows } from './field-rows.js?v=module-bootstrap-20260714-stage-dataset5';
-import { createConfigDatasetPicker } from './dataset-picker.js?v=module-bootstrap-20260714-stage-dataset5';
-import { debounce } from '../../shared/debounce.js?v=module-bootstrap-20260714-stage-dataset5';
+} from './stage-resolution.js?v=module-bootstrap-20260809-nf4-v2';
+import { appendFieldRows } from './field-rows.js?v=module-bootstrap-20260809-nf4-v2';
+import { createConfigDatasetPicker } from './dataset-picker.js?v=module-bootstrap-20260809-nf4-v2';
+import { debounce } from '../../shared/debounce.js?v=module-bootstrap-20260809-nf4-v2';
 
 const configState = getConfigState();
 const configFormState = configState.configFormState;

@@ -9,23 +9,23 @@ import {
     createDatasetInlineHelpButton,
     datasetExperimentalOpenState,
     datasetLocalHelpSpec,
-} from './inline-help.js?v=module-bootstrap-20260714-stage-dataset5';
-import { createDatasetEditorDragHandle } from './item-drag.js?v=module-bootstrap-20260714-stage-dataset5';
-import { CAPTION_SOURCE_MODE_OPTIONS, help } from '../../config/catalog.js?v=module-bootstrap-20260714-stage-dataset5';
-import { normalizeCaptionSourceMode } from '../anima-app/helpers/caption-source.js?v=module-bootstrap-20260714-stage-dataset5';
-import { createHelpContent } from '../anima-app/helpers/config-field-ui-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
-import { datasetConfigLabel, datasetConfigValue } from '../anima-app/helpers/dataset-config-fields.js?v=module-bootstrap-20260714-stage-dataset5';
-import { getDatasetState } from '../anima-app/helpers/dataset-state-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+} from './inline-help.js?v=module-bootstrap-20260809-nf4-v2';
+import { createDatasetEditorDragHandle } from './item-drag.js?v=module-bootstrap-20260809-nf4-v2';
+import { CAPTION_SOURCE_MODE_OPTIONS, help } from '../../config/catalog.js?v=module-bootstrap-20260809-nf4-v2';
+import { normalizeCaptionSourceMode } from '../anima-app/helpers/caption-source.js?v=module-bootstrap-20260809-nf4-v2';
+import { createHelpContent } from '../anima-app/helpers/config-field-ui-bridge.js?v=module-bootstrap-20260809-nf4-v2';
+import { datasetConfigLabel, datasetConfigValue } from '../anima-app/helpers/dataset-config-fields.js?v=module-bootstrap-20260809-nf4-v2';
+import { getDatasetState } from '../anima-app/helpers/dataset-state-bridge.js?v=module-bootstrap-20260809-nf4-v2';
 import {
     normalizeDatasetDefaults,
     normalizeDatasetEditorRows,
     normalizeTriggerClone,
-} from '../anima-app/helpers/dataset-values.js?v=module-bootstrap-20260714-stage-dataset5';
-import { datasetPreviewValidationText } from '../anima-app/helpers/dataset-preview.js?v=module-bootstrap-20260714-stage-dataset5';
-import { datasetEditorStateForActivePanel, isDatasetTabActive, refreshDatasetEditorItem, renderDatasetEditor } from '../anima-app/helpers/dataset-render-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
-import { createDatasetPathField, createDatasetRowCaptionSourceModeEditor, createDatasetRowSettingInput, updateDatasetEditorRow } from './row-fields.js?v=module-bootstrap-20260714-stage-dataset5';
-import { openDatasetPreview } from './preview.js?v=module-bootstrap-20260714-stage-dataset5';
-import { escapeHtml } from '../config-form/field-input.js?v=module-bootstrap-20260714-stage-dataset5';
+} from '../anima-app/helpers/dataset-values.js?v=module-bootstrap-20260809-nf4-v2';
+import { datasetPreviewValidationText } from '../anima-app/helpers/dataset-preview.js?v=module-bootstrap-20260809-nf4-v2';
+import { datasetEditorStateForActivePanel, isDatasetTabActive, refreshDatasetEditorItem, renderDatasetEditor } from '../anima-app/helpers/dataset-render-bridge.js?v=module-bootstrap-20260809-nf4-v2';
+import { createDatasetPathField, createDatasetRowCaptionSourceModeEditor, createDatasetRowSettingInput, updateDatasetEditorRow } from './row-fields.js?v=module-bootstrap-20260809-nf4-v2';
+import { openDatasetPreview } from './preview.js?v=module-bootstrap-20260809-nf4-v2';
+import { escapeHtml } from '../config-form/field-input.js?v=module-bootstrap-20260809-nf4-v2';
 import {
     datasetExperimentalScopeIndices,
     removeDatasetEditorRow,
@@ -33,7 +33,7 @@ import {
     updateDatasetEditorRowNlTagMix,
     updateDatasetEditorRowTriggerClone,
     updateDatasetEditorRowsSettingValue,
-} from './mutations.js?v=module-bootstrap-20260714-stage-dataset5';
+} from './mutations.js?v=module-bootstrap-20260809-nf4-v2';
 import {
     createDatasetAdvancedSettingsEditor,
     createDatasetCaptionExtensionEditor,
@@ -43,7 +43,7 @@ import {
     createDatasetRepeatSettingField,
     createDatasetRowSettingsEditor,
     createDatasetTriggerCloneEditor,
-} from './row-settings.js?v=module-bootstrap-20260714-stage-dataset5';
+} from './row-settings.js?v=module-bootstrap-20260809-nf4-v2';
 
 const datasetState = getDatasetState();
 

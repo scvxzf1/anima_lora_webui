@@ -4,14 +4,14 @@
 import {
     appendSamplePromptRow,
     updateSamplePromptRemoveButtons,
-} from '../anima-app/helpers/config-field-ui-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+} from '../anima-app/helpers/config-field-ui-bridge.js?v=module-bootstrap-20260809-nf4-v2';
 import {
     blankSamplePromptRow,
     parseSamplePromptRows,
     samplePromptsContentNeedsTextMode,
     serializeSamplePromptsEditor,
-} from '../sample-prompts/model.js?v=module-bootstrap-20260714-stage-dataset5';
-import { handleFormFieldChange } from './form-fields-ui.js?v=module-bootstrap-20260714-stage-dataset5';
+} from '../sample-prompts/model.js?v=module-bootstrap-20260809-nf4-v2';
+import { handleFormFieldChange } from './form-fields-ui.js?v=module-bootstrap-20260809-nf4-v2';
 
 function createSamplePromptsPathInput(value) {
     const input = document.createElement('input');

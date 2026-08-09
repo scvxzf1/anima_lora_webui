@@ -2,7 +2,7 @@ import {
     GROUP_INITIAL_RENDER_COUNT,
     GROUP_VIRTUALIZE_THRESHOLD,
     GROUP_VIRTUAL_OVERSCAN_ROWS,
-} from './constants.js?v=module-bootstrap-20260714-stage-dataset5';
+} from './constants.js?v=module-bootstrap-20260809-nf4-v2';
 
 /**
  * 纯函数：限制整数到 [min, max]。

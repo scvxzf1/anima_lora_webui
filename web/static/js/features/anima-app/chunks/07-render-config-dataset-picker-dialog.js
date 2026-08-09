@@ -3,12 +3,12 @@
  * Side-effect imports register dataset picker dialog / preset list renderers.
  * Drag primitives live in toml-manager/file-group-drag.js.
  */
-import '../../config-form/dataset-picker-dialog.js?v=module-bootstrap-20260714-stage-dataset5';
-import '../../dataset-editor/preset-page.js?v=module-bootstrap-20260714-stage-dataset5';
+import '../../config-form/dataset-picker-dialog.js?v=module-bootstrap-20260809-nf4-v2';
+import '../../dataset-editor/preset-page.js?v=module-bootstrap-20260809-nf4-v2';
 export {
     createDatasetEditor,
     updateDatasetPresetPageSummary,
-} from '../../dataset-editor/preset-page.js?v=module-bootstrap-20260714-stage-dataset5';
+} from '../../dataset-editor/preset-page.js?v=module-bootstrap-20260809-nf4-v2';
 export {
     beginFileGroupDrag,
     canBeginFileGroupDrag,
@@ -18,4 +18,4 @@ export {
     registerFileGroupDropTarget,
     removeFileGroupDragImage,
     setFileGroupDragData,
-} from '../../toml-manager/file-group-drag.js?v=module-bootstrap-20260714-stage-dataset5';
+} from '../../toml-manager/file-group-drag.js?v=module-bootstrap-20260809-nf4-v2';

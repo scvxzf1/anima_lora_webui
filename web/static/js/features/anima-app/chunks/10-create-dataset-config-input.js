@@ -4,8 +4,8 @@
  */
 export {
     createDatasetConfigInput,
-} from '../../dataset-editor/config-input.js?v=module-bootstrap-20260714-stage-dataset5';
+} from '../../dataset-editor/config-input.js?v=module-bootstrap-20260809-nf4-v2';
 export {
     createDatasetEditorDragHandle,
     createDatasetEditorItem,
-} from '../../dataset-editor/item-drag.js?v=module-bootstrap-20260714-stage-dataset5';
+} from '../../dataset-editor/item-drag.js?v=module-bootstrap-20260809-nf4-v2';

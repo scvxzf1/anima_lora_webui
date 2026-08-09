@@ -7,20 +7,20 @@ import {
     formatLr,
     isLiveRunningState,
     parseProgressRateSeconds,
-} from '../../live-training/index.js?v=module-bootstrap-20260714-stage-dataset5';
-import { ensurePreviewFeature } from '../helpers/feature-ensurers.js?v=module-bootstrap-20260714-stage-dataset5';
-import { configureLiveStatusBridge } from '../helpers/live-status-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
-import { formatLossValue } from '../../history-detail/curve/data.js?v=module-bootstrap-20260714-stage-dataset5';
-import { formatSystemPercent, formatSystemTemperature } from '../../history-detail/system.js?v=module-bootstrap-20260714-stage-dataset5';
-import { formatCompactNumber, numberOrNull } from '../../history-detail/ui.js?v=module-bootstrap-20260714-stage-dataset5';
-import { getAppContext } from '../helpers/app-context-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
-import { isHistoryReviewMode } from '../helpers/history-detail-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
-import { appendLog, logLineTone } from '../helpers/live-log-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
-import { copyText } from '../helpers/preview-view-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
-import { renderHistoryPaths, runtimePathItems } from '../helpers/history-timeline-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
-import { renderLiveChartPanel, resetLiveMetricPlaceholders, setEtaMetricText, setMetricText, setText, setTrainingDashboardHeadState, syncLossChartEmptyState, updateDashboardProgressIdleState, updateTrainingToolbarState } from './03-parse-network-arg-entry.js?v=module-bootstrap-20260714-stage-dataset5';
-import { refreshQueueRunningProgressViews } from '../helpers/queue-view-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
-import { getTrainingState } from '../helpers/training-state-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+} from '../../live-training/index.js?v=module-bootstrap-20260809-nf4-v2';
+import { ensurePreviewFeature } from '../helpers/feature-ensurers.js?v=module-bootstrap-20260809-nf4-v2';
+import { configureLiveStatusBridge } from '../helpers/live-status-bridge.js?v=module-bootstrap-20260809-nf4-v2';
+import { formatLossValue } from '../../history-detail/curve/data.js?v=module-bootstrap-20260809-nf4-v2';
+import { formatSystemPercent, formatSystemTemperature } from '../../history-detail/system.js?v=module-bootstrap-20260809-nf4-v2';
+import { formatCompactNumber, numberOrNull } from '../../history-detail/ui.js?v=module-bootstrap-20260809-nf4-v2';
+import { getAppContext } from '../helpers/app-context-bridge.js?v=module-bootstrap-20260809-nf4-v2';
+import { isHistoryReviewMode } from '../helpers/history-detail-bridge.js?v=module-bootstrap-20260809-nf4-v2';
+import { appendLog, logLineTone } from '../helpers/live-log-bridge.js?v=module-bootstrap-20260809-nf4-v2';
+import { copyText } from '../helpers/preview-view-bridge.js?v=module-bootstrap-20260809-nf4-v2';
+import { renderHistoryPaths, runtimePathItems } from '../helpers/history-timeline-bridge.js?v=module-bootstrap-20260809-nf4-v2';
+import { renderLiveChartPanel, resetLiveMetricPlaceholders, setEtaMetricText, setMetricText, setText, setTrainingDashboardHeadState, syncLossChartEmptyState, updateDashboardProgressIdleState, updateTrainingToolbarState } from './03-parse-network-arg-entry.js?v=module-bootstrap-20260809-nf4-v2';
+import { refreshQueueRunningProgressViews } from '../helpers/queue-view-bridge.js?v=module-bootstrap-20260809-nf4-v2';
+import { getTrainingState } from '../helpers/training-state-bridge.js?v=module-bootstrap-20260809-nf4-v2';
 
 const ctx = getAppContext();
 const trainingState = getTrainingState();

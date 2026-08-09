@@ -2,7 +2,7 @@
  * Config form draft/render helpers.
  * Moved out of anima-app mechanical chunks.
  */
-import { applyLoraAdapterDraft, applyOptimizerCompatibilityPatch } from './form-fields.js?v=module-bootstrap-20260714-stage-dataset5';
+import { applyLoraAdapterDraft, applyOptimizerCompatibilityPatch } from './form-fields.js?v=module-bootstrap-20260809-nf4-v2';
 import {
     CHIMERA_UI_DEFAULT_FIELDS,
     CONFIG_FORM_INTERNAL_KEYS,
@@ -20,7 +20,7 @@ import {
     SOFT_TOKENS_UI_DEFAULT_FIELDS,
     SPD_UI_DEFAULT_FIELDS,
     VERA_SCOPED_FIELD_KEYS,
-} from '../../config/catalog.js?v=module-bootstrap-20260714-stage-dataset5';
+} from '../../config/catalog.js?v=module-bootstrap-20260809-nf4-v2';
 import {
     isTruthy,
     loraAdapterFlagsMatchConfig,
@@ -28,8 +28,8 @@ import {
     normalizeLoraAdapterKind,
     normalizePrecisionPreference,
     precisionPreferenceFromConfig,
-} from '../anima-app/helpers/config-values.js?v=module-bootstrap-20260714-stage-dataset5';
-import { readLiveLoraAdapterKind } from './form-fields-adapters.js?v=module-bootstrap-20260714-stage-dataset5';
+} from '../anima-app/helpers/config-values.js?v=module-bootstrap-20260809-nf4-v2';
+import { readLiveLoraAdapterKind } from './form-fields-adapters.js?v=module-bootstrap-20260809-nf4-v2';
 import {
     configureConfigFormBridge,
     networkArgFieldValueFromConfig,
@@ -39,13 +39,13 @@ import {
     updateLoKrFieldState,
     updateLossWeightingFieldState,
     updateVeRAFieldState,
-} from '../anima-app/helpers/config-form-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
-import { coerceNetworkArgValue, parseNetworkArgEntry } from '../anima-app/helpers/network-args.js?v=module-bootstrap-20260714-stage-dataset5';
-import { parseArrayValue, valuesEqual } from '../anima-app/helpers/form-values.js?v=module-bootstrap-20260714-stage-dataset5';
-import { activeMethodKey } from './method-key.js?v=module-bootstrap-20260714-stage-dataset5';
-import { appendConfigGroupsByCategory, createConfigGroupEntry } from './group-entry.js?v=model-configs-20260809-1';
-import { getConfigState } from '../anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
-import { currentSamplePromptText } from '../anima-app/helpers/sample-prompts-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+} from '../anima-app/helpers/config-form-bridge.js?v=module-bootstrap-20260809-nf4-v2';
+import { coerceNetworkArgValue, parseNetworkArgEntry } from '../anima-app/helpers/network-args.js?v=module-bootstrap-20260809-nf4-v2';
+import { parseArrayValue, valuesEqual } from '../anima-app/helpers/form-values.js?v=module-bootstrap-20260809-nf4-v2';
+import { activeMethodKey } from './method-key.js?v=module-bootstrap-20260809-nf4-v2';
+import { appendConfigGroupsByCategory, createConfigGroupEntry } from './group-entry.js?v=module-bootstrap-20260809-nf4-v2';
+import { getConfigState } from '../anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260809-nf4-v2';
+import { currentSamplePromptText } from '../anima-app/helpers/sample-prompts-bridge.js?v=module-bootstrap-20260809-nf4-v2';
 
 const configState = getConfigState();
 const configFormState = configState.configFormState;

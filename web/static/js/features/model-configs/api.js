@@ -1,5 +1,5 @@
-import { api } from '../anima-app/helpers/runtime-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
-import { cleanModelConfigItem, modelConfigRequest } from './model-config-data.js?v=model-configs-20260809-1';
+import { api } from '../anima-app/helpers/runtime-bridge.js?v=module-bootstrap-20260809-nf4-v2';
+import { cleanModelConfigItem, modelConfigRequest } from './model-config-data.js?v=module-bootstrap-20260809-nf4-v2';
 
 function normalizeLibrary(payload = {}) {
     return {

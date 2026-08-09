@@ -11,18 +11,18 @@ import {
     NO_DATASET_REGULARIZATION_DEFAULT_WEIGHT,
     NO_DATASET_REGULARIZATION_DOP_CLASS_REQUIRED,
     NO_DATASET_REGULARIZATION_MODE_SPECS,
-} from '../anima-app/helpers/app-constants.js?v=module-bootstrap-20260714-stage-dataset5';
-import { originalConfigFieldValue, readFieldInputValue } from '../anima-app/helpers/config-form-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
-import { setFieldInputValue } from './field-input.js?v=module-bootstrap-20260714-stage-dataset5';
+} from '../anima-app/helpers/app-constants.js?v=module-bootstrap-20260809-nf4-v2';
+import { originalConfigFieldValue, readFieldInputValue } from '../anima-app/helpers/config-form-bridge.js?v=module-bootstrap-20260809-nf4-v2';
+import { setFieldInputValue } from './field-input.js?v=module-bootstrap-20260809-nf4-v2';
 import {
     configureNoDatasetRegularizationModePanelUpdater,
     handleFormFieldChange,
-} from './form-fields.js?v=module-bootstrap-20260714-stage-dataset5';
-import { appendFieldRows } from './field-rows.js?v=module-bootstrap-20260714-stage-dataset5';
+} from './form-fields.js?v=module-bootstrap-20260809-nf4-v2';
+import { appendFieldRows } from './field-rows.js?v=module-bootstrap-20260809-nf4-v2';
 import {
     setTomlStatus,
-} from '../anima-app/helpers/toml-action-state-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
-import { getConfigState } from '../anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+} from '../anima-app/helpers/toml-action-state-bridge.js?v=module-bootstrap-20260809-nf4-v2';
+import { getConfigState } from '../anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260809-nf4-v2';
 
 const configFormState = getConfigState().configFormState;
 

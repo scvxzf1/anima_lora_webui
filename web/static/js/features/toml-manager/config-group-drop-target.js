@@ -1,7 +1,7 @@
 /**
  * Config/TOML group drop-target wiring.
  */
-import { getDatasetState } from '../anima-app/helpers/dataset-state-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+import { getDatasetState } from '../anima-app/helpers/dataset-state-bridge.js?v=module-bootstrap-20260809-nf4-v2';
 import {
     clearFileGroupDropTarget,
     configGroupDropIndex,
@@ -9,7 +9,7 @@ import {
     finishFileGroupDrag,
     markFileGroupDropTarget,
     registerFileGroupDropTarget,
-} from './file-group-drag.js?v=module-bootstrap-20260714-stage-dataset5';
+} from './file-group-drag.js?v=module-bootstrap-20260809-nf4-v2';
 
 const datasetState = getDatasetState();
 

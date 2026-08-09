@@ -1,4 +1,4 @@
-import { historyDetailEmptyText } from './ui.js?v=module-bootstrap-20260714-stage-dataset5';
+import { historyDetailEmptyText } from './ui.js?v=module-bootstrap-20260809-nf4-v2';
 
 export function createHistoryDetailWorkspace({ deps }) {
     function renderHistoryDetailPreview(payload) {

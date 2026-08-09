@@ -5,27 +5,27 @@
 import {
     CAPTION_SOURCE_MODE_OPTIONS,
     help,
-} from '../../config/catalog.js?v=module-bootstrap-20260714-stage-dataset5';
+} from '../../config/catalog.js?v=module-bootstrap-20260809-nf4-v2';
 import {
     captionSourceModeLabel,
     normalizeCaptionSourceMode,
-} from '../anima-app/helpers/caption-source.js?v=module-bootstrap-20260714-stage-dataset5';
-import { datasetConfigValue } from '../anima-app/helpers/dataset-config-fields.js?v=module-bootstrap-20260714-stage-dataset5';
+} from '../anima-app/helpers/caption-source.js?v=module-bootstrap-20260809-nf4-v2';
+import { datasetConfigValue } from '../anima-app/helpers/dataset-config-fields.js?v=module-bootstrap-20260809-nf4-v2';
 import {
     normalizeDatasetDefaults,
     normalizeDatasetEditorRows,
-} from '../anima-app/helpers/dataset-values.js?v=module-bootstrap-20260714-stage-dataset5';
+} from '../anima-app/helpers/dataset-values.js?v=module-bootstrap-20260809-nf4-v2';
 import {
     datasetEditorStateForActivePanel,
     isDatasetTabActive,
-} from '../anima-app/helpers/dataset-render-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
-import { getDatasetState } from '../anima-app/helpers/dataset-state-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
-import { updateStepEstimatePanel } from '../config-form/step-estimate.js?v=module-bootstrap-20260714-stage-dataset5';
-import { setFieldInputValue } from '../config-form/field-input.js?v=module-bootstrap-20260714-stage-dataset5';
+} from '../anima-app/helpers/dataset-render-bridge.js?v=module-bootstrap-20260809-nf4-v2';
+import { getDatasetState } from '../anima-app/helpers/dataset-state-bridge.js?v=module-bootstrap-20260809-nf4-v2';
+import { updateStepEstimatePanel } from '../config-form/step-estimate.js?v=module-bootstrap-20260809-nf4-v2';
+import { setFieldInputValue } from '../config-form/field-input.js?v=module-bootstrap-20260809-nf4-v2';
 import {
     markDatasetEditorDirty,
     updateDatasetEditorRowsSettingValue,
-} from './mutations.js?v=module-bootstrap-20260714-stage-dataset5';
+} from './mutations.js?v=module-bootstrap-20260809-nf4-v2';
 
 const datasetState = getDatasetState();
 

@@ -1,5 +1,5 @@
-import { fetchModelConfigLibrary } from './api.js?v=model-configs-20260809-1';
-import { MODEL_CONFIG_PATH_FIELDS, modelFamilyLabel } from './model-config-data.js?v=model-configs-20260809-1';
+import { fetchModelConfigLibrary } from './api.js?v=module-bootstrap-20260809-nf4-v2';
+import { MODEL_CONFIG_PATH_FIELDS, modelFamilyLabel } from './model-config-data.js?v=module-bootstrap-20260809-nf4-v2';
 
 function pickerDetail(item) {
     const detail = document.createElement('section');

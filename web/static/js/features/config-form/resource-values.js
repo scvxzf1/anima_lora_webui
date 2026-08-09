@@ -2,12 +2,12 @@
  * Resource quick-preset helpers + global model path fill.
  * Extracted from anima-app chunk 06.
  */
-import { SELECTIVE_CHECKPOINT_STRENGTH } from '../anima-app/helpers/app-constants.js?v=module-bootstrap-20260714-stage-dataset5';
-import { originalConfigFieldValue, readFieldInputValue } from '../anima-app/helpers/config-form-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
-import { getConfigState } from '../anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
-import { handleFormFieldChange } from './form-fields.js?v=module-bootstrap-20260714-stage-dataset5';
-import { setTomlStatus } from '../anima-app/helpers/toml-action-state-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
-import { openModelConfigPickerDialog } from '../model-configs/index.js?v=model-configs-20260809-1';
+import { SELECTIVE_CHECKPOINT_STRENGTH } from '../anima-app/helpers/app-constants.js?v=module-bootstrap-20260809-nf4-v2';
+import { originalConfigFieldValue, readFieldInputValue } from '../anima-app/helpers/config-form-bridge.js?v=module-bootstrap-20260809-nf4-v2';
+import { getConfigState } from '../anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260809-nf4-v2';
+import { handleFormFieldChange } from './form-fields.js?v=module-bootstrap-20260809-nf4-v2';
+import { setTomlStatus } from '../anima-app/helpers/toml-action-state-bridge.js?v=module-bootstrap-20260809-nf4-v2';
+import { openModelConfigPickerDialog } from '../model-configs/index.js?v=module-bootstrap-20260809-nf4-v2';
 
 const configState = getConfigState();
 

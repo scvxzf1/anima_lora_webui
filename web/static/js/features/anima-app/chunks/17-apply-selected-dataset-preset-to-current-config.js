@@ -6,28 +6,28 @@ import {
     datasetRowsForPayload,
     normalizeDatasetDefaults,
     normalizeDatasetEditorRows,
-} from '../helpers/dataset-values.js?v=module-bootstrap-20260714-stage-dataset5';
+} from '../helpers/dataset-values.js?v=module-bootstrap-20260809-nf4-v2';
 import {
     datasetPresetByFile,
     datasetPresetSummaryByFile,
-} from '../helpers/dataset-presets.js?v=module-bootstrap-20260714-stage-dataset5';
-import { getConfigState } from '../helpers/config-state-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
-import { getDatasetState } from '../helpers/dataset-state-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
-import { configureDatasetPresetActionsBridge } from '../helpers/dataset-preset-actions-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+} from '../helpers/dataset-presets.js?v=module-bootstrap-20260809-nf4-v2';
+import { getConfigState } from '../helpers/config-state-bridge.js?v=module-bootstrap-20260809-nf4-v2';
+import { getDatasetState } from '../helpers/dataset-state-bridge.js?v=module-bootstrap-20260809-nf4-v2';
+import { configureDatasetPresetActionsBridge } from '../helpers/dataset-preset-actions-bridge.js?v=module-bootstrap-20260809-nf4-v2';
 import {
     renderDatasetEditor,
     renderDatasetPresetHeader,
     renderDatasetPresetList,
-} from '../helpers/dataset-render-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
-import { showHistoryTaskInputDialog } from '../helpers/history-task-actions-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
-import { confirmUnsavedDiscard, currentTomlEditorContentForFile, showAppConfirmDialog } from '../helpers/toml-selection-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
-import { api, datasetPresetApi, val } from '../helpers/runtime-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
-import { getTomlState } from '../helpers/toml-state-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
-import { loadDatasetPreset, loadDatasetPresets, loadStepEstimate } from './03-parse-network-arg-entry.js?v=module-bootstrap-20260714-stage-dataset5';
-import { renderConfigDatasetPicker } from './06-stronger-selective-checkpoint-value.js?v=module-bootstrap-20260714-stage-dataset5';
+} from '../helpers/dataset-render-bridge.js?v=module-bootstrap-20260809-nf4-v2';
+import { showHistoryTaskInputDialog } from '../helpers/history-task-actions-bridge.js?v=module-bootstrap-20260809-nf4-v2';
+import { confirmUnsavedDiscard, currentTomlEditorContentForFile, showAppConfirmDialog } from '../helpers/toml-selection-bridge.js?v=module-bootstrap-20260809-nf4-v2';
+import { api, datasetPresetApi, val } from '../helpers/runtime-bridge.js?v=module-bootstrap-20260809-nf4-v2';
+import { getTomlState } from '../helpers/toml-state-bridge.js?v=module-bootstrap-20260809-nf4-v2';
+import { loadDatasetPreset, loadDatasetPresets, loadStepEstimate } from './03-parse-network-arg-entry.js?v=module-bootstrap-20260809-nf4-v2';
+import { renderConfigDatasetPicker } from './06-stronger-selective-checkpoint-value.js?v=module-bootstrap-20260809-nf4-v2';
 import {
     setTomlStatus,
-} from '../helpers/toml-action-state-bridge.js?v=module-bootstrap-20260714-stage-dataset5';
+} from '../helpers/toml-action-state-bridge.js?v=module-bootstrap-20260809-nf4-v2';
 
 const configState = getConfigState();
 const datasetState = getDatasetState();

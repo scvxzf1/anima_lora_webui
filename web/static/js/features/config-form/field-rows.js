@@ -4,8 +4,8 @@
  */
 import {
     CONFIG_COMPACT_FIELD_GROUPS,
-} from '../../config/catalog.js?v=module-bootstrap-20260714-stage-dataset5';
-import { createFieldRow } from './form-fields.js?v=module-bootstrap-20260714-stage-dataset5';
+} from '../../config/catalog.js?v=module-bootstrap-20260809-nf4-v2';
+import { createFieldRow } from './form-fields.js?v=module-bootstrap-20260809-nf4-v2';
 
 export function appendFieldRows(content, fields, groupClass) {
     const compactGroups = CONFIG_COMPACT_FIELD_GROUPS[groupClass] || [];

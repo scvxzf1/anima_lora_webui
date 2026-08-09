@@ -5,8 +5,8 @@ import {
     IMAGE_TEST_SAMPLER_OPTIONS,
     IMAGE_TEST_TEXT_ENCODER_DTYPE_OPTIONS,
     imageTestAttnModeOptionsForFamily,
-} from './state.js?v=module-bootstrap-20260809-config-switch1';
-import { createImageTestGallery } from './gallery.js?v=module-bootstrap-20260714-stage-dataset5';
+} from './state.js?v=module-bootstrap-20260809-nf4-v2';
+import { createImageTestGallery } from './gallery.js?v=module-bootstrap-20260809-nf4-v2';
 
 export function createImageTestRenderer({
     ctx,

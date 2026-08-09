@@ -1,5 +1,5 @@
-import { DEFAULT_SELECTION_NOTE } from './constants.js?v=module-bootstrap-20260714-stage-dataset5';
-import { imageKey } from './image-meta.js?v=module-bootstrap-20260714-stage-dataset5';
+import { DEFAULT_SELECTION_NOTE } from './constants.js?v=module-bootstrap-20260809-nf4-v2';
+import { imageKey } from './image-meta.js?v=module-bootstrap-20260809-nf4-v2';
 
 /**
  * 选择状态 / 工具栏 / 批量删除。
