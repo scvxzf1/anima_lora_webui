@@ -1,4 +1,7 @@
 export const FIELD_LABEL_ZH = {
+    network_weights: '继续训练权重路径',
+    dim_from_weights: '从权重读取秩',
+    layer_start: '起始层',
     add_reft: '启用 ReFT',
     alpha_rank_scale: '秩日程幂指数',
     apply_ffn_lora: 'EasyControl FFN LoRA',

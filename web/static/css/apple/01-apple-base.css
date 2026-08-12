@@ -1,0 +1,226 @@
+/* Apple-style base layout — when apple-ui is active, these rules take over.
+ * Old UI is hidden via body:not([data-apple-ui]) scoping.
+ */
+
+html {
+    font-size: 106.25%;
+}
+
+body[data-apple-ui] {
+    margin: 0;
+    padding: 0;
+    font-family: var(--apple-font-stack);
+    font-size: var(--apple-fs-body);
+    line-height: var(--apple-lh-body);
+    letter-spacing: var(--apple-ls-normal);
+    background-color: var(--apple-bg-primary);
+    color: var(--apple-text-primary);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    overflow-x: hidden;
+}
+
+body[data-apple-ui] #apple-root {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+/* The classic UI stylesheet uses unscoped semantic-element rules. Reset them
+ * inside the Apple root so page-level headers and indexes keep their own flow. */
+body[data-apple-ui] #apple-root header {
+    display: block;
+    min-height: 0;
+    padding: 0;
+    position: static;
+    top: auto;
+    z-index: auto;
+    background: transparent;
+    border: 0;
+    box-shadow: none;
+}
+
+body[data-apple-ui] #apple-root nav {
+    display: block;
+    flex-wrap: nowrap;
+    align-items: initial;
+    gap: 0;
+}
+
+/* Hide old UI completely when apple-ui is active */
+body[data-apple-ui] > header,
+body[data-apple-ui] > main,
+body[data-apple-ui] > footer,
+body[data-apple-ui] #history-detail-dialog,
+body[data-apple-ui] .global-overlay,
+body[data-apple-ui] #toast-container {
+    display: none !important;
+}
+
+/* Content area */
+.apple-main {
+    flex: 1;
+    padding-top: var(--apple-nav-height);
+    min-height: 100vh;
+}
+
+.apple-page {
+    max-width: var(--apple-content-max);
+    margin: 0 auto;
+    padding: var(--apple-sp-9) var(--apple-content-pad) var(--apple-sp-12);
+    animation: apple-fade-in-up var(--apple-dur-slow) var(--apple-ease-out) both;
+}
+
+.apple-page-wide {
+    max-width: var(--apple-content-wide);
+}
+
+@media (max-width: 833px) {
+    .apple-page {
+        padding: var(--apple-sp-6) var(--apple-content-pad-mobile) var(--apple-sp-9);
+    }
+}
+
+/* Page hero — Apple promo-headline (40px / 600) */
+.apple-page-hero {
+    text-align: center;
+    padding: var(--apple-sp-7) 0 var(--apple-sp-6);
+}
+
+.apple-page-hero h1 {
+    font-family: var(--apple-font-display);
+    font-size: var(--apple-fs-title);
+    font-weight: var(--apple-fw-bold);
+    line-height: var(--apple-lh-tight);
+    letter-spacing: var(--apple-ls-title);
+    margin: 0 0 var(--apple-sp-3);
+    color: var(--apple-text-primary);
+}
+
+@media (max-width: 1068px) {
+    .apple-page-hero h1 {
+        font-size: var(--apple-fs-title-medium);
+    }
+}
+
+@media (max-width: 734px) {
+    .apple-page-hero h1 {
+        font-size: var(--apple-fs-title-small);
+    }
+}
+
+.apple-page-hero p {
+    font-family: var(--apple-font-display);
+    font-size: var(--apple-fs-subhead);
+    font-weight: var(--apple-fw-regular);
+    color: var(--apple-text-secondary);
+    margin: 0 auto;
+    max-width: 600px;
+    line-height: var(--apple-lh-subhead);
+    letter-spacing: var(--apple-ls-subhead);
+}
+
+@media (max-width: 734px) {
+    .apple-page-hero p {
+        font-size: var(--apple-fs-subhead-small);
+    }
+}
+
+/* Section within a page — Apple tile-subhead (28px / 400) */
+.apple-section {
+    padding: var(--apple-sp-9) 0;
+}
+
+.apple-section-title {
+    font-family: var(--apple-font-display);
+    font-size: var(--apple-fs-headline);
+    font-weight: var(--apple-fw-regular);
+    margin: 0 0 var(--apple-sp-2);
+    color: var(--apple-text-primary);
+    line-height: var(--apple-lh-headline);
+    letter-spacing: var(--apple-ls-headline);
+}
+
+@media (max-width: 1068px) {
+    .apple-section-title {
+        font-size: var(--apple-fs-headline-medium);
+        line-height: var(--apple-lh-headline-medium);
+    }
+}
+
+@media (max-width: 734px) {
+    .apple-section-title {
+        font-size: var(--apple-fs-headline-small);
+        line-height: var(--apple-lh-headline-small);
+    }
+}
+
+.apple-section-desc {
+    font-size: var(--apple-fs-callout-medium);
+    color: var(--apple-text-tertiary);
+    margin: 0 0 var(--apple-sp-6);
+    line-height: 1.47;
+    max-width: 600px;
+    letter-spacing: var(--apple-ls-normal);
+}
+
+/* Eyebrow — small label above headlines */
+.apple-eyebrow {
+    font-size: var(--apple-fs-tiny);
+    font-weight: var(--apple-fw-semibold);
+    letter-spacing: var(--apple-ls-eyebrow);
+    color: var(--apple-text-tertiary);
+    margin-bottom: var(--apple-sp-1);
+    display: block;
+}
+
+/* Typography helpers */
+.apple-text-secondary { color: var(--apple-text-secondary); }
+.apple-text-tertiary { color: var(--apple-text-tertiary); }
+.apple-text-mono { font-family: var(--apple-font-mono); }
+
+/* Scrollbar — subtle */
+body[data-apple-ui] ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+body[data-apple-ui] ::-webkit-scrollbar-track {
+    background: transparent;
+}
+body[data-apple-ui] ::-webkit-scrollbar-thumb {
+    background: var(--apple-text-quaternary);
+    border-radius: var(--apple-radius-pill);
+}
+body[data-apple-ui] ::-webkit-scrollbar-thumb:hover {
+    background: var(--apple-text-tertiary);
+}
+
+/* Focus ring — Apple blue */
+.apple-focus-ring:focus-visible {
+    outline: 2px solid var(--apple-border-focus);
+    outline-offset: 2px;
+    border-radius: var(--apple-radius-sm);
+}
+
+/* Link */
+.apple-link {
+    color: var(--apple-accent);
+    text-decoration: none;
+    transition: color var(--apple-dur-fast) var(--apple-ease);
+}
+.apple-link:hover { color: var(--apple-accent-hover); }
+
+/* Page transitions */
+.apple-page-wrapper {
+    animation: apple-fade-in-up var(--apple-dur-slow) var(--apple-ease-out) both;
+}
+
+.apple-page-enter {
+    opacity: 0;
+    animation: apple-fade-in-up var(--apple-dur-slow) var(--apple-ease-out) both;
+}
+
+.apple-page-leave {
+    opacity: 0;
+    transition: opacity var(--apple-dur-med) var(--apple-ease);
+}

@@ -20,6 +20,40 @@
     <link rel="stylesheet" href="/static/style.css?v=frontend-chain-20260809-model-config1">
 </head>
 <body>
+    <script>
+        (() => {
+            const requestedMode = new URLSearchParams(window.location.search).get('ui');
+            const mode = (() => {
+                try { return localStorage.getItem('anima_ui_mode'); } catch { return null; }
+            })();
+            if (requestedMode !== 'classic' && (requestedMode === 'apple' || mode !== 'classic')) {
+                document.body.dataset.appleUi = '';
+            }
+        })();
+    </script>
+    <link rel="stylesheet" href="/static/css/apple-style.css?v=apple-ui-20260812v33">
+    <div id="apple-root" hidden>
+        <div id="apple-nav"></div>
+        <main class="apple-main" id="apple-main"></main>
+    </div>
+    <script type="module">
+        (() => {
+            const isApple = document.body.hasAttribute('data-apple-ui');
+            if (isApple) {
+                document.getElementById('apple-root').hidden = false;
+                import('/static/js/apple-ui/index.js?v=apple-ui-20260812v33')
+                    .then((m) => m.initAppleUI())
+                    .catch((err) => {
+                        console.error('[apple-ui] failed to start', err);
+                        document.getElementById('apple-root').hidden = true;
+                        delete document.body.dataset.appleUi;
+                        import('/static/app.js?v=module-bootstrap-20260809-nf4-v2');
+                    });
+            } else {
+                document.getElementById('apple-root').hidden = true;
+            }
+        })();
+    </script>
     <header>
         <h1>Anima LoRA</h1>
         <nav>
@@ -37,6 +71,7 @@
             <span id="status-text">空闲</span>
         </div>
         <button id="btn-open-tutorial" class="btn btn-small tutorial-open-btn" type="button">基础教程</button>
+        <button id="classic-apple-ui-toggle" class="btn btn-small" type="button">新版界面</button>
         <button id="language-toggle" class="language-toggle" type="button" aria-pressed="false" data-language="zh-CN" title="切换到 English" hidden>
             <span class="language-toggle-glyph" aria-hidden="true">文A</span>
             <span id="language-toggle-text">English</span>
@@ -2022,6 +2057,14 @@
         </form>
     </dialog>
 
+    <script type="module">
+        if (!document.body.hasAttribute('data-apple-ui')) {
+            import('/static/js/shared/ui-mode.js?v=apple-ui-20260812v33').then(({ initClassicUiSwitch, activateRequestedClassicTab }) => {
+                initClassicUiSwitch();
+                activateRequestedClassicTab();
+            });
+        }
+    </script>
     <script type="module" src="/static/app.js?v=module-bootstrap-20260809-nf4-v2"></script>
 </body>
 </html>

@@ -1,0 +1,10 @@
+/* Apple-style UI CSS entrypoint.
+ * Import order: tokens -> base -> nav -> dashboard -> config -> animations -> pages.
+ */
+@import url("./apple/00-apple-tokens.css?v=apple-ui-20260812v33");
+@import url("./apple/01-apple-base.css?v=apple-ui-20260812v33");
+@import url("./apple/02-apple-nav.css?v=apple-ui-20260812v33");
+@import url("./apple/03-apple-dashboard.css?v=apple-ui-20260812v33");
+@import url("./apple/04-apple-config.css?v=apple-ui-20260812v33");
+@import url("./apple/05-apple-animations.css?v=apple-ui-20260812v33");
+@import url("./apple/06-apple-pages.css?v=apple-ui-20260812v33");
