@@ -1,0 +1,88 @@
+/* Dragon trainer scroll animations and page transitions.
+ * Uses IntersectionObserver (see animations.js) to add .dragon-in-view
+ * when elements scroll into the viewport. Full fade + slide-up.
+ */
+
+/* Scroll-triggered reveal — larger initial offset, smoother easing */
+.dragon-reveal {
+    opacity: 0;
+    transform: translateY(52px);
+    transition: opacity 0.8s var(--dragon-ease-out),
+                transform 0.8s var(--dragon-ease-out);
+    will-change: opacity, transform;
+}
+
+.dragon-reveal.dragon-in-view {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+/* Staggered children */
+.dragon-reveal[data-stagger="1"] { transition-delay: 0.12s; }
+.dragon-reveal[data-stagger="2"] { transition-delay: 0.20s; }
+.dragon-reveal[data-stagger="3"] { transition-delay: 0.28s; }
+.dragon-reveal[data-stagger="4"] { transition-delay: 0.36s; }
+.dragon-reveal[data-stagger="5"] { transition-delay: 0.44s; }
+.dragon-reveal[data-stagger="6"] { transition-delay: 0.52s; }
+
+/* Page transition — fade in/up on mount */
+@keyframes dragon-fade-in-up {
+    from { opacity: 0; transform: translateY(32px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* Page transition — fade out on unmount */
+@keyframes dragon-fade-out {
+    from { opacity: 1; transform: translateY(0); }
+    to { opacity: 0; transform: translateY(-12px); }
+}
+
+.dragon-page-enter {
+    animation: dragon-fade-in-up 0.7s var(--dragon-ease-out) both;
+}
+
+.dragon-page-leave {
+    animation: dragon-fade-out 0.25s var(--dragon-ease) both;
+}
+
+/* Pulse for running status */
+@keyframes dragon-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+/* Parallax hero */
+.dragon-parallax {
+    will-change: transform;
+    transition: transform 0.1s linear;
+}
+
+/* Spinner */
+@keyframes dragon-spin {
+    to { transform: rotate(360deg); }
+}
+
+.dragon-spinner {
+    width: 20px;
+    height: 20px;
+    border: 2px solid var(--dragon-border);
+    border-top-color: var(--dragon-accent);
+    border-radius: 50%;
+    animation: dragon-spin 0.7s linear infinite;
+}
+
+/* Reduced motion — respect user preference */
+@media (prefers-reduced-motion: reduce) {
+    .dragon-reveal {
+        opacity: 1;
+        transform: none;
+        transition: none;
+    }
+    .dragon-page-enter,
+    .dragon-page-leave {
+        animation: none;
+    }
+    .dragon-parallax {
+        transform: none !important;
+    }
+}

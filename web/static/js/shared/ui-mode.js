@@ -18,12 +18,12 @@ export function switchToClassicUI(targetTab = '') {
     switchMode('classic', targetTab);
 }
 
-export function switchToAppleUI() {
-    switchMode('apple');
+export function switchToDragonUI() {
+    switchMode('dragon');
 }
 
 export function initClassicUiSwitch() {
-    document.getElementById('classic-apple-ui-toggle')?.addEventListener('click', switchToAppleUI);
+    document.getElementById('classic-dragon-ui-toggle')?.addEventListener('click', switchToDragonUI);
 }
 
 export function activateRequestedClassicTab() {

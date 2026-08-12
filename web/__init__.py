@@ -1,1 +1,1 @@
-"""Anima LoRA — lightweight Web UI."""
+"""Dragon trainer — lightweight Web UI."""

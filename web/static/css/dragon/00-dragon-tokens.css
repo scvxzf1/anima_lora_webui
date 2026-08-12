@@ -1,0 +1,255 @@
+ * Font sizes, weights, line-heights and letter-spacing follow
+ * the shared type scale.
+ */
+
+:root {
+    /* Typography — system font stacks */
+   --dragon-font-stack: "SF Pro Text", "SF Pro Icons", "Helvetica Neue",
+       "Helvetica", "Arial", "PingFang SC", sans-serif;
+   --dragon-font-display: "SF Pro Display", "SF Pro Icons", "Helvetica Neue",
+       "Helvetica", "Arial", "PingFang SC", sans-serif;
+/* zh-CN font override — prefer SF Pro SC for Simplified Chinese */
+:lang(zh-CN) {
+    --dragon-font-stack: "SF Pro SC", "SF Pro Text", "SF Pro Icons",
+        "PingFang SC", "Helvetica Neue", "Helvetica", "Arial", sans-serif;
+    --dragon-font-display: "SF Pro SC", "SF Pro Display", "SF Pro Icons",
+        "PingFang SC", "Helvetica Neue", "Helvetica", "Arial", sans-serif;
+}
+    --dragon-font-mono: "SF Mono", "JetBrains Mono", "Fira Code", "Cascadia Code",
+        "Courier New", monospace;
+
+    /* Font sizes — typography scale
+     * tile-headline: 56px / promo-headline: 40px / tile-subhead: 28px
+     * promo-subhead: 21px / body: 17px / nav+caption: 12px */
+    --dragon-fs-hero: 56px;
+    --dragon-fs-title: 40px;
+    --dragon-fs-headline: 28px;
+    --dragon-fs-subhead: 21px;
+    --dragon-fs-callout: 17px;
+    --dragon-fs-body: 17px;
+    --dragon-fs-caption: 12px;
+    --dragon-fs-tiny: 11px;
+
+    /* Responsive font sizes — breakpoints: 1068px, 734px */
+    --dragon-fs-hero-medium: 48px;
+    --dragon-fs-hero-small: 32px;
+    --dragon-fs-title-medium: 32px;
+    --dragon-fs-title-small: 24px;
+    --dragon-fs-headline-medium: 24px;
+    --dragon-fs-headline-small: 19px;
+    --dragon-fs-subhead-medium: 19px;
+    --dragon-fs-subhead-small: 17px;
+    --dragon-fs-callout-medium: 14px;
+
+    /* Font weights — 600 for bold, 400 for regular */
+    --dragon-fw-bold: 600;
+    --dragon-fw-semibold: 600;
+    --dragon-fw-medium: 500;
+    --dragon-fw-regular: 400;
+    --dragon-fw-light: 300;
+
+    /* Line heights */
+    --dragon-lh-hero: 1.0714285714;
+    --dragon-lh-hero-medium: 1.0834933333;
+    --dragon-lh-hero-small: 1.125;
+    --dragon-lh-tight: 1.1;
+    --dragon-lh-headline: 1.1428571429;
+    --dragon-lh-headline-medium: 1.15;
+    --dragon-lh-headline-small: 1.2;
+    --dragon-lh-subhead: 1.19;
+    --dragon-lh-subhead-medium: 1.19;
+    --dragon-lh-subhead-small: 1.35;
+    --dragon-lh-body: 1.4705882353;
+    --dragon-lh-callout: 1.21;
+    --dragon-lh-nav: 1;
+
+    /* Letter spacing */
+    --dragon-ls-hero: 0em;
+    --dragon-ls-hero-medium: 0em;
+    --dragon-ls-hero-small: 0em;
+    --dragon-ls-title: 0em;
+    --dragon-ls-headline: 0em;
+    --dragon-ls-headline-medium: 0em;
+    --dragon-ls-subhead: 0em;
+    --dragon-ls-subhead-medium: 0em;
+    --dragon-ls-normal: 0em;
+    --dragon-ls-nav: 0em;
+    --dragon-ls-callout: 0em;
+    --dragon-ls-eyebrow: 0em;
+
+    /* Spacing scale */
+    --dragon-sp-1: 4px;
+    --dragon-sp-2: 8px;
+    --dragon-sp-3: 12px;
+    --dragon-sp-4: 16px;
+    --dragon-sp-5: 24px;
+    --dragon-sp-6: 32px;
+    --dragon-sp-7: 40px;
+    --dragon-sp-8: 48px;
+    --dragon-sp-9: 64px;
+    --dragon-sp-10: 80px;
+    --dragon-sp-11: 96px;
+    --dragon-sp-12: 128px;
+
+    /* Border radius */
+    --dragon-radius-sm: 8px;
+    --dragon-radius-md: 12px;
+    --dragon-radius-lg: 18px;
+    --dragon-radius-xl: 22px;
+    --dragon-radius-pill: 980px;
+
+    /* Layout — nav and header metrics */
+    --dragon-nav-height: 44px;
+    --dragon-nav-height-mobile: 48px;
+    --dragon-content-max: 980px;
+    --dragon-content-wide: 1024px;
+    --dragon-content-pad: 22px;
+    --dragon-content-pad-mobile: 16px;
+
+    /* Nav flyout */
+    --dragon-nav-flyout-padding-top: 32px;
+    --dragon-nav-flyout-padding-bottom: 80px;
+    --dragon-nav-flyout-padding-top-medium: 54px;
+    --dragon-nav-flyout-group-pad-end: 44px;
+    --dragon-nav-flyout-group-pad-end-elevated: 88px;
+    --dragon-nav-flyout-group-pad-bottom: 52px;
+    --dragon-nav-flyout-group-pad-bottom-last: 92px;
+    --dragon-nav-submenu-header-color: #6e6e73;
+    --dragon-nav-submenu-link-color: #333336;
+    --dragon-nav-curtain-bg: rgba(232, 232, 237, 0.4);
+    --dragon-nav-curtain-bg-dark: rgba(0, 0, 0, 0.4);
+
+    /* Motion — transition curves */
+    --dragon-ease: cubic-bezier(0.4, 0, 0.6, 1);
+    --dragon-ease-out: cubic-bezier(0.28, 0.11, 0.32, 1);
+    --dragon-ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+    --dragon-dur-fast: 0.2s;
+    --dragon-dur-med: 0.24s;
+    --dragon-dur-slow: 0.32s;
+    --dragon-dur-slower: 0.5s;
+
+    /* Z-index scale */
+    /* Layer order: the header and flyout stay
+       crisp while the page below receives the curtain blur. */
+    --dragon-z-scrim: 9990;
+    --dragon-z-dropdown: 9991;
+    --dragon-z-nav: 9992;
+    --dragon-z-modal: 9993;
+}
+
+/* Chinese letter-spacing override — 0em for zh */
+:lang(zh),
+[lang="zh-CN"] {
+    --dragon-ls-hero: 0em;
+    --dragon-ls-hero-medium: 0em;
+    --dragon-ls-hero-small: 0em;
+    --dragon-ls-title: 0em;
+    --dragon-ls-headline: 0em;
+    --dragon-ls-headline-medium: 0em;
+    --dragon-ls-subhead: 0em;
+    --dragon-ls-subhead-medium: 0em;
+    --dragon-ls-normal: 0em;
+    --dragon-ls-nav: 0em;
+    --dragon-ls-callout: 0em;
+}
+
+@media (max-width: 833px) {
+    :root {
+        --dragon-nav-height: var(--dragon-nav-height-mobile);
+    }
+}
+
+/* Light theme palette */
+:root,
+[data-theme="light"] {
+    --dragon-bg-primary: #ffffff;
+    --dragon-bg-secondary: #f5f5f7;
+    --dragon-bg-tertiary: #ffffff;
+    --dragon-bg-elevated: #ffffff;
+    --dragon-bg-translucent: rgba(250, 250, 252, 0.8);
+    --dragon-bg-translucent-strong: rgba(250, 250, 252, 0.92);
+
+    --dragon-text-primary: #1d1d1f;
+    --dragon-text-secondary: #424245;
+    --dragon-text-tertiary: #6e6e73;
+    --dragon-text-quaternary: #86868b;
+    --dragon-text-inverse: #ffffff;
+
+    --dragon-nav-link: rgba(0, 0, 0, 0.8);
+    --dragon-nav-link-hover: #000000;
+    --dragon-nav-link-active: #000000;
+
+    --dragon-border: #d2d2d7;
+    --dragon-border-light: rgba(0, 0, 0, 0.08);
+    --dragon-border-focus: #0071e3;
+
+    --dragon-accent: #0071e3;
+    --dragon-accent-hover: #0076df;
+    --dragon-accent-active: #006edb;
+    --dragon-accent-light: rgba(0, 113, 227, 0.08);
+
+    --dragon-success: #34c759;
+    --dragon-warning: #ff9f0a;
+    --dragon-error: #ff3b30;
+    --dragon-info: #5ac8fa;
+
+    --dragon-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.06);
+    --dragon-shadow-md: 0 4px 16px rgba(0, 0, 0, 0.08);
+    --dragon-shadow-lg: 0 8px 40px rgba(0, 0, 0, 0.12);
+    --dragon-shadow-nav: 0 1px 0 rgba(0, 0, 0, 0.08);
+
+    --dragon-scrim: rgba(0, 0, 0, 0.4);
+    --dragon-divider: rgba(0, 0, 0, 0.1);
+    --dragon-tile-bg: #f5f5f7;
+    --dragon-tile-bg-hover: #ebebed;
+    --dragon-input-bg: #f5f5f7;
+    --dragon-input-bg-focus: #ffffff;
+}
+
+/* Dark theme palette */
+[data-theme="dark"] {
+    --dragon-bg-primary: #000000;
+    --dragon-bg-secondary: #0a0a0c;
+    --dragon-bg-tertiary: #1c1c1e;
+    --dragon-bg-elevated: #1c1c1e;
+    --dragon-bg-translucent: rgba(22, 22, 23, 0.8);
+    --dragon-bg-translucent-strong: rgba(22, 22, 23, 0.88);
+
+    --dragon-text-primary: #f5f5f7;
+    --dragon-text-secondary: #d1d1d6;
+    --dragon-text-tertiary: #8e8e93;
+    --dragon-text-quaternary: #636366;
+    --dragon-text-inverse: #1d1d1f;
+
+    --dragon-nav-link: rgba(255, 255, 255, 0.8);
+    --dragon-nav-link-hover: #ffffff;
+    --dragon-nav-link-active: #ffffff;
+
+    --dragon-border: #38383a;
+    --dragon-border-light: rgba(255, 255, 255, 0.08);
+    --dragon-border-focus: #0a84ff;
+
+    --dragon-accent: #0a84ff;
+    --dragon-accent-hover: #1a8bff;
+    --dragon-accent-active: #0071e3;
+    --dragon-accent-light: rgba(10, 132, 255, 0.12);
+
+    --dragon-success: #30d158;
+    --dragon-warning: #ff9f0a;
+    --dragon-error: #ff453a;
+    --dragon-info: #64d2ff;
+
+    --dragon-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
+    --dragon-shadow-md: 0 4px 16px rgba(0, 0, 0, 0.4);
+   --dragon-shadow-lg: 0 8px 40px rgba(0, 0, 0, 0.5);
+   --dragon-shadow-nav: 0 1px 0 rgba(255, 255, 255, 0.08);
+
+   --dragon-scrim: rgba(0, 0, 0, 0.4);
+   --dragon-divider: rgba(255, 255, 255, 0.1);
+   --dragon-tile-bg: #1c1c1e;
+   --dragon-tile-bg-hover: #2c2c2e;
+   --dragon-input-bg: #1c1c1e;
+   --dragon-input-bg-focus: #2c2c2e;
+    --dragon-nav-submenu-link-color: #E8E8ED;
+    --dragon-nav-submenu-header-color: #86868b;
+}

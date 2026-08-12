@@ -1,0 +1,226 @@
+/* Dragon trainer base layout — when dragon-ui is active, these rules take over.
+ * Old UI is hidden via body:not([data-dragon-ui]) scoping.
+ */
+
+html {
+    font-size: 106.25%;
+}
+
+body[data-dragon-ui] {
+    margin: 0;
+    padding: 0;
+    font-family: var(--dragon-font-stack);
+    font-size: var(--dragon-fs-body);
+    line-height: var(--dragon-lh-body);
+    letter-spacing: var(--dragon-ls-normal);
+    background-color: var(--dragon-bg-primary);
+    color: var(--dragon-text-primary);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    overflow-x: hidden;
+}
+
+body[data-dragon-ui] #dragon-root {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+/* The classic UI stylesheet uses unscoped semantic-element rules. Reset them
+ * inside the UI root so page-level headers and indexes keep their own flow. */
+body[data-dragon-ui] #dragon-root header {
+    display: block;
+    min-height: 0;
+    padding: 0;
+    position: static;
+    top: auto;
+    z-index: auto;
+    background: transparent;
+    border: 0;
+    box-shadow: none;
+}
+
+body[data-dragon-ui] #dragon-root nav {
+    display: block;
+    flex-wrap: nowrap;
+    align-items: initial;
+    gap: 0;
+}
+
+/* Hide old UI completely when dragon-ui is active */
+body[data-dragon-ui] > header,
+body[data-dragon-ui] > main,
+body[data-dragon-ui] > footer,
+body[data-dragon-ui] #history-detail-dialog,
+body[data-dragon-ui] .global-overlay,
+body[data-dragon-ui] #toast-container {
+    display: none !important;
+}
+
+/* Content area */
+.dragon-main {
+    flex: 1;
+    padding-top: var(--dragon-nav-height);
+    min-height: 100vh;
+}
+
+.dragon-page {
+    max-width: var(--dragon-content-max);
+    margin: 0 auto;
+    padding: var(--dragon-sp-9) var(--dragon-content-pad) var(--dragon-sp-12);
+    animation: dragon-fade-in-up var(--dragon-dur-slow) var(--dragon-ease-out) both;
+}
+
+.dragon-page-wide {
+    max-width: var(--dragon-content-wide);
+}
+
+@media (max-width: 833px) {
+    .dragon-page {
+        padding: var(--dragon-sp-6) var(--dragon-content-pad-mobile) var(--dragon-sp-9);
+    }
+}
+
+/* Page hero — display headline (40px / 600) */
+.dragon-page-hero {
+    text-align: center;
+    padding: var(--dragon-sp-7) 0 var(--dragon-sp-6);
+}
+
+.dragon-page-hero h1 {
+    font-family: var(--dragon-font-display);
+    font-size: var(--dragon-fs-title);
+    font-weight: var(--dragon-fw-bold);
+    line-height: var(--dragon-lh-tight);
+    letter-spacing: var(--dragon-ls-title);
+    margin: 0 0 var(--dragon-sp-3);
+    color: var(--dragon-text-primary);
+}
+
+@media (max-width: 1068px) {
+    .dragon-page-hero h1 {
+        font-size: var(--dragon-fs-title-medium);
+    }
+}
+
+@media (max-width: 734px) {
+    .dragon-page-hero h1 {
+        font-size: var(--dragon-fs-title-small);
+    }
+}
+
+.dragon-page-hero p {
+    font-family: var(--dragon-font-display);
+    font-size: var(--dragon-fs-subhead);
+    font-weight: var(--dragon-fw-regular);
+    color: var(--dragon-text-secondary);
+    margin: 0 auto;
+    max-width: 600px;
+    line-height: var(--dragon-lh-subhead);
+    letter-spacing: var(--dragon-ls-subhead);
+}
+
+@media (max-width: 734px) {
+    .dragon-page-hero p {
+        font-size: var(--dragon-fs-subhead-small);
+    }
+}
+
+/* Section within a page — subhead (28px / 400) */
+.dragon-section {
+    padding: var(--dragon-sp-9) 0;
+}
+
+.dragon-section-title {
+    font-family: var(--dragon-font-display);
+    font-size: var(--dragon-fs-headline);
+    font-weight: var(--dragon-fw-regular);
+    margin: 0 0 var(--dragon-sp-2);
+    color: var(--dragon-text-primary);
+    line-height: var(--dragon-lh-headline);
+    letter-spacing: var(--dragon-ls-headline);
+}
+
+@media (max-width: 1068px) {
+    .dragon-section-title {
+        font-size: var(--dragon-fs-headline-medium);
+        line-height: var(--dragon-lh-headline-medium);
+    }
+}
+
+@media (max-width: 734px) {
+    .dragon-section-title {
+        font-size: var(--dragon-fs-headline-small);
+        line-height: var(--dragon-lh-headline-small);
+    }
+}
+
+.dragon-section-desc {
+    font-size: var(--dragon-fs-callout-medium);
+    color: var(--dragon-text-tertiary);
+    margin: 0 0 var(--dragon-sp-6);
+    line-height: 1.47;
+    max-width: 600px;
+    letter-spacing: var(--dragon-ls-normal);
+}
+
+/* Eyebrow — small label above headlines */
+.dragon-eyebrow {
+    font-size: var(--dragon-fs-tiny);
+    font-weight: var(--dragon-fw-semibold);
+    letter-spacing: var(--dragon-ls-eyebrow);
+    color: var(--dragon-text-tertiary);
+    margin-bottom: var(--dragon-sp-1);
+    display: block;
+}
+
+/* Typography helpers */
+.dragon-text-secondary { color: var(--dragon-text-secondary); }
+.dragon-text-tertiary { color: var(--dragon-text-tertiary); }
+.dragon-text-mono { font-family: var(--dragon-font-mono); }
+
+/* Scrollbar — subtle */
+body[data-dragon-ui] ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+body[data-dragon-ui] ::-webkit-scrollbar-track {
+    background: transparent;
+}
+body[data-dragon-ui] ::-webkit-scrollbar-thumb {
+    background: var(--dragon-text-quaternary);
+    border-radius: var(--dragon-radius-pill);
+}
+body[data-dragon-ui] ::-webkit-scrollbar-thumb:hover {
+    background: var(--dragon-text-tertiary);
+}
+
+/* Focus ring — accent blue */
+.dragon-focus-ring:focus-visible {
+    outline: 2px solid var(--dragon-border-focus);
+    outline-offset: 2px;
+    border-radius: var(--dragon-radius-sm);
+}
+
+/* Link */
+.dragon-link {
+    color: var(--dragon-accent);
+    text-decoration: none;
+    transition: color var(--dragon-dur-fast) var(--dragon-ease);
+}
+.dragon-link:hover { color: var(--dragon-accent-hover); }
+
+/* Page transitions */
+.dragon-page-wrapper {
+    animation: dragon-fade-in-up var(--dragon-dur-slow) var(--dragon-ease-out) both;
+}
+
+.dragon-page-enter {
+    opacity: 0;
+    animation: dragon-fade-in-up var(--dragon-dur-slow) var(--dragon-ease-out) both;
+}
+
+.dragon-page-leave {
+    opacity: 0;
+    transition: opacity var(--dragon-dur-med) var(--dragon-ease);
+}

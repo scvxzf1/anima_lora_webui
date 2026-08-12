@@ -1,5 +1,5 @@
 /**
- * Anima LoRA Web UI — ES module bootstrap.
+ * Dragon trainer — ES module bootstrap.
  */
 import { MetricsChart } from './chart.js?v=module-bootstrap-20260809-nf4-v2';
 import { createCatalog } from './js/config/catalog.js?v=module-bootstrap-20260809-nf4-v2';
@@ -10,7 +10,7 @@ import * as download from './js/shared/download.js?v=module-bootstrap-20260809-n
 import * as format from './js/shared/format.js?v=module-bootstrap-20260809-nf4-v2';
 import { createAppContext } from './js/state/create-app-context.js?v=module-bootstrap-20260809-nf4-v2';
 
-if (!document.body.hasAttribute('data-apple-ui')) {
+if (!document.body.hasAttribute('data-dragon-ui')) {
     const ctx = createAppContext({
         api: createApiClient(),
         catalog: createCatalog(),

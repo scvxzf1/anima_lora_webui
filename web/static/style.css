@@ -1,4 +1,4 @@
-/* Anima LoRA Web UI style entrypoint.
+/* Dragon trainer style entrypoint.
  * Keep import order stable: these modules preserve the original style.css cascade.
  */
 @import url("./css/00-tokens.css?v=frontend-chain-20260809-model-config1");
