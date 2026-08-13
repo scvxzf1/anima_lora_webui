@@ -8,6 +8,7 @@ from urllib.parse import quote
 from aiohttp import web
 
 from web.services.preview_service import (
+    delete_preview_images,
     get_preview_settings,
     list_config_group_preview_images,
     list_config_group_training_weights,
@@ -23,6 +24,7 @@ def setup_preview_routes(app: web.Application) -> None:
     app.router.add_get("/api/preview/settings", handle_preview_settings_get)
     app.router.add_put("/api/preview/settings", handle_preview_settings_put)
     app.router.add_get("/api/preview/images", handle_preview_images)
+    app.router.add_delete("/api/preview/images", handle_preview_images_delete)
     app.router.add_get("/api/preview/image", handle_preview_image)
     app.router.add_get("/api/preview/weights", handle_preview_weights)
     app.router.add_get("/api/preview/weight", handle_preview_weight_download)
@@ -64,6 +66,7 @@ async def handle_preview_images(request: web.Request) -> web.Response:
                 variant=str(request.query.get("variant") or ""),
                 preset=str(request.query.get("preset") or "default"),
                 limit=limit,
+                days=days,
             )
             return web.json_response(payload)
 
@@ -105,6 +108,27 @@ async def handle_preview_image(request: web.Request) -> web.StreamResponse:
     except ValueError as e:
         return web.json_response({"ok": False, "error": str(e)}, status=403)
     return web.FileResponse(path)
+
+
+async def handle_preview_images_delete(request: web.Request) -> web.Response:
+    try:
+        data = await request.json()
+        source = str(data.get("source") or "training") if isinstance(data, dict) else "training"
+        files = data.get("files") if isinstance(data, dict) else []
+        task = _selected_history_task(request)
+        task_selected = _has_task_selection(request)
+        payload = await asyncio.to_thread(
+            delete_preview_images,
+            source,
+            files,
+            current_task_sample_dir=_selected_sample_dir(request, task=task),
+            allow_latest_fallback=not task_selected,
+        )
+        return web.json_response(payload)
+    except ValueError as e:
+        return web.json_response({"ok": False, "error": str(e)}, status=400)
+    except FileNotFoundError as e:
+        return web.json_response({"ok": False, "error": str(e)}, status=404)
 
 
 async def handle_preview_weights(request: web.Request) -> web.Response:

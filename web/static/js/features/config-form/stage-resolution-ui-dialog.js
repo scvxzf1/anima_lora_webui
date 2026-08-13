@@ -372,7 +372,7 @@ function clearStageScheduleDraftMarkers() {
     }
 }
 
-function writeStageScheduleDraft(payload) {
+function writeStageScheduleDraft(payload, options = {}) {
     const datasetState = getDatasetState();
     const activeDataset = activeStageScheduleDatasetState(datasetState);
     if (activeDataset && typeof activeDataset === 'object') {
@@ -391,7 +391,38 @@ function writeStageScheduleDraft(payload) {
         configState.currentConfig.stage_schedule = payload.stage_schedule;
     }
     refreshStageScheduleUiAfterDraft();
+    if (options.notify !== false) dispatchStageScheduleChange('draft', payload, activeDataset);
     return { ok: true };
+}
+
+function dispatchStageScheduleChange(phase, payload, activeDataset, extra = {}) {
+    if (typeof window === 'undefined' || typeof window.dispatchEvent !== 'function') return;
+    const event = typeof CustomEvent === 'function'
+        ? new CustomEvent('anima-stage-schedule-change', {
+            detail: {
+                phase,
+                file: extra.file || activeDataset?.selectedFile || activeDataset?.dataset_config || '',
+                stage_schedule_enabled: payload.stage_schedule_enabled,
+                stage_schedule: payload.stage_schedule,
+                dirty: Boolean(activeDataset?.dirty),
+                datasets: activeDataset?.datasets,
+                defaults: activeDataset?.defaults,
+                readonly: activeDataset?.readonly,
+            },
+        })
+        : Object.assign(new Event('anima-stage-schedule-change'), {
+            detail: {
+                phase,
+                file: extra.file || activeDataset?.selectedFile || activeDataset?.dataset_config || '',
+                stage_schedule_enabled: payload.stage_schedule_enabled,
+                stage_schedule: payload.stage_schedule,
+                dirty: Boolean(activeDataset?.dirty),
+                datasets: activeDataset?.datasets,
+                defaults: activeDataset?.defaults,
+                readonly: activeDataset?.readonly,
+            },
+        });
+    window.dispatchEvent(event);
 }
 
 async function applyStageScheduleToDraft(options = {}) {
@@ -406,7 +437,7 @@ async function applyStageScheduleToDraft(options = {}) {
         return false;
     }
     const payload = stageSchedulePayload();
-    const draftResult = writeStageScheduleDraft(payload);
+    const draftResult = writeStageScheduleDraft(payload, { notify: !save });
     if (!draftResult.ok) {
         setTomlStatus('error', draftResult.error);
         setStageScheduleDialogFeedback('error', draftResult.error);
@@ -444,6 +475,8 @@ async function applyStageScheduleToDraft(options = {}) {
                 return false;
             }
             clearStageScheduleDraftMarkers();
+            const activeDataset = activeStageScheduleDatasetState(getDatasetState());
+            dispatchStageScheduleChange('saved-as', payload, activeDataset, { file: result.file });
             setTomlStatus('ok', `✓ 已另存数据集配置并写入分阶段调度：${result.file}`, { persist: true });
             renderStageResolutionDialog();
             setStageScheduleDialogFeedback('saved', `已落盘到 ${shortConfigName(result.file)}（${segmentText}）。`);
@@ -523,6 +556,7 @@ async function applyStageScheduleToDraft(options = {}) {
             }
             // Saved to dataset file: stage draft no longer dirty.
             clearStageScheduleDraftMarkers();
+            dispatchStageScheduleChange('saved', payload, presetState, { file: res.file || file });
             setStageScheduleDialogFeedback('saved', `已落盘到 ${shortConfigName(res.file || file)}（${segmentText}）。`);
             setTomlStatus(
                 'ok',

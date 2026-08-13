@@ -1,229 +1,308 @@
-/* Weight analysis page: list real training weights, then inspect one on demand. */
+/* Dragon weight analysis controller: list, upload, compare, and export. */
 
 import { createApiClient } from '../../shared/api.js?v=dragon-ui-20260812v35';
-import { escapeHtml, formatBytes } from '../../shared/format.js?v=dragon-ui-20260812v35';
+import { downloadText } from '../../shared/download.js?v=dragon-ui-20260812v35';
+import {
+    renderAnalysisBundle,
+    renderAnalysisEmpty,
+    renderAnalysisError,
+    renderWeightAnalysisPage,
+    renderWeightOptions,
+} from './weight-analysis-view.js?v=dragon-ui-20260814v43';
 
 const api = createApiClient();
 
 export async function loadWeightAnalysis() {
-    const listing = await api('/api/analysis/weights');
-    const weights = Array.isArray(listing?.weights) ? listing.weights : [];
-    const options = weights.map((item) => {
-        const path = item.abs_path || item.file || '';
-        const details = [item.name || basename(path), item.steps != null ? `${item.steps} 步` : '', item.scope_label || '']
-            .filter(Boolean)
-            .join(' · ');
-        return `<option value="${escapeAttribute(path)}">${escapeHtml(details)}</option>`;
-    }).join('');
-
+    const listing = await loadWeightListing();
+    const model = normalizeListing(listing);
+    const state = {
+        ...model,
+        compare: false,
+        files: { primary: null, secondary: null },
+        primaryResult: null,
+        secondaryResult: null,
+        requestSeq: 0,
+        printTimer: null,
+        originalTitle: '',
+    };
     return {
-        html: `
-            <div class="dragon-page dragon-page-wide dragon-weight-analysis-page">
-                <div class="dragon-page-hero dragon-reveal">
-                    <h1>权重分析</h1>
-                    <p>读取训练权重，检查层、组件与区块的静态权重能量分布。</p>
-                </div>
-
-                <section class="dragon-config-section dragon-reveal" data-stagger="1">
-                    <div class="dragon-config-section-header">
-                        <span class="dragon-eyebrow">分析对象</span>
-                        <h2 class="dragon-config-section-title">选择训练权重</h2>
-                        <p class="dragon-config-section-desc">分析在 CPU 上执行，不加载底模，也不会改变训练文件。</p>
-                    </div>
-                    <div class="dragon-weight-analysis-picker">
-                        <label class="dragon-field">
-                            <span class="dragon-field-label-text">已找到的权重</span>
-                            <select class="dragon-select" data-weight-select ${weights.length ? '' : 'disabled'}>
-                                <option value="">${escapeHtml(weights.length ? '选择一个权重' : (listing?.message || '未找到训练权重'))}</option>
-                                ${options}
-                            </select>
-                        </label>
-                        <label class="dragon-field dragon-weight-analysis-path-field">
-                            <span class="dragon-field-label-text">权重路径</span>
-                            <input class="dragon-input dragon-text-mono" data-weight-path type="text" inputmode="url" placeholder="训练输出目录中的 .safetensors 文件">
-                        </label>
-                        <button class="dragon-btn dragon-btn-primary" type="button" data-weight-run>开始分析</button>
-                    </div>
-                    <p class="dragon-config-feedback dragon-config-feedback-visible" data-weight-status data-tone="${listing?.ok === false ? 'error' : 'info'}" role="status" aria-live="polite">
-                        ${escapeHtml(listing?.ok === false ? (listing.error || '读取权重列表失败') : (listing?.message || `已找到 ${weights.length} 个可分析权重`))}
-                    </p>
-                </section>
-
-                <div data-weight-results>
-                    ${renderEmptyResult(weights.length)}
-                </div>
-            </div>
-        `,
+        html: renderWeightAnalysisPage(model),
         onMount(root) {
-            bindWeightAnalysis(root);
+            const page = root.querySelector('[data-weight-root]') || root;
+            bindWeightAnalysis(page, state);
         },
+        onUnmount() { cleanupPrintState(state); },
     };
 }
 
-function bindWeightAnalysis(root) {
-    const select = root.querySelector('[data-weight-select]');
-    const pathInput = root.querySelector('[data-weight-path]');
-    const runButton = root.querySelector('[data-weight-run]');
-    const status = root.querySelector('[data-weight-status]');
-    const results = root.querySelector('[data-weight-results]');
+function bindWeightAnalysis(root, state) {
+    const page = root;
+    bindSourceSlot(root, state, 'primary');
+    bindSourceSlot(root, state, 'secondary');
+    root.querySelector('[data-weight-action="run"]')?.addEventListener('click', () => runAnalysis(root, state));
+    root.querySelector('[data-weight-action="toggle-compare"]')?.addEventListener('click', () => toggleCompare(root, state));
+    page.querySelector('[data-tool-action="refresh-weights"]')?.addEventListener('click', () => refreshListing(root, state));
+    page.querySelector('[data-tool-action="export-json"]')?.addEventListener('click', () => exportJson(root, state));
+    page.querySelector('[data-tool-action="export-pdf"]')?.addEventListener('click', () => exportPrint(root, state));
+}
 
+function bindSourceSlot(root, state, slot) {
+    const select = root.querySelector(`[data-weight-select="${slot}"]`);
+    const path = root.querySelector(`[data-weight-path="${slot}"]`);
+    const input = root.querySelector(`[data-weight-file="${slot}"]`);
+    const dropzone = root.querySelector(`[data-weight-dropzone="${slot}"]`);
     select?.addEventListener('change', () => {
-        if (select.value && pathInput) pathInput.value = select.value;
+        if (path) path.value = select.value;
+        clearFile(root, state, slot);
     });
-    pathInput?.addEventListener('input', () => {
-        if (select && select.value !== pathInput.value) select.value = '';
+    path?.addEventListener('input', () => {
+        if (select && select.value !== path.value) select.value = '';
+        clearFile(root, state, slot);
     });
-    pathInput?.addEventListener('keydown', (event) => {
-        if (event.key === 'Enter') runButton?.click();
+    path?.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            runAnalysis(root, state);
+        }
     });
-    runButton?.addEventListener('click', async () => {
-        const path = String(pathInput?.value || select?.value || '').trim();
-        if (!path) {
-            setStatus(status, '请先选择或填写一个 .safetensors 权重路径。', 'error');
-            pathInput?.focus();
+    input?.addEventListener('change', () => {
+        const file = input.files?.[0];
+        if (file) setFile(root, state, slot, file);
+        input.value = '';
+    });
+    dropzone?.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            input?.click();
+        }
+    });
+    for (const type of ['dragenter', 'dragover']) {
+        dropzone?.addEventListener(type, (event) => {
+            event.preventDefault();
+            dropzone.dataset.dragging = 'true';
+        });
+    }
+    for (const type of ['dragleave', 'drop']) {
+        dropzone?.addEventListener(type, (event) => {
+            event.preventDefault();
+            delete dropzone.dataset.dragging;
+        });
+    }
+    dropzone?.addEventListener('drop', (event) => {
+        const file = Array.from(event.dataTransfer?.files || []).find(isSafetensorsFile);
+        if (!file) {
+            setStatus(root, '没有识别到 .safetensors 文件。', 'error');
             return;
         }
-        runButton.disabled = true;
-        runButton.textContent = '正在分析';
-        setStatus(status, '正在读取权重并计算静态分布...', 'info');
-        try {
-            const payload = await api('/api/analysis/inspect', {
-                method: 'POST',
-                body: JSON.stringify({ path }),
-            });
-            if (payload?.ok === false) {
-                results.innerHTML = renderError(payload.error || '权重分析失败');
-                setStatus(status, payload.error || '权重分析失败', 'error');
-                return;
-            }
-            results.innerHTML = renderAnalysis(payload);
-            setStatus(status, payload?.unsupported?.unsupported ? '已读取权重，但该权重结构暂不支持能量重建。' : '权重分析完成。', payload?.unsupported?.unsupported ? 'error' : 'success');
-        } catch (error) {
-            results.innerHTML = renderError(error.message || '权重分析失败');
-            setStatus(status, error.message || '权重分析失败', 'error');
-        } finally {
-            runButton.disabled = false;
-            runButton.textContent = '开始分析';
-        }
+        setFile(root, state, slot, file);
     });
 }
 
-function renderAnalysis(payload) {
-    if (payload?.unsupported?.unsupported) {
-        return renderError(payload.unsupported.reason || '该权重结构暂不支持静态分析');
+function setFile(root, state, slot, file) {
+    if (!isSafetensorsFile(file)) {
+        setStatus(root, '只支持 .safetensors 权重文件。', 'error');
+        return;
     }
-    const summary = payload?.summary || {};
-    const components = Array.isArray(payload?.component_summary) ? payload.component_summary : [];
-    const blocks = Array.isArray(payload?.block_summary) ? payload.block_summary : [];
-    const conclusion = Array.isArray(summary.conclusion) ? summary.conclusion : [];
-    return `
-        <section class="dragon-section dragon-reveal dragon-weight-analysis-summary">
-            <div class="dragon-section-header-row">
-                <div>
-                    <span class="dragon-eyebrow">分析结果</span>
-                    <h2 class="dragon-section-title">${escapeHtml(summary.file_name || payload?.file?.name || '训练权重')}</h2>
-                </div>
-                <p class="dragon-section-desc">${escapeHtml(payload?.adapter_type || summary.adapter_type || '未知类型')}</p>
-            </div>
-            <div class="dragon-metrics-grid dragon-weight-analysis-metrics">
-                ${metricTile('可分析层', formatInteger(summary.layer_count))}
-                ${metricTile('覆盖组件', formatInteger(summary.component_count))}
-                ${metricTile('覆盖区块', formatInteger(summary.block_count))}
-                ${metricTile('参数数量', formatInteger(summary.total_param_count))}
-                ${metricTile('总权重范数', formatNumber(summary.total_fro_norm))}
-                ${metricTile('中后段 / 前段', formatNumber(summary.mid_late_vs_early_ratio))}
-            </div>
-            ${conclusion.length ? `<div class="dragon-analysis-note">${conclusion.map((line) => `<p>${escapeHtml(line)}</p>`).join('')}</div>` : ''}
-        </section>
-        ${renderContributionSection('组件贡献', '按组件聚合的权重范数与能量占比。', components, 'component')}
-        ${renderContributionSection('区块贡献', '按模型区块聚合，可快速定位权重能量集中位置。', blocks, 'block')}
-    `;
+    state.files[slot] = file;
+    const path = root.querySelector(`[data-weight-path="${slot}"]`);
+    const select = root.querySelector(`[data-weight-select="${slot}"]`);
+    const label = root.querySelector(`[data-weight-file-label="${slot}"]`);
+    if (path) path.value = `uploaded://${file.name}`;
+    if (select) select.value = '';
+    if (label) label.textContent = `${file.name} · 临时上传`;
+    setStatus(root, `已选择权重 ${slot === 'primary' ? 'A' : 'B'}：${file.name}`, 'success');
 }
 
-function renderContributionSection(title, description, rows, kind) {
-    const body = rows.map((item) => {
-        const label = kind === 'block' ? `区块 ${item.label ?? item.block ?? '其他'}` : componentLabel(item.label || item.component);
-        const top = kind === 'block' ? componentLabel(item.top_component) : basename(item.top_layer || '');
-        return `
-            <tr>
-                <td><strong>${escapeHtml(label)}</strong></td>
-                <td>${formatInteger(item.layer_count)}</td>
-                <td>${formatNumber(item.fro_norm)}</td>
-                <td>${formatPercent(item.energy_contribution)}</td>
-                <td class="dragon-text-mono">${escapeHtml(top || '-')}</td>
-            </tr>
-        `;
-    }).join('');
-    return `
-        <section class="dragon-section dragon-reveal dragon-analysis-table-section">
-            <h2 class="dragon-section-title">${title}</h2>
-            <p class="dragon-section-desc">${description}</p>
-            <div class="dragon-table-wrapper">
-                <table class="dragon-table">
-                    <thead><tr><th>位置</th><th>层数</th><th>权重范数</th><th>能量占比</th><th>最高贡献项</th></tr></thead>
-                    <tbody>${body || '<tr><td colspan="5">没有可显示的分析结果</td></tr>'}</tbody>
-                </table>
-            </div>
-        </section>
-    `;
+function clearFile(root, state, slot) {
+    if (!state.files[slot]) return;
+    state.files[slot] = null;
+    const label = root.querySelector(`[data-weight-file-label="${slot}"]`);
+    if (label) label.textContent = '本地文件仅临时上传分析';
 }
 
-function renderEmptyResult(hasWeights) {
-    return `<div class="dragon-empty-state dragon-reveal" data-stagger="2"><p>${hasWeights ? '选择一个权重开始分析。' : '训练完成或导入权重后，可在这里查看静态权重分布。'}</p></div>`;
+function toggleCompare(root, state) {
+    state.compare = !state.compare;
+    root.dataset.compare = String(state.compare);
+    const slot = root.querySelector('[data-weight-slot="secondary"]');
+    const button = root.querySelector('[data-weight-action="toggle-compare"]');
+    const runLabel = root.querySelector('[data-weight-action="run"] span');
+    if (slot) slot.hidden = !state.compare;
+    if (button) {
+        button.setAttribute('aria-pressed', String(state.compare));
+        const label = button.querySelector('span');
+        if (label) label.textContent = state.compare ? '关闭 A / B 对比' : '开启 A / B 对比';
+    }
+    if (runLabel) runLabel.textContent = state.compare ? '分析并对比' : '分析权重';
+    if (!state.compare) {
+        state.secondaryResult = null;
+        if (state.primaryResult) renderResults(root, state);
+    }
+    setStatus(root, state.compare ? '已开启 A / B 对比，请选择权重 B。' : '已关闭对比模式。', 'info');
 }
 
-function renderError(message) {
-    return `<div class="dragon-empty-state dragon-reveal"><p>${escapeHtml(message)}</p></div>`;
+async function runAnalysis(root, state) {
+    const primary = selectedSource(root, state, 'primary');
+    const secondary = state.compare ? selectedSource(root, state, 'secondary') : null;
+    if (!primary) {
+        setStatus(root, '请先选择、填写或上传主权重 A。', 'error');
+        root.querySelector('[data-weight-path="primary"]')?.focus();
+        return;
+    }
+    if (state.compare && !secondary) {
+        setStatus(root, '对比模式需要选择、填写或上传权重 B。', 'error');
+        root.querySelector('[data-weight-path="secondary"]')?.focus();
+        return;
+    }
+    const requestSeq = ++state.requestSeq;
+    state.primaryResult = null;
+    state.secondaryResult = null;
+    setExportEnabled(root, false);
+    setBusy(root, true, state.compare);
+    setStatus(root, state.compare ? '正在分析 A / B 并计算差异…' : '正在读取权重并重建静态 ΔW…', 'info');
+    try {
+        const [primaryResult, secondaryResult] = await Promise.all([
+            inspectSource(primary),
+            secondary ? inspectSource(secondary) : Promise.resolve(null),
+        ]);
+        if (requestSeq !== state.requestSeq) return;
+        if (primaryResult?.ok === false) throw new Error(primaryResult.error || '权重 A 分析失败');
+        if (secondaryResult?.ok === false) throw new Error(secondaryResult.error || '权重 B 分析失败');
+        state.primaryResult = primaryResult;
+        state.secondaryResult = secondaryResult;
+        renderResults(root, state);
+        setExportEnabled(root, true);
+        const unsupported = primaryResult?.unsupported?.unsupported || secondaryResult?.unsupported?.unsupported;
+        setStatus(root, unsupported ? '分析完成，但至少一个权重结构不支持静态 ΔW 重建。' : (state.compare ? 'A / B 权重对比完成。' : '权重分析完成。'), unsupported ? 'error' : 'success');
+    } catch (error) {
+        if (requestSeq !== state.requestSeq) return;
+        state.primaryResult = null;
+        state.secondaryResult = null;
+        setExportEnabled(root, false);
+        root.querySelector('[data-weight-results]').innerHTML = renderAnalysisError(error.message || '权重分析失败');
+        setStatus(root, error.message || '权重分析失败', 'error');
+    } finally {
+        if (requestSeq === state.requestSeq) setBusy(root, false, state.compare);
+    }
 }
 
-function metricTile(label, value) {
-    return `<div class="dragon-metric-tile"><div class="dragon-metric-value">${escapeHtml(value)}</div><div class="dragon-metric-label">${label}</div></div>`;
+async function inspectSource(source) {
+    if (!source.file) {
+        return api('/api/analysis/inspect', { method: 'POST', body: JSON.stringify({ path: source.path }) });
+    }
+    const form = new FormData();
+    form.append('file', source.file, source.file.name || 'uploaded.safetensors');
+    return api('/api/analysis/inspect-upload', { method: 'POST', headers: {}, body: form });
 }
 
-function setStatus(element, message, tone) {
-    if (!element) return;
-    element.textContent = message;
-    element.dataset.tone = tone;
+async function refreshListing(root, state) {
+    const button = root.querySelector('[data-tool-action="refresh-weights"]');
+    if (button) button.disabled = true;
+    setStatus(root, '正在重新扫描可分析权重…', 'info');
+    try {
+        const model = normalizeListing(await loadWeightListing());
+        state.weights = model.weights;
+        state.listMessage = model.listMessage;
+        state.listError = model.listError;
+        const options = renderWeightOptions(model.weights, model.listMessage || model.listError);
+        root.querySelectorAll('[data-weight-select]').forEach((select) => { select.innerHTML = options; });
+        const count = root.querySelector('[data-weight-count]');
+        if (count) count.textContent = `${model.weights.length} 个权重`;
+        setStatus(root, model.listError || model.listMessage || `已找到 ${model.weights.length} 个可分析权重。`, model.listError ? 'error' : 'success');
+        if (!state.primaryResult) root.querySelector('[data-weight-results]').innerHTML = renderAnalysisEmpty(model.weights.length);
+    } catch (error) {
+        setStatus(root, error.message || '刷新权重列表失败', 'error');
+    } finally {
+        if (button) button.disabled = false;
+    }
 }
 
-function componentLabel(value) {
-    const labels = {
-        mlp_layer1: '多层感知机输入',
-        mlp_layer2: '多层感知机输出',
-        self_attn_q_proj: '自注意力查询',
-        self_attn_k_proj: '自注意力键',
-        self_attn_v_proj: '自注意力值',
-        self_attn_output_proj: '自注意力输出',
-        cross_attn_q_proj: '交叉注意力查询',
-        cross_attn_k_proj: '交叉注意力键',
-        cross_attn_v_proj: '交叉注意力值',
-        cross_attn_output_proj: '交叉注意力输出',
+function exportJson(root, state) {
+    if (!state.primaryResult) return;
+    const generatedAt = new Date().toISOString();
+    const report = {
+        report_kind: 'weight_analysis_report',
+        report_version: 1,
+        generated_at: generatedAt,
+        mode: state.secondaryResult ? 'compare' : 'single',
+        comparison_basis: state.secondaryResult ? 'secondary_minus_primary' : null,
+        primary: state.primaryResult,
+        secondary: state.secondaryResult,
     };
-    return labels[value] || value || '其他';
+    const base = safeFilename(state.primaryResult.file?.name || 'weight-analysis');
+    downloadText(`${JSON.stringify(report, null, 2)}\n`, `dw-analysis-${base}-${fileTimestamp(generatedAt)}.json`, 'application/json;charset=utf-8');
+    setStatus(root, 'JSON 分析报告已导出。', 'success');
 }
 
-function basename(value) {
-    return String(value || '').replace(/\\/g, '/').split('/').filter(Boolean).pop() || '';
+function exportPrint(root, state) {
+    if (!state.primaryResult) return;
+    cleanupPrintState(state);
+    state.originalTitle = document.title;
+    document.title = `权重分析-${state.primaryResult.file?.name || 'report'}`;
+    document.documentElement.classList.add('dragon-weight-print-mode');
+    setStatus(root, '已打开打印对话框；选择“保存为 PDF”即可导出。', 'success');
+    state.printTimer = window.setTimeout(() => {
+        window.print();
+        state.printTimer = window.setTimeout(() => cleanupPrintState(state), 300);
+    }, 50);
 }
 
-function formatInteger(value) {
-    const number = Number(value);
-    return Number.isFinite(number) ? Math.round(number).toLocaleString('zh-CN') : '-';
+function cleanupPrintState(state) {
+    if (state.printTimer) window.clearTimeout(state.printTimer);
+    state.printTimer = null;
+    document.documentElement.classList.remove('dragon-weight-print-mode');
+    if (state.originalTitle) document.title = state.originalTitle;
+    state.originalTitle = '';
 }
 
-function formatNumber(value) {
-    const number = Number(value);
-    if (!Number.isFinite(number)) return '-';
-    if (Math.abs(number) >= 1000) return number.toLocaleString('zh-CN', { maximumFractionDigits: 1 });
-    if (Math.abs(number) >= 1) return number.toFixed(2);
-    return number.toPrecision(3);
+function selectedSource(root, state, slot) {
+    if (state.files[slot]) return { file: state.files[slot] };
+    const path = String(root.querySelector(`[data-weight-path="${slot}"]`)?.value || '').trim();
+    return path && !path.startsWith('uploaded://') ? { path } : null;
 }
 
-function formatPercent(value) {
-    const number = Number(value);
-    return Number.isFinite(number) ? `${(number * 100).toFixed(1)}%` : '-';
+function renderResults(root, state) {
+    root.querySelector('[data-weight-results]').innerHTML = renderAnalysisBundle(state.primaryResult, state.secondaryResult);
 }
 
-function escapeAttribute(value) {
-    return escapeHtml(value);
+function setBusy(root, busy, compare) {
+    const button = root.querySelector('[data-weight-action="run"]');
+    if (button) {
+        button.disabled = busy;
+        const label = button.querySelector('span');
+        if (label) label.textContent = busy ? (compare ? '对比中…' : '分析中…') : (compare ? '分析并对比' : '分析权重');
+    }
+    root.querySelectorAll('[data-weight-dropzone]').forEach((dropzone) => { dropzone.dataset.busy = String(busy); });
 }
+
+function setExportEnabled(root, enabled) {
+    for (const action of ['export-json', 'export-pdf']) {
+        const button = root.querySelector(`[data-tool-action="${action}"]`);
+        if (button) button.disabled = !enabled;
+    }
+}
+
+function setStatus(root, message, tone) {
+    const status = root.querySelector('[data-weight-status]');
+    if (!status) return;
+    status.textContent = message;
+    status.dataset.tone = tone;
+    status.classList.toggle('dragon-config-feedback-visible', Boolean(message));
+}
+
+
+async function loadWeightListing() {
+    try { return await api('/api/analysis/weights'); }
+    catch (error) { return { ok: false, error: error.message || '读取权重列表失败', weights: [] }; }
+}
+
+function normalizeListing(payload = {}) {
+    return {
+        weights: Array.isArray(payload.weights) ? payload.weights : [],
+        listMessage: payload.message || '',
+        listError: payload.ok === false ? (payload.error || '读取权重列表失败') : '',
+    };
+}
+
+function isSafetensorsFile(file) { return Boolean(file && String(file.name || '').toLowerCase().endsWith('.safetensors')); }
+function safeFilename(value) { return String(value || 'weight-analysis').replace(/\.safetensors$/i, '').replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/^-+|-+$/g, '') || 'weight-analysis'; }
+function fileTimestamp(value) { const date = new Date(value); const pad = (number) => String(number).padStart(2, '0'); return `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}-${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}`; }

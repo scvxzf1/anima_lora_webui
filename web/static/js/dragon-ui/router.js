@@ -7,12 +7,13 @@
  *   3. { html: string, onMount: (wrapper) => void }
  */
 
-import { findSubItem, isConfigCategory } from './category-map.js?v=dragon-ui-20260812v35';
+import { findSubItem, isConfigCategory } from './category-map.js?v=dragon-ui-20260814v43';
 import { scanForReveal } from './animations.js?v=dragon-ui-20260812v35';
 
 let mountElement = null;
 let currentPage = null;
 let pageLoaders = {};
+let navigationSequence = 0;
 
 export function initRouter(mountEl, loaders) {
     mountElement = mountEl;
@@ -21,21 +22,19 @@ export function initRouter(mountEl, loaders) {
 
 export async function navigate(route) {
     if (route.type === 'page') {
-        await renderPage(route.page, {
+        return renderPage(route.page, {
             taskId: route.taskId || null,
             sub: route.sub || null,
         });
-        return;
     }
 
     if (route.type === 'category') {
         if (!isConfigCategory(route.categoryId)) return;
         if (!route.force && focusMountedConfigCategory(route.categoryId, route.subId)) return;
-        await renderPage('config', {
+        return renderPage('config', {
             categoryId: route.categoryId,
             subId: route.subId || null,
         });
-        return;
     }
 
     if (route.type === 'sub') {
@@ -43,14 +42,23 @@ export async function navigate(route) {
         if (!sub) return;
 
         if (sub.isPage) {
-            await renderPage(sub.isPage, { sub });
+            return renderPage(sub.isPage, { sub });
         } else if (isConfigCategory(sub.categoryId)) {
             if (!route.force && focusMountedConfigCategory(sub.categoryId, sub.id)) return;
-            await renderPage('config', { categoryId: sub.categoryId, subId: sub.id });
+            return renderPage('config', { categoryId: sub.categoryId, subId: sub.id });
         } else {
-            await renderPage('config', { sub });
+            return renderPage('config', { sub });
         }
     }
+}
+
+export function canLeaveCurrentPage() {
+    if (typeof currentPage?.beforeLeave !== 'function') return true;
+    return currentPage.beforeLeave() !== false;
+}
+
+export function isCurrentPage(pageType) {
+    return currentPage?.pageType === pageType;
 }
 
 function focusMountedConfigCategory(categoryId, subId) {
@@ -86,20 +94,45 @@ async function renderPage(pageType, context) {
         return;
     }
 
+    const sequence = ++navigationSequence;
+
     // Fade out current content
     if (currentPage && mountElement.firstElementChild) {
         mountElement.firstElementChild.classList.add('dragon-page-leave');
         await new Promise((r) => setTimeout(r, 200));
+        if (sequence !== navigationSequence) return;
     }
 
-    // Render new page
-    const content = await loader(context);
+    // Keep route changes legible while slower APIs resolve. The previous page
+    // has already left, so replace it with a stable status surface instead of
+    // leaving an empty mount for several seconds.
+    renderLoadingState(pageType);
+
+    let content;
+    try {
+        content = await loader(context);
+    } catch (error) {
+        if (sequence !== navigationSequence) return;
+        currentPage?.onUnmount?.();
+        currentPage = { pageType, context, beforeLeave: null, onUnmount: null };
+        renderLoadError(error);
+        console.error(`[dragon-ui] ${pageLabel(pageType)}加载失败`, error);
+        return false;
+    }
+    if (sequence !== navigationSequence) {
+        content?.onUnmount?.();
+        return;
+    }
+    currentPage?.onUnmount?.();
     mountElement.innerHTML = '';
+    mountElement.removeAttribute('aria-busy');
     if (content) {
         const wrapper = document.createElement('div');
         wrapper.className = 'dragon-page-wrapper dragon-page-enter';
 
         let onMount = null;
+        let beforeLeave = null;
+        let onUnmount = null;
         if (typeof content === 'string') {
             wrapper.innerHTML = content;
         } else if (content instanceof Node) {
@@ -109,16 +142,54 @@ async function renderPage(pageType, context) {
             if (typeof content.onMount === 'function') {
                 onMount = () => content.onMount(wrapper);
             }
+            if (typeof content.beforeLeave === 'function') beforeLeave = content.beforeLeave;
+            if (typeof content.onUnmount === 'function') onUnmount = content.onUnmount;
         }
 
         mountElement.appendChild(wrapper);
-        currentPage = { pageType, context };
+        currentPage = { pageType, context, beforeLeave, onUnmount };
 
         requestAnimationFrame(() => {
+            wrapper.classList.remove('dragon-page-enter');
             scanForReveal();
             if (onMount) onMount();
         });
     }
+}
+
+function renderLoadingState(pageType) {
+    if (!mountElement) return;
+    mountElement.setAttribute('aria-busy', 'true');
+    mountElement.innerHTML = `
+        <div class="dragon-route-loading" role="status" aria-live="polite">
+            <span class="dragon-spinner" aria-hidden="true"></span>
+            <div><strong>正在打开${pageLabel(pageType)}…</strong><span>正在读取最新内容</span></div>
+        </div>
+    `;
+}
+
+function renderLoadError(error) {
+    if (!mountElement) return;
+    mountElement.removeAttribute('aria-busy');
+    const message = escapeHtml(error?.message || '页面数据读取失败');
+    mountElement.innerHTML = `<div class="dragon-empty-state" role="alert"><p>${message}</p><p>请确认 WebUI 服务仍在运行，然后刷新重试。</p></div>`;
+}
+
+function pageLabel(pageType) {
+    const labels = {
+        dashboard: '首页', config: '配置页面', 'live-training': '训练监控',
+        history: '训练历史', queue: '训练队列', 'weight-analysis': '权重分析',
+        'image-test': '生图测试', environment: '环境检测',
+        'dataset-editor': '数据集配置', 'model-config': '模型配置',
+        'global-settings': '全局设置', 'preview-workspace': '预览工作区',
+    };
+    return labels[pageType] || '页面';
+}
+
+function escapeHtml(value) {
+    return String(value ?? '').replace(/[&<>"']/g, (character) => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+    }[character]));
 }
 
 export async function refreshCurrentRoute() {

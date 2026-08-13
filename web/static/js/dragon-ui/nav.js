@@ -1,4 +1,4 @@
-import { DRAGON_NAV_CATEGORIES } from './category-map.js?v=dragon-ui-20260812v35';
+import { DRAGON_NAV_CATEGORIES } from './category-map.js?v=dragon-ui-20260814v43';
 import { getThemePreference, setThemePreference } from './theme.js?v=dragon-ui-20260812v35';
 import { renderIcon } from './icons.js?v=dragon-ui-20260812v35';
 import { switchToClassicUI } from '../shared/ui-mode.js?v=dragon-ui-20260812v35';
@@ -10,9 +10,10 @@ let navRootElement = null;
 let onNavigate = null;
 
 const NAV_SHORTCUTS = [
-    { id: 'configs', label: '配置文件', compactLabel: '配置', icon: 'folder', hash: '#config/training-config' },
-    { id: 'datasets', label: '数据集', compactLabel: '数据集', icon: 'database', hash: '#dataset-editor' },
-    { id: 'history', label: '训练历史', compactLabel: '历史', icon: 'history', hash: '#history' },
+    { id: 'home', label: '首页', compactLabel: '首页', icon: 'home', hash: '#dashboard', iconOnly: true },
+    { id: 'configs', label: '配置文件', compactLabel: '配置', icon: 'folder', hash: '#config/training-config', iconOnly: true },
+    { id: 'datasets', label: '数据集', compactLabel: '数据集', icon: 'database', hash: '#dataset-editor', iconOnly: true },
+    { id: 'history', label: '训练历史', compactLabel: '历史', icon: 'history', hash: '#history', iconOnly: true },
 ];
 
 export function initNav(callback) {
@@ -38,7 +39,7 @@ function renderNav() {
                     <ul class="dragon-nav-categories" aria-label="主导航">
                         ${DRAGON_NAV_CATEGORIES.map(renderCategoryItem).join('')}
                     </ul>
-                    <div class="dragon-nav-utilities" aria-label="存储快捷入口">
+                    <div class="dragon-nav-utilities" aria-label="快捷入口">
                         ${NAV_SHORTCUTS.map(renderShortcutButton).join('')}
                     </div>
                     <button class="dragon-nav-link dragon-nav-mobile-menu-btn" id="dragon-mobile-menu-toggle" type="button" aria-label="打开导航菜单" aria-expanded="false" aria-controls="dragon-nav-mobile-panel">
@@ -55,7 +56,9 @@ function renderNav() {
 }
 
 function renderShortcutButton(shortcut) {
-    return `<button class="dragon-nav-utility-button" type="button" data-nav-shortcut="${shortcut.id}" data-target-hash="${shortcut.hash}" data-tooltip="${shortcut.label}" aria-label="${shortcut.label}" title="${shortcut.label}">${renderIcon(shortcut.icon, 'dragon-nav-utility-icon')}</button>`;
+    const iconOnlyClass = shortcut.iconOnly ? ' dragon-nav-utility-button--icon' : '';
+    const label = shortcut.iconOnly ? '' : `<span class="dragon-nav-utility-label">${shortcut.label}</span>`;
+    return `<button class="dragon-nav-utility-button${iconOnlyClass}" type="button" data-nav-shortcut="${shortcut.id}" data-target-hash="${shortcut.hash}" data-tooltip="${shortcut.label}" aria-label="${shortcut.label}">${renderIcon(shortcut.icon, 'dragon-nav-utility-icon')}${label}</button>`;
 }
 
 function renderTrainerLogo() {
@@ -131,7 +134,7 @@ function renderMobilePanel() {
             ${renderIcon(shortcut.icon, 'dragon-nav-mobile-shortcut-icon')}<span>${shortcut.compactLabel}</span>
         </button>
     `).join('');
-    return `<div class="dragon-nav-mobile-panel" id="dragon-nav-mobile-panel" aria-hidden="true"><div class="dragon-nav-mobile-panel-inner"><div class="dragon-nav-mobile-shortcuts" aria-label="存储快捷入口">${shortcuts}</div>${sections}</div></div>`;
+    return `<div class="dragon-nav-mobile-panel" id="dragon-nav-mobile-panel" aria-hidden="true"><div class="dragon-nav-mobile-panel-inner"><div class="dragon-nav-mobile-shortcuts" aria-label="快捷入口">${shortcuts}</div>${sections}</div></div>`;
 }
 
 function bindNavEvents() {
@@ -146,7 +149,10 @@ function bindNavEvents() {
             document.querySelectorAll('[data-theme-choice]').forEach((item) => item.setAttribute('aria-checked', String(item === button)));
         });
     });
-    document.getElementById('dragon-ui-toggle')?.addEventListener('click', () => switchToClassicUI());
+    document.getElementById('dragon-ui-toggle')?.addEventListener('click', async () => {
+        const allowed = await onNavigate?.({ type: 'external', target: 'classic-ui' });
+        if (allowed !== false) switchToClassicUI();
+    });
     document.querySelectorAll('.dragon-nav-item-category').forEach(bindCategoryEvents);
     document.querySelectorAll('.dragon-nav-flyout-link').forEach((link) => {
         link.addEventListener('click', (event) => {
@@ -194,6 +200,15 @@ function navigateToSubItem(categoryId, subId) {
 function navigateToShortcut(targetHash) {
     closeAllMenus();
     if (!targetHash) return;
+    if (targetHash === '#dashboard') {
+        if (window.location.hash === '' || window.location.hash === '#dashboard') {
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+            onNavigate?.({ type: 'page', page: 'dashboard' });
+            return;
+        }
+        window.location.hash = targetHash;
+        return;
+    }
     if (window.location.hash !== targetHash) {
         window.location.hash = targetHash;
         return;
@@ -204,6 +219,7 @@ function navigateToShortcut(targetHash) {
 function updateShortcutState() {
     const hash = window.location.hash;
     const activeById = {
+        home: hash === '' || hash === '#dashboard',
         configs: hash.startsWith('#config/'),
         datasets: hash.startsWith('#dataset-editor'),
         history: hash.startsWith('#history'),
@@ -294,5 +310,6 @@ function bindGlobalEvents() {
     });
     document.addEventListener('keydown', (event) => { if (event.key === 'Escape') closeAllMenus(); });
     window.addEventListener('hashchange', updateShortcutState);
+    window.addEventListener('dragon-route-restored', updateShortcutState);
     window.addEventListener('resize', () => { if (window.innerWidth > 833) closeMobileMenu(); }, { passive: true });
 }

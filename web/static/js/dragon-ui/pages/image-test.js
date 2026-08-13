@@ -2,6 +2,7 @@
 
 import { createApiClient } from '../../shared/api.js?v=dragon-ui-20260812v35';
 import { mergedConfigUrl, loadTrainingContext } from './training-controls.js?v=dragon-ui-20260812v35';
+import { renderImageTestPage } from './image-test-view.js?v=dragon-ui-20260814v43';
 
 const api = createApiClient();
 let pollTimer = null;
@@ -27,89 +28,133 @@ const LORA_BLOCKS = [
 
 export async function loadImageTest() {
     const context = await loadTrainingContext();
-    const [status, weights, gpus, config, settings, imagesData] = await Promise.all([
-        readApi('/api/image-test/status', {}),
-        readApi('/api/analysis/weights', {}),
-        readApi('/api/training/gpus', {}),
-        readApi(mergedConfigUrl(context), {}),
-        readApi('/api/settings/global', {}),
-        readApi('/api/preview/images?source=inference&limit=24', {}),
+    const [statusResult, weightsResult, gpusResult, configResult, settingsResult] = await Promise.all([
+        readApiResult('/api/image-test/status'),
+        readApiResult('/api/analysis/weights'),
+        readApiResult('/api/training/gpus'),
+        readApiResult(mergedConfigUrl(context)),
+        readApiResult('/api/settings/global'),
     ]);
+    const statusSnapshotAvailable = Boolean(statusResult.data && statusResult.data.status);
+    const blockingErrors = [
+        ...(!statusResult.ok && !statusSnapshotAvailable ? [statusResult] : []),
+        ...[configResult, settingsResult].filter((result) => !result.ok),
+    ].map((result) => result.error);
+    const status = statusResult.data || {};
+    const weights = weightsResult.data || {};
+    const gpus = gpusResult.data || {};
+    const config = configResult.data || {};
+    const settings = settingsResult.data || {};
+    const imagesResult = { ok: true, data: { images: status.output_files || [] }, error: '' };
+    const imagesData = imagesResult.data;
     const running = Boolean(status.running || status.status === 'running');
     const images = Array.isArray(imagesData.images) ? imagesData.images : [];
     const weightItems = Array.isArray(weights.weights) ? weights.weights : Array.isArray(weights.items) ? weights.items : [];
-    const state = { context, config: config.config || config, settings, status, running, weightItems, gpus: Array.isArray(gpus.gpus) ? gpus.gpus : [] };
-    return { html: renderPage(state, images), onMount: (root) => bindPage(root, state) };
-}
-
-function renderPage(state, images) {
-    const cfg = state.config || {};
-    const status = state.status || {};
-    const weightOptions = state.weightItems.map((item) => {
-        const path = item.abs_path || item.path || item.file || item.absolute_path || '';
-        return path ? `<option value="${escapeAttribute(path)}">${escapeHtml(item.name || path)}</option>` : '';
-    }).join('');
-    const family = String(state.settings?.model_family || cfg.model_family || '').toLowerCase();
-    const attnOptions = family === 'krea2_raw' ? ATTN_OPTIONS.filter(([value]) => ['torch', 'flash'].includes(value)) : ATTN_OPTIONS;
-    const gpuOptions = state.gpus.map((gpu) => {
-        const index = gpu.index ?? gpu.gpu_index ?? '';
-        const label = gpu.label || gpu.name || `GPU ${index}`;
-        return `<option value="${escapeAttribute(index)}">${escapeHtml(label)}</option>`;
-    }).join('');
-    const savePath = state.settings?.image_test_save_root || status.output_dir || 'output/tests';
-    return `
-        <div class="dragon-page dragon-page-wide dragon-image-test-page">
-            <div class="dragon-page-hero dragon-reveal"><span class="dragon-eyebrow">模型验证</span><h1>生图测试</h1><p>使用当前训练配置和已生成权重运行一次真实推理。</p></div>
-            <form class="dragon-image-test-form dragon-reveal" data-image-test-form data-stagger="1">
-                <div class="dragon-image-test-primary">
-                    ${textareaField('prompt', '正向提示词', '', '描述要生成的图像内容')}
-                    ${textareaField('negative_prompt', '反向提示词', '', '可选')}
-                </div>
-                <div class="dragon-dataset-field-grid">
-                    ${numberField('width', '宽度', cfg.resolution || 1024)}
-                    ${numberField('height', '高度', cfg.resolution || 1024)}
-                    ${numberField('infer_steps', '采样步数', cfg.sample_steps || 28)}
-                    ${numberField('guidance_scale', '引导强度', cfg.guidance_scale || 4, '0.1')}
-                    ${numberField('flow_shift', 'Flow Shift', cfg.flow_shift ?? cfg.discrete_flow_shift ?? 1, '0.1')}
-                    ${numberField('seed', '随机种子', '', '1')}
-                    ${numberField('lora_multiplier', 'LoRA 强度', 1, '0.05')}
-                    ${selectField('sampler', '采样器', normalizeChoice(cfg.sample_sampler, SAMPLER_OPTIONS, 'euler'), SAMPLER_OPTIONS)}
-                    ${selectField('attn_mode', '注意力后端', normalizeChoice(cfg.attn_mode, attnOptions, family === 'krea2_raw' ? 'torch' : 'flash'), attnOptions)}
-                    ${selectField('runtime_dtype', '推理精度', normalizeChoice(cfg.precision_preference, DTYPE_OPTIONS, 'bf16'), DTYPE_OPTIONS)}
-                    ${selectField('text_encoder_dtype', '文本编码器精度', 'same', TEXT_DTYPE_OPTIONS)}
-                    <label class="dragon-field"><span class="dragon-field-label-text">计算设备</span><select class="dragon-select" data-image-field="gpu_index"><option value="">自动选择</option>${gpuOptions}</select></label>
-                    <label class="dragon-field"><span class="dragon-field-label-text">权重文件</span><select class="dragon-select" data-image-field="weight_path"><option value="">使用基础模型</option>${weightOptions}</select></label>
-                    ${textField('save_path', '输出目录', savePath)}
-                </div>
-                ${renderSelectiveLora()}
-                <div class="dragon-config-actions"><button class="dragon-btn dragon-btn-primary" type="submit" data-image-action="start" ${state.running ? 'disabled' : ''}>${state.running ? '推理进行中' : '开始推理'}</button>${state.running ? '<button class="dragon-btn dragon-btn-secondary" type="button" data-image-action="stop">停止推理</button>' : ''}</div>
-                <p class="dragon-config-feedback" data-image-feedback role="status" aria-live="polite">${escapeHtml(status.error || '')}</p>
-            </form>
-            <section class="dragon-section dragon-reveal" data-stagger="2"><div class="dragon-section-header-row"><div><span class="dragon-eyebrow">输出结果</span><h2 class="dragon-section-title">推理预览</h2></div><span class="dragon-section-desc">${images.length} 张图片</span></div>${images.length ? `<div class="dragon-image-grid">${images.map(renderImage).join('')}</div>` : '<div class="dragon-empty-state"><p>暂无生成图片</p></div>'}</section>
-        </div>
-    `;
+    const state = {
+        context,
+        config: config.config || config,
+        settings,
+        status,
+        running,
+        blockingError: blockingErrors.join('；'),
+        warning: [
+            ...(!statusResult.ok && statusSnapshotAvailable ? [statusResult] : []),
+            ...[weightsResult, gpusResult, imagesResult].filter((result) => !result.ok),
+        ].map((result) => result.error).join('；'),
+        weightItems,
+        gpus: Array.isArray(gpus.gpus) ? gpus.gpus : [],
+    };
+    let cleanup = null;
+    return {
+        html: renderImageTestPage(state, images, {
+            sampler: SAMPLER_OPTIONS,
+            dtype: DTYPE_OPTIONS,
+            textDtype: TEXT_DTYPE_OPTIONS,
+            attention: ATTN_OPTIONS,
+            loraPresets: LORA_PRESETS,
+            loraBlocks: LORA_BLOCKS,
+        }),
+        onMount: (root) => { cleanup = bindPage(root, state); },
+        onUnmount: () => cleanup?.(),
+    };
 }
 
 function bindPage(root, state) {
-    root.querySelector('[data-image-test-form]')?.addEventListener('submit', async (event) => {
+    const form = root.querySelector('[data-image-test-form]');
+    const submitHandler = async (event) => {
         event.preventDefault();
         await startInference(root, state);
-    });
-    root.querySelector('[data-image-action="stop"]')?.addEventListener('click', async () => {
+    };
+    const clickHandler = async (event) => {
+        const action = event.target.closest('[data-image-action]')?.dataset.imageAction;
+        if (action === 'refresh') {
+            window.dispatchEvent(new CustomEvent('dragon-refresh-route'));
+            return;
+        }
+        if (action !== 'stop') return;
+        if (!window.confirm('确认停止当前推理吗？已经生成并保存的图片不会删除。')) return;
         try {
             const data = await api('/api/image-test/stop', { method: 'POST' });
             if (data.ok === false) throw new Error(data.error || '停止推理失败');
             window.dispatchEvent(new CustomEvent('dragon-refresh-route'));
         } catch (error) { showFeedback(root, error.message || '停止推理失败', 'error'); }
-    });
+    };
+    form?.addEventListener('submit', submitHandler);
+    root.addEventListener('click', clickHandler);
     root.querySelector('[data-image-field="anima_selective_preset"]')?.addEventListener('change', (event) => applyLoraPreset(root, event.target.value));
     root.querySelector('[data-image-field="anima_selective_lora"]')?.addEventListener('change', (event) => {
         root.querySelector('[data-selective-lora-fields]')?.toggleAttribute('hidden', !event.target.checked);
     });
+    root.querySelector('[data-image-action="resolve-weight"]')?.addEventListener('click', () => resolveWeight(root));
+    bindWeightDrop(root);
     if (state.running) {
         window.clearTimeout(pollTimer);
         pollTimer = window.setTimeout(() => window.dispatchEvent(new CustomEvent('dragon-refresh-route')), 3000);
     }
+    return () => {
+        window.clearTimeout(pollTimer);
+        pollTimer = null;
+        form?.removeEventListener('submit', submitHandler);
+        root.removeEventListener('click', clickHandler);
+    };
+}
+
+function bindWeightDrop(root) {
+    const input = root.querySelector('[data-image-field="weight_path"]');
+    const row = input?.closest('.dragon-image-weight-row');
+    if (!input || !row) return;
+    const prevent = (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+    };
+    row.addEventListener('dragenter', (event) => { prevent(event); row.dataset.dragging = 'true'; });
+    row.addEventListener('dragover', (event) => { prevent(event); row.dataset.dragging = 'true'; });
+    row.addEventListener('dragleave', (event) => {
+        prevent(event);
+        if (!row.contains(event.relatedTarget)) delete row.dataset.dragging;
+    });
+    row.addEventListener('drop', (event) => {
+        prevent(event);
+        delete row.dataset.dragging;
+        const path = droppedWeightPath(event.dataTransfer);
+        if (!path) return showFeedback(root, '未能从拖入内容中读取权重路径。请改为粘贴完整路径。', 'error');
+        input.value = path;
+        resolveWeight(root);
+    });
+}
+
+function droppedWeightPath(dataTransfer) {
+    const file = dataTransfer?.files?.[0];
+    if (file?.path) return file.path;
+    const uriList = String(dataTransfer?.getData?.('text/uri-list') || '').split(/\r?\n/).find((line) => line && !line.startsWith('#')) || '';
+    const plain = String(dataTransfer?.getData?.('text/plain') || '').trim();
+    const candidate = uriList || plain;
+    if (!candidate) return file?.name || '';
+    try {
+        const url = new URL(candidate);
+        if (url.protocol === 'file:') return decodeURIComponent(url.pathname || '');
+    } catch { /* plain filesystem path */ }
+    return candidate.replace(/^['"]|['"]$/g, '').trim();
 }
 
 async function startInference(root, state) {
@@ -142,8 +187,28 @@ async function startInference(root, state) {
     }
 }
 
-async function readApi(url, fallback) {
-    try { const data = await api(url); return data.ok === false ? fallback : data; } catch { return fallback; }
+async function resolveWeight(root) {
+    const input = root.querySelector('[data-image-field="weight_path"]');
+    const path = String(input?.value || '').trim();
+    if (!path) return showFeedback(root, '请先填写或选择一个权重路径。', 'error');
+    try {
+        const payload = await api('/api/image-test/resolve-weight', { method: 'POST', body: JSON.stringify({ path }) });
+        if (payload?.ok === false) throw new Error(payload.error || '解析权重路径失败');
+        if (input) input.value = payload.weight_path || payload.display_path || path;
+        showFeedback(root, `已找到权重：${payload.display_path || payload.name || path}`, 'success');
+    } catch (error) {
+        showFeedback(root, error.message || '解析权重路径失败', 'error');
+    }
+}
+
+async function readApiResult(url) {
+    try {
+        const data = await api(url);
+        if (data?.ok === false) return { ok: false, data, error: data.error || '服务请求失败' };
+        return { ok: true, data, error: '' };
+    } catch (error) {
+        return { ok: false, data: null, error: error.message || '服务请求失败' };
+    }
 }
 
 function readNumber(root, key) {
@@ -153,10 +218,6 @@ function readNumber(root, key) {
 
 function readValue(root, key) {
     return root.querySelector(`[data-image-field="${key}"]`)?.value || '';
-}
-
-function renderSelectiveLora() {
-    return `<details class="dragon-dataset-advanced dragon-image-lora-details"><summary>分层 LoRA 加载</summary><div class="dragon-selective-lora-head"><label class="dragon-check-field"><input type="checkbox" data-image-field="anima_selective_lora"><span>启用分层加载</span></label>${selectField('anima_selective_preset', '层位预设', 'default', LORA_PRESETS)}</div><div data-selective-lora-fields hidden><p class="dragon-section-desc">每个层位可独立关闭或设置 0 至 2 倍强度。</p><div class="dragon-lora-block-grid">${LORA_BLOCKS.map(([key, label]) => `<label class="dragon-lora-block"><span>${label}</span><input class="dragon-input" type="number" min="0" max="2" step="0.05" value="1" data-lora-block="${key}"></label>`).join('')}</div></div></details>`;
 }
 
 function applyLoraPreset(root, preset) {
@@ -188,12 +249,4 @@ function collectSelectiveLora(root) {
     };
 }
 
-function numberField(key, label, value, step = '1') { return `<label class="dragon-field"><span class="dragon-field-label-text">${label}</span><input class="dragon-input" type="number" step="${step}" data-image-field="${key}" value="${escapeAttribute(value)}"></label>`; }
-function textField(key, label, value) { return `<label class="dragon-field"><span class="dragon-field-label-text">${label}</span><input class="dragon-input" type="text" data-image-field="${key}" value="${escapeAttribute(value)}"></label>`; }
-function selectField(key, label, value, options) { return `<label class="dragon-field"><span class="dragon-field-label-text">${label}</span><select class="dragon-select" data-image-field="${key}">${options.map(([option, text]) => `<option value="${escapeAttribute(option)}" ${String(option) === String(value) ? 'selected' : ''}>${escapeHtml(text)}</option>`).join('')}</select></label>`; }
-function textareaField(key, label, value, placeholder) { return `<label class="dragon-field dragon-field-wide"><span class="dragon-field-label-text">${label}</span><textarea class="dragon-textarea" data-image-field="${key}" placeholder="${placeholder}">${escapeHtml(value)}</textarea></label>`; }
-function normalizeChoice(value, options, fallback) { return options.some(([option]) => String(option) === String(value)) ? String(value) : fallback; }
-function renderImage(image) { return `<figure class="dragon-image-card"><img src="${escapeAttribute(image.url || '')}" alt="${escapeAttribute(image.name || '')}" loading="lazy"><figcaption>${escapeHtml(image.prompt || image.name || '')}</figcaption></figure>`; }
 function showFeedback(root, message, tone) { const el = root.querySelector('[data-image-feedback]'); if (el) { el.textContent = message; el.dataset.tone = tone; el.classList.add('dragon-config-feedback-visible'); } }
-function escapeHtml(value) { return String(value ?? '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char])); }
-function escapeAttribute(value) { return escapeHtml(value); }

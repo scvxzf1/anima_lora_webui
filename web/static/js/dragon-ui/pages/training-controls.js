@@ -14,22 +14,24 @@ function storeContext(context) {
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(context)); } catch { /* ignore */ }
 }
 
-export async function loadTrainingContext({ refresh = false } = {}) {
-    if (cachedContext && !refresh) return cachedContext;
+export async function loadTrainingContext({ refresh = false, includeGpus = true } = {}) {
+    if (cachedContext && !refresh && (!includeGpus || cachedContext.gpusLoaded)) return cachedContext;
     const stored = readStoredContext();
     const [groupsPayload, presetsPayload, gpuPayload] = await Promise.all([
         api('/api/config/file-groups?kind=training'),
         api('/api/presets'),
-        api('/api/training/gpus'),
+        includeGpus ? api('/api/training/gpus') : Promise.resolve(null),
     ]);
     const groups = Array.isArray(groupsPayload) ? groupsPayload : [];
     const files = groups.flatMap((group) => (group.files || [])
-        .filter((file) => file.trainable && !file.locked)
+        .filter((file) => file.trainable)
         .map((file) => ({ ...file, methods_subdir: file.methods_subdir || group.methods_subdir })));
     const fallback = files.find((file) => file.path === 'configs/gui-methods/lora.toml') || files[0] || null;
     const selected = files.find((file) => file.path === stored.configFile) || fallback;
     const presets = Array.isArray(presetsPayload?.items) ? presetsPayload.items : [];
-    const gpus = Array.isArray(gpuPayload?.gpus) ? gpuPayload.gpus : [];
+    const gpus = includeGpus
+        ? (Array.isArray(gpuPayload?.gpus) ? gpuPayload.gpus : [])
+        : (Array.isArray(cachedContext?.gpus) ? cachedContext.gpus : []);
     const context = {
         files,
         presets,
@@ -38,10 +40,19 @@ export async function loadTrainingContext({ refresh = false } = {}) {
         variant: selected?.method || 'lora',
         methodsSubdir: selected?.methods_subdir || 'gui-methods',
         preset: presets.includes(stored.preset) ? stored.preset : (presets.includes('default') ? 'default' : presets[0] || 'default'),
-        gpuWhitelist: sanitizeGpuSelection(stored.gpuWhitelist, gpus),
+        gpuWhitelist: includeGpus
+            ? sanitizeGpuSelection(stored.gpuWhitelist, gpus)
+            : preserveGpuSelection(cachedContext?.gpuWhitelist || stored.gpuWhitelist),
+        gpusLoaded: includeGpus || Boolean(cachedContext?.gpusLoaded),
     };
     storeContext(context);
     return context;
+}
+
+function preserveGpuSelection(value) {
+    return (Array.isArray(value) ? value : [])
+        .map(Number)
+        .filter((item, index, list) => Number.isInteger(item) && item >= 0 && list.indexOf(item) === index);
 }
 
 function sanitizeGpuSelection(value, gpus) {
@@ -70,8 +81,8 @@ export function renderTrainingControls(context) {
     ).join('');
     return `
         <section class="dragon-config-runbar dragon-reveal" aria-label="训练运行设置">
-            <label class="dragon-runbar-field dragon-runbar-config"><span>当前训练配置</span><select class="dragon-select" data-training-context="file">${fileOptions}</select></label>
-            <label class="dragon-runbar-field"><span>运行覆盖</span><select class="dragon-select" data-training-context="preset">${presetOptions}</select></label>
+            <label class="dragon-runbar-field dragon-runbar-config"><span>当前训练配置</span><select class="dragon-select" name="training_config_file" autocomplete="off" data-training-context="file">${fileOptions}</select></label>
+            <label class="dragon-runbar-field"><span>运行覆盖</span><select class="dragon-select" name="training_preset" autocomplete="off" data-training-context="preset">${presetOptions}</select></label>
             ${renderGpuPicker(context)}
             <div class="dragon-runbar-actions">
                 <button class="dragon-btn dragon-btn-secondary" type="button" data-training-action="preflight">${renderIcon('check', 'dragon-btn-icon')}<span>训练前检查</span></button>
@@ -87,19 +98,27 @@ function renderGpuPicker(context) {
     const selected = new Set(context.gpuWhitelist);
     const label = selected.size ? `已选 ${selected.size} 张 GPU` : '全部 GPU';
     const options = context.gpus.map((gpu) => `
-        <label><input type="checkbox" value="${gpu.index}" ${selected.has(Number(gpu.index)) ? 'checked' : ''}><span>${gpu.label || `GPU ${gpu.index} · ${gpu.name}`}</span></label>
+        <label><input type="checkbox" name="training_gpu" value="${gpu.index}" ${selected.has(Number(gpu.index)) ? 'checked' : ''}><span>${gpu.label || `GPU ${gpu.index} · ${gpu.name}`}</span></label>
     `).join('');
     return `<div class="dragon-runbar-device"><span class="dragon-runbar-label">训练设备</span><details class="dragon-runbar-gpus" data-training-gpus><summary>${label}</summary><div class="dragon-runbar-gpu-list"><button type="button" data-gpu-all>使用全部 GPU</button>${options || '<span>未读取到 GPU</span>'}</div></details></div>`;
 }
 
-export function bindTrainingControls(root, context, { saveChanges } = {}) {
+export function bindTrainingControls(root, context, { saveChanges, beforeContextChange } = {}) {
     root.querySelector('[data-training-context="file"]')?.addEventListener('change', (event) => {
+        if (beforeContextChange && beforeContextChange() === false) {
+            event.target.value = context.configFile;
+            return;
+        }
         const file = context.files.find((item) => item.path === event.target.value);
         if (!file) return;
         storeContext({ ...context, configFile: file.path, variant: file.method, methodsSubdir: file.methods_subdir });
         window.dispatchEvent(new CustomEvent('dragon-refresh-route'));
     });
     root.querySelector('[data-training-context="preset"]')?.addEventListener('change', (event) => {
+        if (beforeContextChange && beforeContextChange() === false) {
+            event.target.value = context.preset;
+            return;
+        }
         storeContext({ ...context, preset: event.target.value });
         window.dispatchEvent(new CustomEvent('dragon-refresh-route'));
     });

@@ -5,6 +5,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from aiohttp import web
+from PIL import Image
 
 from web.services import image_test_service
 
@@ -618,3 +619,15 @@ def test_image_test_service_initial_snapshot_is_idle(tmp_path) -> None:
     assert snapshot["running"] is False
     assert snapshot["output_count"] == 0
     assert snapshot["output_files"] == []
+
+
+def test_image_test_status_keeps_large_recent_gallery(tmp_path) -> None:
+    service = image_test_service.ImageTestService(web.Application())
+    service.output_dir = tmp_path
+    for index in range(14):
+        Image.new("RGB", (8, 8), color=(index, index, index)).save(tmp_path / f"image-{index:02d}.png")
+
+    snapshot = service.get_status_snapshot()
+
+    assert snapshot["output_count"] == 14
+    assert len(snapshot["output_files"]) == 14

@@ -213,10 +213,12 @@ def list_config_group_preview_images(
     variant: str,
     preset: str,
     limit: int = 200,
+    days: int | None = None,
 ) -> dict[str, Any]:
     group_label = f"{methods_subdir} / {variant} / {preset or 'default'}"
     label = f"训练分组合并采样结果 · {group_label} · {len(tasks)} 次训练"
     limit = max(1, min(int(limit or 200), get("MAX_IMAGE_LIMIT")))
+    days = _normalize_preview_days(days)
     images_by_path: dict[str, dict[str, Any]] = {}
     directories: list[str] = []
 
@@ -261,6 +263,9 @@ def list_config_group_preview_images(
                 images_by_path[key] = meta
 
     images = list(images_by_path.values())
+    if days is not None:
+        cutoff = datetime.now().timestamp() - days * 86400
+        images = [image for image in images if float(image.get("mtime") or 0) >= cutoff]
     images.sort(key=lambda item: (float(item.get("mtime") or 0), str(item.get("name") or "")), reverse=True)
     limited = images[:limit]
     return {
@@ -794,5 +799,4 @@ def _training_preview_label(settings: dict[str, Any], *, task_id: str | None, ta
         run_name = Path(run_dir).name if run_dir else "最新运行目录"
         return f"训练过程中采样结果 · {run_name}"
     return "训练过程中采样结果 · 兼容目录"
-
 

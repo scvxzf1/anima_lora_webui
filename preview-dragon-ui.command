@@ -4,6 +4,12 @@ set -u
 
 HOST="127.0.0.1"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+cd "${SCRIPT_DIR}" || {
+    echo "无法进入项目目录：${SCRIPT_DIR}"
+    read -n 1 -r -p "按任意键退出..." _
+    exit 1
+}
+
 STATIC_DIR="${SCRIPT_DIR}/web/static"
 PIDFILE="/tmp/anima-dragon-ui-preview.pid"
 PORTFILE="/tmp/anima-dragon-ui-preview.port"
@@ -66,8 +72,27 @@ cleanup() {
 }
 trap cleanup INT TERM EXIT
 
-sleep 1
-echo "Dragon trainer WebUI 已启动：${URL}"
-echo "关闭此终端窗口或按 Ctrl+C 可停止预览。"
-open "${URL}" 2>/dev/null || true
+# 首次启动需加载 torch，可能耗时 10~40 秒，等服务器真正就绪后再打开浏览器。
+echo "正在启动 Dragon trainer WebUI，请稍候…"
+READY=0
+for _ in $(seq 1 90); do
+    if curl -s -o /dev/null -m 1 "${URL}" 2>/dev/null; then
+        READY=1
+        break
+    fi
+    if ! kill -0 "${SERVER_PID}" 2>/dev/null; then
+        echo "WebUI 进程提前退出，启动失败，请检查上方输出。"
+        break
+    fi
+    sleep 0.5
+done
+
+if [ "${READY}" = "1" ]; then
+    echo "Dragon trainer WebUI 已启动：${URL}"
+    echo "关闭此终端窗口或按 Ctrl+C 可停止预览。"
+    open "${URL}" 2>/dev/null || true
+else
+    echo "启动超时或失败。可稍后手动访问：${URL}"
+fi
+
 wait "${SERVER_PID}"

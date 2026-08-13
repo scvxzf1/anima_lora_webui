@@ -26,6 +26,22 @@ body[data-dragon-ui] #dragon-root {
     flex-direction: column;
 }
 
+.dragon-skip-link {
+    position: fixed;
+    z-index: calc(var(--dragon-z-nav) + 2);
+    top: 8px;
+    left: 12px;
+    padding: 8px 12px;
+    border-radius: var(--dragon-radius-pill);
+    background: var(--dragon-accent);
+    color: #fff;
+    text-decoration: none;
+    transform: translateY(calc(-100% - 16px));
+    transition: transform var(--dragon-dur-fast) var(--dragon-ease-out);
+}
+
+.dragon-skip-link:focus-visible { transform: translateY(0); }
+
 /* The classic UI stylesheet uses unscoped semantic-element rules. Reset them
  * inside the UI root so page-level headers and indexes keep their own flow. */
 body[data-dragon-ui] #dragon-root header {
@@ -73,6 +89,41 @@ body[data-dragon-ui] #toast-container {
 
 .dragon-page-wide {
     max-width: var(--dragon-content-wide);
+}
+
+.dragon-route-loading {
+    display: flex;
+    width: min(520px, calc(100% - 40px));
+    min-height: 180px;
+    margin: clamp(64px, 12vh, 128px) auto 0;
+    align-items: center;
+    justify-content: center;
+    gap: var(--dragon-sp-4);
+    border: 1px solid var(--dragon-border-light);
+    border-radius: var(--dragon-radius-xl);
+    background: color-mix(in srgb, var(--dragon-bg-secondary) 84%, transparent);
+    box-shadow: var(--dragon-shadow-md);
+    color: var(--dragon-text-primary);
+    text-align: left;
+}
+
+.dragon-route-loading > div,
+.dragon-route-loading strong,
+.dragon-route-loading span:not(.dragon-spinner) {
+    display: block;
+    min-width: 0;
+}
+
+.dragon-route-loading strong {
+    font-size: var(--dragon-fs-callout-medium);
+    font-weight: var(--dragon-fw-semibold);
+    text-wrap: balance;
+}
+
+.dragon-route-loading span:not(.dragon-spinner) {
+    margin-top: 4px;
+    color: var(--dragon-text-tertiary);
+    font-size: var(--dragon-fs-caption);
 }
 
 @media (max-width: 833px) {
@@ -202,6 +253,16 @@ body[data-dragon-ui] ::-webkit-scrollbar-thumb:hover {
     border-radius: var(--dragon-radius-sm);
 }
 
+body[data-dragon-ui] #dragon-root :is(button, input, select, textarea, summary, [role="button"], [role="switch"]):focus-visible {
+    outline: 3px solid var(--dragon-accent-light);
+    outline-offset: 2px;
+}
+
+body[data-dragon-ui] #dragon-root :is(button, input, select, textarea):disabled {
+    opacity: .45;
+    cursor: not-allowed;
+}
+
 /* Link */
 .dragon-link {
     color: var(--dragon-accent);
@@ -223,4 +284,15 @@ body[data-dragon-ui] ::-webkit-scrollbar-thumb:hover {
 .dragon-page-leave {
     opacity: 0;
     transition: opacity var(--dragon-dur-med) var(--dragon-ease);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    body[data-dragon-ui] #dragon-root *,
+    body[data-dragon-ui] #dragon-root *::before,
+    body[data-dragon-ui] #dragon-root *::after {
+        scroll-behavior: auto !important;
+        animation-duration: .01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: .01ms !important;
+    }
 }

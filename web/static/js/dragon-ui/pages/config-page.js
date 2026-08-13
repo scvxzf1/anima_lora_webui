@@ -9,6 +9,7 @@ import { FIELD_LABEL_ZH, FIELD_OPTIONS } from '../../config/catalog/labels-optio
 import { FIELD_HELP_ZH } from '../../config/catalog/field-help.js?v=dragon-ui-20260812v35';
 import { FORM_UI_DEFAULTS } from '../../config/catalog/defaults.js?v=dragon-ui-20260812v35';
 import { createApiClient } from '../../shared/api.js?v=dragon-ui-20260812v35';
+import { escapeHtml } from '../../shared/format.js?v=dragon-ui-20260812v35';
 import { SECTION_GROUPS } from './section-groups.js?v=dragon-ui-20260812v35';
 import { findCategory, isConfigCategory } from '../category-map.js?v=dragon-ui-20260812v35';
 import { keysForConfigSubItem } from './config-field-map.js?v=dragon-ui-20260812v35';
@@ -54,15 +55,32 @@ export async function loadConfigPage(context) {
 
    const trainingContext = await loadTrainingContext();
    let currentValues = {};
+   let configError = '';
    try {
        const res = await api(mergedConfigUrl(trainingContext));
-       if (res && res.ok !== false) currentValues = res.config || res;
-   } catch { /* use defaults */ }
+       if (!res || res.ok === false) throw new Error(res?.error || '后端没有返回可用配置');
+       currentValues = res.config || res;
+   } catch (error) {
+       configError = error.message || '读取训练配置失败';
+   }
 
     const wrapper = document.createElement('div');
     wrapper.className = 'dragon-page';
 
     const pageCategory = category || findCategory(sub.categoryId);
+    if (configError) {
+        wrapper.innerHTML = renderConfigLoadError(pageCategory, sub, configError, trainingContext);
+        return {
+            html: wrapper.innerHTML,
+            onMount: (root) => {
+                root.querySelector('[data-config-action="retry"]')?.addEventListener('click', () => {
+                    window.dispatchEvent(new CustomEvent('dragon-refresh-route'));
+                });
+            },
+        };
+    }
+
+    const pageState = { dirty: false, beforeUnload: null };
     if (isCategoryPage) {
         wrapper.innerHTML = renderCategoryPage(pageCategory, entries, keys, currentValues, trainingContext);
     } else {
@@ -72,14 +90,39 @@ export async function loadConfigPage(context) {
     return {
         html: wrapper.innerHTML,
         onMount: (root) => {
-            const saveChanges = wireConfigInteractions(root, keys, currentValues, trainingContext);
-            bindTrainingControls(root, trainingContext, { saveChanges });
+            const saveChanges = wireConfigInteractions(root, keys, currentValues, trainingContext, pageState);
+            bindTrainingControls(root, trainingContext, {
+                saveChanges,
+                beforeContextChange: () => confirmConfigDiscard(pageState, '切换训练配置'),
+            });
             if (isCategoryPage) {
                 bindConfigIndex(root, pageCategory.id);
                 scrollToConfigEntry(root, context.subId);
             }
         },
+        beforeLeave: () => confirmConfigDiscard(pageState, '离开页面'),
+        onUnmount: () => cleanupConfigPage(pageState),
     };
+}
+
+function renderConfigLoadError(category, sub, error, trainingContext) {
+    const title = category?.label || sub?.label || '训练配置';
+    return `
+        <div class="dragon-config-page">
+            <div class="dragon-config-hero dragon-reveal">
+                <span class="dragon-eyebrow">训练工作台</span>
+                <h1>${escapeHtml(title)}</h1>
+                <p>当前配置没有成功读取，因此不会展示默认值，也不会允许保存或启动训练。</p>
+            </div>
+            <section class="dragon-config-load-error dragon-reveal" role="alert">
+                <span class="dragon-eyebrow">读取失败</span>
+                <h2>无法安全打开训练配置</h2>
+                <p>${escapeHtml(error)}</p>
+                <p class="dragon-text-mono">${escapeHtml(trainingContext.configFile || '未选择配置文件')}</p>
+                <button class="dragon-btn dragon-btn-primary" type="button" data-config-action="retry">重新读取配置</button>
+            </section>
+        </div>
+    `;
 }
 
 function renderSingleConfigPage(sub, keys, currentValues, trainingContext) {
@@ -145,7 +188,7 @@ function renderConfigActions() {
             <button class="dragon-btn dragon-btn-secondary" type="button" id="dragon-config-reset">恢复默认</button>
             <button class="dragon-btn dragon-btn-primary" type="button" id="dragon-config-save">保存配置</button>
         </div>
-        <div class="dragon-config-feedback" id="dragon-config-feedback"></div>
+        <div class="dragon-config-feedback" id="dragon-config-feedback" role="status" aria-live="polite"></div>
     `;
 }
 
@@ -271,56 +314,83 @@ function renderField(key, value) {
     const help = FIELD_HELP_ZH[key];
     const options = FIELD_OPTIONS[key];
     const helpSummary = help ? (help.summary || help['\u4f5c\u7528'] || '') : '';
+    const fieldToken = configFieldToken(key);
+    const fieldId = `dragon-config-field-${fieldToken}`;
+    const name = `config_${String(key).replace(/[^A-Za-z0-9_-]+/g, '_')}`;
+    const placeholder = `例如：${label}…`;
 
     let control;
     if (options) {
-        control = `<select class="dragon-select" data-key="${key}">
-            ${options.map((opt) => `<option value="${opt}" ${String(value) === String(opt) ? 'selected' : ''}>${opt}</option>`).join('')}
+        control = `<select class="dragon-select" id="${fieldId}" name="${name}" autocomplete="off" data-key="${key}">
+            ${options.map((opt) => `<option value="${escapeHtml(opt)}" ${String(value) === String(opt) ? 'selected' : ''}>${escapeHtml(opt)}</option>`).join('')}
         </select>`;
     } else if (typeof value === 'boolean') {
         control = `<div class="dragon-toggle-row">
-            <div class="dragon-toggle" data-key="${key}" data-checked="${value}" role="switch" tabindex="0"></div>
+            <div class="dragon-toggle" id="${fieldId}" data-key="${key}" data-checked="${value}" role="switch" tabindex="0" aria-checked="${value}" aria-label="${escapeHtml(label)}"></div>
             <div>
-                <div class="dragon-toggle-label">${label}</div>
-                ${helpSummary ? `<div class="dragon-toggle-desc">${helpSummary}</div>` : ''}
+                <div class="dragon-toggle-label">${escapeHtml(label)}</div>
+                ${helpSummary ? `<div class="dragon-toggle-desc">${escapeHtml(helpSummary)}</div>` : ''}
             </div>
         </div>`;
-        return `<div class="dragon-field">${control}${help ? renderHelp(key, help) : ''}</div>`;
+        return `<div class="dragon-field">${control}${help ? renderHelp(key, help, fieldToken) : ''}</div>`;
     } else if (key.includes('prompt') || key === 'optimizer_args' || key === 'network_args') {
-        control = `<textarea class="dragon-textarea" data-key="${key}" placeholder="${label}">${configValueForControl(value) || ''}</textarea>`;
+        control = `<textarea class="dragon-textarea" id="${fieldId}" name="${name}" autocomplete="off" spellcheck="false" data-key="${key}" placeholder="${escapeHtml(placeholder)}">${escapeHtml(configValueForControl(value) || '')}</textarea>`;
     } else {
         const inputType = typeof value === 'number' ? 'number' : 'text';
-        control = `<input class="dragon-input" type="${inputType}" data-key="${key}" value="${value ?? ''}" placeholder="${label}">`;
+        const inputMode = inputType === 'number' ? ' inputmode="decimal"' : '';
+        control = `<input class="dragon-input" id="${fieldId}" name="${name}" type="${inputType}"${inputMode} autocomplete="off" spellcheck="false" data-key="${key}" value="${escapeHtml(value ?? '')}" placeholder="${escapeHtml(placeholder)}">`;
     }
 
     return `
         <div class="dragon-field">
             <div class="dragon-field-label">
-               <span class="dragon-field-label-text">${label}</span>
-               ${help ? `<button class="dragon-field-help-btn" type="button" data-help-key="${key}" title="查看说明">?</button>` : ''}
+               <label class="dragon-field-label-text" for="${fieldId}">${escapeHtml(label)}</label>
+               ${help ? `<button class="dragon-field-help-btn" type="button" data-help-key="${key}" aria-expanded="false" aria-controls="dragon-config-help-${fieldToken}" aria-label="查看${escapeHtml(label)}说明" title="查看说明">?</button>` : ''}
             </div>
             ${control}
-            ${help ? renderHelp(key, help) : ''}
+            ${help ? renderHelp(key, help, fieldToken) : ''}
         </div>
     `;
 }
 
-function renderHelp(key, help) {
+function renderHelp(key, help, fieldToken) {
     const summary = help.summary || help['\u4f5c\u7528'] || '';
     const why = help.why || help['\u4e3a\u4ec0\u4e48'] || '';
+    const helpId = `dragon-config-help-${fieldToken}`;
     return `
-        <div class="dragon-field-help" data-help-key="${key}">
-            ${summary ? `<div class="dragon-field-help-section"><div class="dragon-field-help-heading">\u4f5c\u7528</div><p>${summary}</p></div>` : ''}
-            ${why ? `<div class="dragon-field-help-section"><div class="dragon-field-help-heading">\u4e3a\u4ec0\u4e48</div><p>${why}</p></div>` : ''}
+        <div class="dragon-field-help" id="${helpId}" data-help-key="${key}">
+            ${summary ? `<div class="dragon-field-help-section"><div class="dragon-field-help-heading">\u4f5c\u7528</div><p>${escapeHtml(summary)}</p></div>` : ''}
+            ${why ? `<div class="dragon-field-help-section"><div class="dragon-field-help-heading">\u4e3a\u4ec0\u4e48</div><p>${escapeHtml(why)}</p></div>` : ''}
         </div>
     `;
 }
 
-function wireConfigInteractions(wrapper, keys, originalValues, trainingContext) {
+function configFieldToken(key) {
+    const scope = String(key).replace(/[^A-Za-z0-9_-]+/g, '-');
+    return `${scope}-${configFieldToken.counter++}`;
+}
+configFieldToken.counter = 0;
+
+function wireConfigInteractions(wrapper, keys, originalValues, trainingContext, state) {
+    const syncDirty = () => {
+        state.dirty = Object.keys(prepareConfigPatch(
+            collectChangedValues(wrapper, keys, originalValues),
+            originalValues,
+        )).length > 0;
+    };
+    state.beforeUnload = (event) => {
+        if (!state.dirty) return;
+        event.preventDefault();
+        event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', state.beforeUnload);
+
     wrapper.querySelectorAll('.dragon-toggle').forEach((toggle) => {
         toggle.addEventListener('click', () => {
             const checked = toggle.dataset.checked === 'true';
             toggle.dataset.checked = String(!checked);
+            toggle.setAttribute('aria-checked', String(!checked));
+            syncDirty();
         });
         toggle.addEventListener('keydown', (e) => {
             if (e.key === 'Enter' || e.key === ' ') {
@@ -332,11 +402,11 @@ function wireConfigInteractions(wrapper, keys, originalValues, trainingContext) 
 
     wrapper.querySelectorAll('.dragon-field-help-btn').forEach((btn) => {
         btn.addEventListener('click', () => {
-            const key = btn.dataset.helpKey;
-            const helpEl = wrapper.querySelector(`.dragon-field-help[data-help-key="${key}"]`);
+            const helpEl = wrapper.querySelector(`#${btn.getAttribute('aria-controls')}`);
             if (helpEl) {
                 const isOpen = helpEl.dataset.open === 'true';
                 helpEl.dataset.open = String(!isOpen);
+                btn.setAttribute('aria-expanded', String(!isOpen));
             }
         });
     });
@@ -344,6 +414,10 @@ function wireConfigInteractions(wrapper, keys, originalValues, trainingContext) 
     const saveBtn = wrapper.querySelector('#dragon-config-save');
     const resetBtn = wrapper.querySelector('#dragon-config-reset');
     const feedbackEl = wrapper.querySelector('#dragon-config-feedback');
+    wrapper.querySelectorAll('#dragon-config-fields input, #dragon-config-fields select, #dragon-config-fields textarea').forEach((field) => {
+        field.addEventListener('input', syncDirty);
+        field.addEventListener('change', syncDirty);
+    });
 
     const saveChanges = async ({ quiet = false } = {}) => {
         const changedValues = prepareConfigPatch(
@@ -356,7 +430,7 @@ function wireConfigInteractions(wrapper, keys, originalValues, trainingContext) 
         }
 
         saveBtn.disabled = true;
-        saveBtn.textContent = '保存中...';
+        saveBtn.textContent = '保存中…';
 
         try {
             if (!trainingContext.configFile) {
@@ -372,6 +446,7 @@ function wireConfigInteractions(wrapper, keys, originalValues, trainingContext) 
             if (res.ok !== false) {
                 showFeedback(feedbackEl, '配置已保存', 'success');
                 Object.assign(originalValues, changedValues);
+                state.dirty = false;
                 return true;
             } else {
                 showFeedback(feedbackEl, res.error || '保存失败', 'error');
@@ -395,6 +470,7 @@ function wireConfigInteractions(wrapper, keys, originalValues, trainingContext) 
 
             if (input.classList.contains('dragon-toggle')) {
                 input.dataset.checked = String(Boolean(defaultValue));
+                input.setAttribute('aria-checked', String(Boolean(defaultValue)));
             } else if (input.tagName === 'SELECT') {
                 input.value = defaultValue || '';
             } else if (input.tagName === 'TEXTAREA') {
@@ -403,9 +479,21 @@ function wireConfigInteractions(wrapper, keys, originalValues, trainingContext) 
                 input.value = defaultValue ?? '';
             }
         });
+        syncDirty();
         showFeedback(feedbackEl, '已恢复默认值（需点击保存才会生效）', 'info');
     });
     return () => saveChanges({ quiet: true });
+}
+
+function confirmConfigDiscard(state, action) {
+    if (!state.dirty) return true;
+    const allowed = window.confirm(`当前训练配置有未保存修改。${action}会丢弃这些修改，是否继续？`);
+    if (allowed) state.dirty = false;
+    return allowed;
+}
+
+function cleanupConfigPage(state) {
+    if (state.beforeUnload) window.removeEventListener('beforeunload', state.beforeUnload);
 }
 
 function collectChangedValues(wrapper, keys, originalValues) {

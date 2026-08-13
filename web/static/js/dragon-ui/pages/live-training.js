@@ -3,101 +3,83 @@
  */
 
 import { createApiClient } from '../../shared/api.js?v=dragon-ui-20260812v35';
-import { connectWebSocket, disconnectWebSocket, onMessage } from '../ws.js?v=dragon-ui-20260812v35';
+import { connectWebSocket, disconnectWebSocket, onClose, onMessage, onOpen } from '../ws.js?v=dragon-ui-20260812v35';
+import { bindLiveLogTools, renderLogView, updateLogSummary } from './live-training-log-tools.js?v=dragon-ui-20260814v43';
+import {
+    applyProgress,
+    applySystem,
+    connectionState,
+    createLiveModel,
+    formatConfigLabel,
+    isRunningState,
+    mergeStatusSnapshot,
+    stateText,
+    visualState,
+    visibleLogs,
+} from './live-training-state.js?v=dragon-ui-20260814v43';
+import {
+    formatEta,
+    formatLoss,
+    formatLr,
+    formatPercent,
+    formatRate,
+    formatTemperature,
+    formatVram,
+    renderLiveTrainingPage,
+} from './live-training-view.js?v=dragon-ui-20260814v43';
 
 const api = createApiClient();
 
 export async function loadLiveTraining() {
     const model = await loadLiveModel();
+    let cleanup = null;
     return {
         html: renderLiveTraining(model),
-        onMount: (root) => mountLiveTraining(root, model),
+        onMount: (root) => { cleanup = mountLiveTraining(root, model); },
+        onUnmount: () => cleanup?.(),
     };
 }
 
 async function loadLiveModel() {
-    const [status, metricsPayload] = await Promise.all([
-        readApi('/api/training/status', {}),
-        readApi('/api/training/metrics', {}),
+    const snapshot = await readLiveSnapshot();
+    if (snapshot.ok) return createLiveModel(snapshot.status, snapshot.metrics, snapshot.logs);
+    const model = createLiveModel({ status: 'unavailable' }, [], { records: [] });
+    model.apiConnected = false;
+    model.apiError = snapshot.error;
+    model.lastActivity = snapshot.error;
+    return model;
+}
+
+async function readLiveSnapshot() {
+    const results = await Promise.allSettled([
+        readApi('/api/training/status'),
+        readApi('/api/training/metrics'),
+        readApi('/api/training/logs?limit=300'),
     ]);
-    return createLiveModel(status, metricsPayload);
-}
-
-async function readApi(url, fallback) {
-    try {
-        const result = await api(url);
-        if (!result || result.ok === false || Number(result.status) >= 400 || typeof result.error === 'string') {
-            return fallback;
-        }
-        return result ?? fallback;
-    } catch {
-        return fallback;
-    }
-}
-
-function createLiveModel(status = {}, metricsPayload = {}) {
-    const progress = status?.latest_progress || {};
-    const systemStats = status?.latest_system || {};
-    const metrics = Array.isArray(metricsPayload?.metrics)
-        ? metricsPayload.metrics
-        : (Array.isArray(metricsPayload) ? metricsPayload : []);
-    const step = progress.step || 0;
-    const total = progress.total_steps || progress.total || 0;
-    const progressPct = total > 0 ? Math.min(100, (step / total) * 100) : 0;
-
+    const rejected = results.find((result) => result.status === 'rejected');
+    if (rejected) return { ok: false, error: rejected.reason?.message || '读取训练监控数据失败' };
     return {
-        state: status?.status || 'idle',
-        step,
-        total,
-        progressPct,
-        loss: progress.loss,
-        lr: progress.lr,
-        epoch: progress.epoch || 0,
-        vram: systemStats.gpu_memory_used ?? systemStats.vram_used,
-        gpuTemp: systemStats.gpu_temp,
-        gpuUtil: systemStats.gpu_util,
-        metrics,
+        ok: true,
+        status: results[0].value,
+        metrics: results[1].value,
+        logs: results[2].value,
     };
 }
 
+async function readApi(url) {
+    try {
+        const result = await api(url);
+        if (!result || result.ok === false || Number(result.status) >= 400 || typeof result.error === 'string') {
+            throw new Error(result?.error || `读取 ${url} 失败`);
+        }
+        return result;
+    } catch (error) {
+        throw new Error(error?.message || `读取 ${url} 失败`);
+    }
+}
+
 function renderLiveTraining(model) {
-    return `
-        <div class="dragon-page dragon-page-wide" data-live-training-root>
-            <div class="dragon-page-hero dragon-reveal">
-                <div class="dragon-status-badge" data-live-state data-state="${model.state}">
-                    <span class="dragon-nav-status-dot" data-state="${model.state}"></span>
-                    <span data-live-state-text>${stateText(model.state)}</span>
-                </div>
-                <h1>实时训练</h1>
-                <p data-live-subtitle>${model.total > 0 ? `步数 ${model.step} / ${model.total}（${model.progressPct.toFixed(1)}%）` : '训练未运行'}</p>
-            </div>
-
-            <div class="dragon-progress-bar-wrapper dragon-reveal" data-stagger="1">
-                <div class="dragon-progress-bar">
-                    <div class="dragon-progress-bar-fill" data-live-progress-fill style="width: ${model.progressPct}%"></div>
-                </div>
-                <div class="dragon-progress-bar-meta">
-                    <span data-live-step-text>${model.step} / ${model.total} 步</span>
-                    <span data-live-epoch-text>轮数 ${model.epoch}</span>
-                </div>
-            </div>
-
-            <div class="dragon-metrics-grid dragon-reveal" data-stagger="2">
-                ${metricTile('损失值', formatLoss(model.loss), 'live-loss')}
-                ${metricTile('学习率', formatLr(model.lr), 'live-lr')}
-                ${metricTile('显存', formatVram(model.vram), 'live-vram')}
-                ${metricTile('GPU 利用率', model.gpuUtil != null ? `${model.gpuUtil}%` : '-', 'live-gpu-util')}
-                ${metricTile('GPU 温度', model.gpuTemp != null ? `${model.gpuTemp}\u00b0C` : '-', 'live-gpu-temp')}
-                ${metricTile('轮数', model.epoch || '-', 'live-epoch')}
-            </div>
-
-            <div class="dragon-section dragon-reveal" data-stagger="3">
-                <h2 class="dragon-section-title">损失曲线</h2>
-                <p class="dragon-section-desc" data-live-chart-count>最近 ${model.metrics.length} 条记录。</p>
-                <div class="dragon-chart-container" data-live-chart>${renderLossChart(model.metrics)}</div>
-            </div>
-        </div>
-    `;
+    return renderLiveTrainingPage(model, renderLossChart);
 }
 
 function mountLiveTraining(root, model) {
@@ -109,78 +91,114 @@ function mountLiveTraining(root, model) {
         }),
         onMessage('metrics', (message) => {
             if (Array.isArray(message.metrics)) model.metrics = message.metrics;
-            else if (message.metric) model.metrics = [...model.metrics, message.metric].slice(-500);
-            renderLiveState(root, model);
+            else model.metrics = [...model.metrics, message].slice(-500);
+            if (message.loss != null) model.loss = message.loss;
+            if (message.lr != null) model.lr = message.lr;
+            if (message.epoch != null) model.epoch = message.epoch;
+            if (message.rate != null) model.rate = message.rate;
+            renderLiveState(root, model, { chart: true });
         }),
         onMessage('system', (message) => {
             applySystem(model, message);
-            renderLiveState(root, model);
+            renderLiveState(root, model, { chart: false });
+        }),
+        onMessage('log', (message) => {
+            model.logs = [...model.logs, message].slice(-300);
+            model.lastLogId = Math.max(model.lastLogId || 0, Number(message.id || 0));
+            model.lastActivity = message.line || message.message || model.lastActivity;
+            renderLiveState(root, model, { chart: false, logs: true, forceLogBottom: model.autoScroll });
         }),
         onMessage('status', (message) => {
-            if (message.status) model.state = message.status;
-            renderLiveState(root, model);
+            const previousRunDir = model.runDir;
+            if (message.status || message.state) model.state = message.status || message.state;
+            if (message.variant || message.preset || message.history_source_config_file || message.runtime_config_file) {
+                model.configLabel = formatConfigLabel(message);
+            }
+            model.runDir = message.run_dir || message.output_dir || model.runDir;
+            if (previousRunDir !== model.runDir && (message.run_dir || message.output_dir)) resetLivePeaks(model);
+            model.lastActivity = message.message || message.last_log_line || model.lastActivity;
+            renderLiveState(root, model, { chart: false });
+        }),
+        onOpen(() => {
+            model.wsState = 'open';
+            model.wsError = '';
+            renderLiveState(root, model, { chart: false, logs: false });
+        }),
+        onClose((event = {}) => {
+            if (event.intentional) return;
+            model.wsState = 'closed';
+            model.wsError = '实时推送已断开，正在自动重连；页面仍会定时刷新。';
+            renderLiveState(root, model, { chart: false, logs: false });
         }),
     ].filter(Boolean);
 
     connectWebSocket();
+    bindLiveActions(root, model);
+    bindLiveLogTools(root, model, (options = {}) => renderLiveState(root, model, options));
+    renderLiveState(root, model, { chart: false, logs: false });
 
     const pollTimer = window.setInterval(async () => {
-        const next = await loadLiveModel();
-        Object.assign(model, next);
-        renderLiveState(root, model);
+        const snapshot = await readLiveSnapshot();
+        if (snapshot.ok) {
+            mergeStatusSnapshot(model, snapshot.status, snapshot.metrics, snapshot.logs);
+            model.apiConnected = true;
+            model.apiError = '';
+            renderLiveState(root, model, { chart: true, logs: true });
+            return;
+        }
+        model.apiConnected = false;
+        model.apiError = `${snapshot.error}。请检查 WebUI 服务后重试。`;
+        model.lastActivity = model.apiError;
+        renderLiveState(root, model, { chart: false, logs: false });
     }, 5000);
 
-    const observer = new MutationObserver(() => {
-        if (!document.contains(root)) {
-            window.clearInterval(pollTimer);
-            subscriptions.forEach((unsubscribe) => unsubscribe());
-            disconnectWebSocket();
-            observer.disconnect();
-        }
-    });
-    observer.observe(root.parentElement || document.body, { childList: true, subtree: true });
+    return () => {
+        window.clearInterval(pollTimer);
+        subscriptions.forEach((unsubscribe) => unsubscribe());
+        disconnectWebSocket();
+    };
 }
 
-function applyProgress(model, message) {
-    const progress = message.progress || message;
-    if (progress.step != null) model.step = progress.step;
-    if (progress.total_steps != null) model.total = progress.total_steps;
-    else if (progress.total != null) model.total = progress.total;
-    if (progress.loss != null) model.loss = progress.loss;
-    if (progress.lr != null) model.lr = progress.lr;
-    if (progress.epoch != null) model.epoch = progress.epoch;
-    model.progressPct = model.total > 0 ? Math.min(100, (model.step / model.total) * 100) : 0;
-}
-
-function applySystem(model, message) {
-    const system = message.system || message;
-    if (system.gpu_memory_used != null) model.vram = system.gpu_memory_used;
-    else if (system.vram_used != null) model.vram = system.vram_used;
-    if (system.gpu_temp != null) model.gpuTemp = system.gpu_temp;
-    if (system.gpu_util != null) model.gpuUtil = system.gpu_util;
-}
-
-function renderLiveState(root, model) {
+function renderLiveState(root, model, options = {}) {
     if (!document.contains(root)) return;
     setText(root, '[data-live-state-text]', stateText(model.state));
-    setText(root, '[data-live-subtitle]', model.total > 0 ? `步数 ${model.step} / ${model.total}（${model.progressPct.toFixed(1)}%）` : '训练未运行');
+    setText(root, '[data-live-progress-text]', model.total > 0 ? `${model.progressPct.toFixed(1)}%` : '等待训练');
     setText(root, '[data-live-step-text]', `${model.step} / ${model.total} 步`);
-    setText(root, '[data-live-epoch-text]', `轮数 ${model.epoch}`);
-    setText(root, '[data-live-loss] .dragon-metric-value', formatLoss(model.loss));
-    setText(root, '[data-live-lr] .dragon-metric-value', formatLr(model.lr));
-    setText(root, '[data-live-vram] .dragon-metric-value', formatVram(model.vram));
-    setText(root, '[data-live-gpu-util] .dragon-metric-value', model.gpuUtil != null ? `${model.gpuUtil}%` : '-');
-    setText(root, '[data-live-gpu-temp] .dragon-metric-value', model.gpuTemp != null ? `${model.gpuTemp}\u00b0C` : '-');
-    setText(root, '[data-live-epoch] .dragon-metric-value', model.epoch || '-');
-    setText(root, '[data-live-chart-count]', `最近 ${model.metrics.length} 条记录。`);
-    const chart = root.querySelector('[data-live-chart]');
-    if (chart) chart.innerHTML = renderLossChart(model.metrics);
+    setText(root, '[data-live-epoch-text]', `第 ${model.epoch ?? '-'} 轮`);
+    setText(root, '[data-live-metric="live-loss"] strong', formatLoss(model.loss));
+    setText(root, '[data-live-metric="live-lr"] strong', formatLr(model.lr));
+    setText(root, '[data-live-metric="live-rate"] strong', formatRate(model.rate));
+    setText(root, '[data-live-metric="live-eta"] strong', formatEta(model));
+    setText(root, '[data-live-metric="live-vram"] strong', formatVram(model.vram, model.vramTotal));
+    setText(root, '[data-live-metric="live-vram-peak"] strong', formatVram(model.peakVram, model.vramTotal));
+    setText(root, '[data-live-metric="live-gpu-util"] strong', formatPercent(model.gpuUtil));
+    setText(root, '[data-live-metric="live-gpu-util"] small', peakText(formatPercent(model.peakGpuUtil)));
+    setText(root, '[data-live-metric="live-gpu-temp"] strong', formatTemperature(model.gpuTemp));
+    setText(root, '[data-live-metric="live-gpu-temp"] small', peakText(formatTemperature(model.peakGpuTemp)));
+    setText(root, '[data-live-context="config"]', model.configLabel);
+    setText(root, '[data-live-context="run-dir"]', model.runDir);
+    setText(root, '[data-live-context="activity"]', model.lastActivity);
+    setText(root, '[data-live-chart-count]', `最近 ${model.metrics.length} 条记录`);
+    renderConnectionState(root, model);
+    if (options.chart !== false) {
+        const chart = root.querySelector('[data-live-chart]');
+        if (chart) chart.innerHTML = renderLossChart(model.metrics);
+    }
+    if (options.logs) renderLogView(root, model, { forceBottom: options.forceLogBottom });
+    else updateLogSummary(root, model, visibleLogs(model).length);
     const badge = root.querySelector('[data-live-state]');
-    if (badge) badge.dataset.state = model.state;
+    if (badge) badge.dataset.state = visualState(model.state);
     const dot = root.querySelector('[data-live-state] .dragon-nav-status-dot');
-    if (dot) dot.dataset.state = model.state;
+    if (dot) dot.dataset.state = visualState(model.state);
     const fill = root.querySelector('[data-live-progress-fill]');
     if (fill) fill.style.width = `${model.progressPct}%`;
+    const progress = root.querySelector('[data-live-progress]');
+    if (progress) progress.setAttribute('aria-valuenow', String(Math.round(model.progressPct)));
+    const stop = root.querySelector('[data-tool-action="stop"]');
+    if (stop) {
+        stop.hidden = !isRunningState(model.state);
+        stop.disabled = !isRunningState(model.state);
+    }
 }
 
 export function renderLossChart(metrics) {
@@ -215,19 +233,11 @@ export function renderLossChart(metrics) {
     }).join('');
 
     return `
-        <svg class="dragon-loss-chart" viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid meet">
+        <svg class="dragon-loss-chart" viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid meet" role="img" aria-labelledby="dragon-live-loss-title">
+            <title id="dragon-live-loss-title">最近 ${losses.length} 个训练损失值的变化曲线</title>
             ${yTicks}
             <polyline points="${points}" fill="none" stroke="var(--dragon-accent)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
         </svg>
-    `;
-}
-
-function metricTile(label, value, key) {
-    return `
-        <div class="dragon-metric-tile" data-live-metric="${key}">
-            <div class="dragon-metric-value">${value}</div>
-            <div class="dragon-metric-label">${label}</div>
-        </div>
     `;
 }
 
@@ -236,23 +246,50 @@ function setText(root, selector, value) {
     if (node) node.textContent = value;
 }
 
-function formatLoss(value) {
-    return value != null ? Number(value).toFixed(4) : '-';
+function bindLiveActions(root, model) {
+    root.querySelector('[data-tool-action="queue"]')?.addEventListener('click', () => { window.location.hash = '#queue'; });
+    root.querySelector('[data-tool-action="stop"]')?.addEventListener('click', async (event) => {
+        if (!window.confirm('确认停止当前训练吗？已生成的日志、样张和权重会保留。')) return;
+        const button = event.currentTarget;
+        button.disabled = true;
+        showFeedback(root, '正在发送停止请求…', 'info');
+        try {
+            const payload = await api('/api/training/stop', { method: 'POST' });
+            if (payload.ok === false) throw new Error(payload.error || '停止训练失败');
+            model.state = 'stopped';
+            model.lastActivity = payload.message || '停止请求已发送';
+            showFeedback(root, model.lastActivity, 'success');
+            renderLiveState(root, model);
+        } catch (error) {
+            showFeedback(root, error.message || '停止训练失败', 'error');
+            button.disabled = false;
+        }
+    });
 }
 
-function formatLr(value) {
-    return value != null ? Number(value).toExponential(3) : '-';
+function showFeedback(root, message, tone) {
+    const feedback = root.querySelector('[data-live-feedback]');
+    if (!feedback) return;
+    feedback.textContent = message;
+    feedback.dataset.tone = tone;
+    feedback.classList.add('dragon-config-feedback-visible');
 }
 
-function formatVram(value) {
-    return value != null ? `${Number(value).toFixed(1)} GB` : '-';
+function renderConnectionState(root, model) {
+    const connection = connectionState(model);
+    const container = root.querySelector('[data-live-connection]');
+    if (container) container.dataset.tone = connection.tone;
+    setText(root, '[data-live-connection-label]', connection.label);
+    setText(root, '[data-live-connection-detail]', connection.detail);
 }
 
-function stateText(state) {
-    const map = {
-        idle: '空闲', running: '训练中', training: '训练中',
-        queued: '排队中', completed: '已完成', error: '错误',
-        stopped: '已停止', unknown: '未知',
-    };
-    return map[state] || state;
+function peakText(value) { return value === '-' ? '峰值等待采样' : `峰值 ${value}`; }
+
+function resetLivePeaks(model) {
+    model.vram = undefined;
+    model.gpuUtil = undefined;
+    model.gpuTemp = undefined;
+    model.peakVram = undefined;
+    model.peakGpuUtil = undefined;
+    model.peakGpuTemp = undefined;
 }

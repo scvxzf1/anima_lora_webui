@@ -28,6 +28,9 @@ export function getThemePreference() {
 export function applyTheme(theme) {
     document.documentElement.dataset.theme = theme;
     document.documentElement.dataset.dragonTheme = theme;
+    document.documentElement.style.colorScheme = theme;
+    const themeColor = document.getElementById('dragon-theme-color');
+    if (themeColor) themeColor.content = theme === 'dark' ? '#000000' : '#ffffff';
 }
 
 export function initTheme() {

@@ -129,8 +129,7 @@ export const DRAGON_NAV_CATEGORIES = [
                 header: '训练状态',
                 elevated: true,
                 items: [
-                    { id: 'dashboard', label: '训练仪表盘', desc: '首页总览', isPage: 'dashboard' },
-                    { id: 'live-training', label: '实时训练', desc: '损失曲线与步数进度', isPage: 'live-training' },
+                    { id: 'live-training', label: '实时训练', desc: '运行状态、日志与训练控制', isPage: 'live-training' },
                 ],
             },
             {

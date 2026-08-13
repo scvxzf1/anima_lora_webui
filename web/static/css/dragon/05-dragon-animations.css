@@ -63,6 +63,7 @@
 }
 
 .dragon-spinner {
+    flex: 0 0 auto;
     width: 20px;
     height: 20px;
     border: 2px solid var(--dragon-border);

@@ -10,6 +10,7 @@ let ws = null;
 let reconnectDelay = 1000;
 let reconnectTimer = null;
 let intentionallyClosed = false;
+const intentionallyClosedSockets = new WeakSet();
 
 const handlers = {
     log: [],
@@ -17,6 +18,7 @@ const handlers = {
     system: [],
     progress: [],
     status: [],
+    queue: [],
     open: [],
     close: [],
 };
@@ -33,10 +35,12 @@ export function onMessage(type, callback) {
 
 export function onOpen(callback) {
     handlers.open.push(callback);
+    return () => removeHandler('open', callback);
 }
 
 export function onClose(callback) {
     handlers.close.push(callback);
+    return () => removeHandler('close', callback);
 }
 
 export function connectWebSocket() {
@@ -47,17 +51,19 @@ export function connectWebSocket() {
     intentionallyClosed = false;
     try {
         ws = new WebSocket(WS_URL);
-    } catch {
+    } catch (error) {
+        handlers.close.forEach((cb) => cb({ intentional: false, code: 0, reason: error?.message || 'WebSocket 创建失败' }));
         scheduleReconnect();
         return;
     }
 
-    ws.onopen = () => {
+    const socket = ws;
+    socket.onopen = () => {
         reconnectDelay = 1000;
         handlers.open.forEach((cb) => cb());
     };
 
-    ws.onmessage = (event) => {
+    socket.onmessage = (event) => {
         try {
             const msg = JSON.parse(event.data);
             const type = msg?.type;
@@ -67,11 +73,13 @@ export function connectWebSocket() {
         } catch { /* ignore parse errors */ }
     };
 
-    ws.onerror = () => { /* errors handled by onclose */ };
+    socket.onerror = () => { /* errors handled by onclose */ };
 
-    ws.onclose = () => {
-        handlers.close.forEach((cb) => cb());
-        if (!intentionallyClosed) scheduleReconnect();
+    socket.onclose = (event) => {
+        const intentional = intentionallyClosedSockets.has(socket);
+        if (ws === socket) ws = null;
+        handlers.close.forEach((cb) => cb({ intentional, code: event.code, reason: event.reason || '' }));
+        if (!intentional) scheduleReconnect();
     };
 }
 
@@ -82,9 +90,17 @@ export function disconnectWebSocket() {
         reconnectTimer = null;
     }
     if (ws) {
-        ws.close();
+        const socket = ws;
+        intentionallyClosedSockets.add(socket);
+        socket.close();
         ws = null;
     }
+}
+
+function removeHandler(type, callback) {
+    const list = handlers[type];
+    const index = list.indexOf(callback);
+    if (index >= 0) list.splice(index, 1);
 }
 
 function scheduleReconnect() {

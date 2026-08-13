@@ -293,7 +293,7 @@
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
-    transition: all var(--dragon-dur-fast) var(--dragon-ease);
+    transition: background-color var(--dragon-dur-fast) var(--dragon-ease), border-color var(--dragon-dur-fast) var(--dragon-ease), box-shadow var(--dragon-dur-fast) var(--dragon-ease), color var(--dragon-dur-fast) var(--dragon-ease);
     margin-left: auto;
 }
 .dragon-field-help-btn:hover {
@@ -346,20 +346,35 @@
     font-family: inherit;
     font-size: var(--dragon-fs-body);
     color: var(--dragon-text-primary);
-    transition: all var(--dragon-dur-fast) var(--dragon-ease);
+    transition: background-color var(--dragon-dur-fast) var(--dragon-ease), border-color var(--dragon-dur-fast) var(--dragon-ease), color var(--dragon-dur-fast) var(--dragon-ease), transform var(--dragon-dur-fast) var(--dragon-ease);
     box-sizing: border-box;
     line-height: 1.4705882353;
     letter-spacing: var(--dragon-ls-normal);
 }
 
-.dragon-input:focus,
-.dragon-select:focus,
-.dragon-textarea:focus {
+.dragon-input:focus-visible,
+.dragon-select:focus-visible,
+.dragon-textarea:focus-visible {
     background: var(--dragon-input-bg-focus);
     border-color: var(--dragon-border-focus);
     outline: none;
     box-shadow: 0 0 0 3px var(--dragon-accent-light);
 }
+
+.dragon-config-load-error {
+    display: grid;
+    gap: var(--dragon-sp-3);
+    margin-top: var(--dragon-sp-6);
+    padding: var(--dragon-sp-7);
+    border: 1px solid color-mix(in srgb, var(--dragon-error) 38%, var(--dragon-border));
+    border-radius: var(--dragon-radius-xl);
+    background: color-mix(in srgb, var(--dragon-error) 7%, var(--dragon-bg-secondary));
+}
+
+.dragon-config-load-error h2,
+.dragon-config-load-error p { margin: 0; }
+.dragon-config-load-error p { max-width: 760px; overflow-wrap: anywhere; color: var(--dragon-text-secondary); }
+.dragon-config-load-error .dragon-btn { justify-self: start; margin-top: var(--dragon-sp-2); }
 
 .dragon-textarea {
     min-height: 80px;
@@ -442,7 +457,7 @@
     font-weight: var(--dragon-fw-regular);
     border: none;
     cursor: pointer;
-    transition: all var(--dragon-dur-fast) var(--dragon-ease);
+    transition: background-color var(--dragon-dur-fast) var(--dragon-ease), border-color var(--dragon-dur-fast) var(--dragon-ease), color var(--dragon-dur-fast) var(--dragon-ease), box-shadow var(--dragon-dur-fast) var(--dragon-ease), opacity var(--dragon-dur-fast) var(--dragon-ease), transform var(--dragon-dur-fast) var(--dragon-ease);
     text-decoration: none;
     letter-spacing: var(--dragon-ls-normal);
 }

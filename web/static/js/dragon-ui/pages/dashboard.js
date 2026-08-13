@@ -1,36 +1,32 @@
-/* Training dashboard homepage.
- * Keeps the page hierarchy while bringing the classic live monitor into the
- * first workspace: progress, metrics, loss curve, run context, and logs.
- */
+/* Training dashboard homepage: a concise cross-workspace overview. */
 
 import { createApiClient } from '../../shared/api.js?v=dragon-ui-20260812v35';
 import { calculateTrainingEtaMetricInfo, formatLr } from '../../features/live-training/index.js?v=dragon-ui-20260812v35';
-import { renderLossChart } from './live-training.js?v=dragon-ui-20260812v35';
-import { appendLogLine, connectWebSocket, disconnectWebSocket, onMessage } from '../ws.js?v=dragon-ui-20260812v35';
+import { connectWebSocket, disconnectWebSocket, onMessage } from '../ws.js?v=dragon-ui-20260812v35';
 import { renderIcon } from '../icons.js?v=dragon-ui-20260812v35';
 
 const api = createApiClient();
 
 export async function loadDashboard() {
     const data = await loadDashboardData();
+    let cleanup = null;
     return {
         html: renderDashboard(data),
-        onMount: (wrapper) => mountDashboard(wrapper, data),
+        onMount: (wrapper) => { cleanup = mountDashboard(wrapper, data); },
+        onUnmount: () => cleanup?.(),
     };
 }
 
 async function loadDashboardData() {
-    const [status, history, metrics, logs] = await Promise.all([
+    const [status, history, metrics] = await Promise.all([
         readApi('/api/training/status', {}),
         readApi('/api/training/history?limit=8', {}),
         readApi('/api/training/metrics', []),
-        readApi('/api/training/logs?limit=120', { records: [] }),
     ]);
     return {
         status: status && typeof status === 'object' ? status : {},
-        history: Array.isArray(history?.tasks) ? history.tasks.slice(0, 8) : [],
+        history: Array.isArray(history?.tasks) ? history.tasks.slice(0, 4) : [],
         metrics: Array.isArray(metrics) ? metrics : [],
-        logs: Array.isArray(logs?.records) ? logs.records : [],
     };
 }
 
@@ -51,10 +47,6 @@ function renderDashboard(data) {
     const historyHtml = model.history.length
         ? `<ul class="dragon-history-list">${model.history.map(renderHistoryItem).join('')}</ul>`
         : '<div class="dragon-empty-state"><p>暂无训练记录</p></div>';
-    const logsHtml = model.logs.length
-        ? model.logs.map(renderLogRecord).join('')
-        : '<div class="dragon-empty-state"><p>训练开始后显示实时日志</p></div>';
-
     return `
         <div class="dragon-page dragon-page-wide dragon-dashboard-page" data-dashboard-root>
             <div class="dragon-dashboard-hero dragon-reveal">
@@ -74,7 +66,7 @@ function renderDashboard(data) {
                         ${commandButton('stop', '停止训练', 'stop', 'dragon-btn-secondary', !model.running)}
                     </div>
                 </div>
-                <div class="dragon-dashboard-progress-visual" data-dashboard-ring style="--dashboard-progress: ${model.progressPercent}%">
+                <div class="dragon-dashboard-progress-visual" data-dashboard-ring role="progressbar" aria-label="训练进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(model.progressPercent)}" style="--dashboard-progress: ${model.progressPercent}%">
                     <div class="dragon-dashboard-progress-ring">
                         <div class="dragon-dashboard-progress-ring-center">
                             <strong data-dashboard-progress-percent>${Math.round(model.progressPercent)}%</strong>
@@ -94,54 +86,17 @@ function renderDashboard(data) {
                 ${contextItem('activity', '最新状态', model.health, 'health')}
             </section>
 
-            <section class="dragon-dashboard-progress-section dragon-reveal" data-stagger="2">
-                ${sectionHeading('gauge', '训练进度', '当前训练量', `<strong data-dashboard-progress-text>${escapeHtml(model.progressText)}</strong>`)}
-                <div class="dragon-dashboard-progress-track" aria-label="训练进度">
-                    <div class="dragon-dashboard-progress-fill" data-dashboard-progress-fill style="width: ${model.progressPercent}%"></div>
-                </div>
-            </section>
-
-            <section class="dragon-dashboard-overview dragon-reveal" data-stagger="3" aria-label="训练关键概览">
+            <section class="dragon-dashboard-overview dragon-reveal" data-stagger="2" aria-label="训练关键概览">
                 ${overviewItem(model.lossTrend.icon, '损失趋势', model.lossTrend.value, model.lossTrend.detail, 'loss-trend', model.lossTrend.tone)}
                 ${overviewItem('clock', '预计完成', model.eta, `当前速度 ${model.rate}`, 'eta')}
                 ${overviewItem('memory', '显存使用', model.vram, `峰值 ${model.vramPeak}`, 'vram')}
                 ${overviewItem('cpu', '计算负载', model.gpu, `当前温度 ${model.temp}`, 'gpu')}
             </section>
 
-            <section class="dragon-dashboard-monitor-section dragon-reveal" data-stagger="3">
-                ${sectionHeading('activity', '实时指标', '训练参数变化', '<span class="dragon-dashboard-section-note">当前训练输出</span>')}
-                <div class="dragon-dashboard-metric-grid">
-                    ${metricCell('loss', '损失值', model.loss)}
-                    ${metricCell('lr', '学习率', model.lr)}
-                    ${metricCell('step', '步数', model.stepText)}
-                    ${metricCell('rate', '速度', model.rate)}
-                    ${metricCell('eta', '预计完成', model.eta)}
-                </div>
-                <div class="dragon-dashboard-resource-grid">
-                    ${metricCell('epoch', '训练轮数', model.epoch)}
-                    ${metricCell('vram', '最后显存', model.vram)}
-                    ${metricCell('vram-peak', '峰值显存', model.vramPeak)}
-                    ${metricCell('gpu', 'GPU 占用', model.gpu)}
-                    ${metricCell('temp', '温度', model.temp)}
-                    ${metricCell('log-age', '日志活动', model.logAge)}
-                </div>
+            <section class="dragon-section dragon-dashboard-history-section dragon-reveal" data-stagger="3">
+                ${sectionHeading('history', '记录', '最近训练', `<button class="dragon-inline-action" type="button" data-dashboard-action="history">查看全部</button>`)}
+                ${historyHtml}
             </section>
-
-            <section class="dragon-dashboard-chart-section dragon-reveal" data-stagger="4">
-                ${sectionHeading('chart', '趋势', '损失值 / 学习率曲线', `<span class="dragon-dashboard-section-note" data-dashboard-chart-count>最近 ${model.metrics.length} 个点</span>`)}
-                <div class="dragon-dashboard-chart" data-dashboard-chart>${renderLossChart(model.metrics)}</div>
-            </section>
-
-            <div class="dragon-dashboard-lower-grid">
-                <section class="dragon-section dragon-dashboard-history-section dragon-reveal" data-stagger="5">
-                    ${sectionHeading('history', '记录', '最近训练', `<button class="dragon-inline-action" type="button" data-dashboard-action="history">查看全部</button>`)}
-                    ${historyHtml}
-                </section>
-                <section class="dragon-section dragon-dashboard-log-section dragon-reveal" data-stagger="6">
-                    ${sectionHeading('terminal', '输出', '实时日志', `<span class="dragon-dashboard-section-note" data-dashboard-log-status>${model.running ? '实时连接中' : '等待训练'}</span>`)}
-                    <div class="dragon-log-stream dragon-dashboard-log-stream" data-dashboard-log>${logsHtml}</div>
-                </section>
-            </div>
         </div>
     `;
 }
@@ -187,20 +142,6 @@ function overviewItem(icon, label, value, detail, key, tone = 'neutral') {
     `;
 }
 
-function metricCell(key, label, value) {
-    const icons = {
-        loss: 'chart', lr: 'zap', step: 'hash', rate: 'gauge', eta: 'clock',
-        epoch: 'layers', vram: 'memory', 'vram-peak': 'memory', gpu: 'cpu',
-        temp: 'thermometer', 'log-age': 'terminal',
-    };
-    return `
-        <div class="dragon-dashboard-metric-cell" data-dashboard-metric="${key}">
-            <span class="dragon-dashboard-metric-label">${renderIcon(icons[key] || 'activity')}<span>${label}</span></span>
-            <strong data-dashboard-value="${key}">${escapeHtml(value)}</strong>
-        </div>
-    `;
-}
-
 function createDashboardModel(data) {
     const status = data.status || {};
     const latest = latestMetric(data.metrics, status.latest_metric);
@@ -212,7 +153,7 @@ function createDashboardModel(data) {
     const rate = latest.rate || progress.rate || '-';
     const epoch = latest.epoch ?? progress.epoch ?? '-';
     const eta = calculateTrainingEtaMetricInfo({
-        isRunning: state === 'running' || state === 'training',
+        isRunning: isActiveState(state),
         current,
         total,
         progressRate: rate,
@@ -225,8 +166,8 @@ function createDashboardModel(data) {
     return {
         ...data,
         state,
-        running: state === 'running' || state === 'training' || state === 'compiling',
-        subtitle: state === 'running' || state === 'training'
+        running: isActiveState(state),
+        subtitle: isActiveState(state)
             ? `当前进度 ${formatStep(current)} / ${formatStep(total)}`
             : '尚未启动训练。开始训练后，这里会显示真实的 loss、参数和运行日志。',
         configLabel: formatConfigLabel(status),
@@ -277,11 +218,7 @@ function mountDashboard(wrapper, initialData) {
         }),
         onMessage('status', (message) => {
             model.status = { ...model.status, ...message, status: message.state || model.status.status };
-            appendStatusLog(wrapper, message);
             renderDashboardState(wrapper, model);
-        }),
-        onMessage('log', (message) => {
-            appendDashboardLog(wrapper, message.message || message.text || message.line || '', message.level);
         }),
     ].filter(Boolean);
 
@@ -302,15 +239,11 @@ function mountDashboard(wrapper, initialData) {
         renderDashboardState(wrapper, model);
     }, 5000);
 
-    const observer = new MutationObserver(() => {
-        if (!document.contains(wrapper)) {
-            window.clearInterval(pollTimer);
-            subscriptions.forEach((unsubscribe) => unsubscribe());
-            disconnectWebSocket();
-            observer.disconnect();
-        }
-    });
-    observer.observe(wrapper.parentElement || document.body, { childList: true, subtree: true });
+    return () => {
+        window.clearInterval(pollTimer);
+        subscriptions.forEach((unsubscribe) => unsubscribe());
+        disconnectWebSocket();
+    };
 }
 
 function bindDashboardActions(wrapper, model) {
@@ -321,17 +254,21 @@ function bindDashboardActions(wrapper, model) {
             if (action === 'config') window.location.hash = '#config/training-config/base-models';
             if (action === 'history') window.location.hash = '#history';
             if (action === 'stop') {
+                if (!window.confirm('确认停止当前训练吗？训练进程会收到停止请求，已保存的检查点不会删除。')) return;
                 button.disabled = true;
-                button.innerHTML = `${renderIcon('stop', 'dragon-btn-icon')}<span>正在停止</span>`;
-                await readApi('/api/training/stop', { ok: false }, { method: 'POST' });
-                model.status.status = 'idle';
-                renderDashboardState(wrapper, model);
+                button.innerHTML = `${renderIcon('stop', 'dragon-btn-icon')}<span>正在停止…</span>`;
+                try {
+                    const result = await api('/api/training/stop', { method: 'POST' });
+                    if (result?.ok === false) throw new Error(result.error || '停止训练失败');
+                    const status = await readApi('/api/training/status', model.status);
+                    model.status = status && typeof status === 'object' ? status : model.status;
+                    renderDashboardState(wrapper, model);
+                } catch (error) {
+                    button.disabled = false;
+                    button.innerHTML = `${renderIcon('stop', 'dragon-btn-icon')}<span>停止失败，重试</span>`;
+                    window.alert(error.message || '停止训练失败，请查看实时训练日志。');
+                }
             }
-        });
-    });
-    wrapper.querySelectorAll('.dragon-history-item').forEach((item) => {
-        item.addEventListener('click', () => {
-            if (item.dataset.taskId) window.location.hash = `#history/${item.dataset.taskId}`;
         });
     });
 }
@@ -351,11 +288,9 @@ function renderDashboardState(wrapper, model) {
     setText(wrapper, '[data-dashboard-config]', view.configLabel);
     setText(wrapper, '[data-dashboard-run]', view.runLabel);
     setText(wrapper, '[data-dashboard-health]', view.health);
-    setText(wrapper, '[data-dashboard-progress-text]', view.progressText);
     setText(wrapper, '[data-dashboard-progress-percent]', `${Math.round(view.progressPercent)}%`);
     setText(wrapper, '[data-dashboard-ring-loss]', view.loss);
     setText(wrapper, '[data-dashboard-ring-rate]', view.rate);
-    setText(wrapper, '[data-dashboard-chart-count]', `最近 ${model.metrics.length} 个点`);
     setText(wrapper, '[data-dashboard-summary="loss-trend"]', view.lossTrend.value);
     setText(wrapper, '[data-dashboard-summary-detail="loss-trend"]', view.lossTrend.detail);
     setText(wrapper, '[data-dashboard-summary="eta"]', view.eta);
@@ -364,22 +299,6 @@ function renderDashboardState(wrapper, model) {
     setText(wrapper, '[data-dashboard-summary-detail="vram"]', `峰值 ${view.vramPeak}`);
     setText(wrapper, '[data-dashboard-summary="gpu"]', view.gpu);
     setText(wrapper, '[data-dashboard-summary-detail="gpu"]', `当前温度 ${view.temp}`);
-    const values = {
-        loss: view.loss,
-        lr: view.lr,
-        step: view.stepText,
-        rate: view.rate,
-        eta: view.eta,
-        epoch: view.epoch,
-        vram: view.vram,
-        gpu: view.gpu,
-        temp: view.temp,
-        'log-age': view.logAge,
-    };
-    Object.entries(values).forEach(([key, value]) => {
-        setText(wrapper, `[data-dashboard-value="${key}"]`, value);
-    });
-    setText(wrapper, '[data-dashboard-value="vram-peak"]', view.vramPeak);
     const trendItem = wrapper.querySelector('[data-dashboard-summary="loss-trend"]')?.closest('.dragon-dashboard-overview-item');
     if (trendItem) trendItem.dataset.tone = view.lossTrend.tone;
     const trendIcon = wrapper.querySelector('[data-dashboard-summary-icon="loss-trend"]');
@@ -388,32 +307,17 @@ function renderDashboardState(wrapper, model) {
     if (stateBadge) stateBadge.dataset.state = view.state;
     const dot = wrapper.querySelector('[data-dashboard-state] .dragon-nav-status-dot');
     if (dot) dot.dataset.state = view.state;
-    const fill = wrapper.querySelector('[data-dashboard-progress-fill]');
-    if (fill) fill.style.width = `${view.progressPercent}%`;
     const ring = wrapper.querySelector('[data-dashboard-ring]');
-    if (ring) ring.style.setProperty('--dashboard-progress', `${view.progressPercent}%`);
+    if (ring) {
+        ring.style.setProperty('--dashboard-progress', `${view.progressPercent}%`);
+        ring.setAttribute('aria-valuenow', String(Math.round(view.progressPercent)));
+    }
     const stop = wrapper.querySelector('[data-dashboard-action="stop"]');
     if (stop) {
         stop.hidden = !view.running;
         stop.disabled = false;
         stop.innerHTML = `${renderIcon('stop', 'dragon-btn-icon')}<span>停止训练</span>`;
     }
-    const logStatus = wrapper.querySelector('[data-dashboard-log-status]');
-    if (logStatus) logStatus.textContent = view.running ? '实时连接中' : '等待训练';
-    const chart = wrapper.querySelector('[data-dashboard-chart]');
-    if (chart) chart.innerHTML = renderLossChart(model.metrics);
-}
-
-function appendStatusLog(wrapper, message) {
-    const text = message.message || message.state;
-    if (text) appendDashboardLog(wrapper, `[状态] ${text}`);
-}
-
-function appendDashboardLog(wrapper, text, level) {
-    const log = wrapper.querySelector('[data-dashboard-log]');
-    if (!log) return;
-    log.querySelector('.dragon-empty-state')?.remove();
-    appendLogLine(log, text, level);
 }
 
 function setText(root, selector, value) {
@@ -549,14 +453,19 @@ function numberOrUndefined(value) {
 
 function normalizeState(value) {
     const state = String(value || 'idle');
-    return ['idle', 'running', 'training', 'queued', 'compiling', 'completed', 'error', 'stopped'].includes(state)
+    return ['idle', 'running', 'training', 'queued', 'compiling', 'caching', 'saving', 'preprocessing', 'starting', 'stopping', 'completed', 'error', 'stopped'].includes(state)
         ? state
         : 'unknown';
 }
 
+function isActiveState(state) {
+    return ['running', 'training', 'compiling', 'caching', 'saving', 'preprocessing', 'starting', 'stopping'].includes(state);
+}
+
 function stateText(state) {
     const map = {
-        idle: '空闲', running: '训练中', training: '训练中', compiling: '编译中',
+        idle: '空闲', running: '训练中', training: '训练中', compiling: '编译中', caching: '缓存中',
+        saving: '保存中', preprocessing: '预处理中', starting: '启动中', stopping: '停止中',
         queued: '排队中', completed: '已完成', error: '错误', stopped: '已停止', unknown: '未知',
     };
     return map[state] || '未知';
@@ -567,18 +476,12 @@ function renderHistoryItem(task) {
     const name = task.output_name || task.task_name || task.id || '未命名任务';
     const time = task.started_at || task.created_at || '';
     return `
-        <li class="dragon-history-item" data-task-id="${escapeHtml(task.id || '')}">
+        <li><a class="dragon-history-item" href="#history/${encodeURIComponent(task.id || '')}">
             <span class="dragon-history-item-name">${escapeHtml(name)}</span>
             <span class="dragon-history-item-state" data-state="${state}">${stateText(state)}</span>
             <span class="dragon-history-item-meta">${escapeHtml(time)}</span>
-        </li>
+        </a></li>
     `;
-}
-
-function renderLogRecord(record) {
-    const level = record.level || record.kind || '';
-    const text = record.message || record.text || record.line || '';
-    return `<div class="dragon-log-line" data-level="${escapeHtml(level)}">${escapeHtml(text)}</div>`;
 }
 
 function escapeHtml(value) {

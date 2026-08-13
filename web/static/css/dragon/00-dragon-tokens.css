@@ -8,6 +8,8 @@
        "Helvetica", "Arial", "PingFang SC", sans-serif;
    --dragon-font-display: "SF Pro Display", "SF Pro Icons", "Helvetica Neue",
        "Helvetica", "Arial", "PingFang SC", sans-serif;
+}
+
 /* zh-CN font override — prefer SF Pro SC for Simplified Chinese */
 :lang(zh-CN) {
     --dragon-font-stack: "SF Pro SC", "SF Pro Text", "SF Pro Icons",
@@ -15,6 +17,8 @@
     --dragon-font-display: "SF Pro SC", "SF Pro Display", "SF Pro Icons",
         "PingFang SC", "Helvetica Neue", "Helvetica", "Arial", sans-serif;
 }
+
+:root {
     --dragon-font-mono: "SF Mono", "JetBrains Mono", "Fira Code", "Cascadia Code",
         "Courier New", monospace;
 

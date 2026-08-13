@@ -197,24 +197,33 @@
     justify-self: end;
     display: flex;
     align-items: center;
-    gap: 2px;
+    gap: 0;
     height: 100%;
 }
 
 .dragon-nav-utility-button {
     position: relative;
-    display: grid;
-    width: 30px;
+    display: inline-flex;
     height: 30px;
-    flex: 0 0 30px;
-    padding: 0;
-    place-items: center;
+    align-items: center;
+    gap: 6px;
+    padding: 0 10px;
     border: 0;
-    border-radius: 50%;
+    border-radius: 980px;
     background: transparent;
     color: var(--dragon-nav-link);
     cursor: pointer;
+    font: inherit;
     transition: color var(--dragon-dur-fast) var(--dragon-ease), background var(--dragon-dur-fast) var(--dragon-ease);
+}
+
+.dragon-nav-utility-button--icon {
+    display: grid;
+    width: 30px;
+    flex: 0 0 30px;
+    gap: 0;
+    padding: 0;
+    place-items: center;
 }
 
 .dragon-nav-utility-button:hover,
@@ -228,35 +237,89 @@
     outline-offset: 1px;
 }
 
-.dragon-nav-utility-button::after {
+.dragon-nav-utility-button[data-tooltip]::after {
     position: absolute;
-    top: calc(100% + 7px);
+    top: calc(100% + 8px);
     left: 50%;
-    z-index: 4;
-    padding: 5px 7px;
-    border-radius: 5px;
-    background: var(--dragon-text-primary);
-    color: var(--dragon-bg-primary);
+    z-index: 5;
+    padding: 6px 10px;
+    border: 1px solid var(--dragon-border-light);
+    border-radius: var(--dragon-radius-pill);
+    background: var(--dragon-bg-translucent-strong);
+    box-shadow: var(--dragon-shadow-md);
+    backdrop-filter: saturate(180%) blur(18px);
+    -webkit-backdrop-filter: saturate(180%) blur(18px);
+    color: var(--dragon-text-primary);
     content: attr(data-tooltip);
     font-size: 11px;
     font-weight: var(--dragon-fw-regular);
     line-height: 1;
     opacity: 0;
     pointer-events: none;
-    transform: translate(-50%, -3px);
-    transition: opacity var(--dragon-dur-fast) var(--dragon-ease), transform var(--dragon-dur-fast) var(--dragon-ease);
+    filter: blur(2px);
+    transform: translate(-50%, -5px) scale(0.82, 0.72);
+    transform-origin: top center;
+    transition: opacity 120ms var(--dragon-ease),
+                filter 140ms var(--dragon-ease),
+                transform 220ms var(--dragon-ease-spring),
+                visibility 0s linear 220ms;
+    visibility: hidden;
     white-space: nowrap;
 }
 
-.dragon-nav-utility-button:hover::after,
-.dragon-nav-utility-button:focus-visible::after {
+.dragon-nav-utility-button--icon:hover::after,
+.dragon-nav-utility-button--icon:focus-visible::after {
     opacity: 1;
-    transform: translate(-50%, 0);
+    filter: blur(0);
+    transform: translate(-50%, 0) scale(1);
+    transition-delay: 0s;
+    visibility: visible;
 }
 
 .dragon-nav-utility-icon {
     width: 15px;
     height: 15px;
+    flex: 0 0 15px;
+}
+
+.dragon-nav-utility-label {
+    font-size: var(--dragon-fs-caption);
+    font-weight: var(--dragon-fw-regular);
+    line-height: var(--dragon-lh-nav);
+    letter-spacing: var(--dragon-ls-nav);
+    white-space: nowrap;
+}
+
+@media (max-width: 1068px) and (min-width: 834px) {
+    .dragon-nav-utility-button {
+        display: grid;
+        width: 30px;
+        flex: 0 0 30px;
+        gap: 0;
+        padding: 0;
+        place-items: center;
+    }
+
+    .dragon-nav-utility-label {
+        display: none;
+    }
+
+    .dragon-nav-utility-button:hover::after,
+    .dragon-nav-utility-button:focus-visible::after {
+        opacity: 1;
+        filter: blur(0);
+        transform: translate(-50%, 0) scale(1);
+        transition-delay: 0s;
+        visibility: visible;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .dragon-nav-utility-button[data-tooltip]::after {
+        filter: none;
+        transform: translate(-50%, 0);
+        transition: none;
+    }
 }
 
 .dragon-trainer-logo {
@@ -587,7 +650,7 @@
 
     .dragon-nav-mobile-shortcuts {
         display: grid;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
+        grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: 8px;
         padding: 0 0 20px;
         border-bottom: 1px solid var(--dragon-divider);

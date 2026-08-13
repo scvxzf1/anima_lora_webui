@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#000000" id="dragon-theme-color">
     <title>Dragon trainer</title>
     <link rel="icon" type="image/svg+xml" href="/static/favicon.svg?v=20260517-1">
     <script>
@@ -31,17 +32,18 @@
             }
         })();
     </script>
-    <link rel="stylesheet" href="/static/css/dragon-style.css?v=dragon-ui-20260812v35">
+    <link rel="stylesheet" href="/static/css/dragon-style.css?v=dragon-ui-20260814v43">
     <div id="dragon-root" hidden>
+        <a class="dragon-skip-link" href="#dragon-main">跳到主要内容</a>
         <div id="dragon-nav"></div>
-        <main class="dragon-main" id="dragon-main"></main>
+        <main class="dragon-main" id="dragon-main" tabindex="-1"></main>
     </div>
     <script type="module">
         (() => {
             const isDragon = document.body.hasAttribute('data-dragon-ui');
             if (isDragon) {
                 document.getElementById('dragon-root').hidden = false;
-                import('/static/js/dragon-ui/index.js?v=dragon-ui-20260812v35')
+                import('/static/js/dragon-ui/index.js?v=dragon-ui-20260814v43')
                     .then((m) => m.initDragonUI())
                     .catch((err) => {
                         console.error('[dragon-ui] failed to start', err);

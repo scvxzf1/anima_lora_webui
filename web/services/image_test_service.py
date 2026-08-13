@@ -11,7 +11,7 @@ import os
 from pathlib import Path
 import time
 from typing import Any
-from urllib.parse import unquote, urlparse
+from urllib.parse import quote, unquote, urlparse
 
 from aiohttp import web
 
@@ -33,6 +33,7 @@ from web.services import path_safety
 from web.services.preview_service import DEFAULT_INFERENCE_DIR
 from web.services.project_python import resolve_web_python_executable
 from web.services.settings_service import display_path, resolve_image_test_save_root
+from web.services.image_size import probe_image_size
 
 ROOT = anima_home()
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
@@ -78,7 +79,7 @@ class ImageTestService:
             "error": self.error,
             "output_dir": display_path(self.output_dir),
             "output_count": len(output_files),
-            "output_files": output_files[:12],
+            "output_files": output_files[:500],
             "command": self.command,
             "last_request": self.last_request,
             "logs": list(self._logs),
@@ -846,15 +847,22 @@ def _list_output_images(directory: Path) -> list[dict[str, Any]]:
         if path.is_file() and path.suffix.lower() in IMAGE_EXTS
     ]
     files.sort(key=lambda item: item.stat().st_mtime, reverse=True)
-    return [
-        {
+    images = []
+    for path in files:
+        stat = path.stat()
+        width, height = probe_image_size(path)
+        rel_path = display_path(path)
+        images.append({
             "name": path.name,
-            "file": display_path(path),
-            "mtime": path.stat().st_mtime,
-            "mtime_text": _format_ts(path.stat().st_mtime),
-        }
-        for path in files
-    ]
+            "file": rel_path,
+            "url": f"/api/preview/image?file={quote(rel_path)}",
+            "mtime": stat.st_mtime,
+            "mtime_text": _format_ts(stat.st_mtime),
+            "size_bytes": stat.st_size,
+            "width": width,
+            "height": height,
+        })
+    return images
 
 
 def _format_ts(value: float | None) -> str:
