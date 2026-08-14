@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any
 
@@ -181,10 +182,16 @@ def _normalize_model_family(value: Any) -> str:
 def get_global_settings() -> dict[str, Any]:
     settings = _load_settings()
     defaults = _default_global_settings()
+    path_overrides = _load_path_overrides()
     return {
         "ok": True,
         **settings,
         "defaults": defaults,
+        "path_overrides": path_overrides,
+        "effective_paths": {
+            key: str(settings.get(key) or "")
+            for key in GLOBAL_CONFIG_PATH_KEYS
+        },
     }
 
 
@@ -283,12 +290,18 @@ def save_global_settings(data: dict[str, Any]) -> dict[str, Any]:
         _save_path_overrides(path_overrides)
 
     saved = _load_settings(target_settings_file)
+    raw_path_overrides = _load_path_overrides()
     return {
         "ok": True,
         "message": "全局设置已保存",
         "requires_reload": current_settings_file.resolve() != target_settings_file.resolve(),
         **saved,
         "defaults": _default_global_settings(settings_file=target_settings_file),
+        "path_overrides": raw_path_overrides,
+        "effective_paths": {
+            key: str(saved.get(key) or "")
+            for key in GLOBAL_CONFIG_PATH_KEYS
+        },
     }
 
 
@@ -580,6 +593,26 @@ def _save_path_overrides(path_values: dict[str, Any]) -> None:
             raw["paths"].pop(key, None)
 
     atomic_write_text(webui_paths_file, toml.dumps(raw))
+
+
+def _load_path_overrides() -> dict[str, str]:
+    """Return raw path overrides separately from their resolved values."""
+    webui_paths_file = ROOT / ".anima-webui-settings.toml"
+    if not webui_paths_file.exists():
+        return {key: "" for key in GLOBAL_CONFIG_PATH_KEYS}
+    try:
+        raw = toml.loads(webui_paths_file.read_text(encoding="utf-8"))
+    except toml.TomlDecodeError:
+        raw = {}
+    paths = raw.get("paths") if isinstance(raw.get("paths"), dict) else {}
+    overrides = {
+        key: _normalize_config_path(paths.get(key)) if key in paths else ""
+        for key in GLOBAL_CONFIG_PATH_KEYS
+    }
+    if not overrides["configs_root"]:
+        configured = _normalize_config_path(os.environ.get("ANIMA_CONFIGS_ROOT"))
+        overrides["configs_root"] = configured or "configs"
+    return overrides
 
 
 def _save_configs_root_override(configs_root: str) -> None:

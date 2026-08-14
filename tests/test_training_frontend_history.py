@@ -354,6 +354,7 @@ def test_history_manager_base_filter_includes_config_chip_fields() -> None:
 
 def test_history_manager_frontend_hooks_are_present() -> None:
     source = APP_JS.read_text(encoding="utf-8")
+    ui_bootstrap = (STATIC_DIR / "js/ui-bootstrap.js").read_text(encoding="utf-8")
     legacy_source = _anima_app_container_text()
     chart_source = CHART_JS.read_text(encoding="utf-8")
     html = INDEX_HTML.read_text(encoding="utf-8")
@@ -463,10 +464,10 @@ def test_history_manager_frontend_hooks_are_present() -> None:
     assert "最近训练" in html
     assert "未归档 · 最新 6 个训练任务" in html
     assert "btn-open-history-manager" in html
-    assert 'type="module" src="/static/app.js?v=' in html
+    assert 'type="module" src="/static/js/ui-bootstrap.js?v=' in html
     assert "import { MetricsChart } from './chart.js?v=module-bootstrap-" in source
     assert "style.css?v=" in html
-    assert "app.js?v=" in html
+    assert "const CLASSIC_ENTRY = '/static/app.js?v=" in ui_bootstrap
     assert "history-bulk-bar" in html
     assert "history-bulk-primary-actions" in html
     assert "归档已选" in html
@@ -1553,7 +1554,7 @@ def test_history_detail_overview_uses_full_copyable_paths_and_resume_weights() -
 def test_history_detail_config_files_are_tool_ready() -> None:
     legacy_source = _anima_app_container_text()
     config_files_source = _frontend_module_text("js/features/history-detail/config-files.js")
-    html = INDEX_HTML.read_text(encoding="utf-8")
+    ui_bootstrap = (STATIC_DIR / "js/ui-bootstrap.js").read_text(encoding="utf-8")
     css = STYLE_CSS.read_text(encoding="utf-8")
 
     config_files = _section(config_files_source, "function renderHistoryDetailConfig", "function renderHistoryDetailConfigFiles")
@@ -1628,7 +1629,7 @@ def test_history_detail_config_files_are_tool_ready() -> None:
     assert "function historyProjectRoot(task = {})" in path_items
     assert "project_root_abs" in path_items
 
-    assert "module-bootstrap-" in html
+    assert "const CLASSIC_ENTRY = '/static/app.js?v=module-bootstrap-" in ui_bootstrap
     for selector in (
         ".history-config-viewer",
         ".history-config-toolbar",

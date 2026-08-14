@@ -1,5 +1,5 @@
 /**
- * Anima LoRA Web UI — ES module bootstrap.
+ * Dragon trainer — ES module bootstrap.
  */
 import { MetricsChart } from './chart.js?v=module-bootstrap-20260809-nf4-v2';
 import { createCatalog } from './js/config/catalog.js?v=module-bootstrap-20260809-nf4-v2';
@@ -10,21 +10,30 @@ import * as download from './js/shared/download.js?v=module-bootstrap-20260809-n
 import * as format from './js/shared/format.js?v=module-bootstrap-20260809-nf4-v2';
 import { createAppContext } from './js/state/create-app-context.js?v=module-bootstrap-20260809-nf4-v2';
 
-const ctx = createAppContext({
-    api: createApiClient(),
-    catalog: createCatalog(),
-    dom,
-    download,
-    format,
-    MetricsChart,
-});
+let classicAppPromise = null;
 
-createAnimaApp(ctx).catch((error) => {
-    globalThis.__animaBootstrapError = error;
-    console.error('[webui-bootstrap] failed to start Anima app', error);
-    document.documentElement.dataset.appBoot = 'error';
-    const status = dom.optionalById('status-indicator');
-    const text = dom.optionalById('status-text');
-    status?.classList.add('error');
-    if (text) text.textContent = '启动失败，请查看控制台日志';
-});
+export function startClassicUI() {
+    if (classicAppPromise) return classicAppPromise;
+
+    const ctx = createAppContext({
+        api: createApiClient(),
+        catalog: createCatalog(),
+        dom,
+        download,
+        format,
+        MetricsChart,
+    });
+
+    classicAppPromise = createAnimaApp(ctx).catch((error) => {
+        globalThis.__animaBootstrapError = error;
+        console.error('[webui-bootstrap] failed to start Anima app', error);
+        document.documentElement.dataset.appBoot = 'error';
+        const status = dom.optionalById('status-indicator');
+        const text = dom.optionalById('status-text');
+        status?.classList.add('error');
+        if (text) text.textContent = '启动失败，请查看控制台日志';
+        throw error;
+    });
+
+    return classicAppPromise;
+}

@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Anima LoRA Web UI</title>
+    <meta name="theme-color" content="#000000" id="dragon-theme-color">
+    <title>Dragon trainer</title>
     <link rel="icon" type="image/svg+xml" href="/static/favicon.svg?v=20260517-1">
     <script>
         (() => {
@@ -17,11 +18,48 @@
             }
         })();
     </script>
-    <link rel="stylesheet" href="/static/style.css?v=frontend-chain-20260809-model-config1">
+    <link id="app-ui-stylesheet" rel="stylesheet">
+    <script>
+        (() => {
+            const requestedMode = new URLSearchParams(window.location.search).get('ui');
+            const storedMode = (() => {
+                try { return localStorage.getItem('anima_ui_mode'); } catch { return null; }
+            })();
+            const explicitMode = requestedMode === 'classic' || requestedMode === 'dragon'
+                ? requestedMode
+                : null;
+            const mode = explicitMode || (storedMode === 'classic' ? 'classic' : 'dragon');
+            const stylesheet = document.getElementById('app-ui-stylesheet');
+            document.documentElement.dataset.uiMode = mode;
+            stylesheet.dataset.uiStylesheet = mode;
+            stylesheet.addEventListener('load', () => {
+                stylesheet.dataset.loaded = 'true';
+                delete stylesheet.dataset.loadError;
+            });
+            stylesheet.addEventListener('error', () => {
+                stylesheet.dataset.loadError = 'true';
+                delete stylesheet.dataset.loaded;
+            });
+            stylesheet.href = mode === 'dragon'
+                ? '/static/css/dragon-style.css?v=dragon-ui-20260814v45'
+                : '/static/style.css?v=frontend-chain-20260809-model-config1';
+        })();
+    </script>
 </head>
 <body>
+    <script>
+        if (document.documentElement.dataset.uiMode === 'dragon') {
+            document.body.dataset.dragonUi = '';
+        }
+    </script>
+    <div id="dragon-root" hidden>
+        <a class="dragon-skip-link" href="#dragon-main">跳到主要内容</a>
+        <div id="dragon-nav"></div>
+        <main class="dragon-main" id="dragon-main" tabindex="-1"></main>
+    </div>
+    <script type="module" src="/static/js/ui-bootstrap.js?v=dragon-ui-20260814v45"></script>
     <header>
-        <h1>Anima LoRA</h1>
+        <h1>Dragon trainer</h1>
         <nav>
             <button class="tab-btn active" data-tab="config">配置</button>
             <button class="tab-btn" data-tab="datasets">数据集</button>
@@ -37,6 +75,7 @@
             <span id="status-text">空闲</span>
         </div>
         <button id="btn-open-tutorial" class="btn btn-small tutorial-open-btn" type="button">基础教程</button>
+        <button id="classic-dragon-ui-toggle" class="btn btn-small" type="button">新版界面</button>
         <button id="language-toggle" class="language-toggle" type="button" aria-pressed="false" data-language="zh-CN" title="切换到 English" hidden>
             <span class="language-toggle-glyph" aria-hidden="true">文A</span>
             <span id="language-toggle-text">English</span>
@@ -2022,6 +2061,5 @@
         </form>
     </dialog>
 
-    <script type="module" src="/static/app.js?v=module-bootstrap-20260809-nf4-v2"></script>
 </body>
 </html>

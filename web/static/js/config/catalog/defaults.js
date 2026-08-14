@@ -1,6 +1,9 @@
 export const BLANK_PRESET_TEMPLATE_FILE = 'configs/gui-methods/lora.toml';
 export const BLANK_PRESET_TEMPLATE_LABEL = 'LoRA 标准训练变体 / lora.toml';
 export const FORM_UI_DEFAULTS = {
+    use_shuffled_caption_variants: false,
+    masked_loss: false,
+    caption_dropout_rate: 0.0,
     train_batch_size: 1,
     gradient_accumulation_steps: 1,
     sample_prompts: '',
@@ -26,9 +29,17 @@ export const FORM_UI_DEFAULTS = {
     reuse_text_encoder_cache: true,
     cache_fingerprint_mode: 'light',
     force_rebuild_preprocess_cache: false,
+    use_vae_cache: true,
+    use_text_cache: true,
+    cache_llm_adapter_outputs: false,
+    ip_features_cache_to_disk: false,
+    skip_cache_check: false,
     preprocess_vae_cache_batch_size: 'auto',
     preprocess_text_cache_batch_size: 'auto',
     preprocess_precision_preference: 'bf16',
+    v100_flash_stability: 'off',
+    compile_dynamic_seq: false,
+    debug_finite_checks: false,
     save_last_n_epochs: -1,
     checkpointing_last_n_epochs: 1,
     max_train_epochs: '',

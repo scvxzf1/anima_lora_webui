@@ -39,7 +39,7 @@ export function createEnvironmentCheckFeature(ctx) {
         const payload = state.lastPayload;
         if (!payload) return;
         const lines = [
-            'Anima LoRA 环境检测报告',
+            'Dragon trainer 环境检测报告',
             JSON.stringify(payload.platform, null, 2),
             '',
             ...(payload.checks || []).map((c) => `[${c.level}] ${c.message}${c.hint ? ' — ' + c.hint : ''}`),

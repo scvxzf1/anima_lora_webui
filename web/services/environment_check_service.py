@@ -202,7 +202,7 @@ def _check_model_paths(add: Callable[..., None]) -> None:
     for key, label, suffixes in MODEL_PATH_CHECKS:
         raw = str(settings.get(key) or "").strip()
         if not raw:
-            add("error", f"model_{key}", f"{label} 路径为空", group="model_paths", hint="在全局设置填写模型路径，或执行 python tasks.py download-models")
+            add("error", f"model_{key}", f"{label} 路径为空", group="model_paths", hint="在全局模型配置填写模型路径，或执行 python tasks.py download-models")
             continue
         path = _resolve_project_path(raw)
         if not path.exists():
@@ -212,7 +212,7 @@ def _check_model_paths(add: Callable[..., None]) -> None:
                 f"{label} 不存在",
                 path=path,
                 group="model_paths",
-                hint="检查全局设置路径，或执行 python tasks.py download-models",
+                hint="检查全局模型配置中的路径，或执行 python tasks.py download-models",
             )
             continue
         if not path.is_file():

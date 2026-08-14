@@ -102,7 +102,7 @@ async def auth_middleware(request: web.Request, handler):
                 "Unauthorized: provide ANIMA_WEBUI_TOKEN via Authorization Bearer, "
                 f"{AUTH_HEADER}, cookie {AUTH_COOKIE}, or ?token="
             ),
-            headers={"WWW-Authenticate": 'Bearer realm="Anima LoRA WebUI"'},
+            headers={"WWW-Authenticate": 'Bearer realm="Dragon trainer WebUI"'},
         )
 
     response = await handler(request)
@@ -174,7 +174,7 @@ def main():
 
     load_dotenv()
 
-    parser = argparse.ArgumentParser(description="Anima LoRA Web UI")
+    parser = argparse.ArgumentParser(description="Dragon trainer")
     parser.add_argument("--port", type=int, default=20102)
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument(
@@ -207,7 +207,7 @@ def main():
     # Loopback binds do not enforce auth even if a token is present — keeps the
     # default local workflow unchanged. External binds always enforce.
     app = create_app_with_options(auth_token=token if external else None)
-    print(f"Anima LoRA Web UI: http://{args.host}:{args.port}")
+    print(f"Dragon trainer: http://{args.host}:{args.port}")
     if external:
         print(
             "Auth required for external bind "

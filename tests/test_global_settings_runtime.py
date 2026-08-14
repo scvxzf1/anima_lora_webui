@@ -249,11 +249,43 @@ def test_save_global_settings_persists_history_and_queue_roots(tmp_path, monkeyp
     )
 
     assert saved["ok"] is True
+    assert saved["path_overrides"] == {
+        "configs_root": "configs",
+        "history_root": "alt-history",
+        "queue_root": "alt-queue",
+    }
+    assert saved["effective_paths"]["history_root"] == "alt-history"
+    assert saved["effective_paths"]["queue_root"] == "alt-queue"
     override = toml.loads((tmp_path / ".anima-webui-settings.toml").read_text(encoding="utf-8"))
     assert override["paths"]["history_root"] == "alt-history"
     assert override["paths"]["queue_root"] == "alt-queue"
     assert library_env.get_training_history_root() == (tmp_path / "alt-history").resolve()
     assert library_env.get_training_queue_root() == (tmp_path / "alt-queue").resolve()
+
+
+def test_global_settings_exposes_raw_and_effective_config_paths(tmp_path, monkeypatch):
+    configs_dir = tmp_path / "external-configs"
+    settings_file = configs_dir / "web-ui-settings.toml"
+    configs_dir.mkdir(parents=True, exist_ok=True)
+    settings_file.write_text('[global]\noutput_root = "output/runs"\n', encoding="utf-8")
+    (tmp_path / ".anima-webui-settings.toml").write_text(
+        '[paths]\nconfigs_root = "external-configs"\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(settings_service, "ROOT", tmp_path)
+    monkeypatch.setattr(settings_service, "SETTINGS_FILE", settings_file)
+    monkeypatch.setattr(settings_service, "get_training_history_root", lambda: configs_dir / "web-training-history")
+    monkeypatch.setattr(settings_service, "get_training_queue_root", lambda: configs_dir / "web-training-queue")
+
+    payload = settings_service.get_global_settings()
+
+    assert payload["path_overrides"] == {
+        "configs_root": "external-configs",
+        "history_root": "",
+        "queue_root": "",
+    }
+    assert payload["effective_paths"]["history_root"] == "external-configs/web-training-history"
+    assert payload["effective_paths"]["queue_root"] == "external-configs/web-training-queue"
 
 
 def test_training_policy_settings_roundtrip_and_clamp(tmp_path, monkeypatch):

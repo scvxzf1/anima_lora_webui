@@ -1,0 +1,11 @@
+/* Dragon trainer UI CSS entrypoint.
+ * Import order: tokens -> base -> nav -> dashboard -> config -> animations -> pages.
+ */
+@import url("./dragon/00-dragon-tokens.css?v=dragon-ui-20260814v43");
+@import url("./dragon/01-dragon-base.css?v=dragon-ui-20260814v43");
+@import url("./dragon/02-dragon-nav.css?v=dragon-ui-20260814v43");
+@import url("./dragon/03-dragon-dashboard.css?v=dragon-ui-20260814v43");
+@import url("./dragon/04-dragon-config.css?v=dragon-ui-20260814v43");
+@import url("./dragon/05-dragon-animations.css?v=dragon-ui-20260814v43");
+@import url("./dragon/06a-dragon-shared-dialogs.css?v=dragon-ui-20260814v45");
+@import url("./dragon/06-dragon-pages.css?v=dragon-ui-20260814v43");

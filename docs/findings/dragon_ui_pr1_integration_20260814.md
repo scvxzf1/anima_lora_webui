@@ -29,7 +29,7 @@
 | 阶段 | 状态 | 内容 | 提交/验证 |
 | --- | --- | --- | --- |
 | 0. 线上核验与隔离 | 完成 | 核验 PR、保护脏工作区、建立本地/线上集成分支 | 本文对应提交 |
-| 1. 前端入口集成 | 待进行 | 导入 PR、修复启动回退与资源加载、补模式测试和用户说明 | 待更新 |
+| 1. 前端入口集成 | 完成 | 导入 PR、修复启动回退与资源加载、补模式测试 | 本阶段提交；106 项前端/静态契约测试通过 |
 | 2. 后端安全加固 | 待进行 | 预览删除、图片扫描并发/性能、专项 pytest | 待更新 |
 | 3. 完整验证与 debug | 待进行 | 全量定向测试、真实浏览器 smoke、修复回归 | 待更新 |
 | 4. 发布 | 待进行 | 最终审计、更新 `origin/main`、处理 PR、记录残留 | 待更新 |
@@ -49,3 +49,33 @@ timeout 60 .venv/bin/python -m pytest tests/test_documentation_integrity.py -q
 ```
 
 每一阶段都应在本表补充提交 hash、测试数量、失败原因和修复结论，避免把“GitHub 可合并”误写成“功能已经通过验证”。
+
+## 阶段 1：前端入口集成
+
+本阶段没有直接合入 PR 的三个历史提交，而是在当前 `main` 基线上移植最终前端树，并修复审查中确认的启动缺陷：
+
+- `index.html` 只加载统一的 `ui-bootstrap.js`；classic 与 Dragon 的 JS entry 由 bootstrap 按模式动态导入。
+- classic 和 Dragon 不再同时下载完整样式入口。Dragon 使用独立 CSS entry，并通过小型、作用域受限的共享 dialog bridge 复用数据集预览与分阶段调度界面。
+- Dragon 初始化失败时会清理 router、导航、主题、动画监听器、DOM、缩放变量和移动菜单状态，再切换 classic stylesheet 并显式调用 `startClassicUI()`。
+- `?ui=classic` / `?ui=dragon` 优先于 `localStorage.anima_ui_mode`；无有效显式参数时，存储为 classic 才进入 classic，否则默认 Dragon。
+- 新增 Node 运行时测试，实际模拟“Dragon 已部分初始化后抛错”，不再只靠静态字符串断言证明 fallback 存在。
+
+定向验证：
+
+```bash
+node --check web/static/js/ui-bootstrap.js
+node --check web/static/js/dragon-ui/{index,nav,router,theme,animations}.js
+
+.venv/bin/python -m pytest -q \
+  tests/test_dragon_dataset_editor_frontend.py \
+  tests/test_dragon_monitor_system_frontend.py \
+  tests/test_dragon_shell_performance_frontend.py \
+  tests/test_dragon_ui_bootstrap_runtime.py \
+  tests/test_web_static_server.py \
+  tests/test_training_frontend_history.py \
+  tests/test_global_settings_runtime.py \
+  tests/test_training_frontend_modules.py \
+  tests/test_webui_design_system.py
+```
+
+结果：`106 passed`。调试过程中先发现 4 个旧测试仍假设 `app.js` / `style.css` 是 HTML 静态入口，已改为验证新的 bootstrap 常量和 classic 模块图，不通过降低断言强度掩盖入口变化。

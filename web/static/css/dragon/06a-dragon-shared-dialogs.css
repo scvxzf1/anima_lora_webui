@@ -1,0 +1,481 @@
+/* Dialog primitives reused by Dragon's dataset editor.
+ * Keep these scoped: classic mode loads the original component styles.
+ */
+
+body[data-dragon-ui] :is(#dataset-preview-dialog, #stage-resolution-dialog) {
+    position: fixed;
+    inset: 0;
+    margin: auto;
+    padding: 0;
+}
+
+body[data-dragon-ui] :is(#dataset-preview-dialog, #stage-resolution-dialog) form {
+    display: flex;
+    max-height: inherit;
+    flex-direction: column;
+}
+
+body[data-dragon-ui] :is(#dataset-preview-dialog, #stage-resolution-dialog) .preview-dialog-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--dragon-sp-4);
+    padding: var(--dragon-sp-4) var(--dragon-sp-5);
+    border-bottom: 1px solid var(--dragon-divider);
+}
+
+body[data-dragon-ui] :is(#dataset-preview-dialog, #stage-resolution-dialog) .preview-dialog-header h2 {
+    margin: 0 0 var(--dragon-sp-1);
+    color: var(--dragon-text-primary);
+    font-size: var(--dragon-fs-subhead);
+}
+
+body[data-dragon-ui] :is(#dataset-preview-dialog, #stage-resolution-dialog) .preview-dialog-header p {
+    margin: 0;
+    color: var(--dragon-text-tertiary);
+    font-size: var(--dragon-fs-caption);
+    line-height: 1.4;
+    overflow-wrap: anywhere;
+}
+
+body[data-dragon-ui] :is(#dataset-preview-dialog, #stage-resolution-dialog) .btn {
+    display: inline-flex;
+    min-height: 34px;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 6px 14px;
+    border: 1px solid var(--dragon-border);
+    border-radius: var(--dragon-radius-pill);
+    background: var(--dragon-tile-bg);
+    color: var(--dragon-text-primary);
+    font: inherit;
+    font-size: var(--dragon-fs-caption);
+    font-weight: var(--dragon-fw-medium);
+    line-height: 1.2;
+    cursor: pointer;
+}
+
+body[data-dragon-ui] :is(#dataset-preview-dialog, #stage-resolution-dialog) .btn:hover {
+    border-color: var(--dragon-accent);
+    background: var(--dragon-tile-bg-hover);
+}
+
+body[data-dragon-ui] :is(#dataset-preview-dialog, #stage-resolution-dialog) .btn:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+body[data-dragon-ui] :is(#dataset-preview-dialog, #stage-resolution-dialog) .btn-small {
+    min-height: 32px;
+    padding: 5px 12px;
+}
+
+body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-dialog-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--dragon-sp-2);
+}
+
+body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-dialog-body {
+    display: grid;
+    grid-template-columns: minmax(260px, 320px) minmax(0, 1fr);
+    gap: var(--dragon-sp-4);
+    min-height: 420px;
+    padding: var(--dragon-sp-4);
+}
+
+body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-info {
+    position: sticky;
+    top: 0;
+    align-self: start;
+    min-width: 0;
+    padding: var(--dragon-sp-4);
+    border: 1px solid var(--dragon-border-light);
+    border-radius: var(--dragon-radius-md);
+    background: var(--dragon-bg-secondary);
+}
+
+body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-info h3 {
+    margin: 0 0 var(--dragon-sp-3);
+    color: var(--dragon-text-primary);
+    font-size: var(--dragon-fs-callout-medium);
+}
+
+body[data-dragon-ui] #dataset-preview-dialog .preview-dialog-details {
+    color: var(--dragon-text-secondary);
+    font-size: var(--dragon-fs-caption);
+    overflow-wrap: anywhere;
+}
+
+body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-results {
+    min-width: 0;
+}
+
+body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-empty {
+    padding: var(--dragon-sp-5);
+    border: 1px dashed var(--dragon-border);
+    border-radius: var(--dragon-radius-md);
+    color: var(--dragon-text-tertiary);
+    font-size: var(--dragon-fs-caption);
+    text-align: center;
+}
+
+body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: var(--dragon-sp-3);
+}
+
+body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-card {
+    display: grid;
+    min-width: 0;
+    overflow: hidden;
+    border: 1px solid var(--dragon-border-light);
+    border-radius: var(--dragon-radius-md);
+    background: var(--dragon-bg-secondary);
+}
+
+body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-card-error {
+    border-color: var(--dragon-error);
+}
+
+body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-image-btn {
+    display: grid;
+    width: 100%;
+    height: 160px;
+    place-items: center;
+    padding: 0;
+    border: 0;
+    border-bottom: 1px solid var(--dragon-border-light);
+    background: var(--dragon-bg-tertiary);
+    cursor: pointer;
+}
+
+body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-image-btn img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+
+body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-card-body {
+    display: grid;
+    gap: var(--dragon-sp-2);
+    min-width: 0;
+    padding: var(--dragon-sp-3);
+}
+
+body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-card-body :is(strong, span) {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-card-body strong {
+    color: var(--dragon-text-primary);
+    font-size: var(--dragon-fs-caption);
+}
+
+body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-card-body span {
+    color: var(--dragon-text-tertiary);
+    font-size: var(--dragon-fs-tiny);
+}
+
+body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-caption {
+    display: grid;
+    gap: var(--dragon-sp-2);
+    min-width: 0;
+    padding-top: var(--dragon-sp-2);
+    border-top: 1px solid var(--dragon-border-light);
+}
+
+body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-caption > div {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--dragon-sp-2);
+}
+
+body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-caption.missing span {
+    color: var(--dragon-warning);
+}
+
+body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-caption pre {
+    max-height: 120px;
+    margin: 0;
+    padding: var(--dragon-sp-2);
+    overflow: auto;
+    border: 1px solid var(--dragon-border-light);
+    border-radius: var(--dragon-radius-sm);
+    background: var(--dragon-bg-primary);
+    color: var(--dragon-text-secondary);
+    font-family: var(--dragon-font-mono);
+    font-size: var(--dragon-fs-tiny);
+    white-space: pre-wrap;
+}
+
+body[data-dragon-ui] #stage-resolution-dialog .stage-resolution-dialog-body {
+    display: grid;
+    gap: var(--dragon-sp-3);
+    min-height: min(680px, calc(100vh - 160px));
+    padding: var(--dragon-sp-4);
+}
+
+body[data-dragon-ui] #stage-resolution-dialog .stage-resolution-summary {
+    display: grid;
+    grid-template-columns: minmax(190px, 1.25fr) repeat(5, minmax(0, 1fr));
+    gap: var(--dragon-sp-2);
+}
+
+body[data-dragon-ui] #stage-resolution-dialog :is(
+    .stage-resolution-summary-item,
+    .stage-resolution-chart-panel,
+    .stage-resolution-editor,
+    .stage-resolution-table-panel
+) {
+    min-width: 0;
+    border: 1px solid var(--dragon-border-light);
+    border-radius: var(--dragon-radius-md);
+    background: var(--dragon-bg-secondary);
+}
+
+body[data-dragon-ui] #stage-resolution-dialog .stage-resolution-summary-item {
+    padding: var(--dragon-sp-3);
+}
+
+body[data-dragon-ui] #stage-resolution-dialog .stage-resolution-summary-item strong,
+body[data-dragon-ui] #stage-resolution-dialog .stage-resolution-summary-item span {
+    display: block;
+}
+
+body[data-dragon-ui] #stage-resolution-dialog .stage-resolution-summary-item strong {
+    color: var(--dragon-text-primary);
+    font-family: var(--dragon-font-mono);
+    font-size: var(--dragon-fs-caption);
+}
+
+body[data-dragon-ui] #stage-resolution-dialog .stage-resolution-summary-item span {
+    margin-top: var(--dragon-sp-1);
+    color: var(--dragon-text-tertiary);
+    font-size: var(--dragon-fs-tiny);
+}
+
+body[data-dragon-ui] #stage-resolution-dialog .stage-resolution-enable-control {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: var(--dragon-sp-2);
+    cursor: pointer;
+}
+
+body[data-dragon-ui] #stage-resolution-dialog .stage-resolution-enable-control input {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--dragon-accent);
+}
+
+body[data-dragon-ui] #stage-resolution-dialog .stage-resolution-workspace {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(280px, 360px);
+    gap: var(--dragon-sp-3);
+    align-items: stretch;
+}
+
+body[data-dragon-ui] #stage-resolution-dialog :is(
+    .stage-resolution-chart-panel,
+    .stage-resolution-editor,
+    .stage-resolution-table-panel
+) {
+    overflow: hidden;
+}
+
+body[data-dragon-ui] #stage-resolution-dialog .stage-resolution-panel-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--dragon-sp-3);
+    padding: var(--dragon-sp-3);
+    border-bottom: 1px solid var(--dragon-divider);
+}
+
+body[data-dragon-ui] #stage-resolution-dialog .stage-resolution-panel-head :is(strong, span) {
+    display: block;
+}
+
+body[data-dragon-ui] #stage-resolution-dialog .stage-resolution-panel-head strong {
+    color: var(--dragon-text-primary);
+    font-size: var(--dragon-fs-caption);
+}
+
+body[data-dragon-ui] #stage-resolution-dialog .stage-resolution-panel-head span {
+    margin-top: var(--dragon-sp-1);
+    color: var(--dragon-text-tertiary);
+    font-size: var(--dragon-fs-tiny);
+    line-height: 1.35;
+}
+
+body[data-dragon-ui] #stage-resolution-dialog #stage-resolution-chart {
+    display: block;
+    width: 100%;
+    height: 160px;
+    cursor: pointer;
+}
+
+body[data-dragon-ui] #stage-resolution-dialog .stage-resolution-fields {
+    display: grid;
+    gap: var(--dragon-sp-2);
+    padding: var(--dragon-sp-3);
+}
+
+body[data-dragon-ui] #stage-resolution-dialog .stage-resolution-field {
+    display: grid;
+    grid-template-columns: minmax(92px, 0.45fr) minmax(0, 1fr);
+    gap: var(--dragon-sp-2);
+    align-items: center;
+    color: var(--dragon-text-tertiary);
+    font-size: var(--dragon-fs-tiny);
+}
+
+body[data-dragon-ui] #stage-resolution-dialog .stage-resolution-field :is(input, output),
+body[data-dragon-ui] #stage-resolution-dialog .stage-resolution-table-input {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    height: 32px;
+    padding: 5px 8px;
+    border: 1px solid var(--dragon-border);
+    border-radius: var(--dragon-radius-sm);
+    background: var(--dragon-bg-primary);
+    color: var(--dragon-text-primary);
+    font-family: var(--dragon-font-mono);
+    font-size: var(--dragon-fs-caption);
+}
+
+body[data-dragon-ui] #stage-resolution-dialog .stage-resolution-field output {
+    display: flex;
+    align-items: center;
+}
+
+body[data-dragon-ui] #stage-resolution-dialog .stage-resolution-field :is(input, output):focus,
+body[data-dragon-ui] #stage-resolution-dialog .stage-resolution-table-input:focus {
+    border-color: var(--dragon-accent);
+    outline: 2px solid color-mix(in srgb, var(--dragon-accent) 24%, transparent);
+    outline-offset: 1px;
+}
+
+body[data-dragon-ui] #stage-resolution-dialog .stage-resolution-repeat-field label {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--dragon-sp-2);
+}
+
+body[data-dragon-ui] #stage-resolution-dialog .stage-resolution-repeat-field label input {
+    width: auto;
+    height: auto;
+}
+
+body[data-dragon-ui] #stage-resolution-dialog .stage-resolution-table-wrap {
+    overflow-x: auto;
+}
+
+body[data-dragon-ui] #stage-resolution-dialog .stage-resolution-table {
+    width: 100%;
+    min-width: 760px;
+    border-collapse: collapse;
+}
+
+body[data-dragon-ui] #stage-resolution-dialog .stage-resolution-table :is(th, td) {
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--dragon-divider);
+    color: var(--dragon-text-secondary);
+    font-size: var(--dragon-fs-tiny);
+    text-align: left;
+    white-space: nowrap;
+}
+
+body[data-dragon-ui] #stage-resolution-dialog .stage-resolution-table th {
+    background: var(--dragon-bg-tertiary);
+    color: var(--dragon-text-primary);
+    font-weight: var(--dragon-fw-semibold);
+}
+
+body[data-dragon-ui] #stage-resolution-dialog .stage-resolution-table tr.selected td {
+    background: var(--dragon-accent-light);
+}
+
+body[data-dragon-ui] #stage-resolution-dialog .stage-resolution-table-input {
+    width: 96px;
+    height: 30px;
+}
+
+body[data-dragon-ui] #stage-resolution-dialog .stage-resolution-status {
+    display: inline-flex;
+    min-height: 22px;
+    align-items: center;
+    padding: 2px 8px;
+    border: 1px solid var(--dragon-border);
+    border-radius: var(--dragon-radius-pill);
+    color: var(--dragon-text-tertiary);
+}
+
+body[data-dragon-ui] #stage-resolution-dialog .stage-resolution-status.ok { color: var(--dragon-success); }
+body[data-dragon-ui] #stage-resolution-dialog .stage-resolution-status.warning { color: var(--dragon-warning); }
+body[data-dragon-ui] #stage-resolution-dialog .stage-resolution-status.error { color: var(--dragon-error); }
+
+body[data-dragon-ui] #stage-resolution-dialog .stage-resolution-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--dragon-sp-2);
+}
+
+body[data-dragon-ui] #stage-resolution-dialog :is(.stage-resolution-feedback, .stage-resolution-target) {
+    margin: var(--dragon-sp-2) 0 0;
+    padding: var(--dragon-sp-3);
+    border-radius: var(--dragon-radius-sm);
+    line-height: 1.4;
+}
+
+body[data-dragon-ui] #stage-resolution-dialog .stage-resolution-target-candidates {
+    margin-top: var(--dragon-sp-1);
+    color: var(--dragon-text-tertiary);
+    font-size: var(--dragon-fs-tiny);
+}
+
+@media (max-width: 1000px) {
+    body[data-dragon-ui] #stage-resolution-dialog .stage-resolution-summary {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    body[data-dragon-ui] #stage-resolution-dialog .stage-resolution-workspace {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 720px) {
+    body[data-dragon-ui] :is(#dataset-preview-dialog, #stage-resolution-dialog) .preview-dialog-header {
+        flex-direction: column;
+    }
+
+    body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-dialog-actions {
+        justify-content: flex-start;
+    }
+
+    body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-dialog-body,
+    body[data-dragon-ui] #stage-resolution-dialog .stage-resolution-summary,
+    body[data-dragon-ui] #stage-resolution-dialog .stage-resolution-field {
+        grid-template-columns: 1fr;
+    }
+
+    body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-info {
+        position: static;
+    }
+
+    body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-grid {
+        grid-template-columns: 1fr;
+    }
+
+    body[data-dragon-ui] #stage-resolution-dialog #stage-resolution-chart {
+        height: 240px;
+    }
+}

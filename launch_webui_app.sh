@@ -26,7 +26,7 @@ echo
 
 port_in_use() {
   if command -v ss >/dev/null 2>&1; then
-    ss -ltn "( sport = :$PORT )" 2>/dev/null | rg -q ":${PORT}\\b"
+    ss -ltn "( sport = :$PORT )" 2>/dev/null | grep -Eq ":${PORT}([^0-9]|$)"
     return $?
   fi
   if command -v lsof >/dev/null 2>&1; then

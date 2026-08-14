@@ -1,5 +1,5 @@
 /**
- * Anima LoRA Web UI — modular application entry.
+ * Dragon trainer — modular application entry.
  */
 import { configureAppShellStateBridge } from './helpers/app-shell-state-bridge.js?v=module-bootstrap-20260809-nf4-v2';
 import { configureAppContextBridge } from './helpers/app-context-bridge.js?v=module-bootstrap-20260809-nf4-v2';

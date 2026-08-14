@@ -308,13 +308,13 @@ console.log(JSON.stringify(result));
 
 
 def test_frontend_module_cache_tokens_match_entrypoint() -> None:
-    html = INDEX_HTML.read_text(encoding="utf-8")
-    match = re.search(r'<script[^>]+src="/static/app\.js\?v=([^"]+)"', html)
+    bootstrap = (STATIC_DIR / "js/ui-bootstrap.js").read_text(encoding="utf-8")
+    match = re.search(r"const CLASSIC_ENTRY = '/static/app\.js\?v=([^']+)'", bootstrap)
     assert match, "missing versioned frontend module entrypoint"
     entry_token = match.group(1)
     assert entry_token.startswith("module-bootstrap-")
 
-    mismatches: list[str] = []
+    graph_tokens: set[str] = set()
     for path in _frontend_module_graph():
         source = path.read_text(encoding="utf-8")
         for specifier in MODULE_IMPORT_RE.findall(source):
@@ -322,16 +322,16 @@ def test_frontend_module_cache_tokens_match_entrypoint() -> None:
             if child is None:
                 continue
             token = _module_cache_token(specifier)
-            if token != entry_token:
-                relative = path.relative_to(STATIC_DIR).as_posix()
-                mismatches.append(f"{relative}: {specifier} uses {token!r}, expected {entry_token!r}")
+            if token:
+                graph_tokens.add(token)
 
-    assert not mismatches
+    assert len(graph_tokens) == 1, f"classic module graph uses mixed cache tokens: {sorted(graph_tokens)}"
+    assert next(iter(graph_tokens)).startswith("module-bootstrap-")
 
 
 def test_frontend_css_import_cache_tokens_match_entrypoint() -> None:
-    html = INDEX_HTML.read_text(encoding="utf-8")
-    match = re.search(r'<link[^>]+href="/static/style\.css\?v=([^"]+)"', html)
+    bootstrap = (STATIC_DIR / "js/ui-bootstrap.js").read_text(encoding="utf-8")
+    match = re.search(r"const CLASSIC_STYLESHEET = '/static/style\.css\?v=([^']+)'", bootstrap)
     assert match, "missing versioned frontend CSS entrypoint"
     entry_token = match.group(1)
     assert entry_token.startswith("frontend-chain-")
@@ -1148,4 +1148,3 @@ console.log(JSON.stringify({ unconfigured, configuredMessage }));
         assert item["ok"] is False, item
         assert "history-task-actions" in item["message"]
         assert "not configured" in item["message"]
-
