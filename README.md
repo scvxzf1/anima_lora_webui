@@ -147,6 +147,14 @@ uv sync
 启动 WebUI：
 
 ```bash
+./webui.sh
+```
+
+该快捷脚本默认监听 `127.0.0.1:20203`，等待服务就绪后自动打开 `?ui=dragon`，因此不会被浏览器中保存的 classic 模式覆盖。只启动服务、不打开浏览器时使用 `ANIMA_WEB_OPEN_BROWSER=0 ./webui.sh`。
+
+也可以手动指定监听地址和端口：
+
+```bash
 .venv/bin/python tasks.py web --host 127.0.0.1 --port 20102
 ```
 
