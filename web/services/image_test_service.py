@@ -9,9 +9,10 @@ from collections import deque
 from datetime import datetime
 import os
 from pathlib import Path
+import stat as stat_module
 import time
 from typing import Any
-from urllib.parse import unquote, urlparse
+from urllib.parse import quote, unquote, urlparse
 
 from aiohttp import web
 
@@ -30,6 +31,8 @@ from library.inference.selective_lora import (
 from library.inference.request import GenerationRequest
 from web.services import config_service, settings_service
 from web.services import path_safety
+from web.services.image_listing import select_recent_files
+from web.services.image_size import probe_image_size
 from web.services.preview_service import DEFAULT_INFERENCE_DIR
 from web.services.project_python import resolve_web_python_executable
 from web.services.settings_service import display_path, resolve_image_test_save_root
@@ -78,7 +81,7 @@ class ImageTestService:
             "error": self.error,
             "output_dir": display_path(self.output_dir),
             "output_count": len(output_files),
-            "output_files": output_files[:12],
+            "output_files": output_files,
             "command": self.command,
             "last_request": self.last_request,
             "logs": list(self._logs),
@@ -837,24 +840,34 @@ def _resolve_save_dir(value: str) -> Path:
     return (ROOT / clean).resolve()
 
 
-def _list_output_images(directory: Path) -> list[dict[str, Any]]:
-    if not directory.exists() or not directory.is_dir():
-        return []
-    files = [
-        path
-        for path in directory.iterdir()
-        if path.is_file() and path.suffix.lower() in IMAGE_EXTS
-    ]
-    files.sort(key=lambda item: item.stat().st_mtime, reverse=True)
-    return [
-        {
+def _list_output_images(directory: Path, *, limit: int = 500) -> list[dict[str, Any]]:
+    bounded_limit = max(1, min(int(limit or 500), 500))
+    files, _ = select_recent_files(
+        directory,
+        suffixes=IMAGE_EXTS,
+        limit=bounded_limit,
+    )
+    images: list[dict[str, Any]] = []
+    for path, _ in files:
+        try:
+            stat_result = path.lstat()
+        except OSError:
+            continue
+        if not stat_module.S_ISREG(stat_result.st_mode):
+            continue
+        width, height = probe_image_size(path)
+        rel_path = display_path(path)
+        images.append({
             "name": path.name,
-            "file": display_path(path),
-            "mtime": path.stat().st_mtime,
-            "mtime_text": _format_ts(path.stat().st_mtime),
-        }
-        for path in files
-    ]
+            "file": rel_path,
+            "url": f"/api/preview/image?file={quote(rel_path)}",
+            "mtime": stat_result.st_mtime,
+            "mtime_text": _format_ts(stat_result.st_mtime),
+            "size_bytes": stat_result.st_size,
+            "width": width,
+            "height": height,
+        })
+    return images
 
 
 def _format_ts(value: float | None) -> str:

@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 from datetime import datetime
+from heapq import nlargest
+import os
 from pathlib import Path
+import stat as stat_module
 from typing import Any
 from urllib.parse import quote
 import re
@@ -11,6 +14,7 @@ import re
 import toml
 from PIL import Image
 
+from web.services.image_listing import select_recent_files
 from web.services.image_size import probe_image_size
 from web.services.preview.context import call, get
 
@@ -81,15 +85,25 @@ def list_preview_images(
 
     limit = max(1, min(int(limit or 200), get("MAX_IMAGE_LIMIT")))
     days = _normalize_preview_days(days)
-    candidates = [
-        p
-        for p in resolved.iterdir()
-        if p.is_file() and p.suffix.lower() in get("IMAGE_EXTS")
-    ]
-    candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
-    candidates = _filter_preview_candidates_by_days(candidates, days)
+    candidates, total = select_recent_files(
+        resolved,
+        suffixes=get("IMAGE_EXTS"),
+        limit=limit,
+        min_mtime=_preview_days_cutoff(days),
+    )
     prompt_entries = _load_sample_prompt_entries(sample_config) if source == "training" else []
     step_index = call("_training_step_index", task) if source == "training" else {}
+    images = []
+    for path, _ in candidates:
+        meta = _available_image_meta(
+            path,
+            task_id=task_id,
+            sample_config=sample_config,
+            prompt_entries=prompt_entries,
+            step_index=step_index,
+        )
+        if meta is not None:
+            images.append(meta)
 
     return {
         "ok": True,
@@ -97,19 +111,10 @@ def list_preview_images(
         "label": label,
         "directory": display_dir,
         "directory_exists": True,
-        "count": len(candidates[:limit]),
-        "total": len(candidates),
-        "images": [
-            _image_meta(
-                path,
-                task_id=task_id,
-                sample_config=sample_config,
-                prompt_entries=prompt_entries,
-                step_index=step_index,
-            )
-            for path in candidates[:limit]
-        ],
-        "message": "" if candidates else _preview_empty_message(source, "暂无预览图", sample_config, settings=settings),
+        "count": len(images),
+        "total": total,
+        "images": images,
+        "message": "" if images else _preview_empty_message(source, "暂无预览图", sample_config, settings=settings),
         "sample_config": sample_config or {},
         "task_id": task_id or "",
         "task_label": task_label or "",
@@ -157,19 +162,16 @@ def delete_preview_images(
     deleted: list[str] = []
     missing: list[str] = []
     blocked: list[dict[str, str]] = []
-    allowed_sample_dir = current_task_sample_dir if source == "training" else None
     image_exts = get("IMAGE_EXTS")
 
     for raw in targets:
         try:
-            path = call("_resolve_preview_file", raw, allowed_sample_dir=allowed_sample_dir)
-            _ensure_preview_delete_target(path, resolved_dir, source=source)
+            path = _ensure_preview_delete_target(raw, resolved_dir, source=source)
             if path.suffix.lower() not in image_exts:
                 raise ValueError("只允许删除预览图片文件")
-            if not path.exists() or not path.is_file():
+            if not _unlink_preview_target(path, resolved_dir, source=source):
                 missing.append(call("_display_path", path))
                 continue
-            path.unlink()
             deleted.append(call("_display_path", path))
         except ValueError as exc:
             blocked.append({
@@ -182,14 +184,11 @@ def delete_preview_images(
                 "error": f"删除失败: {exc}",
             })
 
-    try:
-        remaining_total = sum(
-            1
-            for path in resolved_dir.iterdir()
-            if path.is_file() and path.suffix.lower() in image_exts
-        )
-    except OSError:
-        remaining_total = 0
+    _, remaining_total = select_recent_files(
+        resolved_dir,
+        suffixes=image_exts,
+        limit=0,
+    )
 
     return {
         "ok": len(blocked) == 0,
@@ -213,20 +212,41 @@ def list_config_group_preview_images(
     variant: str,
     preset: str,
     limit: int = 200,
+    days: int | None = None,
 ) -> dict[str, Any]:
     group_label = f"{methods_subdir} / {variant} / {preset or 'default'}"
     label = f"训练分组合并采样结果 · {group_label} · {len(tasks)} 次训练"
     limit = max(1, min(int(limit or 200), get("MAX_IMAGE_LIMIT")))
-    images_by_path: dict[str, dict[str, Any]] = {}
+    days = _normalize_preview_days(days)
+    cutoff = _preview_days_cutoff(days)
+    candidate_contexts: dict[str, dict[str, Any]] = {}
+    scanned_directories: dict[str, list[tuple[Path, os.stat_result]]] = {}
     directories: list[str] = []
+    total = 0
 
     for task in tasks:
         sample_dir = str(task.get("sample_dir") or "")
         if not sample_dir:
             continue
         resolved = call("_resolve_preview_dir", sample_dir, current_task_sample_dir=sample_dir)
-        if resolved is None or not resolved.exists() or not resolved.is_dir():
+        if resolved is None:
             continue
+        try:
+            if not resolved.is_dir():
+                continue
+            resolved_key = str(resolved.resolve())
+        except OSError:
+            continue
+        if resolved_key not in scanned_directories:
+            candidates, directory_total = select_recent_files(
+                resolved,
+                suffixes=get("IMAGE_EXTS"),
+                limit=limit,
+                min_mtime=cutoff,
+            )
+            scanned_directories[resolved_key] = candidates
+            total += directory_total
+        candidates = scanned_directories[resolved_key]
         display_dir = call("_display_path", resolved)
         if display_dir not in directories:
             directories.append(display_dir)
@@ -235,34 +255,56 @@ def list_config_group_preview_images(
         step_index = call("_training_step_index", task)
         task_id = str(task.get("id") or "")
         task_label = call("_preview_task_label", task)
-        for path in resolved.iterdir():
-            if not path.is_file() or path.suffix.lower() not in get("IMAGE_EXTS"):
+        source_task = {
+            "id": task_id,
+            "label": task_label,
+            "state": task.get("state", ""),
+            "started_at": task.get("started_at"),
+            "started_at_text": task.get("started_at_text", ""),
+            "finished_at": task.get("finished_at"),
+            "finished_at_text": task.get("finished_at_text", ""),
+            "sample_dir": sample_dir,
+        }
+        for path, stat_result in candidates:
+            match_meta = _candidate_match_meta(path, stat_result)
+            match_score = _task_image_match_score(task, match_meta)
+            key = path.as_posix()
+            previous = candidate_contexts.get(key)
+            if previous is not None and match_score <= previous["match_score"]:
                 continue
-            meta = _image_meta(
-                path,
-                task_id=task_id,
-                sample_config=sample_config,
-                prompt_entries=prompt_entries,
-                step_index=step_index,
-            )
-            meta["source_task"] = {
-                "id": task_id,
-                "label": task_label,
-                "state": task.get("state", ""),
-                "started_at": task.get("started_at"),
-                "started_at_text": task.get("started_at_text", ""),
-                "finished_at": task.get("finished_at"),
-                "finished_at_text": task.get("finished_at_text", ""),
-                "sample_dir": sample_dir,
+            candidate_contexts[key] = {
+                "path": path,
+                "stat": stat_result,
+                "task_id": task_id,
+                "sample_config": sample_config,
+                "prompt_entries": prompt_entries,
+                "step_index": step_index,
+                "source_task": source_task,
+                "match_score": match_score,
             }
-            key = str(path.resolve())
-            previous = images_by_path.get(key)
-            if previous is None or _task_image_match_score(task, meta) > _task_image_match_score(previous.get("source_task") or {}, previous):
-                images_by_path[key] = meta
 
-    images = list(images_by_path.values())
-    images.sort(key=lambda item: (float(item.get("mtime") or 0), str(item.get("name") or "")), reverse=True)
-    limited = images[:limit]
+    selected = nlargest(
+        limit,
+        candidate_contexts.values(),
+        key=lambda item: (
+            float(item["stat"].st_mtime),
+            item["path"].name,
+            item["path"].as_posix(),
+        ),
+    )
+    images: list[dict[str, Any]] = []
+    for item in selected:
+        meta = _available_image_meta(
+            item["path"],
+            task_id=item["task_id"],
+            sample_config=item["sample_config"],
+            prompt_entries=item["prompt_entries"],
+            step_index=item["step_index"],
+        )
+        if meta is None:
+            continue
+        meta["source_task"] = item["source_task"]
+        images.append(meta)
     return {
         "ok": True,
         "source": "training",
@@ -271,9 +313,9 @@ def list_config_group_preview_images(
         "directory": " · ".join(directories[:2]) + (" · ..." if len(directories) > 2 else ""),
         "directories": directories,
         "directory_exists": bool(directories),
-        "count": len(limited),
-        "total": len(images),
-        "images": limited,
+        "count": len(images),
+        "total": total,
+        "images": images,
         "message": "" if images else "这个训练分组还没有可显示的样张",
         "sample_config": {},
         "task_id": "",
@@ -305,11 +347,58 @@ def _normalize_preview_days(value: int | None) -> int | None:
     return days
 
 
-def _filter_preview_candidates_by_days(candidates: list[Path], days: int | None) -> list[Path]:
+def _preview_days_cutoff(days: int | None) -> float | None:
     if days is None:
+        return None
+    return datetime.now().timestamp() - days * 24 * 60 * 60
+
+
+def _filter_preview_candidates_by_days(candidates: list[Path], days: int | None) -> list[Path]:
+    cutoff = _preview_days_cutoff(days)
+    if cutoff is None:
         return candidates
-    cutoff = datetime.now().timestamp() - days * 24 * 60 * 60
-    return [path for path in candidates if path.stat().st_mtime >= cutoff]
+    filtered: list[Path] = []
+    for path in candidates:
+        try:
+            if path.stat().st_mtime >= cutoff:
+                filtered.append(path)
+        except OSError:
+            continue
+    return filtered
+
+
+def _available_image_meta(
+    path: Path,
+    *,
+    task_id: str | None = None,
+    sample_config: dict[str, Any] | None = None,
+    prompt_entries: list[dict[str, Any]] | None = None,
+    step_index: dict[int, int] | None = None,
+) -> dict[str, Any] | None:
+    """Return image metadata unless the candidate vanished or changed type."""
+
+    try:
+        stat_result = path.lstat()
+        if not stat_module.S_ISREG(stat_result.st_mode):
+            return None
+        return call(
+            "_image_meta",
+            path,
+            task_id=task_id,
+            sample_config=sample_config,
+            prompt_entries=prompt_entries,
+            step_index=step_index,
+            stat_result=stat_result,
+        )
+    except OSError:
+        return None
+
+
+def _candidate_match_meta(path: Path, stat_result: os.stat_result) -> dict[str, Any]:
+    return {
+        "mtime": stat_result.st_mtime,
+        "sample": _parse_sample_image_name(path) or {},
+    }
 
 
 def _task_image_match_score(task: dict[str, Any], image: dict[str, Any]) -> int:
@@ -358,8 +447,9 @@ def _image_meta(
     sample_config: dict[str, Any] | None = None,
     prompt_entries: list[dict[str, Any]] | None = None,
     step_index: dict[int, int] | None = None,
+    stat_result: os.stat_result | None = None,
 ) -> dict[str, Any]:
-    stat = path.stat()
+    stat = stat_result or path.stat()
     width, height = probe_image_size(path)
     rel_path = call("_display_path", path)
     url = f"/api/preview/image?file={quote(rel_path)}"
@@ -718,14 +808,92 @@ def _normalize_preview_delete_files(files: list[str] | tuple[str, ...] | set[str
         normalized.append(raw)
     if not normalized:
         raise ValueError("请至少选择一张图片")
+    max_files = int(get("MAX_IMAGE_LIMIT"))
+    if len(normalized) > max_files:
+        raise ValueError(f"一次最多删除 {max_files} 张图片")
     return normalized
 
 
-def _ensure_preview_delete_target(path: Path, directory: Path, *, source: str) -> None:
+def _ensure_preview_delete_target(raw: str | Path, directory: Path, *, source: str) -> Path:
+    clean = str(raw or "").replace("\\", "/").strip()
+    if not clean:
+        raise ValueError("图片路径不能为空")
+    requested = Path(clean)
+    if ".." in requested.parts:
+        raise ValueError("图片路径不能包含 ..")
+
+    if requested.is_absolute():
+        candidate = requested
+    elif len(requested.parts) == 1:
+        candidate = directory / requested.name
+    else:
+        candidate = Path(get("ROOT")) / requested
+
     try:
-        path.resolve().relative_to(directory.resolve())
-    except ValueError as exc:
-        raise ValueError(f"只允许删除当前{_preview_source_delete_label(source)}目录中的图片") from exc
+        resolved_directory = directory.resolve()
+        resolved_parent = candidate.parent.resolve()
+    except OSError as exc:
+        raise ValueError("无法确认预览图片目录") from exc
+    if resolved_parent != resolved_directory or candidate.name in {"", ".", ".."}:
+        raise ValueError(f"只允许删除当前{_preview_source_delete_label(source)}目录中的图片")
+    return resolved_directory / candidate.name
+
+
+def _unlink_preview_target(path: Path, directory: Path, *, source: str) -> bool:
+    """Delete one direct child without following a symlink target."""
+
+    label = _preview_source_delete_label(source)
+    try:
+        resolved_directory = directory.resolve()
+    except OSError as exc:
+        raise ValueError("无法确认预览图片目录") from exc
+    if path.parent != resolved_directory or not path.name or "/" in path.name or "\\" in path.name:
+        raise ValueError(f"只允许删除当前{label}目录中的图片")
+
+    supports_dir_fd = (
+        os.stat in os.supports_dir_fd
+        and os.unlink in os.supports_dir_fd
+        and os.stat in os.supports_follow_symlinks
+        and hasattr(os, "O_NOFOLLOW")
+    )
+    if supports_dir_fd:
+        expected = os.stat(resolved_directory, follow_symlinks=False)
+        if not stat_module.S_ISDIR(expected.st_mode):
+            raise ValueError("预览图路径不是目录")
+        flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | os.O_NOFOLLOW
+        directory_fd = os.open(resolved_directory, flags)
+        try:
+            opened = os.fstat(directory_fd)
+            if (opened.st_dev, opened.st_ino) != (expected.st_dev, expected.st_ino):
+                raise ValueError("预览图目录在删除过程中发生变化")
+            try:
+                stat_result = os.stat(path.name, dir_fd=directory_fd, follow_symlinks=False)
+            except FileNotFoundError:
+                return False
+            if stat_module.S_ISLNK(stat_result.st_mode):
+                raise ValueError("不允许删除符号链接")
+            if not stat_module.S_ISREG(stat_result.st_mode):
+                raise ValueError("只允许删除普通图片文件")
+            os.unlink(path.name, dir_fd=directory_fd)
+            return True
+        finally:
+            os.close(directory_fd)
+
+    try:
+        stat_result = path.lstat()
+    except FileNotFoundError:
+        return False
+    if stat_module.S_ISLNK(stat_result.st_mode):
+        raise ValueError("不允许删除符号链接")
+    if not stat_module.S_ISREG(stat_result.st_mode):
+        raise ValueError("只允许删除普通图片文件")
+    try:
+        if path.parent.resolve() != resolved_directory:
+            raise ValueError(f"只允许删除当前{label}目录中的图片")
+    except OSError as exc:
+        raise ValueError("无法确认预览图片目录") from exc
+    path.unlink()
+    return True
 
 
 def _preview_source_delete_label(source: str) -> str:
@@ -794,5 +962,3 @@ def _training_preview_label(settings: dict[str, Any], *, task_id: str | None, ta
         run_name = Path(run_dir).name if run_dir else "最新运行目录"
         return f"训练过程中采样结果 · {run_name}"
     return "训练过程中采样结果 · 兼容目录"
-
-

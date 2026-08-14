@@ -5,6 +5,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from aiohttp import web
+from PIL import Image
 
 from web.services import image_test_service
 
@@ -618,3 +619,94 @@ def test_image_test_service_initial_snapshot_is_idle(tmp_path) -> None:
     assert snapshot["running"] is False
     assert snapshot["output_count"] == 0
     assert snapshot["output_files"] == []
+
+
+def test_image_test_status_keeps_large_recent_gallery(tmp_path) -> None:
+    service = image_test_service.ImageTestService(web.Application())
+    service.output_dir = tmp_path
+    for index in range(14):
+        Image.new("RGB", (8, 8), color=(index, index, index)).save(tmp_path / f"image-{index:02d}.png")
+
+    snapshot = service.get_status_snapshot()
+
+    assert snapshot["output_count"] == 14
+    assert len(snapshot["output_files"]) == 14
+
+
+def test_list_output_images_probes_only_recent_top_k(tmp_path, monkeypatch) -> None:
+    for index in range(8):
+        path = tmp_path / f"image-{index}.png"
+        path.write_bytes(b"stub")
+        os.utime(path, (100 + index, 100 + index))
+
+    probe_calls: list[str] = []
+
+    def fake_probe(path: Path):
+        probe_calls.append(path.name)
+        return 8, 8
+
+    monkeypatch.setattr(image_test_service, "probe_image_size", fake_probe)
+
+    images = image_test_service._list_output_images(tmp_path, limit=3)
+
+    assert [item["name"] for item in images] == ["image-7.png", "image-6.png", "image-5.png"]
+    assert probe_calls == ["image-7.png", "image-6.png", "image-5.png"]
+
+
+def test_list_output_images_skips_file_that_disappears_after_scan(tmp_path, monkeypatch) -> None:
+    stable = tmp_path / "stable.png"
+    disappearing = tmp_path / "disappearing.png"
+    Image.new("RGB", (8, 8)).save(stable)
+    Image.new("RGB", (8, 8)).save(disappearing)
+    os.utime(stable, (100, 100))
+    os.utime(disappearing, (200, 200))
+
+    original_lstat = Path.lstat
+    disappearing_calls = 0
+
+    def flaky_lstat(path: Path):
+        nonlocal disappearing_calls
+        if path == disappearing:
+            disappearing_calls += 1
+            if disappearing_calls == 2:
+                disappearing.unlink()
+                raise FileNotFoundError(path)
+        return original_lstat(path)
+
+    monkeypatch.setattr(Path, "lstat", flaky_lstat)
+
+    images = image_test_service._list_output_images(tmp_path, limit=2)
+
+    assert [item["name"] for item in images] == ["stable.png"]
+
+
+def test_list_output_images_keeps_corrupt_file_with_unknown_dimensions(tmp_path) -> None:
+    (tmp_path / "broken.png").write_bytes(b"not an image")
+
+    images = image_test_service._list_output_images(tmp_path)
+
+    assert len(images) == 1
+    assert images[0]["width"] is None
+    assert images[0]["height"] is None
+
+
+def test_list_output_images_clamps_gallery_to_500(tmp_path, monkeypatch) -> None:
+    for index in range(505):
+        path = tmp_path / f"image-{index:03d}.png"
+        path.write_bytes(b"stub")
+        os.utime(path, (100 + index, 100 + index))
+    probe_count = 0
+
+    def fake_probe(_path: Path):
+        nonlocal probe_count
+        probe_count += 1
+        return 8, 8
+
+    monkeypatch.setattr(image_test_service, "probe_image_size", fake_probe)
+
+    images = image_test_service._list_output_images(tmp_path, limit=999)
+
+    assert len(images) == 500
+    assert probe_count == 500
+    assert images[0]["name"] == "image-504.png"
+    assert images[-1]["name"] == "image-005.png"

@@ -28,11 +28,12 @@
 
 | 阶段 | 状态 | 内容 | 提交/验证 |
 | --- | --- | --- | --- |
-| 0. 线上核验与隔离 | 完成 | 核验 PR、保护脏工作区、建立本地/线上集成分支 | 本文对应提交 |
-| 1. 前端入口集成 | 完成 | 导入 PR、修复启动回退与资源加载、补模式测试 | 本阶段提交；106 项前端/静态契约测试通过 |
-| 2. 后端安全加固 | 待进行 | 预览删除、图片扫描并发/性能、专项 pytest | 待更新 |
-| 3. 完整验证与 debug | 待进行 | 全量定向测试、真实浏览器 smoke、修复回归 | 待更新 |
-| 4. 发布 | 待进行 | 最终审计、更新 `origin/main`、处理 PR、记录残留 | 待更新 |
+| 0. 线上核验与隔离 | 完成 | 核验 PR、保护脏工作区、建立本地/线上集成分支 | `6e11da77` |
+| 1. 前端入口集成 | 完成 | 导入 PR、修复启动回退与资源加载、补模式测试 | `cd1bf78`；106 项前端/静态契约测试通过 |
+| 2. 后端安全加固 | 完成 | 预览删除、图片扫描并发/性能、专项 pytest | 本阶段提交；102 项专项测试通过 |
+| 3. 文档与使用引导 | 待进行 | 默认模式、classic 回退、部署、故障排查 | 待更新 |
+| 4. 完整验证与 debug | 待进行 | 全量测试、类型检查、真实浏览器 smoke、修复回归 | 待更新 |
+| 5. 发布 | 待进行 | 最终审计、更新 `origin/main`、处理 PR、记录残留 | 待更新 |
 
 ## 调试与复核入口
 
@@ -79,3 +80,41 @@ node --check web/static/js/dragon-ui/{index,nav,router,theme,animations}.js
 ```
 
 结果：`106 passed`。调试过程中先发现 4 个旧测试仍假设 `app.js` / `style.css` 是 HTML 静态入口，已改为验证新的 bootstrap 常量和 classic 模块图，不通过降低断言强度掩盖入口变化。
+
+## 阶段 2：后端安全加固
+
+本阶段补齐 Dragon 预览工作区依赖的删除 API，并处理大图片目录下的扫描开销和并发变化：
+
+- 新增 `DELETE /api/preview/images`，保留 `deleted`、`missing`、`blocked` 的部分成功 envelope；混合请求返回 HTTP 200 和 `ok=false`，顶层非法请求返回 400，目录不存在返回 404。
+- 保留已支持的绝对 `inference_dir` / `custom_dir`，但删除仅允许当前来源目录的直接普通图片文件。嵌套路径、目录、非图片、`..` 和 symlink 都不会删除。
+- 单次删除最多 500 个去重后的目标；501 个目标在任何 `unlink` 前整体拒绝。
+- Unix 删除路径使用目录 fd、`O_DIRECTORY`、`O_NOFOLLOW`、目录 inode 复核和 `unlink(..., dir_fd=...)`，避免校验后通过替换最终目录或 symlink 改变删除目标；不支持目录 fd 的平台走重复边界检查的保守 fallback。
+- 新增共享 bounded Top-K 扫描器。列表仍统计全部可用候选，但只保留最近 K 项并对它们读取尺寸/PNG metadata，复杂度为 `O(N log K)`、额外空间 `O(K)`。
+- 训练预览、配置分组合并预览和生图测试图库统一使用 bounded scan；生图测试图库上限从 12 扩展为 500，返回 URL、尺寸和文件大小。
+- 扫描期间消失、无法 stat、损坏或变成非普通文件的候选会被跳过；损坏图片仍可列出，尺寸返回 `null`。列表扫描不跟随 symlink，避免读取外部目标的尺寸或 PNG metadata。
+- 配置分组的 `days` 过滤已从路由完整传入服务，重复任务目录只扫描一次，最终 metadata 工作量不超过全局 limit。
+
+定向验证：
+
+```bash
+.venv/bin/python -m pytest -q \
+  tests/test_image_listing.py \
+  tests/test_preview_service.py \
+  tests/test_cross_domain_delete_boundaries.py \
+  tests/test_web_http_contracts.py \
+  tests/test_image_test_service.py \
+  tests/test_web_route_registry.py
+
+.venv/bin/python -m ruff check \
+  web/services/image_listing.py \
+  web/services/preview/images.py \
+  web/services/image_test_service.py \
+  web/routes/preview.py \
+  tests/test_image_listing.py \
+  tests/test_preview_service.py \
+  tests/test_image_test_service.py \
+  tests/test_web_http_contracts.py \
+  tests/test_web_route_registry.py
+```
+
+结果：`102 passed`，Ruff `All checks passed`。独立安全复核发现目录校验和 `os.open` 之间仍可替换最终目录，随后加入 `O_NOFOLLOW` 与 inode 复核；复核还发现列表会跟随图片 symlink，随后统一改为 `lstat()` 并增加 symlink、嵌套目录、混合删除和消失文件测试。

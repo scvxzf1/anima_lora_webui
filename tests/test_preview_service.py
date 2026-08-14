@@ -9,6 +9,7 @@ import toml
 
 from web.routes import preview as preview_routes
 from web.services import preview_service, settings_service
+from web.services.preview import images as preview_images
 
 
 def test_global_settings_default_save_and_resolve(tmp_path, monkeypatch):
@@ -407,6 +408,183 @@ def test_delete_preview_images_rejects_files_outside_current_inference_dir(tmp_p
     assert blocked_image.exists()
 
 
+def test_preview_listing_limits_metadata_work_to_recent_candidates(tmp_path, monkeypatch):
+    settings_file = tmp_path / "configs" / "web-ui-settings.toml"
+    settings_file.parent.mkdir(parents=True)
+    settings_file.write_text("", encoding="utf-8")
+    _patch_preview_settings_file(monkeypatch, settings_file, root=tmp_path)
+
+    preview_dir = tmp_path / "output" / "tests"
+    preview_dir.mkdir(parents=True)
+    for index in range(6):
+        path = preview_dir / f"image-{index}.png"
+        Image.new("RGB", (8, 8), color=(index, index, index)).save(path)
+        os.utime(path, (100 + index, 100 + index))
+
+    original_image_meta = preview_service._image_meta
+    metadata_calls: list[str] = []
+
+    def tracked_image_meta(path, **kwargs):
+        metadata_calls.append(path.name)
+        return original_image_meta(path, **kwargs)
+
+    monkeypatch.setattr(preview_service, "_image_meta", tracked_image_meta)
+
+    payload = preview_service.list_preview_images("inference", limit=2)
+
+    assert payload["total"] == 6
+    assert payload["count"] == 2
+    assert [item["name"] for item in payload["images"]] == ["image-5.png", "image-4.png"]
+    assert metadata_calls == ["image-5.png", "image-4.png"]
+
+
+def test_preview_listing_skips_candidate_that_disappears_during_metadata(tmp_path, monkeypatch):
+    settings_file = tmp_path / "configs" / "web-ui-settings.toml"
+    settings_file.parent.mkdir(parents=True)
+    settings_file.write_text("", encoding="utf-8")
+    _patch_preview_settings_file(monkeypatch, settings_file, root=tmp_path)
+
+    preview_dir = tmp_path / "output" / "tests"
+    preview_dir.mkdir(parents=True)
+    stable = preview_dir / "stable.png"
+    disappearing = preview_dir / "disappearing.png"
+    Image.new("RGB", (8, 8)).save(stable)
+    Image.new("RGB", (8, 8)).save(disappearing)
+    os.utime(stable, (100, 100))
+    os.utime(disappearing, (200, 200))
+
+    original_image_meta = preview_service._image_meta
+
+    def disappearing_image_meta(path, **kwargs):
+        if path == disappearing:
+            path.unlink()
+            raise FileNotFoundError(path)
+        return original_image_meta(path, **kwargs)
+
+    monkeypatch.setattr(preview_service, "_image_meta", disappearing_image_meta)
+
+    payload = preview_service.list_preview_images("inference", limit=2)
+
+    assert payload["total"] == 2
+    assert payload["count"] == 1
+    assert [item["name"] for item in payload["images"]] == ["stable.png"]
+
+
+def test_preview_listing_keeps_corrupt_image_with_unknown_dimensions(tmp_path, monkeypatch):
+    settings_file = tmp_path / "configs" / "web-ui-settings.toml"
+    settings_file.parent.mkdir(parents=True)
+    settings_file.write_text("", encoding="utf-8")
+    _patch_preview_settings_file(monkeypatch, settings_file, root=tmp_path)
+
+    preview_dir = tmp_path / "output" / "tests"
+    preview_dir.mkdir(parents=True)
+    (preview_dir / "broken.png").write_bytes(b"not an image")
+
+    payload = preview_service.list_preview_images("inference")
+
+    assert payload["count"] == 1
+    assert payload["images"][0]["width"] is None
+    assert payload["images"][0]["height"] is None
+
+
+def test_delete_preview_images_handles_mixed_direct_child_request(tmp_path, monkeypatch):
+    settings_file = tmp_path / "configs" / "web-ui-settings.toml"
+    settings_file.parent.mkdir(parents=True)
+    settings_file.write_text("", encoding="utf-8")
+    _patch_preview_settings_file(monkeypatch, settings_file, root=tmp_path)
+
+    preview_dir = tmp_path / "output" / "tests"
+    nested_dir = preview_dir / "nested"
+    preview_dir.mkdir(parents=True)
+    nested_dir.mkdir()
+    good = preview_dir / "good.png"
+    nested = nested_dir / "deep.png"
+    folder = preview_dir / "folder.png"
+    note = preview_dir / "note.txt"
+    outside = tmp_path / "outside.png"
+    Image.new("RGB", (8, 8)).save(good)
+    Image.new("RGB", (8, 8)).save(nested)
+    Image.new("RGB", (8, 8)).save(outside)
+    folder.mkdir()
+    note.write_text("keep", encoding="utf-8")
+    link = preview_dir / "link.png"
+    try:
+        link.symlink_to(outside)
+    except OSError:
+        pytest.skip("platform does not support symlinks")
+
+    payload = preview_service.delete_preview_images(
+        "inference",
+        [
+            "good.png",
+            "missing.png",
+            "output/tests/nested/deep.png",
+            "output/tests/link.png",
+            "output/tests/folder.png",
+            "output/tests/note.txt",
+        ],
+    )
+
+    assert payload["ok"] is False
+    assert payload["deleted_count"] == 1
+    assert payload["missing_count"] == 1
+    assert payload["blocked_count"] == 4
+    assert payload["remaining_total"] == 0
+    assert not good.exists()
+    assert nested.exists()
+    assert outside.exists()
+    assert link.is_symlink()
+    assert folder.is_dir()
+    assert note.exists()
+
+
+def test_delete_preview_images_rejects_more_than_500_before_unlink(tmp_path, monkeypatch):
+    settings_file = tmp_path / "configs" / "web-ui-settings.toml"
+    settings_file.parent.mkdir(parents=True)
+    settings_file.write_text("", encoding="utf-8")
+    _patch_preview_settings_file(monkeypatch, settings_file, root=tmp_path)
+    (tmp_path / "output" / "tests").mkdir(parents=True)
+
+    assert len(preview_service._normalize_preview_delete_files([f"{index}.png" for index in range(500)])) == 500
+    unlink_called = False
+
+    def unexpected_unlink(*args, **kwargs):
+        nonlocal unlink_called
+        unlink_called = True
+        return True
+
+    monkeypatch.setattr(preview_images, "_unlink_preview_target", unexpected_unlink)
+
+    with pytest.raises(ValueError, match="一次最多删除 500 张图片"):
+        preview_service.delete_preview_images(
+            "inference",
+            [f"{index}.png" for index in range(501)],
+        )
+
+    assert unlink_called is False
+
+
+def test_selected_history_delete_does_not_fallback_to_latest_run(tmp_path, monkeypatch):
+    settings_file = tmp_path / "configs" / "web-ui-settings.toml"
+    settings_file.parent.mkdir(parents=True)
+    settings_file.write_text('[global]\noutput_root = "output/runs"\n', encoding="utf-8")
+    _patch_preview_settings_file(monkeypatch, settings_file, root=tmp_path)
+    latest_sample = tmp_path / "output" / "runs" / "522-20260523-114515" / "training_output" / "sample"
+    latest_sample.mkdir(parents=True)
+    latest_image = latest_sample / "latest.png"
+    Image.new("RGB", (8, 8)).save(latest_image)
+
+    with pytest.raises(ValueError, match="当前来源没有可删除的预览目录"):
+        preview_service.delete_preview_images(
+            "training",
+            [str(latest_image)],
+            current_task_sample_dir="",
+            allow_latest_fallback=False,
+        )
+
+    assert latest_image.exists()
+
+
 def test_training_preview_images_include_sample_details(tmp_path, monkeypatch):
     sample_dir = tmp_path / "sample"
     sample_dir.mkdir()
@@ -631,6 +809,50 @@ def test_config_group_preview_images_merge_training_tasks(tmp_path, monkeypatch)
     assert payload["task_count"] == 3
     assert {item["source_task"]["id"] for item in payload["images"]} == {"task-a", "task-b"}
     assert all("task_id=" in item["url"] for item in payload["images"])
+
+
+def test_config_group_preview_limits_metadata_to_global_top_k(tmp_path, monkeypatch):
+    sample_a = tmp_path / "task-a" / "sample"
+    sample_b = tmp_path / "task-b" / "sample"
+    sample_a.mkdir(parents=True)
+    sample_b.mkdir(parents=True)
+    for directory_index, directory in enumerate((sample_a, sample_b)):
+        for image_index in range(5):
+            path = directory / f"image-{directory_index}-{image_index}.png"
+            Image.new("RGB", (8, 8)).save(path)
+            mtime = 100 + directory_index * 10 + image_index
+            os.utime(path, (mtime, mtime))
+
+    monkeypatch.setattr(preview_service, "_training_step_index", lambda _task: {})
+    original_image_meta = preview_service._image_meta
+    metadata_calls: list[str] = []
+
+    def tracked_image_meta(path, **kwargs):
+        metadata_calls.append(path.name)
+        return original_image_meta(path, **kwargs)
+
+    monkeypatch.setattr(preview_service, "_image_meta", tracked_image_meta)
+    tasks = [
+        {"id": "task-a", "job": "training", "sample_dir": str(sample_a)},
+        {"id": "task-b", "job": "training", "sample_dir": str(sample_b)},
+    ]
+
+    payload = preview_service.list_config_group_preview_images(
+        tasks,
+        methods_subdir="imported",
+        variant="demo",
+        preset="default",
+        limit=3,
+    )
+
+    assert payload["total"] == 10
+    assert payload["count"] == 3
+    assert len(metadata_calls) == 3
+    assert [item["name"] for item in payload["images"]] == [
+        "image-1-4.png",
+        "image-1-3.png",
+        "image-1-2.png",
+    ]
 
 
 def test_config_group_training_weights_merge_and_dedupe(tmp_path, monkeypatch):

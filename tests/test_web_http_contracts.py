@@ -10,6 +10,7 @@ from aiohttp import web
 
 from web.routes import config as config_routes
 from web.routes import image_test as image_test_routes
+from web.routes import preview as preview_routes
 from web.routes import settings as settings_routes
 from web.routes import training as training_routes
 
@@ -250,6 +251,130 @@ def test_http_image_test_delete_success_envelope(monkeypatch):
     assert payload["ok"] is True
     assert payload["source"] == "inference"
     assert payload["deleted"] == ["a.png"]
+
+
+class _FakePreviewTaskService:
+    def __init__(self, task: dict[str, Any]) -> None:
+        self.task = task
+
+    def get_history_task_summary(self, task_id: str) -> dict[str, Any]:
+        assert task_id == self.task["id"]
+        return {"ok": True, "task": self.task}
+
+
+def test_http_preview_delete_mixed_envelope_and_selected_task_context(monkeypatch):
+    seen: dict[str, Any] = {}
+
+    def fake_delete(source, files, **kwargs):
+        seen.update({"source": source, "files": files, **kwargs})
+        return {
+            "ok": False,
+            "source": source,
+            "directory": "output/runs/task-1/sample",
+            "deleted": ["a.png"],
+            "deleted_count": 1,
+            "missing": ["missing.png"],
+            "missing_count": 1,
+            "blocked": [{"file": "../blocked.png", "error": "blocked"}],
+            "blocked_count": 1,
+            "remaining_total": 0,
+        }
+
+    monkeypatch.setattr(preview_routes, "delete_preview_images", fake_delete)
+    task = {
+        "id": "task-1",
+        "job": "training",
+        "sample_dir": "output/runs/task-1/sample",
+    }
+    response = asyncio.run(
+        preview_routes.handle_preview_images_delete(
+            _FakeRequest(
+                app={"training_service": _FakePreviewTaskService(task)},
+                payload={"source": "training", "files": ["a.png", "missing.png", "../blocked.png"]},
+                query={"task_id": "task-1"},
+            )  # type: ignore[arg-type]
+        )
+    )
+
+    assert response.status == 200
+    payload = _json_payload(response)
+    assert payload["ok"] is False
+    assert payload["deleted_count"] == 1
+    assert payload["missing_count"] == 1
+    assert payload["blocked_count"] == 1
+    assert seen["current_task_sample_dir"] == "output/runs/task-1/sample"
+    assert seen["allow_latest_fallback"] is False
+
+
+def test_http_preview_delete_without_task_allows_latest_fallback(monkeypatch):
+    seen: dict[str, Any] = {}
+
+    def fake_delete(source, files, **kwargs):
+        seen.update({"source": source, "files": files, **kwargs})
+        return {
+            "ok": True,
+            "source": source,
+            "directory": "output/tests",
+            "deleted": [],
+            "deleted_count": 0,
+            "missing": list(files),
+            "missing_count": len(files),
+            "blocked": [],
+            "blocked_count": 0,
+            "remaining_total": 0,
+        }
+
+    monkeypatch.setattr(preview_routes, "delete_preview_images", fake_delete)
+    response = asyncio.run(
+        preview_routes.handle_preview_images_delete(
+            _FakeRequest(payload={"source": "inference", "files": ["missing.png"]})  # type: ignore[arg-type]
+        )
+    )
+
+    assert response.status == 200
+    assert seen["allow_latest_fallback"] is True
+    assert seen["current_task_sample_dir"] == ""
+
+
+def test_http_preview_delete_limit_error_is_400(monkeypatch):
+    def raise_limit(*args, **kwargs):
+        raise ValueError("一次最多删除 500 张图片")
+
+    monkeypatch.setattr(preview_routes, "delete_preview_images", raise_limit)
+    response = asyncio.run(
+        preview_routes.handle_preview_images_delete(
+            _FakeRequest(payload={"source": "inference", "files": [f"{index}.png" for index in range(501)]})  # type: ignore[arg-type]
+        )
+    )
+
+    assert response.status == 400
+    payload = _json_payload(response)
+    assert payload == {"ok": False, "error": "一次最多删除 500 张图片"}
+
+
+def test_http_preview_delete_missing_directory_is_404(monkeypatch):
+    def raise_missing(*args, **kwargs):
+        raise FileNotFoundError("预览图目录不存在")
+
+    monkeypatch.setattr(preview_routes, "delete_preview_images", raise_missing)
+    response = asyncio.run(
+        preview_routes.handle_preview_images_delete(
+            _FakeRequest(payload={"source": "custom", "files": ["a.png"]})  # type: ignore[arg-type]
+        )
+    )
+
+    assert response.status == 404
+    payload = _json_payload(response)
+    assert payload == {"ok": False, "error": "预览图目录不存在"}
+
+
+def test_http_image_test_delete_service_missing_is_503():
+    response = asyncio.run(
+        image_test_routes.handle_image_test_images_delete(_FakeRequest())  # type: ignore[arg-type]
+    )
+
+    assert response.status == 503
+    assert _json_payload(response)["ok"] is False
 
 
 def test_http_config_methods_envelope(monkeypatch):

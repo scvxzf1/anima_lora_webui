@@ -50,6 +50,7 @@ REQUIRED_ROUTES: set[tuple[str, str]] = {
     ("GET", "/api/preview/settings"),
     ("PUT", "/api/preview/settings"),
     ("GET", "/api/preview/images"),
+    ("DELETE", "/api/preview/images"),
     ("GET", "/api/preview/image"),
     ("GET", "/api/preview/weights"),
     ("GET", "/api/analysis/weights"),
