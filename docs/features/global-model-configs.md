@@ -4,7 +4,9 @@
 
 ## 1. 入口与用途
 
-顶部导航的 **全局模型配置** 位于 **全局设置** 与 **环境检测** 之间。
+Dragon UI 从 **模型与系统 → 全局模型配置** 进入；classic UI 顶部导航的 **全局模型配置** 位于 **全局设置** 与 **环境检测** 之间。
+
+两套界面读取并修改同一个模型配置库。切换 Dragon / classic 不会复制配置，也不会改变默认项。
 
 页面左侧编辑当前模型配置，右侧显示配置列表。当前支持：
 
@@ -14,6 +16,8 @@
 | Krea-2 | `krea2_raw` | DiT、Qwen3、VAE |
 
 每项配置包含名称、模型格式和三条模型路径。模型配置只记录路径，不移动、下载或删除模型文件。
+
+导航和页面标题中的 `Dragon trainer` 是界面品牌，不是模型格式。真正控制训练/推理模型族的是这里的 Anima / Krea-2 选择及训练配置中的 `model_family`。
 
 ## 2. 创建与管理
 
@@ -68,3 +72,5 @@ timeout 60 .venv/bin/python -m pytest \
   tests/test_training_frontend_dom.py \
   -q
 ```
+
+界面模式与回退说明见 [Dragon UI 与 classic 兼容界面](dragon-ui.md)。

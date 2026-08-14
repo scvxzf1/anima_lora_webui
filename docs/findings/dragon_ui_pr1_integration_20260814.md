@@ -30,8 +30,8 @@
 | --- | --- | --- | --- |
 | 0. 线上核验与隔离 | 完成 | 核验 PR、保护脏工作区、建立本地/线上集成分支 | `6e11da77` |
 | 1. 前端入口集成 | 完成 | 导入 PR、修复启动回退与资源加载、补模式测试 | `cd1bf78`；106 项前端/静态契约测试通过 |
-| 2. 后端安全加固 | 完成 | 预览删除、图片扫描并发/性能、专项 pytest | 本阶段提交；102 项专项测试通过 |
-| 3. 文档与使用引导 | 待进行 | 默认模式、classic 回退、部署、故障排查 | 待更新 |
+| 2. 后端安全加固 | 完成 | 预览删除、图片扫描并发/性能、专项 pytest | `6b0b402`；102 项专项测试通过 |
+| 3. 文档与使用引导 | 完成 | 默认模式、classic 回退、部署、故障排查 | 本阶段提交；8 项文档完整性测试通过 |
 | 4. 完整验证与 debug | 待进行 | 全量测试、类型检查、真实浏览器 smoke、修复回归 | 待更新 |
 | 5. 发布 | 待进行 | 最终审计、更新 `origin/main`、处理 PR、记录残留 | 待更新 |
 
@@ -118,3 +118,26 @@ node --check web/static/js/dragon-ui/{index,nav,router,theme,animations}.js
 ```
 
 结果：`102 passed`，Ruff `All checks passed`。独立安全复核发现目录校验和 `os.open` 之间仍可替换最终目录，随后加入 `O_NOFOLLOW` 与 inode 复核；复核还发现列表会跟随图片 symlink，随后统一改为 `lstat()` 并增加 symlink、嵌套目录、混合删除和消失文件测试。
+
+阶段提交已推送到 `origin/integration/frontend-pr1`，GitHub API 校验远端对象为 `6b0b402382c21fbfd5f0632907f0ec72ecd89b37`。随后从该提交建立干净 detached worktree 重跑，结果为 `102 passed, 1 warning`，Ruff 通过。
+
+## 阶段 3：文档与使用引导
+
+本阶段新增 [Dragon UI 与 classic 兼容界面](../features/dragon-ui.md)，并同步根 README、文档总索引、功能索引、预览、全局设置、全局模型配置和 Linux 部署指南：
+
+- 明确没有有效选择时默认 Dragon，`?ui=classic` / `?ui=dragon` 优先于 `localStorage.anima_ui_mode`。
+- 记录 Dragon 左上角界面菜单和 classic **新版界面**按钮的双向切换入口。
+- 明确两套 UI 共用后端、配置、队列、历史、模型和输出；`Dragon trainer` 是界面品牌，不是模型族。
+- 记录 macOS `preview-dragon-ui.command` 的 `20102`–`20120` 端口选择、约 45 秒等待和 `Ctrl+C` 停止语义。
+- 统一常规 `tasks.py web` 示例端口为 20102，同时保留并解释 `launch_webui_app.sh` 默认 20103、不会自动打开浏览器且只检查监听端口的事实。
+- 修正文档中非 loopback 可直接启动的旧说法：外部绑定必须使用 `ANIMA_WEBUI_TOKEN` 或 `--token`。
+- 增加首次加载约 10–40 秒、`?ui=classic` 排障、静态资源 404、`[dragon-ui] failed to start` 和 `[ui-bootstrap] failed to start any UI` 的 debug 路径。
+- 更新预览文档，写明绝对 inference/custom 目录、500 项列表/删除上限、Top-K metadata、部分成功 envelope、直接子文件和 symlink 边界。
+
+验证：
+
+```bash
+timeout 120 .venv/bin/python -m pytest -q tests/test_documentation_integrity.py
+```
+
+结果：`8 passed`。文档索引可达性、分区索引覆盖、章节锚点和代码围栏均通过。

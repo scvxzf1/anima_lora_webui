@@ -17,6 +17,7 @@
 常用入口：
 
 - 新手部署和 WebUI 使用：[Linux 部署启动](#linux-部署启动)、[Windows 部署启动](#windows-部署启动)
+- 默认 Dragon UI、classic 回退与空白页排查：[docs/features/dragon-ui.md](docs/features/dragon-ui.md)
 - Linux 部署：[docs/guidelines/linux-deployment.zh.md](docs/guidelines/linux-deployment.zh.md)
 - 训练参考：[docs/guidelines/training.md](docs/guidelines/training.md)
 - 推理参考：[docs/guidelines/inference.md](docs/guidelines/inference.md)
@@ -24,7 +25,7 @@
 
 ## 项目内容物预览：锚点 `4ea68b3`
 
-以下截图来自稳态锚点附近的 WebUI 状态，用于快速预览主要页面和功能入口。
+以下截图来自稳态锚点附近的 classic UI 状态，用于快速预览主要功能。当前默认界面已切换为 Dragon UI，布局会不同，但两套界面共用后端、配置、历史任务和模型文件。
 
 <table>
   <tr>
@@ -155,11 +156,16 @@ uv sync
 http://127.0.0.1:20102/
 ```
 
+默认进入 Dragon UI。首次启动加载后端依赖时可能需要等待约 10–40 秒；需要兼容界面时打开 `http://127.0.0.1:20102/?ui=classic`。
+
 需要局域网访问时：
 
 ```bash
+export ANIMA_WEBUI_TOKEN='替换为足够长的随机令牌'
 .venv/bin/python tasks.py web --host 0.0.0.0 --port 20102
 ```
+
+非本机回环地址必须设置 `ANIMA_WEBUI_TOKEN` 或传入 `--token`，否则服务会拒绝启动。首次从其他机器访问时可使用 `?token=...` 完成认证；不要把真实令牌提交到仓库或写进共享文档。
 
 Tesla V100 必须使用独立的 Python 3.13 / Torch 2.10 + CUDA 12.9
 环境，不要在该环境中执行普通 `uv sync`：
@@ -220,9 +226,30 @@ uv sync
 http://127.0.0.1:20102/
 ```
 
+默认进入 Dragon UI；classic 兼容入口是 `http://127.0.0.1:20102/?ui=classic`。
+
 如果 PowerShell 禁止激活脚本，不需要激活虚拟环境，直接使用上面的 `.\.venv\Scripts\python.exe` 命令即可。
 
+## macOS Dragon UI 预览
+
+先按项目依赖说明准备好 `.venv`，然后在 Finder 双击项目根目录的 `preview-dragon-ui.command`，或在终端运行：
+
+```bash
+./preview-dragon-ui.command
+```
+
+脚本会在 `20102`–`20120` 中选择首个未监听端口，等待 WebUI 可访问后尝试自动打开 Dragon UI。关闭该终端窗口或按 `Ctrl+C` 会停止脚本启动的预览进程。
+
 ## 启动后怎么用
+
+默认是 Dragon UI。Dragon 左上角 `Dragon trainer` 菜单可切换到 **经典界面**；classic 顶部可点 **新版界面** 返回。也可以直接使用：
+
+```text
+/?ui=dragon
+/?ui=classic
+```
+
+浏览器会把选择保存到 `localStorage.anima_ui_mode`。两套界面共用同一套配置、训练队列、历史、模型和输出；`Dragon trainer` 只是界面品牌，不是模型族。详细排查见 [Dragon UI 与 classic 兼容界面](docs/features/dragon-ui.md)。
 
 1. 在 WebUI 里确认基础模型、文本编码器和 VAE 路径。
 2. 导入或创建数据集配置。
@@ -239,4 +266,4 @@ models/text_encoders/qwen_3_06b_base.safetensors
 models/vae/qwen_image_vae.safetensors
 ```
 
-如果模型放在别处，可以在 WebUI 的全局设置里改成实际路径。
+如果模型放在别处，可以在 WebUI 的 **全局模型配置** 中改成实际路径。

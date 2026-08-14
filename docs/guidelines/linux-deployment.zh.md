@@ -210,41 +210,69 @@ post_image_dataset/lora/
 推荐启动方式：
 
 ```bash
-.venv/bin/python -m web --host 127.0.0.1 --port 20103
+.venv/bin/python tasks.py web --host 127.0.0.1 --port 20102
 ```
 
 然后浏览器打开：
 
 ```text
-http://127.0.0.1:20103/
+http://127.0.0.1:20102/
 ```
 
-也可以使用任务入口：
+也可以直接使用模块入口：
 
 ```bash
-.venv/bin/python tasks.py web --host 127.0.0.1 --port 20103
+.venv/bin/python -m web --host 127.0.0.1 --port 20102
 ```
 
 或在已激活项目虚拟环境后使用 Makefile：
 
 ```bash
 source .venv/bin/activate
-make web ARGS="--host 127.0.0.1 --port 20103"
+make web ARGS="--host 127.0.0.1 --port 20102"
+```
+
+首次启动加载后端依赖时可能需要约 10–40 秒。默认打开 Dragon UI：
+
+```text
+http://127.0.0.1:20102/
+http://127.0.0.1:20102/?ui=dragon
+```
+
+classic 兼容界面：
+
+```text
+http://127.0.0.1:20102/?ui=classic
+```
+
+界面按钮会把选择保存到浏览器 `localStorage.anima_ui_mode`。两套界面共用后端、配置、训练队列、历史和模型文件；`Dragon trainer` 只是界面品牌，不是模型族。完整说明见 [Dragon UI 与 classic 兼容界面](../features/dragon-ui.md)。
+
+项目根目录的 Linux 一键脚本也可以启动 WebUI：
+
+```bash
+./launch_webui_app.sh
+```
+
+该脚本默认使用 `127.0.0.1:20103`，不会自动打开浏览器，终端会保留输出。它只把“端口正在监听”作为便捷判断，不验证监听进程是不是 WebUI，也不等同于 HTTP 健康检查。可只对该脚本覆盖地址：
+
+```bash
+ANIMA_WEB_HOST=127.0.0.1 ANIMA_WEB_PORT=20102 ./launch_webui_app.sh
 ```
 
 如果你需要让局域网其他机器访问：
 
 ```bash
-.venv/bin/python -m web --host 0.0.0.0 --port 20103
+export ANIMA_WEBUI_TOKEN='替换为足够长的随机令牌'
+.venv/bin/python tasks.py web --host 0.0.0.0 --port 20102
 ```
 
 然后使用服务器 IP 访问：
 
 ```text
-http://服务器IP:20103/
+http://服务器IP:20102/?token=你的令牌
 ```
 
-注意：`0.0.0.0` 会暴露服务到当前网络，请确认防火墙和访问环境安全。
+注意：非 loopback 地址必须提供 `--token` 或环境变量 `ANIMA_WEBUI_TOKEN`，否则服务会拒绝启动。正确的 query token 会建立认证 cookie；也可以使用 `Authorization: Bearer` 或 `X-Anima-Token`。不要把真实 token 写入仓库、共享文档或带密钥的远程 URL。`0.0.0.0` 会暴露服务到当前网络，请同时确认防火墙和访问环境安全。
 
 
 ## 10. WebUI 推荐使用流程
@@ -252,16 +280,16 @@ http://服务器IP:20103/
 首次使用建议按这个顺序：
 
 1. 打开 WebUI。
-2. 进入「配置」页。
-3. 检查模型路径是否存在。
+2. Dragon UI 进入「模型与系统 → 全局模型配置」，classic UI 进入「全局模型配置」，检查模型路径是否存在。
+3. 进入「配置文件」或 classic「配置」页。
 4. 设置 `source_image_dir`。
 5. 点击「自动填入缩放图和缓存目录」。
 6. 保存当前配置。
-7. 进入「训练」页。
+7. 进入 Dragon「训练 → 实时训练」或 classic「训练」页。
 8. 如果提示需要预处理，先执行预处理。
 9. 预处理完成后启动训练。
 10. 在「训练」页查看日志、loss 曲线和任务配置快照。
-11. 在「预览图」页查看训练样张或推理预览图。
+11. 在 Dragon「模型与系统 → 预览工作区」或 classic 当前预览中查看训练样张和推理预览图。
 
 训练任务快照中会记录：
 
@@ -340,20 +368,20 @@ GUI_PRESETS=lokr .venv/bin/python tasks.py lora-gui
 
 ```bash
 mkdir -p logs
-nohup .venv/bin/python -m web --host 127.0.0.1 --port 20103 \
-  > logs/webui-20103.log 2>&1 &
+nohup .venv/bin/python tasks.py web --host 127.0.0.1 --port 20102 \
+  > logs/webui-20102.log 2>&1 &
 ```
 
 查看日志：
 
 ```bash
-tail -f logs/webui-20103.log
+tail -f logs/webui-20102.log
 ```
 
 查看端口：
 
 ```bash
-ss -ltnp | grep 20103
+ss -ltnp | grep 20102
 ```
 
 停止服务：
@@ -365,7 +393,7 @@ pkill -f "python -m web"
 如果你只想停止某个端口，可以先查 PID：
 
 ```bash
-ss -ltnp | grep 20103
+ss -ltnp | grep 20102
 ```
 
 然后：
@@ -389,7 +417,7 @@ After=network.target
 [Service]
 Type=simple
 WorkingDirectory=/home/USER/anima_lora
-ExecStart=/home/USER/anima_lora/.venv/bin/python -m web --host 127.0.0.1 --port 20103
+ExecStart=/home/USER/anima_lora/.venv/bin/python tasks.py web --host 127.0.0.1 --port 20102
 Restart=on-failure
 RestartSec=5
 Environment=PYTHONUNBUFFERED=1
@@ -509,13 +537,13 @@ nvidia-smi
 检查端口：
 
 ```bash
-ss -ltnp | grep 20103
+ss -ltnp | grep 20102
 ```
 
 换端口启动：
 
 ```bash
-.venv/bin/python -m web --host 127.0.0.1 --port 20104
+.venv/bin/python tasks.py web --host 127.0.0.1 --port 20104
 ```
 
 
@@ -575,6 +603,23 @@ PNG；只有一行提示词时，仅一张 GPU 执行采样，其余 rank 等待
 如果网络环境无法直连 Hugging Face，需要自行配置代理。
 
 
+### 15.7 Dragon UI 空白或自动回到 classic
+
+先等待首次启动的 10–40 秒并查看服务终端。然后直接打开：
+
+```text
+http://127.0.0.1:20102/?ui=classic
+```
+
+classic 正常时，打开浏览器开发者工具检查 Console 和 Network：
+
+- `[dragon-ui] failed to start; falling back to classic UI`：Dragon 初始化失败，系统已尝试 classic 回退。
+- `[ui-bootstrap] failed to start any UI`：两套入口都没有成功启动。
+- `/static/js/ui-bootstrap.js`、Dragon JS 或 `/static/css/dragon-style.css` 返回 404：检查当前代码是否完整，并重启后端。
+
+模式会保存在 `localStorage.anima_ui_mode`；可直接使用 `?ui=dragon` / `?ui=classic` 覆盖。更完整的清理和维护测试见 [Dragon UI 与 classic 兼容界面](../features/dragon-ui.md)。
+
+
 ## 16. 更新项目
 
 拉取最新代码：
@@ -593,7 +638,7 @@ uv sync
 
 ```bash
 pkill -f "python -m web"
-.venv/bin/python -m web --host 127.0.0.1 --port 20103
+.venv/bin/python tasks.py web --host 127.0.0.1 --port 20102
 ```
 
 
@@ -608,14 +653,14 @@ uv sync
 .venv/bin/hf auth login
 .venv/bin/python tasks.py download-models
 mkdir -p image_dataset
-.venv/bin/python -m web --host 127.0.0.1 --port 20103
+.venv/bin/python tasks.py web --host 127.0.0.1 --port 20102
 ```
 
 已有项目日常启动：
 
 ```bash
 cd anima_lora
-.venv/bin/python -m web --host 127.0.0.1 --port 20103
+.venv/bin/python tasks.py web --host 127.0.0.1 --port 20102
 ```
 
 CLI 预处理和训练：

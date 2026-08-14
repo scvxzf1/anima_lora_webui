@@ -10,7 +10,8 @@
 
 相关代码：
 
-- `web/static/index.html`（`data-tab="settings"`）
+- `web/static/js/dragon-ui/pages/global-settings.js`
+- `web/static/index.html`（classic `data-tab="settings"`）
 - `web/services/settings_service.py`
 - `library/env.py`（`get_configs_root` 等）
 - `tests/test_preview_service.py`、`tests/test_ui_scale_settings.py`、`tests/test_global_settings_runtime.py`
@@ -19,7 +20,7 @@
 
 ## 1. 这是干什么的
 
-一句话：设置整站默认输出目录、配置根目录和界面缩放。
+一句话：设置两套 WebUI 共用的默认输出目录、配置根目录和界面缩放。
 
 全局设置写到：
 
@@ -32,7 +33,7 @@
 
 ## 2. 入口
 
-1. 打开顶部导航 **全局设置**。
+1. Dragon UI 打开 **模型与系统 → 全局设置**；classic UI 打开顶部导航 **全局设置**。
 2. 修改：
    - 输出文件夹
    - 配置根目录
@@ -58,6 +59,8 @@
 2. 环境变量 `ANIMA_CONFIGS_ROOT`
 3. 默认 `configs/`
 
+Dragon / classic 模式不是 TOML 全局设置项。界面切换写入浏览器 `localStorage.anima_ui_mode`，不会改变输出根、配置根、训练历史或模型配置。详见 [Dragon UI 与 classic 兼容界面](dragon-ui.md)。
+
 ---
 
 ## 4. 危险项
@@ -66,6 +69,7 @@
 - **改配置根目录**：配置列表、历史、队列会整体切换到另一套目录；保存后页面会刷新。
 - **恢复默认**：会清掉你在全局设置里改过的本机默认值。
 - **极端 UI 缩放**：25% 或 400% 可能让布局难用；推荐 75%–150%。
+- **把界面模式误当模型格式**：`Dragon trainer` 只是界面品牌，不会把 `model_family` 改成另一种模型。
 
 更细的缩放说明见 [ui-scale.md](ui-scale.md)。
 
