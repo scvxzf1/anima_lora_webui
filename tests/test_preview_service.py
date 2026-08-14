@@ -367,6 +367,33 @@ def test_preview_image_absolute_file_allowed_under_global_output_root(tmp_path, 
     assert preview_service.resolve_preview_image(str(image_path)) == image_path.resolve()
 
 
+def test_preview_image_rejects_symlink_inside_saved_preview_dir(tmp_path, monkeypatch):
+    settings_file = tmp_path / "configs" / "web-ui-settings.toml"
+    settings_file.parent.mkdir(parents=True)
+    custom_dir = tmp_path / "custom"
+    custom_dir.mkdir()
+    image_path = custom_dir / "allowed.png"
+    link_path = custom_dir / "link.png"
+    Image.new("RGB", (8, 8), color=(12, 34, 56)).save(image_path)
+    try:
+        link_path.symlink_to(image_path.name)
+    except (NotImplementedError, OSError):
+        pytest.skip("platform does not support symlinks")
+
+    _patch_preview_settings_file(monkeypatch, settings_file, root=tmp_path)
+    preview_service.save_preview_settings(
+        {
+            "training_dir": "output/ckpt/sample",
+            "inference_dir": "output/tests",
+            "custom_dir": str(custom_dir),
+        }
+    )
+
+    assert preview_service.resolve_preview_image(str(image_path)) == image_path.resolve()
+    with pytest.raises(FileNotFoundError, match="图片不存在"):
+        preview_service.resolve_preview_image(str(link_path))
+
+
 def test_delete_preview_images_removes_files_under_inference_dir(tmp_path, monkeypatch):
     settings_file = tmp_path / "configs" / "web-ui-settings.toml"
     settings_file.parent.mkdir(parents=True)

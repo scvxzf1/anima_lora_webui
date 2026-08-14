@@ -333,7 +333,15 @@ def resolve_preview_image(rel_path: str, allowed_sample_dir: str | None = None) 
     resolved = call("_resolve_preview_file", rel_path, allowed_sample_dir=allowed_sample_dir)
     if resolved.suffix.lower() not in get("IMAGE_EXTS"):
         raise ValueError("只允许读取预览图片文件")
-    if not resolved.exists() or not resolved.is_file():
+    clean = str(rel_path or "").replace("\\", "/").strip()
+    requested = Path(clean)
+    if not requested.is_absolute():
+        requested = Path(get("ROOT")) / call("_normalize_project_file", clean)
+    try:
+        requested_stat = requested.lstat()
+    except FileNotFoundError as exc:
+        raise FileNotFoundError("图片不存在") from exc
+    if not stat_module.S_ISREG(requested_stat.st_mode):
         raise FileNotFoundError("图片不存在")
     return resolved
 
