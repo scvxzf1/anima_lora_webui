@@ -31,8 +31,8 @@
 | 0. 线上核验与隔离 | 完成 | 核验 PR、保护脏工作区、建立本地/线上集成分支 | `6e11da77` |
 | 1. 前端入口集成 | 完成 | 导入 PR、修复启动回退与资源加载、补模式测试 | `cd1bf78`；106 项前端/静态契约测试通过 |
 | 2. 后端安全加固 | 完成 | 预览删除、图片扫描并发/性能、专项 pytest | `6b0b402`；102 项专项测试通过 |
-| 3. 文档与使用引导 | 完成 | 默认模式、classic 回退、部署、故障排查 | 本阶段提交；8 项文档完整性测试通过 |
-| 4. 完整验证与 debug | 待进行 | 全量测试、类型检查、真实浏览器 smoke、修复回归 | 待更新 |
+| 3. 文档与使用引导 | 完成 | 默认模式、classic 回退、部署、故障排查 | `d61f1b2`；8 项文档完整性测试通过 |
+| 4. 完整验证与 debug | 完成 | 全量测试、类型检查、真实浏览器 smoke、安全复核 | `20bc35b6`；变更后 2438 项 pytest 通过 |
 | 5. 发布 | 待进行 | 最终审计、更新 `origin/main`、处理 PR、记录残留 | 待更新 |
 
 ## 调试与复核入口
@@ -141,3 +141,42 @@ timeout 120 .venv/bin/python -m pytest -q tests/test_documentation_integrity.py
 ```
 
 结果：`8 passed`。文档索引可达性、分区索引覆盖、章节锚点和代码围栏均通过。
+
+## 阶段 4：完整验证与 debug
+
+### 自动化门禁
+
+- 全部 `web/static/js/**/*.js` 逐文件执行 `node --check`，无语法错误。
+- Dragon/classic 扩展前端套件：`208 passed, 6 warnings in 267.03s`。首次使用 240 秒门限时运行到约 79% 且无失败，随后把门限调整为 600 秒完成全套，不把超时误报为用例失败。
+- 后端 WebUI smoke：`225 passed, 2 warnings in 57.86s`。
+- Pyright 默认检查面与本次改动文件均为 `0 errors`。
+- 阶段 2 提交在干净 detached worktree 复验：`102 passed, 1 warning`。
+- 初始全量 pytest：`2437 passed, 6 skipped, 38 warnings in 493.49s`。
+
+独立安全复核确认 Unix 删除路径已经使用 `O_NOFOLLOW`、目录 inode 比对和 `dir_fd` unlink，Top-K 列表也已用 `lstat()` 拒绝 symlink。复核同时发现图片列表虽不展示 symlink，但 `/api/preview/image` 仍可直读允许目录内的 symlink。提交 `20bc35b6` 在既有 allowlist 后对用户实际提交路径执行 `lstat()`，要求请求项本身是普通文件，并增加同目录 symlink 回归测试。
+
+安全补丁后的验证：
+
+```bash
+.venv/bin/python -m pytest -q \
+  tests/test_preview_service.py \
+  tests/test_image_listing.py \
+  tests/test_web_http_contracts.py
+
+npx pyright web/services/preview/images.py tests/test_preview_service.py
+.venv/bin/python -m pytest -q
+```
+
+结果：定向测试 `64 passed in 6.65s`，Pyright `0 errors`，最终全量测试 `2438 passed, 6 skipped, 39 warnings in 510.71s`。新增 warning 来自 `albumentations` 在线版本检查的 TLS 握手超时，不是应用测试失败。
+
+### 真实浏览器验证
+
+浏览器服务使用独立配置根和临时预览目录启动在 `127.0.0.1:20118`，没有修改环境检测中显示的真实训练输出根。验证结束后已停止服务并删除临时目录。
+
+- 桌面路由：训练中心、训练配置、数据集蓝图、训练历史、训练队列、全局设置、全局模型配置、生图测试、预览工作区和环境检测均可加载。
+- 模式切换：从 Dragon 左上角菜单实际进入 `?ui=classic`，无参数 `/` 继续加载 classic；再点击 classic 的 **新版界面**进入 `?ui=dragon`，无参数 `/` 继续加载 Dragon。两条持久化链均通过黑盒验证，没有读取 `localStorage` 内部值。
+- 预览删除：自定义来源最初显示 3 张临时 PNG；浏览器勾选并确认删除 `browser-2.png` 后，页面显示 2/2 张，GET API 返回 `count=2,total=2`，磁盘仅保留 `browser-0.png`、`browser-1.png`。
+- 移动端：在 390 x 844 视口验证导航抽屉、训练中心、训练配置、数据集蓝图、训练历史和自定义预览画廊；页面没有水平滚动，关键标题、按钮、表单和图片卡片没有越过视口。
+- 控制台：没有应用 JavaScript error 或静态资源 404；仅出现 Codex Electron 开发环境的 CSP warning。
+
+浏览器验证中的 JavaScript confirm 由真实页面按钮触发并接受，删除结果再通过新标签页、HTTP API 和磁盘清单交叉确认。临时移动端 viewport override 已在结束前恢复，浏览器验证标签页已清理。
