@@ -1,6 +1,6 @@
 # Dragon UI PR #1 集成记录（2026-08-14）
 
-状态：进行中  
+状态：完成  
 适用版本：`integration/frontend-pr1`  
 线上 PR：<https://github.com/scvxzf1/krea2-webui/pull/1>
 
@@ -33,7 +33,7 @@
 | 2. 后端安全加固 | 完成 | 预览删除、图片扫描并发/性能、专项 pytest | `6b0b402`；102 项专项测试通过 |
 | 3. 文档与使用引导 | 完成 | 默认模式、classic 回退、部署、故障排查 | `d61f1b2`；8 项文档完整性测试通过 |
 | 4. 完整验证与 debug | 完成 | 全量测试、类型检查、真实浏览器 smoke、安全复核 | `20bc35b6`；变更后 2438 项 pytest 通过 |
-| 5. 发布 | 待进行 | 最终审计、更新 `origin/main`、处理 PR、记录残留 | 待更新 |
+| 5. 发布 | 完成 | 最终审计、更新 `origin/main`、处理 PR、记录残留 | 功能发布基线 `3b97ea7a`；PR #1 已关闭 |
 
 ## 调试与复核入口
 
@@ -180,3 +180,13 @@ npx pyright web/services/preview/images.py tests/test_preview_service.py
 - 控制台：没有应用 JavaScript error 或静态资源 404；仅出现 Codex Electron 开发环境的 CSP warning。
 
 浏览器验证中的 JavaScript confirm 由真实页面按钮触发并接受，删除结果再通过新标签页、HTTP API 和磁盘清单交叉确认。临时移动端 viewport override 已在结束前恢复，浏览器验证标签页已清理。
+
+## 阶段 5：发布
+
+发布前执行 `git fetch origin --prune`，确认 `origin/main` 仍为集成基线 `cd07cd3c7feac714a8e06642c542b56605b9ddff`，当前集成分支不落后于远端，merge-base 也是该提交，因此可使用普通 fast-forward push，不需要 force push 或历史改写。
+
+功能与阶段 4 审计首先以 `3b97ea7a70ea3cd729aee62bd8792af1ce207c6a` 发布到 `origin/main`，GitHub commits API 返回相同对象。主工作区的本地 `main` 未切换、未 reset、未 stash，原有未提交文件没有纳入本次发布；发布始终从独立 worktree 的 `integration/frontend-pr1` 执行。
+
+PR #1 没有直接 merge。收口评论列出替代提交、测试门禁和文档入口：<https://github.com/scvxzf1/krea2-webui/pull/1#issuecomment-5292379133>。随后 PR 状态更新为 Closed，原 head `817d68cf8807bb5b2381d83c2b57f424ade1aac2` 仅保留为历史参考。
+
+本发布记录随当前审计提交再次 fast-forward 到 `origin/integration/frontend-pr1` 和 `origin/main`；远端 `main` 的当前对象是最终发布 hash。临时 WebUI 服务、浏览器标签页、测试预览目录和 viewport override 均已清理，不遗留后台服务。
