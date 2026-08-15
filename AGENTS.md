@@ -82,31 +82,34 @@
 
 ## Git 推送和回滚
 
-- 当前固定协作口径：本地 `main` 只和 `webui/main` 对齐。用户说“拉取线上更新”、
-  “同步线上 main”、“推送更新到线上”时，默认目标都是 `webui/main`
-  (`git@github.com:scvxzf1/anima_lora_webui.git`)。
-- `private/main` 不再作为默认同步或发布目标，只保留为个人主仓/历史镜像。除非用户明确点名
-  `private`，不要向它 pull、push、reset 或拿它当“线上 main”。
-- `origin/main` 是上游参考仓，默认只读。需要从上游合入时，先单独做差异审计和合并计划，
-  不要把它和发布同步混在一起。
-- 推送前至少检查：`git status --short --branch`、`git fetch webui --prune`、
-  `git log webui/main..HEAD`，再跑和改动直接相关的测试。未跟踪文件默认不随推送发布，
-  除非用户明确要求或本次任务已确认需要纳入版本控制。
-- 用户说“推送更新到线上”时，默认执行 `git push webui main:main`。推送后要汇报目标远程/分支、
-  最新提交 hash，以及本地是否还有未提交或未跟踪改动残留。
+- 默认线上目标由仓库和分支确定，而不是由本机 remote 别名确定：
+  `github.com/scvxzf1/anima_lora_webui` 的 `main`。用户说“拉取线上更新”“同步线上 main”
+  或“推送更新到线上”时，默认指向该目标。
+- 操作前先运行 `git remote -v`，找到 URL 匹配目标仓库的 remote；它在不同 checkout 中可能叫
+  `origin`、`webui` 或其他名字。命令和汇报使用实际 remote，不要凭文档假定别名存在。
+- 指向个人 fork、私有镜像或 `sorryhyun/anima_lora` 等参考仓的 remote 不是默认发布目标。
+  除非用户明确点名，不要向它们 pull、push、reset，也不要把上游参考合入和线上发布混为一谈。
+- 推送前至少检查：`git status --short --branch`、`git fetch <target-remote> --prune`、
+  `git rev-list --left-right --count HEAD...<target-remote>/main` 和
+  `git log --oneline <target-remote>/main..HEAD`，再跑与改动直接相关的测试。
+  未跟踪文件默认不随推送发布，除非用户明确要求或本次任务确认需要纳入版本控制。
+- 用户要求直接“推送更新到线上”时，默认目标是 `<target-remote> main:main`。若当前身份没有
+  写权限，使用个人 fork 分支和 PR，不要因此把个人 fork 改称线上主仓。完成后汇报仓库、remote、
+  分支、最新提交 hash，以及是否还有未提交或未跟踪改动。
 - 用户说“回滚”时，先分清是哪一种：
   - 本地工作区回退：丢弃未提交改动。只有用户明确要求时才做，执行前说明会丢失哪些内容。
   - 本地提交回退：撤销本地一个或多个提交。共享分支默认优先 `git revert`，不要默认改写历史。
-  - 线上回退：撤回远程分支上的已发布提交。必须先确认目标远程、目标分支和目标提交。
-- 需要以线上仓库为准同步本地时，先 `fetch` 目标远程并比较 `HEAD` 和远端分支，再决定
-  是否 reset。不要在没核对差异前直接做破坏性操作。
-- `git reset --hard`、`git checkout -- <path>`、`git push --force`、`git push --force-with-lease`
-  都视为高风险操作。除非用户已经明确要求，或已经明确给出目标提交/分支并接受影响，
-  否则不要执行。
-- 如果确实要改写线上历史，优先使用 `--force-with-lease` 而不是裸 `--force`，并在执行前
-  说明影响范围：会覆盖哪个远程分支、抹掉哪些提交、是否影响其他协作者。
-- 可以使用环境变量中的凭据或本机已配置的 SSH key 推送，但不要把 PAT、cookie、私钥、
-  或带密钥的远程 URL 写进仓库文件、文档、日志样例或长期说明。
+  - 线上回退：撤回目标仓库分支上的已发布提交。必须先确认仓库、remote、分支和目标提交。
+- 需要以线上仓库为准同步本地时，先 fetch 并比较 `HEAD` 和目标分支，再决定是否 reset。
+  不要在没核对差异前直接做破坏性操作。
+- `git reset --hard`、`git checkout -- <path>`、`git clean -fd`、`git push --force`、
+  `git push --force-with-lease` 都视为高风险操作。除非用户已经明确要求，或已经明确给出
+  目标提交/分支并接受影响，否则不要执行。
+- 如果确实要改写线上历史，优先使用 `--force-with-lease`，并在执行前说明会覆盖哪个仓库和
+  分支、抹掉哪些提交、是否影响其他协作者。
+- 可以使用环境变量中的凭据或本机已配置的 SSH key 推送，但不要把 PAT、cookie、私钥或
+  带密钥的远程 URL 写进仓库文件、文档、日志样例或长期说明。
+- 面向人的精简操作说明见 [Git 同步规则](docs/guidelines/git-sync-policy.md)。
 
 ## 项目地图
 

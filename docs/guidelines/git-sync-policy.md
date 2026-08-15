@@ -1,82 +1,42 @@
 # Git 同步规则
 
-一句话：以后本地 `main` 只和线上 `webui/main` 对齐，避免再混用 `private/main`。
+状态：稳定
 
-日期：2026-07-05
+默认目标：`github.com/scvxzf1/anima_lora_webui` 的 `main`
 
-当前确认：
+本规则按目标仓库 URL 和分支识别线上主线，不要求本机 remote 必须叫 `webui` 或 `origin`。
 
-- 本地分支：`main`
-- 跟踪分支：`webui/main`
-- 线上远程：`webui`
-- 线上地址：`git@github.com:scvxzf1/anima_lora_webui.git`
-
----
-
-## ✅ 1. 默认目标
-
-一句话：所有普通拉取和推送都只认 `webui/main`。
-
-| 场景 | 默认目标 | 命令 |
-|---|---|---|
-| 拉取线上更新 | `webui/main` | `git fetch webui --prune` 后按差异决定合并方式 |
-| 推送更新到线上 | `webui/main` | `git push webui main:main` |
-| 以线上为准同步本地 | `webui/main` | 先比较 `HEAD...webui/main`，需要重置时再确认 |
-
-当前本地 `main` 应跟踪：
-
-```bash
-git branch --set-upstream-to=webui/main main
-```
-
----
-
-## 🚫 2. 不再默认使用的远程
-
-一句话：`private` 和 `origin` 都不能再被当成默认线上 main。
-
-| 远程 | 用途 | 默认动作 |
-|---|---|---|
-| `webui` | 发布目标和唯一同步目标 | 可以 pull / push |
-| `private` | 个人主仓或历史镜像 | 不默认 pull / push / reset |
-| `origin` | 上游参考仓 | 默认只读，只做审计和选择性合入 |
-
-如果用户没有明确点名 `private`，不要执行：
-
-```bash
-git push private main:main
-git pull private main
-git reset --hard private/main
-```
-
----
-
-## 🔍 3. 推送前检查
-
-一句话：推送前先确认本地只领先 `webui/main`，不要误伤其它远程。
-
-推荐检查：
+## 同步前
 
 ```bash
 git status --short --branch
-git fetch webui --prune
-git rev-list --left-right --count HEAD...webui/main
-git log --oneline webui/main..HEAD
+git remote -v
 ```
 
-如果结果显示远端也有本地没有的提交，不要强推；先合并或单独说明风险。
+从输出中找到 URL 匹配默认目标的 remote，以下记作 `<target-remote>`。个人 fork、私有镜像和上游参考仓都不能替代默认目标。
 
----
+```bash
+git fetch <target-remote> --prune
+git rev-list --left-right --count HEAD...<target-remote>/main
+git log --oneline <target-remote>/main..HEAD
+```
 
-## ⚠️ 4. 高风险同步
+若目标分支也有本地没有的提交，先说明差异并选择正常合并方式，不要强推覆盖。
 
-一句话：会丢本地内容的操作必须先让用户确认。
+## 发布
 
-以下操作仍然属于高风险：
+有目标仓写权限时，明确要求发布后才执行：
 
-- `git reset --hard webui/main`
-- `git clean -fd`
-- 删除未跟踪目录
-- `git push --force` 或 `git push --force-with-lease`
+```bash
+git push <target-remote> main:main
+```
 
-执行前必须说明影响范围，并拿到明确确认。
+没有写权限时，把功能分支推到个人 fork 并向默认目标创建 PR。个人 fork 仍是 fork，不因本地 remote 名称而成为线上主仓。
+
+## 安全边界
+
+- 未跟踪文件默认不提交；推送前检查实际 staged 内容和相关测试。
+- `private`、个人 fork 和上游参考仓只有在用户明确点名时才执行写操作。
+- `git reset --hard`、`git clean -fd`、工作区丢弃和任何 force push 都需先说明影响并取得明确确认。
+- 共享分支撤销提交优先 `git revert`；确需改写历史时只用 `--force-with-lease`。
+- 完成后汇报目标仓库、remote、分支、提交 hash，以及剩余未提交或未跟踪改动。
