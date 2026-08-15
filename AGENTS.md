@@ -69,17 +69,6 @@
   - 合并配置：`.venv/bin/python tasks.py print-config METHOD=<name> PRESET=<name>`
 - 老文档中的命令若不在 `tasks.py --help` 当前列表中，按历史或兼容入口处理，不要直接假定仍可用。
 
-## Repowise 代码库地图
-
-- 本机已建立 repowise 索引，Codex MCP 中当前仓库名为 `repowise_anima_lora`；独立
-  WebUI 仓库名为 `repowise_anima_webui`。
-- 跨模块排查、架构理解、风险分析、dead-code、调用链或符号定位时，优先用 repowise
-  获取概览和候选上下文，再读取实时源码确认。
-- repowise 索引不是实时真相，不替代 `git diff`、直接读文件和测试验证；新增/删除/重命名
-  文件，或修改 import/export、路由、命令、服务注册、公共接口、跨模块调用链后，建议运行
-  `uvx repowise update` 刷新地图。
-- `.repowise/` 和 `.mcp.json` 是本机索引/本机路径配置，不要提交。
-
 ## Git 推送和回滚
 
 - 默认线上目标由仓库和分支确定，而不是由本机 remote 别名确定：
