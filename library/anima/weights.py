@@ -134,6 +134,13 @@ def load_anima_model(
     attn_softmax_scale: Optional[float] = None,
     v100_flash_stability: str = "off",
     debug_finite_checks: bool = False,
+    # DC-Gen: optional latent-space geometry overrides. Defaults preserve the
+    # original Anima f8/c16/p2 checkpoint byte-for-byte.
+    in_channels: int = 16,
+    out_channels: int = 16,
+    patch_spatial: int = 2,
+    patch_temporal: int = 1,
+    vae_spatial_compression: int = 8,
 ) -> anima_models.Anima:
     """
     Load Anima model from the specified checkpoint.
@@ -165,10 +172,11 @@ def load_anima_model(
         "max_img_h": 512,
         "max_img_w": 512,
         "max_frames": 128,
-        "in_channels": 16,
-        "out_channels": 16,
-        "patch_spatial": 2,
-        "patch_temporal": 1,
+        "in_channels": in_channels,
+        "out_channels": out_channels,
+        "patch_spatial": patch_spatial,
+        "patch_temporal": patch_temporal,
+        "vae_spatial_compression": vae_spatial_compression,
         "attn_mode": attn_mode,
         "attn_softmax_scale": attn_softmax_scale,
         "v100_flash_stability": v100_flash_stability,

@@ -22,6 +22,21 @@ LATENT_CACHE_SUFFIX = "_anima.npz"
 # Text-encoder cross-attention embeddings: ``{stem}_anima_te.safetensors``.
 TE_CACHE_SUFFIX = "_anima_te.safetensors"
 
+
+def latent_cache_suffix(space_name: str | None = None) -> str:
+    """Latent sidecar suffix for a latent-space spec.
+
+    ``space_name=None`` resolves to the original Anima space (``_anima.npz``),
+    preserving every existing filename. DC-Gen spaces get their own suffix so
+    old and new latent caches never collide.
+    """
+    if space_name is None:
+        return LATENT_CACHE_SUFFIX
+    if space_name == "anima":
+        return LATENT_CACHE_SUFFIX
+    return f"_{space_name}.npz"
+
+
 # Default REPA / PE vision encoder. Its sidecars are named
 # ``{stem}_anima_pe_spatial.safetensors``; the PE-Core encoder (``pe``) writes
 # ``{stem}_anima_pe.safetensors``. The active encoder is configurable via the

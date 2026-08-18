@@ -1770,6 +1770,7 @@ class Anima(nn.Module):
         out_channels: int,
         patch_spatial: int,
         patch_temporal: int,
+        vae_spatial_compression: int = ANIMA_VAE_SPATIAL_COMPRESSION,
         concat_padding_mask: bool = True,
         model_channels: int = 2048,
         num_blocks: int = 28,
@@ -1799,7 +1800,7 @@ class Anima(nn.Module):
         self.out_channels = out_channels
         self.patch_spatial = patch_spatial
         self.patch_temporal = patch_temporal
-        self.vae_spatial_compression = self.VAE_SPATIAL_COMPRESSION
+        self.vae_spatial_compression = vae_spatial_compression
         self.num_heads = num_heads
         self.num_blocks = num_blocks
         self.model_channels = model_channels
