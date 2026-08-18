@@ -91,3 +91,5 @@
 - 新增共享 `Topbar` 与 `useWebSocket`，`DatasetWorkspace`/`TrainingWorkspace` 已改为复用。
 - 前端门禁升至 68 个测试，`typecheck` 与 production build 通过；详情见
   [`../../findings/dragon_next_stage1_queue_monitor_history_20260819.md`](../../findings/dragon_next_stage1_queue_monitor_history_20260819.md)。
+- 2026-08-19 完成一轮全功能审计与修复（真实后端契约 + Playwright 隔离环境浏览器验收），详见
+  [`../../findings/dragon_next_audit_20260819.md`](../../findings/dragon_next_audit_20260819.md)。

@@ -77,24 +77,32 @@ export function LiveMonitorPage() {
 
   useWebSocket('/ws/training', (message) => {
     if (message.type === 'progress') {
+      const progress = (message.progress && typeof message.progress === 'object'
+        ? message.progress
+        : message) as Record<string, unknown>;
       queryClient.setQueryData<TrainingStatus>(liveMonitorKeys.status, (current) => ({
         ...(current || {}),
         status: 'running',
-        latest_progress: { ...((current?.latest_progress || {}) as Record<string, unknown>), ...(message.progress as Record<string, unknown> || {}) },
+        latest_progress: { ...((current?.latest_progress || {}) as Record<string, unknown>), ...progress },
       }));
     } else if (message.type === 'status') {
       queryClient.setQueryData<TrainingStatus>(liveMonitorKeys.status, (current) => ({
         ...(current || {}),
-        status: String(message.state || current?.status || ''),
+        status: String(message.state || message.status || current?.status || ''),
         last_log_line: String(message.message || current?.last_log_line || ''),
       }));
     } else if (message.type === 'log') {
-      const record = message.record as { id?: number } | undefined;
+      const record = message as { id?: number } & Record<string, unknown>;
       queryClient.setQueryData<{ records: { id?: number }[] }>(liveMonitorKeys.logs, (current) => {
         const records = current?.records || [];
-        if (record && records.some((item) => item.id === record.id)) return current;
-        return { records: [...records, ...(record ? [record] : [])].slice(-LOG_LIMIT) };
+        if (record.id != null && records.some((item) => item.id === record.id)) return current;
+        return { records: [...records, record].slice(-LOG_LIMIT) };
       });
+    } else if (message.type === 'system') {
+      queryClient.setQueryData<TrainingStatus>(liveMonitorKeys.status, (current) => ({
+        ...(current || {}),
+        latest_system: { ...((current?.latest_system || {}) as Record<string, unknown>), ...message },
+      }));
     } else if (message.type === 'metrics') {
       queryClient.invalidateQueries({ queryKey: liveMonitorKeys.metrics });
     }

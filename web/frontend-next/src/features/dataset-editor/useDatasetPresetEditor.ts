@@ -82,10 +82,10 @@ export function useDatasetPresetEditor(presets: DatasetPresetSummary[]) {
       setHydratedFile('');
       return;
     }
-    if (!selectedFile || !presetPaths.has(selectedFile)) {
+    if (!selectedFile) {
       setSelectedFile(presets[0].path);
     }
-  }, [draftFile, presetPaths, presets, selectedFile]);
+  }, [draftFile, presets, selectedFile]);
 
   useEffect(() => {
     if (!selectedPreset.data || draftFile) return;

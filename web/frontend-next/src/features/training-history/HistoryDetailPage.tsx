@@ -8,6 +8,16 @@ function taskName(task?: HistoryTaskSummary) {
   return String(task?.name || task?.history_run_label || task?.id || '历史任务');
 }
 
+function historyStateLabel(state?: string) {
+  const labels: Record<string, string> = {
+    idle: '完成',
+    running: '运行中',
+    error: '异常',
+    interrupted: '已中断',
+  };
+  return labels[state || ''] || state || '未知';
+}
+
 function metricValue(point: Record<string, unknown>, key: string) {
   const value = point[key];
   return value == null ? null : Number(value);
@@ -41,7 +51,7 @@ export function HistoryDetailPage() {
             <p>{task?.started_at_text || taskId}</p>
           </div>
           <span className="history-detail-state" data-state={task?.state || 'unknown'}>
-            {task?.state === 'idle' ? '完成' : task?.state || '未知'}
+            {historyStateLabel(task?.state)}
           </span>
         </header>
 

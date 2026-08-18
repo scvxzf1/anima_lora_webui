@@ -21,6 +21,8 @@ export type TrainingConfigGroup = {
 
 export type TrainingPresets = string[];
 
+type PresetsPayload = string[] | { ok?: boolean; items?: string[] };
+
 export type MergedTrainingConfig = Record<string, unknown> & {
   max_train_steps?: number;
 };
@@ -38,8 +40,9 @@ export function fetchTrainingConfigGroups(signal?: AbortSignal) {
   return apiRequest<TrainingConfigGroup[]>('/api/config/file-groups?kind=training', { signal });
 }
 
-export function fetchTrainingPresets(signal?: AbortSignal) {
-  return apiRequest<TrainingPresets>('/api/presets', { signal });
+export async function fetchTrainingPresets(signal?: AbortSignal) {
+  const payload = await apiRequest<PresetsPayload>('/api/presets', { signal });
+  return Array.isArray(payload) ? payload : (payload.items || []);
 }
 
 export function fetchMergedTrainingConfig(

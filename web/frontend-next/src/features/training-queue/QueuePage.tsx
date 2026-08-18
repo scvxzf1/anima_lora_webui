@@ -146,6 +146,10 @@ export function QueuePage() {
             <span className="queue-badge" data-state={snapshot.paused ? 'paused' : snapshot.status}>
               {snapshot.paused ? '队列已暂停' : running ? '正在执行' : (summary.queued || 0) > 0 ? '等待调度' : '队列空闲'}
             </span>
+            <button type="button" disabled={policyMutation.isPending || actionMutation.isPending} onClick={() => policyMutation.mutate({ paused: !snapshot.paused })}>
+              {snapshot.paused ? '继续队列' : '暂停队列'}
+            </button>
+            <button type="button" disabled={query.isFetching} onClick={() => query.refetch()}>刷新</button>
             <button type="button" onClick={() => runAction('abort-after-current')}>中止后续队列</button>
             <button type="button" onClick={() => runAction('force-abort')}>强制中止</button>
           </div>

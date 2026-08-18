@@ -7,10 +7,10 @@ describe('training context API', () => {
     vi.unstubAllGlobals();
   });
 
-  it('reads presets from the backend array contract', async () => {
+  it('reads presets from the backend items envelope', async () => {
     const presets = ['balanced_16g', 'debug', 'default'];
     const fetchMock = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify(presets), { status: 200 }),
+      new Response(JSON.stringify({ ok: true, items: presets }), { status: 200 }),
     );
     vi.stubGlobal('fetch', fetchMock);
 

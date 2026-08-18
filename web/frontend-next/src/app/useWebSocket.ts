@@ -28,20 +28,24 @@ export function useWebSocket(
 
       socket.onopen = () => {
         attempts = 0;
-        setStatus('open');
+        if (!disposed) setStatus('open');
       };
       socket.onmessage = (event) => {
+        if (disposed) return;
         try {
           callbackRef.current(JSON.parse(event.data as string) as Record<string, unknown>);
         } catch {
           // Ignore non-JSON frames.
         }
       };
-      socket.onerror = () => setError('实时连接异常');
+      socket.onerror = () => {
+        if (!disposed) setError('实时连接异常');
+      };
       socket.onclose = () => {
+        if (disposed) return;
         setStatus('closed');
         socket = null;
-        if (!disposed) scheduleReconnect();
+        scheduleReconnect();
       };
     }
 
