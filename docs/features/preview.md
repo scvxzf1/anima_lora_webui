@@ -11,6 +11,8 @@
 相关代码：
 
 - `web/static/js/dragon-ui/pages/preview-workspace.js`
+- `web/static/js/dragon-ui/pages/history-sample-dialog.js`（历史详情样张参数弹窗）
+- `web/static/css/dragon/06b-dragon-history-sample-dialog.css`
 - `web/static/index.html`（classic 预览弹窗）
 - `web/routes/preview.py`
 - `web/services/preview_service.py`
@@ -52,6 +54,8 @@
 - **刷新权重**
 - **正序 / 倒序**
 - 查看某轮次、步数对应的权重文件
+
+历史详情（Dragon UI）的 **训练产物 → 样张与权重** 里，点击任意样张卡片会打开「生成参数」弹窗，展示该样张的提示词、负向提示词、原始提示词、分辨率、采样步数、引导系数、种子、采样器、生成时间与提示词文件，并可直接复制提示词、打开或下载原图。弹窗数据来自已加载的 `/api/preview/images` 返回，不发起额外请求。
 
 ---
 

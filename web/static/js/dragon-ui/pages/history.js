@@ -3,13 +3,14 @@
 import { createApiClient } from '../../shared/api.js?v=dragon-ui-20260812v35';
 import { renderLossChart } from './live-training.js?v=dragon-ui-20260814v43';
 import { scanForReveal } from '../animations.js?v=dragon-ui-20260812v35';
+import { bindHistorySampleDialog } from './history-sample-dialog.js?v=dragon-ui-20260819v1';
 import {
     renderHistoryDetailError,
     renderHistoryDetailPage,
     renderHistoryPage,
     renderHistoryResults,
     taskDisplayName,
-} from './history-view.js?v=dragon-ui-20260814v43';
+} from './history-view.js?v=dragon-ui-20260819v92';
 
 const api = createApiClient();
 
@@ -118,6 +119,7 @@ function bindHistoryDetail(root, model) {
     root.querySelectorAll('[data-history-resume-mode]').forEach((button) => {
         button.addEventListener('click', () => resumeHistoryTask(root, model, button.dataset.historyResumeMode));
     });
+    bindHistorySampleDialog(root, Array.isArray(model.images.images) ? model.images.images : []);
 }
 
 async function resumeHistoryTask(root, model, mode) {

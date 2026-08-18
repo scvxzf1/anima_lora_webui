@@ -11,7 +11,7 @@ import { destroyAnimations, initScrollAnimations, initParallax } from './animati
 import { loadDashboard } from './pages/dashboard.js?v=dragon-ui-20260814v43';
 import { loadConfigPage } from './pages/config-page.js?v=dragon-ui-20260814v43';
 import { loadLiveTraining } from './pages/live-training.js?v=dragon-ui-20260814v43';
-import { loadHistory } from './pages/history.js?v=dragon-ui-20260814v43';
+import { loadHistory } from './pages/history.js?v=dragon-ui-20260819v92';
 import { loadQueue } from './pages/queue.js?v=dragon-ui-20260814v43';
 import { loadWeightAnalysis } from './pages/weight-analysis.js?v=dragon-ui-20260814v43';
 import { loadImageTest } from './pages/image-test.js?v=dragon-ui-20260814v43';

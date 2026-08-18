@@ -1,0 +1,243 @@
+/* Training-sample generation-parameter dialog and its preview-card triggers.
+ * Lives on the Dragon history detail "样张与权重" artifacts tab.
+ */
+
+/* Preview-card trigger: make the image itself open the parameter dialog. */
+.dragon-history-preview-grid .dragon-history-preview-open {
+    position: relative;
+    display: block;
+    width: 100%;
+    aspect-ratio: 1;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    border: 0;
+    background: var(--dragon-tile-bg);
+    cursor: pointer;
+}
+
+.dragon-history-preview-grid .dragon-history-preview-open img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform var(--dragon-dur-med) var(--dragon-ease-out);
+}
+
+.dragon-history-preview-grid .dragon-history-preview-open:hover img {
+    transform: scale(1.025);
+}
+
+.dragon-history-preview-grid .dragon-history-preview-open-label {
+    position: absolute;
+    right: 10px;
+    bottom: 10px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 11px;
+    border: 1px solid color-mix(in srgb, var(--dragon-border) 70%, transparent);
+    border-radius: var(--dragon-radius-pill);
+    background: color-mix(in srgb, var(--dragon-bg-primary) 84%, transparent);
+    color: var(--dragon-text-primary);
+    font-size: var(--dragon-fs-tiny);
+    font-weight: var(--dragon-fw-medium);
+    line-height: 1;
+    box-shadow: var(--dragon-shadow-sm);
+    backdrop-filter: blur(6px);
+}
+
+.dragon-history-preview-grid .dragon-history-preview-open-label .dragon-icon {
+    width: 13px;
+    height: 13px;
+    color: var(--dragon-accent);
+}
+
+/* Native <dialog> shell. */
+body[data-dragon-ui] .dragon-sample-detail-dialog {
+    position: fixed;
+    inset: 0;
+    box-sizing: border-box;
+    width: min(980px, calc(100vw - 48px));
+    max-width: none;
+    height: min(720px, calc(100dvh - 64px));
+    max-height: none;
+    margin: auto;
+    overflow: hidden;
+    padding: 0;
+    border: 1px solid var(--dragon-border);
+    border-radius: var(--dragon-radius-lg);
+    background: var(--dragon-bg-primary);
+    color: var(--dragon-text-primary);
+    box-shadow: var(--dragon-shadow-lg);
+}
+
+body[data-dragon-ui] .dragon-sample-detail-dialog::backdrop {
+    background: rgba(0, 0, 0, 0.48);
+    backdrop-filter: blur(3px);
+}
+
+.dragon-sample-detail-shell {
+    display: grid;
+    height: 100%;
+    min-height: 0;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+}
+
+.dragon-sample-detail-header {
+    display: flex;
+    min-width: 0;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--dragon-sp-4);
+    padding: 20px 22px 16px;
+    border-bottom: 1px solid var(--dragon-divider);
+}
+
+.dragon-sample-detail-header > div:first-child {
+    min-width: 0;
+}
+
+.dragon-sample-detail-header h2 {
+    margin: 3px 0 0;
+    color: var(--dragon-text-primary);
+    font-family: var(--dragon-font-display);
+    font-size: var(--dragon-fs-headline-small);
+    font-weight: var(--dragon-fw-semibold);
+    line-height: 1.25;
+}
+
+.dragon-sample-detail-header p {
+    margin: 6px 0 0;
+    color: var(--dragon-text-tertiary);
+    font-size: var(--dragon-fs-caption);
+    line-height: 1.4;
+    overflow-wrap: anywhere;
+}
+
+.dragon-sample-detail-body {
+    display: grid;
+    min-width: 0;
+    min-height: 0;
+    grid-template-columns: minmax(0, 1.15fr) minmax(300px, 0.85fr);
+    gap: var(--dragon-sp-4);
+    padding: var(--dragon-sp-4);
+    overflow: hidden;
+}
+
+.dragon-sample-detail-view {
+    display: grid;
+    min-width: 0;
+    min-height: 0;
+    place-items: center;
+    overflow: hidden;
+    border: 1px solid var(--dragon-border-light);
+    border-radius: var(--dragon-radius-md);
+    background: var(--dragon-bg-tertiary);
+}
+
+.dragon-sample-detail-view img {
+    display: block;
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+}
+
+.dragon-sample-detail-info {
+    display: grid;
+    min-width: 0;
+    min-height: 0;
+    align-content: start;
+    gap: var(--dragon-sp-3);
+    overflow-y: auto;
+    padding-right: 2px;
+}
+
+.dragon-sample-detail-block {
+    min-width: 0;
+    padding: var(--dragon-sp-3) var(--dragon-sp-4);
+    border: 1px solid var(--dragon-border-light);
+    border-radius: var(--dragon-radius-md);
+    background: var(--dragon-bg-secondary);
+}
+
+.dragon-sample-detail-block h3 {
+    margin: 0 0 var(--dragon-sp-2);
+    color: var(--dragon-text-secondary);
+    font-size: var(--dragon-fs-caption);
+    font-weight: var(--dragon-fw-semibold);
+}
+
+.dragon-sample-detail-block pre {
+    max-height: 168px;
+    margin: 0;
+    overflow: auto;
+    padding: var(--dragon-sp-2) var(--dragon-sp-3);
+    border: 1px solid var(--dragon-border-light);
+    border-radius: var(--dragon-radius-sm);
+    background: var(--dragon-bg-tertiary);
+    color: var(--dragon-text-secondary);
+    font-family: var(--dragon-font-mono);
+    font-size: var(--dragon-fs-caption);
+    line-height: 1.55;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.dragon-sample-detail-params {
+    display: grid;
+    grid-template-columns: minmax(88px, auto) minmax(0, 1fr);
+    gap: 7px 12px;
+    margin: 0;
+}
+
+.dragon-sample-detail-params > div {
+    display: contents;
+}
+
+.dragon-sample-detail-params dt {
+    color: var(--dragon-text-tertiary);
+    font-size: var(--dragon-fs-caption);
+}
+
+.dragon-sample-detail-params dd {
+    min-width: 0;
+    margin: 0;
+    color: var(--dragon-text-primary);
+    font-size: var(--dragon-fs-caption);
+    font-variant-numeric: tabular-nums;
+    overflow-wrap: anywhere;
+}
+
+.dragon-sample-detail-footer {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--dragon-sp-2);
+    padding: 14px 22px;
+    border-top: 1px solid var(--dragon-divider);
+}
+
+@media (max-width: 900px) {
+    .dragon-sample-detail-body {
+        grid-template-columns: 1fr;
+        overflow-y: auto;
+    }
+
+    .dragon-sample-detail-view {
+        min-height: 42vh;
+    }
+}
+
+@media (max-width: 734px) {
+    body[data-dragon-ui] .dragon-sample-detail-dialog {
+        width: calc(100vw - 24px);
+        height: min(82dvh, 720px);
+    }
+
+    .dragon-sample-detail-footer .dragon-btn {
+        flex: 1 1 auto;
+        justify-content: center;
+    }
+}

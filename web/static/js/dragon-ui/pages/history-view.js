@@ -2,6 +2,7 @@
 
 import { renderIcon } from '../icons.js?v=dragon-ui-20260812v35';
 import { escapeHtml, formatBytes } from '../../shared/format.js?v=dragon-ui-20260812v35';
+import { renderHistorySampleDialog } from './history-sample-dialog.js?v=dragon-ui-20260819v1';
 
 export function renderHistoryPage(model = {}) {
     const result = renderHistoryResults(model.tasks || [], model.query || '', model.status || 'all');
@@ -102,6 +103,7 @@ export function renderHistoryDetailPage(model) {
             ${renderHistoryArtifacts(taskId, task, payload.config_toml || '')}
             ${renderPreviewSection(images, weights)}
             ${renderLogsSection(taskId, logs, task)}
+            ${renderHistorySampleDialog()}
         </div>
     `;
 }
@@ -180,10 +182,10 @@ function renderPreviewSection(imagesPayload = {}, weightsPayload = {}) {
 
 function renderImages(images, message) {
     if (!images.length) return `<div class="dragon-history-inline-empty"><p>${escapeHtml(message || '这个任务还没有可显示的训练样张。')}</p></div>`;
-    return `<div class="dragon-history-preview-grid">${images.map((image) => {
+    return `<div class="dragon-history-preview-grid">${images.map((image, index) => {
         const sample = image.sample || {};
         const title = sample.step != null ? `Step ${sample.step}` : (image.name || '训练样张');
-        return `<figure><a href="${escapeAttribute(image.url || '')}" target="_blank" rel="noopener"><img src="${escapeAttribute(image.url || '')}" alt="${escapeAttribute(sample.prompt ? `${title}：${sample.prompt}` : title)}" width="${escapeAttribute(image.width || 1)}" height="${escapeAttribute(image.height || 1)}" loading="lazy"></a><figcaption><strong>${escapeHtml(title)}</strong><span>${escapeHtml(image.mtime_text || image.name || '')}</span></figcaption></figure>`;
+        return `<figure><button class="dragon-history-preview-open" type="button" data-history-sample-open="${index}" aria-label="查看 ${escapeAttribute(title)} 的生成参数" title="查看生成参数与提示词"><img src="${escapeAttribute(image.url || '')}" alt="${escapeAttribute(sample.prompt ? `${title}：${sample.prompt}` : title)}" width="${escapeAttribute(image.width || 1)}" height="${escapeAttribute(image.height || 1)}" loading="lazy"><span class="dragon-history-preview-open-label">${renderIcon('zap')}<span>参数</span></span></button><figcaption><strong>${escapeHtml(title)}</strong><span>${escapeHtml(image.mtime_text || image.name || '')}</span></figcaption></figure>`;
     }).join('')}</div>`;
 }
 
