@@ -3,7 +3,7 @@
 import { createApiClient } from '../../shared/api.js?v=dragon-ui-20260812v35';
 import { renderLossChart } from './live-training.js?v=dragon-ui-20260814v43';
 import { scanForReveal } from '../animations.js?v=dragon-ui-20260812v35';
-import { bindHistorySampleDialog } from './history-sample-dialog.js?v=dragon-ui-20260819v1';
+import { bindHistorySampleDialog } from './history-sample-dialog.js?v=dragon-ui-20260819v2';
 import {
     renderHistoryDetailError,
     renderHistoryDetailPage,

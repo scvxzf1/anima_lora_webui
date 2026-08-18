@@ -2,7 +2,7 @@
 
 import { renderIcon } from '../icons.js?v=dragon-ui-20260812v35';
 import { escapeHtml, formatBytes } from '../../shared/format.js?v=dragon-ui-20260812v35';
-import { renderHistorySampleDialog } from './history-sample-dialog.js?v=dragon-ui-20260819v1';
+import { renderHistorySampleDialog } from './history-sample-dialog.js?v=dragon-ui-20260819v2';
 
 export function renderHistoryPage(model = {}) {
     const result = renderHistoryResults(model.tasks || [], model.query || '', model.status || 'all');

@@ -12,14 +12,14 @@ export function renderHistorySampleDialog() {
     return `
         <dialog class="dragon-sample-detail-dialog" data-history-sample-dialog aria-labelledby="dragon-history-sample-title">
             <div class="dragon-sample-detail-shell">
-                <header class="dragon-sample-detail-header">
+                <div class="dragon-sample-detail-header">
                     <div>
                         <span class="dragon-eyebrow">训练样张</span>
                         <h2 id="dragon-history-sample-title">生成参数</h2>
                         <p data-history-sample-meta></p>
                     </div>
                     <button class="dragon-icon-button" type="button" data-history-sample-action="close" aria-label="关闭生成参数" title="关闭">${renderIcon('x')}</button>
-                </header>
+                </div>
                 <div class="dragon-sample-detail-body" data-history-sample-body></div>
                 <footer class="dragon-sample-detail-footer">
                     <button class="dragon-btn dragon-btn-ghost dragon-btn-sm" type="button" data-history-sample-action="copy">${renderIcon('copy', 'dragon-btn-icon')}<span>复制提示词</span></button>
