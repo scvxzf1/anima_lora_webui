@@ -1,0 +1,110 @@
+:root {
+  color: #171918;
+  background: #f4f6f8;
+  font-family: "Noto Sans SC", "Microsoft YaHei", sans-serif;
+  font-synthesis: none;
+  --surface: #ffffff;
+  --surface-subtle: #f7f8fa;
+  --line: #d8dde5;
+  --line-strong: #b9c2cf;
+  --muted: #5f6875;
+  --accent: #2457d6;
+  --accent-soft: #e9efff;
+  --danger: #b42318;
+  --success: #18794e;
+  --success-soft: #eaf8f1;
+  --success-line: #a8dcc3;
+  --warning: #8a4b08;
+  --warning-soft: #fff5e8;
+  --warning-line: #efc68f;
+  --ink: #171918;
+  --button-ink: #182235;
+  --button-bg: #ffffff;
+  --button-border: #bcc6d4;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background: #f4f6f8;
+}
+
+button {
+  font: inherit;
+}
+
+.app-shell {
+  min-height: 100vh;
+}
+
+.topbar {
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 0 20px;
+  color: #fff;
+  background: #20242b;
+  border-bottom: 1px solid #11151b;
+}
+
+.topbar nav {
+  display: flex;
+  align-items: center;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.topbar nav::-webkit-scrollbar {
+  display: none;
+}
+
+.topbar a {
+  min-height: 48px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 12px;
+  color: #cbd3df;
+  font-size: 13px;
+  text-decoration: none;
+  border-bottom: 2px solid transparent;
+}
+
+.topbar a[aria-current="page"] {
+  color: #fff;
+  border-bottom-color: #7ea1ff;
+}
+
+.eyebrow {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.error-panel {
+  margin-top: 24px;
+  padding: 20px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.error-panel h2 {
+  margin-top: 0;
+  font-size: 18px;
+}
+
+.route-loading {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  font-size: 13px;
+}

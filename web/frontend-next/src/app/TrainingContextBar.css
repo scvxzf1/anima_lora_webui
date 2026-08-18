@@ -1,0 +1,37 @@
+.training-context-bar {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(190px, 280px) minmax(140px, 190px) auto;
+  align-items: end;
+  gap: 14px;
+  margin-top: 16px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  background: var(--surface-subtle);
+}
+.training-context-copy { display: grid; gap: 3px; }
+.training-context-copy strong { font-size: 15px; }
+.training-context-copy span,
+.training-context-bar label > span { color: var(--muted); font-size: 12px; }
+.training-context-bar label { display: grid; gap: 5px; }
+.training-context-bar select {
+  width: 100%; min-height: 36px; padding: 0 30px 0 10px;
+  color: var(--ink); background: var(--surface);
+  border: 1px solid var(--line-strong); border-radius: 4px;
+}
+.training-context-bar select:focus {
+  border-color: var(--accent); outline: 2px solid var(--accent-soft); outline-offset: 0;
+}
+.training-context-state {
+  min-width: 92px; padding: 9px 10px; color: var(--muted); font-size: 12px;
+  text-align: center; border: 1px solid var(--line); background: var(--surface);
+}
+.training-context-state[data-tone='danger'] { color: var(--danger); border-color: #e3a6a1; }
+@media (max-width: 900px) {
+  .training-context-bar { grid-template-columns: 1fr 1fr; }
+  .training-context-copy, .training-context-state { grid-column: 1 / -1; }
+  .training-context-state { text-align: left; }
+}
+@media (max-width: 600px) {
+  .training-context-bar { grid-template-columns: 1fr; }
+  .training-context-copy, .training-context-state { grid-column: auto; }
+}

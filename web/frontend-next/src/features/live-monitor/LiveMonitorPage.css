@@ -1,0 +1,255 @@
+.monitor-page {
+  min-height: calc(100vh - 48px);
+  padding: 24px clamp(16px, 3vw, 40px) 40px;
+}
+
+.monitor-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--line);
+}
+
+.monitor-header h1 {
+  margin: 3px 0 0;
+  font-size: 28px;
+}
+
+.monitor-header p:not(.eyebrow) {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.monitor-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.monitor-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 13px;
+  background: var(--surface);
+}
+
+.monitor-state[data-state='running'] {
+  color: var(--success);
+  border-color: var(--success-line);
+  background: var(--success-soft);
+}
+
+.monitor-stop {
+  min-height: 34px;
+  padding: 0 14px;
+  color: #fff;
+  background: var(--danger);
+  border: 1px solid var(--danger);
+  border-radius: 6px;
+}
+
+.monitor-stop:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.monitor-error {
+  margin-top: 24px;
+  padding: 20px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.monitor-error h2 {
+  margin-top: 0;
+  font-size: 18px;
+}
+
+.monitor-progress-card {
+  margin-top: 18px;
+  padding: 18px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+
+.monitor-progress-copy {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.monitor-progress-copy div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.monitor-progress-copy span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.monitor-progress-copy strong {
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 17px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.monitor-progress-track {
+  height: 8px;
+  margin-top: 16px;
+  overflow: hidden;
+  background: var(--surface-subtle);
+  border-radius: 999px;
+}
+
+.monitor-progress-track div {
+  height: 100%;
+  background: var(--accent);
+  border-radius: inherit;
+  transition: width 0.2s ease;
+}
+
+.monitor-anomaly {
+  margin: 12px 0 0;
+  color: var(--danger);
+  font-size: 13px;
+}
+
+.monitor-metrics {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.monitor-metric {
+  display: grid;
+  gap: 5px;
+  min-height: 66px;
+  padding: 12px 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+
+.monitor-metric span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.monitor-metric strong {
+  color: var(--ink);
+  font-size: 17px;
+}
+
+.monitor-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(280px, 1fr);
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.monitor-log-panel,
+.monitor-gpu-panel {
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+
+.monitor-log-panel header,
+.monitor-gpu-panel header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.monitor-log-panel h2,
+.monitor-gpu-panel h2 {
+  margin: 0;
+  font-size: 17px;
+}
+
+.monitor-log-panel header span:last-child,
+.monitor-gpu-panel header span:last-child {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.monitor-log-list {
+  height: 360px;
+  overflow: auto;
+  padding: 12px 16px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.monitor-log-line {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.monitor-log-line[data-type='error'] {
+  color: var(--danger);
+}
+
+.monitor-gpu-list {
+  display: grid;
+  gap: 10px;
+  padding: 14px 16px;
+}
+
+.monitor-gpu-card {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  padding: 12px;
+  background: var(--surface-subtle);
+  border: 1px solid var(--line);
+}
+
+.monitor-gpu-card div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 12px;
+}
+
+.monitor-gpu-card dt {
+  color: var(--muted);
+}
+
+.monitor-gpu-card dd {
+  margin: 0;
+  color: var(--ink);
+}
+
+.monitor-empty {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+@media (max-width: 900px) {
+  .monitor-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .monitor-grid {
+    grid-template-columns: 1fr;
+  }
+}

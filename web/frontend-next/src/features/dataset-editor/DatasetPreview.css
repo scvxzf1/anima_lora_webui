@@ -1,0 +1,420 @@
+.dataset-preview-backdrop,
+.dataset-image-viewer-backdrop {
+  position: fixed;
+  z-index: 1100;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgb(18 24 34 / 58%);
+}
+
+.dataset-preview-dialog {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  width: min(1240px, 100%);
+  max-height: min(92vh, 940px);
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  box-shadow: 0 22px 72px rgb(12 20 34 / 30%);
+  overflow: hidden;
+}
+
+.dataset-preview-header,
+.dataset-image-viewer > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--line);
+}
+
+.dataset-preview-header h3,
+.dataset-image-viewer h3 {
+  margin: 3px 0 0;
+  font-size: 18px;
+  letter-spacing: 0;
+}
+
+.dataset-preview-header p:not(.eyebrow) {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.dataset-preview-actions,
+.dataset-viewer-caption header {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.dataset-preview-actions button,
+.dataset-preview-message button,
+.dataset-viewer-caption button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 0 11px;
+  color: var(--button-ink);
+  background: var(--button-bg);
+  border: 1px solid var(--button-border);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.dataset-preview-actions button:hover:not(:disabled),
+.dataset-preview-message button:hover,
+.dataset-viewer-caption button:hover {
+  border-color: var(--accent);
+}
+
+.dataset-icon-button {
+  width: 34px;
+  padding: 0 !important;
+}
+
+.dataset-preview-body {
+  min-height: 280px;
+  overflow: auto;
+}
+
+.dataset-preview-layout {
+  display: grid;
+  grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
+  min-height: 0;
+}
+
+.dataset-preview-info {
+  padding: 16px;
+  background: var(--surface-subtle);
+  border-right: 1px solid var(--line);
+}
+
+.dataset-preview-details {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+}
+
+.dataset-preview-details div {
+  min-width: 0;
+}
+
+.dataset-preview-details dt {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.dataset-preview-details dd {
+  margin: 3px 0 0;
+  font-size: 12px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.dataset-preview-results {
+  min-width: 0;
+  padding: 16px;
+}
+
+.dataset-preview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.dataset-preview-card {
+  min-width: 0;
+  overflow: hidden;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+}
+
+.dataset-preview-card[data-image-error="true"] {
+  border-color: var(--warning-line);
+}
+
+.dataset-preview-image-button {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 164px;
+  padding: 0;
+  color: var(--muted);
+  background: #edf0f4;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  cursor: zoom-in;
+  overflow: hidden;
+}
+
+.dataset-preview-image-button img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.dataset-preview-image-button > span {
+  position: absolute;
+  right: 7px;
+  bottom: 7px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 6px;
+  color: #fff;
+  background: rgb(18 24 34 / 78%);
+  border-radius: 3px;
+  font-size: 10px;
+}
+
+.dataset-preview-card-body {
+  display: grid;
+  gap: 5px;
+  padding: 10px;
+}
+
+.dataset-preview-card-body > strong {
+  overflow: hidden;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dataset-preview-card-body > span,
+.dataset-preview-caption-empty {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.dataset-preview-caption {
+  min-width: 0;
+  margin-top: 4px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+
+.dataset-preview-caption header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.dataset-preview-caption button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 26px;
+  padding: 0 7px;
+  color: var(--button-ink);
+  background: var(--button-bg);
+  border: 1px solid var(--button-border);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.dataset-preview-caption pre,
+.dataset-viewer-caption pre {
+  margin: 7px 0 0;
+  color: var(--ink);
+  font: inherit;
+  font-size: 11px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.dataset-preview-caption pre {
+  max-height: 8.5em;
+  overflow: auto;
+}
+
+.dataset-preview-message {
+  display: grid;
+  justify-items: start;
+  gap: 8px;
+  margin: 0;
+  padding: 24px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.dataset-image-viewer-backdrop {
+  z-index: 1200;
+  padding: 12px;
+  background: rgb(8 12 18 / 86%);
+}
+
+.dataset-image-viewer {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  width: min(1480px, 100%);
+  height: min(94vh, 980px);
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid #445064;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.dataset-image-viewer-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 340px);
+  min-height: 0;
+}
+
+.dataset-image-viewer-canvas {
+  display: grid;
+  place-items: center;
+  min-width: 0;
+  min-height: 0;
+  padding: 12px;
+  background: #111722;
+}
+
+.dataset-image-viewer-canvas img {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.dataset-image-viewer-error {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  color: #d6deea;
+  font-size: 13px;
+}
+
+.dataset-image-viewer-error button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 10px;
+  color: var(--button-ink);
+  background: var(--button-bg);
+  border: 1px solid var(--button-border);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.dataset-image-viewer-body > aside {
+  min-height: 0;
+  padding: 16px;
+  overflow: auto;
+  border-left: 1px solid var(--line);
+}
+
+.dataset-viewer-caption {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.dataset-viewer-caption header {
+  justify-content: space-between;
+}
+
+.dataset-viewer-caption p {
+  margin: 8px 0 0;
+  color: var(--success);
+  font-size: 11px;
+}
+
+@media (max-width: 760px) {
+  .dataset-preview-backdrop,
+  .dataset-image-viewer-backdrop {
+    padding: 0;
+  }
+
+  .dataset-preview-dialog,
+  .dataset-image-viewer {
+    width: 100%;
+    height: 100dvh;
+    max-height: none;
+    border: 0;
+    border-radius: 0;
+  }
+
+  .dataset-preview-header,
+  .dataset-image-viewer > header {
+    padding: 13px 12px;
+  }
+
+  .dataset-preview-header {
+    align-items: flex-start;
+  }
+
+  .dataset-preview-actions button:not(.dataset-icon-button) {
+    width: 34px;
+    padding: 0;
+    font-size: 0;
+  }
+
+  .dataset-preview-layout,
+  .dataset-image-viewer-body {
+    grid-template-columns: 1fr;
+  }
+
+  .dataset-preview-info,
+  .dataset-image-viewer-body > aside {
+    border-right: 0;
+    border-left: 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .dataset-preview-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .dataset-preview-image-button {
+    height: min(58vw, 280px);
+  }
+
+  .dataset-image-viewer-body {
+    grid-template-rows: 45vh auto;
+    overflow: auto;
+  }
+
+  .dataset-image-viewer-canvas {
+    position: relative;
+    width: 100%;
+    height: 45vh;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .dataset-image-viewer-canvas img {
+    position: absolute;
+    inset: 12px;
+    width: calc(100% - 24px);
+    height: calc(100% - 24px);
+    max-width: none;
+    max-height: none;
+  }
+
+  .dataset-image-viewer-error {
+    position: absolute;
+    inset: 12px;
+    place-content: center;
+  }
+
+  .dataset-image-viewer-body > aside {
+    overflow: visible;
+  }
+}
