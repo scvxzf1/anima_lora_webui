@@ -69,7 +69,15 @@ guidance-distilled 修正目标。
   `in_channels/out_channels/patch_spatial/patch_temporal/vae_spatial_compression`
   可选参数，默认值保持原 Anima checkpoint 字节不变。
 
-### 4.3 探针结果（GPU 0 / 170HX，bf16）
+### 4.3 论文方法核实（arXiv 2509.25180 v2）
+
+- 阶段 0 是 patch embedder 对齐：`MSE(新 patch 特征, 下采样(旧 patch 特征))`。
+- 阶段 1 **不是**对齐旧模型 velocity（旧 16 通道 vs 新 32 通道无法逐点对齐），
+  而是在新潜空间上做标准 flow-matching（Eq. 2），**冻结 DiT 主干，联合微调
+  patch embedder + output head**。本探针已按此实现。
+- 阶段 2 是新潜空间上的标准 flow-matching + LoRA（FLUX 用 rank=alpha=256）。
+
+### 4.4 探针结果（GPU 0 / 170HX，bf16）
 
 - `scripts/dcgen/probe_dual_latent_cache.py`：**通过**
   - 256²：anima `(1,16,32,32)`，dcgen `(1,32,8,8)`
@@ -80,11 +88,23 @@ guidance-distilled 修正目标。
   - 旧 x_embedder `[2048,68]` 读入教师，冻结；新 `[2048,33]` 随机初始化。
   - 旧特征 `(1,1,16,16,2048)` --avgpool2--> 目标 `(1,1,8,8,2048)`。
   - 200 步 Adam(1e-3)：MSE 1.734 → 0.080（-95.4%）。
+- `scripts/dcgen/probe_output_head_align.py`：**通过**
+  - 旧 DiT 549/552 参数复制到新几何；只跳过 3 个形状不匹配：
+    `x_embedder.proj.1.weight`、`pos_embedder.seq`、`final_layer.linear.weight`。
+  - 冻结主干，只训 x_embedder + final_layer（4 个张量）。
+  - 40 步 rectified-flow loss：MSE 30.50 → 1.25。
+- `scripts/dcgen/probe_lora_e2e.py`：**通过**
+  - 新几何 DiT + rank4 LoRA（5.16M 可训参数），冻结 base。
+  - 8 步 rectified-flow loss：MSE 28.00 → 2.34，梯度范数 32.8→3.1，
+    权重范数 226.18 → 415.79（确认 optimizer 在更新）。
+  - dry-run 用 rank4；正式阶段 2 用 rank=alpha=256。
 
 ## 5. 待办
 
-- [ ] 阶段 1：output-head alignment trainer（冻结主干，联合训新输入/输出层）。
-- [ ] 阶段 2：rank-256 LoRA 在新潜空间上端到端训练（复用现有 LoRA 路由）。
+- [x] 阶段 0 dry-run：patch embedder 对齐（探针 1）。
+- [x] 阶段 1 dry-run：output-head 对齐（探针 2，冻结主干 + 标准 flow loss）。
+- [x] 阶段 2 dry-run：LoRA E2E（探针 3，rank4 验证梯度/更新链路）。
+- [ ] 三阶段正式训练器（真实数据集 + text encoder + rank256 + 论文步数）。
 - [ ] 双 latent 缓存接入正式 preprocess 管线（当前只有探针级缓存）。
 - [ ] 锻造基座 checkpoint 保存/加载 + `ss_model_family` / DC-Gen 指纹。
 - [ ] 推理侧 DC-Gen loader（新输入/输出层 + DC-AE decode）。
