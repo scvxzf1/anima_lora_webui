@@ -90,8 +90,13 @@ body[data-dragon-ui] .dragon-sample-detail-dialog::backdrop {
     align-items: flex-start;
     justify-content: space-between;
     gap: var(--dragon-sp-4);
-    padding: 20px 22px 16px;
+    padding: 24px 28px 20px;
     border-bottom: 1px solid var(--dragon-divider);
+}
+
+.dragon-sample-detail-header .dragon-icon-button {
+    flex: 0 0 auto;
+    margin-top: 2px;
 }
 
 .dragon-sample-detail-header > div:first-child {
@@ -215,7 +220,7 @@ body[data-dragon-ui] .dragon-sample-detail-dialog::backdrop {
     align-items: center;
     justify-content: flex-end;
     gap: var(--dragon-sp-2);
-    padding: 14px 22px;
+    padding: 16px 28px;
     border-top: 1px solid var(--dragon-divider);
 }
 
