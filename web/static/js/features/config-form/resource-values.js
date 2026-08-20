@@ -36,6 +36,7 @@ export function resourceQuickCurrentValue(key) {
 export async function fillGlobalModelPathsIntoConfigForm() {
     const selected = await openModelConfigPickerDialog();
     if (!selected) return;
+    const configFormState = configState.configFormState;
     const entries = [
         ['model_family', selected.model_family],
         ['pretrained_model_name_or_path', selected.pretrained_model_name_or_path],
@@ -46,12 +47,25 @@ export async function fillGlobalModelPathsIntoConfigForm() {
     let applied = 0;
     for (const [key, value] of entries) {
         const input = document.querySelector(`#config-form .field-input[data-key="${CSS.escape(key)}"]`);
+        if (!input && key === 'model_family') {
+            const original = String(originalConfigFieldValue(key) ?? '');
+            const next = String(value ?? '');
+            if (next === original) {
+                configFormState.draftValues.delete(key);
+            } else {
+                configFormState.draftValues.set(key, next);
+            }
+            applied += 1;
+            continue;
+        }
         if (!input) continue;
         input.value = value;
         applied += 1;
     }
     const familyInput = document.querySelector('#config-form .field-input[data-key="model_family"]');
-    handleFormFieldChange(familyInput ? { target: familyInput } : undefined);
+    handleFormFieldChange({
+        target: familyInput || { dataset: { key: 'model_family' }, value: selected.model_family },
+    });
     setTomlStatus(
         applied ? 'ok' : 'error',
         applied

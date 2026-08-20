@@ -50,7 +50,9 @@ def test_model_config_picker_replaces_global_path_confirmation() -> None:
     assert "showAppConfirmDialog" not in resource
     for key in ("model_family", "pretrained_model_name_or_path", "qwen3", "vae"):
         assert f"['{key}', selected." in resource
-    assert "handleFormFieldChange(familyInput ? { target: familyInput } : undefined);" in resource
+    assert "if (!input && key === 'model_family') {" in resource
+    assert "configFormState.draftValues.set(key, next);" in resource
+    assert "familyInput || { dataset: { key: 'model_family' }, value: selected.model_family }" in resource
     assert "fetchModelConfigLibrary" in picker
     assert "应用此模型配置" in picker
     assert "btn-model-config-picker-manage" in html
