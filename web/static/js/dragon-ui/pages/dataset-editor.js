@@ -1,6 +1,13 @@
 /* Complete Dragon dataset workspace backed by dataset editor and preset APIs. */
 
 import { createApiClient } from '../../shared/api.js?v=dragon-ui-20260814v43';
+import {
+    clearActiveOrderedDropTarget,
+    clearOrderedDropTargetIf,
+    clearOrderedDropTargets,
+    scheduleOrderedRowDropTarget,
+    setOrderedDropTarget,
+} from '../ordered-drag-target.js?v=dragon-ui-20260816v1';
 import { renderIcon } from '../icons.js?v=dragon-ui-20260814v43';
 import {
     collectDatasetFields,
@@ -13,7 +20,7 @@ import {
     renderDatasetDefaults,
     renderDatasetRow,
     validateDatasetEditor,
-} from './dataset-editor-fields.js?v=dragon-ui-20260814v43';
+} from './dataset-editor-fields.js?v=dragon-ui-20260816v52';
 import {
     applyDatasetPreset,
     createDatasetPresetGroup,
@@ -23,14 +30,14 @@ import {
     exportDatasetPreset,
     importDatasetPreset,
     loadDatasetPresetLibrary,
-    moveDatasetPresetToGroup,
+    placeDatasetPreset,
     readDatasetPreset,
     renameDatasetPresetGroup,
     renderDatasetPresetLibrary,
     renderPresetGroups,
     saveDatasetPreset,
     saveDatasetPresetAs,
-} from './dataset-editor-presets.js?v=dragon-ui-20260814v43';
+} from './dataset-editor-presets.js?v=dragon-ui-20260816v70';
 import { bindDatasetPreviewRefresh, openDatasetPreview } from './dataset-editor-preview.js?v=dragon-ui-20260814v43';
 import { loadTrainingContext, mergedConfigUrl } from './training-controls.js?v=dragon-ui-20260814v43';
 
@@ -55,6 +62,14 @@ export async function loadDatasetEditor() {
         presets: library.presets,
         groups: library.groups,
         search: '',
+        draggedPresetFile: '',
+        presetDropTarget: null,
+        presetDragFrame: 0,
+        presetPendingDrop: null,
+        presetAutoScrollFrame: 0,
+        presetAutoScrollClientY: null,
+        presetDragRecovery: null,
+        presetSuppressClickUntil: 0,
         selectedFile: linked.dataset_config || '',
         datasetConfig: linked.dataset_config || '',
         rows: linked.datasets?.length ? linked.datasets : [createEmptyDatasetRow(linked.defaults)],
@@ -106,10 +121,10 @@ function renderPage(state) {
                 <div data-dataset-sync-card><span>编辑状态</span><strong data-dataset-dirty>${state.dirty ? '有未保存修改' : '已同步'}</strong></div>
             </section>
             <div class="dragon-dataset-workspace" data-stagger="2">
-                ${renderDatasetPresetLibrary(state)}
                 <div class="dragon-dataset-editor-panel">
                     ${renderEditorPanel(state)}
                 </div>
+                ${renderDatasetPresetLibrary(state)}
             </div>
             <div class="dragon-dataset-savebar" data-dataset-savebar>
                 <div><strong data-savebar-title>${state.selectedFile ? escapeHtml(shortName(state.selectedFile)) : '未命名数据集预设'}</strong><span data-savebar-status>${state.readonly ? '系统预设只读，请复制后编辑。' : '修改会保留在当前页面，保存后写入 TOML。'}</span></div>
@@ -139,7 +154,7 @@ function renderEditorPanel(state) {
         <form class="dragon-dataset-form" data-dataset-form novalidate>
             <section class="dragon-dataset-section dragon-dataset-defaults" data-dataset-defaults>
                 <div class="dragon-section-header-row"><div><span class="dragon-eyebrow">通用规则</span><h2 class="dragon-section-title">训练与标注基线</h2><p class="dragon-section-desc">新建数据组会使用这些值；修改后可明确同步到现有组。</p></div><button class="dragon-btn dragon-btn-secondary dragon-btn-sm" type="button" data-dataset-apply-defaults ${state.readonly ? 'disabled' : ''}>同步到所有组</button></div>
-                ${renderDatasetDefaults(state.defaults, { readonly: state.readonly })}
+                <div class="dragon-dataset-defaults-content" data-dataset-defaults-content>${renderDatasetDefaults(state.defaults, { readonly: state.readonly })}</div>
             </section>
             <section class="dragon-dataset-section dragon-dataset-groups">
                 <div class="dragon-section-header-row"><div><span class="dragon-eyebrow">数据来源</span><h2 class="dragon-section-title">数据集分组</h2><p class="dragon-section-desc">每组对应一个原始图片目录，可独立设置重复次数与高级规则。</p></div><button class="dragon-btn dragon-btn-secondary" type="button" data-dataset-add ${state.readonly ? 'disabled' : ''}>添加数据集组</button></div>
@@ -161,6 +176,8 @@ function bindEditor(root, state) {
     bindForm(root, state);
     syncLegacyDatasetState(state);
 }
+
+
 
 function bindWorkspace(root, state) {
     root.querySelectorAll('[data-workspace-action]').forEach((button) => {
@@ -186,6 +203,7 @@ function bindPresetLibrary(root, state) {
         if (button.dataset.presetAction === 'refresh') return refreshLibrary(root, state);
         if (button.dataset.presetAction === 'new') return startNewPreset(root, state);
         if (button.dataset.presetAction === 'new-group') return createPresetGroup(root, state);
+        if (button.dataset.presetAction === 'export') return exportCurrentPreset(root, state);
         if (button.dataset.presetAction === 'import') root.querySelector('[data-preset-import]')?.click();
     }));
     root.querySelector('[data-preset-import]')?.addEventListener('change', (event) => importPresetFile(root, state, event));
@@ -193,19 +211,227 @@ function bindPresetLibrary(root, state) {
 }
 
 function bindPresetButtons(root, state) {
-    root.querySelectorAll('.dragon-dataset-preset-item[data-preset-file]').forEach((button) => button.addEventListener('click', () => selectPreset(root, state, button.dataset.presetFile)));
+    root.querySelectorAll('.dragon-dataset-preset-item[data-preset-file]').forEach((item) => {
+        const activate = () => {
+            if (performance.now() < state.presetSuppressClickUntil) return;
+            selectPreset(root, state, item.dataset.presetFile);
+        };
+        item.addEventListener('click', activate);
+        item.addEventListener('keydown', (event) => {
+            if (!['Enter', ' '].includes(event.key)) return;
+            event.preventDefault();
+            activate();
+        });
+    });
     root.querySelectorAll('[data-preset-group-action]').forEach((button) => button.addEventListener('click', () => {
         const group = state.groups.find((item) => item.id === button.dataset.groupId);
         if (!group) return;
         if (button.dataset.presetGroupAction === 'rename') return renamePresetGroup(root, state, group);
         if (button.dataset.presetGroupAction === 'delete') return removePresetGroup(root, state, group);
     }));
-    root.querySelectorAll('[data-preset-move-file]').forEach((button) => button.addEventListener('click', () => {
-        const row = button.closest('[data-preset-row]');
-        const groupId = row?.querySelector('[data-preset-move-select]')?.value || '';
-        if (!groupId) return showFeedback(root, '请先选择目标分组', 'error');
-        return movePresetToGroup(root, state, button.dataset.presetFile, groupId);
-    }));
+    bindPresetDragAndDrop(root, state);
+}
+
+function bindPresetDragAndDrop(root, state) {
+    bindPresetDragRecovery(root, state);
+    const list = root.querySelector('[data-preset-list]');
+    list?.addEventListener('dragover', (event) => {
+        if (state.draggedPresetFile) schedulePresetListAutoScroll(state, list, event.clientY);
+    }, true);
+    list?.addEventListener('dragleave', (event) => {
+        if (!event.relatedTarget || !list.contains(event.relatedTarget)) stopPresetListAutoScroll(state);
+    });
+    root.querySelectorAll('[data-preset-row]').forEach((row) => {
+        const handle = row.querySelector('.dragon-dataset-preset-drag-handle[draggable="true"]');
+        handle?.addEventListener('click', (event) => event.stopPropagation());
+        handle?.addEventListener('dragstart', (event) => {
+            finishPresetDrag(root, state);
+            const file = row.dataset.presetRow || '';
+            if (!file) return;
+            state.draggedPresetFile = file;
+            state.presetSuppressClickUntil = performance.now() + 300;
+            root.classList.add('dragon-dataset-dragging');
+            row.classList.add('dragon-dataset-preset-dragging');
+            event.dataTransfer?.setData('text/plain', file);
+            if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
+        });
+        handle?.addEventListener('dragend', () => finishPresetDrag(root, state, row));
+        row.addEventListener('dragover', (event) => {
+            const groupId = row.closest('[data-preset-group]')?.dataset.presetGroup || '';
+            if (row.dataset.presetRow === state.draggedPresetFile) return;
+            if (!canDropPresetToGroup(state, state.draggedPresetFile, groupId)) return;
+            event.preventDefault();
+            event.stopPropagation();
+            if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+            schedulePresetRowDropTarget(state, row, event.clientY);
+        });
+        row.addEventListener('drop', async (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            const groupId = row.closest('[data-preset-group]')?.dataset.presetGroup || '';
+            const file = state.draggedPresetFile || event.dataTransfer?.getData('text/plain') || '';
+            const rect = row.getBoundingClientRect();
+            const position = event.clientY < rect.top + rect.height / 2 ? 'before' : 'after';
+            finishPresetDrag(root, state);
+            if (row.dataset.presetRow === file) return;
+            if (!canDropPresetToGroup(state, file, groupId)) return;
+            await placePresetAt(root, state, file, groupId, row.dataset.presetRow || '', position);
+        });
+    });
+    root.querySelectorAll('[data-preset-dropzone]').forEach((dropzone) => {
+        dropzone.addEventListener('dragover', (event) => {
+            const groupId = dropzone.dataset.presetDropzone || '';
+            if (!canDropPresetToGroup(state, state.draggedPresetFile, groupId)) return;
+            event.preventDefault();
+            event.stopPropagation();
+            if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+            setPresetDropTarget(state, dropzone, 'dropzone');
+        });
+        dropzone.addEventListener('dragleave', (event) => {
+            if (event.relatedTarget && dropzone.contains(event.relatedTarget)) return;
+            clearPresetDropTargetIf(state, dropzone);
+        });
+        dropzone.addEventListener('drop', async (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            const file = state.draggedPresetFile || event.dataTransfer?.getData('text/plain') || '';
+            const groupId = dropzone.dataset.presetDropzone || '';
+            finishPresetDrag(root, state);
+            if (!canDropPresetToGroup(state, file, groupId)) return;
+            await placePresetAt(root, state, file, groupId, '', 'after');
+        });
+    });
+    root.querySelectorAll('[data-preset-drop-group]').forEach((groupNode) => {
+        groupNode.addEventListener('dragover', (event) => {
+            if (event.target.closest?.('[data-preset-row], [data-preset-dropzone]')) return;
+            if (!canDropPresetToGroup(state, state.draggedPresetFile, groupNode.dataset.presetDropGroup)) return;
+            event.preventDefault();
+            event.stopPropagation();
+            if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+            setPresetDropTarget(state, groupNode, 'group');
+        });
+        groupNode.addEventListener('dragleave', (event) => {
+            if (event.relatedTarget && groupNode.contains(event.relatedTarget)) return;
+            clearPresetDropTargetIf(state, groupNode);
+        });
+        groupNode.addEventListener('drop', async (event) => {
+            event.preventDefault();
+            if (event.target.closest?.('[data-preset-row], [data-preset-dropzone]')) return;
+            const file = state.draggedPresetFile || event.dataTransfer?.getData('text/plain') || '';
+            const groupId = groupNode.dataset.presetDropGroup || '';
+            finishPresetDrag(root, state);
+            if (!canDropPresetToGroup(state, file, groupId)) return;
+            await placePresetAt(root, state, file, groupId, '', 'after');
+        });
+    });
+}
+
+function presetListAutoScrollDelta(list, clientY) {
+    const rect = list.getBoundingClientRect();
+    const edge = Math.min(84, rect.height * 0.22);
+    if (clientY < rect.top + edge) {
+        const intensity = Math.min(1, (rect.top + edge - clientY) / edge);
+        return -Math.ceil(4 + 18 * intensity);
+    }
+    if (clientY > rect.bottom - edge) {
+        const intensity = Math.min(1, (clientY - (rect.bottom - edge)) / edge);
+        return Math.ceil(4 + 18 * intensity);
+    }
+    return 0;
+}
+
+function schedulePresetListAutoScroll(state, list, clientY) {
+    state.presetAutoScrollClientY = clientY;
+    if (state.presetAutoScrollFrame) return;
+    const tick = () => {
+        state.presetAutoScrollFrame = 0;
+        if (!state.draggedPresetFile || state.presetAutoScrollClientY == null) return;
+        const delta = presetListAutoScrollDelta(list, state.presetAutoScrollClientY);
+        if (!delta) return;
+        list.scrollTop += delta;
+        state.presetAutoScrollFrame = window.requestAnimationFrame(tick);
+    };
+    state.presetAutoScrollFrame = window.requestAnimationFrame(tick);
+}
+
+function stopPresetListAutoScroll(state) {
+    if (state.presetAutoScrollFrame) window.cancelAnimationFrame(state.presetAutoScrollFrame);
+    state.presetAutoScrollFrame = 0;
+    state.presetAutoScrollClientY = null;
+}
+
+const PRESET_DRAG_TARGET_OPTIONS = Object.freeze({
+    frameKey: 'presetDragFrame',
+    pendingKey: 'presetPendingDrop',
+    targetKey: 'presetDropTarget',
+    rowClassPrefix: 'dragon-dataset-preset-drop',
+    groupTargetClass: 'dragon-dataset-preset-drop-target',
+});
+
+function schedulePresetRowDropTarget(state, row, clientY) {
+    scheduleOrderedRowDropTarget(state, row, clientY, PRESET_DRAG_TARGET_OPTIONS);
+}
+
+function setPresetDropTarget(state, node, kind, position = '') {
+    setOrderedDropTarget(state, node, kind, position, PRESET_DRAG_TARGET_OPTIONS);
+}
+
+function clearActivePresetDropTarget(state) {
+    clearActiveOrderedDropTarget(state, PRESET_DRAG_TARGET_OPTIONS);
+}
+
+function clearPresetDropTargetIf(state, node) {
+    clearOrderedDropTargetIf(state, node, PRESET_DRAG_TARGET_OPTIONS);
+}
+
+function clearPresetDropTargets(state) {
+    clearOrderedDropTargets(state, PRESET_DRAG_TARGET_OPTIONS);
+}
+
+function finishPresetDrag(root, state, row = null) {
+    stopPresetListAutoScroll(state);
+    state.draggedPresetFile = '';
+    root.classList.remove('dragon-dataset-dragging');
+    row?.classList.remove('dragon-dataset-preset-dragging');
+    root.querySelectorAll('.dragon-dataset-preset-dragging').forEach((node) => node.classList.remove('dragon-dataset-preset-dragging'));
+    clearPresetDropTargets(state);
+}
+
+function bindPresetDragRecovery(root, state) {
+    if (state.presetDragRecovery) return;
+    const finish = () => finishPresetDrag(root, state);
+    const finishAfterDrop = () => window.requestAnimationFrame(() => {
+        if (state.draggedPresetFile || root.classList.contains('dragon-dataset-dragging')) finish();
+    });
+    const cancelOnEscape = (event) => { if (event.key === 'Escape') finish(); };
+    window.addEventListener('dragend', finish, true);
+    window.addEventListener('drop', finishAfterDrop, true);
+    window.addEventListener('blur', finish);
+    document.addEventListener('keydown', cancelOnEscape);
+    state.presetDragRecovery = { finish, finishAfterDrop, cancelOnEscape };
+}
+
+function disposePresetDragRecovery(root, state) {
+    const recovery = state.presetDragRecovery;
+    if (!recovery) return;
+    window.removeEventListener('dragend', recovery.finish, true);
+    window.removeEventListener('drop', recovery.finishAfterDrop, true);
+    window.removeEventListener('blur', recovery.finish);
+    document.removeEventListener('keydown', recovery.cancelOnEscape);
+    state.presetDragRecovery = null;
+    finishPresetDrag(root, state);
+}
+
+function canDropPresetToGroup(state, file, groupId) {
+    if (!file || !groupId) return false;
+    const preset = state.presets.find((item) => item.path === file);
+    const group = state.groups.find((item) => item.id === groupId);
+    const sourceGroup = state.groups.find((item) => (item.files || []).some((itemFile) => itemFile.path === file));
+    return Boolean(
+        !String(state.search || '').trim() && preset && !preset.readonly && group?.kind === 'dataset' && group.movable
+        && !group.locked && !group.group_locked && !group.user_group_locked && !group.system_locked
+        && (!sourceGroup || (sourceGroup.movable && !sourceGroup.locked && !sourceGroup.group_locked && !sourceGroup.user_group_locked && !sourceGroup.system_locked))
+    );
 }
 
 function bindForm(root, state) {
@@ -380,14 +606,30 @@ async function removePresetGroup(root, state, group) {
     } catch (error) { showFeedback(root, error.message, 'error'); } finally { setLoading(root, state, false); }
 }
 
-async function movePresetToGroup(root, state, file, groupId) {
-    if (!file || !groupId) return;
+function presetOrderForDrop(state, file, groupId, anchorFile = '', position = 'after') {
+    const targetGroup = state.groups.find((item) => item.id === groupId);
+    const paths = (targetGroup?.files || []).map((item) => item.path).filter((path) => path !== file);
+    const anchorIndex = anchorFile ? paths.indexOf(anchorFile) : -1;
+    const insertIndex = anchorIndex < 0 ? paths.length : anchorIndex + (position === 'before' ? 0 : 1);
+    paths.splice(insertIndex, 0, file);
+    return paths;
+}
+
+async function placePresetAt(root, state, file, groupId, anchorFile, position) {
+    finishPresetDrag(root, state);
+    const order = presetOrderForDrop(state, file, groupId, anchorFile, position);
+    const sourceGroup = state.groups.find((item) => (item.files || []).some((preset) => preset.path === file));
+    const currentOrder = (sourceGroup?.files || []).map((preset) => preset.path);
+    if (sourceGroup?.id === groupId && order.length === currentOrder.length && order.every((path, index) => path === currentOrder[index])) return;
     setLoading(root, state, true, '正在移动预设…');
     try {
-        const result = await moveDatasetPresetToGroup(api, file, groupId);
+        const result = await placeDatasetPreset(api, file, groupId, order);
         await reloadPresetLibrary(root, state);
-        showFeedback(root, result.message || '数据集预设已移动', 'success');
-    } catch (error) { showFeedback(root, error.message, 'error'); } finally { setLoading(root, state, false); }
+        showFeedback(root, result.message || '数据集预设位置已更新', 'success');
+    } catch (error) { showFeedback(root, error.message, 'error'); } finally {
+        finishPresetDrag(root, state);
+        setLoading(root, state, false);
+    }
 }
 
 async function saveCurrentPreset(root, state) {
@@ -789,6 +1031,7 @@ function shouldLeaveEditor(state) {
 }
 
 function cleanupEditor(state) {
+    if (state.root) disposePresetDragRecovery(state.root, state);
     if (state.beforeUnload) window.removeEventListener('beforeunload', state.beforeUnload);
     const dialog = document.getElementById('stage-resolution-dialog');
     if (dialog && state.stageDialogHandler) dialog.removeEventListener('close', state.stageDialogHandler);

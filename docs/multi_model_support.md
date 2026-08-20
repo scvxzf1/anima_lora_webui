@@ -2,7 +2,10 @@
 
 Sketch of what it would take to add a second image-generation model (e.g. Z-Image-Base) alongside Anima in this repo. This is a repo-wide architectural note, not a method deep-dive — it lives at the top of `docs/` rather than under `docs/methods/`.
 
-Status: exploratory. Nothing here has been implemented; this is a terrain map and a recommended boundary so the conversation about "should we do it" can be concrete.
+Status: historical architecture sketch. Krea-2 Raw has since implemented the first
+concrete second-family path, but the proposed generic `ModelFamily` protocol/registry
+has not been completed. For the current implementation boundary and risk list, see
+[`findings/backend_multi_model_audit_20260810.md`](findings/backend_multi_model_audit_20260810.md).
 
 ## Current coupling
 

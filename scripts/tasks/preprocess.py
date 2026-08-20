@@ -650,10 +650,12 @@ def _model_family() -> str:
     Qwen3-VL ChatML path + ``_krea2_te.safetensors`` suffix. Anim-only scripts
     and runs without the key fall back to anima.
     """
+    from library.env import normalize_model_family
+
     raw = _path_overrides_value().get("model_family")
-    if isinstance(raw, str) and raw.strip().lower() in ("anima", "krea2_raw"):
-        return raw.strip().lower()
-    return "anima"
+    if not str(raw or "").strip():
+        return "anima"
+    return normalize_model_family(raw, source="preprocess model_family")
 
 
 def _path_overrides_value() -> dict[str, Any]:

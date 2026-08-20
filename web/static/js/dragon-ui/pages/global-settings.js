@@ -113,40 +113,82 @@ function normalizeSettings(source) {
 function renderPage(state) {
     return `
         <div class="dragon-page dragon-page-wide dragon-tool-page dragon-global-settings-page">
-            <header class="dragon-tool-hero dragon-reveal">
-                <div>
-                    <span class="dragon-eyebrow">模型与系统</span>
-                    <h1>全局设置</h1>
-                    <p>管理本机存储、推理输出和界面显示。模型路径请在“全局模型配置”中维护。</p>
-                </div>
-                <div class="dragon-tool-actions">
-                    <button class="dragon-btn dragon-btn-secondary" type="button" data-global-action="reset">恢复默认</button>
-                </div>
-            </header>
-            <form class="dragon-global-settings-form" data-global-settings-form novalidate>
-                ${SETTING_GROUPS.map((group, index) => renderGroup(group, state, index)).join('')}
-                <div class="dragon-savebar dragon-global-settings-savebar" data-dirty="false">
-                    <div class="dragon-savebar-status">
-                        <strong data-global-dirty-label>所有修改已保存</strong>
-                        <span data-global-feedback role="status" aria-live="polite">界面缩放保存后会立即应用。</span>
+            <div class="dragon-global-settings-workspace">
+                <aside class="dragon-global-settings-sidebar dragon-reveal" aria-label="全局设置范围">
+                    <div class="dragon-global-settings-sidebar-brand">
+                        <span class="dragon-eyebrow">GLOBAL FORGE</span>
+                        <h1>全局设置</h1>
+                        <p>路径、任务存储与界面显示的统一入口。</p>
                     </div>
-                    <div class="dragon-savebar-actions">
-                        <button class="dragon-btn dragon-btn-secondary" type="button" data-global-action="revert" disabled>还原修改</button>
-                        <button class="dragon-btn dragon-btn-primary" type="submit" data-global-action="save" disabled>保存全局设置</button>
+                    <div class="dragon-global-settings-scope">
+                        <span class="dragon-eyebrow">SETTING SCOPE</span>
+                        <div class="dragon-global-settings-summary">
+                            ${renderSidebarSummary('output_root', '输出根目录', state.values.output_root || '未设置')}
+                            ${renderSidebarSummary('configs_root', '配置目录路径', state.values.configs_root || 'configs')}
+                            ${renderSidebarSummary('ui_scale', '界面设置', `${clampUIScale(state.values.ui_scale || 100)}%`)}
+                        </div>
                     </div>
-                </div>
-            </form>
+                    <p class="dragon-global-settings-sidebar-note">修改会作用于本机 WebUI 与后续训练任务。</p>
+                </aside>
+                <section class="dragon-global-settings-main" aria-labelledby="dragon-global-settings-title">
+                    <header class="dragon-tool-hero dragon-global-settings-header dragon-reveal">
+                        <div class="dragon-tool-hero-copy">
+                            <span class="dragon-eyebrow">GLOBAL SETTINGS</span>
+                            <h2 id="dragon-global-settings-title">路径与界面</h2>
+                            <p>管理本机存储、推理输出和界面显示。模型路径请在“全局模型配置”中维护。</p>
+                        </div>
+                        <div class="dragon-global-settings-header-side">
+                            ${renderSettingsSummary(state)}
+                            <div class="dragon-tool-actions">
+                                <button class="dragon-btn dragon-btn-secondary" type="button" data-global-action="reset">恢复默认</button>
+                            </div>
+                        </div>
+                    </header>
+                    <form class="dragon-global-settings-form" data-global-settings-form novalidate>
+                        ${SETTING_GROUPS.map((group, index) => renderGroup(group, state, index)).join('')}
+                        <div class="dragon-savebar dragon-global-settings-savebar" data-dirty="false">
+                            <div class="dragon-savebar-status">
+                                <strong data-global-dirty-label>所有修改已保存</strong>
+                                <span data-global-feedback role="status" aria-live="polite">界面缩放保存后会立即应用。</span>
+                            </div>
+                            <div class="dragon-savebar-actions">
+                                <button class="dragon-btn dragon-btn-secondary" type="button" data-global-action="revert" disabled>还原修改</button>
+                                <button class="dragon-btn dragon-btn-primary" type="submit" data-global-action="save" disabled>保存全局设置</button>
+                            </div>
+                        </div>
+                    </form>
+                </section>
+            </div>
         </div>
     `;
 }
 
 function renderGroup(group, state, index) {
+    const sectionNumber = String(index + 1).padStart(2, '0');
     return `
-        <section class="dragon-config-entry dragon-settings-entry dragon-reveal" data-stagger="${Math.min(index + 1, 6)}">
-            <header class="dragon-config-entry-header"><span class="dragon-eyebrow">${group.eyebrow}</span><h2>${group.title}</h2><p>${group.desc}</p></header>
-            <div class="dragon-config-entry-fields"><div class="dragon-settings-fields">${group.fields.map((field) => renderField(field, state.values, state.effectivePaths)).join('')}</div></div>
+        <section class="dragon-config-entry dragon-settings-entry dragon-global-settings-group dragon-reveal" data-settings-section="${sectionNumber}" data-stagger="${Math.min(index + 1, 6)}">
+            <header class="dragon-config-entry-header dragon-global-settings-group-header">
+                <span class="dragon-global-settings-group-index" aria-hidden="true">${sectionNumber}</span>
+                <div><span class="dragon-eyebrow">${group.eyebrow}</span><h2>${group.title}</h2><p>${group.desc}</p></div>
+            </header>
+            <div class="dragon-config-entry-fields dragon-global-settings-group-fields"><div class="dragon-settings-fields">${group.fields.map((field) => renderField(field, state.values, state.effectivePaths)).join('')}</div></div>
         </section>
     `;
+}
+
+function renderSidebarSummary(key, label, value) {
+    return `<div class="dragon-global-settings-summary-card"><span>${label}</span><strong data-global-summary="${key}" title="${escapeAttribute(value)}">${escapeHtml(value)}</strong></div>`;
+}
+
+function renderSettingsSummary(state) {
+    const output = state.values.output_root || '未设置';
+    const configs = state.values.configs_root || 'configs';
+    const scale = `${clampUIScale(state.values.ui_scale || 100)}%`;
+    return `<div class="dragon-global-settings-stats" aria-label="设置摘要">
+        <div class="dragon-global-settings-stat"><span>ROOT</span><strong>01</strong><small data-global-summary="output_root" title="${escapeAttribute(output)}">${escapeHtml(output)}</small></div>
+        <div class="dragon-global-settings-stat"><span>CONFIGS</span><strong>01</strong><small data-global-summary="configs_root" title="${escapeAttribute(configs)}">${escapeHtml(configs)}</small></div>
+        <div class="dragon-global-settings-stat"><span>UI</span><strong>01</strong><small data-global-summary="ui_scale">${escapeHtml(scale)}</small></div>
+    </div>`;
 }
 
 function renderField([key, label, type, placeholder, help], values, effectivePaths = {}) {
@@ -348,9 +390,20 @@ function updatePageState(root, state) {
     const savebar = root.querySelector('.dragon-global-settings-savebar');
     if (savebar) savebar.dataset.dirty = String(state.dirty);
     setText(root, '[data-global-dirty-label]', state.dirty ? '有未保存修改' : '所有修改已保存');
+    updateSummaryValue(root, 'output_root', state.values.output_root || '未设置');
+    updateSummaryValue(root, 'configs_root', state.values.configs_root || 'configs');
+    updateSummaryValue(root, 'ui_scale', `${clampUIScale(state.values.ui_scale || 100)}%`);
     setDisabled(root, '[data-global-action="revert"]', !state.dirty || state.saving);
     setDisabled(root, '[data-global-action="save"]', !state.dirty || state.saving);
     setDisabled(root, '[data-global-action="reset"]', state.saving);
+}
+
+function updateSummaryValue(root, key, value) {
+    root.querySelectorAll(`[data-global-summary="${key}"]`).forEach((element) => {
+        const text = String(value ?? '');
+        element.textContent = text;
+        element.title = text;
+    });
 }
 
 function confirmLeave(state) {

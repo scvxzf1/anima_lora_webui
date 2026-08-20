@@ -8,7 +8,7 @@ from types import SimpleNamespace
 import pytest
 from aiohttp import web
 
-from web.server import index_handler, static_handler
+from web.server import index_handler, next_index_handler, static_handler
 from web import server as web_server
 
 
@@ -23,6 +23,23 @@ def _run(coro):
 
 def test_web_index_serves_versioned_frontend_entrypoint() -> None:
     response = _run(index_handler(_StaticRequest()))
+
+    assert response.status == 200
+    assert response.headers["Cache-Control"] == "no-cache"
+    assert response._path.name == "index.html"
+
+
+def test_next_frontend_reports_missing_build(monkeypatch) -> None:
+    monkeypatch.setattr(web_server, "STATIC_DIR", web_server.STATIC_DIR / "missing-next")
+
+    with pytest.raises(web.HTTPNotFound) as exc_info:
+        _run(next_index_handler(_StaticRequest()))
+
+    assert "frontend has not been built" in exc_info.value.text
+
+
+def test_next_frontend_handler_serves_spa_nested_paths() -> None:
+    response = _run(next_index_handler(_StaticRequest("datasets")))
 
     assert response.status == 200
     assert response.headers["Cache-Control"] == "no-cache"

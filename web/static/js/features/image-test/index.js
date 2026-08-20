@@ -88,15 +88,22 @@ export function createImageTestFeature(ctx, deps) {
         }
         state.configSnapshot = deepClone(cfg);
         const modelFamily = deps.getModelFamily?.() || cfg.model_family || '';
+        const isKrea2 = String(modelFamily).trim().toLowerCase() === 'krea2_raw';
         const normalizedAttnMode = normalizeAttnMode(cfg.attn_mode, modelFamily);
         renderer.setAttentionModeOptions(modelFamily, normalizedAttnMode);
+        renderer.setSamplerOptions(modelFamily, isKrea2 ? 'euler' : normalizeSampler(cfg.sample_sampler));
         setInputValue('image-test-width', resolvePositiveInt(cfg.resolution, IMAGE_TEST_DEFAULTS.width), { force: options.force });
         setInputValue('image-test-height', resolvePositiveInt(cfg.resolution, IMAGE_TEST_DEFAULTS.height), { force: options.force });
         setInputValue('image-test-infer-steps', resolvePositiveInt(cfg.sample_steps ?? cfg.infer_steps, IMAGE_TEST_DEFAULTS.inferSteps), { force: options.force });
         setInputValue('image-test-guidance-scale', resolveNumber(cfg.guidance_scale ?? cfg.cfg_scale, IMAGE_TEST_DEFAULTS.guidanceScale), { force: options.force });
         setInputValue('image-test-flow-shift', resolveNumber(cfg.flow_shift ?? cfg.discrete_flow_shift, IMAGE_TEST_DEFAULTS.flowShift), { force: options.force });
+        const flowShiftInput = document.getElementById('image-test-flow-shift');
+        if (flowShiftInput) {
+            flowShiftInput.disabled = isKrea2;
+            flowShiftInput.title = isKrea2 ? 'Krea-2 使用自动 mu shift' : '';
+        }
         setInputValue('image-test-seed', cfg.seed ?? '', { force: options.force });
-        setInputValue('image-test-sampler', normalizeSampler(cfg.sample_sampler), { force: options.force });
+        setInputValue('image-test-sampler', isKrea2 ? 'euler' : normalizeSampler(cfg.sample_sampler), { force: options.force });
         setInputValue('image-test-attn-mode', normalizedAttnMode, { force: options.force });
         setInputValue('image-test-runtime-dtype', normalizeRuntimeDtype(cfg.precision_preference), { force: options.force });
         setInputValue('image-test-text-encoder-dtype', normalizeTextEncoderDtype(), { force: options.force });
@@ -261,6 +268,8 @@ export function createImageTestFeature(ctx, deps) {
     }
 
     function collectRequestPayload() {
+        const config = deepClone(state.configSnapshot || deps.getCurrentConfig() || {});
+        const modelFamily = String(config.model_family || deps.getModelFamily?.() || '').trim().toLowerCase();
         return {
             prompt: readValue('image-test-prompt'),
             negative_prompt: readValue('image-test-negative-prompt'),
@@ -268,7 +277,7 @@ export function createImageTestFeature(ctx, deps) {
             height: readValue('image-test-height'),
             infer_steps: readValue('image-test-infer-steps'),
             guidance_scale: readValue('image-test-guidance-scale'),
-            flow_shift: readValue('image-test-flow-shift'),
+            flow_shift: modelFamily === 'krea2_raw' ? '' : readValue('image-test-flow-shift'),
             sampler: readValue('image-test-sampler'),
             attn_mode: readValue('image-test-attn-mode'),
             runtime_dtype: readValue('image-test-runtime-dtype'),
@@ -278,7 +287,7 @@ export function createImageTestFeature(ctx, deps) {
             weight_path: readValue('image-test-weight-path') || readValue('image-test-weight-select'),
             lora_multiplier: readValue('image-test-lora-multiplier'),
             ...selectiveLora.collectPayload(),
-            config: deepClone(state.configSnapshot || deps.getCurrentConfig() || {}),
+            config,
         };
     }
 

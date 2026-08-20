@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from scripts.tasks import preprocess as preprocess_task
 
 
@@ -161,3 +163,14 @@ def test_te_dispatches_to_anima_script_by_default(monkeypatch):
     preprocess_task._run_preprocess_te(row, [], "0", "0.0", backup_captions=False)
     assert captured
     assert "scripts.preprocess.cache_text_embeddings" in captured[0]
+
+
+def test_preprocess_model_family_rejects_unknown_value(monkeypatch):
+    monkeypatch.setattr(
+        preprocess_task,
+        "_path_overrides_value",
+        lambda: {"model_family": "unknown"},
+    )
+
+    with pytest.raises(ValueError, match="preprocess model_family"):
+        preprocess_task._model_family()

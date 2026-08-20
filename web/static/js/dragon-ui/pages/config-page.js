@@ -7,14 +7,31 @@
 
 import { FIELD_LABEL_ZH, FIELD_OPTIONS } from '../../config/catalog/labels-options.js?v=dragon-ui-20260812v35';
 import { FIELD_HELP_ZH } from '../../config/catalog/field-help.js?v=dragon-ui-20260812v35';
-import { FORM_UI_DEFAULTS } from '../../config/catalog/defaults.js?v=dragon-ui-20260812v35';
+import {
+    ALL_LORA_ADAPTER_SCOPED_FIELD_KEYS,
+    FORM_UI_DEFAULTS,
+    LOKR_SCOPED_FIELD_KEYS,
+    METHOD_SCOPED_CONFIG_FORM_FIELDS,
+    NETWORK_ARG_FIELD_MAP,
+    RETIRED_CONFIG_FORM_FIELDS,
+    VERA_SCOPED_FIELD_KEYS,
+} from '../../config/catalog/defaults.js?v=dragon-ui-20260812v35';
+import { VARIANT_METHOD_FAMILY } from '../../config/catalog/form-layout.js?v=dragon-ui-20260812v35';
 import { createApiClient } from '../../shared/api.js?v=dragon-ui-20260812v35';
 import { escapeHtml } from '../../shared/format.js?v=dragon-ui-20260812v35';
 import { SECTION_GROUPS } from './section-groups.js?v=dragon-ui-20260812v35';
 import { findCategory, isConfigCategory } from '../category-map.js?v=dragon-ui-20260812v35';
+import { scanForReveal } from '../animations.js?v=dragon-ui-20260816v67';
 import { keysForConfigSubItem } from './config-field-map.js?v=dragon-ui-20260812v35';
 import { configValueForControl, displayConfigValue, prepareConfigPatch, serializeConfigValue } from './config-values.js?v=dragon-ui-20260812v35';
-import { bindTrainingControls, loadTrainingContext, mergedConfigUrl, renderTrainingControls } from './training-controls.js?v=dragon-ui-20260812v35';
+import { bindTrainingControls, isEditableConfigFile, loadTrainingContext, mergedConfigUrl, renderTrainingControls, selectTrainingConfigFile, selectTrainingPreset, commitTrainingContext } from './training-controls.js?v=dragon-ui-20260816v67';
+import { bindTrainingPresetLibrary, renderTrainingPresetLibrary } from './training-preset-library.js?v=dragon-ui-20260816v76';
+import {
+    bindModelQuickPicker,
+    MODEL_QUICK_PATH_KEYS,
+    renderModelQuickPickerDialog,
+    renderModelQuickPickerTrigger,
+} from './model-quick-picker.js?v=dragon-ui-20260819v3';
 
 const api = createApiClient();
 
@@ -33,25 +50,68 @@ function categoryDescription(categoryId) {
     return descriptions[categoryId] || '按功能组织的训练配置。';
 }
 
+function activeMethodFamily(trainingContext, values = {}) {
+    const variant = String(trainingContext?.variant || '').trim().toLowerCase();
+    if (trainingContext?.methodsSubdir === 'methods' && variant === 'spd') return 'spd';
+    if (VARIANT_METHOD_FAMILY[variant]) return VARIANT_METHOD_FAMILY[variant];
+    if (values.use_ip_adapter || String(values.network_module || '').includes('ip_adapter')) return 'ip_adapter';
+    if (values.use_easycontrol || String(values.network_module || '').includes('easycontrol')) return 'easycontrol';
+    if (String(values.network_module || '').includes('soft_tokens')) return 'soft_tokens';
+    if (values.use_chimera_hydra) return 'chimera';
+    return 'lora';
+}
+
+function activeAdapterKind(values = {}) {
+    if (values.use_glora) return 'glora';
+    if (values.use_vera) return 'vera';
+    if (values.use_lokr) return 'lokr';
+    if (values.use_loha) return 'loha';
+    return 'lora';
+}
+
+function visibleConfigKeys(keys, trainingContext, values) {
+    const method = activeMethodFamily(trainingContext, values);
+    const adapter = activeAdapterKind(values);
+    return keys.filter((key) => {
+        if (RETIRED_CONFIG_FORM_FIELDS.has(key)) return false;
+        const methodScope = METHOD_SCOPED_CONFIG_FORM_FIELDS.get(key);
+        if (methodScope && !methodScope.has(method)) return false;
+        const spec = NETWORK_ARG_FIELD_MAP.get(key);
+        if (spec) {
+            const familyMatches = {
+                lokr: adapter === 'lokr' || method === 'lokr',
+                vera: adapter === 'vera' || method === 'vera',
+                soft_tokens: method === 'soft_tokens',
+                ip_adapter: method === 'ip_adapter',
+                easycontrol: method === 'easycontrol',
+            };
+            if (!familyMatches[spec.family]) return false;
+        }
+        if (LOKR_SCOPED_FIELD_KEYS.has(key) && adapter !== 'lokr') return false;
+        if (VERA_SCOPED_FIELD_KEYS.has(key) && adapter !== 'vera') return false;
+        if (key === 'dora_wd' && adapter !== 'lora') return false;
+        return !ALL_LORA_ADAPTER_SCOPED_FIELD_KEYS.has(key)
+            || (key === 'lora_adapter_kind' || (adapter === 'lokr' && LOKR_SCOPED_FIELD_KEYS.has(key))
+                || (adapter === 'vera' && VERA_SCOPED_FIELD_KEYS.has(key)) || (adapter === 'lora' && key === 'dora_wd'));
+    });
+}
+
 export async function loadConfigPage(context) {
-    const sub = context.sub;
-    const category = findCategory(context.categoryId || sub?.categoryId);
+    const requestedSub = context.sub;
+    const category = findCategory(context.categoryId || requestedSub?.categoryId);
     const isCategoryPage = Boolean(category && isConfigCategory(category.id));
-    const entries = isCategoryPage
+    const rawEntries = isCategoryPage
         ? category.groups.flatMap((group) => group.items)
             .filter((item) => !item.isPage)
             .map((item) => ({ sub: item, keys: keysForConfigSubItem(item) }))
             .filter((entry) => entry.keys.length > 0)
         : [];
+    const requestedEntry = isCategoryPage
+        ? rawEntries.find((entry) => entry.sub.id === context.subId) || rawEntries[0]
+        : null;
+    const sub = requestedEntry?.sub || requestedSub;
 
-    if (!isCategoryPage && !sub) return '<div class="dragon-empty-state"><p>未找到配置项</p></div>';
-
-    const keys = isCategoryPage
-        ? [...new Set(entries.flatMap((entry) => entry.keys))]
-        : keysForConfigSubItem(sub);
-    if (!keys || keys.length === 0) {
-        return '<div class="dragon-empty-state"><p>此分类暂无配置项映射</p></div>';
-    }
+    if (!sub) return '<div class="dragon-empty-state"><p>未找到配置项</p></div>';
 
    const trainingContext = await loadTrainingContext();
    let currentValues = {};
@@ -80,28 +140,137 @@ export async function loadConfigPage(context) {
         };
     }
 
+    const currentMethodFamily = activeMethodFamily(trainingContext, currentValues);
+    const entries = isCategoryPage
+        ? rawEntries.map((entry) => ({
+            ...entry,
+            keys: visibleConfigKeys(entry.keys, trainingContext, currentValues),
+        })).filter((entry) => entry.keys.length > 0 && (entry.sub.id !== 'spd' || currentMethodFamily === 'spd'))
+        : [];
+    const activeEntry = isCategoryPage
+        ? entries.find((entry) => entry.sub.id === context.subId) || entries[0]
+        : null;
+    const keys = visibleConfigKeys(activeEntry?.keys || keysForConfigSubItem(sub), trainingContext, currentValues);
+    if (sub.id === 'spd' && currentMethodFamily !== 'spd') {
+        return '<div class="dragon-empty-state"><p>SPD 是 CLI 实验配置，当前训练配置不会使用这些参数</p></div>';
+    }
+    if (!keys || keys.length === 0) {
+        return '<div class="dragon-empty-state"><p>此分类暂无当前方法可生效的配置项</p></div>';
+    }
+
     const pageState = { dirty: false, beforeUnload: null };
     if (isCategoryPage) {
-        wrapper.innerHTML = renderCategoryPage(pageCategory, entries, keys, currentValues, trainingContext);
+        wrapper.innerHTML = renderCategorySubPage(pageCategory, entries, sub, keys, currentValues, trainingContext);
     } else {
         wrapper.innerHTML = renderSingleConfigPage(sub, keys, currentValues, trainingContext);
     }
 
+    let routeUpdater = null;
+    let disposeMountedPage = () => cleanupConfigPage(pageState);
     return {
         html: wrapper.innerHTML,
         onMount: (root) => {
-            const saveChanges = wireConfigInteractions(root, keys, currentValues, trainingContext, pageState);
-            bindTrainingControls(root, trainingContext, {
-                saveChanges,
-                beforeContextChange: () => confirmConfigDiscard(pageState, '切换训练配置'),
-            });
-            if (isCategoryPage) {
-                bindConfigIndex(root, pageCategory.id);
-                scrollToConfigEntry(root, context.subId);
+            if (!isCategoryPage) {
+                const saveChanges = wireConfigInteractions(root, keys, currentValues, trainingContext, pageState);
+                const beforeContextChange = () => confirmConfigDiscard(pageState, '切换训练配置');
+                bindTrainingControls(root, trainingContext, { saveChanges, beforeContextChange });
+                return;
             }
+
+            let committed = { context: trainingContext, sub, keys, values: currentValues };
+            let requestedContext = trainingContext;
+            let libraryController = null;
+            let saveCurrentChanges = null;
+            let transitionSequence = 0;
+            const beforeContextChange = () => confirmConfigDiscard(pageState, '切换训练配置');
+            disposeMountedPage = () => {
+                transitionSequence += 1;
+                libraryController?.destroy?.();
+                cleanupConfigPage(pageState);
+            };
+
+            const bindEditablePane = () => {
+                saveCurrentChanges = wireConfigInteractions(root, committed.keys, committed.values, committed.context, pageState);
+                bindTrainingControls(root, committed.context, {
+                    saveChanges: saveCurrentChanges,
+                    beforeContextChange,
+                    onConfigFileChange: (file) => {
+                        const nextContext = selectTrainingConfigFile(committed.context, file, { notify: false, persist: false });
+                        if (nextContext) transitionEditable({ context: nextContext });
+                    },
+                    onPresetChange: (preset) => {
+                        transitionEditable({ context: selectTrainingPreset(committed.context, preset, { notify: false, persist: false }) });
+                    },
+                });
+            };
+
+            const transitionEditable = async ({ context = requestedContext, sub: nextSub = committed.sub } = {}) => {
+                const target = entries.find((entry) => entry.sub.id === nextSub?.id) || entries[0];
+                if (!target) return false;
+                const targetSub = target.sub;
+                const targetKeys = target.keys;
+                const contextChanged = context.configFile !== committed.context.configFile
+                    || context.preset !== committed.context.preset
+                    || context.methodsSubdir !== committed.context.methodsSubdir
+                    || context.variant !== committed.context.variant;
+                if (!contextChanged && targetSub.id === committed.sub.id) return true;
+
+                requestedContext = context;
+                const sequence = ++transitionSequence;
+                const pane = root.querySelector('[data-config-editable-pane]');
+                pane?.setAttribute('aria-busy', 'true');
+                try {
+                    let values = committed.values;
+                    if (contextChanged) {
+                        const res = await api(mergedConfigUrl(context));
+                        if (!res || res.ok === false) throw new Error(res?.error || '后端没有返回可用配置');
+                        values = res.config || res;
+                    }
+                    if (sequence !== transitionSequence) return true;
+
+                    pageState.dirty = false;
+                    cleanupConfigPage(pageState);
+                    committed = { context, sub: targetSub, keys: targetKeys, values };
+                    requestedContext = context;
+                    commitTrainingContext(context);
+                    currentValues = values;
+                    const currentPane = root.querySelector('[data-config-editable-pane]');
+                    if (currentPane) currentPane.outerHTML = renderEditableConfigPane(pageCategory, entries, committed);
+                    bindEditablePane();
+                    scanForReveal();
+                    libraryController?.updateContext(committed.context);
+                    return true;
+                } catch (error) {
+                    if (sequence !== transitionSequence) return true;
+                    requestedContext = committed.context;
+                    libraryController?.updateContext(committed.context);
+                    root.querySelector('[data-config-editable-pane]')?.removeAttribute('aria-busy');
+                    window.alert(`切换训练配置失败：${error.message || error}`);
+                    return false;
+                }
+            };
+
+            bindEditablePane();
+            libraryController = bindTrainingPresetLibrary(root, committed.context, {
+                beforeContextChange,
+                onSaveChanges: () => saveCurrentChanges?.() ?? false,
+                onConfigFileChange: (_file, nextContext) => transitionEditable({ context: nextContext }),
+            });
+
+            routeUpdater = async ({ subId }) => {
+                const target = entries.find((entry) => entry.sub.id === subId) || entries[0];
+                if (!target) return false;
+                const updated = await transitionEditable({ context: requestedContext, sub: target.sub });
+                if (!updated) return false;
+                const detail = root.querySelector(`[data-config-entry="${target.sub.id}"]`);
+                const navHeight = Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--dragon-nav-height')) || 44;
+                if (detail) window.scrollTo({ top: Math.max(0, window.scrollY + detail.getBoundingClientRect().top - navHeight - 16), behavior: 'smooth' });
+                return true;
+            };
         },
+        onRouteUpdate: (route) => routeUpdater?.(route) ?? false,
         beforeLeave: () => confirmConfigDiscard(pageState, '离开页面'),
-        onUnmount: () => cleanupConfigPage(pageState),
+        onUnmount: () => disposeMountedPage(),
     };
 }
 
@@ -142,44 +311,80 @@ function renderSingleConfigPage(sub, keys, currentValues, trainingContext) {
     `;
 }
 
-function renderCategoryPage(category, entries, keys, currentValues, trainingContext) {
-    const indexHtml = entries.map(({ sub }) => `
-        <a class="dragon-config-index-link" href="#dragon-config-anchor-${sub.id}" data-config-target="${sub.id}">
-            <span class="dragon-config-index-label">${sub.label}</span>
-            <span class="dragon-config-index-desc">${sub.desc || ''}</span>
-        </a>
-    `).join('');
-    const entriesHtml = entries.map(({ sub, keys: entryKeys }) => `
-        <section class="dragon-config-entry" id="dragon-config-anchor-${sub.id}" data-config-entry="${sub.id}">
-            <header class="dragon-config-entry-header">
-                <span class="dragon-eyebrow">${category.label}</span>
-                <h2>${sub.label}</h2>
-                <p>${sub.desc || ''}</p>
-            </header>
-            <div class="dragon-config-entry-fields">
-                ${renderFields(sub.id, entryKeys, currentValues)}
-            </div>
-        </section>
-    `).join('');
+function renderCategorySubPage(category, entries, sub, keys, currentValues, trainingContext) {
+    const groupLabel = category.groups.find((group) =>
+        group.items.some((item) => item.id === sub.id)
+    )?.header || category.label;
 
     return `
-        <div class="dragon-config-page dragon-config-category-page" data-config-category="${category.id}">
+        <div class="dragon-config-page dragon-config-category-page dragon-config-subpage"
+             data-config-category="${category.id}" data-config-subpage="${sub.id}">
             <div class="dragon-config-hero dragon-reveal">
-                <span class="dragon-eyebrow">训练工作台</span>
                 <h1>${category.label}</h1>
                 <p>${categoryDescription(category.id)}</p>
             </div>
-            ${renderTrainingControls(trainingContext)}
-            <nav class="dragon-config-index dragon-reveal" aria-label="${category.label}目录">
-                <div class="dragon-config-index-heading">本页目录</div>
-                <div class="dragon-config-index-grid">${indexHtml}</div>
-            </nav>
-            <div class="dragon-config-entry-list" id="dragon-config-fields">
-                ${entriesHtml}
+            <div class="dragon-config-shell-layout">
+                ${renderEditableConfigPane(category, entries, { context: trainingContext, sub, keys, values: currentValues })}
+                ${renderTrainingPresetLibrary(trainingContext)}
             </div>
-            ${renderConfigActions()}
         </div>
     `;
+}
+
+function renderEditableConfigPane(category, entries, state) {
+    return `<div class="dragon-config-editable-pane" data-config-editable-pane>
+        ${renderTrainingControls(state.context)}
+        ${renderEditableConfigWorkspace(category, entries, state.sub, state.keys, state.values)}
+    </div>`;
+}
+
+function renderEditableConfigWorkspace(category, entries, sub, keys, currentValues) {
+    const groupLabel = category.groups.find((group) =>
+        group.items.some((item) => item.id === sub.id)
+    )?.header || category.label;
+    return `<div class="dragon-config-workspace" data-config-editable-workspace>
+        ${renderConfigNavigation(category, entries, sub.id)}
+        <section class="dragon-config-detail" data-config-entry="${sub.id}"
+                 aria-labelledby="dragon-config-detail-title">
+            <header class="dragon-config-detail-header">
+                <div class="dragon-config-detail-header-copy">
+                    <span class="dragon-eyebrow">${groupLabel}</span>
+                    <h2 id="dragon-config-detail-title">${sub.label}</h2>
+                    <p>${sub.desc || ''}</p>
+                </div>
+                ${sub.id === 'base-models' ? renderModelQuickPickerTrigger() : ''}
+            </header>
+            <div class="dragon-config-detail-fields dragon-reveal" data-stagger="1" id="dragon-config-fields">
+                ${renderFields(sub.id, keys, currentValues)}
+            </div>
+            ${renderConfigActions()}
+        </section>
+        ${sub.id === 'base-models' ? renderModelQuickPickerDialog() : ''}
+    </div>`;
+}
+
+function renderConfigNavigation(category, entries, activeId) {
+    const availableIds = new Set(entries.map((entry) => entry.sub.id));
+    const groupsHtml = category.groups.map((group) => {
+        const links = group.items.filter((item) => availableIds.has(item.id)).map((item) => {
+            const isActive = item.id === activeId;
+            return `<a class="dragon-config-index-link" href="#config/${category.id}/${item.id}"
+                       data-config-target="${item.id}" data-active="${isActive}"
+                       ${isActive ? 'aria-current="page"' : ''} title="${escapeHtml(item.desc || item.label)}">
+                        <span class="dragon-config-index-label">${escapeHtml(item.label)}</span>
+                    </a>`;
+        }).join('');
+        if (!links) return '';
+        return `<div class="dragon-config-index-group">
+                    <div class="dragon-config-index-group-title">${escapeHtml(group.header)}</div>
+                    <div class="dragon-config-index-links">${links}</div>
+                </div>`;
+    }).join('');
+
+    return `<nav class="dragon-config-index dragon-reveal" aria-label="${escapeHtml(category.label)}导航">
+                <div class="dragon-config-index-heading">配置分组</div>
+                <div class="dragon-config-index-groups">${groupsHtml}</div>
+            </nav>`;
 }
 
 function renderConfigActions() {
@@ -190,51 +395,6 @@ function renderConfigActions() {
         </div>
         <div class="dragon-config-feedback" id="dragon-config-feedback" role="status" aria-live="polite"></div>
     `;
-}
-
-function bindConfigIndex(root, categoryId) {
-    root.querySelectorAll('.dragon-config-index-link').forEach((link) => {
-        link.addEventListener('click', (event) => {
-            event.preventDefault();
-            const targetId = link.dataset.configTarget;
-            const target = root.querySelector(`[data-config-entry="${targetId}"]`);
-            if (!target) return;
-            scrollToElement(target, 'smooth');
-            history.replaceState(null, '', `#config/${categoryId}/${targetId}`);
-            setActiveConfigIndex(root, targetId);
-        });
-    });
-}
-
-function scrollToConfigEntry(root, subId) {
-    if (!subId) return;
-    // Wait for the page-enter motion to settle before measuring the anchor.
-    // Otherwise the wrapper's translateY shifts the selected heading under the nav.
-    window.setTimeout(() => {
-        const target = root.querySelector(`[data-config-entry="${subId}"]`);
-        if (target) {
-            scrollToElement(target, 'auto');
-            setActiveConfigIndex(root, subId);
-        }
-    }, 760);
-}
-
-function scrollToElement(element, behavior) {
-    const navHeight = Number.parseFloat(
-        getComputedStyle(document.documentElement).getPropertyValue('--dragon-nav-height')
-    ) || 44;
-    const topOffset = navHeight + 16;
-    const top = Math.max(0, window.scrollY + element.getBoundingClientRect().top - topOffset);
-    window.scrollTo({ top, behavior });
-}
-
-function setActiveConfigIndex(root, subId) {
-    root.querySelectorAll('.dragon-config-index-link').forEach((link) => {
-        const isActive = link.dataset.configTarget === subId;
-        link.dataset.active = String(isActive);
-        if (isActive) link.setAttribute('aria-current', 'location');
-        else link.removeAttribute('aria-current');
-    });
 }
 
 function renderFields(subId, keys, currentValues) {
@@ -429,6 +589,11 @@ function wireConfigInteractions(wrapper, keys, originalValues, trainingContext, 
             return true;
         }
 
+        if (!isEditableConfigFile(trainingContext)) {
+            showFeedback(feedbackEl, '当前训练配置为系统只读，无法保存修改；请先在左侧预设库选择可编辑配置', 'error');
+            return false;
+        }
+
         saveBtn.disabled = true;
         saveBtn.textContent = '保存中…';
 
@@ -482,14 +647,23 @@ function wireConfigInteractions(wrapper, keys, originalValues, trainingContext, 
         syncDirty();
         showFeedback(feedbackEl, '已恢复默认值（需点击保存才会生效）', 'info');
     });
+    bindModelQuickPicker(wrapper, {
+        onApply: (item) => {
+            MODEL_QUICK_PATH_KEYS.forEach((key) => {
+                const input = wrapper.querySelector(`[data-key="${key}"]`);
+                if (!input) return;
+                input.value = item[key] || '';
+                input.dispatchEvent(new Event('input', { bubbles: true }));
+            });
+            showFeedback(feedbackEl, `已应用“${item.name || '未命名配置'}”（需点击保存才会生效）`, 'success');
+        },
+    });
     return () => saveChanges({ quiet: true });
 }
 
 function confirmConfigDiscard(state, action) {
     if (!state.dirty) return true;
-    const allowed = window.confirm(`当前训练配置有未保存修改。${action}会丢弃这些修改，是否继续？`);
-    if (allowed) state.dirty = false;
-    return allowed;
+    return window.confirm(`当前训练配置有未保存修改。${action}会丢弃这些修改，是否继续？`);
 }
 
 function cleanupConfigPage(state) {

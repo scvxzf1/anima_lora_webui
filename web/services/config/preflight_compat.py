@@ -80,6 +80,7 @@ def _compat_web_message(item) -> str:
         "krea2_v100_flash_stability": (
             "v100_flash_stability 是 Anima 专用诊断项，Krea-2 下必须为 off。"
         ),
+        "krea2_plain_lora_only": "Krea-2 当前仅支持 plain LoRA，不能组合高级 adapter 或路由。",
         "negative_blocks_to_swap": "blocks_to_swap 不能小于 0。",
         "selective_full_gradient_checkpointing": (
             "selective_checkpoint 是 DiT 选择性检查点模式，不能同时开启完整 "

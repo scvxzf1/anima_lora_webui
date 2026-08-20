@@ -10,11 +10,17 @@ let navRootElement = null;
 let onNavigate = null;
 let globalAbortController = null;
 
+const PRIMARY_NAV_ITEMS = [
+    { id: 'training-config', label: '训练配置', hash: '#config/training-config' },
+    { id: 'datasets', label: '数据集', hash: '#dataset-editor' },
+    { id: 'live-training', label: '当前监控', hash: '#page/live-training' },
+    { id: 'queue', label: '训练队列', hash: '#page/queue' },
+    { id: 'history', label: '训练历史', hash: '#history' },
+    { id: 'model-config', label: '模型配置', hash: '#model-config' },
+];
+
 const NAV_SHORTCUTS = [
     { id: 'home', label: '首页', compactLabel: '首页', icon: 'home', hash: '#dashboard', iconOnly: true },
-    { id: 'configs', label: '配置文件', compactLabel: '配置', icon: 'folder', hash: '#config/training-config', iconOnly: true },
-    { id: 'datasets', label: '数据集', compactLabel: '数据集', icon: 'database', hash: '#dataset-editor', iconOnly: true },
-    { id: 'history', label: '训练历史', compactLabel: '历史', icon: 'history', hash: '#history', iconOnly: true },
 ];
 
 export function initNav(callback) {
@@ -40,7 +46,7 @@ function renderNav() {
                         ${renderSettingsPanel()}
                     </div>
                     <ul class="dragon-nav-categories" aria-label="主导航">
-                        ${DRAGON_NAV_CATEGORIES.map(renderCategoryItem).join('')}
+                        ${PRIMARY_NAV_ITEMS.map(renderPrimaryNavItem).join('')}
                     </ul>
                     <div class="dragon-nav-utilities" aria-label="快捷入口">
                         ${NAV_SHORTCUTS.map(renderShortcutButton).join('')}
@@ -62,6 +68,12 @@ function renderShortcutButton(shortcut) {
     const iconOnlyClass = shortcut.iconOnly ? ' dragon-nav-utility-button--icon' : '';
     const label = shortcut.iconOnly ? '' : `<span class="dragon-nav-utility-label">${shortcut.label}</span>`;
     return `<button class="dragon-nav-utility-button${iconOnlyClass}" type="button" data-nav-shortcut="${shortcut.id}" data-target-hash="${shortcut.hash}" data-tooltip="${shortcut.label}" aria-label="${shortcut.label}">${renderIcon(shortcut.icon, 'dragon-nav-utility-icon')}${label}</button>`;
+}
+
+function renderPrimaryNavItem(item) {
+    return `<li class="dragon-nav-item dragon-nav-item-direct">
+        <a class="dragon-nav-link dragon-nav-category-btn dragon-nav-primary-link" href="${item.hash}" data-primary-nav="${item.id}">${item.label}</a>
+    </li>`;
 }
 
 function renderTrainerLogo() {
@@ -96,6 +108,15 @@ function themeOption(value, label, icon, current) {
 }
 
 function renderCategoryItem(category) {
+    // 训练配置是一个完整工作区入口，不再展开二级配置项菜单。
+    // 其他顶层分类仍保留原有 flyout 导航。
+    if (category.id === 'training-config') {
+        return `
+        <li class="dragon-nav-item dragon-nav-item-direct" data-category-id="${category.id}">
+            <a class="dragon-nav-link dragon-nav-category-btn" href="#config/training-config" data-direct-category="${category.id}">${category.label}</a>
+        </li>
+    `;
+    }
     const layout = category.layout || 'config';
     const groupsHtml = (category.groups || []).map((group, index) => {
         const elevated = group.elevated || index === 0 ? ' dragon-nav-flyout-group-elevated' : '';
@@ -120,24 +141,17 @@ function renderCategoryItem(category) {
 }
 
 function renderMobilePanel() {
-    const sections = DRAGON_NAV_CATEGORIES.map((category) => `
-        <section class="dragon-nav-mobile-section">
-            <h2>${category.label}</h2>
-            <div class="dragon-nav-mobile-links">
-                ${category.groups.flatMap((group) => group.items).map((item) => `
-                    <button class="dragon-nav-mobile-link" type="button" data-category-id="${category.id}" data-sub-id="${item.id}">
-                        <span>${item.label}</span>${item.desc ? `<small>${item.desc}</small>` : ''}
-                    </button>
-                `).join('')}
-            </div>
-        </section>
+    const primaryLinks = PRIMARY_NAV_ITEMS.map((item) => `
+        <a class="dragon-nav-mobile-link" href="${item.hash}" data-primary-nav="${item.id}">
+            <span>${item.label}</span>
+        </a>
     `).join('');
     const shortcuts = NAV_SHORTCUTS.map((shortcut) => `
         <button class="dragon-nav-mobile-shortcut" type="button" data-nav-shortcut="${shortcut.id}" data-target-hash="${shortcut.hash}">
             ${renderIcon(shortcut.icon, 'dragon-nav-mobile-shortcut-icon')}<span>${shortcut.compactLabel}</span>
         </button>
     `).join('');
-    return `<div class="dragon-nav-mobile-panel" id="dragon-nav-mobile-panel" aria-hidden="true"><div class="dragon-nav-mobile-panel-inner"><div class="dragon-nav-mobile-shortcuts" aria-label="快捷入口">${shortcuts}</div>${sections}</div></div>`;
+    return `<div class="dragon-nav-mobile-panel" id="dragon-nav-mobile-panel" aria-hidden="true"><div class="dragon-nav-mobile-panel-inner"><div class="dragon-nav-mobile-shortcuts" aria-label="快捷入口">${shortcuts}</div><section class="dragon-nav-mobile-section dragon-nav-mobile-section-direct"><div class="dragon-nav-mobile-links">${primaryLinks}</div></section></div></div>`;
 }
 
 function bindNavEvents() {
@@ -163,7 +177,10 @@ function bindNavEvents() {
             navigateToSubItem(link.closest('[data-category-id]')?.dataset.categoryId, link.dataset.subId);
         });
     });
-    document.querySelectorAll('.dragon-nav-mobile-link').forEach((link) => {
+    document.querySelectorAll('[data-primary-nav]').forEach((link) => {
+        link.addEventListener('click', () => closeAllMenus());
+    });
+    document.querySelectorAll('.dragon-nav-mobile-link[data-sub-id]').forEach((link) => {
         link.addEventListener('click', () => navigateToSubItem(link.dataset.categoryId, link.dataset.subId));
     });
     document.querySelectorAll('[data-nav-shortcut]').forEach((button) => {
@@ -223,15 +240,29 @@ function updateShortcutState() {
     const hash = window.location.hash;
     const activeById = {
         home: hash === '' || hash === '#dashboard',
-        configs: hash.startsWith('#config/'),
-        datasets: hash.startsWith('#dataset-editor'),
-        history: hash.startsWith('#history'),
     };
     document.querySelectorAll('[data-nav-shortcut]').forEach((button) => {
         const active = Boolean(activeById[button.dataset.navShortcut]);
         button.dataset.active = String(active);
         if (active) button.setAttribute('aria-current', 'page');
         else button.removeAttribute('aria-current');
+    });
+    const activePrimaryId = hash.startsWith('#dataset-editor')
+        ? 'datasets'
+        : (hash.startsWith('#page/live-training')
+            ? 'live-training'
+            : (hash.startsWith('#page/queue')
+                ? 'queue'
+                : (hash.startsWith('#history')
+                    ? 'history'
+                    : (hash.startsWith('#model-config')
+                        ? 'model-config'
+                        : (hash.startsWith('#config/training-config') ? 'training-config' : '')))));
+    document.querySelectorAll('[data-primary-nav]').forEach((link) => {
+        const active = link.dataset.primaryNav === activePrimaryId;
+        link.dataset.active = String(active);
+        if (active) link.setAttribute('aria-current', 'page');
+        else link.removeAttribute('aria-current');
     });
 }
 

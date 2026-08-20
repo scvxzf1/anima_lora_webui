@@ -1,5 +1,11 @@
 # Anima → Krea-2-Raw 迁移提案
 
+> **2026-08-10 当前状态说明：** 训练、标准单提示词推理、Web 模型配置、NF4、
+> compile/Flash 和 checkpoint 主链已经落地；本文保留迁移阶段的原始计划与历史状态，
+> 其中“推理 dispatch 待续”等阶段性描述不再代表当前代码。当前兼容边界、风险和测试缺口
+> 以 [`../findings/backend_multi_model_audit_20260810.md`](../findings/backend_multi_model_audit_20260810.md)
+> 为准。
+
 状态：推进中（阶段 0-5 完成；阶段 6 训练侧配置收口里程碑达成——`forward_for_loss`+`model_family` 串通 train.py、1024 grad-ckpt 实测通过、`ss_model_family` stamp 闭环+WebUI 表单闭合；推理侧 generation.py family dispatch 待续）
 适用版本：当前 main（阶段 0-6 训练侧已落地，提交 `0f8f934c`；推理侧 family dispatch 进行中）
 日期：2026-08-08

@@ -4,7 +4,7 @@
 
 ## 1. 入口与用途
 
-Dragon UI 从 **模型与系统 → 全局模型配置** 进入；classic UI 顶部导航的 **全局模型配置** 位于 **全局设置** 与 **环境检测** 之间。
+Dragon UI 顶部导航的 **模型配置** 位于 **训练历史** 右侧；**模型与系统 → 全局模型配置** 仍保留为辅助入口。classic UI 顶部导航的 **全局模型配置** 位于 **全局设置** 与 **环境检测** 之间。
 
 两套界面读取并修改同一个模型配置库。切换 Dragon / classic 不会复制配置，也不会改变默认项。
 
@@ -21,13 +21,14 @@ Dragon UI 从 **模型与系统 → 全局模型配置** 进入；classic UI 顶
 
 ## 2. 创建与管理
 
-1. 点右侧 **新建**，在左侧填写名称、格式和三条路径。
+1. 点 **新建配置**，填写名称、格式和三条路径。
 2. 点 **保存配置** 写入模型配置库。
 3. 点 **设为默认**，让该项成为新建配置和旧兼容链路的默认来源。
-4. 点 **管理** 后可拖动排序，也可用上移/下移按钮；非默认项可以删除。
-5. 默认项需要先把另一项设为默认，才能删除。
+4. 在 Dragon 中可新建、重命名和删除分组；删除分组只会把其中配置移到相邻分组，不会删除配置或模型文件。
+5. 模型配置可在组内排序或跨组拖动，分组本身也可拖动排序；键盘用户可使用上移/下移按钮。
+6. 默认项需要先把另一项设为默认，才能删除。
 
-搜索只过滤右侧列表，不改变持久化顺序。
+搜索只过滤列表，不改变持久化顺序；搜索期间拖动与顺序按钮会禁用，清空搜索后恢复。
 
 ## 3. 配置页联动
 
@@ -55,9 +56,16 @@ model_family = "anima"
 pretrained_model_name_or_path = "models/diffusion_models/anima.safetensors"
 qwen3 = "models/text_encoders/qwen.safetensors"
 vae = "models/vae/vae.safetensors"
+
+[[model_config_library.groups]]
+id = "ungrouped"
+label = "未分组"
+item_ids = ["legacy-default"]
 ```
 
-升级后首次打开页面时，如果还没有模型配置库，服务会从原 `[global]` 路径和同目录 `base.toml` 合成一项；模型格式依次读取 `[global]`、`base.toml` 和 `ANIMA_MODEL_FAMILY` 回退链。GET 不会写文件，首次保存后才会持久化。
+升级后首次打开页面时，如果还没有模型配置库，服务会从原 `[global]` 路径和同目录 `base.toml` 合成一项；模型格式依次读取 `[global]`、`base.toml` 和 `ANIMA_MODEL_FAMILY` 回退链。已有配置库如果没有 `groups`，会在内存中合成“未分组”。GET 不会写文件，首次保存后才会持久化。
+
+Dragon 会在同一次 revision 保护的 PUT 中提交配置项与分组。旧 Classic 客户端未提交 `groups` 时，服务端保留当前分组并将新项补入第一组，避免覆盖 Dragon 的分组结构。
 
 默认项会在同一次原子写入中镜像到旧 `[global]` 三条路径和 `model_family`，因此旧版新建预设、生图回退和路径预检仍然可用。Anima 默认项沿用旧约定，不在 `[global]` 显式写 `model_family`；Krea-2 写为 `krea2_raw`。
 

@@ -8,6 +8,7 @@ from library.training.compat_matrix import (
     apply_training_compat_mutations,
     check_training_compat,
 )
+from library.training.extra_args import assert_training_extra_args
 
 
 def _codes(items) -> set[str]:
@@ -254,6 +255,47 @@ def test_matrix_warns_convrot_attn_flash_compile_combo() -> None:
     assert "convrot_attn_flash_compile_dtype" in _codes(miss_self_qkv.warnings)
 
 
+def test_matrix_accepts_krea2_plain_lora() -> None:
+    result = check_training_compat(
+        {
+            "model_family": "krea2_raw",
+            "network_module": "networks.lora_anima",
+            "attn_mode": "torch",
+            "selective_checkpoint": "off",
+        }
+    )
+    assert "krea2_plain_lora_only" not in _codes(result.errors)
+
+
+@pytest.mark.parametrize(
+    "override",
+    [
+        {"network_module": "networks.methods.ip_adapter"},
+        {"use_ip_adapter": True},
+        {"use_easycontrol": True},
+        {"use_byg": True},
+        {"use_lokr": True},
+        {"use_ortho": True},
+        {"use_moe_style": "shared_A"},
+        {"route_per_layer": True},
+        {"router_source": "input"},
+        {"dora_wd": 0.1},
+        {"step_expert_K": 2},
+        {"functional_loss_weight": 0.1},
+    ],
+)
+def test_matrix_rejects_krea2_non_plain_adapter_configs(override) -> None:
+    config = {
+        "model_family": "krea2_raw",
+        "network_module": "networks.lora_anima",
+        "attn_mode": "torch",
+        "selective_checkpoint": "off",
+    }
+    config.update(override)
+    result = check_training_compat(config)
+    assert "krea2_plain_lora_only" in _codes(result.errors)
+
+
 class _CacheableDataset:
     datasets: list[object] = []
 
@@ -262,3 +304,26 @@ class _CacheableDataset:
 
     def verify_bucket_reso_steps(self, steps: int) -> None:
         assert steps == 16
+
+
+def test_cli_preflight_applies_model_family_env_fallback(monkeypatch) -> None:
+    monkeypatch.setenv("ANIMA_MODEL_FAMILY", "krea2_raw")
+    args = argparse.Namespace(
+        model_family=None,
+        use_lokr=True,
+        cache_text_encoder_outputs_to_disk=False,
+        cache_text_encoder_outputs=False,
+        cache_llm_adapter_outputs=False,
+        network_train_unet_only=True,
+        selective_checkpoint="off",
+        selective_checkpoint_blocks="",
+        block_swap_transfer_dtype="bf16",
+        block_swap_restore_mode="slab",
+    )
+
+    with pytest.raises(
+        ValueError, match="Krea-2 training currently supports only plain LoRA"
+    ):
+        assert_training_extra_args(args, _CacheableDataset(), None)
+
+    assert args.model_family == "krea2_raw"

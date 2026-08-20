@@ -21,7 +21,8 @@ import numpy as np
 import torch
 from PIL import Image
 
-from library.io.cache import LATENT_CACHE_SUFFIX, resolve_cache_path
+from library.io.cache import resolve_cache_path
+from library.io.cache_names import latent_cache_suffix
 from library.datasets.image_utils import IMAGE_TRANSFORMS
 from library.preprocess._dataset import PreprocessStats, group_by_shape, walk_images
 from library.preprocess._progress import ProgressFn
@@ -32,13 +33,20 @@ def get_latents_npz_path(
     image_size: tuple[int, int],
     cache_dir: Path | None = None,
     image_dir: Path | None = None,
+    latent_space_name: str | None = None,
 ) -> Path:
-    """Match ``AnimaLatentsCachingStrategy`` naming: ``{stem}_{WxH}_anima.npz``.
+    """Latent sidecar path: ``{stem}_{WxH}_anima.npz`` by default.
 
-    With ``cache_dir`` the cache is redirected there (nested under the source
-    subpath when ``image_dir`` is given); otherwise it lives next to the image.
+    ``latent_space_name`` selects the space suffix via
+    :func:`library.io.cache_names.latent_cache_suffix` (e.g.
+    ``"dcgen_f32c32"`` → ``_dcgen_f32c32.npz``). With ``cache_dir`` the cache
+    is redirected there (nested under the source subpath when ``image_dir`` is
+    given); otherwise it lives next to the image.
     """
-    suffix = f"_{image_size[0]:04d}x{image_size[1]:04d}{LATENT_CACHE_SUFFIX}"
+    suffix = (
+        f"_{image_size[0]:04d}x{image_size[1]:04d}"
+        + latent_cache_suffix(latent_space_name)
+    )
     if cache_dir is None:
         return image_path.with_name(image_path.stem + suffix)
     return Path(
@@ -51,15 +59,18 @@ def get_latents_npz_path(
     )
 
 
-def _latent_cached(npz_path: Path, w: int, h: int) -> bool:
+def _latent_cached(
+    npz_path: Path, w: int, h: int, vae_spatial_compression: int = 8
+) -> bool:
     """True iff ``npz_path`` already holds the ``(w, h)`` latent.
 
     A single NPZ can carry several resolutions (one ``latents_{H}x{W}`` key
     each), so the check is per-resolution, not whole-file existence. A
-    truncated / unreadable NPZ counts as not-cached (it'll be re-encoded)."""
+    truncated / unreadable NPZ counts as not-cached (it'll be re-encoded).
+    ``vae_spatial_compression`` converts pixel ``(w,h)`` to latent ``(H,W)``."""
     if not npz_path.exists():
         return False
-    key = f"latents_{h // 8}x{w // 8}"
+    key = f"latents_{h // vae_spatial_compression}x{w // vae_spatial_compression}"
     try:
         return key in np.load(npz_path)
     except Exception:
@@ -73,6 +84,8 @@ def count_pending_latents(
     recursive: bool = False,
     path_pattern: str | None = None,
     overwrite: bool = False,
+    latent_space_name: str | None = None,
+    vae_spatial_compression: int = 8,
 ) -> tuple[int, int]:
     """Return ``(pending, total)`` latent caches **without loading the VAE**.
 
@@ -88,9 +101,15 @@ def count_pending_latents(
     for (w, h), paths in group_by_shape(image_files).items():
         for p in paths:
             npz_path = get_latents_npz_path(
-                p, (w, h), cache_dir=cache_dir, image_dir=data_dir
+                p,
+                (w, h),
+                cache_dir=cache_dir,
+                image_dir=data_dir,
+                latent_space_name=latent_space_name,
             )
-            if not _latent_cached(npz_path, w, h):
+            if not _latent_cached(
+                npz_path, w, h, vae_spatial_compression=vae_spatial_compression
+            ):
                 pending += 1
     return pending, len(image_files)
 
@@ -102,6 +121,8 @@ def _decode_batch(
     cache_dir: Path | None,
     data_dir: Path,
     overwrite: bool = False,
+    latent_space_name: str | None = None,
+    vae_spatial_compression: int = 8,
 ) -> tuple[
     list[Path],
     list[tuple[Path, str]],
@@ -122,9 +143,15 @@ def _decode_batch(
     tensors: list[torch.Tensor] = []
     for p in batch_paths:
         npz_path = get_latents_npz_path(
-            p, (w, h), cache_dir=cache_dir, image_dir=data_dir
+            p,
+            (w, h),
+            cache_dir=cache_dir,
+            image_dir=data_dir,
+            latent_space_name=latent_space_name,
         )
-        if not overwrite and _latent_cached(npz_path, w, h):
+        if not overwrite and _latent_cached(
+            npz_path, w, h, vae_spatial_compression=vae_spatial_compression
+        ):
             skipped.append(p)
             continue
         try:
@@ -167,6 +194,9 @@ def cache_latents(
     progress: ProgressFn | None = None,
     io_workers: int | None = None,
     overwrite: bool = False,
+    latent_space_name: str | None = None,
+    vae_spatial_compression: int = 8,
+    encode_fn=None,
 ) -> PreprocessStats:
     """Encode every image under ``data_dir`` through ``vae`` → latent NPZs.
 
@@ -207,7 +237,17 @@ def cache_latents(
             return False
         w, h, bp = b
         decode_q.append(
-            decode_ex.submit(_decode_batch, bp, w, h, cache_dir, data_dir, overwrite)
+            decode_ex.submit(
+                _decode_batch,
+                bp,
+                w,
+                h,
+                cache_dir,
+                data_dir,
+                overwrite,
+                latent_space_name,
+                vae_spatial_compression,
+            )
         )
         return True
 
@@ -235,12 +275,19 @@ def cache_latents(
 
             img_batch = img_batch.to(device=vae.device, dtype=vae.dtype)
             with torch.no_grad():
-                latents = vae.encode_pixels_to_latents(img_batch).cpu()
+                if encode_fn is not None:
+                    latents = encode_fn(vae, img_batch).cpu()
+                else:
+                    latents = vae.encode_pixels_to_latents(img_batch).cpu()
 
             items: list[tuple[Path, np.ndarray, tuple[int, int]]] = []
             for i, (p, size) in enumerate(kept):
                 npz_path = get_latents_npz_path(
-                    p, size, cache_dir=cache_dir, image_dir=data_dir
+                    p,
+                    size,
+                    cache_dir=cache_dir,
+                    image_dir=data_dir,
+                    latent_space_name=latent_space_name,
                 )
                 items.append((npz_path, latents[i].float().numpy(), size))
                 stats.written += 1

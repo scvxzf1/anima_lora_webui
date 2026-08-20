@@ -23,6 +23,7 @@
 from __future__ import annotations
 
 import logging
+import math
 from typing import Any, Optional, Tuple
 
 import torch
@@ -54,21 +55,77 @@ _KREA2_UNSUPPORTED_ANIMA_ONLY = {
     "pooled_text_proj": "--pooled_text_proj (modulation guidance)",
     "ip_adapter_weight": "--ip_adapter_weight (IP-Adapter)",
     "easycontrol_weight": "--easycontrol_weight (EasyControl)",
+    "soft_tokens_weight": "--soft_tokens_weight (Soft Tokens)",
 }
 
 
-def _reject_anima_only_extras(args) -> None:
-    """Krea-2 首日拒绝 anima-only 推理旁路, 避免静默跑错。"""
+def validate_krea2_inference_args(args, *, mode: str = "single") -> None:
+    """Reject modes and arguments that the Krea runner does not consume."""
+    if mode not in {"single", "batch", "interactive"}:
+        raise ValueError(f"Unknown Krea-2 inference mode: {mode!r}")
+    if mode != "single":
+        flag = "--from_file" if mode == "batch" else "--interactive"
+        raise SystemExit(
+            f"Krea-2-Raw inference currently supports only single-prompt mode; "
+            f"{flag} is not implemented."
+        )
+
     offenders = [
         label
         for flag, label in _KREA2_UNSUPPORTED_ANIMA_ONLY.items()
         if getattr(args, flag, None)
     ]
+
+    sampler = str(getattr(args, "sampler", "euler") or "euler").strip().lower()
+    if sampler != "euler":
+        offenders.append(f"--sampler {sampler} (only euler is supported)")
+
+    flow_shift = getattr(args, "flow_shift", 3.0)
+    flow_shift = 3.0 if flow_shift is None else float(flow_shift)
+    if not math.isfinite(flow_shift) or not math.isclose(flow_shift, 3.0, abs_tol=1e-9):
+        offenders.append(
+            "--flow_shift (Krea-2 uses its automatic official mu-shift; "
+            "leave the CLI compatibility value at 3.0)"
+        )
+
+    if getattr(args, "smc_cfg", False):
+        offenders.append("--smc_cfg")
+    smc_lambda_raw = getattr(args, "smc_cfg_lambda", 5.0)
+    smc_alpha_raw = getattr(args, "smc_cfg_alpha", 0.2)
+    smc_lambda = 5.0 if smc_lambda_raw is None else float(smc_lambda_raw)
+    smc_alpha = 0.2 if smc_alpha_raw is None else float(smc_alpha_raw)
+    if not math.isfinite(smc_lambda) or not math.isclose(smc_lambda, 5.0, abs_tol=1e-9):
+        offenders.append("--smc_cfg_lambda (SMC-CFG is unsupported)")
+    if not math.isfinite(smc_alpha) or not math.isclose(smc_alpha, 0.2, abs_tol=1e-9):
+        offenders.append("--smc_cfg_alpha (SMC-CFG is unsupported)")
+
+    if getattr(args, "cns", None):
+        offenders.append("--cns")
+    cns_strength_raw = getattr(args, "cns_strength", 1.0)
+    cns_strength = 1.0 if cns_strength_raw is None else float(cns_strength_raw)
+    if not math.isfinite(cns_strength) or not math.isclose(
+        cns_strength, 1.0, abs_tol=1e-9
+    ):
+        offenders.append("--cns_strength (CNS is unsupported)")
+
     if offenders:
         raise SystemExit(
-            "Krea-2-Raw 首日不支持以下 anima-only 推理能力:\n  - "
+            "Krea-2-Raw does not support these inference options:\n  - "
             + "\n  - ".join(offenders)
-            + "\n见 docs/proposal/krea2_raw_migration.md §1 非目标。"
+            + "\nSee docs/findings/backend_multi_model_audit_20260810.md."
+        )
+
+
+def _reject_anima_only_extras(args) -> None:
+    """Compatibility wrapper for callers of the former narrow guard."""
+    validate_krea2_inference_args(args, mode="single")
+
+
+def require_krea2_checkpoint_family(network) -> None:
+    if getattr(getattr(network, "cfg", None), "model_family", None) != "krea2_raw":
+        raise ValueError(
+            "Krea-2 inference requires a checkpoint stamped "
+            "ss_model_family=krea2_raw; old or Anima checkpoints are rejected."
         )
 
 
@@ -143,6 +200,7 @@ def load_krea2_dit_for_inference(
             metadata=_read_lora_metadata(lora_path),
             for_inference=True,
         )
+        require_krea2_checkpoint_family(network)
         network.apply_to([], dit, apply_text_encoder=False, apply_unet=True)
         info = network.load_state_dict(weights_sd, strict=False)
         if info.unexpected_keys:
@@ -252,7 +310,8 @@ def generate_krea2(
     # dit_forward: (latents_5d, text_emb, t) -> velocity_5d (forward_for_loss 签名).
     # network (LoRA) 已 apply_to 进 dit 的 Linear.forward, forward_for_loss 透明.
     def dit_forward(latents_5d, text_emb, t):
-        return forward_for_loss(dit, latents_5d, text_emb, t)
+        velocity = forward_for_loss(dit, latents_5d, text_emb, t)
+        return velocity.to(latents_5d.dtype)
 
     logger.info(
         f"Krea-2 采样: {steps} 步, cfg={cfg}, latent=({latent_h},{latent_w}), "

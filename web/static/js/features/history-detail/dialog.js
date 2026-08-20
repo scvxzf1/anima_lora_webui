@@ -158,7 +158,7 @@ export function createHistoryDetailDialog({ ctx, state, deps }) {
             actions.append(previewBtn);
         }
         renderHistoryDetailTabs();
-        renderHistoryDetailContent();
+        renderHistoryDetailContent({ reuseCached: options.reuseCachedContent === true });
         if (options.open) openHistoryDetailDialog();
     }
 
@@ -312,8 +312,8 @@ export function createHistoryDetailDialog({ ctx, state, deps }) {
         const payload = state.currentPayload;
         syncHistoryDetailContentCache(payload);
         deps.restorePreviewWorkspaceFromHistoryDetail();
-        content.replaceChildren();
         if (!payload) {
+            content.replaceChildren();
             delete content.dataset.historyDetailTab;
             deps.applyHistoryDetailUIScale?.('overview');
             return;
@@ -323,11 +323,14 @@ export function createHistoryDetailDialog({ ctx, state, deps }) {
         deps.applyHistoryDetailUIScale?.(state.detailTab);
         const cached = options.reuseCached ? contentCache.nodes.get(state.detailTab) : null;
         if (cached) {
-            content.appendChild(cached);
+            if (content.childElementCount !== 1 || content.firstElementChild !== cached) {
+                content.replaceChildren(cached);
+            }
             if (state.detailTab === 'preview') deps.activateHistoryDetailPreview(payload);
             return;
         }
 
+        content.replaceChildren();
         let node = null;
         if (state.detailTab === 'overview') {
             node = overview.renderHistoryDetailOverview(payload);

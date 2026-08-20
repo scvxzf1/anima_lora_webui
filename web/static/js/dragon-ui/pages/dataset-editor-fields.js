@@ -45,26 +45,26 @@ export function renderDatasetDefaults(defaults = {}, options = {}) {
     const locked = { disabled: Boolean(options.readonly) };
     return `
         <div class="dragon-dataset-settings-sections">
-            ${settingsGroup('训练尺寸', '控制每个批次送入训练器的数据形状。', [
-                numberField('resolution', '训练分辨率', defaults.resolution ?? 1024, { ...locked, min: 64, step: 64, help: '建议与训练模型的目标分辨率一致。' }),
-                numberField('batch_size', '数据集批次大小', defaults.batch_size ?? 1, { ...locked, min: 1, step: 1, help: '这是数据集蓝图内的批次大小，不会替代训练配置中的梯度累积。' }),
+            ${settingsGroup('训练尺寸', [
+                numberField('resolution', '训练分辨率', defaults.resolution ?? 1024, { ...locked, min: 64, step: 64 }),
+                numberField('batch_size', '数据集批次大小', defaults.batch_size ?? 1, { ...locked, min: 1, step: 1 }),
                 numberField('prior_loss_weight', '先验损失权重', defaults.prior_loss_weight ?? 1, { ...locked, min: 0, step: 0.05 }),
             ])}
-            ${settingsGroup('分桶规则', '按宽高比分配分辨率，减少裁剪和无效填充。', [
+            ${settingsGroup('验证集', [
+                numberField('validation_split', '验证集比例', defaults.validation_split ?? 0, { ...locked, min: 0, max: 1, step: 0.01 }),
+                numberField('validation_split_num', '验证集数量', defaults.validation_split_num ?? 0, { ...locked, min: 0, step: 1 }),
+                numberField('validation_seed', '验证随机种子', defaults.validation_seed ?? 42, { ...locked, min: 0, step: 1 }),
+            ])}
+            ${settingsGroup('分桶规则', [
                 selectField('enable_bucket', '启用分桶', Boolean(defaults.enable_bucket ?? true), [['true', '开启'], ['false', '关闭']], locked),
                 numberField('min_bucket_reso', '最小桶尺寸', defaults.min_bucket_reso ?? 256, { ...locked, min: 64, step: 64 }),
                 numberField('max_bucket_reso', '最大桶尺寸', defaults.max_bucket_reso ?? 1024, { ...locked, min: 64, step: 64 }),
                 numberField('bucket_reso_steps', '桶尺寸步长', defaults.bucket_reso_steps ?? 64, { ...locked, min: 1, step: 1 }),
                 selectField('bucket_no_upscale', '禁止放大', Boolean(defaults.bucket_no_upscale), [['true', '开启'], ['false', '关闭']], locked),
             ])}
-            ${settingsGroup('验证集', '留出固定样本用于比较训练质量。', [
-                numberField('validation_split', '验证集比例', defaults.validation_split ?? 0, { ...locked, min: 0, max: 1, step: 0.01 }),
-                numberField('validation_split_num', '验证集数量', defaults.validation_split_num ?? 0, { ...locked, min: 0, step: 1 }),
-                numberField('validation_seed', '验证随机种子', defaults.validation_seed ?? 42, { ...locked, min: 0, step: 1 }),
-            ])}
-            ${settingsGroup('标注读取', '定义 caption 文件的识别方式和保留前缀。', [
+            ${settingsGroup('标注读取', [
                 textField('caption_extension', '标注扩展名', defaults.caption_extension ?? '.txt', { ...locked, placeholder: '例如：.txt' }),
-                numberField('keep_tokens', '保留 Token 数', defaults.keep_tokens ?? 3, { ...locked, min: 0, step: 1, help: '全局标注设置；各子集共享。' }),
+                numberField('keep_tokens', '保留 Token 数', defaults.keep_tokens ?? 3, { ...locked, min: 0, step: 1 }),
                 selectField('prefer_json_caption', '优先 JSON 标注', Boolean(defaults.prefer_json_caption), [['true', '开启'], ['false', '关闭']], locked),
                 selectField('caption_source_mode', '标注来源', defaults.caption_source_mode || 'auto', CAPTION_MODES, locked),
             ])}
@@ -113,7 +113,7 @@ export function renderDatasetRow(row, index, defaults, options = {}) {
             <details class="dragon-dataset-advanced">
                 <summary><span>高级规则</span><small>分辨率覆盖、验证集、标签混合与触发词复制</small></summary>
                 <div class="dragon-dataset-advanced-body">
-                    ${settingsGroup('本组覆盖', '只影响当前子集，留空时沿用通用设置。', [
+                    ${settingsGroup('本组覆盖', [
                         numberField('resolution', '本组分辨率', settings.resolution ?? 1024, { min: 64, step: 64, disabled: readonly }),
                         numberField('batch_size', '本组批次大小', settings.batch_size ?? 1, { min: 1, step: 1, disabled: readonly }),
                         numberField('prior_loss_weight', '本组先验损失权重', settings.prior_loss_weight ?? 1, { min: 0, step: 0.05, disabled: readonly }),
@@ -123,7 +123,7 @@ export function renderDatasetRow(row, index, defaults, options = {}) {
                         numberField('bucket_reso_steps', '本组桶步长', settings.bucket_reso_steps ?? 64, { min: 1, step: 1, disabled: readonly }),
                         selectField('bucket_no_upscale', '本组禁止放大', Boolean(settings.bucket_no_upscale), [['true', '开启'], ['false', '关闭']], { disabled: readonly }),
                     ])}
-                    ${settingsGroup('标注与验证', '覆盖本组标注来源及验证集抽样。', [
+                    ${settingsGroup('标注与验证', [
                         textField('caption_extension', '本组标注扩展名', settings.caption_extension ?? '.txt', { placeholder: '例如：.txt', disabled: readonly }),
                         selectField('caption_source_mode', '本组标注来源', settings.caption_source_mode || 'auto', CAPTION_MODES, { disabled: readonly }),
                         selectField('prefer_json_caption', '本组优先 JSON', Boolean(settings.prefer_json_caption), [['true', '开启'], ['false', '关闭']], { disabled: readonly }),
@@ -131,7 +131,7 @@ export function renderDatasetRow(row, index, defaults, options = {}) {
                         numberField('validation_split_num', '本组验证集数量', settings.validation_split_num ?? 0, { min: 0, step: 1, disabled: readonly }),
                         numberField('validation_seed', '本组验证随机种子', settings.validation_seed ?? 42, { min: 0, step: 1, disabled: readonly }),
                     ])}
-                    ${settingsGroup('实验规则', '低频增强能力；默认关闭。', [
+                    ${settingsGroup('实验规则', [
                         selectField('nl_tag_mix.enabled', '标签混合', Boolean(mix.enabled), [['true', '开启'], ['false', '关闭']], { disabled: readonly }),
                         numberField('nl_tag_mix.tag_ratio', '标签混合比例', mix.tag_ratio ?? 0.7, { min: 0, max: 1, step: 0.01, disabled: readonly }),
                         selectField('trigger_clone.enabled', '触发词复制', Boolean(clone.enabled), [['true', '开启'], ['false', '关闭']], { disabled: readonly }),
@@ -144,8 +144,10 @@ export function renderDatasetRow(row, index, defaults, options = {}) {
     `;
 }
 
-function settingsGroup(title, description, fields) {
-    return `<section class="dragon-dataset-settings-group"><header><h3>${escapeHtml(title)}</h3><p>${escapeHtml(description)}</p></header><div class="dragon-dataset-field-grid">${fields.join('')}</div></section>`;
+function settingsGroup(title, fields) {
+    const count = fields.length;
+    const columns = count <= 3 ? count : (count === 4 ? 2 : 3);
+    return `<section class="dragon-dataset-settings-group" data-field-count="${count}"><header><h3>${escapeHtml(title)}</h3></header><div class="dragon-dataset-field-grid" style="--dataset-field-columns:${columns}">${fields.join('')}</div></section>`;
 }
 
 function textField(key, label, value, options = {}) {

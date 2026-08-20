@@ -22,7 +22,10 @@ def setup_settings_routes(app: web.Application) -> None:
 
 
 async def handle_global_settings_get(request: web.Request) -> web.Response:
-    return web.json_response(get_global_settings())
+    try:
+        return web.json_response(get_global_settings())
+    except ValueError as e:
+        return web.json_response({"ok": False, "error": str(e)}, status=409)
 
 
 async def handle_global_settings_put(request: web.Request) -> web.Response:

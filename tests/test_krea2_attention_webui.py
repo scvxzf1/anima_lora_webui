@@ -69,8 +69,13 @@ def test_image_test_options_are_family_aware() -> None:
 
     assert "imageTestAttnModeOptionsForFamily" in state
     assert "['torch', 'flash'].includes(item.value)" in state
+    assert "imageTestSamplerOptionsForFamily" in state
+    assert "item.value === 'euler'" in state
     assert "renderer.setAttentionModeOptions(modelFamily" in feature
+    assert "renderer.setSamplerOptions(modelFamily" in feature
+    assert "flowShiftInput.disabled = isKrea2" in feature
     assert "getModelFamily" in bridge
+    assert "configState.currentConfig?.model_family" in bridge
 
 
 def test_image_service_canonicalizes_krea2_sdpa_alias(monkeypatch) -> None:

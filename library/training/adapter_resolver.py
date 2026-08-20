@@ -36,4 +36,13 @@ def resolve_adapters(args, network) -> list[MethodAdapter]:
         from networks.methods.soft_tokens import SoftTokensMethodAdapter
 
         adapters.append(SoftTokensMethodAdapter())
+    if adapters:
+        from library.env import resolve_model_family
+
+        if resolve_model_family(args) == "krea2_raw":
+            names = ", ".join(adapter.name for adapter in adapters)
+            raise ValueError(
+                "Krea-2 training currently supports only plain LoRA; "
+                f"method adapters are unsupported: {names}"
+            )
     return adapters

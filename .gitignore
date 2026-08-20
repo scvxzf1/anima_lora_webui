@@ -49,6 +49,9 @@ configs/web-training-history/
 configs/web-training-queue/
 web/configs/
 node.zip
+web/frontend-next/node_modules/
+web/frontend-next/coverage/
+web/static/dragon-next/
 _archive/
 !_archive/
 !_archive/proposals/
@@ -56,3 +59,6 @@ _archive/
 
 # Local git worktrees
 .worktrees/
+web/frontend-next/*.tsbuildinfo
+web/frontend-next/vite.config.js
+web/frontend-next/vite.config.d.ts

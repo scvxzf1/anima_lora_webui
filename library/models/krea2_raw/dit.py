@@ -355,11 +355,19 @@ class SingleStreamBlock(nn.Module):
     def _forward(
         self, x: Tensor, vec: Tensor, freqs: Tensor, mask: Tensor | None = None
     ) -> Tensor:
-        prescale, preshift, pregate, postscale, postshift, postgate = self.mod(vec)
-        x = x + pregate * self.attn(
-            (1 + prescale) * self.prenorm(x) + preshift, freqs, mask
+        compute_dtype = x.dtype
+        modulation = tuple(value.to(compute_dtype) for value in self.mod(vec))
+        prescale, preshift, pregate, postscale, postshift, postgate = modulation
+        attn_input = ((1 + prescale) * self.prenorm(x) + preshift).to(
+            compute_dtype
         )
-        x = x + postgate * self.mlp((1 + postscale) * self.postnorm(x) + postshift)
+        attn_output = self.attn(attn_input, freqs, mask).to(compute_dtype)
+        x = x + pregate * attn_output
+        mlp_input = ((1 + postscale) * self.postnorm(x) + postshift).to(
+            compute_dtype
+        )
+        mlp_output = self.mlp(mlp_input).to(compute_dtype)
+        x = x + postgate * mlp_output
         return x
 
     def forward(
@@ -468,7 +476,14 @@ class SingleStreamDiT(nn.Module):
 
     @property
     def dtype(self) -> torch.dtype:
-        return next(self.parameters()).dtype
+        parameters = iter(self.parameters())
+        first = next(parameters)
+        if first.is_floating_point():
+            return first.dtype
+        for parameter in parameters:
+            if parameter.is_floating_point():
+                return parameter.dtype
+        return first.dtype
 
     def set_attention_mode(self, mode: str) -> None:
         normalized = normalize_krea2_attention_mode(mode)
@@ -662,17 +677,22 @@ class SingleStreamDiT(nn.Module):
         # t: (B,) timestep
         # pos: (B, L_total, 3) 3D 位置编码（H, W, token-type 轴）
         # mask: (B, L_total) key-padding mask（True=有效）
-        img = self.first(img)
-        t = self.tmlp(temb(t, self.config.tdim, device=img.device, dtype=img.dtype))
-        tvec = self.tproj(t)
+        compute_dtype = img.dtype
+        img = self.first(img).to(compute_dtype)
+        t = self.tmlp(
+            temb(t, self.config.tdim, device=img.device, dtype=compute_dtype)
+        ).to(compute_dtype)
+        tvec = self.tproj(t).to(compute_dtype)
 
         txtmask = _mask(mask[:, : context.shape[1]])
 
-        context = self.txtfusion(context, mask=txtmask)
-        context = self.txtmlp(context)
+        context = self.txtfusion(context.to(compute_dtype), mask=txtmask).to(
+            compute_dtype
+        )
+        context = self.txtmlp(context).to(compute_dtype)
 
         txtlen, imglen = context.shape[1], img.shape[1]
-        combined = torch.cat((context, img), dim=1)
+        combined = torch.cat((context, img), dim=1).to(compute_dtype)
 
         # Pad combined sequence to a multiple of 256 to stabilize compiled kernel shapes.
         fulllen = combined.shape[1]
@@ -688,7 +708,7 @@ class SingleStreamDiT(nn.Module):
 
         combined = self._run_blocks(combined, tvec, freqs, mask)
 
-        final = self.last(combined, t)
+        final = self.last(combined, t).to(compute_dtype)
         output = final[:, txtlen : txtlen + imglen, :]
 
         return output

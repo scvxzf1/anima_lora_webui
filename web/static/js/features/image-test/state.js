@@ -33,6 +33,12 @@ export function imageTestAttnModeOptionsForFamily(modelFamily) {
     return IMAGE_TEST_ATTN_MODE_OPTIONS.filter((item) => ['torch', 'flash'].includes(item.value));
 }
 
+export function imageTestSamplerOptionsForFamily(modelFamily) {
+    const family = String(modelFamily || '').trim().toLowerCase();
+    if (family !== 'krea2_raw') return IMAGE_TEST_SAMPLER_OPTIONS;
+    return IMAGE_TEST_SAMPLER_OPTIONS.filter((item) => item.value === 'euler');
+}
+
 export const IMAGE_TEST_RUNTIME_DTYPE_OPTIONS = Object.freeze([
     { value: 'bf16', label: 'bf16' },
     { value: 'fp16', label: 'fp16' },

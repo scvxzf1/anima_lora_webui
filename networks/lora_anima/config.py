@@ -21,6 +21,7 @@ from typing import Any, Dict, List, Literal, Mapping, Optional, Type, Union
 
 import torch
 
+from library.env import normalize_model_family
 from networks.lora_modules import LoRAModule
 
 # Three-axis routing config (see plan2.md §three-axis-config).
@@ -498,16 +499,8 @@ class LoRANetworkCfg:
         if not text_encoder_target_replace_modules:
             text_encoder_target_replace_modules = None
 
-        # Model family (Krea-2-Raw migration). bootstrap.build_net_kwargs
-        # injects it from resolve_model_family(args) so the cfg carries the
-        # family into the save metadata stamp. Unknown values fall back to
-        # the anima default rather than raising — a typo'd TOML value should
-        # train the anima path, not abort a long run partway through.
-        raw_model_family = str(kwargs.get("model_family") or "").strip().lower()
-        model_family = (
-            raw_model_family
-            if raw_model_family in ("anima", "krea2_raw")
-            else "anima"
+        model_family = normalize_model_family(
+            kwargs.get("model_family") or "anima", source="LoRA network model_family"
         )
 
         # adaln convenience knobs: train_adaln adds the adaln_up_{branch}
@@ -942,8 +935,8 @@ class LoRANetworkCfg:
         text_encoder_target_replace_modules: Optional[List[str]] = None,
         # Model family stamp (Krea-2-Raw migration). factory reads
         # ``ss_model_family`` from the checkpoint metadata and passes it here.
-        # None / absent / unknown → "anima" default, so old unstamped
-        # checkpoints and anima checkpoints (key omitted) load as anima.
+        # None / absent → "anima" for old unstamped checkpoints. Explicit
+        # unknown metadata is rejected by the factory before this constructor.
         model_family: Optional[str] = None,
     ) -> "LoRANetworkCfg":
         """Build cfg from a checkpoint key-sniff (warm-start / inference path).
@@ -1082,9 +1075,7 @@ class LoRANetworkCfg:
             register_insert_block=int(register_insert_block),
             unet_target_replace_modules=unet_target_replace_modules,
             text_encoder_target_replace_modules=text_encoder_target_replace_modules,
-            model_family=(
-                str(model_family).strip().lower()
-                if model_family
-                else "anima"
+            model_family=normalize_model_family(
+                model_family or "anima", source="checkpoint model_family"
             ),
         )

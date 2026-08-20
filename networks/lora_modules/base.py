@@ -166,7 +166,8 @@ class BaseLoRAModule(torch.nn.Module):
         org_forwarded = self.org_forward(x)
 
         if not self.training:
-            return org_forwarded + self._eval_delta(x, org_forwarded)
+            delta = self._eval_delta(x, org_forwarded)
+            return org_forwarded + delta.to(org_forwarded.dtype)
 
         if self._skip_module():
             return org_forwarded

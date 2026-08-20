@@ -34,6 +34,21 @@ async def index_handler(request: web.Request) -> web.FileResponse:
     return response
 
 
+async def next_index_handler(request: web.Request) -> web.FileResponse:
+    """Serve the isolated next-generation frontend during migration."""
+    path = STATIC_DIR / "dragon-next" / "index.html"
+    if not path.is_file():
+        raise web.HTTPNotFound(
+            text=(
+                "Dragon next frontend has not been built. Run "
+                "`pnpm --dir web/frontend-next build`."
+            )
+        )
+    response = web.FileResponse(path)
+    response.headers["Cache-Control"] = "no-cache"
+    return response
+
+
 async def static_handler(request: web.Request) -> web.FileResponse:
     rel_path = request.match_info["path"]
     path = (STATIC_DIR / rel_path).resolve()
@@ -137,6 +152,8 @@ def create_app_with_options(*, auth_token: str | None = None) -> web.Application
     setup_routes(app)
 
     app.router.add_get("/", index_handler)
+    app.router.add_get("/next", next_index_handler)
+    app.router.add_get("/next/{path:.*}", next_index_handler)
     app.router.add_get("/static/{path:.*}", static_handler)
 
     app.on_startup.append(_on_startup)

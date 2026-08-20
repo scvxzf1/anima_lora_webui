@@ -5,14 +5,14 @@ Pins the round-trip behavior of the ``model_family`` selector in
 under ``[global]`` in ``web-ui-settings.toml``. Empty value means anima
 default (the resolve_model_family fallback chain still governs at training
 time), so we drop the key when empty rather than writing an empty string.
-Unknown values fall back to empty (== anima) rather than raising, so a
-hand-edited typo doesn't brick the settings panel.
+Unknown explicit values are rejected so execution cannot silently select Anima.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 import toml
 
 from web.services import settings_service
@@ -59,21 +59,17 @@ def test_model_family_anima_stored_as_empty(tmp_path, monkeypatch):
     assert "model_family" not in raw["global"]
 
 
-def test_model_family_unknown_value_falls_back_to_empty(tmp_path, monkeypatch):
-    """An unknown family value falls back to empty (== anima) on save."""
-    settings_file = _patch_settings(tmp_path, monkeypatch)
-    saved = settings_service.save_global_settings({"model_family": "bogus_family"})
-    assert saved["model_family"] == ""
-    raw = toml.loads(settings_file.read_text(encoding="utf-8"))
-    assert "model_family" not in raw["global"]
+def test_model_family_unknown_value_is_rejected_on_save(tmp_path, monkeypatch):
+    _patch_settings(tmp_path, monkeypatch)
+    with pytest.raises(ValueError, match="WebUI global model_family"):
+        settings_service.save_global_settings({"model_family": "bogus_family"})
 
 
-def test_model_family_unknown_on_disk_falls_back_to_empty(tmp_path, monkeypatch):
-    """A hand-edited unknown value on disk reads back as empty (== anima)."""
+def test_model_family_unknown_on_disk_is_rejected(tmp_path, monkeypatch):
     settings_file = _patch_settings(tmp_path, monkeypatch)
     settings_file.write_text(
         '[global]\noutput_root = "output/runs"\nmodel_family = "bogus"\n',
         encoding="utf-8",
     )
-    loaded = settings_service.get_global_settings()
-    assert loaded["model_family"] == ""
+    with pytest.raises(ValueError, match="WebUI global model_family"):
+        settings_service.get_global_settings()

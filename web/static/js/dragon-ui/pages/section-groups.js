@@ -140,6 +140,12 @@ export const SECTION_GROUPS = {
             desc: '选择训练中出图的采样器。',
             keys: ['sample_sampler'],
         },
+        {
+            eyebrow: '随机性',
+            title: '预览随机种子',
+            desc: '未在提示词行单独指定种子时，使用该种子生成稳定、可比较的预览图。',
+            keys: ['seed'],
+        },
     ],
     'timestep': [
         {
@@ -368,7 +374,7 @@ export const SECTION_GROUPS = {
             eyebrow: 'Rank 与分层',
             title: '维度配置与层范围',
             desc: '设置 rank、alpha 缩放和起始层。',
-            keys: ['min_rank', 'alpha_rank_scale', 'timestep_mask_mode', 'timestep_mask_at_inference', 'layer_start'],
+            keys: ['min_rank', 'alpha_rank_scale', 'layer_start'],
         },
     ],
     'moe-routing': [

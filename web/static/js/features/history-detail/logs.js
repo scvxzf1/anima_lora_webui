@@ -91,8 +91,8 @@ export function createHistoryLogsRenderer({ state, deps }) {
             const query = state.logs.query.trim();
             const matches = [];
             const filtered = visibleLogs.filter((item) => historyLogMatchesLevel(item.tone, state.logs.level));
+            const nextContent = document.createDocumentFragment();
             pre.dataset.rendering = 'true';
-            pre.textContent = '';
             previous.disabled = true;
             next.disabled = true;
             matchStatus.textContent = query ? '搜索中...' : '';
@@ -101,8 +101,8 @@ export function createHistoryLogsRenderer({ state, deps }) {
                 const empty = document.createElement('span');
                 empty.className = 'history-log-empty';
                 empty.textContent = visibleLogs.length ? '当前筛选条件下没有日志。' : '无日志。';
-                pre.appendChild(empty);
-                finishConsoleRender(token, matches, query, options);
+                nextContent.appendChild(empty);
+                finishConsoleRender(token, matches, query, nextContent, options);
                 return;
             }
 
@@ -117,19 +117,22 @@ export function createHistoryLogsRenderer({ state, deps }) {
                     appendAnsiLogText(line, item.text, query, matches);
                     fragment.appendChild(line);
                 }
-                pre.appendChild(fragment);
+                nextContent.appendChild(fragment);
                 if (end < filtered.length) {
                     scheduleHistoryLogRenderBatch(() => appendBatch(end));
                     return;
                 }
-                finishConsoleRender(token, matches, query, options);
+                finishConsoleRender(token, matches, query, nextContent, options);
             };
 
             appendBatch();
         }
 
-        function finishConsoleRender(token, matches, query, options = {}) {
+        function finishConsoleRender(token, matches, query, nextContent, options = {}) {
             if (token !== consoleRenderToken) return;
+            const scrollPosition = captureHistoryLogScrollPosition(pre);
+            pre.replaceChildren(nextContent);
+            restoreHistoryLogScrollPosition(pre, scrollPosition);
             delete pre.dataset.rendering;
             if (!matches.length) {
                 state.logs.matchIndex = 0;
@@ -398,4 +401,19 @@ export function createHistoryLogsRenderer({ state, deps }) {
     }
 
     return { renderHistoryDetailLogs, stripAnsiCodes };
+}
+
+export function captureHistoryLogScrollPosition(element) {
+    return {
+        top: Math.max(0, Number(element?.scrollTop) || 0),
+        left: Math.max(0, Number(element?.scrollLeft) || 0),
+    };
+}
+
+export function restoreHistoryLogScrollPosition(element, position = {}) {
+    if (!element) return;
+    const maxTop = Math.max(0, (Number(element.scrollHeight) || 0) - (Number(element.clientHeight) || 0));
+    const maxLeft = Math.max(0, (Number(element.scrollWidth) || 0) - (Number(element.clientWidth) || 0));
+    element.scrollTop = Math.min(Math.max(0, Number(position.top) || 0), maxTop);
+    element.scrollLeft = Math.min(Math.max(0, Number(position.left) || 0), maxLeft);
 }

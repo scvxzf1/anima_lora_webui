@@ -7,6 +7,7 @@ import os
 from typing import Optional, Union
 
 from library.datasets import DatasetGroup, MinimalDataset
+from library.env import resolve_model_family
 from library.runtime.offloading import (
     normalize_block_swap_restore_mode,
     normalize_block_swap_transfer_dtype,
@@ -70,6 +71,9 @@ def assert_training_extra_args(
         getattr(args, "block_swap_restore_mode", "slab")
     )
 
+    # Materialize the runtime family before entering the pure compatibility
+    # matrix so env fallback and explicit CLI/TOML selection share one contract.
+    args.model_family = resolve_model_family(args)
     compat = check_training_compat(args)
     warning_codes = {warning.code for warning in compat.warnings}
     for warning in compat.warnings:
@@ -234,4 +238,3 @@ def assert_training_extra_args(
     )  # WanVAE spatial downscale = 8 and patch size = 2
     if val_dataset_group is not None:
         val_dataset_group.verify_bucket_reso_steps(16)
-

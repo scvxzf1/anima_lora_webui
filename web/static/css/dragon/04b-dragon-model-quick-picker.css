@@ -1,0 +1,454 @@
+/* Centered model-library picker for the base-model training configuration. */
+
+body[data-dragon-ui] #dragon-root .dragon-config-detail-header {
+    display: flex;
+    min-width: 0;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--dragon-sp-5);
+}
+
+.dragon-config-detail-header-copy {
+    min-width: 0;
+}
+
+.dragon-model-quick-trigger {
+    flex: 0 0 auto;
+    min-height: 38px;
+    margin-top: 2px;
+    white-space: nowrap;
+}
+
+.dragon-model-quick-trigger .dragon-btn-icon {
+    width: 17px;
+    height: 17px;
+}
+
+body[data-dragon-ui] .dragon-model-quick-dialog {
+    position: fixed;
+    inset: 0;
+    box-sizing: border-box;
+    width: min(1000px, calc(100vw - 48px));
+    max-width: none;
+    height: min(720px, calc(100dvh - 64px));
+    max-height: none;
+    margin: auto;
+    overflow: hidden;
+    padding: 0;
+    border: 1px solid var(--dragon-border);
+    border-radius: var(--dragon-radius-lg);
+    background: var(--dragon-bg-primary);
+    color: var(--dragon-text-primary);
+    box-shadow: var(--dragon-shadow-lg);
+}
+
+body[data-dragon-ui] .dragon-model-quick-dialog::backdrop {
+    background: rgba(0, 0, 0, 0.48);
+    backdrop-filter: blur(3px);
+}
+
+.dragon-model-quick-shell {
+    display: grid;
+    height: 100%;
+    min-height: 0;
+    grid-template-rows: auto auto minmax(0, 1fr) auto;
+}
+
+.dragon-model-quick-head {
+    display: flex;
+    min-width: 0;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--dragon-sp-4);
+    padding: 20px 22px 16px;
+    border-bottom: 1px solid var(--dragon-divider);
+}
+
+.dragon-model-quick-head > div:first-child {
+    min-width: 0;
+}
+
+.dragon-model-quick-head h2,
+.dragon-model-quick-preview-head h3 {
+    margin: 3px 0 0;
+    color: var(--dragon-text-primary);
+    font-family: var(--dragon-font-display);
+    letter-spacing: 0;
+}
+
+.dragon-model-quick-head h2 {
+    font-size: var(--dragon-fs-headline-small);
+    line-height: 1.25;
+}
+
+.dragon-model-quick-head p {
+    margin: 6px 0 0;
+    color: var(--dragon-text-tertiary);
+    font-size: var(--dragon-fs-caption);
+}
+
+.dragon-model-quick-head-actions {
+    display: flex;
+    flex: 0 0 auto;
+    gap: var(--dragon-sp-2);
+}
+
+.dragon-model-quick-status {
+    min-height: 0;
+    padding: 0 22px;
+    color: var(--dragon-text-tertiary);
+    font-size: var(--dragon-fs-caption);
+}
+
+.dragon-model-quick-status:not(:empty) {
+    padding-top: 9px;
+    padding-bottom: 9px;
+    border-bottom: 1px solid var(--dragon-divider);
+}
+
+.dragon-model-quick-status[data-tone="error"] {
+    color: var(--dragon-error);
+}
+
+.dragon-model-quick-workspace {
+    display: grid;
+    min-width: 0;
+    min-height: 0;
+    grid-template-columns: minmax(270px, 36%) minmax(0, 1fr);
+}
+
+.dragon-model-quick-library {
+    display: grid;
+    min-width: 0;
+    min-height: 0;
+    grid-template-rows: auto minmax(0, 1fr);
+    border-right: 1px solid var(--dragon-divider);
+    background: var(--dragon-bg-secondary);
+}
+
+.dragon-model-quick-search {
+    display: block;
+    padding: 14px;
+    border-bottom: 1px solid var(--dragon-divider);
+}
+
+.dragon-model-quick-search .dragon-input {
+    width: 100%;
+    min-height: 38px;
+}
+
+.dragon-model-quick-groups {
+    min-width: 0;
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    padding: 10px;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+}
+
+.dragon-model-quick-group + .dragon-model-quick-group {
+    margin-top: 14px;
+}
+
+.dragon-model-quick-group-title {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 4px 6px 7px;
+    color: var(--dragon-text-quaternary);
+    font-size: var(--dragon-fs-tiny);
+}
+
+.dragon-model-quick-group-title strong {
+    overflow: hidden;
+    font-weight: var(--dragon-fw-semibold);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.dragon-model-quick-group-title span {
+    font-variant-numeric: tabular-nums;
+}
+
+.dragon-model-quick-items {
+    display: grid;
+    gap: 5px;
+}
+
+.dragon-model-quick-item {
+    display: grid;
+    width: 100%;
+    min-width: 0;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 9px;
+    padding: 9px 10px;
+    border: 1px solid transparent;
+    border-radius: var(--dragon-radius-sm);
+    background: transparent;
+    color: var(--dragon-text-primary);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.dragon-model-quick-item:hover {
+    border-color: var(--dragon-border-light);
+    background: var(--dragon-tile-bg-hover);
+}
+
+.dragon-model-quick-item[data-active="true"] {
+    border-color: color-mix(in srgb, var(--dragon-accent) 38%, var(--dragon-border));
+    background: var(--dragon-accent-light);
+}
+
+.dragon-model-quick-item > span {
+    display: grid;
+    min-width: 0;
+    gap: 3px;
+}
+
+.dragon-model-quick-item strong,
+.dragon-model-quick-item small {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.dragon-model-quick-item strong {
+    font-size: var(--dragon-fs-caption);
+    font-weight: var(--dragon-fw-medium);
+}
+
+.dragon-model-quick-item small {
+    color: var(--dragon-text-tertiary);
+    font-family: var(--dragon-font-mono);
+    font-size: 10px;
+}
+
+.dragon-model-quick-item em,
+.dragon-model-quick-badges span {
+    padding: 2px 6px;
+    border-radius: var(--dragon-radius-pill);
+    background: var(--dragon-tile-bg);
+    color: var(--dragon-text-secondary);
+    font-size: 10px;
+    font-style: normal;
+    white-space: nowrap;
+}
+
+.dragon-model-quick-preview {
+    min-width: 0;
+    min-height: 0;
+    overflow: auto;
+    padding: 24px;
+    overscroll-behavior: contain;
+}
+
+.dragon-model-quick-preview-head {
+    display: flex;
+    min-width: 0;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--dragon-sp-4);
+    margin-bottom: 20px;
+}
+
+.dragon-model-quick-preview-head > div:first-child {
+    min-width: 0;
+}
+
+.dragon-model-quick-preview-head h3 {
+    overflow-wrap: anywhere;
+    font-size: var(--dragon-fs-subhead);
+    line-height: 1.3;
+}
+
+.dragon-model-quick-badges {
+    display: flex;
+    flex: 0 0 auto;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 5px;
+}
+
+.dragon-model-quick-badges span[data-default="true"] {
+    background: var(--dragon-accent-light);
+    color: var(--dragon-accent);
+}
+
+.dragon-model-quick-paths {
+    display: grid;
+    gap: 12px;
+    margin: 0;
+}
+
+.dragon-model-quick-paths > div {
+    min-width: 0;
+    padding: 13px 14px;
+    border: 1px solid var(--dragon-border-light);
+    border-radius: var(--dragon-radius-sm);
+    background: var(--dragon-bg-secondary);
+}
+
+.dragon-model-quick-paths dt {
+    margin-bottom: 7px;
+    color: var(--dragon-text-tertiary);
+    font-size: var(--dragon-fs-tiny);
+    font-weight: var(--dragon-fw-semibold);
+}
+
+.dragon-model-quick-paths dd {
+    min-width: 0;
+    margin: 0;
+}
+
+.dragon-model-quick-paths code {
+    display: block;
+    overflow-wrap: anywhere;
+    color: var(--dragon-text-primary);
+    font-family: var(--dragon-font-mono);
+    font-size: var(--dragon-fs-caption);
+    line-height: 1.55;
+    white-space: normal;
+}
+
+.dragon-model-quick-paths > div[data-empty="true"] code {
+    color: var(--dragon-error);
+}
+
+.dragon-model-quick-empty {
+    display: grid;
+    min-height: 120px;
+    place-items: center;
+    padding: 20px;
+    color: var(--dragon-text-tertiary);
+    font-size: var(--dragon-fs-caption);
+    text-align: center;
+}
+
+.dragon-model-quick-footer {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--dragon-sp-4);
+    padding: 14px 22px;
+    border-top: 1px solid var(--dragon-divider);
+    background: var(--dragon-bg-primary);
+}
+
+.dragon-model-quick-selection {
+    display: grid;
+    min-width: 0;
+    gap: 2px;
+}
+
+.dragon-model-quick-selection span {
+    color: var(--dragon-text-quaternary);
+    font-size: var(--dragon-fs-tiny);
+}
+
+.dragon-model-quick-selection strong {
+    overflow: hidden;
+    color: var(--dragon-text-primary);
+    font-size: var(--dragon-fs-caption);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.dragon-model-quick-footer .dragon-btn {
+    flex: 0 0 auto;
+}
+
+@media (max-width: 734px) {
+    body[data-dragon-ui] #dragon-root .dragon-config-detail-header {
+        flex-direction: column;
+        gap: 14px;
+    }
+
+    .dragon-model-quick-trigger {
+        align-self: flex-start;
+        margin-top: 0;
+    }
+
+    body[data-dragon-ui] .dragon-model-quick-dialog {
+        width: calc(100vw - 24px);
+        height: calc(100dvh - 24px);
+        border-radius: var(--dragon-radius-md);
+    }
+
+    .dragon-model-quick-head {
+        padding: 16px;
+    }
+
+    .dragon-model-quick-head p {
+        display: none;
+    }
+
+    .dragon-model-quick-workspace {
+        grid-template-columns: 1fr;
+        grid-template-rows: minmax(210px, 42%) minmax(0, 1fr);
+    }
+
+    .dragon-model-quick-library {
+        border-right: 0;
+        border-bottom: 1px solid var(--dragon-divider);
+    }
+
+    .dragon-model-quick-preview {
+        padding: 16px;
+    }
+
+    .dragon-model-quick-preview-head {
+        margin-bottom: 14px;
+    }
+
+    .dragon-model-quick-footer {
+        padding: 12px 16px;
+    }
+}
+
+@media (max-width: 430px) {
+    .dragon-model-quick-head h2 {
+        font-size: var(--dragon-fs-callout);
+    }
+
+    .dragon-model-quick-head-actions .dragon-icon-button {
+        width: 34px;
+        height: 34px;
+    }
+
+    .dragon-model-quick-workspace {
+        grid-template-rows: minmax(190px, 40%) minmax(0, 1fr);
+    }
+
+    .dragon-model-quick-item {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .dragon-model-quick-item em {
+        justify-self: start;
+    }
+
+    .dragon-model-quick-preview-head {
+        display: grid;
+    }
+
+    .dragon-model-quick-badges {
+        justify-content: flex-start;
+    }
+
+    .dragon-model-quick-footer {
+        align-items: stretch;
+        flex-direction: column;
+        gap: 9px;
+    }
+
+    .dragon-model-quick-footer .dragon-btn {
+        width: 100%;
+        justify-content: center;
+    }
+}

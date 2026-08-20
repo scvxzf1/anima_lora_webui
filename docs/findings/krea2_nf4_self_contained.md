@@ -66,7 +66,8 @@ needed when the base path is a v2 file.
 | Total v2 keys | 1,753 |
 | Direct full-model CPU load | 264 Linear4bit, 159 model tensors, zero meta parameters |
 | Direct-load peak RSS | 1.67 GB |
-| Direct-load elapsed time | 129.67 s |
+| Direct-load elapsed time (original CPU shell) | 129.67 s |
+| Direct-load elapsed time (meta shell, 2026-08-10) | 0.386 s |
 | PG199 real LoRA smoke, 256 px, 2 steps | loss 0.0239 -> 0.0228, gradients nonzero, finite |
 | PG199 smoke allocator peak | 7.71 GB |
 | RTX 3080, swap20, synthetic 256 px, 2 steps | loss 5.0938 -> 4.9375, gradients nonzero, finite |
@@ -82,6 +83,9 @@ two training steps completed and satisfied the intended smoke criteria.
 
 This is a packaging and loading change, not a new quantizer. Training math,
 4-bit codes, quantization state, LoRA targets, block swap, and checkpoint
-semantics are unchanged. Startup still spends about two minutes reconstructing
-264 `Params4bit` objects, but it no longer reads the 25 GB BF16 payload or runs
-online quantization.
+semantics are unchanged. The original loader spent about two minutes creating
+and immediately discarding full-size FP32 weights for 264 `Linear4bit` shells.
+Constructing those shells on the meta device reduced the measured CPU
+direct-load time to 0.386 seconds without leaving meta parameters or buffers.
+The loader also avoids reading the 25 GB BF16 payload or running online
+quantization.

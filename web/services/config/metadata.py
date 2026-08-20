@@ -61,6 +61,8 @@ RETIRED_TOP_LEVEL_CONFIG_FIELDS = {
     "use_repa",
     "use_sigma_router",
     "use_fei_router",
+    "timestep_mask_mode",
+    "timestep_mask_at_inference",
 }
 
 DATASET_IMAGE_EXTS = frozenset({".png", ".jpg", ".jpeg", ".webp", ".bmp"})

@@ -1,14 +1,32 @@
 /* Dragon training history controller: list filters, detail resources, and resume actions. */
 
 import { createApiClient } from '../../shared/api.js?v=dragon-ui-20260812v35';
-import { renderLossChart } from './live-training.js?v=dragon-ui-20260814v43';
-import { scanForReveal } from '../animations.js?v=dragon-ui-20260812v35';
+import { copyText } from '../../shared/dom.js?v=dragon-ui-20260812v35';
+import { renderHistoryMetricsChart, bindHistoryChart } from './history-chart.js?v=dragon-ui-20260816v2';
+import {
+    bindHistorySystemCharts,
+    renderHistorySystemCharts,
+} from './history-system-charts.js?v=dragon-ui-20260816v1';
+import { bindHistoryLogViewer } from './history-log-viewer.js?v=dragon-ui-20260816v3';
 import { bindHistorySampleDialog } from './history-sample-dialog.js?v=dragon-ui-20260819v2';
+import {
+    activateHistoryDetailTab,
+    normalizeHistoryDetailTab,
+} from './history-detail-tabs.js?v=dragon-ui-20260816v2';
+import { scanForReveal } from '../animations.js?v=dragon-ui-20260816v67';
+import { switchToClassicUI } from '../../shared/ui-mode.js?v=dragon-ui-20260814v43';
+import {
+    createHistoryCollectionWorkspace,
+    renderHistoryCollectionWorkbench,
+} from './history-collections.js?v=dragon-ui-20260816v6';
+import { bindHistoryCollectionWorkbench } from './history-collections-controller.js?v=dragon-ui-20260816v4';
 import {
     renderHistoryDetailError,
     renderHistoryDetailPage,
     renderHistoryPage,
     renderHistoryResults,
+    renderHistoryStats,
+    renderHistorySummary,
     taskDisplayName,
 } from './history-view.js?v=dragon-ui-20260819v92';
 
@@ -16,24 +34,30 @@ const api = createApiClient();
 
 export async function loadHistory(context = {}) {
     const taskId = context.taskId || null;
-    if (taskId) return loadHistoryDetail(taskId);
+    if (taskId) return loadHistoryDetail(taskId, context.sub);
 
-    const payload = await safeApi('/api/training/history?limit=200', '读取训练历史失败');
+    const [payload, collectionSettings] = await Promise.all([
+        safeApi('/api/training/history?limit=200&include_archived=1', '读取训练历史失败'),
+        safeApi('/api/training/history/collections/settings', '读取历史分组失败'),
+    ]);
     const state = {
         tasks: Array.isArray(payload.tasks) ? payload.tasks : [],
         error: payload.ok === false ? (payload.error || '读取训练历史失败') : '',
-        query: '',
-        status: 'all',
+        filters: defaultHistoryFilters(),
+        workspace: createHistoryCollectionWorkspace(collectionSettings),
         requestSequence: 0,
     };
     return {
-        html: renderHistoryPage(state),
+        html: renderHistoryPage({
+            ...state,
+            resultsHtml: renderHistoryCollectionWorkbench(state.tasks, state.filters, state.workspace),
+        }),
         onMount: (root) => bindHistoryList(root, state),
         onUnmount: () => { state.requestSequence += 1; },
     };
 }
 
-async function loadHistoryDetail(taskId) {
+async function loadHistoryDetail(taskId, requestedTab) {
     const payload = await safeApi(
         `/api/training/history/${encodeURIComponent(taskId)}`,
         '加载训练记录失败',
@@ -55,35 +79,80 @@ async function loadHistoryDetail(taskId) {
     ]);
     const model = {
         taskId,
+        activeTab: normalizeHistoryDetailTab(requestedTab),
         payload,
         images,
         weights,
         resume,
-        lossChart: renderLossChart(Array.isArray(payload.metrics) ? payload.metrics : []),
+        lossChart: renderHistoryMetricsChart(Array.isArray(payload.metrics) ? payload.metrics : []),
+        systemCharts: renderHistorySystemCharts(payload.system, payload.limits),
     };
-    return { html: renderHistoryDetailPage(model), onMount: (root) => bindHistoryDetail(root, model) };
+    let cleanup = null;
+    let mountedRoot = null;
+    return {
+        html: renderHistoryDetailPage(model),
+        onMount: (root) => { mountedRoot = root; cleanup = bindHistoryDetail(root, model); },
+        onUnmount: () => { cleanup?.(); mountedRoot = null; },
+        onRouteUpdate: (context) => updateHistoryDetailRoute(context, taskId),
+    };
+
+    function updateHistoryDetailRoute(context, mountedTaskId) {
+        if (context.taskId !== mountedTaskId || !mountedRoot) return false;
+        model.activeTab = activateHistoryDetailTab(mountedRoot, context.sub);
+        scrollHistoryDetailContent(mountedRoot);
+        return true;
+    }
 }
 
 function bindHistoryList(root, state) {
-    const queryInput = root.querySelector('[data-history-search]');
-    const statusSelect = root.querySelector('[data-history-status]');
-    queryInput?.addEventListener('input', () => {
-        state.query = queryInput.value || '';
-        updateHistoryResults(root, state);
+    root.querySelectorAll('[data-history-filter]').forEach((control) => {
+        const key = control.dataset.historyFilter;
+        if (!key || !(key in state.filters)) return;
+        const eventName = control.matches('input[type="search"]') ? 'input' : 'change';
+        control.addEventListener(eventName, () => {
+            state.filters[key] = control.value || historyFilterDefault(key);
+            if (key !== 'archived' && key !== 'sort' && expandArchiveScopeForMatches(state)) {
+                syncHistoryFilterControls(root, state);
+            }
+            updateHistoryStats(root, state);
+            updateHistoryResults(root, state);
+        });
     });
-    statusSelect?.addEventListener('change', () => {
-        state.status = statusSelect.value || 'all';
-        updateHistoryResults(root, state);
+    root.querySelectorAll('[data-history-stat]').forEach((button) => {
+        button.addEventListener('click', () => {
+            applyHistoryStatFilter(state, button.dataset.historyStat || 'all');
+            syncHistoryFilterControls(root, state);
+            updateHistoryStats(root, state);
+            updateHistoryResults(root, state);
+        });
     });
     root.querySelector('[data-history-refresh]')?.addEventListener('click', () => refreshHistory(root, state));
+    root.querySelectorAll('[data-history-classic]').forEach((button) => {
+        button.addEventListener('click', () => switchToClassicUI('training'));
+    });
+    bindHistoryCollectionWorkbench(root, state, { renderResults: updateHistoryResults, setStatus: setHistoryStatus });
 }
 
 function updateHistoryResults(root, state) {
-    const model = renderHistoryResults(state.tasks, state.query, state.status);
+    const model = renderHistoryResults(state.tasks, state.filters);
     const results = root.querySelector('[data-history-results]');
     const count = root.querySelector('[data-history-count]');
-    if (results) results.innerHTML = model.html;
+    const summary = root.querySelector('[data-history-summary]');
+    if (results) {
+        results.innerHTML = renderHistoryCollectionWorkbench(
+            state.tasks,
+            state.filters,
+            state.workspace,
+        );
+        // Filter updates replace the result DOM after the page observer has run.
+        // Make replacement groups visible immediately instead of leaving them at
+        // the default .dragon-reveal opacity: 0 while waiting for an observer tick.
+        results.querySelectorAll('.dragon-reveal').forEach((element) => {
+            element.classList.add('dragon-in-view');
+        });
+    }
     if (count) count.textContent = `${model.visibleCount} / ${state.tasks.length} 条记录`;
+    if (summary) summary.textContent = renderHistorySummary(state.tasks, state.filters);
     scanForReveal();
 }
 
@@ -92,7 +161,7 @@ async function refreshHistory(root, state) {
     const button = root.querySelector('[data-history-refresh]');
     if (button) button.disabled = true;
     setHistoryStatus(root, '正在刷新训练历史…', 'info');
-    const payload = await safeApi('/api/training/history?limit=200', '刷新训练历史失败');
+    const payload = await safeApi('/api/training/history?limit=200&include_archived=1', '刷新训练历史失败');
     if (sequence !== state.requestSequence) return;
     if (button) button.disabled = false;
     if (payload.ok === false) {
@@ -101,8 +170,55 @@ async function refreshHistory(root, state) {
     }
     state.tasks = Array.isArray(payload.tasks) ? payload.tasks : [];
     state.error = '';
+    updateHistoryStats(root, state);
     updateHistoryResults(root, state);
     setHistoryStatus(root, `已刷新，共 ${state.tasks.length} 条训练记录。`, 'success');
+}
+
+const HISTORY_FILTER_DEFAULTS = Object.freeze({
+    search: '', kind: 'all', status: 'all', archived: 'active', source: 'all',
+    trainingVariant: 'all', preprocessPrecision: 'all', blockSwapPrecision: 'all',
+    baseCompute: 'all', precisionPreference: 'all', sort: 'newest',
+});
+
+function defaultHistoryFilters() { return { ...HISTORY_FILTER_DEFAULTS }; }
+function historyFilterDefault(key) { return HISTORY_FILTER_DEFAULTS[key] ?? 'all'; }
+
+function syncHistoryFilterControls(root, state) {
+    root.querySelectorAll('[data-history-filter]').forEach((control) => {
+        const key = control.dataset.historyFilter;
+        if (key in state.filters) control.value = state.filters[key];
+    });
+}
+
+function updateHistoryStats(root, state) {
+    const stats = root.querySelector('.dragon-history-stats');
+    if (stats) stats.innerHTML = renderHistoryStats(state.tasks, state.filters);
+    root.querySelectorAll('[data-history-stat]').forEach((button) => {
+        button.onclick = () => {
+            applyHistoryStatFilter(state, button.dataset.historyStat || 'all');
+            syncHistoryFilterControls(root, state);
+            updateHistoryStats(root, state);
+            updateHistoryResults(root, state);
+        };
+    });
+}
+
+function expandArchiveScopeForMatches(state) {
+    if (state.filters.archived !== 'active') return false;
+    if (renderHistoryResults(state.tasks, state.filters).visibleCount > 0) return false;
+    const expanded = { ...state.filters, archived: 'all' };
+    if (renderHistoryResults(state.tasks, expanded).visibleCount === 0) return false;
+    state.filters.archived = 'all';
+    return true;
+}
+
+function applyHistoryStatFilter(state, stat) {
+    state.filters = { ...HISTORY_FILTER_DEFAULTS, sort: state.filters.sort || 'newest' };
+    if (stat === 'training' || stat === 'preprocess') state.filters.kind = stat;
+    else if (stat === 'error') state.filters.status = 'error';
+    else if (stat === 'archived') state.filters.archived = 'archived';
+    else if (stat === 'queue') state.filters.source = 'queue';
 }
 
 function bindHistoryNavigation(root) {
@@ -116,10 +232,65 @@ function bindHistoryNavigation(root) {
 
 function bindHistoryDetail(root, model) {
     bindHistoryNavigation(root);
+    activateHistoryDetailTab(root, model.activeTab);
+    const unbindChart = bindHistoryChart(root, Array.isArray(model.payload.metrics) ? model.payload.metrics : []);
+    const unbindSystemCharts = bindHistorySystemCharts(root, model.payload.system);
+    const unbindLogViewer = bindHistoryLogViewer(root, model.payload.logs, {
+        total: model.payload.limits?.logs_total,
+    });
     root.querySelectorAll('[data-history-resume-mode]').forEach((button) => {
         button.addEventListener('click', () => resumeHistoryTask(root, model, button.dataset.historyResumeMode));
     });
-    bindHistorySampleDialog(root, Array.isArray(model.images.images) ? model.images.images : []);
+    root.querySelectorAll('[data-history-weight-copy]').forEach((button) => {
+        button.addEventListener('click', () => copyHistoryWeightPath(button));
+    });
+    const unbindSampleDialog = bindHistorySampleDialog(root, Array.isArray(model.images.images) ? model.images.images : []);
+    root.querySelector('[data-history-resume-shortcut]')?.addEventListener('click', (event) => {
+        if (model.activeTab !== 'overview') return;
+        event.preventDefault();
+        scrollToHistoryElement(root.querySelector('.dragon-history-resume-panel'));
+    });
+    return () => {
+        unbindChart?.();
+        unbindSystemCharts?.();
+        unbindLogViewer?.();
+        unbindSampleDialog?.();
+    };
+}
+
+async function copyHistoryWeightPath(button) {
+    const path = String(button.dataset.historyWeightCopy || '').trim();
+    const label = button.querySelector('span');
+    const originalLabel = label?.textContent || '复制路径';
+    const originalTitle = button.title;
+    button.disabled = true;
+    try {
+        if (!path) throw new Error('missing weight path');
+        await copyText(path);
+        if (label) label.textContent = '已复制';
+        button.title = path;
+    } catch {
+        if (label) label.textContent = '复制失败';
+        button.title = path ? '复制失败，请检查浏览器剪贴板权限' : '这个权重没有可复制的本地路径';
+    } finally {
+        window.setTimeout(() => {
+            if (!button.isConnected) return;
+            if (label) label.textContent = originalLabel;
+            button.title = originalTitle;
+            button.disabled = false;
+        }, 1400);
+    }
+}
+
+function scrollHistoryDetailContent(root) {
+    scrollToHistoryElement(root?.querySelector('[data-history-detail-content]'));
+}
+
+function scrollToHistoryElement(element) {
+    if (!element || typeof window === 'undefined') return;
+    const navHeight = Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--dragon-nav-height')) || 44;
+    const top = Math.max(0, window.scrollY + element.getBoundingClientRect().top - navHeight - 58);
+    window.scrollTo({ top, behavior: 'auto' });
 }
 
 async function resumeHistoryTask(root, model, mode) {

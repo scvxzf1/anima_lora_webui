@@ -145,16 +145,23 @@ class TrainingBootstrap:
             ):
                 net_kwargs[key] = str(getattr(args, key))
 
-        # Model family (Krea-2-Raw migration, stage 6). Always injected so the
-        # cfg carries the family into the save metadata stamp
-        # (persistence.stamp_lora_save_metadata writes ss_model_family for
-        # non-anima families). Anima value maps to the cfg default, so the
-        # anima path is a no-op and checkpoints stay byte-identical. Explicit
-        # --network_args / TOML ``model_family`` wins (don't override).
-        from library.env import resolve_model_family
+        # Runtime family is the only truth source. A redundant network arg is
+        # accepted only when it agrees, so loader/targets/metadata cannot split.
+        from library.env import normalize_model_family, resolve_model_family
 
-        if "model_family" not in net_kwargs:
-            net_kwargs["model_family"] = resolve_model_family(args)
+        model_family = resolve_model_family(args)
+        network_family = net_kwargs.get("model_family")
+        if network_family is not None:
+            network_family = normalize_model_family(
+                network_family, source="network_args model_family"
+            )
+            if network_family != model_family:
+                raise ValueError(
+                    "network_args model_family conflicts with the runtime family: "
+                    f"{network_family!r} != {model_family!r}. Configure model_family "
+                    "only at the top level."
+                )
+        net_kwargs["model_family"] = model_family
 
         # Family-aware target containers (Krea-2-Raw migration, stage 6).
         # Injects SingleStreamBlock + Krea-2 exclude patterns into LoRANetworkCfg
@@ -163,7 +170,7 @@ class TrainingBootstrap:
         # Thin dispatch only — the actual target spec lives in
         # library.models.krea2_raw.lora_targets. Explicit --network_args /
         # TOML keys still win (don't override user-provided values).
-        if resolve_model_family(args) == "krea2_raw":
+        if model_family == "krea2_raw":
             from library.models.krea2_raw.lora_targets import krea2_target_kwargs
 
             for k, v in krea2_target_kwargs().items():

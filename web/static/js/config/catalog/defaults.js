@@ -190,6 +190,10 @@ export const RETIRED_CONFIG_FORM_FIELDS = new Set([
     'use_hydra',
     'use_sigma_router',
     'use_fei_router',
+    // These controls were never consumed by the trainer. T-LoRA uses
+    // alpha_rank_scale/min_rank and always applies its mask during training.
+    'timestep_mask_mode',
+    'timestep_mask_at_inference',
 ]);
 export const METHOD_SCOPED_CONFIG_FORM_FIELDS = new Map([
     ['weight_decay', new Set(['spd'])],

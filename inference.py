@@ -1013,7 +1013,7 @@ def _generate_krea2_latent(args, gen_settings) -> torch.Tensor:
 
     device = gen_settings.device
     runtime_dtype = gen_settings.runtime_dtype
-    inference_runner._reject_anima_only_extras(args)
+    inference_runner.validate_krea2_inference_args(args, mode="single")
 
     # Lazy loading 不变量 (AGENTS.md): TE -> encode -> free -> DiT.
     # 26GB DiT + 8.9GB TE 同时驻留 PG199 会 OOM, 必须 TE 先释放再加载 DiT.
@@ -1104,6 +1104,15 @@ def main():
             save_output(args, vae, latent, device, original_base_names[i])
 
     else:
+        model_family = resolve_model_family(args)
+        if model_family == "krea2_raw":
+            from library.models.krea2_raw import inference_runner
+
+            inference_mode = (
+                "batch" if args.from_file else "interactive" if args.interactive else "single"
+            )
+            inference_runner.validate_krea2_inference_args(args, mode=inference_mode)
+
         tokenize_strategy = strategy_anima.AnimaTokenizeStrategy(
             qwen3_path=args.text_encoder,
             t5_tokenizer_path=None,
@@ -1132,7 +1141,7 @@ def main():
             # generate() no longer writes the resolved seed back to args, so
             # pin it here for save_output()'s filename + metadata.
             args.seed = resolve_seed(args)
-            if resolve_model_family(args) == "krea2_raw":
+            if model_family == "krea2_raw":
                 latent = _generate_krea2_latent(args, gen_settings)
             else:
                 latent = generate(args, gen_settings)

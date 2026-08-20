@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import torch
 import torch.nn as nn
+import pytest
 from safetensors.torch import save_file
 
 from networks.lora_anima.factory import create_network_from_weights
@@ -244,11 +245,11 @@ def test_ss_model_family_absent_defaults_to_anima() -> None:
     assert net.cfg.model_family == "anima"
 
 
-def test_ss_model_family_unknown_falls_back_to_anima() -> None:
-    """An unknown family value falls back to anima (no raise on load)."""
+def test_ss_model_family_unknown_is_rejected() -> None:
+    """Only an absent stamp may use the legacy Anima default."""
     meta = {"ss_model_family": "unknown_family"}
-    net = _build(file=None, weights_sd=_plain_lora_state_dict(), metadata=meta)
-    assert net.cfg.model_family == "anima"
+    with pytest.raises(ValueError, match="checkpoint ss_model_family"):
+        _build(file=None, weights_sd=_plain_lora_state_dict(), metadata=meta)
 
 
 def test_ss_model_family_round_trip_through_stamp(tmp_path) -> None:
@@ -278,4 +279,3 @@ def test_ss_model_family_round_trip_through_stamp(tmp_path) -> None:
     )
     assert "ss_model_family" not in anima_meta
     assert "ss_unet_target_replace_modules" not in anima_meta
-

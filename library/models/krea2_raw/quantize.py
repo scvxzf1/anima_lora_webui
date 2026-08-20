@@ -549,7 +549,7 @@ def load_nf4_dit_into(
     for path, in_f, out_f, has_bias in entries:
         parent_path, attr = path.rsplit(".", 1) if "." in path else ("", path)
         parent = _get_nested(model, parent_path) if parent_path else model
-        # 构造空壳 Linear4bit (CPU), compute_dtype/quant_type 后面由 Params4bit 覆盖.
+        # Meta 空壳避免 nn.Linear 初始化一份随后会被丢弃的全尺寸 FP32 权重.
         new = Linear4bit(
             in_f,
             out_f,
@@ -557,7 +557,7 @@ def load_nf4_dit_into(
             compute_dtype=COMPUTE_DTYPE,
             compress_statistics=COMPRESS_STATISTICS,
             quant_type=QUANT_TYPE,
-            device="cpu",
+            device="meta",
         )
         # 收集本 path 的 quant_state 项, 重建 QuantState + Params4bit.
         qs_prefix = f"{path}.weight.quant_state."

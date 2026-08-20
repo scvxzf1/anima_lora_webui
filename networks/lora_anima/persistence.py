@@ -7,6 +7,7 @@ from typing import Dict
 
 import torch
 
+from library.env import normalize_model_family
 from networks import lora_save
 from networks.registry import NETWORK_REGISTRY, NetworkSpec
 from networks.lora_anima.config import LoRANetworkCfg
@@ -173,8 +174,11 @@ def stamp_lora_save_metadata(
     # default at load — absence is read as "anima"). The inference loader has
     # no ``args``; this is the only way it can dispatch DiT / text-encoder /
     # forward path from the checkpoint alone.
-    model_family = str(getattr(cfg, "model_family", "anima") or "anima").strip().lower()
-    if model_family and model_family != "anima":
+    model_family = normalize_model_family(
+        getattr(cfg, "model_family", "anima") or "anima",
+        source="LoRA checkpoint model_family",
+    )
+    if model_family != "anima":
         metadata["ss_model_family"] = model_family
 
 

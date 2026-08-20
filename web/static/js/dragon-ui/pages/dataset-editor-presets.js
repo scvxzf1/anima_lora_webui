@@ -23,11 +23,12 @@ export function renderDatasetPresetLibrary(state) {
             <div class="dragon-dataset-library-actions">
                 <button class="dragon-btn dragon-btn-secondary dragon-btn-sm" type="button" data-preset-action="new">${renderIcon('filePlus', 'dragon-btn-icon')}<span>新建</span></button>
                 <button class="dragon-btn dragon-btn-secondary dragon-btn-sm" type="button" data-preset-action="import">${renderIcon('upload', 'dragon-btn-icon')}<span>导入</span></button>
+                <button class="dragon-btn dragon-btn-secondary dragon-btn-sm" type="button" data-preset-action="export" ${state.selectedFile ? '' : 'disabled'}>${renderIcon('download', 'dragon-btn-icon')}<span>导出</span></button>
                 <button class="dragon-btn dragon-btn-secondary dragon-btn-sm dragon-dataset-new-group" type="button" data-preset-action="new-group">${renderIcon('folder', 'dragon-btn-icon')}<span>新建预设分组</span></button>
                 <input type="file" name="dataset_preset_import" accept=".toml,text/plain" data-preset-import hidden>
             </div>
             <div class="dragon-dataset-library-meta"><span>${state.presets.length} 个预设</span><span>${state.groups.length} 个分组</span></div>
-            <div class="dragon-dataset-preset-list" data-preset-list>${renderPresetGroups(state)}</div>
+            <div class="dragon-dataset-preset-list" data-preset-list role="region" aria-label="数据集配置列表" tabindex="0">${renderPresetGroups(state)}</div>
         </aside>
     `;
 }
@@ -42,14 +43,15 @@ export function renderPresetGroups(state) {
     })).filter((group) => group.files.length || (!keyword && group.kind === 'dataset'));
     if (!groups.length) return `<div class="dragon-dataset-library-empty"><strong>${keyword ? '没有匹配的预设' : '还没有数据集预设'}</strong><span>${keyword ? '尝试搜索名称、文件路径或训练目录。' : '新建或导入一个 TOML 数据集配置。'}</span></div>`;
     return groups.map((group) => `
-        <section class="dragon-dataset-preset-group" data-preset-group="${escapeAttribute(group.id || '')}">
+        <section class="dragon-dataset-preset-group" data-preset-group="${escapeAttribute(group.id || '')}" data-preset-drop-group="${escapeAttribute(group.id || '')}">
             <header>
                 <div class="dragon-dataset-preset-group-title"><span title="${escapeAttribute(group.label || group.id || '数据集配置')}">${escapeHtml(group.label || group.id || '数据集配置')}</span><small>${group.files.length}</small>${renderGroupBadge(group)}</div>
                 ${renderGroupActions(group)}
             </header>
-            <div>${group.files.length
-                ? group.files.map((preset) => renderPresetItem(preset, state.selectedFile, state.groups, group)).join('')
-                : '<div class="dragon-dataset-preset-group-empty">空分组，可把可编辑预设移动到这里。</div>'}</div>
+            <div>
+                ${group.files.map((preset) => renderPresetItem(preset, state.selectedFile, state.search)).join('')}
+                <div class="dragon-dataset-preset-dropzone" data-preset-dropzone="${escapeAttribute(group.id || '')}" data-empty="${group.files.length ? 'false' : 'true'}">${group.files.length ? '拖到此组末尾' : '空分组，可拖到此处'}</div>
+            </div>
         </section>
     `).join('');
 }
@@ -62,6 +64,10 @@ function renderGroupBadge(group) {
 
 function renderGroupActions(group) {
     const actions = [];
+    if ((group.files || []).length) {
+        const href = `/api/config/file-groups/${encodeURIComponent(group.id)}/export?kind=dataset`;
+        actions.push(`<a class="dragon-dataset-group-action" href="${escapeAttribute(href)}" download aria-label="导出分组 ${escapeAttribute(group.label || group.id)}" title="导出分组 ZIP">${renderIcon('download')}</a>`);
+    }
     if (group.renamable) {
         actions.push(`<button class="dragon-dataset-group-action" type="button" data-preset-group-action="rename" data-group-id="${escapeAttribute(group.id)}" aria-label="重命名分组 ${escapeAttribute(group.label || group.id)}" title="重命名分组">${renderIcon('edit')}</button>`);
     }
@@ -77,38 +83,15 @@ function presetMatches(preset, keyword) {
     return [preset.label, preset.filename, preset.path, summary.source_dir, summary.image_dir].some((value) => String(value || '').toLocaleLowerCase().includes(keyword));
 }
 
-function renderPresetItem(preset, selectedFile, groups, currentGroup) {
+function renderPresetItem(preset, selectedFile, search = '') {
     const summary = preset.summary || {};
     const active = preset.path === selectedFile;
-    const moveTargets = (groups || []).filter((group) => (
-        group.id
-        && group.id !== currentGroup?.id
-        && group.id !== 'unfiled_datasets'
-        && group.kind === 'dataset'
-        && group.movable
-        && !group.locked
-        && !group.user_group_locked
-    ));
+    const draggable = !preset.readonly && !String(search || '').trim();
     return `
-        <div class="dragon-dataset-preset-row" data-preset-row="${escapeAttribute(preset.path)}">
-            <button class="dragon-dataset-preset-item" type="button" data-preset-file="${escapeAttribute(preset.path)}" data-active="${active}" ${active ? 'aria-current="true"' : ''}>
-                <span><strong>${escapeHtml(preset.label || preset.filename || preset.path)}</strong><small title="${escapeAttribute(preset.path)}">${escapeHtml(preset.path)}</small></span>
-                <span class="dragon-dataset-preset-item-meta"><em>${Number(summary.dataset_count || 0)} 组</em><em>重复 ${Number(summary.repeat_total || 0)}</em>${preset.readonly ? '<em>只读</em>' : ''}</span>
-            </button>
-            ${renderMoveControl(preset, moveTargets)}
-        </div>
-    `;
-}
-
-function renderMoveControl(preset, moveTargets) {
-    if (preset.readonly || !moveTargets.length) return '';
-    return `
-        <div class="dragon-dataset-preset-move">
-            <label><span class="visually-hidden">将 ${escapeHtml(preset.label || preset.filename || preset.path)} 移动到分组</span><select class="dragon-select" name="dataset_preset_group" autocomplete="off" data-preset-move-select data-preset-file="${escapeAttribute(preset.path)}">
-                <option value="">移动到分组…</option>
-                ${moveTargets.map((group) => `<option value="${escapeAttribute(group.id)}">${escapeHtml(group.label || group.id)}</option>`).join('')}
-            </select></label>
-            <button class="dragon-dataset-group-action" type="button" data-preset-move-file="${escapeAttribute(preset.path)}" data-preset-file="${escapeAttribute(preset.path)}" aria-label="确认移动 ${escapeAttribute(preset.label || preset.filename || preset.path)}" title="移动到所选分组">${renderIcon('folder')}</button>
+        <div class="dragon-dataset-preset-row dragon-dataset-preset-item" role="button" tabindex="0" data-preset-row="${escapeAttribute(preset.path)}" data-preset-file="${escapeAttribute(preset.path)}" data-preset-drag-source data-active="${active}" ${active ? 'aria-current="true"' : ''}>
+            <span class="dragon-dataset-preset-drag-handle" draggable="${draggable ? 'true' : 'false'}" aria-hidden="true" title="拖动调整位置">${renderIcon('grip')}</span>
+            <span><strong>${escapeHtml(preset.label || preset.filename || preset.path)}</strong><small title="${escapeAttribute(preset.path)}">${escapeHtml(preset.path)}</small></span>
+            <span class="dragon-dataset-preset-item-meta"><em>${Number(summary.dataset_count || 0)} 组</em><em>重复 ${Number(summary.repeat_total || 0)}</em>${preset.readonly ? '<em>只读</em>' : ''}</span>
         </div>
     `;
 }
@@ -180,12 +163,12 @@ export async function deleteDatasetPresetGroup(api, groupId) {
     return result;
 }
 
-export async function moveDatasetPresetToGroup(api, file, groupId) {
-    const result = await api('/api/config/file-groups/move-file', {
+export async function placeDatasetPreset(api, file, groupId, order) {
+    const result = await api('/api/config/file-groups/place', {
         method: 'POST',
-        body: JSON.stringify({ file, group: groupId }),
+        body: JSON.stringify({ target: 'file', file, group: groupId, order }),
     });
-    if (result.ok === false) throw new Error(result.error || '移动数据集预设失败');
+    if (result.ok === false) throw new Error(result.error || '更新数据集预设顺序失败');
     return result;
 }
 

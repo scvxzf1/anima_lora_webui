@@ -16,24 +16,37 @@ function storeContext(context) {
 
 export async function loadTrainingContext({ refresh = false, includeGpus = true } = {}) {
     if (cachedContext && !refresh && (!includeGpus || cachedContext.gpusLoaded)) return cachedContext;
-    const stored = readStoredContext();
     const [groupsPayload, presetsPayload, gpuPayload] = await Promise.all([
         api('/api/config/file-groups?kind=training'),
         api('/api/presets'),
         includeGpus ? api('/api/training/gpus') : Promise.resolve(null),
     ]);
+    // Read the committed selection after the inventory requests finish. A preset
+    // library refresh may overlap a config switch; an early snapshot would let
+    // the slower refresh overwrite the newly committed file/preset selection.
+    const stored = readStoredContext();
     const groups = Array.isArray(groupsPayload) ? groupsPayload : [];
     const files = groups.flatMap((group) => (group.files || [])
         .filter((file) => file.trainable)
         .map((file) => ({ ...file, methods_subdir: file.methods_subdir || group.methods_subdir })));
-    const fallback = files.find((file) => file.path === 'configs/gui-methods/lora.toml') || files[0] || null;
+    // gui-methods files are system read-only templates; the config editor can only
+    // persist changes into editable (unlocked) files. Default to the first
+    // editable file instead of the locked gui-methods/lora.toml template so a
+    // first-time save actually reaches the backend.
+    const editableFiles = files.filter((file) => !file.locked && !file.readonly);
+    const fallback = editableFiles[0]
+        || files.find((file) => file.path === 'configs/gui-methods/lora.toml')
+        || files[0]
+        || null;
     const selected = files.find((file) => file.path === stored.configFile) || fallback;
     const presets = Array.isArray(presetsPayload?.items) ? presetsPayload.items : [];
     const gpus = includeGpus
         ? (Array.isArray(gpuPayload?.gpus) ? gpuPayload.gpus : [])
         : (Array.isArray(cachedContext?.gpus) ? cachedContext.gpus : []);
     const context = {
+        groups,
         files,
+        editableFiles,
         presets,
         gpus,
         configFile: selected?.path || '',
@@ -73,9 +86,10 @@ export function mergedConfigUrl(context) {
 }
 
 export function renderTrainingControls(context) {
-    const fileOptions = context.files.map((file) =>
-        `<option value="${file.path}" ${file.path === context.configFile ? 'selected' : ''}>${file.label || file.filename}</option>`
-    ).join('');
+    const fileOptions = context.files.map((file) => {
+        const readOnly = Boolean(file.locked || file.readonly);
+        return `<option value="${file.path}" ${file.path === context.configFile ? 'selected' : ''} ${readOnly ? 'data-locked="true"' : ''}>${file.label || file.filename}${readOnly ? '（只读）' : ''}</option>`;
+    }).join('');
     const presetOptions = context.presets.map((preset) =>
         `<option value="${preset}" ${preset === context.preset ? 'selected' : ''}>${preset}</option>`
     ).join('');
@@ -103,7 +117,47 @@ function renderGpuPicker(context) {
     return `<div class="dragon-runbar-device"><span class="dragon-runbar-label">训练设备</span><details class="dragon-runbar-gpus" data-training-gpus><summary>${label}</summary><div class="dragon-runbar-gpu-list"><button type="button" data-gpu-all>使用全部 GPU</button>${options || '<span>未读取到 GPU</span>'}</div></details></div>`;
 }
 
-export function bindTrainingControls(root, context, { saveChanges, beforeContextChange } = {}) {
+export function selectTrainingConfigFile(context, file, { notify = true, persist = true } = {}) {
+    if (!file?.path) return null;
+    const nextContext = {
+        ...context,
+        configFile: file.path,
+        variant: file.method || context.variant || 'lora',
+        methodsSubdir: file.methods_subdir || context.methodsSubdir || 'gui-methods',
+    };
+    if (persist) storeContext(nextContext);
+    if (notify) window.dispatchEvent(new CustomEvent('dragon-refresh-route'));
+    return nextContext;
+}
+
+export function selectTrainingPreset(context, preset, { notify = true, persist = true } = {}) {
+    const nextContext = { ...context, preset };
+    if (persist) storeContext(nextContext);
+    if (notify) window.dispatchEvent(new CustomEvent('dragon-refresh-route'));
+    return nextContext;
+}
+
+export function commitTrainingContext(context) {
+    storeContext(context);
+    return context;
+}
+
+export function isEditableConfigFile(context) {
+    const file = Array.isArray(context?.files)
+        ? context.files.find((item) => item.path === context.configFile)
+        : null;
+    // Unknown or empty config files fall through to the backend, which will
+    // report the authoritative lock/path error.
+    if (!file) return true;
+    return !file.locked && !file.readonly;
+}
+
+export function bindTrainingControls(root, context, {
+    saveChanges,
+    beforeContextChange,
+    onConfigFileChange,
+    onPresetChange,
+} = {}) {
     root.querySelector('[data-training-context="file"]')?.addEventListener('change', (event) => {
         if (beforeContextChange && beforeContextChange() === false) {
             event.target.value = context.configFile;
@@ -111,16 +165,21 @@ export function bindTrainingControls(root, context, { saveChanges, beforeContext
         }
         const file = context.files.find((item) => item.path === event.target.value);
         if (!file) return;
-        storeContext({ ...context, configFile: file.path, variant: file.method, methodsSubdir: file.methods_subdir });
-        window.dispatchEvent(new CustomEvent('dragon-refresh-route'));
+        if (onConfigFileChange) {
+            event.target.value = context.configFile;
+            onConfigFileChange(file);
+        } else selectTrainingConfigFile(context, file);
     });
     root.querySelector('[data-training-context="preset"]')?.addEventListener('change', (event) => {
         if (beforeContextChange && beforeContextChange() === false) {
             event.target.value = context.preset;
             return;
         }
-        storeContext({ ...context, preset: event.target.value });
-        window.dispatchEvent(new CustomEvent('dragon-refresh-route'));
+        if (onPresetChange) {
+            const preset = event.target.value;
+            event.target.value = context.preset;
+            onPresetChange(preset);
+        } else selectTrainingPreset(context, event.target.value);
     });
     bindGpuSelection(root, context);
     root.querySelectorAll('[data-training-action]').forEach((button) => {
@@ -170,8 +229,10 @@ async function runTrainingAction(root, context, action, saveChanges) {
                 start_paused: action === 'queue',
             }),
         });
-        await showResultDialog(root, payload);
-        if (payload.ok) window.location.hash = action === 'queue' ? '#queue' : '#live-training';
+        await showResultDialog(root, payload, action);
+        // Adding to the queue is an in-place action on the configuration page.
+        // Starting immediately still takes the user to the live monitor.
+        if (payload.ok && action !== 'queue') window.location.hash = '#live-training';
     } finally {
         if (button) button.disabled = false;
     }
@@ -196,6 +257,7 @@ function preflightLines(payload) {
 
 function showPreflightDialog(root, payload, closeOnly) {
     return openDialog(root, {
+        eyebrow: '训练前检查',
         title: payload?.ok ? '训练前检查通过' : '训练前检查未通过',
         body: preflightLines(payload),
         confirmText: closeOnly ? '' : '返回修改',
@@ -204,6 +266,7 @@ function showPreflightDialog(root, payload, closeOnly) {
 
 function showLaunchConfirmation(root, action, preflight) {
     return openDialog(root, {
+        eyebrow: action === 'queue' ? '训练队列' : '训练启动',
         title: action === 'queue' ? '确认加入训练队列' : '确认开始训练',
         body: `${preflightLines(preflight)}<p>${action === 'queue' ? '配置会被冻结并加入暂停的队列。' : '需要预处理时会先完成预处理，再自动开始训练。'}</p>`,
         confirmText: action === 'queue' ? '加入队列' : '开始训练',
@@ -211,19 +274,23 @@ function showLaunchConfirmation(root, action, preflight) {
     });
 }
 
-function showResultDialog(root, payload) {
+function showResultDialog(root, payload, action) {
+    const queued = action === 'queue' && payload?.ok;
     return openDialog(root, {
-        title: payload?.ok ? '操作已提交' : '操作失败',
-        body: `<p>${payload?.message || payload?.error || '后端未返回详细信息'}</p>`,
+        eyebrow: queued ? '训练队列' : '训练结果',
+        title: queued ? '已加入训练队列' : (payload?.ok ? '训练已启动' : '操作失败'),
+        body: queued
+            ? `<p>${payload?.message || '配置已加入暂停的训练队列。'}</p><p class="dragon-training-dialog-note">当前仍停留在训练配置页；可稍后从“训练队列”查看并启动任务。</p>`
+            : `<p>${payload?.message || payload?.error || '后端未返回详细信息'}</p>`,
         confirmText: '关闭',
     });
 }
 
-function openDialog(root, { title, body, confirmText = '关闭', cancelText = '' }) {
+function openDialog(root, { eyebrow = '训练配置', title, body, confirmText = '关闭', cancelText = '' }) {
     const dialog = root.querySelector('[data-training-dialog]');
     const content = dialog?.querySelector('[data-training-dialog-content]');
     if (!dialog || !content) return Promise.resolve(false);
-    content.innerHTML = `<h2>${title}</h2><div>${body}</div><div class="dragon-training-dialog-actions">${cancelText ? `<button class="dragon-btn dragon-btn-secondary" value="cancel">${cancelText}</button>` : ''}${confirmText ? `<button class="dragon-btn dragon-btn-primary" value="confirm">${confirmText}</button>` : '<button class="dragon-btn dragon-btn-primary" value="cancel">关闭</button>'}</div>`;
+    content.innerHTML = `<div class="dragon-training-dialog-shell"><header class="dragon-training-dialog-header"><span class="dragon-eyebrow">${eyebrow}</span><h2>${title}</h2></header><div class="dragon-training-dialog-body">${body}</div><footer class="dragon-training-dialog-actions">${cancelText ? `<button class="dragon-btn dragon-btn-secondary" value="cancel">${cancelText}</button>` : ''}${confirmText ? `<button class="dragon-btn dragon-btn-primary" value="confirm">${confirmText}</button>` : '<button class="dragon-btn dragon-btn-primary" value="cancel">关闭</button>'}</footer></div>`;
     content.querySelectorAll('button').forEach((button) => button.addEventListener('click', () => dialog.close(button.value)));
     dialog.showModal();
     return new Promise((resolve) => dialog.addEventListener('close', () => resolve(dialog.returnValue === 'confirm'), { once: true }));

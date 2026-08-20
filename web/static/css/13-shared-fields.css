@@ -247,7 +247,7 @@
 
 .sample-prompt-row {
     display: grid;
-    grid-template-columns: minmax(240px, 1fr) repeat(5, minmax(72px, 0.22fr)) auto;
+    grid-template-columns: minmax(220px, 1.35fr) minmax(180px, 1fr) repeat(5, minmax(64px, 0.22fr)) minmax(82px, 0.32fr) minmax(96px, 0.45fr) auto;
     gap: 0.3rem;
     align-items: end;
     min-width: 0;
@@ -286,6 +286,24 @@
     font-family: monospace;
     font-size: 0.74rem;
     font-weight: 500;
+}
+
+.sample-prompt-field select {
+    width: 100%;
+    min-width: 0;
+    height: 30px;
+    padding: 0.18rem 0.28rem;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--bg-input);
+    color: var(--text);
+    font-size: 0.74rem;
+    font-weight: 500;
+}
+
+.sample-prompt-field select:focus {
+    outline: none;
+    border-color: var(--accent);
 }
 
 .sample-prompt-field input:focus {
@@ -595,4 +613,3 @@ input[type="checkbox"].field-input {
     min-height: var(--control-height);
     font-size: var(--font-size-field);
 }
-

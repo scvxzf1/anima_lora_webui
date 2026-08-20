@@ -62,6 +62,7 @@ def test_model_config_get_migrates_legacy_values_without_writing(
 
     assert payload["ok"] is True
     assert payload["migrated"] is True
+    assert payload["groups_migrated"] is False
     assert payload["default_id"] == "legacy-default"
     assert payload["items"] == [
         {
@@ -73,6 +74,9 @@ def test_model_config_get_migrates_legacy_values_without_writing(
             "vae": "base/vae.safetensors",
             "complete": True,
         }
+    ]
+    assert payload["groups"] == [
+        {"id": "ungrouped", "label": "未分组", "item_ids": ["legacy-default"]}
     ]
     assert settings_file.read_text(encoding="utf-8") == original
 
@@ -103,6 +107,22 @@ def test_model_config_legacy_migration_uses_environment_family(
     assert payload["items"][0]["name"] == "Krea-2 默认配置"
 
 
+def test_model_config_legacy_migration_rejects_unknown_family(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings_file = tmp_path / "configs" / "web-ui-settings.toml"
+    settings_file.parent.mkdir()
+    settings_file.write_text(
+        toml.dumps({"global": {"model_family": "unknown"}}),
+        encoding="utf-8",
+    )
+    _patch_settings_file(monkeypatch, settings_file)
+
+    with pytest.raises(ValueError, match="模型格式仅支持"):
+        model_config_service.get_model_configs()
+
+
 def test_model_config_save_roundtrip_preserves_sections_and_mirrors_default(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -130,6 +150,10 @@ def test_model_config_save_roundtrip_preserves_sections_and_mirrors_default(
                 _item("krea", "Krea 主模型", "krea2"),
                 _item("anima", "Anima 备用模型"),
             ],
+            "groups": [
+                {"id": "primary", "label": "主力模型", "item_ids": ["krea"]},
+                {"id": "fallback", "label": "备用模型", "item_ids": ["anima"]},
+            ],
         }
     )
 
@@ -137,6 +161,10 @@ def test_model_config_save_roundtrip_preserves_sections_and_mirrors_default(
     assert saved["items"][0]["model_family"] == "krea2_raw"
     raw = toml.loads(settings_file.read_text(encoding="utf-8"))
     assert [item["id"] for item in raw["model_config_library"]["items"]] == ["krea", "anima"]
+    assert raw["model_config_library"]["groups"] == [
+        {"id": "primary", "label": "主力模型", "item_ids": ["krea"]},
+        {"id": "fallback", "label": "备用模型", "item_ids": ["anima"]},
+    ]
     assert raw["global"]["model_family"] == "krea2_raw"
     assert raw["global"]["pretrained_model_name_or_path"] == "models/krea/dit.safetensors"
     assert raw["global"]["output_root"] == "output/custom"
@@ -148,6 +176,67 @@ def test_model_config_save_roundtrip_preserves_sections_and_mirrors_default(
     reloaded = model_config_service.get_model_configs()
     assert [item["id"] for item in reloaded["items"]] == ["krea", "anima"]
     assert reloaded["default_id"] == "krea"
+
+
+def test_model_config_save_without_groups_preserves_existing_group_membership(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings_file = tmp_path / "web-ui-settings.toml"
+    _patch_settings_file(monkeypatch, settings_file)
+    initial_revision = model_config_service.get_model_configs()["revision"]
+    first = model_config_service.save_model_configs(
+        {
+            "revision": initial_revision,
+            "default_id": "one",
+            "items": [_item("one", "One"), _item("two", "Two")],
+            "groups": [
+                {"id": "a", "label": "A", "item_ids": ["one"]},
+                {"id": "b", "label": "B", "item_ids": ["two"]},
+            ],
+        }
+    )
+
+    saved = model_config_service.save_model_configs(
+        {
+            "revision": first["revision"],
+            "default_id": "one",
+            "items": [_item("two", "Two"), _item("one", "One"), _item("three", "Three")],
+        }
+    )
+
+    assert saved["groups"] == [
+        {"id": "a", "label": "A", "item_ids": ["one", "three"]},
+        {"id": "b", "label": "B", "item_ids": ["two"]},
+    ]
+    assert [item["id"] for item in saved["items"]] == ["one", "three", "two"]
+
+
+def test_model_config_existing_library_without_groups_is_migrated_in_memory(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings_file = tmp_path / "web-ui-settings.toml"
+    settings_file.write_text(
+        toml.dumps(
+            {
+                "model_config_library": {
+                    "default_id": "one",
+                    "items": [_item("one", "One"), _item("two", "Two")],
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    _patch_settings_file(monkeypatch, settings_file)
+
+    payload = model_config_service.get_model_configs()
+
+    assert payload["migrated"] is False
+    assert payload["groups_migrated"] is True
+    assert payload["groups"] == [
+        {"id": "ungrouped", "label": "未分组", "item_ids": ["one", "two"]}
+    ]
 
 
 def test_model_config_anima_default_removes_legacy_family_key(
@@ -184,6 +273,19 @@ def test_model_config_anima_default_removes_legacy_family_key(
         (
             {"items": [{**_item("one", "One"), "model_family": "unknown"}]},
             "仅支持 anima 或 krea2",
+        ),
+        (
+            {"groups": [{"id": "a", "label": "A", "item_ids": []}]},
+            "都必须属于一个分组",
+        ),
+        (
+            {
+                "groups": [
+                    {"id": "a", "label": "Same", "item_ids": ["one"]},
+                    {"id": "b", "label": "same", "item_ids": []},
+                ]
+            },
+            "分组名称不能重复",
         ),
     ],
 )

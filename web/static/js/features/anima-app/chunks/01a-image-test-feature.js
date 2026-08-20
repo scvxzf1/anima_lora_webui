@@ -19,8 +19,9 @@ export function createImageTestFeatureBridge(runtime) {
             getCurrentConfig: () => configState.currentConfig,
             getModelFamily: () => {
                 const globalSettings = runtime.state.appShell.globalSettings;
-                if (globalSettings) return globalSettings.model_family || 'anima';
-                return configState.currentConfig?.model_family || '';
+                return configState.currentConfig?.model_family
+                    || globalSettings?.model_family
+                    || 'anima';
             },
             getCurrentTomlFile: () => tomlState.currentTomlFile,
             getSelectionMeta: () => ({

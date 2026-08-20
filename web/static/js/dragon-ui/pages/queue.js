@@ -1,10 +1,12 @@
 /* Full training queue controller backed by the existing queue control routes. */
 
 import { createApiClient } from '../../shared/api.js?v=dragon-ui-20260812v35';
+import { connectWebSocket, disconnectWebSocket, onClose, onMessage, onOpen } from '../ws.js?v=dragon-ui-20260812v35';
 import { normalizeQueueSnapshot, queueItemTitle, renderQueuePage } from './queue-view.js?v=dragon-ui-20260814v43';
 
 const api = createApiClient();
-const REFRESH_INTERVAL_MS = 5000;
+const ACTIVE_FALLBACK_INTERVAL_MS = 5000;
+const IDLE_FALLBACK_INTERVAL_MS = 60000;
 
 export async function loadQueue() {
     const initial = await readQueueSnapshot();
@@ -17,6 +19,7 @@ export async function loadQueue() {
             : { message: '', tone: '' },
         busy: false,
         settingsDirty: false,
+        hasRendered: false,
         root: null,
     };
     let cleanup = null;
@@ -40,6 +43,7 @@ async function readQueueSnapshot() {
 
 function mountQueue(root, state) {
     state.root = root;
+    state.hasRendered = true;
     const clickHandler = (event) => handleQueueClick(event, state);
     const submitHandler = (event) => handleQueueSubmit(event, state);
     const settingsHandler = (event) => capturePolicyDraft(event.target, state);
@@ -48,9 +52,56 @@ function mountQueue(root, state) {
     root.addEventListener('input', settingsHandler);
     root.addEventListener('change', settingsHandler);
 
-    const refreshTimer = window.setInterval(() => refreshQueue(state, { quiet: true }), REFRESH_INTERVAL_MS);
+    let refreshTimer = null;
+    let wsConnected = false;
+    const scheduleRefresh = () => {
+        if (refreshTimer) window.clearTimeout(refreshTimer);
+        refreshTimer = null;
+        if (document.hidden || !state.root) return;
+        const active = Number(state.model.summary?.queued || 0) > 0
+            || Number(state.model.summary?.running || 0) > 0;
+        const delay = wsConnected || !active
+            ? IDLE_FALLBACK_INTERVAL_MS
+            : ACTIVE_FALLBACK_INTERVAL_MS;
+        refreshTimer = window.setTimeout(async () => {
+            await refreshQueue(state, { quiet: true });
+            scheduleRefresh();
+        }, delay);
+    };
+    const applyQueueEvent = (payload) => {
+        if (state.busy || state.settingsDirty || !state.root) return;
+        const nextModel = normalizeQueueSnapshot(payload);
+        if (queueSnapshotsEqual(state.model, nextModel)) return;
+        state.model = nextModel;
+        state.draft = createPolicyDraft(nextModel);
+        renderQueue(state);
+        scheduleRefresh();
+    };
+    const subscriptions = [
+        onMessage('queue', applyQueueEvent),
+        onOpen(() => { wsConnected = true; scheduleRefresh(); }),
+        onClose((event = {}) => {
+            if (event.intentional) return;
+            wsConnected = false;
+            scheduleRefresh();
+        }),
+    ];
+    const visibilityHandler = () => {
+        if (document.hidden) {
+            if (refreshTimer) window.clearTimeout(refreshTimer);
+            refreshTimer = null;
+            return;
+        }
+        refreshQueue(state, { quiet: true }).finally(scheduleRefresh);
+    };
+    document.addEventListener('visibilitychange', visibilityHandler);
+    connectWebSocket();
+    scheduleRefresh();
     return () => {
-        window.clearInterval(refreshTimer);
+        if (refreshTimer) window.clearTimeout(refreshTimer);
+        subscriptions.forEach((unsubscribe) => unsubscribe());
+        disconnectWebSocket();
+        document.removeEventListener('visibilitychange', visibilityHandler);
         root.removeEventListener('click', clickHandler);
         root.removeEventListener('submit', submitHandler);
         root.removeEventListener('input', settingsHandler);
@@ -240,7 +291,12 @@ async function refreshQueue(state, options = {}) {
     try {
         const payload = await api('/api/training/queue');
         if (payload.ok === false) throw new Error(payload.error || '刷新训练队列失败');
-        state.model = normalizeQueueSnapshot(payload);
+        const nextModel = normalizeQueueSnapshot(payload);
+        // The background poll is deliberately silent when the server has not
+        // changed anything. Replacing the whole queue tree here would reset
+        // focus/scroll and replay the page entrance animation every 5 seconds.
+        if (options.quiet && queueSnapshotsEqual(state.model, nextModel)) return;
+        state.model = nextModel;
         if (!state.settingsDirty) state.draft = createPolicyDraft(state.model);
         if (!options.quiet) state.feedback = { message: '队列状态已刷新。', tone: 'success' };
         renderQueue(state);
@@ -259,6 +315,12 @@ function setFeedback(state, message, tone) {
 
 function renderQueue(state) {
     if (!state.root || !document.contains(state.root)) return;
+    const scrollTop = window.scrollY;
+    const active = document.activeElement;
+    const focusKey = active && state.root.contains(active)
+        ? active.getAttribute('name') || active.getAttribute('data-queue-filter') || active.getAttribute('data-queue-action')
+        : '';
+    if (state.hasRendered) state.root.dataset.queueLiveUpdate = 'true';
     state.root.innerHTML = renderQueuePage(state.model, state);
     state.root.querySelectorAll('.dragon-reveal').forEach((element) => {
         element.classList.add('dragon-in-view');
@@ -266,6 +328,16 @@ function renderQueue(state) {
     if (state.busy) {
         state.root.querySelectorAll('button, input, select').forEach((control) => { control.disabled = true; });
     }
+    window.scrollTo({ top: scrollTop, behavior: 'auto' });
+    if (focusKey) {
+        const selector = `[name="${CSS.escape(focusKey)}"], [data-queue-filter="${CSS.escape(focusKey)}"], [data-queue-action="${CSS.escape(focusKey)}"]`;
+        state.root.querySelector(selector)?.focus({ preventScroll: true });
+    }
+    state.hasRendered = true;
+}
+
+function queueSnapshotsEqual(left, right) {
+    return JSON.stringify(left) === JSON.stringify(right);
 }
 
 function capturePolicyDraft(target, state) {

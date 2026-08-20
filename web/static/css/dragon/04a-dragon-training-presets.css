@@ -1,0 +1,380 @@
+/* Training configuration preset library and drag/drop placement preview. */
+
+/* Training preset management sidebar. It deliberately lives beside the
+ * focused config sub-page so file organization does not expand the form. */
+.dragon-config-shell-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 320px;
+    gap: var(--dragon-sp-6);
+    align-items: start;
+}
+
+.dragon-training-preset-library {
+    position: sticky;
+    top: calc(var(--dragon-nav-height) + var(--dragon-sp-5));
+    display: flex;
+    flex-direction: column;
+    box-sizing: border-box;
+    container: training-preset-library / inline-size;
+    gap: var(--dragon-sp-3);
+    min-width: 0;
+    height: var(--dragon-training-preset-height, calc(100vh - var(--dragon-nav-height) - 96px));
+    height: var(--dragon-training-preset-height, calc(100dvh - var(--dragon-nav-height) - 96px));
+    max-height: var(--dragon-training-preset-height, calc(100dvh - var(--dragon-nav-height) - 96px));
+    overflow: hidden;
+    padding: var(--dragon-sp-4);
+    border: 1px solid var(--dragon-border);
+    border-radius: var(--dragon-radius-lg);
+    background: var(--dragon-bg-secondary);
+    box-shadow: 0 1px 2px color-mix(in srgb, var(--dragon-text-primary) 5%, transparent);
+}
+
+.dragon-training-preset-head,
+.dragon-training-preset-toolbar,
+.dragon-training-preset-group > header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--dragon-sp-3);
+}
+
+.dragon-training-preset-head h2 {
+    margin: 0;
+    font-size: var(--dragon-fs-subhead-small);
+    line-height: 1.25;
+}
+
+.dragon-training-preset-head > span {
+    color: var(--dragon-text-tertiary);
+    font-size: var(--dragon-fs-caption);
+}
+
+.dragon-training-current-preset {
+    display: grid;
+    gap: 5px;
+    margin: 0;
+    padding: 12px 14px;
+    border: 1px solid color-mix(in srgb, var(--dragon-accent) 35%, var(--dragon-divider));
+    border-radius: var(--dragon-radius-md);
+    background: var(--dragon-bg-primary);
+}
+
+.dragon-training-current-preset > span,
+.dragon-training-current-preset small {
+    color: var(--dragon-text-tertiary);
+    font-size: var(--dragon-fs-caption);
+}
+
+.dragon-training-current-preset strong,
+.dragon-training-current-preset small {
+    overflow-wrap: anywhere;
+}
+.dragon-training-current-preset strong {
+    font-size: var(--dragon-fs-callout-medium);
+    line-height: 1.3;
+}
+.dragon-training-current-preset small { line-height: 1.4; }
+
+.dragon-training-current-preset div {
+    display: flex;
+    gap: 6px;
+    margin-top: 3px;
+}
+
+.dragon-training-current-preset em,
+.dragon-training-preset-group header em {
+    padding: 2px 6px;
+    border: 1px solid var(--dragon-border);
+    border-radius: var(--dragon-radius-pill);
+    color: var(--dragon-accent);
+    font-size: var(--dragon-fs-tiny);
+    font-style: normal;
+}
+
+.dragon-training-current-preset em[data-tone="locked"] {
+    color: var(--dragon-text-tertiary);
+}
+
+.dragon-training-preset-toolbar {
+    align-items: start;
+    padding: 2px 0 var(--dragon-sp-3);
+    border-bottom: 1px solid var(--dragon-divider);
+}
+
+.dragon-training-preset-feedback,
+.dragon-training-preset-drop-status {
+    min-height: 0;
+    margin: 0;
+    color: var(--dragon-success);
+    font-size: var(--dragon-fs-tiny);
+    line-height: 1.4;
+}
+
+.dragon-training-preset-feedback:empty,
+.dragon-training-preset-drop-status:empty { display: none; }
+.dragon-training-preset-feedback[data-tone="error"] { color: var(--dragon-error); }
+.dragon-training-preset-drop-status { color: var(--dragon-accent); }
+
+.dragon-training-preset-groups {
+    display: grid;
+    flex: 1 1 0;
+    align-content: start;
+    grid-auto-rows: max-content;
+    gap: var(--dragon-sp-3);
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: scroll;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+    scrollbar-width: auto;
+    scrollbar-color: color-mix(in srgb, var(--dragon-text-tertiary) 76%, transparent)
+                     color-mix(in srgb, var(--dragon-border) 48%, transparent);
+    margin: 0;
+    padding: 4px 8px 14px;
+}
+
+.dragon-training-preset-groups::-webkit-scrollbar { width: 11px; }
+.dragon-training-preset-groups::-webkit-scrollbar-track {
+    border: 1px solid color-mix(in srgb, var(--dragon-border) 58%, transparent);
+    border-radius: var(--dragon-radius-pill);
+    background: color-mix(in srgb, var(--dragon-border) 30%, transparent);
+}
+.dragon-training-preset-groups::-webkit-scrollbar-thumb {
+    min-height: 44px;
+    border: 2px solid transparent;
+    border-radius: var(--dragon-radius-pill);
+    background: color-mix(in srgb, var(--dragon-text-tertiary) 78%, transparent);
+    background-clip: padding-box;
+}
+.dragon-training-preset-groups::-webkit-scrollbar-thumb:hover {
+    background: var(--dragon-text-secondary);
+    background-clip: padding-box;
+}
+.dragon-training-preset-groups::-webkit-scrollbar-thumb:active {
+    background: var(--dragon-accent);
+    background-clip: padding-box;
+}
+
+.dragon-training-preset-group {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    overflow: hidden;
+    border: 1px solid var(--dragon-border);
+    border-radius: var(--dragon-radius-sm);
+    background: var(--dragon-bg-primary);
+}
+
+.dragon-training-preset-group > header {
+    min-height: 42px;
+    padding: 9px 14px;
+    border-bottom: 1px solid var(--dragon-divider);
+    background: var(--dragon-bg-secondary);
+}
+
+/* The base Dragon semantic-header reset has higher specificity. Restore the
+ * preset group header layout inside the app root so its visual padding is not
+ * collapsed back to zero. */
+body[data-dragon-ui] #dragon-root .dragon-training-preset-group > header {
+    display: flex;
+    min-height: 42px;
+    padding: 9px 14px;
+    border-bottom: 1px solid var(--dragon-divider);
+    background: var(--dragon-bg-secondary);
+}
+
+.dragon-training-preset-group > header > div:first-child {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 6px;
+}
+
+.dragon-training-preset-group > header strong {
+    overflow: hidden;
+    font-size: var(--dragon-fs-caption);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.dragon-training-preset-group > header span {
+    color: var(--dragon-text-tertiary);
+    font-size: var(--dragon-fs-tiny);
+}
+
+.dragon-training-preset-group-actions { display: flex; gap: 3px; }
+.dragon-training-preset-group-actions button {
+    display: grid;
+    width: 25px;
+    height: 25px;
+    place-items: center;
+    padding: 0;
+    color: var(--dragon-text-tertiary);
+    background: transparent;
+    border: 0;
+    border-radius: 4px;
+}
+.dragon-training-preset-group-actions button:hover { color: var(--dragon-accent); background: var(--dragon-tile-bg); }
+.dragon-training-preset-group-actions svg { width: 14px; height: 14px; }
+
+.dragon-training-preset-list { display: grid; gap: 4px; padding: 8px 10px 10px; }
+
+.dragon-training-preset-row {
+    position: relative;
+    display: grid;
+    grid-template-columns: 28px minmax(0, 1fr);
+    align-items: center;
+    min-height: 52px;
+    border: 1px solid var(--dragon-border);
+    border-radius: var(--dragon-radius-sm);
+    background: var(--dragon-bg-primary);
+    transition: background var(--dragon-dur-fast) var(--dragon-ease), border-color var(--dragon-dur-fast) var(--dragon-ease), box-shadow var(--dragon-dur-fast) var(--dragon-ease);
+}
+
+.dragon-training-preset-row:hover { border-color: var(--dragon-text-quaternary); background: var(--dragon-tile-bg); }
+.dragon-training-preset-row:focus-within,
+.dragon-training-preset-row[data-selected="true"] { border-color: var(--dragon-accent); box-shadow: inset 0 0 0 1px var(--dragon-accent); }
+.dragon-training-preset-row[data-selected="true"] { background: var(--dragon-accent-light); }
+.dragon-training-preset-row[draggable="true"] { cursor: grab; }
+.dragon-training-preset-row[data-dragging="true"] { opacity: .55; cursor: grabbing; }
+
+.dragon-training-preset-drag-handle {
+    display: grid;
+    width: 28px;
+    height: 40px;
+    place-items: center;
+    color: var(--dragon-text-quaternary);
+    touch-action: none;
+}
+.dragon-training-preset-drag-handle svg { width: 15px; height: 15px; }
+
+.dragon-training-preset-row > button {
+    display: grid;
+    min-width: 0;
+    overflow: hidden;
+    gap: 2px;
+    padding: 9px 10px 9px 7px;
+    color: var(--dragon-text-primary);
+    text-align: left;
+    background: transparent;
+    border: 0;
+}
+.dragon-training-preset-row > button strong,
+.dragon-training-preset-row > button small {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.dragon-training-preset-row > button:focus-visible { outline: 2px solid var(--dragon-accent); outline-offset: -2px; border-radius: var(--dragon-radius-sm); }
+.dragon-training-preset-row > button:disabled { cursor: not-allowed; opacity: .65; }
+.dragon-training-preset-row > button strong { font-size: var(--dragon-fs-callout-medium); line-height: 1.25; }
+.dragon-training-preset-row > button small { color: var(--dragon-text-tertiary); font-size: var(--dragon-fs-tiny); line-height: 1.35; }
+
+.dragon-training-preset-drop-before::before,
+.dragon-training-preset-drop-after::after {
+    position: absolute;
+    right: 8px;
+    left: 8px;
+    z-index: 2;
+    height: 3px;
+    content: "";
+    background: var(--dragon-accent);
+    border-radius: var(--dragon-radius-pill);
+    box-shadow: 0 0 0 2px var(--dragon-accent-light);
+}
+.dragon-training-preset-drop-before::before { top: -3px; }
+.dragon-training-preset-drop-after::after { bottom: -3px; }
+
+.dragon-training-preset-dropzone {
+    overflow: hidden;
+    min-height: 0;
+    max-height: 0;
+    padding: 0 7px;
+    color: transparent;
+    font-size: var(--dragon-fs-tiny);
+    text-align: center;
+    border: 1px dashed transparent;
+    border-radius: 5px;
+    transition: min-height var(--dragon-dur-fast), max-height var(--dragon-dur-fast), padding var(--dragon-dur-fast);
+}
+.dragon-training-preset-library[data-dragging="true"] .dragon-training-preset-dropzone,
+.dragon-training-preset-dropzone[data-empty="true"] {
+    min-height: 30px;
+    max-height: 40px;
+    padding: 7px;
+    color: var(--dragon-text-quaternary);
+    border-color: var(--dragon-divider);
+}
+.dragon-training-preset-dropzone[data-over="true"] {
+    color: var(--dragon-accent);
+    border-color: var(--dragon-accent);
+    background: color-mix(in srgb, var(--dragon-accent) 8%, transparent);
+}
+
+@media (max-width: 1000px) {
+    .dragon-config-shell-layout { grid-template-columns: 1fr; }
+    .dragon-training-preset-library { position: static; height: auto; max-height: none; overflow: visible; }
+    .dragon-training-preset-groups { flex: none; overflow: visible; padding-right: 0; }
+}
+
+.dragon-training-preset-toolbar-actions {
+    display: grid;
+    flex: 1 1 auto;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    min-width: 0;
+    gap: var(--dragon-sp-2);
+}
+
+.dragon-training-preset-toolbar-actions .dragon-btn {
+    min-width: 0;
+    justify-content: center;
+    white-space: nowrap;
+}
+
+.dragon-training-preset-toolbar-actions [data-training-preset-action="save-updates"] {
+    grid-column: 1 / -1;
+}
+
+.dragon-training-preset-group-actions a,
+.dragon-training-preset-group-actions button {
+    display: grid;
+    width: 28px;
+    height: 28px;
+    place-items: center;
+    padding: 0;
+    color: var(--dragon-text-tertiary);
+    background: transparent;
+    border: 0;
+    border-radius: 50%;
+    text-decoration: none;
+}
+
+.dragon-training-preset-group-actions a:hover,
+.dragon-training-preset-group-actions button:hover {
+    color: var(--dragon-text-primary);
+    background: var(--dragon-tile-bg-hover);
+}
+
+.dragon-training-preset-group-actions a:focus-visible,
+.dragon-training-preset-group-actions button:focus-visible {
+    outline: 2px solid var(--dragon-accent);
+    outline-offset: 1px;
+}
+
+@container training-preset-library (max-width: 300px) {
+    body[data-dragon-ui] #dragon-root .dragon-training-preset-group > header {
+        gap: 8px;
+        padding-right: 10px;
+        padding-left: 12px;
+    }
+
+    .dragon-training-preset-group-actions a,
+    .dragon-training-preset-group-actions button {
+        width: 26px;
+        height: 26px;
+    }
+
+    .dragon-training-preset-row { grid-template-columns: 24px minmax(0, 1fr); }
+    .dragon-training-preset-drag-handle { width: 24px; }
+    .dragon-training-preset-row > button { padding-left: 5px; }
+}

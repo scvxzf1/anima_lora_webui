@@ -50,7 +50,7 @@ export function QueueItemCard({ item, snapshot, queuedPosition, queuedTotal, onA
   const actionable = state === 'queued' || state === 'running';
 
   return (
-    <article className="queue-card" data-state={state} data-current={current}>
+    <article className="queue-card" data-state={state} data-current={current} data-item-id={id}>
       <div className="queue-card-main">
         <div className="queue-card-heading">
           <span className="queue-state" data-state={state}>{STATE_LABELS[state] || state}</span>

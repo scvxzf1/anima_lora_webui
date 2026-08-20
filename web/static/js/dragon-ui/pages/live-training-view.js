@@ -20,8 +20,8 @@ export function renderLiveTrainingPage(model, renderLossChart) {
         <div class="dragon-page dragon-page-wide dragon-tool-page dragon-live-training-page" data-live-training-root>
             ${renderToolHero({
                 eyebrow: '训练监控',
-                title: '实时训练',
-                description: '专注当前运行：检查训练上下文、关键指标、损失趋势和完整实时日志。',
+                title: '当前监控',
+                description: '专注当前任务：检查训练上下文、关键指标、损失趋势和完整实时日志。',
                 badge,
                 actions,
             })}
@@ -34,6 +34,7 @@ export function renderLiveTrainingPage(model, renderLossChart) {
             </div>
 
             <section class="dragon-live-context dragon-reveal" data-stagger="1" aria-label="当前训练上下文">
+                ${contextItem('activity', '当前任务', model.currentTask, 'task')}
                 ${contextItem('layers', '训练配置', model.configLabel, 'config')}
                 ${contextItem('folder', '运行目录', model.runDir, 'run-dir')}
                 ${contextItem('terminal', '最新活动', model.lastActivity, 'activity')}

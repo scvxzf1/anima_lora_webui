@@ -13,6 +13,7 @@ from typing import Dict, List, Optional
 
 import torch
 
+from library.env import normalize_model_family
 from library.log import setup_logging
 from networks import (
     NETWORK_REGISTRY,
@@ -313,6 +314,14 @@ def create_network(
     if "network_alpha" not in validation_kwargs and network_alpha is not None:
         validation_kwargs["network_alpha"] = network_alpha
     spec = resolve_network_spec(validation_kwargs)
+    model_family = normalize_model_family(
+        kwargs.get("model_family") or "anima", source="LoRA network model_family"
+    )
+    if model_family == "krea2_raw" and spec.name != "lora":
+        raise ValueError(
+            "Krea-2 training currently supports only the plain lora network spec; "
+            f"got {spec.name!r}."
+        )
 
     if str(kwargs.get("use_custom_down_autograd", "false")).strip().lower() in (
         "true",
@@ -835,16 +844,10 @@ def create_network_from_weights(
     # inference loader has no args; this is the only signal it gets for DiT /
     # text-encoder / forward family dispatch.
     model_family_meta: Optional[str] = None
-    raw_family = file_metadata.get("ss_model_family")
-    if raw_family:
-        normalized = str(raw_family).strip().lower()
-        if normalized in ("anima", "krea2_raw"):
-            model_family_meta = normalized
-        else:
-            logger.warning(
-                f"ss_model_family metadata present but unknown ({raw_family!r}); "
-                "falling back to anima default."
-            )
+    if "ss_model_family" in file_metadata:
+        model_family_meta = normalize_model_family(
+            file_metadata["ss_model_family"], source="checkpoint ss_model_family"
+        )
 
     # ChimeraHydra stamps. Presence of ``ss_use_chimera_hydra="true"``
     # flips the loader to the chimera spec. The chimera-native save format
@@ -965,6 +968,12 @@ def create_network_from_weights(
             f"Detected register tokens in checkpoint: K={num_registers}, "
             f"insert_block={register_insert_block} — network stays kept-live "
             "at inference (non-mergeable)."
+        )
+
+    if model_family_meta == "krea2_raw" and spec.name != "lora":
+        raise ValueError(
+            "Krea-2 checkpoints currently support only the plain lora network spec; "
+            f"got {spec.name!r}."
         )
 
     cfg = LoRANetworkCfg.from_weights(

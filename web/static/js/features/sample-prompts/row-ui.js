@@ -24,11 +24,14 @@ const configState = getConfigState();
         item.className = 'sample-prompt-row';
 
         const promptField = createSamplePromptTextField('提示词', 'prompt', row.prompt || '');
+        const negativePromptField = createSamplePromptTextField('负面提示词 / n', 'negative_prompt', row.negative_prompt || '');
         const heightField = createSamplePromptInputField('长 / h', 'height', row.height || '', 'number', '1');
         const widthField = createSamplePromptInputField('宽 / w', 'width', row.width || '', 'number', '1');
-        const cfgField = createSamplePromptInputField('CFG / g', 'cfg', row.cfg || '', 'number', '0.1');
+        const cfgField = createSamplePromptInputField('CFG / g/l', 'cfg', row.cfg || '', 'number', '0.1');
         const stepsField = createSamplePromptInputField('步数 / s', 'steps', row.steps || '', 'number', '1');
         const seedField = createSamplePromptInputField('种子 / d', 'seed', row.seed || '', 'number', '1');
+        const flowShiftField = createSamplePromptInputField('Flow Shift / fs', 'flow_shift', row.flow_shift || '', 'number', '0.1');
+        const samplerField = createSamplePromptSelectField('采样器 / ss', 'sample_sampler', row.sample_sampler || '', ['euler', 'er_sde', 'lcm']);
         const extra = document.createElement('input');
         extra.type = 'hidden';
         extra.dataset.samplePromptField = 'extra';
@@ -55,7 +58,19 @@ const configState = getConfigState();
         rowActions.className = 'sample-prompt-row-actions';
         rowActions.append(removeBtn);
 
-        item.append(promptField, heightField, widthField, cfgField, stepsField, seedField, extra, rowActions);
+        item.append(
+            promptField,
+            negativePromptField,
+            heightField,
+            widthField,
+            cfgField,
+            stepsField,
+            seedField,
+            flowShiftField,
+            samplerField,
+            extra,
+            rowActions,
+        );
         rowsWrap.appendChild(item);
         updateSamplePromptRemoveButtons(rowsWrap);
     }
@@ -87,6 +102,33 @@ const configState = getConfigState();
             input.step = step || '1';
         }
         label.append(span, input);
+        return label;
+    }
+
+    export function createSamplePromptSelectField(labelText, field, value, options) {
+        const label = document.createElement('label');
+        label.className = 'sample-prompt-field';
+        const span = document.createElement('span');
+        span.textContent = labelText;
+        const select = document.createElement('select');
+        select.dataset.samplePromptField = field;
+        select.value = value || '';
+        const values = options.map((option) => String(option));
+        if (value && !values.includes(String(value))) {
+            options = [value, ...options];
+        }
+        const empty = document.createElement('option');
+        empty.value = '';
+        empty.textContent = '默认';
+        select.appendChild(empty);
+        for (const option of options) {
+            const opt = document.createElement('option');
+            opt.value = String(option);
+            opt.textContent = String(option);
+            select.appendChild(opt);
+        }
+        select.value = value || '';
+        label.append(span, select);
         return label;
     }
 

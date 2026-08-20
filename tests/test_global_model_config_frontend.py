@@ -41,6 +41,7 @@ def test_global_model_config_page_has_master_detail_management_contract() -> Non
 
 def test_model_config_picker_replaces_global_path_confirmation() -> None:
     html = INDEX_HTML.read_text(encoding="utf-8")
+    css = _read("css/43-model-configs.css")
     resource = _read("js/features/config-form/resource-values.js")
     picker = _read("js/features/model-configs/picker-dialog.js")
 
@@ -53,6 +54,18 @@ def test_model_config_picker_replaces_global_path_confirmation() -> None:
     assert "fetchModelConfigLibrary" in picker
     assert "应用此模型配置" in picker
     assert "btn-model-config-picker-manage" in html
+    for class_name in (
+        "model-config-picker-toolbar-summary",
+        "model-config-picker-option-head",
+        "model-config-picker-detail-row",
+        "model-config-picker-selection-status",
+    ):
+        assert class_name in picker
+        assert f".{class_name}" in css
+    picker_css = css[css.index(".model-config-picker-dialog {"):]
+    assert "--model-panel-bg: #161f22;" in picker_css
+    assert ':root[data-theme="light"] .model-config-picker-dialog' in picker_css
+    assert "box-shadow: inset 3px 0 0 var(--model-accent);" in picker_css
 
 
 def test_model_config_frontend_api_and_tab_loading_are_wired() -> None:

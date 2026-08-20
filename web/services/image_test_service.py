@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from library.env import anima_home
+from library.env import anima_home, normalize_model_family, resolve_model_family
 
 import asyncio
 from collections import deque
@@ -203,22 +203,28 @@ def _normalize_image_test_request(
     if not prompt:
         raise ValueError("请输入正向提示词")
 
+    model_family = _resolve_image_test_model_family(cfg)
     sampler = _normalize_choice(payload.get("sampler") or cfg.get("sample_sampler") or "euler", ALLOWED_SAMPLERS, "采样器")
     attn_mode = _normalize_choice(payload.get("attn_mode") or cfg.get("attn_mode") or "flash", ALLOWED_ATTN_MODES, "注意力后端")
-    # model_family 走全局设置 (settings_service), 不在训练 config 快照里. 空值
-    # (= anima 默认) 不注入 flag, 走 inference.py 的 resolve_model_family() env
-    # 兜底链, 与训练侧 bootstrap.build_net_kwargs 同款 — 不靠路径名字符串猜测.
-    model_family = str(settings_service.get_global_settings().get("model_family") or "").strip().lower()
     seed = _normalize_optional_int(payload.get("seed"))
     width = _normalize_positive_int(payload.get("width"), default=1024, label="宽度")
     height = _normalize_positive_int(payload.get("height"), default=1024, label="高度")
     infer_steps = _normalize_positive_int(payload.get("infer_steps"), default=28, label="采样步数")
     guidance_scale = _normalize_float(payload.get("guidance_scale"), default=4.0, label="CFG")
-    flow_shift = _normalize_float(payload.get("flow_shift"), default=1.0, label="Flow Shift")
+    raw_flow_shift = payload.get("flow_shift")
+    flow_shift = _normalize_float(
+        raw_flow_shift,
+        default=3.0 if model_family == "krea2_raw" else 1.0,
+        label="Flow Shift",
+    )
     lora_multiplier = _normalize_float(payload.get("lora_multiplier"), default=1.0, label="LoRA 强度")
     runtime_dtype = _normalize_runtime_dtype(payload.get("runtime_dtype"), cfg)
     text_encoder_dtype = _normalize_text_encoder_dtype(payload.get("text_encoder_dtype"))
     if model_family == "krea2_raw":
+        if sampler != "euler":
+            raise ValueError("Krea-2 推理目前仅支持 Euler 采样器")
+        if raw_flow_shift not in (None, "") and abs(flow_shift - 3.0) > 1e-9:
+            raise ValueError("Krea-2 使用自动 mu shift；请勿设置 Anima Flow Shift")
         if attn_mode == "sdpa":
             attn_mode = "torch"
         elif attn_mode not in {"torch", "flash"}:
@@ -263,6 +269,8 @@ def _normalize_image_test_request(
         )
     if anima_selective_lora and not weight_path:
         raise ValueError("启用 LoRA 分层加载时，需要先选择一个 LoRA 权重")
+    if model_family == "krea2_raw" and anima_selective_lora:
+        raise ValueError("Krea-2 暂不支持 Anima LoRA 分层加载")
 
     dit = str(cfg.get("pretrained_model_name_or_path") or "").strip()
     text_encoder = str(cfg.get("qwen3") or "").strip()
@@ -304,6 +312,20 @@ def _normalize_image_test_request(
         ),
         "config": cfg,
     }
+
+
+def _resolve_image_test_model_family(cfg: dict[str, Any]) -> str:
+    config_family = cfg.get("model_family")
+    if str(config_family or "").strip():
+        return normalize_model_family(
+            config_family, source="image-test config.model_family"
+        )
+    global_family = settings_service.get_global_settings().get("model_family")
+    if str(global_family or "").strip():
+        return normalize_model_family(
+            global_family, source="image-test global model_family"
+        )
+    return resolve_model_family()
 
 
 def _resolve_image_test_model_paths(cfg: dict[str, Any]) -> dict[str, Any]:
@@ -678,13 +700,6 @@ def _build_generation_env(request: dict[str, Any]) -> dict[str, str]:
 
 def _build_generation_command(request: dict[str, Any]) -> list[str]:
     cfg = request["config"]
-    # model_family 来自全局设置 (空值 = anima 默认), 空则不注入 flag,
-    # 走 inference.py 的 resolve_model_family() env 兜底链.
-    family_argv = (
-        ["--model_family", request["model_family"]]
-        if request.get("model_family")
-        else []
-    )
     generation_request = GenerationRequest(
         prompt=request["prompt"],
         negative_prompt=request["negative_prompt"],
@@ -707,7 +722,8 @@ def _build_generation_command(request: dict[str, Any]) -> list[str]:
             request["runtime_dtype"],
             "--text_encoder_dtype",
             request["text_encoder_dtype"],
-            *family_argv,
+            "--model_family",
+            request["model_family"],
             *_build_selective_lora_argv(request),
         ],
     )

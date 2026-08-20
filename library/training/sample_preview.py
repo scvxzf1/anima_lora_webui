@@ -6,6 +6,7 @@ from library.anima import (
     training as anima_train_utils,
     text_strategies,
 )
+from library.env import resolve_model_family
 
 
 def sample_images(
@@ -29,7 +30,16 @@ def sample_images(
 
     text_encoding_strategy = text_strategies.TextEncodingStrategy.get_strategy()
     tokenize_strategy = text_strategies.TokenizeStrategy.get_strategy()
-    anima_train_utils.sample_images(
+    if resolve_model_family(args) == "krea2_raw":
+        from library.models.krea2_raw.training_preview import (
+            sample_images as sample_krea2_images,
+        )
+
+        sample_impl = sample_krea2_images
+    else:
+        sample_impl = anima_train_utils.sample_images
+
+    sample_impl(
         accelerator,
         args,
         epoch,

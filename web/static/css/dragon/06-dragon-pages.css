@@ -63,8 +63,14 @@
 .dragon-section-header-row .dragon-section-title { margin-bottom: 0; }
 .dragon-section-header-row .dragon-section-desc { margin: 0; text-align: right; }
 
-/* Shared monitoring and system-tool workspace shell. */
-.dragon-tool-page { max-width: 1240px; padding-top: var(--dragon-sp-7); }
+/* Shared monitoring and system-tool workspace shell. The tool surfaces use a
+ * fluid desktop canvas so wide monitors do not leave unused side gutters. */
+.dragon-tool-page {
+    box-sizing: border-box;
+    width: calc(100% - clamp(40px, 6vw, 96px));
+    max-width: 1600px;
+    padding-top: var(--dragon-sp-7);
+}
 .dragon-tool-page .dragon-section { padding: 0; margin-bottom: var(--dragon-sp-8); }
 .dragon-tool-hero {
     display: flex;
@@ -159,9 +165,16 @@
 .dragon-live-log-stream .dragon-empty-state { min-height: 100%; }
 
 .dragon-dataset-page {
-    max-width: 1240px;
+    --dragon-dataset-page-gutter: clamp(12px, 1.75vw, 40px);
+    --dragon-dataset-library-width: clamp(288px, 20vw, 420px);
+    --dragon-dataset-workspace-gap: clamp(12px, 1.4vw, 24px);
+    box-sizing: border-box;
+    width: 100%;
+    max-width: none;
     padding-top: var(--dragon-sp-7);
+    padding-right: var(--dragon-dataset-page-gutter);
     padding-bottom: 132px;
+    padding-left: var(--dragon-dataset-page-gutter);
 }
 
 .dragon-dataset-page,
@@ -237,8 +250,8 @@
 
 .dragon-dataset-workspace {
     display: grid;
-    grid-template-columns: minmax(230px, 280px) minmax(0, 1fr);
-    gap: var(--dragon-sp-7);
+    grid-template-columns: minmax(0, 1fr) var(--dragon-dataset-library-width);
+    gap: var(--dragon-dataset-workspace-gap);
     align-items: start;
 }
 
@@ -246,8 +259,10 @@
     position: sticky;
     top: calc(var(--dragon-nav-height) + var(--dragon-sp-5));
     display: grid;
+    grid-template-rows: auto auto auto auto minmax(0, 1fr);
     gap: var(--dragon-sp-3);
     min-width: 0;
+    height: min(820px, calc(100vh - var(--dragon-nav-height) - 48px));
     max-height: calc(100vh - var(--dragon-nav-height) - 48px);
     overflow: hidden;
     padding: var(--dragon-sp-4);
@@ -277,7 +292,41 @@
 .dragon-dataset-library-actions .dragon-btn { justify-content: center; }
 .dragon-dataset-new-group { grid-column: 1 / -1; }
 .dragon-dataset-library-meta { display: flex; justify-content: space-between; gap: var(--dragon-sp-2); color: var(--dragon-text-tertiary); font-size: var(--dragon-fs-caption); }
-.dragon-dataset-preset-list { min-height: 0; overflow: auto; overscroll-behavior: contain; padding-right: 2px; }
+.dragon-dataset-preset-list {
+    box-sizing: border-box;
+    min-width: 0;
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: scroll;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+    scrollbar-width: auto;
+    scrollbar-color: color-mix(in srgb, var(--dragon-text-tertiary) 76%, transparent)
+                     color-mix(in srgb, var(--dragon-border) 48%, transparent);
+    padding: 0 7px 14px 0;
+}
+.dragon-dataset-preset-list:focus-visible { outline: 2px solid var(--dragon-accent); outline-offset: 2px; }
+.dragon-dataset-preset-list::-webkit-scrollbar { width: 11px; }
+.dragon-dataset-preset-list::-webkit-scrollbar-track {
+    border: 1px solid color-mix(in srgb, var(--dragon-border) 58%, transparent);
+    border-radius: var(--dragon-radius-pill);
+    background: color-mix(in srgb, var(--dragon-border) 30%, transparent);
+}
+.dragon-dataset-preset-list::-webkit-scrollbar-thumb {
+    min-height: 44px;
+    border: 2px solid transparent;
+    border-radius: var(--dragon-radius-pill);
+    background: color-mix(in srgb, var(--dragon-text-tertiary) 78%, transparent);
+    background-clip: padding-box;
+}
+.dragon-dataset-preset-list::-webkit-scrollbar-thumb:hover {
+    background: var(--dragon-text-secondary);
+    background-clip: padding-box;
+}
+.dragon-dataset-preset-list::-webkit-scrollbar-thumb:active {
+    background: var(--dragon-accent);
+    background-clip: padding-box;
+}
 .dragon-dataset-preset-group + .dragon-dataset-preset-group { margin-top: var(--dragon-sp-4); }
 .dragon-dataset-preset-group > header { display: flex; align-items: center; justify-content: space-between; gap: var(--dragon-sp-2); padding: 0 var(--dragon-sp-2) var(--dragon-sp-2); color: var(--dragon-text-tertiary); font-size: var(--dragon-fs-caption); }
 .dragon-dataset-preset-group-title { display: flex; min-width: 0; align-items: center; gap: 6px; }
@@ -289,35 +338,66 @@
 .dragon-dataset-group-action:hover { background: var(--dragon-tile-bg-hover); color: var(--dragon-text-primary); }
 .dragon-dataset-group-action-danger { color: var(--dragon-error); }
 .dragon-dataset-group-action svg { width: 15px; height: 15px; }
-.dragon-dataset-preset-group > div { display: grid; gap: 2px; }
+.dragon-dataset-preset-group > div { display: grid; min-width: 0; gap: 6px; }
 .dragon-dataset-preset-group-empty { padding: 11px 10px; color: var(--dragon-text-tertiary); font-size: var(--dragon-fs-tiny); line-height: 1.45; }
-.dragon-dataset-preset-row { min-width: 0; padding: 2px; border-radius: var(--dragon-radius-sm); }
-.dragon-dataset-preset-row:focus-within { background: var(--dragon-tile-bg); }
+.dragon-dataset-preset-row { position: relative; box-sizing: border-box; width: 100%; max-width: 100%; min-width: 0; border: 1px solid var(--dragon-border); border-radius: var(--dragon-radius-sm); background: var(--dragon-bg-primary); }
+.dragon-dataset-preset-row:hover { border-color: var(--dragon-text-quaternary); }
+.dragon-dataset-preset-row:focus-within,
+.dragon-dataset-preset-row[data-active="true"] { border-color: var(--dragon-accent); box-shadow: inset 0 0 0 1px var(--dragon-accent); }
+.dragon-dataset-preset-row.dragon-dataset-preset-dragging { opacity: .48; }
+.dragon-dataset-preset-row.dragon-dataset-preset-drop-before::before,
+.dragon-dataset-preset-row.dragon-dataset-preset-drop-after::after { position: absolute; z-index: 2; right: 8px; left: 8px; height: 3px; border-radius: var(--dragon-radius-pill); background: var(--dragon-accent); box-shadow: 0 0 0 2px var(--dragon-accent-light); content: ''; pointer-events: none; }
+.dragon-dataset-preset-row.dragon-dataset-preset-drop-before::before { top: -2px; }
+.dragon-dataset-preset-row.dragon-dataset-preset-drop-after::after { bottom: -2px; }
+.dragon-dataset-preset-dropzone { position: relative; display: grid; min-height: 0; max-height: 0; place-items: center; overflow: hidden; margin-top: 0; color: var(--dragon-text-tertiary); border: 1px dashed transparent; border-radius: var(--dragon-radius-sm); font-size: var(--dragon-fs-tiny); opacity: 0; transition: opacity var(--dragon-dur-fast) var(--dragon-ease), color var(--dragon-dur-fast) var(--dragon-ease), border-color var(--dragon-dur-fast) var(--dragon-ease), background-color var(--dragon-dur-fast) var(--dragon-ease), box-shadow var(--dragon-dur-fast) var(--dragon-ease); }
+.dragon-dataset-preset-dropzone[data-empty="true"],
+.dragon-dataset-dragging .dragon-dataset-preset-dropzone { min-height: 34px; max-height: 34px; margin-top: 4px; border-color: var(--dragon-border); opacity: 1; }
+.dragon-dataset-preset-dropzone[data-over="true"],
+.dragon-dataset-preset-group.dragon-dataset-preset-drop-target .dragon-dataset-preset-dropzone { color: var(--dragon-accent); background: transparent; border-color: transparent; box-shadow: none; }
+.dragon-dataset-preset-dropzone[data-over="true"]::before,
+.dragon-dataset-preset-group.dragon-dataset-preset-drop-target .dragon-dataset-preset-dropzone::before { position: absolute; right: 8px; left: 8px; top: 50%; height: 3px; border-radius: var(--dragon-radius-pill); background: var(--dragon-accent); box-shadow: 0 0 0 2px var(--dragon-accent-light); content: ''; transform: translateY(-50%); pointer-events: none; }
 .dragon-dataset-preset-item {
     display: grid;
-    gap: 7px;
+    box-sizing: border-box;
+    grid-template-columns: 28px minmax(0, 1fr) fit-content(104px);
+    align-items: start;
+    gap: 4px 8px;
     width: 100%;
     min-width: 0;
-    padding: 10px;
-    border: 0;
+    padding: 8px 9px;
+    border: 1px solid var(--dragon-border);
     border-radius: var(--dragon-radius-sm);
-    background: transparent;
+    background: var(--dragon-bg-primary);
     color: var(--dragon-text-primary);
     text-align: left;
     cursor: pointer;
 }
+.dragon-dataset-preset-drag-handle {
+    display: grid;
+    width: 28px;
+    height: 38px;
+    place-items: center;
+    align-self: center;
+    color: var(--dragon-text-quaternary);
+    cursor: grab;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-user-drag: element;
+}
+.dragon-dataset-preset-drag-handle[draggable="false"] { cursor: not-allowed; opacity: .42; }
+.dragon-dataset-preset-drag-handle[draggable="true"]:hover { color: var(--dragon-text-secondary); }
+.dragon-dataset-preset-drag-handle[draggable="true"]:active { color: var(--dragon-accent); cursor: grabbing; }
+.dragon-dataset-preset-drag-handle svg { width: 16px; height: 16px; pointer-events: none; }
 .dragon-dataset-preset-item:hover { background: var(--dragon-tile-bg-hover); }
 .dragon-dataset-preset-item[data-active="true"] { background: var(--dragon-accent-light); }
-.dragon-dataset-preset-item > span:first-child { min-width: 0; }
+.dragon-dataset-preset-item > span:nth-child(2) { min-width: 0; }
 .dragon-dataset-preset-item strong,
 .dragon-dataset-preset-item small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.dragon-dataset-preset-item strong { font-size: var(--dragon-fs-callout-medium); line-height: 1.35; }
-.dragon-dataset-preset-item small { margin-top: 3px; color: var(--dragon-text-tertiary); font-size: var(--dragon-fs-tiny); }
-.dragon-dataset-preset-item-meta { display: flex; flex-wrap: wrap; gap: 5px; }
-.dragon-dataset-preset-item-meta em { padding: 2px 6px; border-radius: var(--dragon-radius-pill); background: var(--dragon-tile-bg); color: var(--dragon-text-secondary); font-size: 10px; font-style: normal; }
-.dragon-dataset-preset-move { display: grid; grid-template-columns: minmax(0, 1fr) 34px; gap: 5px; padding: 0 7px 8px; }
-.dragon-dataset-preset-move label { min-width: 0; }
-.dragon-dataset-page .dragon-dataset-preset-move .dragon-select { min-height: 32px; padding: 4px 26px 4px 8px; font-size: var(--dragon-fs-tiny); }
+.dragon-dataset-preset-item strong { font-size: var(--dragon-fs-callout-medium); line-height: 1.25; }
+.dragon-dataset-preset-item small { margin-top: 2px; color: var(--dragon-text-tertiary); font-size: var(--dragon-fs-tiny); }
+.dragon-dataset-preset-item-meta { display: flex; min-width: 0; max-width: 104px; justify-content: flex-end; flex-wrap: wrap; gap: 3px; }
+.dragon-dataset-preset-item-meta em { min-width: 0; padding: 1px 5px; border-radius: var(--dragon-radius-pill); background: var(--dragon-tile-bg); color: var(--dragon-text-secondary); font-size: 10px; line-height: 1.35; font-style: normal; }
 .dragon-dataset-library-empty { display: grid; gap: var(--dragon-sp-2); padding: var(--dragon-sp-6) var(--dragon-sp-3); color: var(--dragon-text-tertiary); text-align: center; }
 .dragon-dataset-library-empty strong { color: var(--dragon-text-secondary); font-size: var(--dragon-fs-callout-medium); }
 
@@ -341,34 +421,47 @@
 .dragon-icon-button svg { width: 17px; height: 17px; }
 .dragon-icon-button:disabled { opacity: .35; cursor: default; }
 
-.dragon-dataset-section { padding: var(--dragon-sp-7) 0; }
+.dragon-dataset-form {
+    /* Keep one page-level scroll container. The previous fixed-height nested
+     * scroller ended above the viewport bottom and exposed a large blank band
+     * beside the taller sticky preset library. */
+    max-height: none;
+    min-height: 0;
+    overflow: visible;
+    scrollbar-gutter: auto;
+    scroll-padding-block: 0;
+    padding: 0;
+    margin: 0;
+}
+.dragon-dataset-section { padding: var(--dragon-sp-5) 0; }
 .dragon-dataset-section + .dragon-dataset-section { border-top: 1px solid var(--dragon-divider); }
-.dragon-dataset-settings-sections { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--dragon-sp-4); }
-.dragon-dataset-settings-group { min-width: 0; padding: var(--dragon-sp-5); border: 1px solid var(--dragon-border-light); border-radius: var(--dragon-radius-lg); background: var(--dragon-bg-secondary); }
-.dragon-dataset-settings-group > header { margin-bottom: var(--dragon-sp-4); }
+.dragon-dataset-defaults-content { min-width: 0; }
+.dragon-dataset-settings-sections { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: stretch; gap: var(--dragon-sp-3); }
+.dragon-dataset-settings-group { display: grid; min-width: 0; align-content: start; grid-template-rows: 28px 1fr; padding: var(--dragon-sp-4); border: 1px solid var(--dragon-border-light); border-radius: var(--dragon-radius-lg); background: var(--dragon-bg-secondary); }
+.dragon-dataset-settings-group > header { display: flex; min-height: 28px; align-items: start; margin: 0; }
 .dragon-dataset-settings-group > header h3 { margin: 0; font-size: var(--dragon-fs-callout); line-height: 1.25; }
-.dragon-dataset-settings-group > header p { margin: 5px 0 0; color: var(--dragon-text-tertiary); font-size: var(--dragon-fs-caption); line-height: 1.45; text-wrap: pretty; }
 
 .dragon-dataset-field-grid {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: var(--dragon-sp-4);
+    grid-template-columns: repeat(var(--dataset-field-columns, 2), minmax(0, 1fr));
+    grid-auto-rows: minmax(64px, auto);
+    align-items: start;
+    gap: var(--dragon-sp-3);
 }
 
 .dragon-dataset-field-grid .dragon-field { min-width: 0; margin: 0; }
-.dragon-dataset-page .dragon-field { display: grid; align-content: start; gap: 7px; margin: 0; }
-.dragon-dataset-page .dragon-field-label-text { display: block; font-size: var(--dragon-fs-callout-medium); line-height: 1.35; }
+.dragon-dataset-page .dragon-field { display: grid; min-height: 64px; align-content: start; grid-template-rows: 20px 36px auto; gap: 4px; margin: 0; }
+.dragon-dataset-page .dragon-field-label-text { display: flex; min-height: 20px; align-items: end; font-size: var(--dragon-fs-callout-medium); line-height: 1.25; }
 .dragon-dataset-page .dragon-input,
-.dragon-dataset-page .dragon-select { width: 100%; max-width: none; min-height: 42px; font-size: var(--dragon-fs-callout); transition: background-color var(--dragon-dur-fast) var(--dragon-ease), border-color var(--dragon-dur-fast) var(--dragon-ease), box-shadow var(--dragon-dur-fast) var(--dragon-ease); }
-.dragon-dataset-page .dragon-field-hint { color: var(--dragon-text-tertiary); font-size: var(--dragon-fs-tiny); line-height: 1.45; }
+.dragon-dataset-page .dragon-select { width: 100%; max-width: none; min-height: 36px; padding-top: 7px; padding-bottom: 7px; font-size: var(--dragon-fs-callout); transition: background-color var(--dragon-dur-fast) var(--dragon-ease), border-color var(--dragon-dur-fast) var(--dragon-ease), box-shadow var(--dragon-dur-fast) var(--dragon-ease); }
 .dragon-dataset-page .dragon-field-error { color: var(--dragon-error); font-size: var(--dragon-fs-caption); line-height: 1.4; }
 .dragon-dataset-page [data-field-shell][data-invalid="true"] .dragon-input,
 .dragon-dataset-page [data-field-shell][data-invalid="true"] .dragon-select { border-color: var(--dragon-error); box-shadow: 0 0 0 3px color-mix(in srgb, var(--dragon-error) 14%, transparent); }
 .dragon-field-span { grid-column: 1 / -1; }
 .dragon-dataset-path-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.dragon-dataset-rows { display: grid; gap: var(--dragon-sp-5); }
+.dragon-dataset-rows { display: grid; gap: var(--dragon-sp-4); }
 .dragon-dataset-row { min-width: 0; overflow: hidden; border: 1px solid var(--dragon-border-light); border-radius: var(--dragon-radius-xl); background: var(--dragon-bg-secondary); box-shadow: var(--dragon-shadow-sm); }
-.dragon-dataset-row-head { display: flex; align-items: start; justify-content: space-between; gap: var(--dragon-sp-4); padding: var(--dragon-sp-5); border-bottom: 1px solid var(--dragon-divider); }
+.dragon-dataset-row-head { display: flex; align-items: start; justify-content: space-between; gap: var(--dragon-sp-3); padding: var(--dragon-sp-4); border-bottom: 1px solid var(--dragon-divider); }
 .dragon-dataset-row-identity { display: flex; min-width: 0; gap: var(--dragon-sp-3); }
 .dragon-dataset-row-number { display: grid; flex: 0 0 auto; width: 34px; height: 34px; place-items: center; border-radius: 50%; background: var(--dragon-accent); color: white; font-size: var(--dragon-fs-caption); font-weight: var(--dragon-fw-semibold); }
 .dragon-dataset-row-head h3 { margin: 1px 0 0; font-size: var(--dragon-fs-callout); font-weight: var(--dragon-fw-semibold); line-height: 1.3; }
@@ -376,14 +469,14 @@
 .dragon-dataset-path-panel { display: grid; gap: var(--dragon-sp-4); padding: var(--dragon-sp-5); background: var(--dragon-bg-primary); }
 .dragon-dataset-path-actions { display: flex; align-items: center; flex-wrap: wrap; gap: var(--dragon-sp-3); }
 .dragon-dataset-path-actions > span { color: var(--dragon-text-tertiary); font-size: var(--dragon-fs-caption); }
-.dragon-dataset-row-primary { padding: var(--dragon-sp-5); }
+.dragon-dataset-row-primary { grid-template-columns: repeat(4, minmax(0, 1fr)); padding: var(--dragon-sp-4); }
 .dragon-dataset-advanced { border-top: 1px solid var(--dragon-divider); }
-.dragon-dataset-advanced summary { display: flex; align-items: center; justify-content: space-between; gap: var(--dragon-sp-3); padding: var(--dragon-sp-4) var(--dragon-sp-5); color: var(--dragon-accent); cursor: pointer; font-size: var(--dragon-fs-callout-medium); list-style: none; }
+.dragon-dataset-advanced summary { display: flex; align-items: center; justify-content: space-between; gap: var(--dragon-sp-3); padding: var(--dragon-sp-3) var(--dragon-sp-4); color: var(--dragon-accent); cursor: pointer; font-size: var(--dragon-fs-callout-medium); list-style: none; }
 .dragon-dataset-advanced summary::-webkit-details-marker { display: none; }
 .dragon-dataset-advanced summary::after { content: '＋'; font-size: 18px; }
 .dragon-dataset-advanced[open] summary::after { content: '−'; }
 .dragon-dataset-advanced summary small { color: var(--dragon-text-tertiary); font-size: var(--dragon-fs-caption); }
-.dragon-dataset-advanced-body { display: grid; gap: var(--dragon-sp-4); padding: 0 var(--dragon-sp-5) var(--dragon-sp-5); }
+.dragon-dataset-advanced-body { display: grid; gap: var(--dragon-sp-4); padding: 0 var(--dragon-sp-4) var(--dragon-sp-4); }
 .dragon-btn-danger { color: var(--dragon-error); }
 .dragon-dataset-blocking-error { display: grid; gap: var(--dragon-sp-3); padding: var(--dragon-sp-7); border: 1px solid color-mix(in srgb, var(--dragon-error) 36%, var(--dragon-border)); border-radius: var(--dragon-radius-xl); background: color-mix(in srgb, var(--dragon-error) 7%, var(--dragon-bg-secondary)); }
 .dragon-dataset-blocking-error p { margin: 0; color: var(--dragon-text-secondary); overflow-wrap: anywhere; }
@@ -465,9 +558,9 @@ body[data-dragon-ui] #stage-resolution-dialog .stage-resolution-table-panel {
 .dragon-dataset-savebar {
     position: fixed;
     z-index: calc(var(--dragon-z-nav) - 1);
-    right: max(var(--dragon-content-pad), calc((100vw - 1240px) / 2 + var(--dragon-content-pad)));
+    right: calc(var(--dragon-dataset-page-gutter) + var(--dragon-dataset-library-width) + var(--dragon-dataset-workspace-gap));
     bottom: max(var(--dragon-sp-4), env(safe-area-inset-bottom));
-    left: max(var(--dragon-content-pad), calc((100vw - 1240px) / 2 + var(--dragon-content-pad)));
+    left: var(--dragon-dataset-page-gutter);
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -535,7 +628,29 @@ body[data-dragon-ui] #stage-resolution-dialog .stage-resolution-table-panel {
     .dragon-section-header-row .dragon-section-desc { text-align: left; }
 }
 
+@media (min-width: 2800px) {
+    .dragon-dataset-settings-sections { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .dragon-dataset-advanced-body { grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: start; }
+}
+
+@media (min-width: 1920px) {
+    .dragon-dataset-page {
+        --dragon-dataset-page-gutter: clamp(28px, 1.5vw, 56px);
+        --dragon-dataset-library-width: clamp(360px, 18vw, 480px);
+        --dragon-dataset-workspace-gap: clamp(20px, 1.25vw, 32px);
+    }
+}
+
+@media (max-width: 1280px) {
+    .dragon-dataset-page {
+        --dragon-dataset-page-gutter: clamp(12px, 1.5vw, 20px);
+        --dragon-dataset-library-width: clamp(280px, 23vw, 304px);
+        --dragon-dataset-workspace-gap: clamp(12px, 1.25vw, 18px);
+    }
+}
+
 @media (max-width: 1068px) {
+    .dragon-tool-page { width: calc(100% - 48px); }
     .dragon-tool-hero { align-items: start; flex-direction: column; }
     .dragon-tool-hero-side { width: 100%; justify-items: start; }
     .dragon-tool-actions { justify-content: flex-start; }
@@ -545,11 +660,13 @@ body[data-dragon-ui] #stage-resolution-dialog .stage-resolution-table-panel {
 }
 
 @media (max-width: 880px) {
+    .dragon-tool-page { width: calc(100% - 40px); }
+    .dragon-live-context { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .dragon-live-training-page .dragon-stat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (max-width: 734px) {
-    .dragon-tool-page { padding-top: var(--dragon-sp-5); }
+    .dragon-tool-page { width: calc(100% - (2 * var(--dragon-content-pad-mobile))); padding-top: var(--dragon-sp-5); }
     .dragon-tool-hero { padding: var(--dragon-sp-3) 0 var(--dragon-sp-5); }
     .dragon-tool-hero h1 { font-size: var(--dragon-fs-title-small); }
     .dragon-tool-actions { display: grid; width: 100%; grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -564,18 +681,32 @@ body[data-dragon-ui] #stage-resolution-dialog .stage-resolution-table-panel {
     .dragon-live-log-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .dragon-live-log-action { width: 100%; min-height: 42px; }
     .dragon-live-log-meta { align-items: start; flex-direction: column; gap: 2px; }
+    .dragon-queue-layout { grid-template-columns: 1fr; }
+    .dragon-queue-sidebar { position: static; }
+    .dragon-queue-list-head { align-items: start; flex-direction: column; }
+    .dragon-queue-filter { width: 100%; justify-content: flex-start; overflow-x: auto; flex-wrap: nowrap; scrollbar-width: thin; }
+    .dragon-queue-filter button { flex: 0 0 auto; }
+    .dragon-queue-card { grid-template-columns: 1fr; }
+    .dragon-queue-card-actions { max-width: none; justify-content: flex-start; }
+    .dragon-queue-move-group { justify-content: flex-start; }
 }
 
 @media (max-width: 430px) {
+    .dragon-tool-page { width: calc(100% - (2 * var(--dragon-content-pad-mobile))); }
+    .dragon-live-context { grid-template-columns: 1fr; }
     .dragon-live-training-page .dragon-stat-grid { grid-template-columns: 1fr; }
+    .dragon-queue-policy-grid,
+    .dragon-queue-bulk-group { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 1068px) {
+    .dragon-dataset-row-primary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .dragon-dataset-hero { align-items: start; flex-direction: column; }
     .dragon-dataset-hero-actions { width: 100%; justify-content: flex-start; }
     .dragon-dataset-workspace { grid-template-columns: 1fr; gap: var(--dragon-sp-6); }
-    .dragon-dataset-library { position: static; max-height: none; }
+    .dragon-dataset-library { position: static; order: -1; height: auto; max-height: none; }
     .dragon-dataset-preset-list { max-height: 300px; }
+    .dragon-dataset-savebar { right: var(--dragon-dataset-page-gutter); }
     .dragon-dataset-context { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
@@ -585,13 +716,16 @@ body[data-dragon-ui] #stage-resolution-dialog .stage-resolution-table-panel {
 }
 
 @media (max-width: 734px) {
-    .dragon-dataset-page { padding-top: var(--dragon-sp-5); padding-bottom: 156px; }
+    .dragon-dataset-page { --dragon-dataset-page-gutter: var(--dragon-content-pad-mobile); padding-top: var(--dragon-sp-5); padding-bottom: 156px; }
     .dragon-dataset-hero { align-items: start; flex-direction: column; padding-top: var(--dragon-sp-3); }
     .dragon-dataset-hero h1 { font-size: var(--dragon-fs-title-small); }
     .dragon-dataset-hero-actions { width: 100%; }
     .dragon-dataset-hero-actions .dragon-btn { flex: 1 1 auto; justify-content: center; }
     .dragon-dataset-context { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .dragon-dataset-form { max-height: none; min-height: 0; overflow: visible; padding: 0; margin: 0; scrollbar-gutter: auto; }
     .dragon-dataset-settings-sections { grid-template-columns: 1fr; }
+    .dragon-dataset-settings-group .dragon-dataset-field-grid { --dataset-field-columns: 1 !important; }
+    .dragon-dataset-row-primary { grid-template-columns: 1fr; }
     .dragon-dataset-preset-list { max-height: 210px; }
     .dragon-dataset-row-head { flex-direction: column; }
     .dragon-dataset-row-actions { width: 100%; }
@@ -602,7 +736,6 @@ body[data-dragon-ui] #stage-resolution-dialog .stage-resolution-table-panel {
     .dragon-dataset-savebar-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
     .dragon-dataset-savebar-actions .dragon-btn { justify-content: center; padding-right: 10px; padding-left: 10px; }
     .dragon-dataset-group-action { width: 40px; height: 40px; }
-    .dragon-dataset-preset-move { grid-template-columns: minmax(0, 1fr) 40px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -930,6 +1063,15 @@ body[data-dragon-ui] #stage-resolution-dialog .stage-resolution-table-panel {
 /* Dragon queue manager: compact orchestration workspace, isolated from classic queue styles. */
 .dragon-queue-manager {
     overflow-x: clip;
+}
+
+/* Background queue polls may replace changed cards, but they must not look
+ * like a full page refresh or replay the entrance motion. */
+.dragon-page-wrapper[data-queue-live-update="true"] .dragon-queue-manager .dragon-reveal {
+    opacity: 1;
+    transform: none;
+    transition: none;
+    animation: none;
 }
 
 .dragon-queue-manager .dragon-status-region {
@@ -1977,9 +2119,7 @@ body[data-dragon-ui] #stage-resolution-dialog .stage-resolution-table-panel {
     }
 }
 
-/* Model & system workspaces. Keep dense tools left aligned and use one
-   consistent save bar so long forms remain balanced at every viewport. */
-.dragon-model-config-page,
+/* System workspaces with long forms reserve room for the shared save bar. */
 .dragon-global-settings-page,
 .dragon-environment-page {
     padding-bottom: 112px;
@@ -2025,8 +2165,22 @@ body[data-dragon-ui] #stage-resolution-dialog .stage-resolution-table-panel {
 }
 
 .dragon-model-config-layout {
-    grid-template-columns: minmax(260px, .75fr) minmax(0, 1.6fr);
-    gap: 28px;
+    grid-template-columns: minmax(272px, 320px) minmax(0, 1fr);
+    gap: 24px;
+    margin-top: var(--dragon-sp-6);
+}
+
+body[data-dragon-ui] #dragon-root .dragon-model-config-page > .dragon-tool-hero {
+    display: flex;
+    min-height: 0;
+    padding: var(--dragon-sp-5) 0 var(--dragon-sp-7);
+    position: static;
+    top: auto;
+    z-index: auto;
+    border: 0;
+    border-bottom: 1px solid var(--dragon-divider);
+    background: transparent;
+    box-shadow: none;
 }
 
 .dragon-model-config-sidebar {
@@ -2135,11 +2289,22 @@ body[data-dragon-ui] #stage-resolution-dialog .stage-resolution-table-panel {
 
 .dragon-model-config-editor {
     display: grid;
+    align-self: start;
     gap: 1px;
     overflow: hidden;
     border: 1px solid var(--dragon-border-light);
     border-radius: var(--dragon-radius-lg);
     background: var(--dragon-border-light);
+}
+
+.dragon-model-config-editor-body {
+    display: grid;
+    min-width: 0;
+    gap: 1px;
+}
+
+body[data-dragon-ui] #dragon-root .dragon-model-editor-header {
+    display: flex;
 }
 
 .dragon-model-editor-section {
@@ -2212,6 +2377,243 @@ body[data-dragon-ui] #stage-resolution-dialog .stage-resolution-table-panel {
     box-shadow: 0 0 0 3px color-mix(in srgb, var(--dragon-error) 14%, transparent);
 }
 
+.dragon-model-config-page .dragon-tool-summary {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.dragon-model-config-sidebar-actions,
+.dragon-model-config-group-actions,
+.dragon-model-config-row-actions {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+}
+
+.dragon-model-config-sidebar-actions {
+    gap: 6px;
+}
+
+.dragon-model-config-sidebar-actions .dragon-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.dragon-model-config-list {
+    display: grid;
+    gap: 12px;
+    padding-right: 3px;
+}
+
+.dragon-model-config-group {
+    position: relative;
+    min-width: 0;
+    overflow: visible;
+    border: 1px solid var(--dragon-border);
+    border-radius: var(--dragon-radius-sm);
+    background: var(--dragon-bg-primary);
+    transition: border-color var(--dragon-dur-fast) var(--dragon-ease),
+                box-shadow var(--dragon-dur-fast) var(--dragon-ease),
+                opacity var(--dragon-dur-fast) var(--dragon-ease);
+}
+
+body[data-dragon-ui] #dragon-root .dragon-model-config-group-header {
+    display: grid;
+    grid-template-columns: 24px minmax(0, 1fr) auto;
+    min-height: 38px;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 6px;
+    border-bottom: 1px solid var(--dragon-divider);
+    background: var(--dragon-bg-secondary);
+}
+
+.dragon-model-config-group-drag-handle,
+.dragon-model-config-drag-handle {
+    display: grid;
+    width: 24px;
+    height: 32px;
+    place-items: center;
+    color: var(--dragon-text-quaternary);
+    cursor: grab;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+.dragon-model-config-group-drag-handle[draggable="false"],
+.dragon-model-config-drag-handle[draggable="false"] {
+    cursor: not-allowed;
+    opacity: .36;
+}
+
+.dragon-model-config-group-drag-handle[draggable="true"]:active,
+.dragon-model-config-drag-handle[draggable="true"]:active {
+    color: var(--dragon-accent);
+    cursor: grabbing;
+}
+
+.dragon-model-config-group-drag-handle svg,
+.dragon-model-config-drag-handle svg,
+.dragon-model-config-group-action svg,
+.dragon-icon-btn svg {
+    width: 15px;
+    height: 15px;
+    pointer-events: none;
+}
+
+.dragon-model-config-group-title {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 7px;
+}
+
+.dragon-model-config-group-title strong {
+    overflow: hidden;
+    font-size: var(--dragon-fs-caption);
+    font-weight: var(--dragon-fw-semibold);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.dragon-model-config-group-title small {
+    flex: 0 0 auto;
+    color: var(--dragon-text-tertiary);
+    font-size: var(--dragon-fs-tiny);
+    font-variant-numeric: tabular-nums;
+}
+
+.dragon-model-config-group-action {
+    display: grid;
+    width: 26px;
+    height: 26px;
+    place-items: center;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--dragon-text-tertiary);
+    cursor: pointer;
+}
+
+.dragon-model-config-group-action:hover:not(:disabled) {
+    background: var(--dragon-tile-bg-hover);
+    color: var(--dragon-text-primary);
+}
+
+.dragon-model-config-group-action-danger:hover:not(:disabled) {
+    color: var(--dragon-error);
+}
+
+.dragon-model-config-group-action:disabled {
+    cursor: not-allowed;
+    opacity: .28;
+}
+
+.dragon-model-config-group-items {
+    display: grid;
+    gap: 5px;
+    padding: 6px;
+}
+
+.dragon-model-config-row {
+    position: relative;
+    display: grid;
+    grid-template-columns: 24px minmax(0, 1fr) auto;
+    min-width: 0;
+    align-items: center;
+    gap: 4px;
+    border: 1px solid transparent;
+    border-radius: var(--dragon-radius-sm);
+}
+
+.dragon-model-config-row:hover,
+.dragon-model-config-row:focus-within {
+    border-color: var(--dragon-border);
+}
+
+.dragon-model-config-list-item {
+    min-height: 50px;
+    padding: 7px 8px;
+    border: 0;
+}
+
+.dragon-model-config-list-item small {
+    max-width: none;
+}
+
+.dragon-model-config-row-actions {
+    padding-right: 3px;
+}
+
+.dragon-model-config-row-dragging,
+.dragon-model-config-group-dragging-source {
+    opacity: .42;
+}
+
+.dragon-model-config-row.dragon-model-config-item-drop-before::before,
+.dragon-model-config-row.dragon-model-config-item-drop-after::after,
+.dragon-model-config-group.dragon-model-config-group-drop-before::before,
+.dragon-model-config-group.dragon-model-config-group-drop-after::after {
+    position: absolute;
+    z-index: 4;
+    right: 8px;
+    left: 8px;
+    height: 3px;
+    border-radius: var(--dragon-radius-pill);
+    background: var(--dragon-accent);
+    box-shadow: 0 0 0 2px var(--dragon-accent-light);
+    content: '';
+    pointer-events: none;
+}
+
+.dragon-model-config-row.dragon-model-config-item-drop-before::before,
+.dragon-model-config-group.dragon-model-config-group-drop-before::before {
+    top: -3px;
+}
+
+.dragon-model-config-row.dragon-model-config-item-drop-after::after,
+.dragon-model-config-group.dragon-model-config-group-drop-after::after {
+    bottom: -3px;
+}
+
+.dragon-model-config-group.dragon-model-config-group-drop-target {
+    border-color: var(--dragon-accent);
+    box-shadow: inset 0 0 0 1px var(--dragon-accent);
+}
+
+.dragon-model-config-dropzone {
+    position: relative;
+    min-height: 0;
+    overflow: hidden;
+    border: 1px dashed transparent;
+    border-radius: var(--dragon-radius-sm);
+    opacity: 0;
+    transition: min-height var(--dragon-dur-fast) var(--dragon-ease),
+                opacity var(--dragon-dur-fast) var(--dragon-ease);
+}
+
+.dragon-model-config-dropzone[data-empty="true"],
+.dragon-model-config-item-dragging .dragon-model-config-dropzone {
+    min-height: 28px;
+    border-color: var(--dragon-border);
+    opacity: 1;
+}
+
+.dragon-model-config-dropzone[data-over="true"]::before {
+    position: absolute;
+    top: 50%;
+    right: 8px;
+    left: 8px;
+    height: 3px;
+    border-radius: var(--dragon-radius-pill);
+    background: var(--dragon-accent);
+    box-shadow: 0 0 0 2px var(--dragon-accent-light);
+    content: '';
+    transform: translateY(-50%);
+}
+
 .dragon-savebar {
     position: fixed;
     right: max(var(--dragon-content-pad), calc((100vw - var(--dragon-content-wide)) / 2 + var(--dragon-content-pad)));
@@ -2264,6 +2666,74 @@ body[data-dragon-ui] #stage-resolution-dialog .stage-resolution-table-panel {
     gap: 8px;
 }
 
+.dragon-model-config-editor .dragon-model-config-savebar {
+    position: static;
+    right: auto;
+    bottom: auto;
+    left: auto;
+    z-index: auto;
+    display: grid;
+    width: auto;
+    min-width: 0;
+    grid-template-columns: minmax(190px, 1fr) auto;
+    align-items: center;
+    gap: 14px;
+    padding: 16px 22px 18px;
+    border: 0;
+    border-radius: 0;
+    background: var(--dragon-bg-secondary);
+    box-shadow: none;
+    backdrop-filter: none;
+}
+
+.dragon-model-config-savebar .dragon-savebar-status {
+    width: 100%;
+    min-width: 0;
+}
+
+.dragon-model-config-savebar .dragon-savebar-status strong {
+    overflow: visible;
+    color: var(--dragon-text-primary);
+    text-overflow: clip;
+    white-space: normal;
+}
+
+.dragon-model-config-savebar[data-dirty="true"] .dragon-savebar-status strong {
+    color: var(--dragon-warning);
+}
+
+.dragon-model-config-savebar .dragon-savebar-status span {
+    max-width: 720px;
+    line-height: 1.45;
+    overflow-wrap: anywhere;
+}
+
+.dragon-model-config-savebar .dragon-savebar-actions {
+    display: grid;
+    width: auto;
+    min-width: 0;
+    grid-template-columns: repeat(4, max-content);
+    justify-content: end;
+}
+
+@media (max-width: 1180px) {
+    .dragon-model-config-editor .dragon-model-config-savebar {
+        grid-template-columns: minmax(0, 1fr);
+        align-items: stretch;
+    }
+
+    .dragon-model-config-savebar .dragon-savebar-actions {
+        width: 100%;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .dragon-model-config-savebar .dragon-savebar-actions .dragon-btn {
+        justify-content: center;
+        min-width: 0;
+        padding-inline: 10px;
+    }
+}
+
 .dragon-btn-danger {
     border: 1px solid color-mix(in srgb, var(--dragon-error) 30%, transparent);
     background: color-mix(in srgb, var(--dragon-error) 8%, transparent);
@@ -2272,6 +2742,224 @@ body[data-dragon-ui] #stage-resolution-dialog .stage-resolution-table-panel {
 
 .dragon-btn-danger:hover:not(:disabled) {
     background: color-mix(in srgb, var(--dragon-error) 14%, transparent);
+}
+
+.dragon-global-settings-workspace {
+    display: grid;
+    grid-template-columns: minmax(220px, 264px) minmax(0, 1fr);
+    gap: clamp(22px, 3vw, 36px);
+    align-items: start;
+}
+
+.dragon-global-settings-sidebar {
+    position: sticky;
+    top: calc(var(--dragon-nav-height) + 22px);
+    min-width: 0;
+    padding: 22px 18px;
+    border: 1px solid var(--dragon-border-light);
+    border-radius: var(--dragon-radius-lg);
+    background: var(--dragon-bg-secondary);
+    box-shadow: var(--dragon-shadow-sm);
+}
+
+.dragon-global-settings-sidebar-brand h1 {
+    margin: 8px 0 6px;
+    font-family: var(--dragon-font-display);
+    font-size: 24px;
+    line-height: 1.15;
+}
+
+.dragon-global-settings-sidebar-brand p,
+.dragon-global-settings-sidebar-note {
+    margin: 0;
+    color: var(--dragon-text-tertiary);
+    font-size: var(--dragon-fs-caption);
+    line-height: 1.5;
+}
+
+.dragon-global-settings-scope {
+    margin-top: 28px;
+    padding-top: 18px;
+    border-top: 1px solid var(--dragon-divider);
+}
+
+.dragon-global-settings-summary {
+    display: grid;
+    gap: 8px;
+    margin-top: 10px;
+}
+
+.dragon-global-settings-summary-card {
+    min-width: 0;
+    padding: 11px 12px;
+    border: 1px solid var(--dragon-border-light);
+    border-radius: var(--dragon-radius-md);
+    background: var(--dragon-tile-bg);
+}
+
+.dragon-global-settings-summary-card span,
+.dragon-global-settings-summary-card strong {
+    display: block;
+}
+
+.dragon-global-settings-summary-card span {
+    color: var(--dragon-text-tertiary);
+    font-size: var(--dragon-fs-tiny);
+}
+
+.dragon-global-settings-summary-card strong {
+    margin-top: 4px;
+    overflow: hidden;
+    color: var(--dragon-text-primary);
+    font-family: var(--dragon-font-mono);
+    font-size: var(--dragon-fs-caption);
+    font-weight: var(--dragon-fw-medium);
+    line-height: 1.4;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.dragon-global-settings-sidebar-note {
+    margin-top: 18px;
+    padding-top: 16px;
+    border-top: 1px solid var(--dragon-divider);
+    color: var(--dragon-text-quaternary);
+    font-size: var(--dragon-fs-tiny);
+}
+
+.dragon-global-settings-main {
+    min-width: 0;
+}
+
+body[data-dragon-ui] #dragon-root .dragon-global-settings-header {
+    align-items: end;
+    min-width: 0;
+    padding-top: 0;
+}
+
+.dragon-global-settings-header h2 {
+    margin: 6px 0 8px;
+    font-family: var(--dragon-font-display);
+    font-size: var(--dragon-fs-title-medium);
+    line-height: var(--dragon-lh-tight);
+}
+
+.dragon-global-settings-header-side {
+    display: grid;
+    flex: 0 0 min(420px, 48%);
+    justify-items: end;
+    gap: 14px;
+}
+
+.dragon-global-settings-stats {
+    display: grid;
+    width: 100%;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 1px;
+    overflow: hidden;
+    border: 1px solid var(--dragon-border-light);
+    border-radius: var(--dragon-radius-md);
+    background: var(--dragon-border-light);
+}
+
+.dragon-global-settings-stat {
+    min-width: 0;
+    padding: 10px 12px;
+    background: var(--dragon-tile-bg);
+}
+
+.dragon-global-settings-stat span,
+.dragon-global-settings-stat strong,
+.dragon-global-settings-stat small {
+    display: block;
+}
+
+.dragon-global-settings-stat span {
+    color: var(--dragon-text-tertiary);
+    font-size: var(--dragon-fs-tiny);
+    letter-spacing: .08em;
+}
+
+.dragon-global-settings-stat strong {
+    margin-top: 3px;
+    color: var(--dragon-accent);
+    font-family: var(--dragon-font-mono);
+    font-size: 19px;
+    line-height: 1.1;
+}
+
+.dragon-global-settings-stat small {
+    max-width: 100%;
+    margin-top: 5px;
+    overflow: hidden;
+    color: var(--dragon-text-quaternary);
+    font-size: var(--dragon-fs-tiny);
+    line-height: 1.3;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.dragon-global-settings-form {
+    display: grid;
+    gap: 16px;
+    margin-top: 20px;
+}
+
+.dragon-global-settings-group {
+    min-width: 0;
+    overflow: hidden;
+    border: 1px solid var(--dragon-border-light);
+    border-radius: var(--dragon-radius-lg);
+    background: var(--dragon-border-light);
+}
+
+body[data-dragon-ui] #dragon-root .dragon-global-settings-group-header {
+    display: grid;
+    grid-template-columns: 42px minmax(0, 1fr);
+    gap: 14px;
+    align-items: start;
+    padding: 18px 20px 16px;
+    background: var(--dragon-bg-secondary);
+}
+
+.dragon-global-settings-group-index {
+    display: grid;
+    width: 34px;
+    height: 34px;
+    place-items: center;
+    border: 1px solid var(--dragon-accent-light);
+    border-radius: var(--dragon-radius-sm);
+    background: var(--dragon-accent-light);
+    color: var(--dragon-accent);
+    font-family: var(--dragon-font-mono);
+    font-size: var(--dragon-fs-caption);
+    font-weight: var(--dragon-fw-semibold);
+}
+
+.dragon-global-settings-group-header h2 {
+    margin: 4px 0 4px;
+    font-family: var(--dragon-font-display);
+    font-size: 20px;
+    line-height: 1.2;
+}
+
+.dragon-global-settings-group-header p {
+    max-width: 720px;
+    margin: 0;
+    color: var(--dragon-text-tertiary);
+    font-size: var(--dragon-fs-caption);
+    line-height: 1.45;
+}
+
+.dragon-global-settings-group-fields {
+    padding: 16px;
+    background: var(--dragon-bg-primary);
+}
+
+.dragon-global-settings-group .dragon-setting-field,
+.dragon-global-settings-group .dragon-setting-toggle {
+    border-color: transparent;
+    background: transparent;
 }
 
 .dragon-savebar button:disabled,
@@ -2505,6 +3193,17 @@ body[data-dragon-ui] #stage-resolution-dialog .stage-resolution-table-panel {
         right: 16px;
         left: 16px;
     }
+
+    .dragon-model-config-layout {
+        grid-template-columns: minmax(240px, 280px) minmax(0, 1fr);
+        gap: 18px;
+    }
+
+    .dragon-model-config-page .dragon-tool-summary {
+        width: 100%;
+        min-width: 0;
+    }
+
 }
 
 @media (max-width: 734px) {
@@ -2519,6 +3218,10 @@ body[data-dragon-ui] #stage-resolution-dialog .stage-resolution-table-panel {
 
     .dragon-model-config-sidebar {
         position: static;
+    }
+
+    body[data-dragon-ui] #dragon-root .dragon-model-config-page > .dragon-tool-hero {
+        display: flex;
     }
 
     .dragon-savebar {
@@ -2552,6 +3255,95 @@ body[data-dragon-ui] #stage-resolution-dialog .stage-resolution-table-panel {
     .dragon-model-identity-fields,
     .dragon-environment-summary {
         grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 1068px) {
+    .dragon-global-settings-workspace {
+        grid-template-columns: minmax(188px, 220px) minmax(0, 1fr);
+        gap: 18px;
+    }
+
+    .dragon-global-settings-sidebar {
+        padding: 18px 14px;
+    }
+
+    .dragon-global-settings-header-side {
+        flex-basis: min(360px, 46%);
+    }
+}
+
+@media (max-width: 734px) {
+    .dragon-global-settings-workspace {
+        grid-template-columns: 1fr;
+        gap: 18px;
+    }
+
+    .dragon-global-settings-sidebar {
+        position: static;
+    }
+
+    .dragon-global-settings-sidebar-brand h1 {
+        font-size: 22px;
+    }
+
+    .dragon-global-settings-summary {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .dragon-global-settings-sidebar-note {
+        display: none;
+    }
+
+    body[data-dragon-ui] #dragon-root .dragon-global-settings-header {
+        align-items: stretch;
+    }
+
+    .dragon-global-settings-header-side {
+        width: 100%;
+        flex-basis: auto;
+        justify-items: stretch;
+    }
+
+    .dragon-global-settings-header-side .dragon-tool-actions {
+        justify-content: flex-start;
+    }
+
+    body[data-dragon-ui] #dragon-root .dragon-global-settings-group-header {
+        grid-template-columns: 36px minmax(0, 1fr);
+        gap: 10px;
+        padding: 16px;
+    }
+
+    .dragon-global-settings-group-fields {
+        padding: 12px;
+    }
+}
+
+@media (max-width: 430px) {
+    .dragon-global-settings-summary {
+        grid-template-columns: 1fr;
+    }
+
+    .dragon-global-settings-stats {
+        grid-template-columns: 1fr;
+    }
+
+    .dragon-global-settings-stat {
+        display: grid;
+        grid-template-columns: 64px 38px minmax(0, 1fr);
+        gap: 8px;
+        align-items: center;
+        padding: 9px 10px;
+    }
+
+    .dragon-global-settings-stat strong,
+    .dragon-global-settings-stat small {
+        margin-top: 0;
+    }
+
+    .dragon-global-settings-group-header h2 {
+        font-size: 18px;
     }
 }
 
@@ -2633,4 +3425,47 @@ body[data-dragon-ui] #stage-resolution-dialog .stage-resolution-table-panel {
     .dragon-tool-actions .dragon-btn { white-space: nowrap; }
     .dragon-tool-actions .dragon-btn:only-child { grid-column: 1 / -1; }
     .dragon-image-test-state { justify-content: center; }
+}
+
+/* Preset-library edge clarity: keep controls away from the container edge and
+ * use the shared interactive border instead of relying on background contrast. */
+.dragon-dataset-library {
+    border-color: var(--dragon-border);
+    box-shadow: 0 1px 2px color-mix(in srgb, var(--dragon-text-primary) 5%, transparent);
+}
+
+.dragon-dataset-preset-group > header {
+    min-height: 38px;
+    padding: 6px 10px 9px;
+}
+
+.dragon-dataset-preset-group > div {
+    padding: 0 2px 2px;
+}
+
+.dragon-dataset-preset-row {
+    border-color: var(--dragon-border);
+}
+
+.dragon-dataset-preset-item {
+    min-height: 52px;
+    padding: 10px 12px;
+}
+
+.dragon-dataset-preset-item:focus-visible {
+    outline: 2px solid var(--dragon-accent);
+    outline-offset: -2px;
+}
+
+.dragon-dataset-library-actions {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.dragon-dataset-group-action {
+    text-decoration: none;
+}
+
+.dragon-dataset-group-action:focus-visible {
+    outline: 2px solid var(--dragon-accent);
+    outline-offset: 1px;
 }

@@ -1651,7 +1651,7 @@ def test_config_form_uses_navigation_search_and_progressive_disclosure() -> None
     assert "class prompt 是 prior caption 的目标文本" in catalog_help_training
     assert "只在遮罩外区域做先验保留" in catalog_help_training
     assert "block_swap_transfer_dtype: '块交换传输精度'" in source
-    assert "block_swap_transfer_dtype: ['bf16', 'fp8_e4m3']" in source
+    assert "block_swap_transfer_dtype: ['bf16', 'fp8_e4m3', 'int8']" in source
     assert "base_compute: '底模计算路径'" in source
     assert "convrot_group_size: 'ConvRot 组大小'" in source
     assert "convrot_scope: 'ConvRot 作用范围'" in source
@@ -2901,6 +2901,35 @@ def test_sample_prompts_editor_preserves_raw_text_when_needed() -> None:
     assert "const text = serializeSamplePromptsEditor(editor);" in table_mode_body
     assert "for (const row of parseSamplePromptRows(text))" in table_mode_body
     assert ".sample-prompts-mode-btn[aria-pressed=\"true\"]" in css
+
+
+def test_sample_prompts_table_exposes_supported_per_prompt_sampling_options() -> None:
+    model = _frontend_module_text("js/features/sample-prompts/model.js")
+    row_ui = _frontend_module_text("js/features/sample-prompts/row-ui.js")
+    sections = (STATIC_DIR / "js/dragon-ui/pages/section-groups.js").read_text(encoding="utf-8")
+
+    for snippet in (
+        "negative_prompt: ''",
+        "sample_sampler: ''",
+        "flow_shift: ''",
+        "/^n\\s+(.+)$/i",
+        "/^ss\\s+(.+)$/i",
+        "/^fs\\s+([\\d.]+)$/i",
+        "--n ${row.negative_prompt.trim()}",
+        "--fs ${positiveNumberText(row.flow_shift)}",
+        "--ss ${row.sample_sampler.trim()}",
+    ):
+        assert snippet in model
+
+    for snippet in (
+        "负面提示词 / n",
+        "Flow Shift / fs",
+        "采样器 / ss",
+        "createSamplePromptSelectField",
+    ):
+        assert snippet in row_ui
+
+    assert "keys: ['seed']," in sections
 
 
 def test_dataset_json_caption_switch_ui_is_wired() -> None:

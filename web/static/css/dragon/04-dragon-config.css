@@ -7,8 +7,17 @@
  */
 
 .dragon-config-page {
-    max-width: 980px;
+    /* Configuration pages contain long paths and a two-column label/field
+     * layout, so use the full viewport between the standard page gutters. */
+    width: calc(100% - (2 * var(--dragon-content-pad)));
+    max-width: none;
     margin: 0 auto;
+}
+
+@media (max-width: 833px) {
+    .dragon-config-page {
+        width: calc(100% - (2 * var(--dragon-content-pad-mobile)));
+    }
 }
 
 /* Compact training context bar. It shares the 34px control rhythm used by
@@ -157,6 +166,106 @@
     padding-right: 13px;
     padding-left: 13px;
     font-size: 13px;
+}
+
+/* Launch dialogs use the same restrained surfaces and action rhythm as the
+ * configuration workbench instead of the browser's default dialog chrome. */
+body[data-dragon-ui] .dragon-training-dialog {
+    width: min(520px, calc(100vw - 32px));
+    max-height: min(720px, calc(100dvh - 48px));
+    margin: auto;
+    padding: 0;
+    overflow: hidden;
+    border: 1px solid var(--dragon-border);
+    border-radius: var(--dragon-radius-lg);
+    background: var(--dragon-bg-elevated);
+    color: var(--dragon-text-primary);
+    box-shadow: var(--dragon-shadow-lg);
+}
+
+body[data-dragon-ui] .dragon-training-dialog::backdrop {
+    background: color-mix(in srgb, var(--dragon-text-primary) 32%, transparent);
+    backdrop-filter: blur(2px);
+}
+
+.dragon-training-dialog-shell {
+    display: grid;
+    max-height: min(720px, calc(100dvh - 48px));
+    grid-template-rows: auto minmax(0, 1fr) auto;
+}
+
+.dragon-training-dialog-header {
+    padding: var(--dragon-sp-5) var(--dragon-sp-5) var(--dragon-sp-4);
+    border-bottom: 1px solid var(--dragon-divider);
+}
+
+.dragon-training-dialog-header .dragon-eyebrow {
+    display: block;
+    margin-bottom: var(--dragon-sp-2);
+}
+
+.dragon-training-dialog-header h2 {
+    margin: 0;
+    color: var(--dragon-text-primary);
+    font-family: var(--dragon-font-display);
+    font-size: var(--dragon-fs-subhead);
+    font-weight: var(--dragon-fw-semibold);
+    line-height: 1.25;
+}
+
+.dragon-training-dialog-body {
+    min-height: 0;
+    padding: var(--dragon-sp-4) var(--dragon-sp-5);
+    overflow: auto;
+    color: var(--dragon-text-secondary);
+    font-size: var(--dragon-fs-callout-medium);
+    line-height: 1.5;
+}
+
+.dragon-training-dialog-body p { margin: 0; }
+.dragon-training-dialog-body p + p { margin-top: var(--dragon-sp-3); }
+.dragon-training-dialog-note { color: var(--dragon-text-tertiary); font-size: var(--dragon-fs-caption); }
+
+.dragon-training-checks {
+    display: grid;
+    gap: var(--dragon-sp-2);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.dragon-training-checks li {
+    padding: var(--dragon-sp-3);
+    border: 1px solid var(--dragon-border-light);
+    border-radius: var(--dragon-radius-sm);
+    background: var(--dragon-bg-secondary);
+    overflow-wrap: anywhere;
+}
+
+.dragon-training-checks li[data-level="error"] { border-color: color-mix(in srgb, var(--dragon-error) 45%, var(--dragon-border-light)); color: var(--dragon-error); }
+.dragon-training-checks li[data-level="warning"] { border-color: color-mix(in srgb, var(--dragon-warning) 45%, var(--dragon-border-light)); color: var(--dragon-warning); }
+
+.dragon-training-dialog-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: var(--dragon-sp-2);
+    padding: var(--dragon-sp-4) var(--dragon-sp-5) var(--dragon-sp-5);
+    border-top: 1px solid var(--dragon-divider);
+    background: var(--dragon-bg-secondary);
+}
+
+@media (max-width: 520px) {
+    body[data-dragon-ui] .dragon-training-dialog {
+        width: calc(100vw - 24px);
+        max-height: calc(100dvh - 24px);
+    }
+
+    .dragon-training-dialog-shell { max-height: calc(100dvh - 24px); }
+    .dragon-training-dialog-header,
+    .dragon-training-dialog-body { padding-right: var(--dragon-sp-4); padding-left: var(--dragon-sp-4); }
+    .dragon-training-dialog-actions { padding: var(--dragon-sp-3) var(--dragon-sp-4) var(--dragon-sp-4); }
+    .dragon-training-dialog-actions .dragon-btn { flex: 1 1 140px; justify-content: center; }
 }
 
 @media (max-width: 734px) {
@@ -583,22 +692,40 @@
     z-index: 10;
 }
 
-/* Long category pages: the flyout is the index, while all entries remain in
-   one readable document. These tighter values preserve the type hierarchy
-   without leaving large blank gaps between real controls. */
+/* Category config pages keep the same compact field rhythm as the sub-page
+   layout below. */
 .dragon-config-category-page .dragon-config-hero {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
     max-width: none;
-    padding: 52px 0 32px;
+    margin: 0;
+    padding: 12px 0;
     text-align: left;
+    white-space: nowrap;
+}
+
+/* Keep the page title first and let its type size define the compact header
+ * height. The context label and description retain their existing sizes. */
+.dragon-config-category-page .dragon-config-hero .dragon-eyebrow {
+    order: 0;
+    margin: 0;
 }
 
 .dragon-config-category-page .dragon-config-hero h1 {
-    margin-bottom: 8px;
+    order: 1;
+    flex: 0 0 auto;
+    margin: 0;
 }
 
 .dragon-config-category-page .dragon-config-hero p {
-    margin-left: 0;
-    max-width: 720px;
+    order: 3;
+    overflow: hidden;
+    min-width: 0;
+    max-width: none;
+    margin: 0;
+    text-overflow: ellipsis;
 }
 
 .dragon-config-index {
@@ -616,101 +743,6 @@
     color: var(--dragon-text-tertiary);
     font-size: var(--dragon-fs-tiny);
     font-weight: var(--dragon-fw-semibold);
-}
-
-.dragon-config-index-grid {
-    display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 4px 12px;
-}
-
-.dragon-config-index-link {
-    display: flex;
-    min-width: 0;
-    flex-direction: column;
-    gap: 2px;
-    padding: 8px 10px;
-    border-radius: var(--dragon-radius-sm);
-    color: var(--dragon-text-primary);
-    text-decoration: none;
-    transition: background var(--dragon-dur-fast) var(--dragon-ease), color var(--dragon-dur-fast) var(--dragon-ease);
-}
-
-.dragon-config-index-link:hover,
-.dragon-config-index-link[data-active="true"] {
-    background: var(--dragon-tile-bg);
-    color: var(--dragon-accent);
-}
-
-.dragon-config-index-label {
-    overflow: hidden;
-    font-size: var(--dragon-fs-caption);
-    font-weight: var(--dragon-fw-semibold);
-    line-height: 1.25;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.dragon-config-index-desc {
-    overflow: hidden;
-    color: var(--dragon-text-tertiary);
-    font-size: var(--dragon-fs-tiny);
-    line-height: 1.25;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.dragon-config-entry {
-    scroll-margin-top: 60px;
-    display: grid;
-    grid-template-columns: minmax(184px, 0.28fr) minmax(0, 0.72fr);
-    column-gap: 36px;
-    align-items: start;
-    padding: 32px 0 24px;
-    border-top: 1px solid var(--dragon-divider);
-}
-
-.dragon-config-entry:first-child {
-    border-top: 0;
-}
-
-.dragon-config-entry-header {
-    display: block;
-    min-height: 0;
-    padding: 0;
-    position: static;
-    grid-column: 1;
-    margin: 0;
-    background: transparent;
-    border: 0;
-    box-shadow: none;
-}
-
-.dragon-config-entry-header .dragon-eyebrow {
-    display: block;
-    margin: 0 0 6px;
-}
-
-.dragon-config-entry-header h2 {
-    margin: 0 0 6px;
-    color: var(--dragon-text-primary);
-    font-family: var(--dragon-font-display);
-    font-size: 24px;
-    font-weight: var(--dragon-fw-semibold);
-    line-height: 1.1667;
-    letter-spacing: var(--dragon-ls-normal);
-}
-
-.dragon-config-entry-header p {
-    margin: 0;
-    color: var(--dragon-text-tertiary);
-    font-size: 13px;
-    line-height: 1.42;
-}
-
-.dragon-config-entry-fields {
-    grid-column: 2;
-    min-width: 0;
 }
 
 .dragon-config-category-page .dragon-config-section {
@@ -789,28 +821,6 @@
 }
 
 @media (max-width: 734px) {
-    .dragon-config-index-grid {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-
-    .dragon-config-entry-header {
-        grid-column: 1;
-        margin-bottom: 18px;
-    }
-
-    .dragon-config-entry-header .dragon-eyebrow {
-        margin-bottom: 6px;
-    }
-
-    .dragon-config-entry {
-        display: block;
-        padding-top: 28px;
-    }
-
-    .dragon-config-entry-fields {
-        min-width: 0;
-    }
-
     .dragon-toggle-grid {
         grid-template-columns: 1fr;
     }
@@ -818,4 +828,169 @@
     .dragon-config-category-page .dragon-config-actions-sticky {
         width: 100%;
     }
+}
+
+/* True config sub-pages: keep the category navigation compact and give the
+ * selected form a single, focused reading column. Links change the route;
+ * they no longer expand every sibling section into one long document. */
+.dragon-config-subpage .dragon-config-workspace {
+    display: grid;
+    grid-template-columns: minmax(220px, 260px) minmax(0, 1fr);
+    gap: 32px;
+    align-items: start;
+}
+
+.dragon-config-subpage .dragon-config-index {
+    position: sticky;
+    top: calc(var(--dragon-nav-height) + 20px);
+    min-width: 0;
+    margin: 0;
+    padding: 14px 20px 18px 0;
+    border: 0;
+    border-right: 1px solid var(--dragon-divider);
+    background: transparent;
+}
+
+.dragon-config-subpage .dragon-config-index-heading {
+    margin-bottom: 16px;
+    color: var(--dragon-text-secondary);
+    font-size: var(--dragon-fs-caption);
+    font-weight: var(--dragon-fw-semibold);
+}
+
+.dragon-config-index-groups {
+    display: grid;
+    gap: 18px;
+}
+
+.dragon-config-index-group-title {
+    margin-bottom: 6px;
+    color: var(--dragon-text-quaternary);
+    font-size: var(--dragon-fs-tiny);
+    font-weight: var(--dragon-fw-semibold);
+}
+
+.dragon-config-index-links {
+    display: grid;
+    gap: 2px;
+}
+
+.dragon-config-subpage .dragon-config-index-link {
+    display: block;
+    overflow: hidden;
+    padding: 8px 10px;
+    border-radius: var(--dragon-radius-sm);
+    color: var(--dragon-text-secondary);
+    font-size: var(--dragon-fs-caption);
+    line-height: 1.3;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.dragon-config-subpage .dragon-config-index-link:hover,
+.dragon-config-subpage .dragon-config-index-link[data-active="true"] {
+    background: var(--dragon-tile-bg);
+    color: var(--dragon-accent);
+}
+
+.dragon-config-detail {
+    min-width: 0;
+    padding: 14px 0 24px;
+}
+
+.dragon-config-detail-header {
+    margin-bottom: 24px;
+    padding-bottom: 18px;
+    border-bottom: 1px solid var(--dragon-divider);
+}
+
+.dragon-config-detail-header .dragon-eyebrow {
+    display: block;
+    margin-bottom: 6px;
+}
+
+.dragon-config-detail-header h2 {
+    margin: 0 0 6px;
+    color: var(--dragon-text-primary);
+    font-family: var(--dragon-font-display);
+    font-size: var(--dragon-fs-headline);
+    font-weight: var(--dragon-fw-semibold);
+    line-height: var(--dragon-lh-headline);
+}
+
+.dragon-config-detail-header p {
+    max-width: 720px;
+    margin: 0;
+    color: var(--dragon-text-tertiary);
+    font-size: var(--dragon-fs-callout-medium);
+    line-height: 1.4;
+}
+
+.dragon-config-subpage .dragon-config-actions-sticky {
+    width: 100%;
+    margin-top: 20px;
+    margin-left: 0;
+}
+
+/* Three model paths form one compact model chain on wide screens. */
+.dragon-config-subpage[data-config-subpage="base-models"] .dragon-config-detail-fields {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 0 24px;
+}
+
+.dragon-config-subpage[data-config-subpage="base-models"] .dragon-config-section {
+    min-width: 0;
+    margin-bottom: 0;
+}
+
+@media (max-width: 900px) {
+    .dragon-config-subpage .dragon-config-workspace {
+        display: block;
+    }
+
+    .dragon-config-subpage .dragon-config-index {
+        position: static;
+        margin-bottom: 20px;
+        padding: 12px 0 14px;
+        border-right: 0;
+        border-bottom: 1px solid var(--dragon-divider);
+    }
+
+    .dragon-config-index-groups {
+        display: flex;
+        gap: 24px;
+        overflow-x: auto;
+        padding-bottom: 4px;
+        scrollbar-width: thin;
+    }
+
+    .dragon-config-index-group {
+        flex: 0 0 180px;
+    }
+
+    .dragon-config-detail {
+        padding-top: 0;
+    }
+}
+
+@media (max-width: 734px) {
+    .dragon-config-subpage[data-config-subpage="base-models"] .dragon-config-detail-fields {
+        grid-template-columns: 1fr;
+    }
+
+    .dragon-config-detail-header h2 {
+        font-size: var(--dragon-fs-headline-small);
+    }
+}
+
+/* Partial training-context refresh: only the editable left/middle workspace
+ * signals loading. The independent preset manager remains interactive and
+ * keeps its own scroll position. */
+[data-config-editable-pane] { min-width: 0; }
+
+[data-config-editable-pane][aria-busy="true"] {
+    opacity: .58;
+    pointer-events: none;
+    transition: opacity var(--dragon-dur-fast) var(--dragon-ease);
 }

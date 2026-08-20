@@ -8,7 +8,6 @@ import os
 import random
 import time
 
-import torch
 from accelerate.utils import set_seed
 
 from library import train_util
@@ -154,6 +153,15 @@ def run_training_session(trainer, args) -> None:
     # the GPU round-trip). `cache_latents = false` (e.g. IP-Adapter) is a
     # separate, explicit live-encoding mode, not a fallback.
     sampling_enabled = sample_preview_enabled(args)
+    sample_prompt_cache_hit = False
+    if (
+        sampling_enabled
+        and args.cache_text_encoder_outputs
+        and not trainer.is_train_text_encoder(args)
+    ):
+        from library.training.sample_prompt_cache import restore_sample_prompt_cache
+
+        sample_prompt_cache_hit = restore_sample_prompt_cache(trainer, args)
 
     def _latents_complete(group):
         return group is None or group.is_latents_cache_complete()
@@ -195,7 +203,7 @@ def run_training_session(trainer, args) -> None:
     # sample prompts, or when the text encoder itself is being trained.
     qwen3_needed = (
         (not args.cache_text_encoder_outputs)
-        or sampling_enabled
+        or (sampling_enabled and not sample_prompt_cache_hit)
         or trainer.is_train_text_encoder(args)
     )
 

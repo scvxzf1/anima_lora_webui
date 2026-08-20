@@ -395,6 +395,10 @@ def _normalize_patch_value(key: str, value: Any) -> Any:
             return int(value)
         except (TypeError, ValueError) as exc:
             raise ValueError(f"{key} 必须是整数") from exc
+    if key == "convrot_large_layer_mode" and value in ("", None):
+        # ConvRot 大层模式留空表示“未启用大层特化”；schema choices 不含空串，
+        # 因此删除顶层键，训练端会按 None 处理（与显式空串语义一致）。
+        return _DELETE_TOML_KEY
     if key == "sample_at_first":
         if isinstance(value, bool):
             return value

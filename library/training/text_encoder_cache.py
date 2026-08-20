@@ -14,6 +14,7 @@ from library import train_util
 from library.anima import text_strategies
 from library.datasets import DatasetGroup
 from library.runtime.device import clean_memory_on_device
+from library.training.sample_prompt_cache import save_sample_prompt_cache
 from library.training.train_bootstrap import sample_preview_enabled
 
 logger = logging.getLogger(__name__)
@@ -41,7 +42,13 @@ def cache_text_encoder_outputs_if_needed(
 
     # The text encoder is in memory only to encode sample prompts when
     # sampling will actually run. It is None when no preview needs it.
-    if text_encoders[0] is not None and sample_preview_enabled(args):
+    preview_cache_ready = bool(
+        trainer.sample_prompts_snapshot is not None
+        and trainer.sample_prompts_te_outputs is not None
+    )
+    if preview_cache_ready and sample_preview_enabled(args):
+        logger.info("using persistent Text Encoder outputs for sample prompts")
+    elif text_encoders[0] is not None and sample_preview_enabled(args):
         logger.info(
             f"cache Text Encoder outputs for sample prompts: {args.sample_prompts}"
         )
@@ -63,18 +70,29 @@ def cache_text_encoder_outputs_if_needed(
                     if p not in sample_prompts_te_outputs:
                         logger.info(f"  cache TE outputs for: {p}")
                         tokens_and_masks = tokenize_strategy.tokenize(p)
-                        sample_prompts_te_outputs[p] = (
-                            text_encoding_strategy.encode_tokens(
-                                tokenize_strategy,
-                                text_encoders,
-                                tokens_and_masks,
-                            )
+                        encoded = text_encoding_strategy.encode_tokens(
+                            tokenize_strategy,
+                            text_encoders,
+                            tokens_and_masks,
+                        )
+                        sample_prompts_te_outputs[p] = tuple(
+                            torch.as_tensor(value).detach().to("cpu").contiguous()
+                            for value in encoded
                         )
         trainer.sample_prompts_te_outputs = sample_prompts_te_outputs
+
+        if accelerator.is_main_process:
+            try:
+                save_sample_prompt_cache(
+                    args,
+                    trainer.sample_prompts_snapshot,
+                    sample_prompts_te_outputs,
+                )
+            except (OSError, RuntimeError, ValueError) as exc:
+                logger.warning("Could not persist sample-prompt TE cache: %s", exc)
 
         logger.info("move text encoder back to cpu")
         text_encoders[0].to("cpu")
         clean_memory_on_device(accelerator.device)
 
     accelerator.wait_for_everyone()
-

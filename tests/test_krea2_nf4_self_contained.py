@@ -91,7 +91,17 @@ def test_inspect_distinguishes_base_legacy_and_v2(nf4_files) -> None:
     assert v2.metadata["model_tensor_count"] == "2"
 
 
-def test_self_contained_v2_round_trip_is_exact(nf4_files) -> None:
+def test_self_contained_v2_round_trip_is_exact(nf4_files, monkeypatch) -> None:
+    construction_devices = []
+
+    def record_linear4bit_device(*args, **kwargs):
+        construction_devices.append(kwargs.get("device"))
+        return Linear4bit(*args, **kwargs)
+
+    monkeypatch.setattr(
+        "library.models.krea2_raw.quantize.Linear4bit",
+        record_linear4bit_device,
+    )
     loaded = _TinyModel().to(torch.bfloat16)
     count = load_nf4_dit_into(
         loaded,
@@ -101,8 +111,11 @@ def test_self_contained_v2_round_trip_is_exact(nf4_files) -> None:
     )
 
     assert count == 1
+    assert construction_devices == ["meta"]
     assert isinstance(loaded.fc, Linear4bit)
     assert loaded.fc.weight.bnb_quantized
+    assert not any(parameter.is_meta for parameter in loaded.parameters())
+    assert not any(buffer.is_meta for buffer in loaded.buffers())
     assert torch.equal(loaded.fc.weight.data.cpu(), nf4_files["reference_code"])
     assert torch.equal(loaded.scale.cpu(), torch.ones(4, dtype=torch.bfloat16))
     assert torch.equal(loaded.offset.cpu(), torch.arange(4, dtype=torch.bfloat16))

@@ -8,7 +8,13 @@ from typing import Any
 
 import toml
 
-from library.env import anima_home, get_configs_root, get_training_history_root, get_training_queue_root
+from library.env import (
+    anima_home,
+    get_configs_root,
+    get_training_history_root,
+    get_training_queue_root,
+    normalize_model_family,
+)
 from web.services._dynamic_path import DynamicPath
 from web.services.atomic_io import atomic_write_text
 
@@ -68,14 +74,6 @@ GLOBAL_IMAGE_TEST_PATH_KEYS = (
 GLOBAL_FAMILY_KEYS = (
     "model_family",
 )
-# Known families (mirror library/env.py::_KNOWN_FAMILIES). Unknown values fall
-# back to empty (== anima) rather than raising, so a hand-edited typo doesn't
-# brick the settings panel.
-_KNOWN_MODEL_FAMILIES = ("anima", "krea2_raw")
-
-
-
-
 def get_training_policy() -> dict[str, Any]:
     """Return durable training/queue policy defaults from web-ui-settings."""
     raw = _load_raw_settings()
@@ -168,16 +166,15 @@ def _normalize_bool_setting(value: Any, *, default: bool = False) -> bool:
 
 
 def _normalize_model_family(value: Any) -> str:
-    """Normalize the ``model_family`` selector. Empty / unknown → anima default.
+    """Normalize the selector; only a missing value may use the default chain.
 
     Stored as a lowercase family string. Empty string means "use the
     resolve_model_family() fallback (env / DEFAULT_MODEL_FAMILY=anima)" so
     anima-only deployments leave the field unset and behavior is unchanged.
     """
-    raw = str(value or "").strip().lower()
-    if raw in _KNOWN_MODEL_FAMILIES:
-        return raw
-    return ""
+    if not str(value or "").strip():
+        return ""
+    return normalize_model_family(value, source="WebUI global model_family")
 
 def get_global_settings() -> dict[str, Any]:
     settings = _load_settings()
@@ -262,7 +259,7 @@ def save_global_settings(data: dict[str, Any]) -> dict[str, Any]:
         if normalized_family and normalized_family != "anima":
             next_global["model_family"] = normalized_family
         else:
-            # Empty / unknown / anima → drop the key so anima-default holds.
+            # Empty / anima → drop the key so anima-default holds.
             next_global.pop("model_family", None)
     elif "model_family" in next_global:
         existing = _normalize_model_family(next_global.get("model_family"))

@@ -92,6 +92,7 @@ export const FORM_SECTION_DEFS = [
             'sample_every_n_steps',
             'sample_at_first',
             'sample_sampler',
+            'seed',
         ],
     },
     {

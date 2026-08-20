@@ -276,6 +276,34 @@ def test_raw_patch_clears_optional_sample_schedule_fields(tmp_path: Path, monkey
     assert saved == {"output_name": "anima"}
 
 
+def test_raw_patch_clears_blank_convrot_large_layer_mode(tmp_path: Path, monkeypatch):
+    configs, _dataset_path = _write_minimal_config_tree(tmp_path)
+    _patch_config_service_paths(monkeypatch, tmp_path)
+    train_rel = "configs/imported/lora.toml"
+    (configs / "imported" / "lora.toml").write_text(
+        "\n".join(
+            [
+                'output_name = "anima"',
+                'convrot_large_layer_mode = "w8a16"',
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    ok, msg, content, changed, _warnings = config_service.patch_raw_file_values(
+        train_rel,
+        {"convrot_large_layer_mode": ""},
+    )
+
+    assert ok is True, msg
+    assert changed == ["convrot_large_layer_mode"]
+    assert 'output_name = "anima"' in content
+    assert "convrot_large_layer_mode" not in content
+    saved = toml.loads((configs / "imported" / "lora.toml").read_text(encoding="utf-8"))
+    assert saved == {"output_name": "anima"}
+
+
 def test_raw_patch_writes_non_blank_sample_schedule_fields_as_int(tmp_path: Path, monkeypatch):
     configs, _dataset_path = _write_minimal_config_tree(tmp_path)
     _patch_config_service_paths(monkeypatch, tmp_path)

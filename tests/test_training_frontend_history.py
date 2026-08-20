@@ -150,6 +150,67 @@ def test_manual_history_refresh_announces_and_deduplicates_requests() -> None:
     assert "on('btn-history-manager-refresh', 'click', () => loadTrainingHistoryList({ announce: true }));" in listener_source
 
 
+def test_history_refresh_reuses_open_detail_content() -> None:
+    history_source = _frontend_module_text("js/features/history-list/list.js")
+    history_dialog = _frontend_module_text("js/features/history-detail/dialog.js")
+
+    render_manager = _section(
+        history_source,
+        "export function renderHistoryManager()",
+        "export function renderHistoryManagerItems",
+    )
+    assert "renderHistoryDetailDialog(undefined, { reuseCachedContent: true });" in render_manager
+    assert "renderHistoryDetailContent({ reuseCached: options.reuseCachedContent === true });" in history_dialog
+    assert "content.firstElementChild !== cached" in history_dialog
+    assert history_dialog.index("if (cached) {") < history_dialog.index("content.replaceChildren();\n        let node = null;")
+
+
+def test_history_log_scroll_position_is_clamped_after_atomic_rerender() -> None:
+    if not shutil.which("node"):
+        pytest.skip("node is required for history log scroll checks")
+    script = r"""
+import {
+    captureHistoryLogScrollPosition,
+    restoreHistoryLogScrollPosition,
+} from './web/static/js/features/history-detail/logs.js?history-log-scroll-test';
+
+const element = {
+    scrollTop: 640,
+    scrollLeft: 32,
+    scrollHeight: 1600,
+    clientHeight: 400,
+    scrollWidth: 900,
+    clientWidth: 600,
+};
+const captured = captureHistoryLogScrollPosition(element);
+element.scrollTop = 0;
+element.scrollLeft = 0;
+restoreHistoryLogScrollPosition(element, captured);
+const preserved = { top: element.scrollTop, left: element.scrollLeft };
+
+element.scrollHeight = 700;
+element.scrollWidth = 610;
+restoreHistoryLogScrollPosition(element, captured);
+const clamped = { top: element.scrollTop, left: element.scrollLeft };
+
+console.log(JSON.stringify({ captured, preserved, clamped }));
+"""
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", script],
+        cwd=Path(__file__).resolve().parents[1],
+        text=True,
+        capture_output=True,
+        timeout=20,
+    )
+
+    assert result.returncode == 0, result.stderr or result.stdout
+    assert json.loads(result.stdout) == {
+        "captured": {"top": 640, "left": 32},
+        "preserved": {"top": 640, "left": 32},
+        "clamped": {"top": 300, "left": 10},
+    }
+
+
 def test_live_status_merges_current_history_task_without_full_history_fetch() -> None:
     if not shutil.which("node"):
         pytest.skip("node is required for live history merge checks")

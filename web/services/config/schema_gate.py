@@ -15,6 +15,19 @@ _SCHEMA_LOAD_OK = False
 _SCHEMA_LOAD_ERROR = ""
 _SCHEMA_KEY_COUNT = 0
 
+# Keys whose empty/None patch value is normalized to "delete the TOML key"
+# before the raw-file write. They must pass the choice gate even though an
+# empty string is not a legal enum value for the trainer (raw_files
+# converts them to deletion).
+_DELETE_ON_EMPTY_PATCH_KEYS = frozenset(
+    {
+        "sample_every_n_epochs",
+        "sample_every_n_steps",
+        "max_train_epochs",
+        "convrot_large_layer_mode",
+    }
+)
+
 
 def reset_schema_load_state_for_tests() -> None:
     """Reset module-level schema load telemetry (tests only)."""
@@ -112,6 +125,8 @@ def validate_patch_values(values: dict[str, Any]) -> tuple[list[str], list[str]]
             continue
         # Nested tables/lists are not top-level argparse schema keys.
         if isinstance(value, (dict, list)):
+            continue
+        if key in _DELETE_ON_EMPTY_PATCH_KEYS and value in ("", None):
             continue
         resolved = config_schema.resolve_alias(key)
         if resolved not in schema:

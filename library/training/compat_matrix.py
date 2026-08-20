@@ -23,6 +23,11 @@ VALID_SELECTIVE_CHECKPOINTS = {
 }
 KREA2_ATTN_MODES = {"", "torch", "flash", "sdpa"}
 KREA2_SELECTIVE_CHECKPOINTS = {"off", "every_other"}
+KREA2_UNSUPPORTED_ADAPTER_FLAGS = (
+    "use_ip_adapter", "use_easycontrol", "use_byg", "use_lokr", "use_loha",
+    "use_glora", "use_vera", "use_ortho", "use_chimera_hydra",
+    "use_timestep_mask", "add_reft", "train_llm_adapter",
+)
 
 
 @dataclass(frozen=True)
@@ -141,6 +146,35 @@ def check_training_compat(config: Mapping[str, Any] | object) -> TrainingCompatR
         )
 
     if krea2_family:
+        adapter_conflicts = []
+        if network_module not in {"", "networks.lora_anima"}:
+            adapter_conflicts.append(f"network_module={network_module!r}")
+        adapter_conflicts.extend(
+            flag for flag in KREA2_UNSUPPORTED_ADAPTER_FLAGS
+            if _bool_value(_get(config, flag), False)
+        )
+        moe_style = str(_get(config, "use_moe_style", "false") or "false").strip().lower()
+        if moe_style not in {"", "0", "false", "none", "off"}:
+            adapter_conflicts.append(f"use_moe_style={moe_style!r}")
+        if _bool_value(_get(config, "route_per_layer"), False):
+            adapter_conflicts.append("route_per_layer")
+        router_source = str(_get(config, "router_source", "none") or "none").strip().lower()
+        if router_source != "none":
+            adapter_conflicts.append(f"router_source={router_source!r}")
+        if _float_value(_get(config, "dora_wd"), 0.0) > 0:
+            adapter_conflicts.append("dora_wd")
+        if _int_value(_get(config, "step_expert_K"), 0) > 1:
+            adapter_conflicts.append("step_expert_K")
+        if functional_loss_weight > 0:
+            adapter_conflicts.append("functional_loss_weight")
+        if adapter_conflicts:
+            out.error(
+                "krea2_plain_lora_only",
+                "network_module",
+                "Krea-2 training currently supports only plain LoRA; unsupported: "
+                + ", ".join(adapter_conflicts),
+            )
+
         krea2_attn_mode = str(_get(config, "attn_mode", "") or "").strip().lower()
         if krea2_attn_mode not in KREA2_ATTN_MODES:
             out.error(

@@ -13,6 +13,7 @@ import {
     formatConfigLabel,
     isRunningState,
     mergeStatusSnapshot,
+    formatCurrentTaskLabel,
     stateText,
     visualState,
     visibleLogs,
@@ -114,6 +115,9 @@ function mountLiveTraining(root, model) {
             if (message.variant || message.preset || message.history_source_config_file || message.runtime_config_file) {
                 model.configLabel = formatConfigLabel(message);
             }
+            if (message.task_id || message.queue_item_id || message.job || message.status || message.state) {
+                model.currentTask = formatCurrentTaskLabel({ ...message, variant: message.variant || undefined, preset: message.preset || undefined });
+            }
             model.runDir = message.run_dir || message.output_dir || model.runDir;
             if (previousRunDir !== model.runDir && (message.run_dir || message.output_dir)) resetLivePeaks(model);
             model.lastActivity = message.message || message.last_log_line || model.lastActivity;
@@ -176,6 +180,7 @@ function renderLiveState(root, model, options = {}) {
     setText(root, '[data-live-metric="live-gpu-temp"] strong', formatTemperature(model.gpuTemp));
     setText(root, '[data-live-metric="live-gpu-temp"] small', peakText(formatTemperature(model.peakGpuTemp)));
     setText(root, '[data-live-context="config"]', model.configLabel);
+    setText(root, '[data-live-context="task"]', model.currentTask);
     setText(root, '[data-live-context="run-dir"]', model.runDir);
     setText(root, '[data-live-context="activity"]', model.lastActivity);
     setText(root, '[data-live-chart-count]', `最近 ${model.metrics.length} 条记录`);

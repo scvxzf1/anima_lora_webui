@@ -21,6 +21,10 @@
 
 | 文档 | 说明 |
 | --- | --- |
+| [dragon_classic_feature_parity_audit_20260815.md](dragon_classic_feature_parity_audit_20260815.md) | Classic、现有 Dragon 与 React 新前端的逐功能对照审计及迁移证据 |
+| [dragon_dataset_subset_field_audit_20260815.md](dragon_dataset_subset_field_audit_20260815.md) | Dragon 数据集 subset 字段与后端契约对照审计 |
+| [dragon_next_audit_20260819.md](dragon_next_audit_20260819.md) | Dragon React 前端对 live backend 的阶段性审计 |
+| [dragon_next_stage1_queue_monitor_history_20260819.md](dragon_next_stage1_queue_monitor_history_20260819.md) | Dragon React 队列、监控和历史页面阶段 1 集成记录 |
 | [dragon_ui_pr1_integration_20260814.md](dragon_ui_pr1_integration_20260814.md) | Dragon UI PR #1 的分阶段集成、测试门禁、调试与发布记录 |
 | [webui_frontend_p0_p2_fix_20260726.md](webui_frontend_p0_p2_fix_20260726.md) | 2026-07-26 WebUI 前端 P0–P2 审核修复记录（no-undef / 搜索 debounce / WS / dashboard） |
 | [webui_dataset_cross_group_drag_fix_20260727.md](webui_dataset_cross_group_drag_fix_20260727.md) | 2026-07-27 数据集/文件分组跨组拖动静默失败修复 |
@@ -28,11 +32,13 @@
 | [webui_god_files_refactor_20260607.md](webui_god_files_refactor_20260607.md) | WebUI 上帝文件治理合并记录 |
 | [training_history_detail_performance.md](training_history_detail_performance.md) | 训练历史详情性能记录 |
 | [ui_scale_independent_settings.md](ui_scale_independent_settings.md) | UI 缩放独立设置结论 |
+| [uncommitted_remote_review_20260810.md](uncommitted_remote_review_20260810.md) | 2026-08-10 未提交改动与远端同步审计 |
 
 ## Runtime 和能力边界
 
 | 文档 | 说明 |
 | --- | --- |
+| [backend_multi_model_audit_20260810.md](backend_multi_model_audit_20260810.md) | 2026-08-10 后端多模型兼容审计：Anima/Krea-2 主链、P1 风险、测试缺口与 registry 路线 |
 | [runtime_support_matrix_20260704.md](runtime_support_matrix_20260704.md) | compile / checkpoint / block swap 组合矩阵审计 |
 | [v100_flash_attention_support.md](v100_flash_attention_support.md) | V100 FlashAttention 目标仓库对照、移植状态与生产边界 |
 | [adapter_registry_capabilities_audit_20260704.md](adapter_registry_capabilities_audit_20260704.md) | Adapter registry、merge、推理加载和续训能力边界审计 |
@@ -53,6 +59,7 @@
 | [anima_fp8_blockswap_transfer_ablation_plan.md](anima_fp8_blockswap_transfer_ablation_plan.md) | FP8 block swap transfer 消融计划 |
 | [anima_fp8_blockswap_transfer_report.md](anima_fp8_blockswap_transfer_report.md) | FP8 block swap transfer 最终报告 |
 | [blockswap_baseline_20260806.md](blockswap_baseline_20260806.md) | 块交换优化基线测量（计算 vs 传输，RTX 3080 / CMP 90HX，标准参考） |
+| [krea2_90hx_nsight_tiles.md](krea2_90hx_nsight_tiles.md) | Krea-2 CMP 90HX Nsight tile/cache 验证：尾 tile 主因 REJECT、CUTLASS/cuDNN/FA2 实际 tile、NCU 权限边界 |
 | [krea2_nf4_ablation_findings.md](krea2_nf4_ablation_findings.md) | Krea-2 NF4 × {完整检查点, 块交换} 消融矩阵（5 格六维指标：显存/内存/速度/loss/数学实现/数学偏移，PG199 1024×1024 30 步） |
 | [krea2_nf4_self_contained.md](krea2_nf4_self_contained.md) | Krea-2 自包含 NF4 v2：无重新量化构建、版本化严格加载、v1 兼容与 PG199/RTX 3080 训练验证 |
 | [krea2_nf4_correction_pg199.md](krea2_nf4_correction_pg199.md) | Krea-2 NF4 激活加权 rank-16 回补实测：层级误差下降但端到端收益不足，暂不生产化 |

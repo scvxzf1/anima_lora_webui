@@ -38,6 +38,7 @@ export function createLiveModel(status = {}, metricsPayload = [], logsPayload = 
         wsState: 'connecting',
         wsError: '',
         configLabel: formatConfigLabel(status),
+        currentTask: formatCurrentTaskLabel(status),
         runDir: status?.run_dir || status?.output_dir || status?.training_output_dir || '尚未启动训练',
         lastActivity: status?.anomaly_message || status?.error_hint || status?.last_log_line || stateText(status?.status),
         lastLogId: Number(status?.last_log_id || logs.at?.(-1)?.id || 0),
@@ -144,6 +145,16 @@ export function visualState(state) {
 export function formatConfigLabel(status = {}) {
     const values = [status.variant, status.preset].filter(Boolean);
     return values.join(' · ') || status.history_source_config_file || status.runtime_config_file || '尚未选择训练配置';
+}
+
+export function formatCurrentTaskLabel(status = {}) {
+    const taskId = String(status.task_id || status.queue_item_id || '').trim();
+    const job = String(status.job || '').trim();
+    const config = formatConfigLabel(status);
+    if (!taskId && !job && !isRunningState(status.status)) return '暂无运行任务';
+    if (taskId && config && config !== '尚未选择训练配置') return `${config} · ${taskId}`;
+    if (taskId) return taskId;
+    return job || config;
 }
 
 function normalizeMetrics(payload) {

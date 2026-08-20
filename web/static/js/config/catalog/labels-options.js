@@ -241,7 +241,7 @@ export const FIELD_OPTIONS = {
     compile_block_scope: ['resident', 'all'],
     compile_inductor_mode: ['default', 'reduce-overhead', 'max-autotune', 'max-autotune-no-cudagraphs'],
     block_swap_restore_mode: ['foreach', 'slab'],
-    block_swap_transfer_dtype: ['bf16', 'fp8_e4m3'],
+    block_swap_transfer_dtype: ['bf16', 'fp8_e4m3', 'int8'],
     base_compute: ['bf16', 'w8a16_convrot', 'w8a8_convrot', 'nf4'],
     convrot_group_size: [64, 256, 1024],
     // Product profiles: mlp (speed default), all (VRAM), attention_out (mid).
@@ -249,7 +249,7 @@ export const FIELD_OPTIONS = {
     // sylvester: default / FWHT-compatible; regular: paper-aligned (prefer group 64).
     convrot_hadamard: ['sylvester', 'regular'],
     convrot_largest_in_features_only: [false, true],
-    convrot_large_layer_mode: ['', 'w8a16', 'w8a8'],
+    convrot_large_layer_mode: ['', 'w8a16', 'w8a8', 'w8a16_convrot', 'w8a8_convrot'],
     block_swap_profile_jsonl: ['off', 'auto'],
     memory_probe_jsonl: ['off', 'auto'],
     memory_probe_max_steps: [1, 2, 3, 5, 0],

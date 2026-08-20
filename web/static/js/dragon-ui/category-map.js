@@ -38,7 +38,7 @@ export const DRAGON_NAV_CATEGORIES = [
             {
                 header: '预览',
                 items: [
-                    { id: 'train-sampling', label: '训练中采样预览', desc: '样张提示词、频率、采样器', sections: ['训练中预览图'] },
+                    { id: 'train-sampling', label: '训练中采样预览', desc: '样张提示词、频率、种子与单条采样参数', sections: ['训练中预览图'] },
                 ],
             },
         ],

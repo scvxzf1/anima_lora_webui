@@ -331,7 +331,7 @@ export function renderHistoryManager() {
         if (mergeBtn) {
             mergeBtn.disabled = selectedHistoryTasks().filter((task) => task.job === 'training').length === 0;
         }
-        renderHistoryDetailDialog();
+        renderHistoryDetailDialog(undefined, { reuseCachedContent: true });
     }
 
 export function renderHistoryManagerItems(list, visible) {

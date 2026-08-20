@@ -161,6 +161,7 @@ Postfix 当前用户入口在 [guidelines/training.md#postfix](guidelines/traini
 | [findings/README.md](findings/README.md) | 审计、实验结论、失败路径、运行报告索引 |
 | [proposal/README.md](proposal/README.md) | 活跃或半活跃提案索引 |
 | [superpowers/README.md](superpowers/README.md) | 当前迭代规格、执行计划和迭代日志索引 |
+| [superpowers/specs/2026-08-15-dragon-single-frontend-rebuild-spec.md](superpowers/specs/2026-08-15-dragon-single-frontend-rebuild-spec.md) | Dragon 单前端重建总规格与完成定义 |
 | [archive-index.md](archive-index.md) | 已归档历史文档索引 |
 
 ## Optimizations

@@ -17,7 +17,10 @@ export function initScrollAnimations() {
                 }
             }
         },
-        { threshold: 0.15, rootMargin: '0px 0px -60px 0px' }
+        // Config field groups can be several viewport-heights tall. Requiring
+        // 15% of the whole node to intersect makes those nodes impossible to
+        // reveal, so trigger as soon as a real slice enters the viewport.
+        { threshold: 0.01, rootMargin: '0px 0px -60px 0px' }
     );
 
     scanForReveal();

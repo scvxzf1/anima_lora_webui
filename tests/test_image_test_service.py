@@ -6,6 +6,7 @@ from types import SimpleNamespace
 
 from aiohttp import web
 from PIL import Image
+import pytest
 
 from web.services import image_test_service
 
@@ -84,6 +85,79 @@ def test_normalize_image_test_request_reads_config_and_overrides(monkeypatch) ->
     assert normalized["anima_selective_block_strengths"]["block_4"] == 0.0
 
 
+def _stub_image_test_model_resolution(monkeypatch, *, global_family: str) -> None:
+    monkeypatch.setattr(image_test_service, "_apply_global_model_path_defaults", lambda cfg: cfg)
+    monkeypatch.setattr(image_test_service, "_resolve_image_test_model_paths", lambda cfg: cfg)
+    monkeypatch.setattr(
+        image_test_service.settings_service,
+        "get_global_settings",
+        lambda: {"model_family": global_family},
+    )
+
+
+def _minimal_image_test_payload(*, model_family=None) -> dict:
+    config = {
+        "pretrained_model_name_or_path": "models/base.safetensors",
+        "qwen3": "models/qwen3.safetensors",
+        "vae": "models/vae.safetensors",
+    }
+    if model_family is not None:
+        config["model_family"] = model_family
+    return {
+        "prompt": "test",
+        "sampler": "euler",
+        "attn_mode": "torch",
+        "flow_shift": "",
+        "config": config,
+    }
+
+
+def test_image_test_config_family_overrides_global_family(monkeypatch) -> None:
+    _stub_image_test_model_resolution(monkeypatch, global_family="anima")
+    normalized = image_test_service._normalize_image_test_request(
+        _minimal_image_test_payload(model_family="krea2_raw")
+    )
+    assert normalized["model_family"] == "krea2_raw"
+    assert normalized["flow_shift"] == 3.0
+
+
+def test_image_test_global_family_is_legacy_fallback(monkeypatch) -> None:
+    _stub_image_test_model_resolution(monkeypatch, global_family="krea2_raw")
+    normalized = image_test_service._normalize_image_test_request(
+        _minimal_image_test_payload()
+    )
+    assert normalized["model_family"] == "krea2_raw"
+
+
+def test_image_test_env_family_is_final_fallback(monkeypatch) -> None:
+    _stub_image_test_model_resolution(monkeypatch, global_family="")
+    monkeypatch.setenv("ANIMA_MODEL_FAMILY", "krea2_raw")
+    normalized = image_test_service._normalize_image_test_request(
+        _minimal_image_test_payload()
+    )
+    assert normalized["model_family"] == "krea2_raw"
+
+
+def test_image_test_rejects_unknown_explicit_config_family(monkeypatch) -> None:
+    _stub_image_test_model_resolution(monkeypatch, global_family="anima")
+    with pytest.raises(ValueError, match="image-test config.model_family"):
+        image_test_service._normalize_image_test_request(
+            _minimal_image_test_payload(model_family="unknown")
+        )
+
+
+def test_image_test_rejects_krea2_non_euler_and_flow_shift(monkeypatch) -> None:
+    _stub_image_test_model_resolution(monkeypatch, global_family="anima")
+    payload = _minimal_image_test_payload(model_family="krea2_raw")
+    payload["sampler"] = "lcm"
+    with pytest.raises(ValueError, match="Euler"):
+        image_test_service._normalize_image_test_request(payload)
+    payload["sampler"] = "euler"
+    payload["flow_shift"] = "1.0"
+    with pytest.raises(ValueError, match="mu shift"):
+        image_test_service._normalize_image_test_request(payload)
+
+
 def test_build_generation_command_includes_expected_cli_flags(monkeypatch) -> None:
     monkeypatch.setattr(image_test_service, "resolve_web_python_executable", lambda: "/venv/bin/python")
 
@@ -99,6 +173,7 @@ def test_build_generation_command_includes_expected_cli_flags(monkeypatch) -> No
         "attn_mode": "flash",
         "runtime_dtype": "fp16",
         "text_encoder_dtype": "same",
+        "model_family": "anima",
         "device": "cuda",
         "gpu_index": 1,
         "gpu_label": "GPU 1 · Demo",
@@ -135,6 +210,8 @@ def test_build_generation_command_includes_expected_cli_flags(monkeypatch) -> No
     assert "--device" in cmd
     assert "--runtime_dtype" in cmd
     assert "--text_encoder_dtype" in cmd
+    family_index = cmd.index("--model_family")
+    assert cmd[family_index + 1] == "anima"
     assert "--lora_weight" in cmd
     assert "--lora_multiplier" in cmd
     assert "--anima_selective_lora" in cmd

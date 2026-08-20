@@ -18,6 +18,10 @@
 
 | 文档 | 说明 |
 | --- | --- |
+| [specs/2026-08-15-dragon-single-frontend-rebuild-spec.md](specs/2026-08-15-dragon-single-frontend-rebuild-spec.md) | Dragon 单前端重建总规格 |
+| [specs/2026-08-15-dragon-frontend-architecture-adr.md](specs/2026-08-15-dragon-frontend-architecture-adr.md) | 新前端技术架构 ADR |
+| [specs/2026-08-15-dragon-feature-parity-matrix.md](specs/2026-08-15-dragon-feature-parity-matrix.md) | Classic/Dragon/新前端功能对照矩阵 |
+| [specs/2026-08-15-dragon-dataset-editor-rebuild-spec.md](specs/2026-08-15-dragon-dataset-editor-rebuild-spec.md) | 数据集分组、拖动和图片预览重建规格 |
 | [specs/2026-07-11-five-round-auto-iteration-protocol.md](specs/2026-07-11-five-round-auto-iteration-protocol.md) | 五轮自动迭代协议，前端强化版 |
 | [specs/2026-07-11-frontend-config-optimization-design.md](specs/2026-07-11-frontend-config-optimization-design.md) | 前端配置优化设计 |
 | [specs/2026-07-11-web-frontend-boulder-audit-design.md](specs/2026-07-11-web-frontend-boulder-audit-design.md) | Web 前端石山只读体检设计 |
@@ -36,6 +40,7 @@
 
 | 文档 | 说明 |
 | --- | --- |
+| [plans/2026-08-15-dragon-single-frontend-rebuild.md](plans/2026-08-15-dragon-single-frontend-rebuild.md) | Dragon 单前端长期重建执行计划 |
 | [plans/2026-07-11-fullstack-auto-iteration-log.md](plans/2026-07-11-fullstack-auto-iteration-log.md) | 全栈自动迭代日志 |
 | [plans/2026-07-11-frontend-config-optimization.md](plans/2026-07-11-frontend-config-optimization.md) | 前端配置优化执行计划 |
 | [plans/2026-07-11-web-frontend-boulder-audit.md](plans/2026-07-11-web-frontend-boulder-audit.md) | Web 前端石山只读体检执行计划 |

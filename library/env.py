@@ -247,11 +247,19 @@ def get_training_queue_root() -> Path:
 # family instead of silently assuming Anima cross-attn / AdaLN geometry.
 DEFAULT_MODEL_FAMILY = "anima"
 _ANIMA_ONLY_FAMILIES = ("anima",)
-_KNOWN_FAMILIES = ("anima", "krea2_raw")
+KNOWN_MODEL_FAMILIES = ("anima", "krea2_raw")
+_KNOWN_FAMILIES = KNOWN_MODEL_FAMILIES
 
 
-def _normalize_family(value: str) -> str:
-    return value.strip().lower()
+def normalize_model_family(value, *, source: str = "model_family", allow_empty: bool = False) -> str:
+    """Return a canonical model family or reject an unknown explicit value."""
+    normalized = str(value or "").strip().lower()
+    if not normalized and allow_empty:
+        return ""
+    if normalized not in KNOWN_MODEL_FAMILIES:
+        allowed = ", ".join(KNOWN_MODEL_FAMILIES)
+        raise ValueError(f"{source} must be one of: {allowed}; got {value!r}")
+    return normalized
 
 
 def resolve_model_family(args=None) -> str:
@@ -266,10 +274,10 @@ def resolve_model_family(args=None) -> str:
     if args is not None:
         raw = getattr(args, "model_family", None)
         if raw:
-            return _normalize_family(raw)
+            return normalize_model_family(raw, source="args.model_family")
     value = os.environ.get("ANIMA_MODEL_FAMILY")
     if value:
-        return _normalize_family(value)
+        return normalize_model_family(value, source="ANIMA_MODEL_FAMILY")
     return DEFAULT_MODEL_FAMILY
 
 
@@ -284,7 +292,9 @@ def assert_anima_only(script: str, family: str | None = None) -> None:
     ``family`` 通常来自脚本的 ``--model_family`` argparse flag；缺省时回退到
     :func:`resolve_model_family`（环境变量）。
     """
-    family = (family or resolve_model_family()).strip().lower()
+    family = normalize_model_family(
+        family or resolve_model_family(), source=f"{script} model_family"
+    )
     if family in _ANIMA_ONLY_FAMILIES:
         return
     raise SystemExit(

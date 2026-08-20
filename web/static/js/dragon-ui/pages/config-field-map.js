@@ -28,7 +28,7 @@ export const CONFIG_KEY_OVERRIDES = {
     'data-loading': ['max_data_loader_n_workers', 'dataloader_pin_memory', 'persistent_data_loader_workers'],
     'adapter-basics': ['output_name', 'max_train_epochs', 'network_dim', 'network_alpha', 'lora_adapter_kind', 'dora_wd', 'lokr_factor', 'network_weights', 'dim_from_weights', 'vera_projection_prng_key', 'vera_d_initial', 'vera_save_projection'],
     'output-save': ['save_every_n_epochs', 'save_last_n_epochs', 'checkpointing_epochs', 'checkpointing_last_n_epochs', 'network_train_unet_only', 'save_model_as', 'save_precision', 'weight_decay', 'use_cmmd', 'ip_diagnostics_epochs'],
-    'lora-basics': ['network_module', 'network_args', 'use_ortho', 'use_timestep_mask', 'min_rank', 'alpha_rank_scale', 'timestep_mask_mode', 'timestep_mask_at_inference', 'channel_scaling_alpha', 'layer_start'],
+    'lora-basics': ['network_module', 'network_args', 'use_ortho', 'use_timestep_mask', 'min_rank', 'alpha_rank_scale', 'channel_scaling_alpha', 'layer_start'],
     'ip-adapter': ['use_ip_adapter', 'ip_image_drop_p', 'validation_baselines', 'ip_pair_mode', 'ip_pair_prob', 'ip_pair_min_level', 'ip_pair_caption_strip_p', 'encoder', 'encoder_dim', 'resampler_layers', 'resampler_heads', 'ip_scale', 'gate_lr', 'pe_lora_enabled', 'pe_lora_rank', 'pe_lora_alpha', 'pe_lora_layer_from'],
     easycontrol: ['use_easycontrol', 'easycontrol_drop_p', 'easycontrol_cond_noise_max', 'b_cond_init', 'cond_scale', 'apply_ffn_lora', 'cond_token_count'],
 };

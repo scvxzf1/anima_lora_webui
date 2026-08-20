@@ -8,12 +8,13 @@
  */
 
 import { findSubItem, isConfigCategory } from './category-map.js?v=dragon-ui-20260814v43';
-import { scanForReveal } from './animations.js?v=dragon-ui-20260814v45';
+import { scanForReveal } from './animations.js?v=dragon-ui-20260816v67';
 
 let mountElement = null;
 let currentPage = null;
 let pageLoaders = {};
 let navigationSequence = 0;
+let mountedRouteUpdateSequence = 0;
 
 export function initRouter(mountEl, loaders) {
     mountElement = mountEl;
@@ -22,15 +23,18 @@ export function initRouter(mountEl, loaders) {
 
 export async function navigate(route) {
     if (route.type === 'page') {
-        return renderPage(route.page, {
+        const context = {
             taskId: route.taskId || null,
             sub: route.sub || null,
-        });
+        };
+        if (!route.force && await updateMountedPage(route.page, context)) return true;
+        return renderPage(route.page, context);
     }
 
     if (route.type === 'category') {
         if (!isConfigCategory(route.categoryId)) return;
-        if (!route.force && focusMountedConfigCategory(route.categoryId, route.subId)) return;
+        if (!route.force && await updateMountedConfigCategory(route.categoryId, route.subId)) return true;
+        if (!route.force && focusMountedConfigCategory(route.categoryId, route.subId)) return true;
         return renderPage('config', {
             categoryId: route.categoryId,
             subId: route.subId || null,
@@ -44,7 +48,8 @@ export async function navigate(route) {
         if (sub.isPage) {
             return renderPage(sub.isPage, { sub });
         } else if (isConfigCategory(sub.categoryId)) {
-            if (!route.force && focusMountedConfigCategory(sub.categoryId, sub.id)) return;
+            if (!route.force && await updateMountedConfigCategory(sub.categoryId, sub.id)) return true;
+            if (!route.force && focusMountedConfigCategory(sub.categoryId, sub.id)) return true;
             return renderPage('config', { categoryId: sub.categoryId, subId: sub.id });
         } else {
             return renderPage('config', { sub });
@@ -59,6 +64,27 @@ export function canLeaveCurrentPage() {
 
 export function isCurrentPage(pageType) {
     return currentPage?.pageType === pageType;
+}
+
+async function updateMountedPage(pageType, context) {
+    if (currentPage?.pageType !== pageType || typeof currentPage.onRouteUpdate !== 'function') return false;
+    const sequence = ++mountedRouteUpdateSequence;
+    const updated = await currentPage.onRouteUpdate(context);
+    if (sequence !== mountedRouteUpdateSequence) return true;
+    if (updated === false) return false;
+    currentPage.context = context;
+    return true;
+}
+
+async function updateMountedConfigCategory(categoryId, subId) {
+    if (currentPage?.pageType !== 'config' || currentPage.context?.categoryId !== categoryId) return false;
+    if (typeof currentPage.onRouteUpdate !== 'function') return false;
+    const sequence = ++mountedRouteUpdateSequence;
+    const updated = await currentPage.onRouteUpdate({ categoryId, subId: subId || null });
+    if (sequence !== mountedRouteUpdateSequence) return true;
+    if (updated === false) return false;
+    currentPage.context = { categoryId, subId: subId || null };
+    return true;
 }
 
 function focusMountedConfigCategory(categoryId, subId) {
@@ -95,6 +121,19 @@ async function renderPage(pageType, context) {
     }
 
     const sequence = ++navigationSequence;
+    mountedRouteUpdateSequence += 1;
+    // End the previous page lifecycle before waiting for the leave animation or
+    // the next loader. Otherwise an in-flight partial config transition can
+    // commit stale context while the destination page is already loading.
+    if (currentPage) {
+        currentPage.onUnmount?.();
+        currentPage = {
+            ...currentPage,
+            beforeLeave: null,
+            onUnmount: null,
+            onRouteUpdate: null,
+        };
+    }
 
     // Fade out current content
     if (currentPage && mountElement.firstElementChild) {
@@ -113,7 +152,6 @@ async function renderPage(pageType, context) {
         content = await loader(context);
     } catch (error) {
         if (sequence !== navigationSequence) return;
-        currentPage?.onUnmount?.();
         currentPage = { pageType, context, beforeLeave: null, onUnmount: null };
         renderLoadError(error);
         console.error(`[dragon-ui] ${pageLabel(pageType)}加载失败`, error);
@@ -123,7 +161,6 @@ async function renderPage(pageType, context) {
         content?.onUnmount?.();
         return;
     }
-    currentPage?.onUnmount?.();
     mountElement.innerHTML = '';
     mountElement.removeAttribute('aria-busy');
     if (content) {
@@ -133,6 +170,7 @@ async function renderPage(pageType, context) {
         let onMount = null;
         let beforeLeave = null;
         let onUnmount = null;
+        let onRouteUpdate = null;
         if (typeof content === 'string') {
             wrapper.innerHTML = content;
         } else if (content instanceof Node) {
@@ -144,10 +182,11 @@ async function renderPage(pageType, context) {
             }
             if (typeof content.beforeLeave === 'function') beforeLeave = content.beforeLeave;
             if (typeof content.onUnmount === 'function') onUnmount = content.onUnmount;
+            if (typeof content.onRouteUpdate === 'function') onRouteUpdate = content.onRouteUpdate;
         }
 
         mountElement.appendChild(wrapper);
-        currentPage = { pageType, context, beforeLeave, onUnmount };
+        currentPage = { pageType, context, beforeLeave, onUnmount, onRouteUpdate };
 
         requestAnimationFrame(() => {
             wrapper.classList.remove('dragon-page-enter');
@@ -203,6 +242,7 @@ export function getCurrentPage() {
 
 export function destroyRouter() {
     navigationSequence += 1;
+    mountedRouteUpdateSequence += 1;
     currentPage?.onUnmount?.();
     currentPage = null;
     pageLoaders = {};
