@@ -49,81 +49,56 @@
 
 ## 环境和命令入口
 
-- 项目运行环境是 Python 3.13，依赖管理优先使用 `uv`。
-- `tasks.py` 是命令入口真相；`Makefile` 只是薄转发。查命令实现时读
-  `tasks.py`、`scripts/tasks/` 和 `scripts/experimental_tasks/`。
+- 项目运行环境是 Python 3.13，依赖管理优先使用 `uv`；安装和模型准备以
+  [根 README](README.md) 与 [Linux 部署指南](docs/guidelines/linux-deployment.zh.md) 为准。
+- [`tasks.py`](tasks.py) 是命令入口真相；`Makefile` 只是薄转发。实时命令面使用
+  `python tasks.py --help` 查看，稳定与实验命令实现分别位于
+  [`scripts/tasks/`](scripts/tasks/) 和 [`scripts/experimental_tasks/`](scripts/experimental_tasks/)。
 - 维护和验证命令优先使用 `.venv/bin/python`；只有确认无需项目虚拟环境，或 `.venv/`
   不存在时，才回退到系统 `python`。
 - 跨平台用户文档可写成 `python tasks.py <command>`，本仓维护执行优先写成
-  `.venv/bin/python tasks.py <command>`。
-  用户文档里常见 `make <target>`，但维护时不要只看 `Makefile`。
+  `.venv/bin/python tasks.py <command>`。用户文档可把 `make <target>` 作为兼容写法，
+  但不要作为唯一入口。
 - `python tasks.py <command> KEY=value` 支持 Make 风格尾随环境变量，例如：
   `python tasks.py print-config METHOD=lora PRESET=default`。
-- 实验命令通常以 `exp-*` 开头，可能变动或删除。改实验命令时同步检查
-  `scripts/experimental_tasks/`、配置、文档和测试。
-- 常用启动：
+- 实验命令通常以 `exp-*` 开头，可能变动或删除。修改时同步检查实验任务实现、配置、文档和测试。
+- 常用维护入口：
   - WebUI：`.venv/bin/python tasks.py web --host 127.0.0.1 --port 20102`
   - 单元测试：`timeout 60 .venv/bin/python -m pytest tests/<test_file>.py`
-  - 全量单测入口：`timeout 60 .venv/bin/python tasks.py test-unit`
-  - 合并配置查看：`.venv/bin/python tasks.py print-config METHOD=<name> PRESET=<name>`
-- 从旧 `CLAUDE.md` 继承且仍然有效的最小初始化：
-  - `uv sync`
-  - `hf auth login`
-  - `python tasks.py download-models`
-  - `python tasks.py preprocess`
-  - 默认训练图片放在 `image_dataset/`，同名 `.txt` caption sidecar 也放这里。
-- 命令面速记：
-  - 稳定训练/服务：`lora`、`lora-gui`、`web`、`daemon*`、`preprocess*`、
-    `caption-index`、`preprocess-tagger`、`tagger`、`test-tagger`
-  - 稳定推理/工具：`test`、`test-mod`、`test-hydra`、`test-merge`、`test-dcw`、
-    `test-dcw-v4`、`merge`、`distill-mod`、`export-logs`、`vendor-sync`、
-    `print-config`、`update`
-  - 实验训练：`exp-turbo`、`exp-turbo-prep`、`exp-spd`、`exp-soft-tokens`、
-    `exp-chimera`、`exp-ip-adapter`、`exp-easycontrol`、`exp-byg`
-  - 实验推理/探针：`exp-test-soft`、`exp-test-turbo`、`exp-test-spd`、
-    `exp-test-ip`、`exp-test-easycontrol`、`exp-test-byg`、
-    `exp-test-directedit`、`exp-test-directedit-dry`、`exp-invert-directedit`
-  - `python tasks.py --help` 是命令面的实时快照；老文档里出现但不在 `tasks.py`
-    当前表里的命令，按历史/兼容入口处理，不要直接假定仍可用。
-
-## Repowise 代码库地图
-
-- 本机已建立 repowise 索引，Codex MCP 中当前仓库名为 `repowise_anima_lora`；独立
-  WebUI 仓库名为 `repowise_anima_webui`。
-- 跨模块排查、架构理解、风险分析、dead-code、调用链或符号定位时，优先用 repowise
-  获取概览和候选上下文，再读取实时源码确认。
-- repowise 索引不是实时真相，不替代 `git diff`、直接读文件和测试验证；新增/删除/重命名
-  文件，或修改 import/export、路由、命令、服务注册、公共接口、跨模块调用链后，建议运行
-  `uvx repowise update` 刷新地图。
-- `.repowise/` 和 `.mcp.json` 是本机索引/本机路径配置，不要提交。
+  - 全量单测：`timeout 60 .venv/bin/python tasks.py test-unit`
+  - 合并配置：`.venv/bin/python tasks.py print-config METHOD=<name> PRESET=<name>`
+- 老文档中的命令若不在 `tasks.py --help` 当前列表中，按历史或兼容入口处理，不要直接假定仍可用。
 
 ## Git 推送和回滚
 
-- 当前固定协作口径：本地 `main` 只和 `origin/main` 对齐。用户说“拉取线上更新”、
-  “同步线上 main”、“推送更新到线上”时，默认目标都是 `origin/main`
-  (`https://github.com/scvxzf1/krea2-webui`)。
-- `private/main` 不再作为默认同步或发布目标，只保留为个人主仓/历史镜像。除非用户明确点名
-  `private`，不要向它 pull、push、reset 或拿它当“线上 main”。
-- `anima-upstream/main` 是旧仓库的只读上游参考。需要从上游合入时，先单独做差异审计和合并计划，
-  不要把它和发布同步混在一起。
-- 推送前至少检查：`git status --short --branch`、`git fetch origin --prune`、
-  `git log origin/main..HEAD`，再跑和改动直接相关的测试。未跟踪文件默认不随推送发布，
-  除非用户明确要求或本次任务已确认需要纳入版本控制。
-- 用户说“推送更新到线上”时，默认执行 `git push origin main:main`。推送后要汇报目标远程/分支、
-  最新提交 hash，以及本地是否还有未提交或未跟踪改动残留。
+- 默认线上目标由仓库和分支确定，而不是由本机 remote 别名确定：
+  `github.com/scvxzf1/anima_lora_webui` 的 `main`。用户说“拉取线上更新”“同步线上 main”
+  或“推送更新到线上”时，默认指向该目标。
+- 操作前先运行 `git remote -v`，找到 URL 匹配目标仓库的 remote；它在不同 checkout 中可能叫
+  `origin`、`webui` 或其他名字。命令和汇报使用实际 remote，不要凭文档假定别名存在。
+- 指向个人 fork、私有镜像或 `sorryhyun/anima_lora` 等参考仓的 remote 不是默认发布目标。
+  除非用户明确点名，不要向它们 pull、push、reset，也不要把上游参考合入和线上发布混为一谈。
+- 推送前至少检查：`git status --short --branch`、`git fetch <target-remote> --prune`、
+  `git rev-list --left-right --count HEAD...<target-remote>/main` 和
+  `git log --oneline <target-remote>/main..HEAD`，再跑与改动直接相关的测试。
+  未跟踪文件默认不随推送发布，除非用户明确要求或本次任务确认需要纳入版本控制。
+- 用户要求直接“推送更新到线上”时，默认目标是 `<target-remote> main:main`。若当前身份没有
+  写权限，使用个人 fork 分支和 PR，不要因此把个人 fork 改称线上主仓。完成后汇报仓库、remote、
+  分支、最新提交 hash，以及是否还有未提交或未跟踪改动。
 - 用户说“回滚”时，先分清是哪一种：
   - 本地工作区回退：丢弃未提交改动。只有用户明确要求时才做，执行前说明会丢失哪些内容。
   - 本地提交回退：撤销本地一个或多个提交。共享分支默认优先 `git revert`，不要默认改写历史。
-  - 线上回退：撤回远程分支上的已发布提交。必须先确认目标远程、目标分支和目标提交。
-- 需要以线上仓库为准同步本地时，先 `fetch` 目标远程并比较 `HEAD` 和远端分支，再决定
-  是否 reset。不要在没核对差异前直接做破坏性操作。
-- `git reset --hard`、`git checkout -- <path>`、`git push --force`、`git push --force-with-lease`
-  都视为高风险操作。除非用户已经明确要求，或已经明确给出目标提交/分支并接受影响，
-  否则不要执行。
-- 如果确实要改写线上历史，优先使用 `--force-with-lease` 而不是裸 `--force`，并在执行前
-  说明影响范围：会覆盖哪个远程分支、抹掉哪些提交、是否影响其他协作者。
-- 可以使用环境变量中的凭据或本机已配置的 SSH key 推送，但不要把 PAT、cookie、私钥、
-  或带密钥的远程 URL 写进仓库文件、文档、日志样例或长期说明。
+  - 线上回退：撤回目标仓库分支上的已发布提交。必须先确认仓库、remote、分支和目标提交。
+- 需要以线上仓库为准同步本地时，先 fetch 并比较 `HEAD` 和目标分支，再决定是否 reset。
+  不要在没核对差异前直接做破坏性操作。
+- `git reset --hard`、`git checkout -- <path>`、`git clean -fd`、`git push --force`、
+  `git push --force-with-lease` 都视为高风险操作。除非用户已经明确要求，或已经明确给出
+  目标提交/分支并接受影响，否则不要执行。
+- 如果确实要改写线上历史，优先使用 `--force-with-lease`，并在执行前说明会覆盖哪个仓库和
+  分支、抹掉哪些提交、是否影响其他协作者。
+- 可以使用环境变量中的凭据或本机已配置的 SSH key 推送，但不要把 PAT、cookie、私钥或
+  带密钥的远程 URL 写进仓库文件、文档、日志样例或长期说明。
+- 面向人的精简操作说明见 [Git 同步规则](docs/guidelines/git-sync-policy.md)。
 
 ## 项目地图
 
@@ -183,43 +158,13 @@
 
 ### 配置目录外置
 
-从 2024-06-24 起，`configs/` 目录支持通过环境变量外置到独立位置：
+配置根目录、训练历史和队列支持外置。优先级、路径展开、安全边界和迁移方法以
+[外置配置目录说明](docs/configuration/external-configs.md)及
+[`library/env.py`](library/env.py) 为准。
 
-- `ANIMA_CONFIGS_ROOT` - 配置根目录（包含 base.toml, methods/, datasets/, web-training-history/, web-training-queue/ 等所有配置内容）
-
-设置方法：
-1. 在项目根目录创建 `.env` 文件，参考 `.env.example`
-2. 或在 WebUI 全局设置面板中配置 `configs_root` 路径
-
-优先级链（从高到低）：
-1. `.anima-webui-settings.toml [paths].configs_root` - WebUI 自动管理的本机配置文件
-2. `ANIMA_CONFIGS_ROOT` 环境变量
-3. 默认值 `configs/`（项目根目录下）
-
-`.anima-webui-settings.toml` 说明：
-- 存放于项目根目录，WebUI "全局设置"面板保存时自动创建/更新
-- 已添加到 `.gitignore`，不会提交到版本控制
-- `.anima-webui-settings.toml.example` 是模板文件，供新部署参考
-- 老版本部署升级后若缺失此文件，仍可通过环境变量或默认值正常工作
-
-路径解析规则：
-- 相对路径相对于项目根目录解析
-- 绝对路径直接使用
-- 支持 `$HOME`、`~` 等环境变量扩展
-- 自动拒绝包含 `..` 的路径
-
-详细说明：`docs/configuration/external-configs.md`
-
-实现位置：
-- `library/env.py::get_configs_root()` - 配置根目录获取（依次检查 WebUI 设置文件、环境变量、默认值）
-- `library/env.py::get_training_history_root()` - 训练历史目录获取（回退到 configs_root/web-training-history）
-- `library/env.py::get_training_queue_root()` - 训练队列目录获取（回退到 configs_root/web-training-queue）
-- `web/services/settings_service.py::CONFIGS_DIR` - WebUI 配置目录
-- `web/services/settings_service.py::GLOBAL_CONFIG_PATH_KEYS` - WebUI 可配置路径键
-- `web/services/settings_service.py::_save_configs_root_override()` - 保存到 `.anima-webui-settings.toml`
-- `web/services/training_service.py::HISTORY_DIR` 和 `QUEUE_DIR` - 训练服务路径
-
-未设置任何配置时保持原有行为（`configs/` 在项目根目录），完全向后兼容。
+维护时必须保留以下边界：相对路径锚定项目根目录；允许绝对路径、`$HOME` 和 `~`；拒绝
+包含 `..` 的路径；未配置覆盖项时继续回退到仓库内 `configs/`。本机路径覆盖写入已忽略的
+`.anima-webui-settings.toml`，不要把本机绝对路径写进受版本控制的默认配置。
 
 ### 训练配置合并链
 
@@ -231,22 +176,14 @@ configs/base.toml
 ```
 
 - 默认 `methods_subdir="methods"`；WebUI 友好变体使用历史命名目录 `configs/gui-methods/`。
-- `configs/base.toml` 包含共享基础路径、optimizer、compile flag 和默认数据集蓝图。
-- `configs/presets.toml` 放硬件/采样 profile，不要把硬件 profile 复制进方法配置。
-- `configs/methods/` 放算法 family 配置。
-- `configs/gui-methods/` 放自包含用户变体，不使用注释切换块；实时列表以目录为准。
-- `configs/datasets/` 放可复用数据集蓝图。
+- [`configs/base.toml`](configs/base.toml) 包含共享基础路径、optimizer、compile flag 和默认数据集蓝图。
+- [`configs/presets.toml`](configs/presets.toml) 放硬件/采样 profile，不要把硬件 profile 复制进方法配置；实时预设以该文件为准。
+- [`configs/methods/`](configs/methods/) 放算法 family 配置。
+- [`configs/gui-methods/`](configs/gui-methods/) 放自包含用户变体，不使用注释切换块；实时变体以目录内容为准。
+- [`configs/datasets/`](configs/datasets/) 放可复用数据集蓝图。
 - `configs/imported/` 是 WebUI 导入或用户配置，默认视为用户数据。
 - `configs/sample-prompts/` 放按配置分叉保存的 sample prompts。
 - `configs/web-ui-settings.toml` 保存 WebUI 全局设置和模型路径；不要把本机绝对路径写进默认值或文档。
-- 当前 `configs/presets.toml` 预设包括：`default`、`low_vram`、
-  `low_vram_blockswap`、`balanced_16g`、`graft`、`half`、`quarter`、
-  `tenth`、`debug`。
-- 当前 `configs/gui-methods/` 变体包括：`chimera_hydra`、`easycontrol`、
-  `glora`、`hydralora`、`hydralora-8gb`、`ip_adapter`、`loha`、`lokr`、
-  `lora`、`lora-8gb`、`lora-convrot-vram`、`lora_signal_probe`、`ortholora`、`reft`、
-  `soft_tokens`、`tlora`、`tlora-8gb`、`tlora_ortho_reft`、`vera`；
-  维护时仍以目录实时列表为准。
 
 默认数据和缓存：
 
@@ -259,32 +196,17 @@ configs/base.toml
   - `{stem}_anima_te.safetensors`：text encoder cache。
   - `{stem}_anima_pe.safetensors`：PE-Core vision feature cache。
 
-## 方法和能力速记
+## 方法和能力入口
 
-- LoRA family：核心仍是三轴路由表面，默认读 `configs/methods/lora.toml`，
-  再结合 `networks/lora_anima/` 和 `networks/lora_modules/`。
-- Spectrum：训练外推理加速，代码在 `networks/spectrum.py`，使用和限制先读
-  `docs/methods/spectrum.md`。
-- DCW：采样器边界的 bias correction，校准链路在 `scripts/dcw/` 和
-  `scripts/tasks/dcw.py`；用户说明在 `docs/methods/dcw.md`。
-- DirectEdit + Anima Tagger：先读
-  `docs/experimental/directedit_editing_v3.md` 和
-  `docs/experimental/anima_tagger.md`；功能自检优先跑
-  `python tasks.py exp-test-directedit-dry`。
-- Modulation guidance：入口是 `python tasks.py distill-mod`，说明在
-  `docs/methods/mod-guidance.md`。
-- IP-Adapter：训练入口 `exp-ip-adapter`，推理入口 `exp-test-ip`，文档在
-  `docs/experimental/ip-adapter.md`。
-- EasyControl：训练入口 `exp-easycontrol`，推理入口 `exp-test-easycontrol`，
-  文档在 `docs/experimental/easycontrol.md`。
-- Soft Tokens：训练入口 `exp-soft-tokens`，推理入口 `exp-test-soft`，文档在
-  `docs/experimental/soft_tokens.md`。
-- ChimeraHydra：训练入口 `exp-chimera`，结构/实验文档看
-  `docs/experimental/chimera-hydra.md` 和 `docs/structure/chimera-hydra.md`。
-- Postfix 和 postfix-tail inversion：当前更多是实验/兼容入口。先读
-  `docs/experimental/postfix.md`、`docs/guidelines/training.md#postfix`、
-  `docs/proposal/postfix_residual_per_image_inversion.md`，再碰
-  `scripts/inversion/` 或 `library/inference/editing/postfix_inversion.py`。
+不要在总协议里维护会漂移的方法清单。开始修改某个方法前，按成熟度和任务类型查阅：
+
+- 稳定能力：[方法索引](docs/methods/README.md)。
+- 可运行实验：[实验索引](docs/experimental/README.md)。
+- 原理与架构：[结构索引](docs/structure/README.md)。
+- 实验结论与失败路径：[研究结论索引](docs/findings/README.md)。
+- 当前命令入口：[`tasks.py`](tasks.py) 与 `python tasks.py --help`。
+
+文档只用于定位和理解；最终以实时源码、配置和测试为准。
 
 ## 不可破坏的不变量
 
@@ -448,18 +370,10 @@ T-LoRA mask 是共享 buffer，每个 denoising step 更新一次。
   `configs/sample-prompts/<methods_subdir>/<config-stem>.txt`。保留注释、空行和用户格式。
 - 历史任务模式只保留 `collection` / `collections`，不要恢复旧 `config` / `flat` 模式。
 
-常用 WebUI 验证：
-
-- 前端模块图、DOM、事件钩子、CSS import：
-  `timeout 60 .venv/bin/python -m pytest tests/test_training_frontend_modules.py tests/test_training_frontend_dom.py tests/test_training_frontend_history.py`
-- sample prompts/config：
-  `timeout 60 .venv/bin/python -m pytest tests/test_web_config_service.py`
-- preview/global settings/output root：
-  `timeout 60 .venv/bin/python -m pytest tests/test_preview_service.py`
-- 队列/runtime 安全：
-  `timeout 60 .venv/bin/python -m pytest tests/test_training_queue.py`
-- 权重分析：
-  `timeout 60 .venv/bin/python -m pytest tests/test_weight_analysis_service.py`
+常用 WebUI 验证入口见
+[前端健康度评分卡](docs/features/frontend-health-scorecard.md)和
+[`tests/test_training_frontend_*.py`](tests/)。后端按改动领域从 [`tests/`](tests/) 中选择
+配置、预览、队列、历史或权重分析的定向测试，不要在本协议复制一份容易漂移的测试清单。
 
 ## Adapter 和 Network 维护
 
@@ -502,18 +416,10 @@ T-LoRA mask 是共享 buffer，每个 denoising step 更新一次。
 
 预处理：
 
-- task wrapper 在 `scripts/tasks/preprocess.py`。
-- CLI 脚本在 `preprocess/` 或 `scripts/preprocess/`。
-- 编排逻辑优先查 `library/preprocess/`。
+- task wrapper 在 [`scripts/tasks/preprocess.py`](scripts/tasks/preprocess.py)。
+- CLI 与编排实现分别位于 [`preprocess/`](preprocess/)、[`scripts/preprocess/`](scripts/preprocess/)
+  和 [`library/preprocess/`](library/preprocess/)；修改前用 `rg` 定位当前调用链，不在总协议维护脚本清单。
 - 缓存路径和 sidecar 命名不要随意改；改后需要迁移说明或兼容读取。
-- 旧 `CLAUDE.md` 里常提到、现在仍是常用入口的预处理脚本有：
-  `scripts/preprocess/resize_images.py`、`cache_latents.py`、
-  `cache_text_embeddings.py`、`cache_pe_encoder.py`、`generate_masks.py`、
-  `generate_masks_mit.py`、`merge_masks.py`。
-- 其他常用脚本入口：
-  `scripts/merge_to_dit.py`、`scripts/comfy_batch.py`、
-  `scripts/export_logs_json.py`、`scripts/edit.py`、
-  `scripts/anima_tagger/cli.py`、`scripts/dcw/`、`scripts/inversion/`。
 
 ## Daemon 和队列
 
@@ -578,46 +484,15 @@ T-LoRA mask 是共享 buffer，每个 denoising step 更新一次。
 - 后台测试默认加 `timeout 60`。
 - 需要项目 Python 依赖的验证命令，默认使用 `.venv/bin/python`，避免系统 Python
   缺少 torch、pytest 插件或本仓依赖导致误判。
-- 优先跑和改动直接相关的 pytest 文件或测试名。
-- 大模型、真实训练、下载类验证不要默认执行。
+- 优先从 [`tests/`](tests/) 中按改动模块和文件名选择定向测试；跨模块改动再扩大到
+  `timeout 60 .venv/bin/python tasks.py test-unit`。
+- 大模型、真实训练、下载类验证不要默认执行；涉及 GPU 的代码优先使用小 fixture 或 monkeypatch。
 - lint/format 会改文件时，只在范围明确时运行。
 
-常见选择：
+## 贡献规范
 
-- Web config/sample prompts：`tests/test_web_config_service.py`、`tests/test_config.py`。
-- Web global settings/preview paths：`tests/test_preview_service.py`。
-- Web training queue/runtime：`tests/test_training_queue.py`、`tests/test_training_resume_*.py`、`tests/test_training_runtime_config_*.py`、`tests/test_training_history_*.py`。
-- Web frontend modules/history/preview hooks：`tests/test_training_frontend_modules.py`、
-  `tests/test_training_frontend_dom.py`、`tests/test_training_frontend_history.py`。
-- Web weight analysis：`tests/test_weight_analysis_service.py`。
-- daemon/CLI launch：`tests/test_daemon.py`、`tests/test_runtime_harness_cli.py`、
-  `tests/test_launch_config.py`。
-- preprocess：`tests/test_preprocess_dataset.py`、`tests/test_preprocess_paths.py`。
-- network registry/config/metadata：`tests/test_network_registry.py`、`tests/test_network_cfg.py`,
-  `tests/test_method_network_lifecycle.py`、`tests/test_factory_metadata_flow.py`。
-- LoRA/LoHa/LoKr/VeRA/GLoRA：`tests/test_lora_custom_autograd.py`、`tests/test_loha.py`、
-  `tests/test_lokr.py`、`tests/test_vera.py`、`tests/test_glora.py`。
-- Hydra/FeRA/Chimera routing：`tests/test_global_router.py`、`tests/test_router_compute.py`、
-  `tests/test_hydra_sigma_band.py`、`tests/test_fera_fecl_handler.py`、
-  `tests/test_chimera_router_stats.py`。
-- inference/editing：`tests/test_generation_request.py`、`tests/test_edit_dispatcher.py`、
-  `tests/test_directedit_v_injection.py`、`tests/test_experimental_inference_tasks.py`。
-- training basics：`tests/test_training_bootstrap.py`、`tests/test_training_optimizers.py`、
-  `tests/test_training_checkpointing.py`、`tests/test_training_gpu_selection.py`。
-- text strategy / bucket invariants：`tests/test_ensure_text_strategies.py`、
-  `tests/test_constant_token_buckets.py`、`tests/test_native_flatten.py`。
-- tagger/captions：`tests/test_anima_tagger_dual_encoder.py`、`tests/test_caption_index.py`、
-  `tests/test_caption_shuffle.py`、`tests/test_tag_groups.py`、`tests/test_tag_taxonomy.py`。
-
-## 贡献等级
-
-参考 `CONTRIBUTING.md`：
-
-- Tier 1：bug、UI、CLI 小修。保持范围小，跑相关测试。
-- Tier 1.5：效率、显存、数值或现有算法修改。需要 bench 脚本、invariant test、文档和兼容性说明。
-- Tier 2：新 adapter/method。需要论文或明确依据、`bench/<method>/`、docs、tests、
-  `tasks.py`/Make 入口和 merge story。
-- Tier 3：新 base model 当前不接受。只做文档或对 Anima 本身有价值的解耦工作。
+贡献等级、bench 证据、方法文档和 PR checklist 统一以
+[`CONTRIBUTING.md`](CONTRIBUTING.md) 为准，本协议不维护第二份摘要。
 
 ## 完成前检查
 

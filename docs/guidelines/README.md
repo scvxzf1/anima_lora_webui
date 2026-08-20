@@ -12,7 +12,7 @@
 | --- | --- |
 | [指南书.md](指南书.md) | 中文综合指南，覆盖安装、数据集、WebUI、训练、推理和 ComfyUI 部署 |
 | [linux-deployment.zh.md](linux-deployment.zh.md) | Linux 部署与启动指南 |
-| [git-sync-policy.md](git-sync-policy.md) | 本地 `main` 与线上 `webui/main` 的同步规则 |
+| [git-sync-policy.md](git-sync-policy.md) | 按目标仓库 URL 和 `main` 分支识别线上主线的同步规则 |
 | [training.md](training.md) | 训练参考：LoRA 变体、caption shuffle、masked loss、数据集配置 |
 | [inference.md](inference.md) | 推理参考：推理命令、DCW、Spectrum、prompt 文件 |
 | [difference_between_comfy.md](difference_between_comfy.md) | anima_lora 与 ComfyUI 核心实现差异 |
