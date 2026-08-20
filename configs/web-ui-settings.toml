@@ -4,7 +4,8 @@ inference_dir = "output/tests"
 custom_dir = ""
 
 [global]
-output_root = "/home/scv/nvme0n1p1/训练器相关/anima缓存"
-pretrained_model_name_or_path = "/home/scv/nvme0n1p1/ComfyUI/models/diffusion_models/anima/anima-preview3-base.safetensors"
-qwen3 = "/home/scv/nvme0n1p1/ComfyUI/models/text_encoders/anima/anima_qwen_3_06b_base.safetensors"
-vae = "/home/scv/nvme0n1p1/ComfyUI/models/vae/anima/anima_vae.safetensors"
+# 以下均为可移植的相对示例路径；请在本机 WebUI 全局设置中改为实际路径。
+output_root = "output/runs"
+pretrained_model_name_or_path = "models/diffusion_models/anima-base-v1.0.safetensors"
+qwen3 = "models/text_encoders/qwen_3_06b_base.safetensors"
+vae = "models/vae/qwen_image_vae.safetensors"
