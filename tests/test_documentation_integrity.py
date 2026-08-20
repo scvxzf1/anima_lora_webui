@@ -10,6 +10,12 @@ from urllib.parse import unquote
 ROOT = Path(__file__).resolve().parents[1]
 DOCS_ROOT = ROOT / "docs"
 ARCHIVE_DOCS_ROOT = ROOT / "_archive" / "docs"
+MAINTENANCE_DOCS = (
+    ROOT / "AGENTS.md",
+    ROOT / "CONTRIBUTING.md",
+    ROOT / "networks" / "CLAUDE.md",
+    ROOT / "custom_nodes" / "comfyui-hydralora" / "CLAUDE.md",
+)
 LINK_RE = re.compile(r"!?\[[^\]]*\]\(([^)]+)\)")
 HEADING_RE = re.compile(r"^\s{0,3}#{1,6}\s+(.*?)(?:\s+#+\s*)?$")
 FENCE_RE = re.compile(r"^\s*(```|~~~)")
@@ -18,6 +24,7 @@ FENCE_RE = re.compile(r"^\s*(```|~~~)")
 def _markdown_files() -> list[Path]:
     return [
         ROOT / "README.md",
+        *MAINTENANCE_DOCS,
         *sorted(DOCS_ROOT.rglob("*.md")),
         *sorted(ARCHIVE_DOCS_ROOT.rglob("*.md")),
     ]

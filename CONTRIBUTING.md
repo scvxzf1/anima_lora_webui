@@ -84,9 +84,11 @@ Requirements:
 7. **Anima result:** provide a reproducible comparison against the appropriate baseline. “It trains without crashing” is not sufficient evidence.
 8. **Integration surfaces:** check config schema, WebUI exposure, inference loading, checkpoint metadata, docs, tests, and ComfyUI vendor impact.
 
-## Tier 3 — new base-model support
+## Tier 3 — new model-family support
 
-New base-model support is currently not accepted. The repository is Anima-specific. Documentation or decoupling work that has standalone value for Anima may be proposed independently; see [`docs/multi_model_support.md`](docs/multi_model_support.md).
+The repository currently supports `anima` and the scoped `krea2_raw` family. Adding a third model family is Tier 3 and requires maintainer agreement in an Issue before implementation. The existing Krea-2 path does not imply that every adapter or runtime feature is portable, or that the historical generic `ModelFamily` design is complete; see [`docs/proposal/krea2_raw_migration.md`](docs/proposal/krea2_raw_migration.md) for the current Krea-2 boundary and [`docs/multi_model_support.md`](docs/multi_model_support.md) for the historical architecture sketch.
+
+Fixes and documented capability extensions for an existing family use Tier 1, 1.5, or 2 according to their actual behavioral and numerical impact. A new family proposal must define its training and inference boundary, cache and checkpoint compatibility, adapter support matrix, configuration/WebUI surface, reproducible validation, and explicit refusals for unsupported features.
 
 ## PR description checklist
 
@@ -101,6 +103,7 @@ Copy the applicable items into the PR description:
 - [ ] No credentials, local paths, user data, model/cache/output files, debug prints, commented-out code, or unrelated formatting churn are included.
 - [ ] Tier 1.5: reproducible before/after bench, invariant test, and numerical compatibility statement included.
 - [ ] Tier 2: method rationale, bench README/result, method doc, tests, task entries, merge story, and Anima comparison included.
+- [ ] Tier 3: maintainer agreement, family capability matrix, cache/checkpoint compatibility, and train/inference validation included.
 - [ ] Custom-node impact checked and `vendor-sync` status reported.
 
 ## License
