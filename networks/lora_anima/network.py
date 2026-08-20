@@ -67,6 +67,10 @@ class LoRANetwork(torch.nn.Module):
     ) -> None:
         super().__init__()
         self.cfg = cfg
+        self._anima_checkpoint_layout = getattr(
+            unet, "_anima_checkpoint_layout", None
+        )
+        self._anima_base_sha256 = getattr(unet, "_anima_base_sha256", None)
 
         # Mutable runtime state — explicitly NOT in cfg. ``set_multiplier`` and
         # ``set_loraplus_lr_ratio`` write these post-construction; per-step

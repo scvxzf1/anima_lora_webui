@@ -541,6 +541,11 @@ def create_network_from_weights(
         with safe_open(file, framework="pt") as f:
             file_metadata = dict(f.metadata() or {})
 
+    if unet is not None:
+        from library.anima.compat import validate_adapter_metadata
+
+        validate_adapter_metadata(file_metadata, unet)
+
     # Strip torch.compile '_orig_mod_' from old checkpoint keys
     weights_sd = LoRANetwork._strip_orig_mod_keys(weights_sd)
 

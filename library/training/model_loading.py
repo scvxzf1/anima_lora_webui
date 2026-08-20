@@ -230,6 +230,16 @@ def _load_krea2_dit(trainer, args, weight_dtype, accelerator, text_encoders):
 
 
 def _load_anima_dit(trainer, args, weight_dtype, accelerator, text_encoders):
+    from library.anima.checkpoint import (
+        anima_checkpoint_sha256,
+        apply_layout_to_args,
+        inspect_anima_checkpoint,
+    )
+    from library.anima.compat import (
+        ANIMA29_PREVIEW_V1_SHA256,
+        require_training_compatibility,
+    )
+
     loading_dtype = weight_dtype
     loading_device = "cpu" if trainer.is_swapping_blocks else accelerator.device
 
@@ -309,6 +319,24 @@ def _load_anima_dit(trainer, args, weight_dtype, accelerator, text_encoders):
         lora_weights_list = [lora_sd]
         lora_multipliers = [args.lora_multiplier]
 
+    layout = inspect_anima_checkpoint(args.pretrained_model_name_or_path)
+    base_sha256 = None
+    if layout.num_blocks == 40:
+        base_sha256 = anima_checkpoint_sha256(args.pretrained_model_name_or_path)
+        if base_sha256.lower() != ANIMA29_PREVIEW_V1_SHA256:
+            raise ValueError(
+                "40-block Anima checkpoint is structurally valid but not the "
+                "certified Anima-2.9B-preview-v1 base"
+            )
+    apply_layout_to_args(args, layout, base_sha256)
+    profile = require_training_compatibility(args, layout)
+    logger.info(
+        "Detected Anima checkpoint: variant=%s, blocks=%s, profile=%s",
+        layout.variant,
+        layout.num_blocks,
+        profile,
+    )
+
     # Load DiT
     attn_softmax_scale = getattr(args, "attn_softmax_scale", None)
     logger.info(
@@ -325,6 +353,8 @@ def _load_anima_dit(trainer, args, weight_dtype, accelerator, text_encoders):
         attn_softmax_scale=attn_softmax_scale,
         v100_flash_stability=v100_flash_stability,
         debug_finite_checks=debug_finite_checks,
+        checkpoint_layout=layout,
+        anima_base_sha256=base_sha256,
     )
     _maybe_probe_components(
         trainer,

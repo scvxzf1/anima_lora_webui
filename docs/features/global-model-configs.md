@@ -41,6 +41,8 @@ Dragon UI 顶部导航的 **模型配置** 位于 **训练历史** 右侧；**�
 
 这些值只进入当前配置表单；仍需保存当前训练 TOML 才会用于训练。
 
+Anima 2.9B Preview v1 仍使用 `model_family = "anima"`，建议为它单独保存一项模型配置以记录 DiT 路径；28/40 blocks 由训练器读取 checkpoint header 自动识别，不提供可手填的层数或独立模型格式。40-block 训练当前只放行 Plain LoRA 与 T-LoRA + OrthoLoRA，其他组合会在加载模型前明确拒绝。
+
 ## 4. 持久化与兼容
 
 模型配置库保存在当前配置根目录的 `web-ui-settings.toml`：

@@ -10,6 +10,7 @@ from accelerate import init_empty_weights
 
 from networks.lora_utils import load_safetensors_with_lora
 from library.anima import models as anima_models
+from library.anima.checkpoint import AnimaCheckpointLayout, inspect_anima_checkpoint
 from library.env import resolve_under_home
 from library.io.safetensors_io import WeightTransformHooks
 from library.log import setup_logging
@@ -141,6 +142,8 @@ def load_anima_model(
     patch_spatial: int = 2,
     patch_temporal: int = 1,
     vae_spatial_compression: int = 8,
+    checkpoint_layout: Optional[AnimaCheckpointLayout] = None,
+    anima_base_sha256: Optional[str] = None,
 ) -> anima_models.Anima:
     """
     Load Anima model from the specified checkpoint.
@@ -166,6 +169,7 @@ def load_anima_model(
     dit_path = str(resolve_under_home(dit_path))
     device = torch.device(device)
     loading_device = torch.device(loading_device)
+    checkpoint_layout = checkpoint_layout or inspect_anima_checkpoint(dit_path)
 
     # We currently support fixed DiT config for Anima models
     dit_config = {
@@ -181,11 +185,14 @@ def load_anima_model(
         "attn_softmax_scale": attn_softmax_scale,
         "v100_flash_stability": v100_flash_stability,
         "debug_finite_checks": debug_finite_checks,
+        "num_blocks": checkpoint_layout.num_blocks,
     }
     with init_empty_weights():
         model = anima_models.Anima(**dit_config)
         if dit_weight_dtype is not None:
             model.to(dit_weight_dtype)
+    model._anima_checkpoint_layout = checkpoint_layout
+    model._anima_base_sha256 = anima_base_sha256
 
     # load model weights with LoRA merging if needed
     logger.info(f"Loading DiT model from {dit_path}, device={loading_device}")

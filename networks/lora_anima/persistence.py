@@ -180,6 +180,19 @@ def stamp_lora_save_metadata(
     )
     if model_family != "anima":
         metadata["ss_model_family"] = model_family
+    elif (
+        network is not None
+        and (layout := getattr(network, "_anima_checkpoint_layout", None)) is not None
+        and layout.num_blocks == 40
+    ):
+        from library.anima.compat import adapter_identity_metadata
+
+        metadata.update(
+            adapter_identity_metadata(
+                layout,
+                getattr(network, "_anima_base_sha256", None),
+            )
+        )
 
 
 def strip_orig_mod_keys(state_dict):
@@ -193,9 +206,14 @@ def strip_orig_mod_keys(state_dict):
 
 def load_lora_network_weights(network, file):
     if os.path.splitext(file)[1] == ".safetensors":
+        from safetensors import safe_open
         from safetensors.torch import load_file
 
+        from library.anima.compat import validate_adapter_metadata
+
         weights_sd = load_file(file)
+        with safe_open(file, framework="pt") as handle:
+            validate_adapter_metadata(dict(handle.metadata() or {}), network)
     else:
         weights_sd = torch.load(file, map_location="cpu")
 
