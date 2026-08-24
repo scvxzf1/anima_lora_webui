@@ -1,7 +1,9 @@
-import { DRAGON_NAV_CATEGORIES } from './category-map.js?v=dragon-ui-20260814v43';
+import { DRAGON_NAV_CATEGORIES } from './category-map.js?v=dragon-ui-20260824v44';
 import { getThemePreference, setThemePreference } from './theme.js?v=dragon-ui-20260814v45';
 import { renderIcon } from './icons.js?v=dragon-ui-20260812v35';
 import { switchToClassicUI } from '../shared/ui-mode.js?v=dragon-ui-20260814v45';
+import { dragonScrollBehavior } from './motion.js?v=dragon-ui-20260824v1';
+import { DRAGON_VIEWPORT_QUERIES, matchesDragonViewport } from './responsive.js?v=dragon-ui-20260824v1';
 
 let openCategoryId = null;
 let mobileMenuOpen = false;
@@ -21,6 +23,7 @@ const PRIMARY_NAV_ITEMS = [
 
 const NAV_SHORTCUTS = [
     { id: 'home', label: '首页', compactLabel: '首页', icon: 'home', hash: '#dashboard', iconOnly: true },
+    { id: 'global-settings', label: '全局设置', compactLabel: '全局设置', icon: 'settings', hash: '#global-settings' },
 ];
 
 export function initNav(callback) {
@@ -222,7 +225,7 @@ function navigateToShortcut(targetHash) {
     if (!targetHash) return;
     if (targetHash === '#dashboard') {
         if (window.location.hash === '' || window.location.hash === '#dashboard') {
-            window.scrollTo({ top: 0, behavior: 'smooth' });
+            window.scrollTo({ top: 0, behavior: dragonScrollBehavior() });
             onNavigate?.({ type: 'page', page: 'dashboard' });
             return;
         }
@@ -233,13 +236,14 @@ function navigateToShortcut(targetHash) {
         window.location.hash = targetHash;
         return;
     }
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    window.scrollTo({ top: 0, behavior: dragonScrollBehavior() });
 }
 
 function updateShortcutState() {
     const hash = window.location.hash;
     const activeById = {
         home: hash === '' || hash === '#dashboard',
+        'global-settings': hash.startsWith('#global-settings'),
     };
     document.querySelectorAll('[data-nav-shortcut]').forEach((button) => {
         const active = Boolean(activeById[button.dataset.navShortcut]);
@@ -349,7 +353,9 @@ function bindGlobalEvents() {
     document.addEventListener('keydown', (event) => { if (event.key === 'Escape') closeAllMenus(); }, { signal });
     window.addEventListener('hashchange', updateShortcutState, { signal });
     window.addEventListener('dragon-route-restored', updateShortcutState, { signal });
-    window.addEventListener('resize', () => { if (window.innerWidth > 833) closeMobileMenu(); }, { passive: true, signal });
+    window.addEventListener('resize', () => {
+        if (!matchesDragonViewport(DRAGON_VIEWPORT_QUERIES.mobileNavigation)) closeMobileMenu();
+    }, { passive: true, signal });
 }
 
 export function destroyNav() {

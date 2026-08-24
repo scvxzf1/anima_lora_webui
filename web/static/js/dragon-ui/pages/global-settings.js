@@ -2,6 +2,7 @@
 
 import { createApiClient } from '../../shared/api.js?v=dragon-ui-20260812v35';
 import { applyDragonUIScale, clampUIScale } from '../ui-scale.js?v=dragon-ui-20260814v43';
+import { applyDragonMotionSetting } from '../motion.js?v=dragon-ui-20260824v1';
 
 const api = createApiClient();
 const SETTING_GROUPS = [
@@ -22,8 +23,9 @@ const SETTING_GROUPS = [
         ],
     },
     {
-        eyebrow: '显示', title: '界面缩放', desc: '全局缩放立即应用；页面缩放可独立设置，也可明确跟随全局。',
+        eyebrow: '显示', title: '界面显示', desc: '管理 Dragon 动态效果与界面缩放。系统启用“减少动态效果”时始终以系统设置为准。',
         fields: [
+            ['dragon_motion_enabled', '启用 Dragon 动态效果', 'boolean', '', '控制页面入场、滚动揭示、视差和平滑过渡；关闭后仍保留必要的加载状态。'],
             ['ui_scale', '全局界面缩放', 'number', '100', '有效范围 25%–400%。'],
             ['ui_scale_config', '训练配置页', 'scale', '', ''],
             ['ui_scale_datasets', '数据集页', 'scale', '', ''],
@@ -103,11 +105,15 @@ function normalizeSettings(source) {
     for (const group of SETTING_GROUPS) {
         for (const [key, , type] of group.fields) {
             const raw = source?.[key];
-            if (type === 'boolean') values[key] = Boolean(raw);
+            if (type === 'boolean') values[key] = raw == null ? booleanDefault(key) : Boolean(raw);
             else values[key] = raw ?? '';
         }
     }
     return values;
+}
+
+function booleanDefault(key) {
+    return key === 'dragon_motion_enabled';
 }
 
 function renderPage(state) {
@@ -145,17 +151,17 @@ function renderPage(state) {
                         </div>
                     </header>
                     <form class="dragon-global-settings-form" data-global-settings-form novalidate>
-                        ${SETTING_GROUPS.map((group, index) => renderGroup(group, state, index)).join('')}
                         <div class="dragon-savebar dragon-global-settings-savebar" data-dirty="false">
                             <div class="dragon-savebar-status">
                                 <strong data-global-dirty-label>所有修改已保存</strong>
-                                <span data-global-feedback role="status" aria-live="polite">界面缩放保存后会立即应用。</span>
+                                <span data-global-feedback role="status" aria-live="polite">界面显示设置保存后会立即应用。</span>
                             </div>
                             <div class="dragon-savebar-actions">
                                 <button class="dragon-btn dragon-btn-secondary" type="button" data-global-action="revert" disabled>还原修改</button>
                                 <button class="dragon-btn dragon-btn-primary" type="submit" data-global-action="save" disabled>保存全局设置</button>
                             </div>
                         </div>
+                        ${SETTING_GROUPS.map((group, index) => renderGroup(group, state, index)).join('')}
                     </form>
                 </section>
             </div>
@@ -361,6 +367,7 @@ async function saveSettings(root, state) {
         state.effectivePaths = effectivePathValues(payload);
         state.dirty = false;
         applyDragonUIScale(payload, 'global-settings');
+        applyDragonMotionSetting(payload);
         renderFields(root, state);
         updatePageState(root, state);
         if (payload.requires_reload) {

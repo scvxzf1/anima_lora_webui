@@ -14,8 +14,8 @@ def test_quick_picker_is_scoped_to_base_models_and_applies_all_paths() -> None:
     page = _read("js/dragon-ui/pages/config-page.js")
     picker = _read("js/dragon-ui/pages/model-quick-picker.js")
 
-    assert "sub.id === 'base-models' ? renderModelQuickPickerTrigger() : ''" in page
-    assert "sub.id === 'base-models' ? renderModelQuickPickerDialog() : ''" in page
+    assert "sub.id === 'required' ? renderModelQuickPickerTrigger() : ''" in page
+    assert "sub.id === 'required' ? renderModelQuickPickerDialog() : ''" in page
     assert "bindModelQuickPicker(wrapper" in page
     assert "MODEL_QUICK_PATH_KEYS.forEach" in page
     assert "input.dispatchEvent(new Event('input', { bubbles: true }))" in page

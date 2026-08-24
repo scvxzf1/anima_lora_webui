@@ -4,6 +4,24 @@
  * Structure: grouped flyout columns with section headers.
  */
 
+import { FORM_CATEGORY_DEFS } from '../config/catalog/form-layout.js?v=dragon-ui-20260812v35';
+
+const TRAINING_CONFIG_LEGACY_IDS = Object.freeze({
+    required: ['base-models', 'data-behavior', 'dataset-filter'],
+    common: ['adapter-basics', 'lokr', 'optimizer', 'steps-volume', 'timestep', 'output-save', 'logging'],
+    preview: ['train-sampling'],
+    optimization: [],
+    advanced: [],
+});
+
+const TRAINING_CONFIG_ITEMS = FORM_CATEGORY_DEFS.map((category) => ({
+    id: category.id,
+    legacyIds: TRAINING_CONFIG_LEGACY_IDS[category.id] || [],
+    label: category.title,
+    desc: category.description,
+    sections: [...category.sections],
+}));
+
 export const DRAGON_NAV_CATEGORIES = [
     {
         id: 'training-config',
@@ -11,35 +29,8 @@ export const DRAGON_NAV_CATEGORIES = [
         layout: 'config',
         groups: [
             {
-                header: '基础设置',
-                items: [
-                    { id: 'base-models', label: '基础模型', desc: '底模、文本编码器、VAE 路径', sections: ['基础模型路径'] },
-                    { id: 'output-save', label: '输出与保存', desc: '输出命名、保存频率与检查点', sections: ['输出格式与训练范围'] },
-                    { id: 'steps-volume', label: '步数与训练量', desc: '训练轮数、批大小与梯度累积', sections: ['步数与训练量'] },
-                    { id: 'data-behavior', label: '数据与标注', desc: '标注变体、遮罩损失与丢弃率', sections: [] },
-                    { id: 'dataset-filter', label: '数据筛选', desc: '路径匹配、分辨率筛选与像素阈值', sections: [] },
-                ],
-            },
-            {
-                header: '适配器',
-                items: [
-                    { id: 'adapter-basics', label: '适配器基础', desc: '秩、缩放系数、适配器类型与权重', sections: ['常用训练设置'] },
-                    { id: 'lokr', label: 'LoKr 专用', desc: '克罗内克因子与显存优化', sections: ['LoKr 专用优化'] },
-                ],
-            },
-            {
-                header: '训练参数',
-                items: [
-                    { id: 'optimizer', label: '优化器与学习率', desc: '优化器、调度器、预热', sections: [] },
-                    { id: 'timestep', label: '时间步采样', desc: '时间步采样与流偏移', sections: [] },
-                    { id: 'logging', label: '日志设置', desc: '日志频率、目录、后端', sections: [] },
-                ],
-            },
-            {
-                header: '预览',
-                items: [
-                    { id: 'train-sampling', label: '训练中采样预览', desc: '样张提示词、频率、种子与单条采样参数', sections: ['训练中预览图'] },
-                ],
+                header: '配置目录',
+                items: TRAINING_CONFIG_ITEMS,
             },
         ],
     },
@@ -190,7 +181,7 @@ export function isConfigCategory(categoryId) {
 }
 
 export function findSubItem(id) {
-    return DRAGON_ALL_SUB_ITEMS.find((item) => item.id === id);
+    return DRAGON_ALL_SUB_ITEMS.find((item) => item.id === id || item.legacyIds?.includes(id));
 }
 
 export function findCategory(categoryId) {

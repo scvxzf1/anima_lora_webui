@@ -3,12 +3,19 @@
  * Also handles parallax effect for .dragon-parallax elements.
  */
 
+import { isDragonMotionEnabled } from './motion.js?v=dragon-ui-20260824v1';
+
 let revealObserver = null;
 
 export function initScrollAnimations() {
     if (revealObserver) revealObserver.disconnect();
+    revealObserver = null;
+    if (!isDragonMotionEnabled() || typeof window.IntersectionObserver !== 'function') {
+        revealAll();
+        return;
+    }
 
-    revealObserver = new IntersectionObserver(
+    revealObserver = new window.IntersectionObserver(
         (entries) => {
             for (const entry of entries) {
                 if (entry.isIntersecting) {
@@ -27,6 +34,10 @@ export function initScrollAnimations() {
 }
 
 export function scanForReveal() {
+    if (!isDragonMotionEnabled()) {
+        revealAll();
+        return;
+    }
     if (!revealObserver) return;
     document.querySelectorAll('.dragon-reveal:not(.dragon-in-view)').forEach((el) => {
         revealObserver.observe(el);
@@ -37,7 +48,7 @@ let parallaxTicking = false;
 function handleParallax() {
     if (parallaxTicking) return;
     parallaxTicking = true;
-    requestAnimationFrame(() => {
+    scheduleAnimationFrame(() => {
         const scrolled = window.scrollY;
         document.querySelectorAll('.dragon-parallax').forEach((el) => {
             const speed = parseFloat(el.dataset.parallaxSpeed || '0.3');
@@ -48,6 +59,8 @@ function handleParallax() {
 }
 
 export function initParallax() {
+    window.removeEventListener('scroll', handleParallax);
+    if (!isDragonMotionEnabled()) return;
     window.addEventListener('scroll', handleParallax, { passive: true });
 }
 
@@ -59,4 +72,13 @@ export function destroyAnimations() {
     document.querySelectorAll('.dragon-parallax').forEach((element) => {
         element.style.removeProperty('transform');
     });
+}
+
+function revealAll() {
+    document.querySelectorAll('.dragon-reveal').forEach((element) => element.classList.add('dragon-in-view'));
+}
+
+function scheduleAnimationFrame(callback) {
+    if (typeof window.requestAnimationFrame === 'function') return window.requestAnimationFrame(callback);
+    return window.setTimeout(callback, 16);
 }

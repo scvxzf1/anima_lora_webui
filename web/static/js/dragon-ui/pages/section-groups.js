@@ -4,13 +4,36 @@
  * Sub-pages without an entry here fall back to a flat field list.
  */
 
+import { FORM_CATEGORY_DEFS, FORM_SECTION_DEFS } from '../../config/catalog/form-layout.js?v=dragon-ui-20260812v35';
+
+const TRAINING_CATEGORY_SECTION_GROUPS = Object.fromEntries(FORM_CATEGORY_DEFS.map((category) => [
+    category.id,
+    category.sections.map((title) => FORM_SECTION_DEFS.find((section) => section.title === title))
+        .filter(Boolean)
+        .map((section) => ({
+            eyebrow: category.title,
+            title: section.title,
+            desc: section.description || '',
+            keys: [...section.keys],
+            collapsible: true,
+            open: section.open !== false || (category.id === 'advanced' && section.title === '缓存与预处理'),
+        })),
+]));
+
 export const SECTION_GROUPS = {
+    ...TRAINING_CATEGORY_SECTION_GROUPS,
     'data-behavior': [
         {
             eyebrow: '标注',
             title: '标注变体与丢弃率',
             desc: '控制标题变体、遮罩损失和标题随机丢弃行为。',
             keys: ['use_shuffled_caption_variants', 'masked_loss', 'caption_dropout_rate'],
+        },
+        {
+            eyebrow: '筛选规则',
+            title: '路径与分辨率筛选',
+            desc: '在预处理前过滤不符合路径、分辨率或像素阈值的源图。',
+            keys: ['path_pattern', 'drop_lowres_images', 'min_pixels'],
         },
     ],
     'dataset-filter': [
@@ -43,6 +66,12 @@ export const SECTION_GROUPS = {
     ],
     'output-save': [
         {
+            eyebrow: '输出',
+            title: '输出命名',
+            desc: '设置训练产物的输出名称。',
+            keys: ['output_name'],
+        },
+        {
             eyebrow: '保存策略',
             title: '权重与续训点周期',
             desc: '设置模型权重、训练状态的保存频率和保留数量。',
@@ -59,6 +88,24 @@ export const SECTION_GROUPS = {
             title: '正则化与诊断',
             desc: '权重衰减和诊断相关参数。',
             keys: ['weight_decay', 'use_cmmd', 'ip_diagnostics_epochs'],
+        },
+        {
+            eyebrow: '日志',
+            title: '日志记录',
+            desc: '设置日志频率、输出目录和记录后端。',
+            keys: ['log_every_n_steps', 'logging_dir', 'log_with'],
+        },
+        {
+            eyebrow: '预览',
+            title: '采样提示词与频率',
+            desc: '配置训练中预览图的提示词、生成频率和首次采样。',
+            keys: ['sample_prompts', 'sample_every_n_epochs', 'sample_every_n_steps', 'sample_at_first'],
+        },
+        {
+            eyebrow: '预览',
+            title: '采样器与种子',
+            desc: '选择预览采样器并设置可复现的随机种子。',
+            keys: ['sample_sampler', 'seed'],
         },
     ],
     'steps-volume': [
@@ -83,12 +130,6 @@ export const SECTION_GROUPS = {
     ],
     'adapter-basics': [
         {
-            eyebrow: '输出',
-            title: '命名与训练时长',
-            desc: '输出名称和训练轮数。',
-            keys: ['output_name', 'max_train_epochs'],
-        },
-        {
             eyebrow: '适配器容量',
             title: 'Rank 与 Alpha',
             desc: '设置适配器维度和缩放系数。',
@@ -105,6 +146,18 @@ export const SECTION_GROUPS = {
             title: '预训练权重加载',
             desc: '从已有权重恢复训练或初始化。',
             keys: ['network_weights', 'dim_from_weights'],
+        },
+        {
+            eyebrow: 'LoKr',
+            title: 'Kronecker 分解选项',
+            desc: '当适配器类型为 LoKr 时，控制分解方式和兼容行为。',
+            keys: ['lokr_use_einsum', 'lokr_decompose_w2', 'lokr_full_factor', 'lokr_allow_legacy_dim'],
+        },
+        {
+            eyebrow: 'LoKr',
+            title: '分组与投影显存',
+            desc: '调整 LoKr 分组大小和投影分块字节数。',
+            keys: ['lokr_factor_group_size', 'lokr_project_chunk_bytes'],
         },
     ],
     'lokr': [
@@ -351,6 +404,18 @@ export const SECTION_GROUPS = {
     ],
     'optimizer': [
         {
+            eyebrow: '训练时长',
+            title: '轮数与最大步数',
+            desc: '设置训练轮数或总步数上限。',
+            keys: ['max_train_epochs', 'max_train_steps'],
+        },
+        {
+            eyebrow: '批量',
+            title: '批大小与梯度累积',
+            desc: '控制每步图片数、梯度累积和数据采样比例。',
+            keys: ['train_batch_size', 'gradient_accumulation_steps', 'sample_ratio'],
+        },
+        {
             eyebrow: '优化器',
             title: '优化器类型与参数',
             desc: '选择优化器类型并配置额外参数。',
@@ -361,6 +426,12 @@ export const SECTION_GROUPS = {
             title: '学习率与调度',
             desc: '设置学习率、调度器和预热步数。',
             keys: ['lr_scheduler', 'lr_warmup_steps', 'learning_rate'],
+        },
+        {
+            eyebrow: '时间步',
+            title: '采样方式与 Flow Shift',
+            desc: '选择时间步采样策略并调整离散 flow 偏移。',
+            keys: ['timestep_sampling', 'discrete_flow_shift'],
         },
     ],
     'lora-basics': [

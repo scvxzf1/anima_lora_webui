@@ -60,6 +60,9 @@ GLOBAL_UI_KEYS = (
     "ui_scale",
     *GLOBAL_UI_OVERRIDE_KEYS,
 )
+GLOBAL_DRAGON_UI_KEYS = (
+    "dragon_motion_enabled",
+)
 GLOBAL_IMAGE_TEST_KEYS = (
     "image_test_allow_home_search",
 )
@@ -235,6 +238,11 @@ def save_global_settings(data: dict[str, Any]) -> dict[str, Any]:
             next_global.pop(key, None)
         else:
             next_global[key] = value
+    for key in GLOBAL_DRAGON_UI_KEYS:
+        if key in data:
+            next_global[key] = _normalize_bool_setting(data.get(key), default=True)
+        elif key not in next_global:
+            next_global[key] = bool(current.get(key, defaults.get(key, True)))
     for key in GLOBAL_IMAGE_TEST_KEYS:
         if key in data:
             next_global[key] = _normalize_bool_setting(data.get(key), default=False)
@@ -369,6 +377,11 @@ def _load_settings(settings_file: Path | None = None) -> dict[str, Any]:
         if key in section:
             value = _normalize_ui_setting(key, section.get(key))
             settings[key] = value if value is not None else defaults.get(key)
+    for key in GLOBAL_DRAGON_UI_KEYS:
+        if key in section:
+            settings[key] = _normalize_bool_setting(section.get(key), default=bool(defaults.get(key, True)))
+        else:
+            settings[key] = bool(defaults.get(key, True))
     for key in GLOBAL_IMAGE_TEST_KEYS:
         if key in section:
             settings[key] = _normalize_bool_setting(section.get(key), default=bool(defaults.get(key, False)))
@@ -433,6 +446,7 @@ def _default_global_settings(*, settings_file: Path | None = None) -> dict[str, 
         "history_root": "",
         "queue_root": "",
         "ui_scale": DEFAULT_UI_SCALE,
+        "dragon_motion_enabled": True,
         "image_test_allow_home_search": False,
         "image_test_save_root": "",
         "model_family": "",

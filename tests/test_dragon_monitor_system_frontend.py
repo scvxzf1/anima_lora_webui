@@ -101,7 +101,7 @@ def test_history_page_uses_complete_backend_contract_and_archive_workspace():
     assert "results.querySelectorAll('.dragon-reveal')" in controller
     assert "element.classList.add('dragon-in-view')" in controller
     entry = _read("js/dragon-ui/index.js")
-    animation_version = "./animations.js?v=dragon-ui-20260816v67"
+    animation_version = "./animations.js?v=dragon-ui-20260824v69"
     assert animation_version in entry
     assert f"../{animation_version.removeprefix('./')}" in controller
     assert ".dragon-history-controls" in css
@@ -203,7 +203,52 @@ def test_system_pages_keep_accessible_core_actions():
     assert "ROOT" in settings and "CONFIGS" in settings and "UI" in settings
     assert "data-settings-section=\"${sectionNumber}\"" in settings
     assert "data-global-summary" in settings
+    savebar = settings.index('class="dragon-savebar dragon-global-settings-savebar"')
+    first_group = settings.index('${SETTING_GROUPS.map((group, index) => renderGroup(group, state, index))')
+    assert savebar < first_group
     assert "(!state.dirty && !migrationPending(state))" in model
+
+
+def test_global_settings_savebar_stays_in_page_layout_at_all_breakpoints():
+    css = _read("css/dragon/06-dragon-pages.css")
+    scoped = css[css.index(".dragon-global-settings-savebar {"):css.index(".dragon-global-settings-group {")]
+    responsive = css[css.index("@media (max-width: 734px)", css.index("@media (max-width: 1068px)")):]
+
+    assert "position: sticky;" in scoped
+    assert "bottom: auto;" in scoped
+    assert "grid-template-columns: minmax(220px, 1fr) auto;" in scoped
+    assert ".dragon-global-settings-savebar" in responsive
+    assert "bottom: auto;" in responsive
+    assert "grid-template-columns: minmax(0, 1fr);" in responsive
+
+
+def test_global_settings_uses_fluid_width_and_adaptive_field_columns():
+    css = _read("css/dragon/06-dragon-pages.css")
+    settings_css = css[css.index(".dragon-global-settings-workspace {"):]
+
+    assert "grid-template-columns: clamp(232px, 14vw, 280px) minmax(0, 1fr);" in settings_css
+    assert "width: calc(100% - clamp(32px, 4vw, 72px));" in settings_css
+    assert "max-width: 2400px;" in settings_css
+    assert "repeat(auto-fit, minmax(min(100%, 300px), 1fr))" in settings_css
+    assert ".dragon-settings-entry:first-child .dragon-settings-fields" not in settings_css
+    assert "@media (max-width: 734px)" in settings_css
+    assert ".dragon-settings-fields" in settings_css
+    assert "grid-template-columns: 1fr;" in settings_css
+
+
+def test_dragon_viewport_sizing_keeps_legacy_fallbacks_and_dynamic_units():
+    base = _read("css/dragon/01-dragon-base.css")
+    config = _read("css/dragon/04-dragon-config.css")
+    pages = _read("css/dragon/06-dragon-pages.css")
+
+    assert base.count("min-height: 100vh;") >= 2
+    assert base.count("min-height: 100dvh;") >= 2
+    assert "width: min(520px, calc(100% - 32px));" in config
+    assert "width: calc(100% - 24px);" in config
+    assert "max-height: min(720px, calc(100vh - 48px));" in config
+    assert "max-height: min(720px, calc(100dvh - 48px));" in config
+    assert "height: min(820px, calc(100vh - var(--dragon-nav-height) - 48px));" in pages
+    assert "height: min(820px, calc(100dvh - var(--dragon-nav-height) - 48px));" in pages
 
 
 def test_weight_analysis_and_preview_match_classic_core_contracts():
@@ -314,6 +359,19 @@ def test_training_config_uses_fluid_desktop_width_with_mobile_gutters():
     assert "width: calc(100% - (2 * var(--dragon-content-pad)));" in page_rule
     assert "max-width: none;" in page_rule
     assert "@media (max-width: 833px)" in css
+
+
+def test_training_runbar_uses_equal_centered_columns_for_context_and_actions():
+    css = _read("css/dragon/04-dragon-config.css")
+    runbar = css[css.index(".dragon-config-runbar {"):css.index(".dragon-runbar-field,")]
+    actions = css[css.index(".dragon-runbar-actions {"):css.index(".dragon-config-page .dragon-btn {")]
+    action_buttons = css[css.index(".dragon-runbar-actions .dragon-btn {"):css.index("/* Launch dialogs")]
+
+    assert "grid-template-columns: repeat(3, minmax(0, 1fr));" in runbar
+    assert "grid-template-columns: repeat(3, minmax(0, 1fr));" in actions
+    assert "width: min(100%, 136px);" in action_buttons
+    assert "justify-self: center;" in action_buttons
+    assert "justify-content: center;" in action_buttons
     assert "width: calc(100% - (2 * var(--dragon-content-pad-mobile)));" in css
 
 
@@ -331,14 +389,18 @@ def test_primary_navigation_exposes_centered_workspace_routes_without_duplicate_
     assert "PRIMARY_NAV_ITEMS.map(renderPrimaryNavItem)" in nav
     assert 'data-primary-nav="${item.id}"' in nav
     shortcut_catalog = nav[nav.index("const NAV_SHORTCUTS = ["):nav.index("];", nav.index("const NAV_SHORTCUTS = ["))]
+    assert "{ id: 'global-settings', label: '全局设置', compactLabel: '全局设置', icon: 'settings', hash: '#global-settings' }" in shortcut_catalog
     assert "id: 'datasets'" not in shortcut_catalog
     assert "id: 'history'" not in shortcut_catalog
     assert "id: 'configs'" not in shortcut_catalog
     assert "icon: 'folder'" not in shortcut_catalog
     assert "document.querySelectorAll('.dragon-nav-mobile-link[data-sub-id]')" in nav
     assert "const activePrimaryId" in nav
+    assert "'global-settings': hash.startsWith('#global-settings')" in nav
     assert ".dragon-nav-primary-link[data-active=\"true\"]" in css
     assert ".dragon-nav-primary-link[data-active=\"true\"]::after" in css
+    assert ".dragon-nav-utility-button[data-active=\"true\"]" in css
+    assert ".dragon-nav-mobile-shortcut[data-active=\"true\"]" in css
 
 
 def test_live_monitor_exposes_current_task_context():
@@ -384,6 +446,12 @@ def test_training_config_category_header_omits_workbench_eyebrow():
     assert '<span class="dragon-eyebrow">训练工作台</span>' not in config[start:end]
 
 
+def test_training_config_category_header_omits_description():
+    config = _read("js/dragon-ui/pages/config-page.js")
+    assert "训练所需的基础模型、数据行为、适配器、步数和采样设置。" not in config
+    assert "${description ? `<p>${description}</p>` : ''}" in config
+
+
 def test_training_config_category_is_a_real_single_subpage():
     config = _read("js/dragon-ui/pages/config-page.js")
     nav = _read("js/dragon-ui/nav.js")
@@ -399,7 +467,71 @@ def test_training_config_category_is_a_real_single_subpage():
     assert "function renderCategoryPage" not in config
     assert ".dragon-config-workspace" in css
     assert "grid-template-columns: minmax(220px, 260px) minmax(0, 1fr);" in css
-    assert "data-config-subpage=\"base-models\"" in css
+    assert ".dragon-config-section-summary" in css
+
+
+def test_training_config_navigation_is_merged_into_five_workflow_groups():
+    category_map = _read("js/dragon-ui/category-map.js")
+    section_groups = _read("js/dragon-ui/pages/section-groups.js")
+    router = _read("js/dragon-ui/router.js")
+    training = category_map.split("id: 'training-config'", 1)[1].split("id: 'memory-optimization'", 1)[0]
+
+    assert "items: TRAINING_CONFIG_ITEMS" in training
+    assert "FORM_CATEGORY_DEFS.map" in category_map
+    assert "required: ['base-models', 'data-behavior', 'dataset-filter']" in category_map
+    assert "common: ['adapter-basics', 'lokr', 'optimizer', 'steps-volume', 'timestep', 'output-save', 'logging']" in category_map
+    assert "preview: ['train-sampling']" in category_map
+    assert "item.legacyIds?.includes(id)" in category_map
+    assert "matchedSub?.categoryId === route.categoryId ? matchedSub.id : route.subId" in router
+    assert "FORM_CATEGORY_DEFS.map" in section_groups
+    assert "FORM_SECTION_DEFS.find" in section_groups
+    assert "collapsible: true" in section_groups
+
+
+def test_training_config_matches_classic_scope_and_keeps_unclassified_fields():
+    page = _read("js/dragon-ui/pages/config-page.js")
+    for shared_filter in (
+        "CONFIG_FORM_INTERNAL_KEYS",
+        "CONFIG_FORM_MERGED_FIELDS",
+        "DATASET_BLUEPRINT_FIELDS",
+        "DEPRECATED_CONFIG_FORM_FIELDS",
+        "RETIRED_CONFIG_FORM_FIELDS",
+        "SPD_UI_DEFAULT_FIELDS",
+        "CHIMERA_UI_DEFAULT_FIELDS",
+        "IP_ADAPTER_UI_DEFAULT_FIELDS",
+    ):
+        assert shared_filter in page
+    assert "CONVROT_FIELD_KEYS.has(key)" in page
+    assert "['w8a16_convrot', 'w8a8_convrot'].includes(baseCompute)" in page
+    assert "function unclassifiedConfigKeys(values, knownKeys)" in page
+    assert "entry.sub.id === 'advanced'" in page
+    assert "unclassifiedConfigKeys(values, knownKeys)" in page
+
+
+def test_training_config_long_sections_are_collapsible_and_fluid():
+    page = _read("js/dragon-ui/pages/config-page.js")
+    css = _read("css/dragon/04-dragon-config.css")
+    assert "function renderConfigSection(section, keys, currentValues)" in page
+    assert '<details class="dragon-config-section dragon-config-section-collapsible"' in page
+    assert 'class="dragon-config-section-count">${keys.length} 项' in page
+    assert ".dragon-config-section-summary::after" in css
+    assert ".dragon-config-section-collapsible[open]" in css
+    assert "repeat(auto-fit, minmax(min(100%, 250px), 1fr))" in css
+    assert "repeat(auto-fit, minmax(min(100%, 240px), 1fr))" in css
+
+
+def test_training_config_recomputes_scoped_fields_and_supports_local_search():
+    page = _read("js/dragon-ui/pages/config-page.js")
+    css = _read("css/dragon/04-dragon-config.css")
+    assert "function buildCategoryEntries(category, rawEntries, trainingContext, values)" in page
+    assert "buildCategoryEntries(category, rawEntries, context, values)" in page
+    assert "entries = nextEntries" in page
+    assert "const activeSub = activeEntry?.sub || sub" in page
+    assert "function renderConfigFieldFilter(total)" in page
+    assert "function bindConfigFieldFilter(root)" in page
+    assert "data-config-field-search" in page
+    assert "bindConfigFieldFilter(root)" in page
+    assert ".dragon-config-field-filter" in css
 
 
 def test_tool_path_inputs_use_example_ellipsis_and_named_uploads():
@@ -470,11 +602,25 @@ def test_training_config_preset_library_supports_cross_group_and_in_group_drag_d
     assert "padding: 8px 10px 10px;" in css
     assert "bindTrainingPresetViewport(library)" in library
     assert "window.innerHeight - top - 16" in library
-    assert "window.matchMedia('(min-width: 1001px)')" in library
+    assert "matchesDragonViewport(DRAGON_VIEWPORT_QUERIES.trainingPresetSidebar)" in library
     assert "window.addEventListener('resize', schedule" in library
     assert "window.addEventListener('scroll', schedule" in library
     assert "destroy: () => viewportLayout.destroy()" in library
     assert "libraryController?.destroy?.()" in page
+
+
+def test_dragon_viewport_contracts_are_named_and_have_browser_fallbacks():
+    responsive = _read("js/dragon-ui/responsive.js")
+    nav = _read("js/dragon-ui/nav.js")
+    library = _read("js/dragon-ui/pages/training-preset-library.js")
+
+    assert "mobileNavigation: '(max-width: 833px)'" in responsive
+    assert "trainingPresetSidebar: '(min-width: 1001px)'" in responsive
+    assert "typeof window.matchMedia !== 'function'" in responsive
+    assert "DRAGON_VIEWPORT_QUERIES.mobileNavigation" in nav
+    assert "window.innerWidth > 833" not in nav
+    assert "DRAGON_VIEWPORT_QUERIES.trainingPresetSidebar" in library
+    assert "window.matchMedia('(min-width: 1001px)')" not in library
 
 
 def test_preset_sidebars_use_shared_theme_spacing_and_clear_boundaries():
@@ -538,7 +684,7 @@ def test_training_preset_manager_refreshes_independently_from_atomic_editable_pa
     assert 'data-config-editable-pane' in page
     assert "renderEditableConfigPane" in page
     assert "transitionEditable" in page
-    assert "committed = { context, sub: targetSub, keys: targetKeys, values }" in page
+    assert "committed = { context, sub: target.sub, keys: target.keys, values }" in page
     assert "currentPane.outerHTML = renderEditableConfigPane" in page
     assert "libraryController?.updateContext(committed.context)" in page
     assert "selectTrainingConfigFile(committed.context, file, { notify: false, persist: false })" in page
@@ -561,7 +707,7 @@ def test_config_subpage_routes_keep_independent_preset_manager_mounted():
 
     assert "async function updateMountedConfigCategory" in router
     assert "currentPage.onRouteUpdate" in router
-    assert "await updateMountedConfigCategory(route.categoryId, route.subId)" in router
+    assert "await updateMountedConfigCategory(route.categoryId, subId)" in router
     assert "await updateMountedConfigCategory(sub.categoryId, sub.id)" in router
     assert "onRouteUpdate = content.onRouteUpdate" in router
     assert "currentPage = { pageType, context, beforeLeave, onUnmount, onRouteUpdate }" in router
@@ -578,7 +724,7 @@ def test_training_context_transition_does_not_publish_mixed_render_state():
 
     commit_at = page.index("commitTrainingContext(context)")
     response_at = page.index("const res = await api(mergedConfigUrl(context))")
-    state_at = page.index("committed = { context, sub: targetSub, keys: targetKeys, values }")
+    state_at = page.index("committed = { context, sub: target.sub, keys: target.keys, values }")
     render_at = page.index("currentPane.outerHTML = renderEditableConfigPane")
     assert response_at < state_at < commit_at < render_at
     assert "persist: false" in page
@@ -651,8 +797,8 @@ def test_training_config_defaults_to_editable_file_and_hides_spd_ghost_fields():
     assert "当前训练配置为系统只读，无法保存修改" in page
     # SPD fields are CLI-only ghosts for every selectable Web config; the SPD
     # sub-page must be suppressed unless the current method family is spd.
-    assert "const currentMethodFamily = activeMethodFamily(trainingContext, currentValues);" in page
-    assert "(entry.sub.id !== 'spd' || currentMethodFamily === 'spd')" in page
+    assert "const method = activeMethodFamily(trainingContext, values);" in page
+    assert "(entry.sub.id !== 'spd' || method === 'spd')" in page
     assert "SPD 是 CLI 实验配置，当前训练配置不会使用这些参数" in page
 
 
@@ -667,6 +813,6 @@ def test_training_queue_action_stays_on_config_page_and_uses_dragon_dialog_surfa
     assert 'class="dragon-training-dialog-shell"' in controls
     assert 'class="dragon-training-dialog-header"' in controls
     assert ".dragon-training-dialog::backdrop" in css
-    assert "width: min(520px, calc(100vw - 32px));" in css
+    assert "width: min(520px, calc(100% - 32px));" in css
     assert ".dragon-training-dialog-actions" in css
     assert "@media (max-width: 520px)" in css

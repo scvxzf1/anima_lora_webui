@@ -5,6 +5,7 @@
 import { createApiClient } from '../../shared/api.js?v=dragon-ui-20260812v35';
 import { escapeHtml } from '../../shared/format.js?v=dragon-ui-20260812v35';
 import { renderIcon } from '../icons.js?v=dragon-ui-20260812v35';
+import { DRAGON_VIEWPORT_QUERIES, matchesDragonViewport } from '../responsive.js?v=dragon-ui-20260824v1';
 import { loadTrainingContext, selectTrainingConfigFile } from './training-controls.js?v=dragon-ui-20260816v67';
 
 const api = createApiClient();
@@ -55,7 +56,7 @@ function bindTrainingPresetViewport(library) {
     let destroyed = false;
     const sync = () => {
         frame = 0;
-        if (!window.matchMedia('(min-width: 1001px)').matches) {
+        if (!matchesDragonViewport(DRAGON_VIEWPORT_QUERIES.trainingPresetSidebar)) {
             library.style.removeProperty('--dragon-training-preset-height');
             return;
         }

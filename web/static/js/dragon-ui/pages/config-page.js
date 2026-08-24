@@ -9,23 +9,31 @@ import { FIELD_LABEL_ZH, FIELD_OPTIONS } from '../../config/catalog/labels-optio
 import { FIELD_HELP_ZH } from '../../config/catalog/field-help.js?v=dragon-ui-20260812v35';
 import {
     ALL_LORA_ADAPTER_SCOPED_FIELD_KEYS,
+    CHIMERA_UI_DEFAULT_FIELDS,
+    CONFIG_FORM_INTERNAL_KEYS,
+    CONFIG_FORM_MERGED_FIELDS,
+    DATASET_BLUEPRINT_FIELDS,
+    DEPRECATED_CONFIG_FORM_FIELDS,
     FORM_UI_DEFAULTS,
+    IP_ADAPTER_UI_DEFAULT_FIELDS,
     LOKR_SCOPED_FIELD_KEYS,
     METHOD_SCOPED_CONFIG_FORM_FIELDS,
     NETWORK_ARG_FIELD_MAP,
     RETIRED_CONFIG_FORM_FIELDS,
+    SPD_UI_DEFAULT_FIELDS,
     VERA_SCOPED_FIELD_KEYS,
 } from '../../config/catalog/defaults.js?v=dragon-ui-20260812v35';
 import { VARIANT_METHOD_FAMILY } from '../../config/catalog/form-layout.js?v=dragon-ui-20260812v35';
 import { createApiClient } from '../../shared/api.js?v=dragon-ui-20260812v35';
 import { escapeHtml } from '../../shared/format.js?v=dragon-ui-20260812v35';
-import { SECTION_GROUPS } from './section-groups.js?v=dragon-ui-20260812v35';
-import { findCategory, isConfigCategory } from '../category-map.js?v=dragon-ui-20260812v35';
-import { scanForReveal } from '../animations.js?v=dragon-ui-20260816v67';
-import { keysForConfigSubItem } from './config-field-map.js?v=dragon-ui-20260812v35';
+import { SECTION_GROUPS } from './section-groups.js?v=dragon-ui-20260824v36';
+import { findCategory, isConfigCategory } from '../category-map.js?v=dragon-ui-20260824v44';
+import { scanForReveal } from '../animations.js?v=dragon-ui-20260824v69';
+import { dragonScrollBehavior } from '../motion.js?v=dragon-ui-20260824v1';
+import { keysForConfigSubItem } from './config-field-map.js?v=dragon-ui-20260824v36';
 import { configValueForControl, displayConfigValue, prepareConfigPatch, serializeConfigValue } from './config-values.js?v=dragon-ui-20260812v35';
 import { bindTrainingControls, isEditableConfigFile, loadTrainingContext, mergedConfigUrl, renderTrainingControls, selectTrainingConfigFile, selectTrainingPreset, commitTrainingContext } from './training-controls.js?v=dragon-ui-20260816v67';
-import { bindTrainingPresetLibrary, renderTrainingPresetLibrary } from './training-preset-library.js?v=dragon-ui-20260816v76';
+import { bindTrainingPresetLibrary, renderTrainingPresetLibrary } from './training-preset-library.js?v=dragon-ui-20260824v77';
 import {
     bindModelQuickPicker,
     MODEL_QUICK_PATH_KEYS,
@@ -34,6 +42,25 @@ import {
 } from './model-quick-picker.js?v=dragon-ui-20260819v3';
 
 const api = createApiClient();
+const CONVROT_FIELD_KEYS = new Set([
+    'convrot_group_size',
+    'convrot_scope',
+    'convrot_hadamard',
+    'convrot_min_in_features',
+    'convrot_largest_in_features_only',
+    'convrot_large_layer_mode',
+    'convrot_large_min_in_features',
+]);
+const HIDDEN_CONFIG_KEYS = new Set([
+    'output_dir',
+    'general',
+    'datasets',
+    'stage_schedule',
+    'stage_schedule_enabled',
+    'mixed_precision',
+    'full_fp16',
+    'full_bf16',
+]);
 
 function categoryLabel(sub) {
     if (!sub || !sub.categoryId) return "";
@@ -43,11 +70,10 @@ function categoryLabel(sub) {
 
 function categoryDescription(categoryId) {
     const descriptions = {
-        'training-config': '训练所需的基础模型、数据行为、适配器、步数和采样设置。',
         'memory-optimization': '显存、计算精度、编译、缓存和数据传输设置。',
         'advanced-methods': 'LoRA 扩展、条件注入、路由、损失加权和实验工具。',
     };
-    return descriptions[categoryId] || '按功能组织的训练配置。';
+    return descriptions[categoryId] || '';
 }
 
 function activeMethodFamily(trainingContext, values = {}) {
@@ -72,8 +98,18 @@ function activeAdapterKind(values = {}) {
 function visibleConfigKeys(keys, trainingContext, values) {
     const method = activeMethodFamily(trainingContext, values);
     const adapter = activeAdapterKind(values);
+    const baseCompute = String(values.base_compute || 'bf16').trim().toLowerCase();
     return keys.filter((key) => {
-        if (RETIRED_CONFIG_FORM_FIELDS.has(key)) return false;
+        if (HIDDEN_CONFIG_KEYS.has(key)
+            || CONFIG_FORM_INTERNAL_KEYS.has(key)
+            || CONFIG_FORM_MERGED_FIELDS.has(key)
+            || DATASET_BLUEPRINT_FIELDS.has(key)
+            || DEPRECATED_CONFIG_FORM_FIELDS.has(key)
+            || RETIRED_CONFIG_FORM_FIELDS.has(key)) return false;
+        if (!(key in values) && SPD_UI_DEFAULT_FIELDS.has(key) && method !== 'spd') return false;
+        if (!(key in values) && CHIMERA_UI_DEFAULT_FIELDS.has(key) && method !== 'chimera') return false;
+        if (!(key in values) && IP_ADAPTER_UI_DEFAULT_FIELDS.has(key) && method !== 'ip_adapter') return false;
+        if (CONVROT_FIELD_KEYS.has(key) && !['w8a16_convrot', 'w8a8_convrot'].includes(baseCompute)) return false;
         const methodScope = METHOD_SCOPED_CONFIG_FORM_FIELDS.get(key);
         if (methodScope && !methodScope.has(method)) return false;
         const spec = NETWORK_ARG_FIELD_MAP.get(key);
@@ -94,6 +130,28 @@ function visibleConfigKeys(keys, trainingContext, values) {
             || (key === 'lora_adapter_kind' || (adapter === 'lokr' && LOKR_SCOPED_FIELD_KEYS.has(key))
                 || (adapter === 'vera' && VERA_SCOPED_FIELD_KEYS.has(key)) || (adapter === 'lora' && key === 'dora_wd'));
     });
+}
+
+function unclassifiedConfigKeys(values, knownKeys) {
+    return Object.entries(values).filter(([key, value]) => {
+        if (knownKeys.has(key) || HIDDEN_CONFIG_KEYS.has(key)) return false;
+        if (value !== null && typeof value === 'object' && !Array.isArray(value)) return false;
+        return true;
+    }).map(([key]) => key);
+}
+
+function buildCategoryEntries(category, rawEntries, trainingContext, values) {
+    const knownKeys = new Set(rawEntries.flatMap((entry) => entry.keys));
+    const sourceEntries = category?.id === 'training-config'
+        ? rawEntries.map((entry) => entry.sub.id === 'advanced'
+            ? { ...entry, keys: [...new Set([...entry.keys, ...unclassifiedConfigKeys(values, knownKeys)])] }
+            : entry)
+        : rawEntries;
+    const method = activeMethodFamily(trainingContext, values);
+    return sourceEntries.map((entry) => ({
+        ...entry,
+        keys: visibleConfigKeys(entry.keys, trainingContext, values),
+    })).filter((entry) => entry.keys.length > 0 && (entry.sub.id !== 'spd' || method === 'spd'));
 }
 
 export async function loadConfigPage(context) {
@@ -140,18 +198,15 @@ export async function loadConfigPage(context) {
         };
     }
 
-    const currentMethodFamily = activeMethodFamily(trainingContext, currentValues);
-    const entries = isCategoryPage
-        ? rawEntries.map((entry) => ({
-            ...entry,
-            keys: visibleConfigKeys(entry.keys, trainingContext, currentValues),
-        })).filter((entry) => entry.keys.length > 0 && (entry.sub.id !== 'spd' || currentMethodFamily === 'spd'))
+    let entries = isCategoryPage
+        ? buildCategoryEntries(category, rawEntries, trainingContext, currentValues)
         : [];
     const activeEntry = isCategoryPage
         ? entries.find((entry) => entry.sub.id === context.subId) || entries[0]
         : null;
-    const keys = visibleConfigKeys(activeEntry?.keys || keysForConfigSubItem(sub), trainingContext, currentValues);
-    if (sub.id === 'spd' && currentMethodFamily !== 'spd') {
+    const activeSub = activeEntry?.sub || sub;
+    const keys = visibleConfigKeys(activeEntry?.keys || keysForConfigSubItem(activeSub), trainingContext, currentValues);
+    if (activeSub.id === 'spd' && activeMethodFamily(trainingContext, currentValues) !== 'spd') {
         return '<div class="dragon-empty-state"><p>SPD 是 CLI 实验配置，当前训练配置不会使用这些参数</p></div>';
     }
     if (!keys || keys.length === 0) {
@@ -160,9 +215,9 @@ export async function loadConfigPage(context) {
 
     const pageState = { dirty: false, beforeUnload: null };
     if (isCategoryPage) {
-        wrapper.innerHTML = renderCategorySubPage(pageCategory, entries, sub, keys, currentValues, trainingContext);
+        wrapper.innerHTML = renderCategorySubPage(pageCategory, entries, activeSub, keys, currentValues, trainingContext);
     } else {
-        wrapper.innerHTML = renderSingleConfigPage(sub, keys, currentValues, trainingContext);
+        wrapper.innerHTML = renderSingleConfigPage(activeSub, keys, currentValues, trainingContext);
     }
 
     let routeUpdater = null;
@@ -177,7 +232,7 @@ export async function loadConfigPage(context) {
                 return;
             }
 
-            let committed = { context: trainingContext, sub, keys, values: currentValues };
+            let committed = { context: trainingContext, sub: activeSub, keys, values: currentValues };
             let requestedContext = trainingContext;
             let libraryController = null;
             let saveCurrentChanges = null;
@@ -191,6 +246,7 @@ export async function loadConfigPage(context) {
 
             const bindEditablePane = () => {
                 saveCurrentChanges = wireConfigInteractions(root, committed.keys, committed.values, committed.context, pageState);
+                bindConfigFieldFilter(root);
                 bindTrainingControls(root, committed.context, {
                     saveChanges: saveCurrentChanges,
                     beforeContextChange,
@@ -205,15 +261,12 @@ export async function loadConfigPage(context) {
             };
 
             const transitionEditable = async ({ context = requestedContext, sub: nextSub = committed.sub } = {}) => {
-                const target = entries.find((entry) => entry.sub.id === nextSub?.id) || entries[0];
-                if (!target) return false;
-                const targetSub = target.sub;
-                const targetKeys = target.keys;
+                const requestedSubId = nextSub?.id;
                 const contextChanged = context.configFile !== committed.context.configFile
                     || context.preset !== committed.context.preset
                     || context.methodsSubdir !== committed.context.methodsSubdir
                     || context.variant !== committed.context.variant;
-                if (!contextChanged && targetSub.id === committed.sub.id) return true;
+                if (!contextChanged && requestedSubId === committed.sub.id) return true;
 
                 requestedContext = context;
                 const sequence = ++transitionSequence;
@@ -227,10 +280,16 @@ export async function loadConfigPage(context) {
                         values = res.config || res;
                     }
                     if (sequence !== transitionSequence) return true;
+                    const nextEntries = contextChanged
+                        ? buildCategoryEntries(category, rawEntries, context, values)
+                        : entries;
+                    const target = nextEntries.find((entry) => entry.sub.id === requestedSubId) || nextEntries[0];
+                    if (!target) return false;
 
                     pageState.dirty = false;
                     cleanupConfigPage(pageState);
-                    committed = { context, sub: targetSub, keys: targetKeys, values };
+                    entries = nextEntries;
+                    committed = { context, sub: target.sub, keys: target.keys, values };
                     requestedContext = context;
                     commitTrainingContext(context);
                     currentValues = values;
@@ -264,7 +323,7 @@ export async function loadConfigPage(context) {
                 if (!updated) return false;
                 const detail = root.querySelector(`[data-config-entry="${target.sub.id}"]`);
                 const navHeight = Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--dragon-nav-height')) || 44;
-                if (detail) window.scrollTo({ top: Math.max(0, window.scrollY + detail.getBoundingClientRect().top - navHeight - 16), behavior: 'smooth' });
+                if (detail) window.scrollTo({ top: Math.max(0, window.scrollY + detail.getBoundingClientRect().top - navHeight - 16), behavior: dragonScrollBehavior() });
                 return true;
             };
         },
@@ -315,13 +374,14 @@ function renderCategorySubPage(category, entries, sub, keys, currentValues, trai
     const groupLabel = category.groups.find((group) =>
         group.items.some((item) => item.id === sub.id)
     )?.header || category.label;
+    const description = categoryDescription(category.id);
 
     return `
         <div class="dragon-config-page dragon-config-category-page dragon-config-subpage"
              data-config-category="${category.id}" data-config-subpage="${sub.id}">
             <div class="dragon-config-hero dragon-reveal">
                 <h1>${category.label}</h1>
-                <p>${categoryDescription(category.id)}</p>
+                ${description ? `<p>${description}</p>` : ''}
             </div>
             <div class="dragon-config-shell-layout">
                 ${renderEditableConfigPane(category, entries, { context: trainingContext, sub, keys, values: currentValues })}
@@ -352,15 +412,57 @@ function renderEditableConfigWorkspace(category, entries, sub, keys, currentValu
                     <h2 id="dragon-config-detail-title">${sub.label}</h2>
                     <p>${sub.desc || ''}</p>
                 </div>
-                ${sub.id === 'base-models' ? renderModelQuickPickerTrigger() : ''}
+                ${sub.id === 'required' ? renderModelQuickPickerTrigger() : ''}
             </header>
+            ${renderConfigFieldFilter(keys.length)}
             <div class="dragon-config-detail-fields dragon-reveal" data-stagger="1" id="dragon-config-fields">
                 ${renderFields(sub.id, keys, currentValues)}
             </div>
             ${renderConfigActions()}
         </section>
-        ${sub.id === 'base-models' ? renderModelQuickPickerDialog() : ''}
+        ${sub.id === 'required' ? renderModelQuickPickerDialog() : ''}
     </div>`;
+}
+
+function renderConfigFieldFilter(total) {
+    return `<div class="dragon-config-field-filter">
+        <input class="dragon-input" type="search" autocomplete="off" data-config-field-search
+               aria-label="搜索当前配置分组" placeholder="搜索当前分组">
+        <output class="dragon-config-field-filter-count" data-config-field-filter-count>${total} 项</output>
+    </div>`;
+}
+
+function bindConfigFieldFilter(root) {
+    const input = root.querySelector('[data-config-field-search]');
+    const output = root.querySelector('[data-config-field-filter-count]');
+    const fieldsRoot = root.querySelector('#dragon-config-fields');
+    if (!input || !output || !fieldsRoot) return;
+    const fields = [...fieldsRoot.querySelectorAll('.dragon-field')];
+    const details = [...fieldsRoot.querySelectorAll('details.dragon-config-section')];
+    const openStates = new Map(details.map((detail) => [detail, detail.open]));
+    let previousQuery = '';
+
+    const update = () => {
+        const query = String(input.value || '').trim().toLocaleLowerCase();
+        let visible = 0;
+        fields.forEach((field) => {
+            const key = field.querySelector('[data-key]')?.dataset.key || '';
+            const matches = !query || `${key} ${field.textContent || ''}`.toLocaleLowerCase().includes(query);
+            field.hidden = !matches;
+            if (matches) visible += 1;
+        });
+        fieldsRoot.querySelectorAll('.dragon-config-section').forEach((section) => {
+            const hasVisibleField = [...section.querySelectorAll('.dragon-field')].some((field) => !field.hidden);
+            section.hidden = !hasVisibleField;
+            if (query && hasVisibleField && section.tagName === 'DETAILS') section.open = true;
+        });
+        if (previousQuery && !query) details.forEach((detail) => { detail.open = openStates.get(detail); });
+        previousQuery = query;
+        output.textContent = query ? `显示 ${visible} / ${fields.length} 项` : `${fields.length} 项`;
+    };
+
+    input.addEventListener('input', update);
+    update();
 }
 
 function renderConfigNavigation(category, entries, activeId) {
@@ -405,32 +507,41 @@ function renderFields(subId, keys, currentValues) {
         const sectionsHtml = groups.map((section) => {
             const sectionKeys = section.keys.filter((k) => keys.includes(k));
             if (sectionKeys.length === 0) return '';
-            const fieldsHtml = renderSectionFields(sectionKeys, currentValues);
-            return `
-                <div class="dragon-config-section">
-                    <div class="dragon-config-section-header">
-                        <span class="dragon-eyebrow">${section.eyebrow}</span>
-                        <h2 class="dragon-config-section-title">${section.title}</h2>
-                        <p class="dragon-config-section-desc">${section.desc}</p>
-                    </div>
-                    ${fieldsHtml}
-                </div>
-            `;
+            return renderConfigSection(section, sectionKeys, currentValues);
         }).join('');
         const remainingKeys = keys.filter((key) => !groupedKeys.has(key));
         if (!remainingKeys.length) return sectionsHtml;
-        return `${sectionsHtml}
-            <div class="dragon-config-section">
-                <div class="dragon-config-section-header">
-                    <span class="dragon-eyebrow">补充设置</span>
-                    <h2 class="dragon-config-section-title">其他可用参数</h2>
-                    <p class="dragon-config-section-desc">当前分类中尚未归入固定小节的参数。</p>
-                </div>
-                ${renderSectionFields(remainingKeys, currentValues)}
-            </div>`;
+        return `${sectionsHtml}${renderConfigSection({
+            eyebrow: '补充设置',
+            title: '其他可用参数',
+            desc: '当前配置文件中尚未归入共享目录的参数。',
+            collapsible: true,
+            open: false,
+        }, remainingKeys, currentValues)}`;
     }
 
     return renderSectionFields(keys, currentValues);
+}
+
+function renderConfigSection(section, keys, currentValues) {
+    const header = `
+        <div class="dragon-config-section-header">
+            <span class="dragon-eyebrow">${escapeHtml(section.eyebrow || '')}</span>
+            <h2 class="dragon-config-section-title">${escapeHtml(section.title || '')}</h2>
+            <p class="dragon-config-section-desc">${escapeHtml(section.desc || '')}</p>
+        </div>`;
+    const fields = renderSectionFields(keys, currentValues);
+    if (!section.collapsible) {
+        return `<div class="dragon-config-section">${header}${fields}</div>`;
+    }
+    return `
+        <details class="dragon-config-section dragon-config-section-collapsible" ${section.open ? 'open' : ''}>
+            <summary class="dragon-config-section-summary">
+                ${header}
+                <span class="dragon-config-section-count">${keys.length} 项</span>
+            </summary>
+            <div class="dragon-config-section-body">${fields}</div>
+        </details>`;
 }
 
 /* Render fields within a section, using 2-col grid for compact inputs */

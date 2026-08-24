@@ -263,7 +263,9 @@
     gap: var(--dragon-sp-3);
     min-width: 0;
     height: min(820px, calc(100vh - var(--dragon-nav-height) - 48px));
+    height: min(820px, calc(100dvh - var(--dragon-nav-height) - 48px));
     max-height: calc(100vh - var(--dragon-nav-height) - 48px);
+    max-height: calc(100dvh - var(--dragon-nav-height) - 48px);
     overflow: hidden;
     padding: var(--dragon-sp-4);
     border: 1px solid var(--dragon-border-light);
@@ -2746,9 +2748,14 @@ body[data-dragon-ui] #dragon-root .dragon-model-config-group-header {
 
 .dragon-global-settings-workspace {
     display: grid;
-    grid-template-columns: minmax(220px, 264px) minmax(0, 1fr);
-    gap: clamp(22px, 3vw, 36px);
+    grid-template-columns: clamp(232px, 14vw, 280px) minmax(0, 1fr);
+    gap: clamp(22px, 2vw, 40px);
     align-items: start;
+}
+
+.dragon-global-settings-page {
+    width: calc(100% - clamp(32px, 4vw, 72px));
+    max-width: 2400px;
 }
 
 .dragon-global-settings-sidebar {
@@ -2905,6 +2912,27 @@ body[data-dragon-ui] #dragon-root .dragon-global-settings-header {
     margin-top: 20px;
 }
 
+.dragon-global-settings-savebar {
+    position: sticky;
+    top: calc(var(--dragon-nav-height) + 12px);
+    right: auto;
+    bottom: auto;
+    left: auto;
+    display: grid;
+    width: auto;
+    min-width: 0;
+    grid-template-columns: minmax(220px, 1fr) auto;
+}
+
+.dragon-global-settings-savebar .dragon-savebar-status {
+    width: 100%;
+    min-width: 0;
+}
+
+.dragon-global-settings-savebar .dragon-savebar-status span {
+    overflow-wrap: anywhere;
+}
+
 .dragon-global-settings-group {
     min-width: 0;
     overflow: hidden;
@@ -2970,13 +2998,8 @@ body[data-dragon-ui] #dragon-root .dragon-global-settings-group-header {
 
 .dragon-settings-fields {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
     gap: 14px 16px;
-}
-
-.dragon-settings-entry:first-child .dragon-settings-fields,
-.dragon-settings-entry:nth-child(2) .dragon-settings-fields {
-    grid-template-columns: 1fr;
 }
 
 .dragon-setting-field,
@@ -3264,6 +3287,12 @@ body[data-dragon-ui] #dragon-root .dragon-global-settings-group-header {
         gap: 18px;
     }
 
+    .dragon-global-settings-savebar {
+        right: auto;
+        bottom: auto;
+        left: auto;
+    }
+
     .dragon-global-settings-sidebar {
         padding: 18px 14px;
     }
@@ -3317,6 +3346,11 @@ body[data-dragon-ui] #dragon-root .dragon-global-settings-group-header {
 
     .dragon-global-settings-group-fields {
         padding: 12px;
+    }
+
+    .dragon-global-settings-savebar {
+        top: calc(var(--dragon-nav-height) + 8px);
+        grid-template-columns: minmax(0, 1fr);
     }
 }
 

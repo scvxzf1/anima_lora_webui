@@ -4,21 +4,22 @@
  */
 
 import { initTheme } from './theme.js?v=dragon-ui-20260814v45';
-import { destroyNav, initNav } from './nav.js?v=dragon-ui-20260817v70';
-import { canLeaveCurrentPage, destroyRouter, initRouter, isCurrentPage, navigate, refreshCurrentRoute } from './router.js?v=dragon-ui-20260816v68';
-import { isConfigCategory } from './category-map.js?v=dragon-ui-20260814v43';
-import { destroyAnimations, initScrollAnimations, initParallax } from './animations.js?v=dragon-ui-20260816v67';
+import { destroyNav, initNav } from './nav.js?v=dragon-ui-20260824v74';
+import { canLeaveCurrentPage, destroyRouter, initRouter, isCurrentPage, navigate, refreshCurrentRoute } from './router.js?v=dragon-ui-20260824v70';
+import { isConfigCategory } from './category-map.js?v=dragon-ui-20260824v44';
+import { destroyAnimations, initScrollAnimations, initParallax } from './animations.js?v=dragon-ui-20260824v69';
+import { destroyDragonMotion, initDragonMotion } from './motion.js?v=dragon-ui-20260824v1';
 import { loadDashboard } from './pages/dashboard.js?v=dragon-ui-20260814v43';
-import { loadConfigPage } from './pages/config-page.js?v=dragon-ui-20260819v78';
+import { loadConfigPage } from './pages/config-page.js?v=dragon-ui-20260824v82';
 import { loadLiveTraining } from './pages/live-training.js?v=dragon-ui-20260814v43';
-import { loadHistory } from './pages/history.js?v=dragon-ui-20260819v92';
+import { loadHistory } from './pages/history.js?v=dragon-ui-20260824v93';
 import { loadQueue } from './pages/queue.js?v=dragon-ui-20260814v43';
 import { loadWeightAnalysis } from './pages/weight-analysis.js?v=dragon-ui-20260814v43';
 import { loadImageTest } from './pages/image-test.js?v=dragon-ui-20260814v43';
 import { loadEnvironment } from './pages/environment.js?v=dragon-ui-20260814v43';
 import { loadDatasetEditor } from './pages/dataset-editor.js?v=dragon-ui-20260816v70';
 import { loadModelConfig } from './pages/model-config.js?v=dragon-ui-20260817v5';
-import { loadGlobalSettings } from './pages/global-settings.js?v=dragon-ui-20260814v43';
+import { loadGlobalSettings } from './pages/global-settings.js?v=dragon-ui-20260824v45';
 import { loadPreviewWorkspace } from './pages/preview-workspace.js?v=dragon-ui-20260814v43';
 import { createApiClient } from '../shared/api.js?v=dragon-ui-20260812v35';
 import { loadAndApplyDragonUIScale } from './ui-scale.js?v=dragon-ui-20260814v43';
@@ -33,7 +34,9 @@ export async function initDragonUI() {
     try {
         const cleanupTheme = initTheme();
         if (typeof cleanupTheme === 'function') cleanupCallbacks.push(cleanupTheme);
-        await loadAndApplyDragonUIScale(dragonApi);
+        const globalSettings = await loadAndApplyDragonUIScale(dragonApi);
+        const cleanupMotion = initDragonMotion(globalSettings || {});
+        cleanupCallbacks.push(cleanupMotion);
         const mount = document.getElementById('dragon-main');
         if (!mount) throw new Error('#dragon-main mount point not found');
 
@@ -60,6 +63,13 @@ export async function initDragonUI() {
         });
         initScrollAnimations();
         initParallax();
+        const handleMotionChange = () => {
+            destroyAnimations();
+            initScrollAnimations();
+            initParallax();
+        };
+        window.addEventListener('dragon-motion-change', handleMotionChange);
+        cleanupCallbacks.push(() => window.removeEventListener('dragon-motion-change', handleMotionChange));
 
         let acceptedHash = window.location.hash;
         const handleWindowHashChange = async () => {
@@ -104,6 +114,7 @@ export function destroyDragonUI() {
     destroyNav();
     destroyRouter();
     destroyAnimations();
+    destroyDragonMotion();
 }
 
 async function handleHashChange() {

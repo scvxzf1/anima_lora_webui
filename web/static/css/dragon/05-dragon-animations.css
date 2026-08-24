@@ -87,3 +87,10 @@
         transform: none !important;
     }
 }
+
+html[data-dragon-motion="disabled"] body[data-dragon-ui] #dragon-root .dragon-reveal {
+    opacity: 1;
+    transform: none;
+    transition: none;
+    will-change: auto;
+}

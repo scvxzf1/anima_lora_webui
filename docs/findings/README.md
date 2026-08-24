@@ -21,11 +21,13 @@
 
 | 文档 | 说明 |
 | --- | --- |
+| [dragon_responsive_hardcoding_audit_20260824.md](dragon_responsive_hardcoding_audit_20260824.md) | Dragon 视口硬编码解耦、浏览器降级和响应式验证记录 |
 | [dragon_classic_feature_parity_audit_20260815.md](dragon_classic_feature_parity_audit_20260815.md) | Classic、现有 Dragon 与 React 新前端的逐功能对照审计及迁移证据 |
 | [dragon_dataset_subset_field_audit_20260815.md](dragon_dataset_subset_field_audit_20260815.md) | Dragon 数据集 subset 字段与后端契约对照审计 |
 | [dragon_next_audit_20260819.md](dragon_next_audit_20260819.md) | Dragon React 前端对 live backend 的阶段性审计 |
 | [dragon_next_stage1_queue_monitor_history_20260819.md](dragon_next_stage1_queue_monitor_history_20260819.md) | Dragon React 队列、监控和历史页面阶段 1 集成记录 |
 | [dragon_ui_pr1_integration_20260814.md](dragon_ui_pr1_integration_20260814.md) | Dragon UI PR #1 的分阶段集成、测试门禁、调试与发布记录 |
+| [webui_backend_audit_20260815.md](webui_backend_audit_20260815.md) | WebUI 后端安全、并发、状态机和测试覆盖审计 |
 | [webui_frontend_p0_p2_fix_20260726.md](webui_frontend_p0_p2_fix_20260726.md) | 2026-07-26 WebUI 前端 P0–P2 审核修复记录（no-undef / 搜索 debounce / WS / dashboard） |
 | [webui_dataset_cross_group_drag_fix_20260727.md](webui_dataset_cross_group_drag_fix_20260727.md) | 2026-07-27 数据集/文件分组跨组拖动静默失败修复 |
 | [webui_frontend_visual_audit_20260530.md](webui_frontend_visual_audit_20260530.md) | WebUI 视觉和交互审计 |

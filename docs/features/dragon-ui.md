@@ -92,7 +92,20 @@ location.assign('/?ui=dragon');
 | 全局设置 | **模型与系统 → 全局设置** | **全局设置** |
 | 环境检测 | **模型与系统 → 环境检测** | **环境检测** |
 
-## 5. 自动回退与空白页排查
+## 5. 响应式与浏览器适配
+
+Dragon 布局会根据可用宽度自动收缩导航、表单列数和预设侧栏。手机浏览器的地址栏或工具栏伸缩时，全屏容器优先使用动态视口高度；不支持动态视口单位的引擎会回退到传统 `vh`。
+
+可选浏览器能力不会成为启动条件：
+
+- 没有 `IntersectionObserver` 时，页面内容直接显示，仅失去滚动揭示动效。
+- 没有 `requestAnimationFrame` 时，视差更新使用定时器回退。
+- 没有 `matchMedia` 时，JS 行为使用保守的窄屏回退，CSS 仍负责实际布局。
+- 关闭“Dragon 动态效果”或系统开启减少动态效果时，内容始终保持可见。
+
+维护者修改 JS 视口行为时，使用 `web/static/js/dragon-ui/responsive.js` 中的命名查询；对应 CSS media query 保留在组件样式文件附近。审计边界见 [Dragon 响应式硬编码审计](../findings/dragon_responsive_hardcoding_audit_20260824.md)。
+
+## 6. 自动回退与空白页排查
 
 Dragon 初始化失败时，统一 bootstrap 会清理 Dragon 的路由、导航、主题、动画监听器和 DOM，然后加载 classic stylesheet 并显式启动 classic UI。
 
@@ -121,7 +134,7 @@ timeout 60 .venv/bin/python -m pytest -q \
   tests/test_web_static_server.py
 ```
 
-## 6. 相关说明
+## 7. 相关说明
 
 - [预览工作区](preview.md)
 - [全局设置](global-settings.md)

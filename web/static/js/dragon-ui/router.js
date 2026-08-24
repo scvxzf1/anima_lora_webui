@@ -7,8 +7,9 @@
  *   3. { html: string, onMount: (wrapper) => void }
  */
 
-import { findSubItem, isConfigCategory } from './category-map.js?v=dragon-ui-20260814v43';
-import { scanForReveal } from './animations.js?v=dragon-ui-20260816v67';
+import { findSubItem, isConfigCategory } from './category-map.js?v=dragon-ui-20260824v44';
+import { scanForReveal } from './animations.js?v=dragon-ui-20260824v69';
+import { dragonScrollBehavior, isDragonMotionEnabled } from './motion.js?v=dragon-ui-20260824v1';
 
 let mountElement = null;
 let currentPage = null;
@@ -33,11 +34,13 @@ export async function navigate(route) {
 
     if (route.type === 'category') {
         if (!isConfigCategory(route.categoryId)) return;
-        if (!route.force && await updateMountedConfigCategory(route.categoryId, route.subId)) return true;
-        if (!route.force && focusMountedConfigCategory(route.categoryId, route.subId)) return true;
+        const matchedSub = route.subId ? findSubItem(route.subId) : null;
+        const subId = matchedSub?.categoryId === route.categoryId ? matchedSub.id : route.subId;
+        if (!route.force && await updateMountedConfigCategory(route.categoryId, subId)) return true;
+        if (!route.force && focusMountedConfigCategory(route.categoryId, subId)) return true;
         return renderPage('config', {
             categoryId: route.categoryId,
-            subId: route.subId || null,
+            subId: subId || null,
         });
     }
 
@@ -104,7 +107,7 @@ function focusMountedConfigCategory(categoryId, subId) {
         getComputedStyle(document.documentElement).getPropertyValue('--dragon-nav-height')
     ) || 44;
     const top = Math.max(0, window.scrollY + target.getBoundingClientRect().top - navHeight - 16);
-    window.scrollTo({ top, behavior: 'smooth' });
+    window.scrollTo({ top, behavior: dragonScrollBehavior() });
 
     page.querySelectorAll('.dragon-config-index-link').forEach((link) => {
         link.dataset.active = String(Boolean(subId) && link.dataset.configTarget === subId);
@@ -136,7 +139,7 @@ async function renderPage(pageType, context) {
     }
 
     // Fade out current content
-    if (currentPage && mountElement.firstElementChild) {
+    if (currentPage && mountElement.firstElementChild && isDragonMotionEnabled()) {
         mountElement.firstElementChild.classList.add('dragon-page-leave');
         await new Promise((r) => setTimeout(r, 200));
         if (sequence !== navigationSequence) return;

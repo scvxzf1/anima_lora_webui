@@ -13,7 +13,7 @@ import {
     activateHistoryDetailTab,
     normalizeHistoryDetailTab,
 } from './history-detail-tabs.js?v=dragon-ui-20260816v2';
-import { scanForReveal } from '../animations.js?v=dragon-ui-20260816v67';
+import { scanForReveal } from '../animations.js?v=dragon-ui-20260824v69';
 import { switchToClassicUI } from '../../shared/ui-mode.js?v=dragon-ui-20260814v43';
 import {
     createHistoryCollectionWorkspace,

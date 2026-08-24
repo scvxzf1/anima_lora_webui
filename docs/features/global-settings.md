@@ -20,7 +20,7 @@
 
 ## 1. 这是干什么的
 
-一句话：设置两套 WebUI 共用的默认输出目录、配置根目录和界面缩放。
+一句话：设置两套 WebUI 共用的默认输出目录、配置根目录和界面缩放，并管理 Dragon 动态效果。
 
 全局设置写到：
 
@@ -50,6 +50,7 @@
 | 输出文件夹 | `global-output-root` | Web 训练统一输出根，默认 `output/runs` |
 | 配置根目录 | `global-configs-root` | 外置 `configs/` 根，含 methods、datasets、history、queue |
 | 缩放比例 | `global-ui-scale` | 默认 UI 缩放 25%–400% |
+| Dragon 动态效果 | `dragon_motion_enabled` | 控制 Dragon 页面入场、滚动揭示、视差和平滑过渡，默认开启 |
 | 主页面独立比例 | 各页面 follow-default + 数值 | 配置/数据集/训练等页面可单独缩放 |
 | 历史详情独立比例 | 历史详情各子页 | 只作用于历史详情内容区 |
 
@@ -60,6 +61,8 @@
 3. 默认 `configs/`
 
 Dragon / classic 模式不是 TOML 全局设置项。界面切换写入浏览器 `localStorage.anima_ui_mode`，不会改变输出根、配置根、训练历史或模型配置。详见 [Dragon UI 与 classic 兼容界面](dragon-ui.md)。
+
+`dragon_motion_enabled` 只影响 Dragon，classic 不会读取该值。关闭后仍保留加载文字和状态反馈，但不再运行页面离场等待、滚动揭示观察器或视差滚动监听。如果操作系统已开启“减少动态效果”，系统偏好始终优先。
 
 ---
 
