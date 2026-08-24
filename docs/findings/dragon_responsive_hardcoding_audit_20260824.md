@@ -13,6 +13,8 @@
 - `requestAnimationFrame` 不可用时使用短定时器驱动视差更新，保持基本功能。
 - 页面根容器、训练对话框和数据集侧栏采用 `vh` 回退 + `dvh` 增强的双声明，兼顾旧引擎和移动浏览器动态工具栏。
 - 训练对话框宽度由 `100vw` 改为包含块百分比，避免桌面端滚动条宽度被重复计入。
+- 模型快选、历史样张、数据集预览和分阶段调度对话框同步改用包含块宽度，并为所有 `dvh` 高度补齐 `vh` 回退。
+- 数据集预览和分阶段调度内容区的最小高度现在受实际视口上限约束，矮窗口不再被 `420px` / `680px` 下限顶出。
 
 ## 保留边界
 
@@ -27,7 +29,8 @@ timeout 60 .venv/bin/python -m pytest -q \
   tests/test_dragon_motion_settings.py \
   tests/test_dragon_monitor_system_frontend.py \
   tests/test_dragon_model_quick_picker_frontend.py \
-  tests/test_dragon_dataset_editor_frontend.py
+  tests/test_dragon_dataset_editor_frontend.py \
+  tests/test_dragon_dialog_responsiveness.py
 ```
 
 同时对 Dragon JS 树执行 `node --check`，并在宽屏、手机窄屏和矮视口下检查横向溢出、导航切换和对话框可访问性。

@@ -58,7 +58,7 @@ def test_quick_picker_has_centered_responsive_path_preview() -> None:
     css = _read("css/dragon/04b-dragon-model-quick-picker.css")
     stylesheet = _read("css/dragon-style.css")
 
-    assert "04b-dragon-model-quick-picker.css?v=dragon-ui-20260819v1" in stylesheet
+    assert "04b-dragon-model-quick-picker.css?v=dragon-ui-20260824v2" in stylesheet
     assert "body[data-dragon-ui] #dragon-root .dragon-config-detail-header" in css
     assert "body[data-dragon-ui] .dragon-model-quick-dialog" in css
     assert "position: fixed;" in css

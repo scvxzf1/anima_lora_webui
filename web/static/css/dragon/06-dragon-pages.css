@@ -503,9 +503,11 @@ body[data-dragon-ui] #dragon-root .dragon-dataset-row-head {
 
 body[data-dragon-ui] #dataset-preview-dialog,
 body[data-dragon-ui] #stage-resolution-dialog {
-    width: min(1120px, calc(100vw - 32px));
+    --dragon-shared-dialog-header-reserve: 92px;
+    width: min(1120px, calc(100% - var(--dragon-sp-6)));
     max-width: none;
     max-height: min(88vh, 920px);
+    max-height: min(88dvh, 920px);
     overflow: hidden;
     border: 1px solid var(--dragon-border-light);
     border-radius: var(--dragon-radius-xl);
@@ -543,7 +545,8 @@ body[data-dragon-ui] #stage-resolution-dialog .btn-primary {
 
 body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-dialog-body,
 body[data-dragon-ui] #stage-resolution-dialog .stage-resolution-dialog-body {
-    max-height: calc(88vh - 92px);
+    max-height: calc(88vh - var(--dragon-shared-dialog-header-reserve));
+    max-height: calc(88dvh - var(--dragon-shared-dialog-header-reserve));
     overflow: auto;
     background: var(--dragon-bg-primary);
 }

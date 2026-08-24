@@ -58,9 +58,10 @@ body[data-dragon-ui] .dragon-sample-detail-dialog {
     position: fixed;
     inset: 0;
     box-sizing: border-box;
-    width: min(980px, calc(100vw - 48px));
+    width: min(980px, calc(100% - var(--dragon-sp-8)));
     max-width: none;
-    height: min(720px, calc(100dvh - 64px));
+    height: min(720px, calc(100vh - var(--dragon-sp-9)));
+    height: min(720px, calc(100dvh - var(--dragon-sp-9)));
     max-height: none;
     margin: auto;
     overflow: hidden;
@@ -237,7 +238,8 @@ body[data-dragon-ui] .dragon-sample-detail-dialog::backdrop {
 
 @media (max-width: 734px) {
     body[data-dragon-ui] .dragon-sample-detail-dialog {
-        width: calc(100vw - 24px);
+        width: calc(100% - var(--dragon-sp-5));
+        height: min(82vh, 720px);
         height: min(82dvh, 720px);
     }
 

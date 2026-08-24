@@ -274,15 +274,16 @@ def test_dragon_dataset_layout_avoids_transformed_fixed_savebar() -> None:
 
 
 def test_dragon_dataset_release_token_is_consistent() -> None:
+    bootstrap_token = "dragon-ui-20260824v102"
     entry_token = "dragon-ui-20260824v101"
-    style_token = "dragon-ui-20260824v100"
+    style_token = "dragon-ui-20260824v102"
     shell_token = "dragon-ui-20260824v70"
     config_page_token = "dragon-ui-20260824v82"
     page_token = "dragon-ui-20260816v70"
     fields_token = "dragon-ui-20260816v52"
     config_style_token = "dragon-ui-20260824v69"
-    shared_style_token = "dragon-ui-20260816v64"
-    dataset_style_token = "dragon-ui-20260824v78"
+    shared_style_token = "dragon-ui-20260824v65"
+    dataset_style_token = "dragon-ui-20260824v79"
     index_html = INDEX_HTML.read_text(encoding="utf-8")
     bootstrap = _read("js/ui-bootstrap.js")
     entry = _read("js/dragon-ui/index.js")
@@ -290,7 +291,7 @@ def test_dragon_dataset_release_token_is_consistent() -> None:
     stylesheet = _read("css/dragon-style.css")
 
     assert f"dragon-style.css?v={style_token}" in index_html
-    assert f"ui-bootstrap.js?v={entry_token}" in index_html
+    assert f"ui-bootstrap.js?v={bootstrap_token}" in index_html
     assert f"dragon-ui/index.js?v={entry_token}" in bootstrap
     assert f"dragon-style.css?v={style_token}" in bootstrap
     assert f"router.js?v={shell_token}" in entry

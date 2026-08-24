@@ -83,7 +83,8 @@ body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-dialog-body {
     display: grid;
     grid-template-columns: minmax(260px, 320px) minmax(0, 1fr);
     gap: var(--dragon-sp-4);
-    min-height: 420px;
+    min-height: min(420px, max(0px, calc(88vh - var(--dragon-shared-dialog-header-reserve))));
+    min-height: min(420px, max(0px, calc(88dvh - var(--dragon-shared-dialog-header-reserve))));
     padding: var(--dragon-sp-4);
 }
 
@@ -218,7 +219,8 @@ body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-caption pre {
 body[data-dragon-ui] #stage-resolution-dialog .stage-resolution-dialog-body {
     display: grid;
     gap: var(--dragon-sp-3);
-    min-height: min(680px, calc(100vh - 160px));
+    min-height: min(680px, max(0px, calc(88vh - var(--dragon-shared-dialog-header-reserve))));
+    min-height: min(680px, max(0px, calc(88dvh - var(--dragon-shared-dialog-header-reserve))));
     padding: var(--dragon-sp-4);
 }
 

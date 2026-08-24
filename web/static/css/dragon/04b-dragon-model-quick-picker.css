@@ -28,9 +28,10 @@ body[data-dragon-ui] .dragon-model-quick-dialog {
     position: fixed;
     inset: 0;
     box-sizing: border-box;
-    width: min(1000px, calc(100vw - 48px));
+    width: min(1000px, calc(100% - var(--dragon-sp-8)));
     max-width: none;
-    height: min(720px, calc(100dvh - 64px));
+    height: min(720px, calc(100vh - var(--dragon-sp-9)));
+    height: min(720px, calc(100dvh - var(--dragon-sp-9)));
     max-height: none;
     margin: auto;
     overflow: hidden;
@@ -375,8 +376,9 @@ body[data-dragon-ui] .dragon-model-quick-dialog::backdrop {
     }
 
     body[data-dragon-ui] .dragon-model-quick-dialog {
-        width: calc(100vw - 24px);
-        height: calc(100dvh - 24px);
+        width: calc(100% - var(--dragon-sp-5));
+        height: calc(100vh - var(--dragon-sp-5));
+        height: calc(100dvh - var(--dragon-sp-5));
         border-radius: var(--dragon-radius-md);
     }
 
