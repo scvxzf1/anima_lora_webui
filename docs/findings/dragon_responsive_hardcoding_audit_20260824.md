@@ -15,11 +15,14 @@
 - 训练对话框宽度由 `100vw` 改为包含块百分比，避免桌面端滚动条宽度被重复计入。
 - 模型快选、历史样张、数据集预览和分阶段调度对话框同步改用包含块宽度，并为所有 `dvh` 高度补齐 `vh` 回退。
 - 数据集预览和分阶段调度内容区的最小高度现在受实际视口上限约束，矮窗口不再被 `420px` / `680px` 下限顶出。
+- 历史日志虚拟列表不再在 CSS 与 JavaScript 中分别写死 `22px` 行高。CSS 自定义属性提供默认值，窗口控制器读取实际计算行高；字体或 UI 样式改变行高时，`ResizeObserver` 会保持当前逻辑行锚点并重算占位区。
+- 历史日志面板从 `520px` 固定下限改为可收缩的 `clamp()`，并补齐 `vh` 回退与 `dvh` 增强，矮浏览器窗口仍保留可操作的日志区域。
 
 ## 保留边界
 
 - CSS 组件断点不能通过普通 custom property 与 JS 共享；为保持当前浏览器兼容面，未引入支持度仍不稳定的 custom media 构建链。
 - 对话框、导航和编辑器内部仍有明确的最小尺寸，用于防止操作区压缩到不可用。
+- 日志默认行高仍由 `--dragon-history-log-row-height` 指定，以满足虚拟列表的等高行契约；需要调整时只改这一个样式入口，JavaScript 会读取计算结果。
 - 本轮不改写历史页的单行压缩 CSS，也不借机重排整个样式树。
 
 ## 验证入口
@@ -30,7 +33,8 @@ timeout 60 .venv/bin/python -m pytest -q \
   tests/test_dragon_monitor_system_frontend.py \
   tests/test_dragon_model_quick_picker_frontend.py \
   tests/test_dragon_dataset_editor_frontend.py \
-  tests/test_dragon_dialog_responsiveness.py
+  tests/test_dragon_dialog_responsiveness.py \
+  tests/test_dragon_history_log_viewer.py
 ```
 
 同时对 Dragon JS 树执行 `node --check`，并在宽屏、手机窄屏和矮视口下检查横向溢出、导航切换和对话框可访问性。

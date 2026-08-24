@@ -24,12 +24,17 @@ import { bindHistoryLogViewer } from './web/static/js/dragon-ui/pages/history-lo
 
 const dom = new JSDOM(`<section data-history-detail-panel="logs" hidden>
   <span data-history-log-window-status></span>
-  <div data-history-log-viewer role="list"></div>
+  <div data-history-log-viewer role="list" style="--dragon-history-log-row-height: 28px; line-height: 28px"></div>
 </section>`, { pretendToBeVisual: true });
 globalThis.window = dom.window;
 globalThis.document = dom.window.document;
 globalThis.MutationObserver = dom.window.MutationObserver;
-globalThis.ResizeObserver = undefined;
+let triggerResize = () => {};
+globalThis.ResizeObserver = class {
+  constructor(callback) { triggerResize = callback; }
+  observe() {}
+  disconnect() {}
+};
 globalThis.requestAnimationFrame = (callback) => { callback(); return 1; };
 globalThis.cancelAnimationFrame = () => {};
 
@@ -37,7 +42,7 @@ const panel = document.querySelector('[data-history-detail-panel]');
 const viewer = document.querySelector('[data-history-log-viewer]');
 Object.defineProperty(viewer, 'clientHeight', {
   configurable: true,
-  get: () => panel.hidden ? 0 : 220,
+  get: () => panel.hidden ? 0 : 280,
 });
 const logs = Array.from({ length: 1000 }, (_, index) => ({
   line: `line-${index}${index === 500 ? '\ncontinued' : ''}`,
@@ -75,7 +80,7 @@ const topState = {
   status: document.querySelector('[data-history-log-window-status]').textContent,
 };
 
-viewer.scrollTop = 11000;
+viewer.scrollTop = 14000;
 viewer.dispatchEvent(new dom.window.Event('scroll'));
 const middleState = {
   start: viewer.dataset.historyLogRenderStart,
@@ -85,6 +90,17 @@ const middleState = {
   bottomSpacer: viewer.querySelector('[data-log-spacer="bottom"]')?.style.height,
   hasContinuedLine: [...viewer.querySelectorAll('.dragon-history-log-line')]
     .some((line) => line.textContent === 'line-500 ↩ continued'),
+};
+
+viewer.style.setProperty('--dragon-history-log-row-height', '32px');
+viewer.style.lineHeight = '32px';
+triggerResize();
+const resizedState = {
+  scrollTop: viewer.scrollTop,
+  start: viewer.dataset.historyLogRenderStart,
+  end: viewer.dataset.historyLogRenderEnd,
+  topSpacer: viewer.querySelector('[data-log-spacer="top"]')?.style.height,
+  bottomSpacer: viewer.querySelector('[data-log-spacer="bottom"]')?.style.height,
 };
 
 cleanup();
@@ -98,6 +114,7 @@ console.log(JSON.stringify({
   latestState,
   topState,
   middleState,
+  resizedState,
   startBeforeDetachedScroll,
   startAfterDetachedScroll,
 }));
@@ -114,14 +131,14 @@ console.log(JSON.stringify({
 
     assert payload["hiddenState"] == {"start": "0", "end": "360", "mounted": 360}
     assert payload["latestState"] == {
-        "scrollTop": 21780,
+        "scrollTop": 27720,
         "start": "840",
         "end": "1000",
         "mounted": 160,
         "first": "line-840",
         "last": "line-999",
         "status": "第 1291–1300 / 1300 行",
-        "topSpacer": "18480px",
+        "topSpacer": "23520px",
         "bottomSpacer": "0px",
     }
     assert payload["topState"] == {
@@ -135,9 +152,16 @@ console.log(JSON.stringify({
         "start": "360",
         "end": "720",
         "mounted": 360,
-        "topSpacer": "7920px",
-        "bottomSpacer": "6160px",
+        "topSpacer": "10080px",
+        "bottomSpacer": "7840px",
         "hasContinuedLine": True,
+    }
+    assert payload["resizedState"] == {
+        "scrollTop": 16000,
+        "start": "360",
+        "end": "720",
+        "topSpacer": "11520px",
+        "bottomSpacer": "8960px",
     }
     assert payload["startAfterDetachedScroll"] == payload["startBeforeDetachedScroll"]
 
@@ -153,10 +177,13 @@ def test_history_log_viewer_is_wired_without_twelve_line_slice() -> None:
     assert 'data-history-log-search' in view
     assert 'data-history-log-search-previous' in view
     assert 'data-history-log-search-next' in view
-    assert "height:clamp(520px,66vh,820px)" in css
-    assert "height:22px" in css
+    assert "height:clamp(240px,66vh,820px);height:clamp(240px,66dvh,820px)" in css
+    assert "--dragon-history-log-row-height:22px" in css
+    assert "height:var(--dragon-history-log-row-height)" in css
     assert "white-space:pre" in css
-    assert "line.dataset.searchActive = 'true'" in (REPO_ROOT / "web/static/js/dragon-ui/pages/history-log-viewer.js").read_text(encoding="utf-8")
+    viewer = (REPO_ROOT / "web/static/js/dragon-ui/pages/history-log-viewer.js").read_text(encoding="utf-8")
+    assert "resolveLogRowHeight(viewer)" in viewer
+    assert "line.dataset.searchActive = 'true'" in viewer
 
 
 def test_history_log_search_navigates_full_virtualized_range() -> None:

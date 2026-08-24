@@ -1,6 +1,6 @@
-/* Windowed history-log rendering with fixed-height, scroll-stable segments. */
+/* Windowed history-log rendering with measured-height, scroll-stable segments. */
 
-const LOG_ROW_HEIGHT = 22;
+const DEFAULT_LOG_ROW_HEIGHT = 22;
 const LOG_SEGMENT_SIZE = 120;
 const LOG_OVERSCAN_SEGMENTS = 1;
 
@@ -50,16 +50,17 @@ function createLogWindowController(viewer, status, rows, reportedTotal, sourceOf
     let destroyed = false;
     let renderedStart = -1;
     let renderedEnd = -1;
+    let rowHeight = resolveLogRowHeight(viewer);
 
     const renderWindow = (force = false) => {
         if (destroyed) return;
-        const range = logWindowRange(viewer, rows.length);
+        const range = logWindowRange(viewer, rows.length, rowHeight);
         updateLogStatus(status, sourceOffset + range.firstVisible + 1, sourceOffset + range.lastVisible, reportedTotal);
         const { start, end } = range;
         if (!force && start === renderedStart && end === renderedEnd) return;
         renderedStart = start;
         renderedEnd = end;
-        replaceLogWindow(viewer, rows, range, sourceOffset, reportedTotal, searchState.snapshot());
+        replaceLogWindow(viewer, rows, range, sourceOffset, reportedTotal, searchState.snapshot(), rowHeight);
     };
 
     const scheduleRender = () => {
@@ -75,15 +76,15 @@ function createLogWindowController(viewer, status, rows, reportedTotal, sourceOf
     const initializeAtLatest = () => {
         if (destroyed || initialized || viewer.clientHeight <= 0) return;
         renderWindow(true);
-        viewer.scrollTop = Math.max(0, rows.length * LOG_ROW_HEIGHT - viewer.clientHeight);
+        viewer.scrollTop = Math.max(0, rows.length * rowHeight - viewer.clientHeight);
         initialized = true;
         renderWindow(true);
     };
 
     const jumpToRow = (rowIndex) => {
         if (destroyed || rowIndex == null || viewer.clientHeight <= 0) return;
-        const centeredTop = rowIndex * LOG_ROW_HEIGHT - (viewer.clientHeight - LOG_ROW_HEIGHT) / 2;
-        const maximumTop = Math.max(0, rows.length * LOG_ROW_HEIGHT - viewer.clientHeight);
+        const centeredTop = rowIndex * rowHeight - (viewer.clientHeight - rowHeight) / 2;
+        const maximumTop = Math.max(0, rows.length * rowHeight - viewer.clientHeight);
         viewer.scrollTop = clamp(centeredTop, 0, maximumTop);
         initialized = true;
         renderWindow(true);
@@ -94,7 +95,16 @@ function createLogWindowController(viewer, status, rows, reportedTotal, sourceOf
         jumpToRow,
         scheduleRender,
         initializeAtLatest,
+        rowIndexAtScroll: () => Math.floor(viewer.scrollTop / rowHeight),
         handleResize: () => {
+            const nextRowHeight = resolveLogRowHeight(viewer);
+            if (initialized && nextRowHeight !== rowHeight) {
+                const anchorRow = viewer.scrollTop / rowHeight;
+                rowHeight = nextRowHeight;
+                viewer.scrollTop = anchorRow * rowHeight;
+            } else {
+                rowHeight = nextRowHeight;
+            }
             if (!initialized) initializeAtLatest();
             else renderWindow(true);
         },
@@ -105,11 +115,11 @@ function createLogWindowController(viewer, status, rows, reportedTotal, sourceOf
     };
 }
 
-function logWindowRange(viewer, rowCount) {
-    const viewportHeight = Math.max(viewer.clientHeight || 0, LOG_ROW_HEIGHT * 10);
-    const firstVisible = clamp(Math.floor(viewer.scrollTop / LOG_ROW_HEIGHT), 0, rowCount - 1);
+function logWindowRange(viewer, rowCount, rowHeight) {
+    const viewportHeight = Math.max(viewer.clientHeight || 0, rowHeight * 10);
+    const firstVisible = clamp(Math.floor(viewer.scrollTop / rowHeight), 0, rowCount - 1);
     const lastVisible = clamp(
-        Math.ceil((viewer.scrollTop + viewportHeight) / LOG_ROW_HEIGHT),
+        Math.ceil((viewer.scrollTop + viewportHeight) / rowHeight),
         firstVisible + 1,
         rowCount,
     );
@@ -125,13 +135,13 @@ function logWindowRange(viewer, rowCount) {
     };
 }
 
-function replaceLogWindow(viewer, rows, range, sourceOffset, reportedTotal, search) {
+function replaceLogWindow(viewer, rows, range, sourceOffset, reportedTotal, search, rowHeight) {
     const fragment = document.createDocumentFragment();
-    fragment.appendChild(logSpacer(range.start * LOG_ROW_HEIGHT, 'top'));
+    fragment.appendChild(logSpacer(range.start * rowHeight, 'top'));
     for (let index = range.start; index < range.end; index += 1) {
         fragment.appendChild(renderLogRow(rows[index], index, sourceOffset + index, reportedTotal, search));
     }
-    fragment.appendChild(logSpacer((rows.length - range.end) * LOG_ROW_HEIGHT, 'bottom'));
+    fragment.appendChild(logSpacer((rows.length - range.end) * rowHeight, 'bottom'));
     viewer.replaceChildren(fragment);
     viewer.dataset.historyLogRenderStart = String(range.start);
     viewer.dataset.historyLogRenderEnd = String(range.end);
@@ -212,7 +222,7 @@ function bindLogSearch(root, viewer, state, controller) {
         if (jump && snapshot.activeRow != null) controller.jumpToRow(snapshot.activeRow);
         else controller.renderWindow(true);
     };
-    const update = () => show(state.update(input.value, Math.floor(viewer.scrollTop / LOG_ROW_HEIGHT)));
+    const update = () => show(state.update(input.value, controller.rowIndexAtScroll()));
     const move = (delta) => show(state.move(delta));
     const handleKeydown = (event) => {
         if (event.key === 'Enter') {
@@ -275,6 +285,15 @@ function logLevel(value, text) {
 
 function stripAnsi(value) {
     return String(value ?? '').replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, '');
+}
+
+function resolveLogRowHeight(viewer) {
+    const computed = typeof window.getComputedStyle === 'function' ? window.getComputedStyle(viewer) : null;
+    const lineHeight = Number.parseFloat(computed?.lineHeight);
+    const configured = Number.parseFloat(computed?.getPropertyValue('--dragon-history-log-row-height'));
+    if (Number.isFinite(lineHeight) && lineHeight > 0) return lineHeight;
+    if (Number.isFinite(configured) && configured > 0) return configured;
+    return DEFAULT_LOG_ROW_HEIGHT;
 }
 
 function scheduleFrame(callback) {

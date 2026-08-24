@@ -7,7 +7,7 @@ import {
     bindHistorySystemCharts,
     renderHistorySystemCharts,
 } from './history-system-charts.js?v=dragon-ui-20260816v1';
-import { bindHistoryLogViewer } from './history-log-viewer.js?v=dragon-ui-20260816v3';
+import { bindHistoryLogViewer } from './history-log-viewer.js?v=dragon-ui-20260824v4';
 import { bindHistorySampleDialog } from './history-sample-dialog.js?v=dragon-ui-20260819v2';
 import {
     activateHistoryDetailTab,

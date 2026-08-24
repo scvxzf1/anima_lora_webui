@@ -274,9 +274,9 @@ def test_dragon_dataset_layout_avoids_transformed_fixed_savebar() -> None:
 
 
 def test_dragon_dataset_release_token_is_consistent() -> None:
-    bootstrap_token = "dragon-ui-20260824v102"
-    entry_token = "dragon-ui-20260824v101"
-    style_token = "dragon-ui-20260824v102"
+    bootstrap_token = "dragon-ui-20260824v103"
+    entry_token = "dragon-ui-20260824v102"
+    style_token = "dragon-ui-20260824v103"
     shell_token = "dragon-ui-20260824v70"
     config_page_token = "dragon-ui-20260824v82"
     page_token = "dragon-ui-20260816v70"
