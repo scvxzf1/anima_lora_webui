@@ -104,20 +104,24 @@ def _schema_unavailable_warning() -> str:
     return f"schema unavailable; validation skipped ({detail})"
 
 
-def validate_patch_values(values: dict[str, Any]) -> tuple[list[str], list[str]]:
-    """Return (errors, warnings) for a top-level patch dict.
+def normalize_patch_values(
+    values: dict[str, Any],
+) -> tuple[dict[str, Any], list[str], list[str]]:
+    """Normalize known scalar values and return ``(values, errors, warnings)``.
 
     Policy:
     - unknown key -> warning
-    - choices mismatch / coerce failure -> error
+    - known scalar -> schema-declared type coercion
+    - choices mismatch / conversion failure -> error
     - nested dict/list values are intentionally out of scope for this gate
     - schema load failure -> warning (never silent no-op)
     """
     ensure_schema_populated()
     schema = config_schema.get_schema()
     if not schema:
-        return [], [_schema_unavailable_warning()]
+        return dict(values), [], [_schema_unavailable_warning()]
 
+    normalized = dict(values)
     errors: list[str] = []
     warnings: list[str] = []
     for key, value in values.items():
@@ -135,14 +139,21 @@ def validate_patch_values(values: dict[str, Any]) -> tuple[list[str], list[str]]
         spec = schema[resolved]
         try:
             coerced = config_schema._coerce_value(spec, value)
-        except Exception as exc:  # pragma: no cover - defensive
+        except (TypeError, ValueError) as exc:
             errors.append(f"{key}: 类型无法转换 ({exc})")
             continue
+        normalized[key] = coerced
         if spec.choices and coerced not in spec.choices:
             if not (coerced is None and None in spec.choices):
                 errors.append(
                     f"{key}={coerced!r} 不在允许取值 {list(spec.choices)} 中"
                 )
+    return normalized, errors, warnings
+
+
+def validate_patch_values(values: dict[str, Any]) -> tuple[list[str], list[str]]:
+    """Return schema validation errors and warnings for a top-level patch."""
+    _normalized, errors, warnings = normalize_patch_values(values)
     return errors, warnings
 
 

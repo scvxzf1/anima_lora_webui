@@ -6,7 +6,7 @@ export {
     strongerSelectiveCheckpointValue,
     resourceQuickCurrentValue,
     fillGlobalModelPathsIntoConfigForm,
-} from '../../config-form/resource-values.js?v=module-bootstrap-20260809-nf4-v2';
+} from '../../config-form/resource-values.js?v=module-bootstrap-20260824-zimage-defaults-v1';
 export {
     appendFieldRows,
 } from '../../config-form/field-rows.js?v=module-bootstrap-20260809-nf4-v2';

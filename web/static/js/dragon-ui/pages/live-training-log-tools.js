@@ -1,8 +1,8 @@
 /* Log search, export and local-view controls for Dragon live training. */
 
 import { downloadText } from '../../shared/download.js?v=dragon-ui-20260812v35';
-import { logRecordText, visibleLogs } from './live-training-state.js?v=dragon-ui-20260814v43';
-import { renderLogs } from './live-training-view.js?v=dragon-ui-20260814v43';
+import { logRecordText, visibleLogs } from './live-training-state.js?v=dragon-ui-20260825v46';
+import { renderLogs } from './live-training-view.js?v=dragon-ui-20260825v46';
 
 export function bindLiveLogTools(root, model, renderState) {
     const search = root.querySelector('[data-live-log-search]');
@@ -61,10 +61,11 @@ export function updateLogSummary(root, model, visibleCount = visibleLogs(model).
     setText(root, '[data-live-log-visible-count]', `${visibleCount} 条可见`);
     const pause = root.querySelector('[data-live-log-action="pause"]');
     if (pause) {
-        pause.setAttribute('aria-pressed', String(!model.autoScroll));
-        pause.dataset.active = String(!model.autoScroll);
+        pause.setAttribute('aria-pressed', String(model.autoScroll));
+        pause.dataset.active = String(model.autoScroll);
         const label = pause.querySelector('span');
-        if (label) label.textContent = model.autoScroll ? '暂停滚动' : '恢复滚动';
+        if (label) label.textContent = '自动滚屏';
+        pause.title = model.autoScroll ? '关闭自动滚屏' : '开启自动滚屏';
     }
 }
 

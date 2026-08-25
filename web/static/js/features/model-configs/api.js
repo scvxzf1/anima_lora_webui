@@ -1,5 +1,5 @@
 import { api } from '../anima-app/helpers/runtime-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { cleanModelConfigItem, modelConfigRequest } from './model-config-data.js?v=module-bootstrap-20260809-nf4-v2';
+import { cleanModelConfigItem, modelConfigRequest } from './model-config-data.js?v=module-bootstrap-20260824-zimage-v1';
 
 function normalizeLibrary(payload = {}) {
     return {

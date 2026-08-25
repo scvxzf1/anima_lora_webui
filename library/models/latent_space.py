@@ -39,6 +39,7 @@ class LatentSpaceSpec:
     #   "scaling_factor": raw VAE latent must be multiplied by ``scaling_factor``.
     normalization: str = "anima_mean_std"
     scaling_factor: float | None = None
+    shift_factor: float | None = None
 
     def __post_init__(self) -> None:
         if self.vae_spatial_compression <= 0:
@@ -49,6 +50,12 @@ class LatentSpaceSpec:
             raise ValueError("patch_spatial must be positive")
         if self.normalization == "scaling_factor" and self.scaling_factor is None:
             raise ValueError("scaling_factor is required for scaling_factor normalization")
+        if self.normalization == "shift_and_scale":
+            if self.scaling_factor is None or self.shift_factor is None:
+                raise ValueError(
+                    "scaling_factor and shift_factor are required for "
+                    "shift_and_scale normalization"
+                )
 
     @property
     def pixel_stride(self) -> int:
@@ -103,7 +110,20 @@ DCGEN_F32C32_P1 = LatentSpaceSpec(
     scaling_factor=0.41407,  # mit-han-lab/dc-ae-f32c32-sana-1.1(-diffusers)
 )
 
-ALL_SPACES = (ANIMA_F8C16_P2, DCGEN_F32C32_P1)
+# Z-Image uses Flux VAE latents with an affine normalization distinct from
+# Anima's Qwen VAE space. Geometry matches Anima, cache identity does not.
+Z_IMAGE_F8C16_P2 = LatentSpaceSpec(
+    name="z_image",
+    vae_spatial_compression=8,
+    latent_channels=16,
+    patch_spatial=2,
+    cache_suffix="_z_image.npz",
+    normalization="shift_and_scale",
+    scaling_factor=0.3611,
+    shift_factor=0.1159,
+)
+
+ALL_SPACES = (ANIMA_F8C16_P2, DCGEN_F32C32_P1, Z_IMAGE_F8C16_P2)
 
 
 def get_latent_space(name: str) -> LatentSpaceSpec:

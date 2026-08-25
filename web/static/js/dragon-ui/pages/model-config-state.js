@@ -12,11 +12,13 @@ export const DEFAULT_MODEL_GROUP = Object.freeze({
     item_ids: [],
 });
 
+const MODEL_FAMILIES = new Set(['anima', 'krea2_raw', 'z_image']);
+
 export function cleanModelItem(item = {}) {
     return {
         id: String(item.id || '').trim(),
         name: String(item.name || '').trim(),
-        model_family: item.model_family === 'krea2_raw' ? 'krea2_raw' : 'anima',
+        model_family: MODEL_FAMILIES.has(item.model_family) ? item.model_family : 'anima',
         ...Object.fromEntries(MODEL_PATH_FIELDS.map(([key]) => [key, String(item[key] || '').trim()])),
     };
 }
@@ -67,7 +69,9 @@ export function modelGroupForItem(groups, itemId) {
 }
 
 export function familyLabel(value) {
-    return value === 'krea2_raw' ? 'Krea-2' : 'Anima';
+    if (value === 'krea2_raw') return 'Krea-2';
+    if (value === 'z_image') return 'Z-Image';
+    return 'Anima';
 }
 
 export function filterModelItems(items, query) {

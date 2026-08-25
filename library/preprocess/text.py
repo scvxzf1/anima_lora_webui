@@ -17,6 +17,7 @@ import torch
 from PIL import Image
 
 from library.io.cache import POOLED_CACHE_SUFFIX, TE_CACHE_SUFFIX, resolve_cache_path
+from library.models.family_registry import get_model_family_spec
 from library.preprocess.captions import CaptionSource, read_caption_source
 from library.preprocess._dataset import PreprocessStats, walk_images
 from library.preprocess._progress import ProgressFn
@@ -216,6 +217,9 @@ def cache_text_embeddings(
 
     from safetensors.torch import save_file
 
+    anima_cache_spec = get_model_family_spec("anima")
+    cache_metadata = anima_cache_spec.text_cache.metadata(anima_cache_spec.name)
+
     if progress is not None:
         progress(0, total=len(entries))
 
@@ -287,7 +291,7 @@ def cache_text_embeddings(
                     save_dict["crossattn_emb"] = crossattn_emb[i]
                 if prior_crossattn_emb is not None:
                     save_dict["prior_crossattn_emb"] = prior_crossattn_emb[i]
-                save_file(save_dict, str(cache_path))
+                save_file(save_dict, str(cache_path), metadata=cache_metadata)
                 stats.written += 1
                 if progress is not None:
                     progress(1, detail=f"{img_path.name}")
@@ -351,7 +355,7 @@ def cache_text_embeddings(
                         save_dict[f"crossattn_emb_v{vi}"] = crossattn_emb[flat_idx]
                     if prior_crossattn_emb is not None:
                         save_dict[f"prior_crossattn_emb_v{vi}"] = prior_crossattn_emb[flat_idx]
-                save_file(save_dict, str(cache_path))
+                save_file(save_dict, str(cache_path), metadata=cache_metadata)
                 offset += variant_count
                 stats.written += 1
                 if progress is not None:

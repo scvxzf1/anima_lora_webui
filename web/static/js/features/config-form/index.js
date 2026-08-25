@@ -41,7 +41,12 @@ import {
     updateVeRAFieldState,
 } from '../anima-app/helpers/config-form-bridge.js?v=module-bootstrap-20260809-nf4-v2';
 import { coerceNetworkArgValue, parseNetworkArgEntry } from '../anima-app/helpers/network-args.js?v=module-bootstrap-20260809-nf4-v2';
-import { parseArrayValue, valuesEqual } from '../anima-app/helpers/form-values.js?v=module-bootstrap-20260809-nf4-v2';
+import { fieldValueTypeForKey } from '../anima-app/helpers/config-field-ui-bridge.js?v=module-bootstrap-20260809-nf4-v2';
+import {
+    parseArrayValue,
+    valuesEqual,
+    valuesEqualForFieldType,
+} from '../anima-app/helpers/form-values.js?v=module-bootstrap-20260824-config-types-v1';
 import { activeMethodKey } from './method-key.js?v=module-bootstrap-20260809-nf4-v2';
 import { appendConfigGroupsByCategory, createConfigGroupEntry } from './group-entry.js?v=module-bootstrap-20260809-nf4-v2';
 import { getConfigState } from '../anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260809-nf4-v2';
@@ -149,7 +154,11 @@ function currentConfigState() { return configState.currentConfig || {}; }
         }
         const hasOriginal = key in currentConfig;
         if (!hasOriginal && shouldSkipUiDefaultField(key, next, options)) return false;
-        return !valuesEqual(next, original);
+        return !valuesEqualForFieldType(
+            next,
+            original,
+            fieldValueTypeForKey(key, original),
+        );
     }
 
     export function renderConfigForm(config) {

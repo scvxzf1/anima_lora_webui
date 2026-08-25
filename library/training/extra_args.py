@@ -25,10 +25,7 @@ def assert_training_extra_args(
     train_dataset_group: Union[DatasetGroup, MinimalDataset],
     val_dataset_group: Optional[DatasetGroup],
 ):
-    if (
-        args.cache_text_encoder_outputs_to_disk
-        and not args.cache_text_encoder_outputs
-    ):
+    if args.cache_text_encoder_outputs_to_disk and not args.cache_text_encoder_outputs:
         logger.warning(
             "cache_text_encoder_outputs_to_disk is enabled, so cache_text_encoder_outputs is also enabled"
         )
@@ -58,9 +55,9 @@ def assert_training_extra_args(
         "network for Text Encoder cannot be trained with caching Text Encoder outputs"
     )
 
-    args.selective_checkpoint = str(
-        getattr(args, "selective_checkpoint", "off") or "off"
-    ).strip().lower()
+    args.selective_checkpoint = (
+        str(getattr(args, "selective_checkpoint", "off") or "off").strip().lower()
+    )
     args.selective_checkpoint_blocks = str(
         getattr(args, "selective_checkpoint_blocks", "") or ""
     ).strip()
@@ -74,6 +71,19 @@ def assert_training_extra_args(
     # Materialize the runtime family before entering the pure compatibility
     # matrix so env fallback and explicit CLI/TOML selection share one contract.
     args.model_family = resolve_model_family(args)
+    if args.model_family == "z_image":
+        rates = [
+            float(getattr(subset, "caption_dropout_rate", 0.0) or 0.0)
+            for group in (train_dataset_group, val_dataset_group)
+            if group is not None
+            for dataset in getattr(group, "datasets", ())
+            for subset in getattr(dataset, "subsets", ())
+        ]
+        if any(rate > 0 for rate in rates):
+            raise ValueError(
+                "Z-Image caption dropout is not supported in v1; set every "
+                "dataset subset caption_dropout_rate=0"
+            )
     compat = check_training_compat(args)
     warning_codes = {warning.code for warning in compat.warnings}
     for warning in compat.warnings:
@@ -204,9 +214,7 @@ def assert_training_extra_args(
         con_weight = float(net_arg_preview.get("contrastive_weight", 0.0) or 0.0)
         if con_weight > 0.0:
             con_k = int(net_arg_preview.get("contrastive_k", 1) or 1)
-            con_mode = str(
-                net_arg_preview.get("contrastive_negative_mode", "shuffled")
-            )
+            con_mode = str(net_arg_preview.get("contrastive_negative_mode", "shuffled"))
             # The negative grouping always comes from the shared caption
             # index `make caption-index` writes — not a user knob.
             con_index = "post_image_dataset/captions/caption_index.json"

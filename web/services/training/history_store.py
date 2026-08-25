@@ -13,7 +13,12 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from web.services.training.common import _clean_history_text, _format_ts, _int_or_none
+from web.services.training.common import (
+    _clean_history_text,
+    _float_or_none,
+    _format_ts,
+    _int_or_none,
+)
 from web.services.training.context import training_facade as _training_facade
 from web.services.training.history_config_chips import history_config_chips_for_task_dir
 from web.services.training.history_meta import (
@@ -311,6 +316,8 @@ def _history_summary(meta: dict[str, Any], task_dir: Path) -> dict[str, Any]:
         out["name"] = _default_preprocess_history_name(out)
     out["log_count"] = _history_jsonl_count(out, "log_count", task_dir / "logs.jsonl")
     out["metric_count"] = _history_metric_count(out, task_dir)
+    if out["metric_count"] > 0:
+        out.update(_history_metric_summary(task_dir, out["metric_count"]))
     chips = history_config_chips_for_task_dir(
         task_dir,
         variant=str(out.get("variant") or ""),
@@ -560,6 +567,84 @@ def _history_metric_count(meta: dict[str, Any], task_dir: Path) -> int:
     if progress_count > 0:
         return progress_count
     return count
+
+
+def _history_metric_summary(task_dir: Path, metric_count: int) -> dict[str, Any]:
+    """Return bounded list-row metrics without loading the full detail payload."""
+    metrics_path = task_dir / "metrics.jsonl"
+    progress_path = task_dir / "progress.jsonl"
+    summary = _read_history_metric_summary(metrics_path, metric_count, progress=False)
+    if summary:
+        return summary
+    return _read_history_metric_summary(progress_path, metric_count, progress=True)
+
+
+def _read_history_metric_summary(
+    path: Path,
+    metric_count: int,
+    *,
+    progress: bool,
+) -> dict[str, Any]:
+    if not _path_exists(path) or not path.is_file():
+        return {}
+
+    stride = max(1, (max(1, metric_count) + 23) // 24)
+    preview: list[float] = []
+    final_loss: float | None = None
+    last_step: int | None = None
+    valid_index = 0
+    try:
+        with path.open("r", encoding="utf-8") as handle:
+            for raw in handle:
+                try:
+                    event = json.loads(raw)
+                except (json.JSONDecodeError, TypeError):
+                    continue
+                if not isinstance(event, dict):
+                    continue
+                if progress and str(event.get("ev") or "") not in {"step", "val"}:
+                    continue
+                loss = next(
+                    (
+                        value
+                        for key in ("loss", "loss/average", "loss/current")
+                        if (value := _float_or_none(event.get(key))) is not None
+                    ),
+                    None,
+                )
+                step = next(
+                    (
+                        value
+                        for key in ("step", "global_step", "current_step")
+                        if (value := _int_or_none(event.get(key))) is not None
+                    ),
+                    None,
+                )
+                if step is not None:
+                    last_step = step
+                if loss is None:
+                    continue
+                final_loss = loss
+                if valid_index % stride == 0:
+                    preview.append(loss)
+                valid_index += 1
+                if len(preview) > 48:
+                    preview = preview[::2]
+                    stride *= 2
+    except OSError:
+        return {}
+
+    if final_loss is None:
+        return {"last_step": last_step} if last_step is not None else {}
+    if not preview or preview[-1] != final_loss:
+        preview.append(final_loss)
+    if len(preview) > 24:
+        preview = preview[:23] + [preview[-1]]
+    return {
+        "final_loss": final_loss,
+        "last_step": last_step,
+        "loss_preview": preview,
+    }
 
 
 def _count_progress_metric_events(progress_path: Path) -> int:

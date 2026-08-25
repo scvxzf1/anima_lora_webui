@@ -3,6 +3,7 @@
 import { createApiClient } from '../../shared/api.js?v=dragon-ui-20260812v35';
 import { applyDragonUIScale, clampUIScale } from '../ui-scale.js?v=dragon-ui-20260814v43';
 import { applyDragonMotionSetting } from '../motion.js?v=dragon-ui-20260824v1';
+import { applyDragonConfigChromeSettings } from '../config-chrome.js?v=dragon-ui-20260825v1';
 
 const api = createApiClient();
 const SETTING_GROUPS = [
@@ -23,9 +24,11 @@ const SETTING_GROUPS = [
         ],
     },
     {
-        eyebrow: '显示', title: '界面显示', desc: '管理 Dragon 动态效果与界面缩放。系统启用“减少动态效果”时始终以系统设置为准。',
+        eyebrow: '显示', title: '界面显示', desc: '管理 Dragon 动态效果、训练参数标记与界面缩放。系统启用“减少动态效果”时始终以系统设置为准。',
         fields: [
             ['dragon_motion_enabled', '启用 Dragon 动态效果', 'boolean', '', '控制页面入场、滚动揭示、视差和平滑过渡；关闭后仍保留必要的加载状态。'],
+            ['dragon_config_help_always_visible', '常态显示参数“？”', 'boolean', '', '开启后训练配置积木会始终显示帮助问号；关闭时仅在悬浮、聚焦或展开说明时显示。'],
+            ['dragon_config_tags_always_visible', '常态显示参数标签', 'boolean', '', '开启后训练配置积木会始终显示右上角分类标签；关闭时仅在悬浮或聚焦时显示。'],
             ['ui_scale', '全局界面缩放', 'number', '100', '有效范围 25%–400%。'],
             ['ui_scale_config', '训练配置页', 'scale', '', ''],
             ['ui_scale_datasets', '数据集页', 'scale', '', ''],
@@ -368,6 +371,7 @@ async function saveSettings(root, state) {
         state.dirty = false;
         applyDragonUIScale(payload, 'global-settings');
         applyDragonMotionSetting(payload);
+        applyDragonConfigChromeSettings(payload);
         renderFields(root, state);
         updatePageState(root, state);
         if (payload.requires_reload) {

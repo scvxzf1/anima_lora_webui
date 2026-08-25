@@ -828,6 +828,7 @@ import {
     parseArrayValue,
     parseNumberValue,
     valuesEqual,
+    valuesEqualForFieldType,
 } from './web/static/js/features/anima-app/helpers/form-values.js';
 
 const result = {
@@ -838,6 +839,9 @@ const result = {
     parsedCsvArray: parseArrayValue('a, b,, c'),
     booleanEqual: valuesEqual(true, 'true'),
     numberEqual: valuesEqual('2.0', 2),
+    typedNumberMismatch: valuesEqualForFieldType('2.0', 2, 'number'),
+    typedNumberEqual: valuesEqualForFieldType(2.0, 2, 'number'),
+    typedBooleanMismatch: valuesEqualForFieldType('false', false, 'boolean'),
     booleanLike: isBooleanLikeValue('false'),
     normalizedBoolean: normalizeBooleanLikeValue('true'),
     numberLike: isNumberLikeValue('3.5'),
@@ -866,11 +870,26 @@ console.log(JSON.stringify(result));
         "parsedCsvArray": ["a", "b", "c"],
         "booleanEqual": True,
         "numberEqual": True,
+        "typedNumberMismatch": False,
+        "typedNumberEqual": True,
+        "typedBooleanMismatch": False,
         "booleanLike": True,
         "normalizedBoolean": True,
         "numberLike": True,
         "multiline": "a\nb",
     }
+
+
+def test_config_form_repairs_legacy_scalar_types() -> None:
+    draft_source = _frontend_module_text("js/features/config-form/index.js")
+    collector_source = _frontend_module_text(
+        "js/features/config-form/config-value-collector.js"
+    )
+
+    assert "valuesEqualForFieldType" in draft_source
+    assert "fieldValueTypeForKey(key, original)" in draft_source
+    assert "valuesEqualForFieldType" in collector_source
+    assert "fieldValueTypeForKey(key, original)" in collector_source
 
 
 def test_config_value_helpers_are_exported() -> None:

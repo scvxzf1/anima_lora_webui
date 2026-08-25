@@ -395,12 +395,42 @@ def _coerce_value(spec: ConfigKey, value: Any) -> Any:
         return value
     if value is None:
         return value
-    if t == "bool" and not isinstance(value, bool):
-        return bool(value)
-    if t == "float" and isinstance(value, int) and not isinstance(value, bool):
-        return float(value)
-    if t == "int" and isinstance(value, float) and value.is_integer():
-        return int(value)
+    if t == "bool":
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            if normalized in {"1", "true", "yes", "on"}:
+                return True
+            if normalized in {"0", "false", "no", "off"}:
+                return False
+        if isinstance(value, int) and not isinstance(value, bool) and value in {0, 1}:
+            return bool(value)
+        raise ValueError(f"expected bool, got {value!r}")
+    if t == "float":
+        if isinstance(value, bool):
+            raise ValueError(f"expected float, got {value!r}")
+        if isinstance(value, (int, float)):
+            return float(value)
+        if isinstance(value, str) and value.strip():
+            try:
+                return float(value.strip())
+            except ValueError as exc:
+                raise ValueError(f"expected float, got {value!r}") from exc
+        raise ValueError(f"expected float, got {value!r}")
+    if t == "int":
+        if isinstance(value, bool):
+            raise ValueError(f"expected int, got {value!r}")
+        if isinstance(value, int):
+            return value
+        if isinstance(value, float) and value.is_integer():
+            return int(value)
+        if isinstance(value, str) and value.strip():
+            try:
+                return int(value.strip(), 10)
+            except ValueError as exc:
+                raise ValueError(f"expected int, got {value!r}") from exc
+        raise ValueError(f"expected int, got {value!r}")
     if t == "path" and not isinstance(value, str):
         return str(value)
     return value
@@ -449,7 +479,14 @@ def validate_entry(
         return key, value
 
     spec = CONFIG_SCHEMA[resolved]
-    coerced = _coerce_value(spec, value)
+    try:
+        coerced = _coerce_value(spec, value)
+    except (TypeError, ValueError) as exc:
+        msg = (
+            f"[config] {loc}: {resolved!r} expects {spec.type}, "
+            f"got {value!r}"
+        )
+        raise ConfigSchemaError(msg) from exc
 
     if spec.choices and coerced not in spec.choices:
         # argparse tolerates ``None`` when it's the declared default; argparse

@@ -1,0 +1,57 @@
+# Z-Image plain LoRA v1. Point the three model paths at either the official
+# Diffusers root or their transformer/text_encoder/vae component directories.
+model_family = "z_image"
+pretrained_model_name_or_path = "models/diffusion_models/Z-Image"
+qwen3 = "models/diffusion_models/Z-Image"
+vae = "models/diffusion_models/Z-Image"
+
+network_module = "networks.lora_anima"
+network_dim = 16
+network_alpha = 16
+learning_rate = 1e-4
+
+mixed_precision = "bf16"
+base_compute = "bf16"
+attn_mode = "torch"
+gradient_checkpointing = true
+cpu_offload_checkpointing = false
+unsloth_offload_checkpointing = false
+selective_checkpoint = "off"
+torch_compile = false
+blocks_to_swap = 0
+
+cache_latents = true
+cache_latents_to_disk = true
+cache_text_encoder_outputs = true
+cache_text_encoder_outputs_to_disk = true
+cache_llm_adapter_outputs = false
+caption_dropout_rate = 0.0
+use_shuffled_caption_variants = false
+weighted_captions = false
+masked_loss = false
+
+timestep_sampling = "uniform"
+discrete_flow_shift = 6.0
+weighting_scheme = "none"
+use_moe_style = false
+route_per_layer = false
+router_source = "none"
+use_ortho = false
+use_timestep_mask = false
+
+output_name = "z_image_lora"
+
+[[datasets]]
+resolution = 1024
+batch_size = 1
+caption_extension = ".txt"
+enable_bucket = true
+min_bucket_reso = 672
+max_bucket_reso = 1536
+bucket_reso_steps = 64
+bucket_no_upscale = true
+
+[[datasets.subsets]]
+image_dir = "post_image_dataset/resized"
+cache_dir = "post_image_dataset/lora"
+num_repeats = 1

@@ -8,7 +8,7 @@ import {
     scheduleOrderedRowDropTarget,
     setOrderedDropTarget,
 } from '../ordered-drag-target.js?v=dragon-ui-20260816v1';
-import { renderIcon } from '../icons.js?v=dragon-ui-20260814v43';
+import { renderIcon } from '../icons.js?v=dragon-ui-20260824v44';
 import {
     collectDatasetFields,
     collectDatasetRows,
@@ -20,7 +20,8 @@ import {
     renderDatasetDefaults,
     renderDatasetRow,
     validateDatasetEditor,
-} from './dataset-editor-fields.js?v=dragon-ui-20260816v52';
+} from './dataset-editor-fields.js?v=dragon-ui-20260824v53';
+import { bindDatasetPathTools, refreshDatasetPathStatus } from './dataset-editor-paths.js?v=dragon-ui-20260824v3';
 import {
     applyDatasetPreset,
     createDatasetPresetGroup,
@@ -37,9 +38,9 @@ import {
     renderPresetGroups,
     saveDatasetPreset,
     saveDatasetPresetAs,
-} from './dataset-editor-presets.js?v=dragon-ui-20260816v70';
+} from './dataset-editor-presets.js?v=dragon-ui-20260824v71';
 import { bindDatasetPreviewRefresh, openDatasetPreview } from './dataset-editor-preview.js?v=dragon-ui-20260814v43';
-import { loadTrainingContext, mergedConfigUrl } from './training-controls.js?v=dragon-ui-20260814v43';
+import { loadTrainingContext, mergedConfigUrl } from './training-controls.js?v=dragon-ui-20260824v114';
 
 const api = createApiClient();
 let activeEditor = null;
@@ -111,14 +112,14 @@ function renderPage(state) {
                 <div><span class="dragon-eyebrow">数据与标注</span><h1>数据集蓝图</h1><p>管理可复用的数据集预设，并把路径、分桶、验证与标注规则应用到当前训练配置。</p></div>
                 <div class="dragon-dataset-hero-actions">
                     <button class="dragon-btn dragon-btn-secondary" type="button" data-workspace-action="stage">${renderIcon('layers', 'dragon-btn-icon')}<span>分阶段调度</span></button>
-                    <button class="dragon-btn dragon-btn-primary" type="button" data-workspace-action="apply" ${state.selectedFile ? '' : 'disabled'}>应用到当前训练配置</button>
+                    <button class="dragon-btn dragon-btn-secondary" type="button" data-workspace-action="apply" title="把已保存的数据集预设关联到当前训练配置" ${state.selectedFile ? '' : 'disabled'}>${renderIcon('check', 'dragon-btn-icon')}<span>应用到训练</span></button>
                 </div>
             </header>
             <section class="dragon-dataset-context dragon-reveal" data-stagger="1" aria-label="当前训练上下文">
                 <div><span>训练配置</span><strong title="${escapeAttribute(state.context.configFile || '')}">${escapeHtml(state.context.configFile || '未选择')}</strong></div>
                 <div><span>运行预设</span><strong>${escapeHtml(state.context.preset || '默认')}</strong></div>
-                <div><span>数据集文件</span><strong class="dragon-text-mono" data-dataset-path title="${escapeAttribute(state.datasetConfig || '')}">${escapeHtml(state.datasetConfig || '尚未保存')}</strong></div>
-                <div data-dataset-sync-card><span>编辑状态</span><strong data-dataset-dirty>${state.dirty ? '有未保存修改' : '已同步'}</strong></div>
+                <div><span>数据集文件</span><strong class="dragon-text-mono" data-dataset-path title="${escapeAttribute(state.datasetConfig || '')}">${escapeHtml(state.datasetConfig || '未关联配置')}</strong><span class="dragon-status-badge" data-dataset-link-state data-state="${state.datasetConfig ? 'saved' : 'unsaved'}"><i aria-hidden="true"></i><b>${state.datasetConfig ? '已关联训练配置' : '尚未保存'}</b></span></div>
+                <div data-dataset-sync-card><span>编辑状态</span><strong class="dragon-status-badge" data-dataset-dirty data-state="${state.dirty ? 'dirty' : 'synced'}"><i aria-hidden="true"></i><b data-dataset-dirty-text>${state.dirty ? '有未保存更改' : (state.selectedFile === state.datasetConfig ? '已同步至配置' : '已同步至预设')}</b></strong></div>
             </section>
             <div class="dragon-dataset-workspace" data-stagger="2">
                 <div class="dragon-dataset-editor-panel">
@@ -131,7 +132,7 @@ function renderPage(state) {
                 <div class="dragon-dataset-savebar-actions">
                     <button class="dragon-btn dragon-btn-secondary" type="button" data-workspace-action="reload">重新加载</button>
                     <button class="dragon-btn dragon-btn-secondary" type="button" data-workspace-action="save-as">${state.readonly ? '复制后编辑' : '另存为'}</button>
-                    <button class="dragon-btn dragon-btn-primary" type="button" data-workspace-action="save" ${state.readonly || state.fatalError ? 'disabled' : ''}>保存数据集预设</button>
+                    <button class="dragon-btn dragon-btn-primary" type="button" data-workspace-action="save" title="将当前草稿持久化到数据集 TOML" ${state.readonly || state.fatalError ? 'disabled' : ''}>${renderIcon('save', 'dragon-btn-icon')}<span>保存数据集预设</span></button>
                 </div>
                 <span class="dragon-config-feedback" data-dataset-feedback role="status" aria-live="polite"></span>
             </div>
@@ -461,6 +462,7 @@ function applyDefaultsToRows(root, state) {
 }
 
 function bindRowActions(root, state) {
+    bindDatasetPathTools(api, root, { onFeedback: (message, tone) => showFeedback(root, message, tone) });
     root.querySelectorAll('[data-dataset-remove]').forEach((button) => button.addEventListener('click', () => {
         const rows = [...root.querySelectorAll('[data-dataset-row]')];
         if (rows.length <= 1) return showFeedback(root, '至少需要保留 1 个数据集组', 'error');
@@ -785,6 +787,7 @@ async function suggestDirectories(root, state, button) {
         row.querySelector('[data-field="image_dir"]').value = item.image_dir || '';
         row.querySelector('[data-field="cache_dir"]').value = item.cache_dir || '';
         markDirty(root, state);
+        refreshDatasetPathStatus(api, row);
         showFeedback(root, '已推导缩放图片与 LoRA 缓存目录', 'success');
     } catch (error) { showFeedback(root, error.message, 'error'); } finally { button.disabled = false; }
 }
@@ -969,7 +972,9 @@ function markDirty(root, state) {
 
 function updateDirtyUi(root, state) {
     const dirty = root.querySelector('[data-dataset-dirty]');
-    if (dirty) dirty.textContent = state.dirty ? '有未保存修改' : '已同步';
+    const dirtyText = root.querySelector('[data-dataset-dirty-text]');
+    if (dirtyText) dirtyText.textContent = state.dirty ? '有未保存更改' : (state.selectedFile === state.datasetConfig ? '已同步至配置' : '已同步至预设');
+    if (dirty) dirty.dataset.state = state.dirty ? 'dirty' : 'synced';
     const status = root.querySelector('[data-savebar-status]');
     if (status) status.textContent = state.readonly ? '系统预设只读，请复制后编辑。' : (state.dirty ? '当前修改尚未写入 TOML。' : '数据集预设已同步。');
     root.querySelector('[data-dataset-sync-card]')?.setAttribute('data-dirty', String(state.dirty));
@@ -977,7 +982,13 @@ function updateDirtyUi(root, state) {
 
 function updateContextUi(root, state) {
     const path = root.querySelector('[data-dataset-path]');
-    if (path) { path.textContent = state.datasetConfig || '尚未保存'; path.title = state.datasetConfig || ''; }
+    if (path) { path.textContent = state.datasetConfig || '未关联配置'; path.title = state.datasetConfig || ''; }
+    const linkState = root.querySelector('[data-dataset-link-state]');
+    if (linkState) {
+        linkState.dataset.state = state.datasetConfig ? 'saved' : 'unsaved';
+        const text = linkState.querySelector('b');
+        if (text) text.textContent = state.datasetConfig ? '已关联训练配置' : '尚未保存';
+    }
     updateDirtyUi(root, state);
 }
 

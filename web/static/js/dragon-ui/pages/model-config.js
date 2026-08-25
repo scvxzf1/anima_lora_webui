@@ -24,7 +24,7 @@ import {
     uniqueDraftName,
     validateModelGroups,
     validateModelItems,
-} from './model-config-state.js?v=dragon-ui-20260817v1';
+} from './model-config-state.js?v=dragon-ui-20260824-zimage-v1';
 
 const api = createApiClient();
 const PATH_FIELDS = [
@@ -156,7 +156,7 @@ function renderEditor(item, state) {
             <p class="dragon-model-editor-desc">配置名称、模型格式与 3 个必需组件路径。路径支持项目相对路径、绝对路径和环境变量。</p>
             <div class="dragon-field-grid-2 dragon-model-identity-fields">
                 ${textField('name', '配置名称', item.name, '例如：Krea-2 主模型')}
-                ${selectField('model_family', '模型格式', item.model_family, [['anima', 'Anima'], ['krea2_raw', 'Krea-2']])}
+                ${selectField('model_family', '模型格式', item.model_family, [['anima', 'Anima'], ['krea2_raw', 'Krea-2'], ['z_image', 'Z-Image']])}
             </div>
         </section>
         <section class="dragon-model-editor-section">

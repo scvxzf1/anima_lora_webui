@@ -6,7 +6,8 @@ import {
     normalizeHistoryDetailTab,
     renderHistoryDetailTabs,
 } from './history-detail-tabs.js?v=dragon-ui-20260816v2';
-import { renderHistorySampleDialog } from './history-sample-dialog.js?v=dragon-ui-20260819v2';
+import { renderHistorySampleDialog } from './history-sample-dialog.js?v=dragon-ui-20260825v3';
+import { renderHistoryPathsPanel } from './history-paths.js?v=dragon-ui-20260824v1';
 
 export function renderHistoryPage(model = {}) {
     const filters = normalizeHistoryFilters(model.filters);
@@ -82,7 +83,7 @@ export function renderHistoryDetailPage(model) {
         <div class="dragon-page dragon-page-wide dragon-history-detail-page" data-history-detail="${escapeAttribute(taskId)}" data-history-detail-active-tab="${activeTab}">
             <header class="dragon-history-detail-hero dragon-reveal">
                 <div class="dragon-history-detail-toolbar">
-                    <button class="dragon-btn dragon-btn-ghost dragon-btn-sm" type="button" data-history-back>${renderIcon('history', 'dragon-btn-icon')}<span>返回历史</span></button>
+                    ${renderHistoryBackButton(model.returnNavigation)}
                     <div class="dragon-history-detail-actions">
                         ${resumeShortcut(taskId, task, resume)}
                         <button class="dragon-btn dragon-btn-secondary dragon-btn-sm" type="button" data-history-detail-refresh>${renderIcon('refresh', 'dragon-btn-icon')}<span>刷新详情</span></button>
@@ -151,6 +152,7 @@ function renderHistoryMetrics(metrics, lossChart, systemCharts) {
             <span class="dragon-history-chart-control-label dragon-history-chart-values-label">悬停数值</span>
             <label><input type="checkbox" data-history-chart-toggle="lrValue" checked><span>显示学习率</span></label>
             <label><input type="checkbox" data-history-chart-toggle="lossValue" checked><span>显示 Loss</span></label>
+            <label class="dragon-history-smoothing"><span>Smoothing</span><input type="range" min="0" max="99" value="20" data-history-chart-smoothing aria-label="损失曲线平滑度"><output data-history-chart-smoothing-value>20%</output></label>
         </div>
         <div class="dragon-chart-container" data-history-chart-container>${lossChart}</div>
     </section>
@@ -175,7 +177,7 @@ function historyDetailTabCounts(task, payload, imagesPayload, weightsPayload) {
         metrics: Array.isArray(payload.metrics) ? payload.metrics.length : Number(task.metric_count || 0),
         artifacts: images.length + weights.length,
         config: configCount,
-        logs: Array.isArray(payload.logs) ? payload.logs.length : Number(task.log_count || 0),
+        logs: Number(payload.limits?.logs_total) || (Array.isArray(payload.logs) ? payload.logs.length : Number(task.log_count || 0)),
     };
 }
 
@@ -188,13 +190,19 @@ function resumeShortcut(taskId, task, resume) {
     return `<a class="dragon-btn dragon-btn-primary dragon-btn-sm" href="#history/${encodeURIComponent(taskId)}/overview" data-history-resume-shortcut>${renderIcon('activity', 'dragon-btn-icon')}<span>续训设置</span></a>`;
 }
 
-export function renderHistoryDetailError(taskId, error) {
+export function renderHistoryDetailError(taskId, error, returnNavigation = null) {
     return `
         <div class="dragon-page dragon-history-detail-page">
-            <div class="dragon-history-detail-toolbar dragon-reveal"><button class="dragon-btn dragon-btn-ghost dragon-btn-sm" type="button" data-history-back>返回历史</button><button class="dragon-btn dragon-btn-secondary dragon-btn-sm" type="button" data-history-detail-refresh>重试</button></div>
+            <div class="dragon-history-detail-toolbar dragon-reveal">${renderHistoryBackButton(returnNavigation)}<button class="dragon-btn dragon-btn-secondary dragon-btn-sm" type="button" data-history-detail-refresh>重试</button></div>
             <div class="dragon-history-empty dragon-reveal"><span>${renderIcon('history')}</span><h1>无法加载训练记录</h1><p>${escapeHtml(error)}。请确认任务仍存在，然后重试。</p><code>${escapeHtml(taskId)}</code></div>
         </div>
     `;
+}
+
+function renderHistoryBackButton(navigation = null) {
+    const label = navigation?.label || '返回历史';
+    const icon = navigation?.icon || 'history';
+    return `<button class="dragon-btn dragon-btn-ghost dragon-btn-sm" type="button" data-history-back aria-label="${escapeAttribute(label)}">${renderIcon(icon, 'dragon-btn-icon')}<span>${escapeHtml(label)}</span></button>`;
 }
 
 function renderHistoryItem(task) {
@@ -242,9 +250,11 @@ function renderHistoryArtifacts(taskId, task, configToml) {
     return `
         <section class="dragon-history-panel dragon-reveal" data-stagger="4">
             <div class="dragon-history-panel-head"><div><span class="dragon-eyebrow">可复现性</span><h2>配置快照</h2></div><div class="dragon-history-artifact-actions">${artifactLinks}</div></div>
+            ${renderConfigSummary(task, configToml)}
             <div class="dragon-history-snapshot-meta"><span>快照路径</span><strong class="dragon-text-mono">${escapeHtml(task.config_snapshot || '未记录')}</strong></div>
-            <details class="dragon-history-config-snapshot" ${configToml ? '' : 'open'}><summary>${configToml ? '展开 TOML 内容' : 'TOML 内容不可用'}</summary><pre><code>${escapeHtml(configToml || '当前历史记录没有可读取的配置快照内容。')}</code></pre></details>
+            <details class="dragon-history-config-snapshot" ${configToml ? '' : 'open'}><summary>${configToml ? '展开 TOML 内容' : 'TOML 内容不可用'}</summary><pre><code>${highlightToml(configToml || '当前历史记录没有可读取的配置快照内容。')}</code></pre></details>
         </section>
+        ${renderHistoryPathsPanel(task)}
     `;
 }
 
@@ -265,23 +275,73 @@ function renderImages(images, message) {
     return `<div class="dragon-history-preview-grid">${images.map((image, index) => {
         const sample = image.sample || {};
         const title = sample.step != null ? `Step ${sample.step}` : (image.name || '训练样张');
-        return `<figure><button class="dragon-history-preview-open" type="button" data-history-sample-open="${index}" aria-label="查看 ${escapeAttribute(title)} 的生成参数" title="查看生成参数与提示词"><img src="${escapeAttribute(image.url || '')}" alt="${escapeAttribute(sample.prompt ? `${title}：${sample.prompt}` : title)}" width="${escapeAttribute(image.width || 1)}" height="${escapeAttribute(image.height || 1)}" loading="lazy"><span class="dragon-history-preview-open-label">${renderIcon('zap')}<span>参数</span></span></button><figcaption><strong>${escapeHtml(title)}</strong><span>${escapeHtml(image.mtime_text || image.name || '')}</span></figcaption></figure>`;
+        return `<figure><button class="dragon-history-preview-open" type="button" data-history-sample-open="${index}" aria-label="查看 ${escapeAttribute(title)} 的生成参数" title="查看生成参数与提示词"><img src="${escapeAttribute(image.url || '')}" alt="${escapeAttribute(sample.prompt ? `${title}：${sample.prompt}` : title)}" width="${escapeAttribute(image.width || 1)}" height="${escapeAttribute(image.height || 1)}" loading="lazy"><span class="dragon-history-preview-step">${escapeHtml(title)}</span></button><figcaption><span>${escapeHtml(image.mtime_text || image.name || '')}</span></figcaption></figure>`;
     }).join('')}</div>`;
 }
 
 function renderWeights(weights, message) {
     if (!weights.length) return `<div class="dragon-history-inline-empty"><p>${escapeHtml(message || '这个任务还没有可下载的训练权重。')}</p></div>`;
-    return `<div class="dragon-history-weight-list">${weights.map((item) => {
+    const fallbackFinalIndex = weights.findIndex((item) => item?.is_final === true || item?.final === true)
+        < 0 ? weights.findIndex((item) => item?.steps == null && /\.safetensors$/i.test(item?.name || '')) : -1;
+    return `<div class="dragon-history-weight-list">${weights.map((item, index) => {
         const path = item.abs_path || item.file || '';
         const name = item.name || '未命名权重';
-        return `<article><span class="dragon-history-weight-icon">${renderIcon('layers')}</span><div><strong>${escapeHtml(name)}</strong><span>${escapeHtml([item.steps != null ? `Step ${item.steps}` : '', item.mtime_text, item.size_bytes != null ? formatBytes(item.size_bytes) : ''].filter(Boolean).join(' · '))}</span></div><div class="dragon-history-weight-actions"><button class="dragon-btn dragon-btn-ghost dragon-btn-sm" type="button" data-history-weight-copy="${escapeAttribute(path)}" aria-label="复制 ${escapeAttribute(name)} 的本地路径" title="复制本地路径">${renderIcon('copy', 'dragon-btn-icon')}<span>复制路径</span></button><a class="dragon-btn dragon-btn-secondary dragon-btn-sm" href="${escapeAttribute(item.download_url || '')}" download="${escapeAttribute(item.name || 'weight.safetensors')}">${renderIcon('download', 'dragon-btn-icon')}<span>下载</span></a></div></article>`;
+        const finalTag = isFinalWeight(item, name, index, fallbackFinalIndex) ? '<span class="dragon-history-final-model">Final Model</span>' : '';
+        return `<article><span class="dragon-history-weight-icon">${renderIcon('layers')}</span><div><div class="dragon-history-weight-title"><strong>${escapeHtml(name)}</strong>${finalTag}</div><span>${escapeHtml([item.steps != null ? `Step ${item.steps}` : '', item.mtime_text, item.size_bytes != null ? formatBytes(item.size_bytes) : ''].filter(Boolean).join(' · '))}</span></div><div class="dragon-history-weight-actions"><button class="dragon-icon-button" type="button" data-history-weight-copy="${escapeAttribute(path)}" aria-label="复制 ${escapeAttribute(name)} 的本地路径" title="复制本地路径">${renderIcon('copy')}<span class="visually-hidden">复制路径</span></button><a class="dragon-icon-button" href="${escapeAttribute(item.download_url || '')}" download="${escapeAttribute(item.name || 'weight.safetensors')}" aria-label="下载 ${escapeAttribute(name)}" title="下载权重">${renderIcon('download')}<span class="visually-hidden">下载</span></a></div></article>`;
     }).join('')}</div>`;
 }
+
+function isFinalWeight(item, name, index, fallbackFinalIndex) {
+    return item?.is_final === true || item?.final === true || index === fallbackFinalIndex || /(?:^|[_\-.])(final|last)(?:[_\-.]|$)/i.test(name);
+}
+
+function renderConfigSummary(task, configToml) {
+    const parsed = parseTomlScalars(configToml);
+    const cards = [
+        ['Base Model', firstValue(task.model_family, parsed.model_family, parsed.pretrained_model_name_or_path, parsed.dit)],
+        ['Batch Size', firstValue(task.batch_size, parsed.train_batch_size, parsed.batch_size)],
+        ['Learning Rate', firstValue(task.learning_rate, parsed.learning_rate, parsed.unet_lr)],
+        ['Dim / Alpha', joinPair(firstValue(parsed.network_dim, parsed.dim), firstValue(parsed.network_alpha, parsed.alpha))],
+        ['Optimizer', firstValue(task.optimizer_type, parsed.optimizer_type, parsed.optimizer)],
+    ];
+    return `<section class="dragon-history-config-summary" aria-label="关键超参数">${cards.map(([label, value]) => `<div><span>${label}</span><strong>${formatMetricHtml(value || '未记录')}</strong></div>`).join('')}</section>`;
+}
+
+function parseTomlScalars(source) {
+    const result = {};
+    String(source || '').split(/\r?\n/).forEach((line) => {
+        const match = line.match(/^\s*([A-Za-z0-9_.-]+)\s*=\s*(.+?)\s*(?:#.*)?$/);
+        if (!match) return;
+        result[match[1].split('.').at(-1)] = match[2].replace(/^(["'])(.*)\1$/, '$2');
+    });
+    return result;
+}
+
+function highlightToml(source) {
+    return String(source || '').split(/\r?\n/).map((line) => {
+        const section = line.match(/^(\s*)(\[+[^\]]+\]+)(\s*(?:#.*)?)$/);
+        if (section) return `${escapeHtml(section[1])}<span class="toml-section">${escapeHtml(section[2])}</span><span class="toml-comment">${escapeHtml(section[3])}</span>`;
+        const assignment = line.match(/^(\s*)([A-Za-z0-9_.-]+)(\s*=\s*)(.*)$/);
+        if (!assignment) return `<span class="toml-comment">${escapeHtml(line)}</span>`;
+        const valueParts = assignment[4].match(/^(.*?)(\s+#.*)?$/) || [];
+        return `${escapeHtml(assignment[1])}<span class="toml-key">${escapeHtml(assignment[2])}</span>${escapeHtml(assignment[3])}<span class="toml-value">${escapeHtml(valueParts[1] || '')}</span><span class="toml-comment">${escapeHtml(valueParts[2] || '')}</span>`;
+    }).join('\n');
+}
+
+function formatMetricHtml(value) {
+    return escapeHtml(value).replace(/(e[+-]?\d+)$/i, '<span class="dragon-metric-exponent">$1</span>');
+}
+
+function joinPair(left, right) { return [left, right].filter((value) => value != null && value !== '').join(' / '); }
+function firstValue(...values) { return values.find((value) => value != null && String(value).trim() !== ''); }
 
 function renderLogsSection(taskId, logs, task, limits = {}) {
     const returned = logs.length;
     const reportedTotal = Math.max(returned, Number(limits?.logs_total) || 0);
-    const countLabel = reportedTotal > returned ? `最近 ${returned} / ${reportedTotal} 行` : `${returned} 行`;
+    const countLabel = limits?.logs_paged
+        ? `${reportedTotal} 行`
+        : (reportedTotal > returned ? `最近 ${returned} / ${reportedTotal} 行` : `${returned} 行`);
+    const initialOffset = Math.max(0, Number(limits?.logs_offset) || (reportedTotal - returned));
     return `
         <section class="dragon-history-panel dragon-history-log-workspace dragon-reveal" data-stagger="6">
             <div class="dragon-history-panel-head"><div><span class="dragon-eyebrow">运行输出</span><h2>完整日志</h2></div><div class="dragon-history-log-head-actions"><span>${countLabel}</span><a class="dragon-btn dragon-btn-secondary dragon-btn-sm" href="/api/training/history/${encodeURIComponent(taskId)}/logs/download" download>${renderIcon('download', 'dragon-btn-icon')}<span>下载日志</span></a></div></div>
@@ -298,8 +358,8 @@ function renderLogsSection(taskId, logs, task, limits = {}) {
                     <button class="dragon-icon-button" type="button" data-history-log-search-next aria-label="下一个匹配项" title="下一个匹配项" disabled>${renderIcon('chevronDown')}</button>
                 </div>
             </div>
-            <div class="dragon-history-log-window-meta"><span data-history-log-window-status>${returned ? `第 ${Math.max(1, reportedTotal - returned + 1)}–${reportedTotal} / ${reportedTotal} 行` : '0 行'}</span></div>
-            <div class="dragon-log-panel dragon-history-log-panel" data-history-log-viewer tabindex="0" role="list" aria-label="历史训练日志">${returned ? '' : '<div class="dragon-history-inline-empty"><p>暂无日志。</p></div>'}</div>
+            <div class="dragon-history-log-window-meta"><span data-history-log-window-status>${reportedTotal ? `第 ${initialOffset + 1}–${Math.min(reportedTotal, initialOffset + returned)} / ${reportedTotal} 行` : '0 行'}</span></div>
+            <div class="dragon-log-panel dragon-history-log-panel" data-history-log-viewer tabindex="0" role="list" aria-label="历史训练日志">${reportedTotal ? '' : '<div class="dragon-history-inline-empty"><p>暂无日志。</p></div>'}</div>
         </section>
     `;
 }
@@ -449,7 +509,7 @@ export function renderHistoryStats(tasks, filters) {
         queue: tasks.filter((task) => Boolean(task.from_queue || task.queue_item_id)).length,
     };
     const labels = [['all', '全部'], ['training', '训练'], ['preprocess', '预处理'], ['error', '异常/中断'], ['archived', '归档'], ['queue', '来自队列']];
-    return labels.map(([key, label]) => `<button type="button" class="dragon-history-stat${historyStatActive(filters, key) ? ' active' : ''}${key === 'error' ? ' error' : ''}" data-history-stat="${key}"><strong>${counts[key]}</strong><span>${label}</span></button>`).join('');
+    return labels.map(([key, label]) => `<button type="button" class="dragon-history-stat${historyStatActive(filters, key) ? ' active' : ''}${key === 'error' ? ' error' : ''}" data-history-stat="${key}" data-state="${key}" data-count-state="${counts[key] > 0 ? 'nonzero' : 'zero'}"><strong>${counts[key]}</strong><span>${label}</span></button>`).join('');
 }
 
 export function renderHistorySummary(tasks, filters) {
@@ -477,19 +537,24 @@ function historyFilterControls(filters, tasks = []) {
         return `<option value="${value}"${filters[key] === value ? ' selected' : ''}${disabled ? ' disabled' : ''}>${text}</option>`;
     }).join('')}</select></label>`;
     const all = [['all', '全部']];
-    return [
+    const basic = [
         `<label class="dragon-history-search"><span>全局搜索</span><input class="dragon-input" type="search" name="history_search" autocomplete="off" data-history-filter="search" placeholder="任务 / 配置 / 目录，支持 组:关键词 或 配置:lora" value="${escapeAttribute(filters.search)}"></label>`,
         select('kind', '类型', [...all, ['training', '训练'], ['preprocess', '预处理']]),
         select('status', '状态', [['all', '全部'], ['running', '运行中'], ['completed', '已完成'], ['queued', '排队中'], ['error', '异常/失败'], ['interrupted', '已中断'], ['canceled', '已取消'], ['unknown', '其他']]), /* name="history_status" */
+        select('sort', '排序', [['newest', '最新优先'], ['oldest', '最早优先'], ['loss', 'Loss 点数'], ['logs', '日志行数'], ['name', '名称']]),
+    ].join('');
+    const advanced = [
+        select('trainingVariant', '训练变体', [...all, ...['lora', 'lokr', 'loha', 'vera', 'glora', 'dora', 'hydralora', 'reft', 'tlora', 'ortholora', 'chimera', 'soft_tokens', 'ip_adapter', 'easycontrol'].map((value) => [value, value])]),
         select('archived', '归档', [['active', '未归档'], ['all', '全部'], ['archived', '已归档']]),
         select('source', '来源', [['all', '全部'], ['queue', '来自队列'], ['resume', '续训'], ['continue', '权重热启动']]),
-        select('trainingVariant', '训练变体', [...all, ...['lora', 'lokr', 'loha', 'vera', 'glora', 'dora', 'hydralora', 'reft', 'tlora', 'ortholora', 'chimera', 'soft_tokens', 'ip_adapter', 'easycontrol'].map((value) => [value, value])]),
         select('preprocessPrecision', '预处理精度', [...all, ['bf16', 'bf16'], ['fp16', 'fp16'], ['fp32', 'fp32']]),
         select('blockSwapPrecision', '块交换精度', [...all, ['bf16', 'bf16'], ['fp8_e4m3', 'fp8_e4m3']]),
         select('baseCompute', '底模计算路径', [...all, ['bf16', 'bf16'], ['nf4', 'nf4'], ['w8a16_convrot', 'w8a16_convrot'], ['w8a8_convrot', 'w8a8_convrot']]),
         select('precisionPreference', '精度倾向', [...all, ['bf16', 'bf16'], ['fp16', 'fp16'], ['fp32', 'fp32']]),
-        select('sort', '排序', [['newest', '最新优先'], ['oldest', '最早优先'], ['loss', 'Loss 点数'], ['logs', '日志行数'], ['name', '名称']]),
     ].join('');
+    const advancedActive = ['trainingVariant', 'archived', 'source', 'preprocessPrecision', 'blockSwapPrecision', 'baseCompute', 'precisionPreference']
+        .some((key) => filters[key] !== HISTORY_FILTER_DEFAULTS[key]);
+    return `${basic}<details class="dragon-history-advanced"${advancedActive ? ' open' : ''}><summary>高级筛选</summary><div>${advanced}</div></details>`;
 }
 
 function historyFilterOptionAvailable(tasks, key, value) {
@@ -530,7 +595,7 @@ function detailRow(label, value) {
 }
 
 function metricTile(label, value) {
-    return `<article><strong>${escapeHtml(value ?? '-')}</strong><span>${escapeHtml(label)}</span></article>`;
+    return `<article><span>${escapeHtml(label)}</span><strong>${formatMetricHtml(value ?? '-')}</strong></article>`;
 }
 
 function inlineError(message) {

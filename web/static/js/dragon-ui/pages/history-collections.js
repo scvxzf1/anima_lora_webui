@@ -1,7 +1,7 @@
 /* Dragon history collection workbench: pure rendering and collection helpers. */
 
 import { escapeHtml } from '../../shared/format.js?v=dragon-ui-20260812v35';
-import { filterHistoryTasks, stateText, taskDisplayName } from './history-view.js?v=dragon-ui-20260819v92';
+import { filterHistoryTasks, stateText, taskDisplayName } from './history-view.js?v=dragon-ui-20260825v96';
 
 export const HISTORY_COLLECTION_ALL = '__all__';
 export const HISTORY_COLLECTION_UNGROUPED = '__ungrouped__';
@@ -68,16 +68,15 @@ export function renderHistoryCollectionWorkbench(tasks = [], filters = {}, works
         <section class="dragon-history-workbench" data-history-workbench>
             <header class="dragon-history-workbench-hero">
                 <div><span class="dragon-eyebrow">COLLECTION WORKBENCH</span><h2>历史分组</h2><p>选择任务或拖动配置组，在右侧导航中整理训练记录。</p></div>
-                <div class="dragon-history-workbench-metrics" aria-label="历史分组统计">
-                    ${metric(collections.filter((item) => item.value).length, '分组')}
-                    ${metric(filtered.length, '当前任务')}
-                    ${metric(configGroups.length, '任务集')}
-                    ${metric(selected.length, '已选任务')}
-                </div>
             </header>
             <div class="dragon-history-workbench-toolbar">
-                <strong>当前：${escapeHtml(active.label)}</strong>
-                <span>${visible.length} 条任务 · ${selected.length} 条已选</span>
+                <div class="dragon-history-workbench-context"><strong>当前：${escapeHtml(active.label)}</strong><span>${visible.length} 条任务 · ${selected.length} 条已选</span></div>
+                <div class="dragon-history-workbench-metrics" aria-label="历史分组统计">
+                    ${metric(collections.filter((item) => item.value).length, '分组')}
+                    ${metric(filtered.length, '任务')}
+                    ${metric(configGroups.length, '任务集')}
+                    ${metric(selected.length, '已选')}
+                </div>
                 <div>
                     <button class="dragon-btn dragon-btn-secondary dragon-btn-sm" type="button" data-history-collection-action="assign"${selected.length ? '' : ' disabled'}>设置分组</button>
                     <button class="dragon-btn dragon-btn-ghost dragon-btn-sm" type="button" data-history-collection-action="clear-selected"${selected.length ? '' : ' disabled'}>清除分组</button>
@@ -171,7 +170,7 @@ function renderConfigGroup(group, workspace) {
                     <span aria-hidden="true">${expanded ? '−' : '+'}</span><span><strong>${escapeHtml(group.label)}</strong><small>${group.tasks.length} 条 · ${training} 训${preprocess ? ` · ${preprocess} 预` : ''}${errors ? ` · ${errors} 异常` : ''}${queue ? ` · ${queue} 队列` : ''}</small></span>
                 </button>
             </div>
-            ${expanded ? `<ul class="dragon-history-config-task-list">${group.tasks.map((task) => renderWorkbenchTask(task, workspace)).join('')}</ul>` : `<button class="dragon-history-config-collapsed" type="button" data-history-collection-action="toggle-config" data-history-config-key="${escapeHtml(group.key)}">已折叠 ${group.tasks.length} 条任务 · 点击展开查看</button>`}
+            ${expanded ? `<ul class="dragon-history-config-task-list">${group.tasks.map((task) => renderWorkbenchTask(task, workspace)).join('')}</ul>` : ''}
         </article>
     `;
 }
@@ -184,8 +183,47 @@ function renderWorkbenchTask(task, workspace) {
         <a class="dragon-dataset-preset-item" href="#history/${encodeURIComponent(task.id || '')}"><span><strong>${escapeHtml(taskDisplayName(task))}</strong><small>${escapeHtml([task.variant, task.preset, historyTaskCollection(task) || '未分类'].filter(Boolean).join(' · '))}</small></span></a>
         <span class="dragon-history-item-state" data-state="${escapeHtml(task.state || task.status || 'unknown')}">${escapeHtml(stateText(task.state || task.status))}</span>
         <time>${escapeHtml(time)}</time>
-        <span class="dragon-history-workbench-counts">${Number(task.metric_count || 0)} loss / ${Number(task.log_count || 0)} log</span>
+        ${renderTaskMetrics(task)}
     </li>`;
+}
+
+function renderTaskMetrics(task) {
+    const step = task.last_step != null && Number.isFinite(Number(task.last_step))
+        ? Number(task.last_step)
+        : null;
+    const loss = task.final_loss != null && Number.isFinite(Number(task.final_loss))
+        ? Number(task.final_loss)
+        : null;
+    if (step == null && loss == null) {
+        return '<span class="dragon-history-task-metrics is-empty">暂无指标</span>';
+    }
+    const trend = Array.isArray(task.loss_preview)
+        ? task.loss_preview.map(Number).filter(Number.isFinite)
+        : [];
+    return `<span class="dragon-history-task-metrics"><span class="dragon-history-task-metric-copy">${step == null ? '' : `<span><small>Step</small><strong>${step.toLocaleString('en-US')}</strong></span>`}${loss == null ? '' : `<span><small>Final Loss</small><strong>${formatTaskLoss(loss)}</strong></span>`}</span>${renderLossSparkline(trend, step)}</span>`;
+}
+
+function renderLossSparkline(values, step) {
+    if (values.length < 2) return '';
+    const width = 76;
+    const height = 24;
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    const span = max - min || 1;
+    const points = values.map((value, index) => {
+        const x = (index / (values.length - 1)) * width;
+        const y = 3 + (1 - (value - min) / span) * (height - 6);
+        return `${x.toFixed(1)},${y.toFixed(1)}`;
+    });
+    const lastY = points.at(-1).split(',')[1];
+    const stepText = step == null ? '未记录' : Number(step).toLocaleString('en-US');
+    const label = `Loss 趋势，最小 ${formatTaskLoss(min)}，最大 ${formatTaskLoss(max)}，Step ${stepText}`;
+    return `<span class="dragon-history-task-sparkline-wrap" tabindex="0" aria-label="${escapeHtml(label)}"><svg class="dragon-history-task-sparkline" viewBox="0 0 ${width} ${height}" aria-hidden="true"><polyline points="${points.join(' ')}"></polyline><circle cx="${width}" cy="${lastY}" r="2"></circle></svg><span class="dragon-history-task-sparkline-tooltip" role="tooltip"><span><small>Min Loss</small><strong>${formatTaskLoss(min)}</strong></span><span><small>Max Loss</small><strong>${formatTaskLoss(max)}</strong></span><span><small>Step</small><strong>${stepText}</strong></span></span></span>`;
+}
+
+function formatTaskLoss(value) {
+    if (!Number.isFinite(value)) return '—';
+    return Math.abs(value) >= 0.0001 ? value.toFixed(4) : value.toExponential(2);
 }
 
 function renderCollectionNavItem(item, activeKey, workspace) {
@@ -209,7 +247,7 @@ function renderCollectionEmpty(active) {
 }
 
 function metric(value, label) {
-    return `<div><strong>${Number(value || 0)}</strong><span>${label}</span></div>`;
+    return `<span><strong>${Number(value || 0)}</strong><small>${label}</small></span>`;
 }
 
 function uniqueStrings(values) {

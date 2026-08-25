@@ -386,6 +386,46 @@ export const FIELD_HELP_METHOD_ZH = {
         ["缓存过期时需要重新预处理，否则会使用旧特征。"],
         "推荐 true。"
     ),
+    validation_baselines: help(
+        "验证时额外运行方法专属的基线对照。",
+        "开启后，IP-Adapter 会在同一批数据上额外比较无 IP 条件和打乱参考图等情况；关闭可跳过这些额外 forward。",
+        ["能分离观察适配器是否真正使用了图像条件。"],
+        ["每个基线都会增加一次完整验证前向，验证耗时明显上升。"],
+        ["FM-MSE 对照只是必要诊断，不能代替样张质量和 CMMD 验收。"],
+        "普通长训保持变体默认；排查 IP-Adapter 条件是否生效时再开启。"
+    ),
+    ip_pair_mode: help(
+        "选择 IP-Adapter 参考图与训练目标图的配对方式。",
+        "self 使用同一张图；identity 按角色→作品→画师层级查找同身份的不同图；identity_cross_artist 还要求参考图来自不同画师。",
+        ["异图配对能减少复制目标图的捷径，迫使图像通道学习身份不变特征。"],
+        ["异图模式需要磁盘 PE 特征缓存和 caption_index.json。"],
+        ["数据索引层级错误会配到无关图像；异图模式与 PE-LoRA 实时编码路径不兼容。"],
+        "普通复现用 self；身份学习优先用 identity，需要去除画风影响时再用 identity_cross_artist。"
+    ),
+    ip_pair_prob: help(
+        "每个训练步使用异图身份对的概率。",
+        "取值 0-1。例如 0.8 表示 80% 的步使用异图参考，其余 20% 保留 self 配对。",
+        ["保留少量 self 配对可以稳定早期训练，同时仍以身份迁移为主。"],
+        ["数值越高，训练越依赖配对索引的质量。"],
+        ["设为 1 且可用异图过少时，会频繁回退 self，实际比例可能与表单不同。"],
+        "identity 模式从 0.8 开始；数据少或配对质量不稳时降到 0.5。"
+    ),
+    ip_pair_min_level: help(
+        "身份对查找失败时允许回退到的最宽松层级。",
+        "character 只接受同角色；copyright 允许同作品；artist 还允许同画师。找不到时最终回退 self。",
+        ["可在配对数量和身份一致性之间取得平衡。"],
+        ["层级越宽松，候选更多，但身份一致性越弱。"],
+        ["artist 层级可能把“同画风”误当成“同身份”，需检查 caption 索引标签。"],
+        "强角色数据先用 character；缺少同角色异图时再放宽到 copyright 或 artist。"
+    ),
+    ip_pair_caption_strip_p: help(
+        "异图配对步中移除目标 caption 里角色/作品标签的概率。",
+        "取值 0-1。大于 0 时要关闭 use_text_cache，否则已缓存的文本 embedding 仍包含身份信息，该开关不会生效。",
+        ["可迫使身份信息通过 IP 图像通道传入，减少文本泄漏捷径。"],
+        ["关闭文本缓存会增加训练时编码成本。"],
+        ["移除概率过高会削弱文本可控性；在 use_text_cache=true 时误以为已启用是常见误区。"],
+        "快速缓存训练保持 0；做文本泄漏对照时先关闭文本缓存，再从小概率开始。"
+    ),
     use_easycontrol: help(
         "启用 EasyControl 图像条件方法。",
         "只有 easycontrol 变体中开启。",
@@ -473,5 +513,29 @@ export const FIELD_HELP_METHOD_ZH = {
         ["增加额外训练目标。"],
         ["非零值未经验证时可能影响主目标。"],
         "保持 0.0，除非正在复现实验。"
+    ),
+    content_router_source: help(
+        "选择 ChimeraHydra 内容专家路由器的输入信号。",
+        "input 使用每层输入做局部路由；crossattn_emb 使用池化后的文本 cross-attention embedding 做全局内容路由。",
+        ["crossattn_emb 能让同一步的内容专家分配直接受提示词语义驱动。"],
+        ["全局路由增加文本特征传递和路由器计算。"],
+        ["crossattn_emb 只支持 ChimeraHydra；非 Chimera 方法需改用 router_source。"],
+        "ChimeraHydra 现有变体保持 crossattn_emb；复现旧的逐层路由时才用 input。"
+    ),
+    content_router_init_std: help(
+        "ChimeraHydra 内容路由器权重的初始化标准差。",
+        "普通路由初始化可使用如 0.001 的小正数；开启 chimera_centered_gate 时路由器会内部零初始化，此值会被忽略。",
+        ["非零小初值可以在普通 gate 下打破专家完全对称。"],
+        ["数值越大，训练起点的专家偏置越强。"],
+        ["过大可能让路由早期过快尖锐化；centered gate 开启时修改它不会产生效果。"],
+        "保持 Chimera 变体默认；centered gate 开启时无需单独调整。"
+    ),
+    content_router_layer_norm: help(
+        "在送入 ChimeraHydra 内容路由器前对池化特征应用无参数 LayerNorm。",
+        "true 会先标准化 crossattn_emb 特征尺度；false 保留原始幅度。",
+        ["减少不同 prompt 长度和特征幅度对路由分配的非预期影响。"],
+        ["会移除特征整体幅度信息，与旧 checkpoint 的路由分布可能不同。"],
+        ["继续训练时改变该开关会改变路由器输入分布，应与 checkpoint 元数据保持一致。"],
+        "新 ChimeraHydra 训练保持 true；只在复现旧配置时关闭。"
     ),
 };

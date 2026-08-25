@@ -1,5 +1,7 @@
 /* Independent VRAM, GPU-utilization, and temperature charts for history details. */
 
+import { areaSvgPath, smoothSvgPath } from './trend-utils.js?v=dragon-ui-20260825v1';
+
 const WIDTH = 420;
 const HEIGHT = 180;
 const PADDING = { top: 30, right: 14, bottom: 18, left: 54 };
@@ -52,10 +54,11 @@ function renderSystemChart(points, rows, spec) {
         const value = domain.max - ratio * (domain.max - domain.min);
         return `<line x1="${PADDING.left}" y1="${y}" x2="${WIDTH - PADDING.right}" y2="${y}" class="dragon-history-system-grid-line"/><text x="${PADDING.left - 8}" y="${y + 3}" class="dragon-history-system-axis-label">${formatSystemValue(value, spec.unit)}</text>`;
     }).join('');
-    const line = points.map((point) => `${layout.x(point.x).toFixed(2)},${layout.y(point.value).toFixed(2)}`).join(' ');
-    const area = systemAreaPath(points.map((point) => [layout.x(point.x), layout.y(point.value)]), HEIGHT - PADDING.bottom);
+    const pointPairs = points.map((point) => [layout.x(point.x), layout.y(point.value)]);
+    const line = smoothSvgPath(pointPairs, .2);
+    const area = areaSvgPath(line, pointPairs, HEIGHT - PADDING.bottom);
     return `<svg class="dragon-history-system-chart" data-history-system-chart="${spec.id}" viewBox="0 0 ${WIDTH} ${HEIGHT}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="${spec.label}趋势图，悬停查看采样值">
-        ${grid}<path d="${area}" class="dragon-history-system-area"/><polyline points="${line}" class="dragon-history-system-line"/>
+        ${grid}<path d="${area}" class="dragon-history-system-area"/><path d="${line}" class="dragon-history-system-line"/>
         <g data-history-system-hover hidden><line data-history-system-hover-guide y1="${PADDING.top}" y2="${HEIGHT - PADDING.bottom}" class="dragon-history-system-hover-guide"/><circle data-history-system-hover-point r="4.2" class="dragon-history-system-hover-point"/><text x="${WIDTH - PADDING.right}" y="17" text-anchor="end" class="dragon-history-system-hover-text" data-history-system-hover-text></text></g>
         <rect x="${PADDING.left}" y="${PADDING.top}" width="${layout.plotW}" height="${layout.plotH}" class="dragon-history-system-hitarea"/>
     </svg>`;
@@ -160,14 +163,6 @@ function clientPointToSvg(svg, clientX, clientY) {
     }
     const rect = svg.getBoundingClientRect();
     return { x: ((clientX - rect.left) / Math.max(1, rect.width)) * WIDTH, y: ((clientY - rect.top) / Math.max(1, rect.height)) * HEIGHT };
-}
-
-function systemAreaPath(points, baseline) {
-    if (!points.length) return '';
-    const [firstX] = points[0];
-    const [lastX] = points[points.length - 1];
-    const line = points.map(([x, y]) => `L${x.toFixed(2)} ${y.toFixed(2)}`).join('');
-    return `M${firstX.toFixed(2)} ${baseline}${line}L${lastX.toFixed(2)} ${baseline}Z`;
 }
 
 function systemSampleLabel(returned, limits) {

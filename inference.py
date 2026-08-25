@@ -12,11 +12,7 @@ from safetensors.torch import load_file
 from safetensors import safe_open
 from diffusers.utils.torch_utils import randn_tensor
 
-from library.anima import (
-    models as anima_models,
-    strategy as strategy_anima,
-    text_strategies,
-)
+from library.anima import models as anima_models
 from library.models import qwen_vae as qwen_image_autoencoder_kl
 from library.runtime.device import clean_memory_on_device
 from library.inference import (
@@ -38,8 +34,9 @@ from library.inference.precision import (
     resolve_runtime_dtype,
     resolve_text_encoder_dtype,
 )
-from library.inference.text import MAX_CROSSATTN_TOKENS
-from library.env import resolve_model_family
+from library.env import KNOWN_MODEL_FAMILIES, resolve_model_family
+from library.models.family_registry import dispatch_model_family
+from library.inference.family_runtime import prepare_inference_family
 
 # Side-effect import: registers spectrum_denoise with library.inference.generation
 # so --spectrum dispatches without library.inference holding a hard edge into networks/.
@@ -72,8 +69,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--model_family",
         type=str,
         default=None,
-        choices=["anima", "krea2_raw"],
-        help="DiT model family (anima default, krea2_raw for Krea-2-Raw). "
+        choices=list(KNOWN_MODEL_FAMILIES),
+        help="DiT model family (anima default; krea2_raw supported; z_image "
+        "currently training-only). "
         "Unset falls back to env ANIMA_MODEL_FAMILY then 'anima'.",
     )
     parser.add_argument("--vae", type=str, default=None, help="VAE directory or path")
@@ -1029,6 +1027,10 @@ def _generate_krea2_latent(args, gen_settings) -> torch.Tensor:
     return latent
 
 
+def _generate_z_image_latent(args, gen_settings) -> torch.Tensor:
+    raise RuntimeError("Z-Image inference is not implemented in the training v1 path.")
+
+
 def main():
     args = parse_args()
 
@@ -1105,24 +1107,10 @@ def main():
 
     else:
         model_family = resolve_model_family(args)
-        if model_family == "krea2_raw":
-            from library.models.krea2_raw import inference_runner
-
-            inference_mode = (
-                "batch" if args.from_file else "interactive" if args.interactive else "single"
-            )
-            inference_runner.validate_krea2_inference_args(args, mode=inference_mode)
-
-        tokenize_strategy = strategy_anima.AnimaTokenizeStrategy(
-            qwen3_path=args.text_encoder,
-            t5_tokenizer_path=None,
-            qwen3_max_length=MAX_CROSSATTN_TOKENS,
-            t5_max_length=MAX_CROSSATTN_TOKENS,
+        inference_mode = (
+            "batch" if args.from_file else "interactive" if args.interactive else "single"
         )
-        text_strategies.TokenizeStrategy.set_strategy(tokenize_strategy)
-
-        encoding_strategy = strategy_anima.AnimaTextEncodingStrategy()
-        text_strategies.TextEncodingStrategy.set_strategy(encoding_strategy)
+        prepare_inference_family(args, model_family, inference_mode)
 
         if args.from_file:
             # Batch mode from file
@@ -1141,10 +1129,16 @@ def main():
             # generate() no longer writes the resolved seed back to args, so
             # pin it here for save_output()'s filename + metadata.
             args.seed = resolve_seed(args)
-            if model_family == "krea2_raw":
-                latent = _generate_krea2_latent(args, gen_settings)
-            else:
-                latent = generate(args, gen_settings)
+            generator = dispatch_model_family(
+                model_family,
+                operation="single-prompt inference generation",
+                handlers={
+                    "anima": generate,
+                    "krea2_raw": _generate_krea2_latent,
+                    "z_image": _generate_z_image_latent,
+                },
+            )
+            latent = generator(args, gen_settings)
 
             clean_memory_on_device(device)
 

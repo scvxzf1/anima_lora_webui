@@ -15,6 +15,7 @@ import logging
 import os
 
 from library.datasets import base as _datasets_base
+from library.env import KNOWN_MODEL_FAMILIES
 from library.log import setup_logging
 
 setup_logging()
@@ -42,9 +43,8 @@ def add_sd_models_arguments(parser: argparse.ArgumentParser):
         "--model_family",
         type=str,
         default=None,
-        choices=["anima", "krea2_raw"],
-        help="model family switch: anima (default, Qwen3+T5 cross-attn DiT) or "
-        "krea2_raw (Qwen3-VL single-stream MMDiT, docs/proposal/krea2_raw_migration.md). "
+        choices=list(KNOWN_MODEL_FAMILIES),
+        help="model family switch: anima (default), krea2_raw, or z_image. "
         "None → fall back to resolve_model_family() (env/base.toml, stage 6 truth source).",
     )
     parser.add_argument(

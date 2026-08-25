@@ -8,6 +8,8 @@ import { getConfigState } from '../anima-app/helpers/config-state-bridge.js?v=mo
 import { handleFormFieldChange } from './form-fields.js?v=module-bootstrap-20260809-nf4-v2';
 import { setTomlStatus } from '../anima-app/helpers/toml-action-state-bridge.js?v=module-bootstrap-20260809-nf4-v2';
 import { openModelConfigPickerDialog } from '../model-configs/index.js?v=module-bootstrap-20260809-nf4-v2';
+import { setFieldInputValue } from './field-input.js?v=module-bootstrap-20260809-nf4-v2';
+import { modelFamilyFormDefaults } from './model-family-defaults.js?v=module-bootstrap-20260824-zimage-defaults-v1';
 
 const configState = getConfigState();
 
@@ -43,6 +45,7 @@ export async function fillGlobalModelPathsIntoConfigForm() {
         ['qwen3', selected.qwen3],
         ['vae', selected.vae],
     ];
+    const familyDefaults = modelFamilyFormDefaults(selected.model_family);
 
     let applied = 0;
     for (const [key, value] of entries) {
@@ -62,6 +65,10 @@ export async function fillGlobalModelPathsIntoConfigForm() {
         input.value = value;
         applied += 1;
     }
+    for (const [key, value] of familyDefaults) {
+        setFieldInputValue(key, value);
+        applied += 1;
+    }
     const familyInput = document.querySelector('#config-form .field-input[data-key="model_family"]');
     handleFormFieldChange({
         target: familyInput || { dataset: { key: 'model_family' }, value: selected.model_family },
@@ -69,7 +76,7 @@ export async function fillGlobalModelPathsIntoConfigForm() {
     setTomlStatus(
         applied ? 'ok' : 'error',
         applied
-            ? `已应用“${selected.name}”，请保存当前配置后再训练`
+            ? `已应用“${selected.name}”${familyDefaults.length ? '并同步模型兼容参数' : ''}，请保存当前配置后再训练`
             : '当前表单没有可覆盖的模型配置字段'
     );
 }

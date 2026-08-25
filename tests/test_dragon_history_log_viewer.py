@@ -186,6 +186,125 @@ def test_history_log_viewer_is_wired_without_twelve_line_slice() -> None:
     assert "line.dataset.searchActive = 'true'" in viewer
 
 
+def test_history_log_viewer_loads_arbitrary_pages_without_mounting_all_rows() -> None:
+    if not shutil.which("node"):
+        pytest.skip("node is required for Dragon history log viewer checks")
+    jsdom_api = REPO_ROOT / "web/frontend-next/node_modules/jsdom/lib/api.js"
+    if not jsdom_api.exists():
+        pytest.skip("jsdom is required for Dragon history log viewer checks")
+
+    script = r"""
+import { JSDOM } from './web/frontend-next/node_modules/jsdom/lib/api.js';
+import { bindHistoryLogViewer } from './web/static/js/dragon-ui/pages/history-log-viewer.js';
+
+const dom = new JSDOM(`<section data-history-detail-panel="logs">
+  <input type="search" data-history-log-search>
+  <span data-history-log-search-status></span>
+  <button data-history-log-search-previous></button>
+  <button data-history-log-search-next></button>
+  <span data-history-log-window-status></span>
+  <div data-history-log-viewer role="list"></div>
+</section>`, { pretendToBeVisual: true });
+globalThis.window = dom.window;
+globalThis.document = dom.window.document;
+globalThis.MutationObserver = dom.window.MutationObserver;
+globalThis.ResizeObserver = undefined;
+globalThis.requestAnimationFrame = (callback) => { callback(); return 1; };
+globalThis.cancelAnimationFrame = () => {};
+
+const viewer = document.querySelector('[data-history-log-viewer]');
+Object.defineProperty(viewer, 'clientHeight', { configurable: true, value: 220 });
+const total = 10000;
+const initialOffset = total - 360;
+const initial = Array.from({ length: 360 }, (_, index) => ({ line: `line-${initialOffset + index}` }));
+const requests = [];
+const searchRequests = [];
+const loadRange = async (offset, limit) => {
+  requests.push({ offset, limit });
+  return {
+    ok: true,
+    offset,
+    total,
+    logs: Array.from({ length: limit }, (_, index) => ({ line: `line-${offset + index}` })),
+  };
+};
+const searchMatch = async (query, cursor, direction) => {
+  searchRequests.push({ query, cursor, direction });
+  return { ok: true, match_index: 20, match_ordinal: 1, matches_total: 1, total };
+};
+const cleanup = bindHistoryLogViewer(document, initial, {
+  total,
+  offset: initialOffset,
+  loadRange,
+  searchMatch,
+});
+await new Promise((resolve) => setTimeout(resolve, 0));
+const latest = {
+  last: [...viewer.querySelectorAll('.dragon-history-log-line')].at(-1)?.textContent,
+  mounted: viewer.querySelectorAll('.dragon-history-log-line').length,
+  requests: requests.length,
+};
+
+viewer.scrollTop = 0;
+viewer.dispatchEvent(new dom.window.Event('scroll'));
+await new Promise((resolve) => setTimeout(resolve, 0));
+const top = {
+  first: viewer.querySelector('.dragon-history-log-line')?.textContent,
+  mounted: viewer.querySelectorAll('.dragon-history-log-line').length,
+  status: document.querySelector('[data-history-log-window-status]').textContent,
+  request: requests.find((item) => item.offset === 0),
+};
+
+viewer.scrollTop = 5000 * 22;
+viewer.dispatchEvent(new dom.window.Event('scroll'));
+await new Promise((resolve) => setTimeout(resolve, 0));
+const middle = {
+  first: viewer.querySelector('.dragon-history-log-line')?.textContent,
+  mounted: viewer.querySelectorAll('.dragon-history-log-line').length,
+  start: viewer.dataset.historyLogRenderStart,
+  requestedOffsets: requests.map((item) => item.offset),
+};
+const input = document.querySelector('[data-history-log-search]');
+input.value = 'needle';
+input.dispatchEvent(new dom.window.Event('input'));
+await new Promise((resolve) => setTimeout(resolve, 250));
+const search = {
+  status: document.querySelector('[data-history-log-search-status]').textContent,
+  activeIndex: viewer.querySelector('[data-search-active="true"]')?.dataset.logIndex,
+  request: searchRequests[0],
+};
+cleanup();
+console.log(JSON.stringify({ latest, top, middle, search }));
+"""
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", script],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        timeout=20,
+    )
+    assert result.returncode == 0, result.stderr or result.stdout
+    payload = json.loads(result.stdout)
+
+    assert payload["latest"] == {"last": "line-9999", "mounted": 160, "requests": 0}
+    assert payload["top"] == {
+        "first": "line-0",
+        "mounted": 360,
+        "status": "第 1–10 / 10000 行",
+        "request": {"offset": 0, "limit": 360},
+    }
+    assert payload["middle"]["first"] == "line-4800"
+    assert payload["middle"]["mounted"] == 360
+    assert payload["middle"]["start"] == "4800"
+    assert 4680 in payload["middle"]["requestedOffsets"]
+    assert 5040 in payload["middle"]["requestedOffsets"]
+    assert payload["search"] == {
+        "status": "1 / 1",
+        "activeIndex": "20",
+        "request": {"query": "needle", "cursor": 5000, "direction": "forward"},
+    }
+
+
 def test_history_log_search_navigates_full_virtualized_range() -> None:
     if not shutil.which("node"):
         pytest.skip("node is required for Dragon history log search checks")

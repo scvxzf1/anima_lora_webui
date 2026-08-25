@@ -127,6 +127,16 @@ def test_merge_helpers_remain_available_from_legacy_module(tmp_path: Path, monke
         "resized_image_dir": "image_dataset/hero_resized",
         "lora_cache_dir": "image_dataset/hero_lora_cache",
     }
+
+    source_dir = legacy_config.ROOT / "image_dataset" / "inspect"
+    source_dir.mkdir(parents=True)
+    (source_dir / "hero.png").write_bytes(b"png")
+    (source_dir / "notes.txt").write_text("caption", encoding="utf-8")
+    inspected = legacy_config.suggest_data_dirs("image_dataset/inspect", inspect=True)
+    assert inspected["source_exists"] is True
+    assert inspected["source_is_dir"] is True
+    assert inspected["source_image_count"] == 1
+    assert inspected["source_inspection_error"] == ""
     assert legacy_config.suggest_dataset_dirs(["image_dataset/hero"]) == {
         "ok": True,
         "datasets": [{

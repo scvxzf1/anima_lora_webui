@@ -28,6 +28,7 @@ from library.datasets import (
     load_arbitrary_dataset,
 )
 from library.runtime.accelerator import patch_accelerator_for_fp16_training
+from library.models.family_registry import dispatch_model_family
 from library.training.gradient_sync import prepare_network_for_manual_gradient_sync
 from library.training.optimizers import get_optimizer, get_optimizer_train_eval_fn
 from library.training.schedulers import get_scheduler_fix
@@ -37,6 +38,22 @@ from networks import all_network_kwargs
 logger = logging.getLogger(__name__)
 
 ROOT = Path(__file__).resolve().parents[2]
+
+
+def _anima_lora_target_kwargs() -> dict:
+    return {}
+
+
+def _krea2_lora_target_kwargs() -> dict:
+    from library.models.krea2_raw.lora_targets import krea2_target_kwargs
+
+    return krea2_target_kwargs()
+
+
+def _z_image_lora_target_kwargs() -> dict:
+    from library.models.z_image.lora_targets import z_image_target_kwargs
+
+    return z_image_target_kwargs()
 
 # Network-module-consumed flags (networks.lora_anima / networks.methods.*).
 # Source of truth is the registry in networks/__init__.py.
@@ -170,24 +187,30 @@ class TrainingBootstrap:
         # Thin dispatch only — the actual target spec lives in
         # library.models.krea2_raw.lora_targets. Explicit --network_args /
         # TOML keys still win (don't override user-provided values).
-        if model_family == "krea2_raw":
-            from library.models.krea2_raw.lora_targets import krea2_target_kwargs
+        target_factory = dispatch_model_family(
+            model_family,
+            operation="LoRA target specification",
+            handlers={
+                "anima": _anima_lora_target_kwargs,
+                "krea2_raw": _krea2_lora_target_kwargs,
+                "z_image": _z_image_lora_target_kwargs,
+            },
+        )
+        for k, v in target_factory().items():
+            if k not in net_kwargs:
+                if v is None:
+                    # None means "use from_kwargs default" (e.g. empty
+                    # include_patterns → no exempt). Skip so from_kwargs
+                    # sees the absent key, not the string "None".
+                    continue
+                if isinstance(v, (list, tuple)):
+                    import json
 
-            for k, v in krea2_target_kwargs().items():
-                if k not in net_kwargs:
-                    if v is None:
-                        # None means "use from_kwargs default" (e.g. empty
-                        # include_patterns → no exempt). Skip so from_kwargs
-                        # sees the absent key, not the string "None".
-                        continue
-                    if isinstance(v, (list, tuple)):
-                        import json
-
-                        net_kwargs[k] = json.dumps(list(v))
-                    elif isinstance(v, bool):
-                        net_kwargs[k] = "true" if v else "false"
-                    else:
-                        net_kwargs[k] = str(v)
+                    net_kwargs[k] = json.dumps(list(v))
+                elif isinstance(v, bool):
+                    net_kwargs[k] = "true" if v else "false"
+                else:
+                    net_kwargs[k] = str(v)
         return net_kwargs
 
     @staticmethod

@@ -19,6 +19,11 @@ import os
 from pathlib import Path
 from typing import Any, Optional
 
+from library.models.family_registry import (
+    known_model_families,
+    normalize_registered_family,
+)
+
 
 def project_root() -> Path:
     return Path(__file__).resolve().parents[1]
@@ -247,19 +252,17 @@ def get_training_queue_root() -> Path:
 # family instead of silently assuming Anima cross-attn / AdaLN geometry.
 DEFAULT_MODEL_FAMILY = "anima"
 _ANIMA_ONLY_FAMILIES = ("anima",)
-KNOWN_MODEL_FAMILIES = ("anima", "krea2_raw")
+KNOWN_MODEL_FAMILIES = known_model_families()
 _KNOWN_FAMILIES = KNOWN_MODEL_FAMILIES
 
 
 def normalize_model_family(value, *, source: str = "model_family", allow_empty: bool = False) -> str:
     """Return a canonical model family or reject an unknown explicit value."""
-    normalized = str(value or "").strip().lower()
-    if not normalized and allow_empty:
-        return ""
-    if normalized not in KNOWN_MODEL_FAMILIES:
-        allowed = ", ".join(KNOWN_MODEL_FAMILIES)
-        raise ValueError(f"{source} must be one of: {allowed}; got {value!r}")
-    return normalized
+    return normalize_registered_family(
+        value,
+        source=source,
+        allow_empty=allow_empty,
+    )
 
 
 def resolve_model_family(args=None) -> str:

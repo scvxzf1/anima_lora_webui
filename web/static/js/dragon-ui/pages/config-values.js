@@ -23,7 +23,10 @@ export function serializeConfigValue(input, originalValue) {
     if (Array.isArray(originalValue)) {
         return input.value.split(/[\n,]/).map((item) => item.trim()).filter(Boolean);
     }
-    if (input.type === 'number') return input.value === '' ? '' : Number(input.value);
+    if (typeof originalValue === 'boolean') return input.value === 'true';
+    if (typeof originalValue === 'number' || input.type === 'number') {
+        return input.value === '' ? '' : Number(input.value);
+    }
     return input.value;
 }
 

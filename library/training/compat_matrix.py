@@ -10,6 +10,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Mapping
 
+from library.models.family_registry import get_model_family_spec
+
 
 VALID_SELECTIVE_CHECKPOINTS = {
     "off",
@@ -24,9 +26,18 @@ VALID_SELECTIVE_CHECKPOINTS = {
 KREA2_ATTN_MODES = {"", "torch", "flash", "sdpa"}
 KREA2_SELECTIVE_CHECKPOINTS = {"off", "every_other"}
 KREA2_UNSUPPORTED_ADAPTER_FLAGS = (
-    "use_ip_adapter", "use_easycontrol", "use_byg", "use_lokr", "use_loha",
-    "use_glora", "use_vera", "use_ortho", "use_chimera_hydra",
-    "use_timestep_mask", "add_reft", "train_llm_adapter",
+    "use_ip_adapter",
+    "use_easycontrol",
+    "use_byg",
+    "use_lokr",
+    "use_loha",
+    "use_glora",
+    "use_vera",
+    "use_ortho",
+    "use_chimera_hydra",
+    "use_timestep_mask",
+    "add_reft",
+    "train_llm_adapter",
 )
 
 
@@ -114,15 +125,44 @@ def _float_value(value: Any, fallback: float = 0.0) -> float:
         return fallback
 
 
+def _nested_caption_dropout_enabled(config: Mapping[str, Any] | object) -> bool:
+    if not isinstance(config, Mapping):
+        return False
+    datasets = config.get("datasets")
+    if not isinstance(datasets, (list, tuple)):
+        return False
+    for dataset in datasets:
+        if not isinstance(dataset, Mapping):
+            continue
+        if _float_value(dataset.get("caption_dropout_rate"), 0.0) > 0:
+            return True
+        subsets = dataset.get("subsets")
+        if not isinstance(subsets, (list, tuple)):
+            continue
+        if any(
+            isinstance(subset, Mapping)
+            and _float_value(subset.get("caption_dropout_rate"), 0.0) > 0
+            for subset in subsets
+        ):
+            return True
+    return False
+
+
 def check_training_compat(config: Mapping[str, Any] | object) -> TrainingCompatResult:
     """Validate optimization-flag combinations used by training and Web preflight."""
 
     out = _CompatBuilder()
 
-    selective_checkpoint = str(_get(config, "selective_checkpoint", "off") or "off").strip().lower()
+    selective_checkpoint = (
+        str(_get(config, "selective_checkpoint", "off") or "off").strip().lower()
+    )
     gradient_checkpointing = _bool_value(_get(config, "gradient_checkpointing"), False)
-    cpu_offload_checkpointing = _bool_value(_get(config, "cpu_offload_checkpointing"), False)
-    unsloth_offload_checkpointing = _bool_value(_get(config, "unsloth_offload_checkpointing"), False)
+    cpu_offload_checkpointing = _bool_value(
+        _get(config, "cpu_offload_checkpointing"), False
+    )
+    unsloth_offload_checkpointing = _bool_value(
+        _get(config, "unsloth_offload_checkpointing"), False
+    )
     blocks_to_swap = _int_value(_get(config, "blocks_to_swap"), 0)
     torch_compile = _bool_value(_get(config, "torch_compile"), False)
     use_lokr = _bool_value(_get(config, "use_lokr"), False)
@@ -130,12 +170,21 @@ def check_training_compat(config: Mapping[str, Any] | object) -> TrainingCompatR
     functional_loss_weight = _float_value(_get(config, "functional_loss_weight"), 0.0)
     dynamo_backend = str(_get(config, "dynamo_backend", "") or "")
     compile_inductor_mode = _get(config, "compile_inductor_mode", None)
-    model_family = str(_get(config, "model_family", "") or "").strip().lower()
-    krea2_family = model_family == "krea2_raw"
+    model_family = str(_get(config, "model_family", "") or "anima").strip().lower()
+    try:
+        family_spec = get_model_family_spec(
+            model_family,
+            source="training compatibility model_family",
+        )
+    except ValueError as exc:
+        out.error("invalid_model_family", "model_family", str(exc))
+        return out.build()
+    krea2_family = family_spec.name == "krea2_raw"
+    z_image_family = family_spec.name == "z_image"
     compile_dynamic_seq = _bool_value(_get(config, "compile_dynamic_seq"), False)
-    v100_flash_stability = str(
-        _get(config, "v100_flash_stability", "off") or "off"
-    ).strip().lower()
+    v100_flash_stability = (
+        str(_get(config, "v100_flash_stability", "off") or "off").strip().lower()
+    )
 
     if selective_checkpoint not in VALID_SELECTIVE_CHECKPOINTS:
         out.error(
@@ -145,20 +194,25 @@ def check_training_compat(config: Mapping[str, Any] | object) -> TrainingCompatR
             + ", ".join(sorted(VALID_SELECTIVE_CHECKPOINTS)),
         )
 
-    if krea2_family:
+    if family_spec.plain_lora_only:
         adapter_conflicts = []
         if network_module not in {"", "networks.lora_anima"}:
             adapter_conflicts.append(f"network_module={network_module!r}")
         adapter_conflicts.extend(
-            flag for flag in KREA2_UNSUPPORTED_ADAPTER_FLAGS
+            flag
+            for flag in KREA2_UNSUPPORTED_ADAPTER_FLAGS
             if _bool_value(_get(config, flag), False)
         )
-        moe_style = str(_get(config, "use_moe_style", "false") or "false").strip().lower()
+        moe_style = (
+            str(_get(config, "use_moe_style", "false") or "false").strip().lower()
+        )
         if moe_style not in {"", "0", "false", "none", "off"}:
             adapter_conflicts.append(f"use_moe_style={moe_style!r}")
         if _bool_value(_get(config, "route_per_layer"), False):
             adapter_conflicts.append("route_per_layer")
-        router_source = str(_get(config, "router_source", "none") or "none").strip().lower()
+        router_source = (
+            str(_get(config, "router_source", "none") or "none").strip().lower()
+        )
         if router_source != "none":
             adapter_conflicts.append(f"router_source={router_source!r}")
         if _float_value(_get(config, "dora_wd"), 0.0) > 0:
@@ -169,12 +223,13 @@ def check_training_compat(config: Mapping[str, Any] | object) -> TrainingCompatR
             adapter_conflicts.append("functional_loss_weight")
         if adapter_conflicts:
             out.error(
-                "krea2_plain_lora_only",
+                ("krea2_plain_lora_only" if krea2_family else "family_plain_lora_only"),
                 "network_module",
-                "Krea-2 training currently supports only plain LoRA; unsupported: "
-                + ", ".join(adapter_conflicts),
+                f"{family_spec.display_name} training currently supports only "
+                "plain LoRA; unsupported: " + ", ".join(adapter_conflicts),
             )
 
+    if krea2_family:
         krea2_attn_mode = str(_get(config, "attn_mode", "") or "").strip().lower()
         if krea2_attn_mode not in KREA2_ATTN_MODES:
             out.error(
@@ -199,7 +254,9 @@ def check_training_compat(config: Mapping[str, Any] | object) -> TrainingCompatR
                 False,
                 message,
             )
-        normalized_inductor_mode = str(compile_inductor_mode or "default").strip().lower()
+        normalized_inductor_mode = (
+            str(compile_inductor_mode or "default").strip().lower()
+        )
         if normalized_inductor_mode != "default":
             out.error(
                 "krea2_compile_inductor_mode",
@@ -219,6 +276,137 @@ def check_training_compat(config: Mapping[str, Any] | object) -> TrainingCompatR
                 "krea2_v100_flash_stability",
                 "v100_flash_stability",
                 "v100_flash_stability is Anima-only and must be off for Krea-2.",
+            )
+
+    if z_image_family:
+        attn_mode = str(_get(config, "attn_mode", "torch") or "torch").strip().lower()
+        if attn_mode not in {"torch", "sdpa"} or _bool_value(
+            _get(config, "xformers"), False
+        ):
+            out.error(
+                "z_image_attention_mode",
+                "attn_mode",
+                "Z-Image v1 supports only attn_mode=torch (sdpa is an alias).",
+            )
+        mixed_precision = (
+            str(_get(config, "mixed_precision", "bf16") or "bf16").strip().lower()
+        )
+        if mixed_precision != "bf16":
+            out.error(
+                "z_image_bf16_only",
+                "mixed_precision",
+                "Z-Image v1 is validated only with mixed_precision=bf16.",
+            )
+        base_compute = (
+            str(_get(config, "base_compute", "bf16") or "bf16").strip().lower()
+        )
+        if base_compute != "bf16":
+            out.error(
+                "z_image_base_compute",
+                "base_compute",
+                "Z-Image v1 does not yet support NF4 or ConvRot base compute; use bf16.",
+            )
+        if torch_compile:
+            out.error(
+                "z_image_torch_compile",
+                "torch_compile",
+                "Z-Image torch.compile has not been validated; keep torch_compile=false.",
+            )
+        if blocks_to_swap > 0:
+            out.error(
+                "z_image_block_swap",
+                "blocks_to_swap",
+                "Z-Image block swap is not implemented; keep blocks_to_swap=0.",
+            )
+        if selective_checkpoint != "off":
+            out.error(
+                "z_image_selective_checkpoint",
+                "selective_checkpoint",
+                "Z-Image v1 supports full gradient checkpointing only.",
+            )
+        if cpu_offload_checkpointing or unsloth_offload_checkpointing:
+            out.error(
+                "z_image_checkpoint_offload",
+                "gradient_checkpointing",
+                "Z-Image v1 does not support CPU/Unsloth activation offload.",
+            )
+        if (
+            _get(config, "layer_start") is not None
+            or _get(config, "layer_end") is not None
+        ):
+            out.error(
+                "z_image_layer_range",
+                "layer_start",
+                "Z-Image layer_start/layer_end is not implemented for layers.N and "
+                "refiner blocks; remove the layer range.",
+            )
+        if _bool_value(_get(config, "weighted_captions"), False):
+            out.error(
+                "z_image_weighted_captions",
+                "weighted_captions",
+                "Z-Image weighted captions are not implemented in v1.",
+            )
+        loss_type = str(_get(config, "loss_type", "l2") or "l2").strip().lower()
+        if loss_type != "l2":
+            out.error(
+                "z_image_loss_type",
+                "loss_type",
+                "Z-Image v1 reproduces the official L2 flow-matching loss only.",
+            )
+        if _get(config, "t_min") is not None or _get(config, "t_max") is not None:
+            out.error(
+                "z_image_timestep_range",
+                "t_min",
+                "Z-Image v1 samples the complete official scheduler grid; "
+                "t_min/t_max are not supported.",
+            )
+        sampler = str(_get(config, "sampler", "default") or "default").strip().lower()
+        if sampler != "default":
+            out.error(
+                "z_image_training_sampler",
+                "sampler",
+                "Z-Image v1 supports only the official default training sampler.",
+            )
+        if v100_flash_stability != "off":
+            out.error(
+                "z_image_v100_flash_stability",
+                "v100_flash_stability",
+                "v100_flash_stability is Anima-only and must be off for Z-Image.",
+            )
+        flow_shift = _float_value(_get(config, "discrete_flow_shift"), 6.0)
+        if abs(flow_shift - 6.0) > 1e-7:
+            out.error(
+                "z_image_flow_shift",
+                "discrete_flow_shift",
+                "Z-Image training requires the official discrete_flow_shift=6.0.",
+            )
+        timestep_sampling = (
+            str(_get(config, "timestep_sampling", "uniform") or "uniform")
+            .strip()
+            .lower()
+        )
+        if timestep_sampling != "uniform":
+            out.error(
+                "z_image_timestep_sampling",
+                "timestep_sampling",
+                "Z-Image v1 uses the official shifted-uniform sigma schedule.",
+            )
+        weighting_scheme = (
+            str(_get(config, "weighting_scheme", "none") or "none").strip().lower()
+        )
+        if weighting_scheme != "none":
+            out.error(
+                "z_image_weighting_scheme",
+                "weighting_scheme",
+                "Z-Image v1 supports weighting_scheme=none only.",
+            )
+        caption_dropout_rate = _float_value(_get(config, "caption_dropout_rate"), 0.0)
+        if caption_dropout_rate > 0 or _nested_caption_dropout_enabled(config):
+            out.error(
+                "z_image_caption_dropout",
+                "caption_dropout_rate",
+                "Z-Image caption dropout requires cached empty-prompt embeddings and "
+                "is not supported in v1.",
             )
 
     if blocks_to_swap < 0:
@@ -306,9 +494,9 @@ def check_training_compat(config: Mapping[str, Any] | object) -> TrainingCompatR
         )
 
     base_compute = str(_get(config, "base_compute", "bf16") or "bf16").strip().lower()
-    block_swap_transfer_dtype = str(
-        _get(config, "block_swap_transfer_dtype", "bf16") or "bf16"
-    ).strip().lower()
+    block_swap_transfer_dtype = (
+        str(_get(config, "block_swap_transfer_dtype", "bf16") or "bf16").strip().lower()
+    )
     convrot_active = base_compute in {
         "w8a16_convrot",
         "w8a8_convrot",
@@ -387,7 +575,9 @@ def check_training_compat(config: Mapping[str, Any] | object) -> TrainingCompatR
     convrot_scope = str(_get(config, "convrot_scope", "mlp") or "mlp").strip().lower()
     convrot_touches_attn = False
     if convrot_active:
-        scope_tokens = {item.strip() for item in convrot_scope.split(",") if item.strip()}
+        scope_tokens = {
+            item.strip() for item in convrot_scope.split(",") if item.strip()
+        }
         attn_scope_tokens = {
             "all",
             "attention",
@@ -443,7 +633,10 @@ def check_training_compat(config: Mapping[str, Any] | object) -> TrainingCompatR
             )
             torch_compile = False
 
-        if torch_compile and compile_inductor_mode in {"reduce-overhead", "max-autotune"}:
+        if torch_compile and compile_inductor_mode in {
+            "reduce-overhead",
+            "max-autotune",
+        }:
             safe_mode = (
                 "max-autotune-no-cudagraphs"
                 if compile_inductor_mode == "max-autotune"

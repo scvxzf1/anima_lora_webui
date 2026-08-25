@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from library.models.family_registry import get_model_family_spec
 from library.preprocess.captions import normalize_caption_source_mode, read_caption_source_from_dirs
 from web.services.config.metadata import DATASET_IMAGE_EXTS
 from web.services.config.preflight_runtime import (
@@ -201,10 +202,13 @@ def _check_cache_sidecars(cfg: dict[str, Any], add) -> None:
     if not cache_dirs:
         return
 
+    family = str(cfg.get("model_family") or "anima").strip().lower()
+    family_spec = get_model_family_spec(family)
+    latent_pattern = "*_z_image.npz" if family == "z_image" else "*_anima.npz"
     if cfg.get("use_vae_cache", cfg.get("cache_latents_to_disk", False)):
-        _check_cache_sidecar_pattern(add, cache_dirs, "*.npz", "latent_cache", "VAE latent 缓存", "未找到 .npz latent 缓存，可能需要先预处理")
+        _check_cache_sidecar_pattern(add, cache_dirs, latent_pattern, "latent_cache", "VAE latent 缓存", "未找到当前模型 family 的 latent 缓存，可能需要先预处理")
     if cfg.get("use_text_cache", cfg.get("cache_text_encoder_outputs_to_disk", False)):
-        _check_cache_sidecar_pattern(add, cache_dirs, "*_anima_te.safetensors", "text_cache", "文本编码器缓存", "未找到文本编码器缓存，可能需要先预处理")
+        _check_cache_sidecar_pattern(add, cache_dirs, f"*{family_spec.text_cache.suffix}", "text_cache", "文本编码器缓存", "未找到当前模型 family 的文本编码器缓存，可能需要先预处理")
     if cfg.get("ip_features_cache_to_disk", False) or cfg.get("use_ip_adapter", False):
         _check_cache_sidecar_pattern(add, cache_dirs, "*_anima_pe.safetensors", "pe_cache", "PE 图像特征缓存", "未找到 PE 图像特征缓存，IP-Adapter 可能需要先 preprocess-pe")
 

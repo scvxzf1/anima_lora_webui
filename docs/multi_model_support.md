@@ -2,10 +2,38 @@
 
 Sketch of what it would take to add a second image-generation model (e.g. Z-Image-Base) alongside Anima in this repo. This is a repo-wide architectural note, not a method deep-dive — it lives at the top of `docs/` rather than under `docs/methods/`.
 
-Status: historical architecture sketch. Krea-2 Raw has since implemented the first
-concrete second-family path, but the proposed generic `ModelFamily` protocol/registry
-has not been completed. For the current implementation boundary and risk list, see
+Status: implemented architecture boundary. Krea-2 Raw is the first production second
+family. Z-Image plain-LoRA training v1 was added on 2026-08-24 using the official
+Diffusers components. `ModelFamilySpec` and complete-handler dispatch keep every family
+operation fail-closed; model implementations remain explicit per-family modules rather
+than dynamically loaded plugins. For the backend boundary and risk list, see
 [`findings/backend_multi_model_audit_20260810.md`](findings/backend_multi_model_audit_20260810.md).
+
+## Z-Image v1 boundary
+
+The implementation lives in `library/models/z_image/` and deliberately starts with a
+narrow, verifiable surface:
+
+- official Diffusers `ZImageTransformer2DModel`, `Qwen3Model`, and `AutoencoderKL`
+  directory loading;
+- Qwen3 ChatML, penultimate hidden state, fixed 512-token cache plus boolean mask;
+- isolated `_z_image_te.safetensors` / `_z_image.npz` sidecars;
+- shared cached/live `(latent - 0.1159) * 0.3611` VAE normalization and the
+  official 1000-step shifted-uniform flow grid (`shift=6`, FP32 model time
+  `1-sigma`, negated transformer output);
+- BF16 SDPA, full gradient checkpointing, and attention-only plain LoRA on
+  `to_q/to_k/to_v/to_out.0` (136 targets in the official 34-block transformer).
+
+Model loading validates the VAE latent geometry/affine factors, transformer input
+and caption widths, and Qwen3 hidden width before training. Unsupported weighted
+captions, layer ranges, alternate training losses/samplers/timestep ranges, and
+dataset-level caption dropout fail during compatibility or dataset setup instead of
+being silently ignored.
+
+Unverified optimization axes fail closed in v1: NF4, block swap, `torch.compile`,
+selective/offloaded checkpointing, FlashAttention, advanced adapters, caption dropout,
+training preview, and inference. The starting config is
+`configs/methods/z_image_lora.toml`.
 
 ## Current coupling
 

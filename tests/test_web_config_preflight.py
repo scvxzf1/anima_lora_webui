@@ -23,7 +23,6 @@ from web.services.config import metadata as config_metadata
 from web.services.config import paths as config_paths
 
 
-
 # Split: preflight domain
 
 from tests import web_config_test_support as _web_config_support
@@ -35,6 +34,7 @@ globals().update(
         if name == "Path" or not name.startswith("__")
     }
 )
+
 
 def test_preflight_module_imports_without_facade_cycle():
     env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
@@ -59,7 +59,9 @@ def test_preflight_module_imports_without_facade_cycle():
     assert result.returncode == 0, result.stderr or result.stdout
 
 
-def test_preflight_resolves_display_config_path_under_external_configs_root(tmp_path: Path, monkeypatch):
+def test_preflight_resolves_display_config_path_under_external_configs_root(
+    tmp_path: Path, monkeypatch
+):
     root = tmp_path / "repo"
     configs = tmp_path / "external-configs"
     root.mkdir()
@@ -67,14 +69,20 @@ def test_preflight_resolves_display_config_path_under_external_configs_root(tmp_
     _patch_external_config_service_paths(monkeypatch, root, configs)
     (configs / "imported").mkdir(parents=True, exist_ok=True)
     external_config = configs / "imported" / "rokkotsu_goddess_528_tag.toml"
-    external_config.write_text('output_name = "rokkotsu_goddess_528_tag"\n', encoding="utf-8")
+    external_config.write_text(
+        'output_name = "rokkotsu_goddess_528_tag"\n', encoding="utf-8"
+    )
 
-    path = config_service._config_file_path("configs/imported/rokkotsu_goddess_528_tag.toml")
+    path = config_service._config_file_path(
+        "configs/imported/rokkotsu_goddess_528_tag.toml"
+    )
 
     assert path == external_config.resolve()
 
 
-def test_preflight_fills_blank_model_paths_from_global_settings(tmp_path: Path, monkeypatch):
+def test_preflight_fills_blank_model_paths_from_global_settings(
+    tmp_path: Path, monkeypatch
+):
     configs, _dataset_path = _write_minimal_config_tree(tmp_path)
     _patch_config_service_paths(monkeypatch, tmp_path)
     (configs / "web-ui-settings.toml").write_text(
@@ -117,12 +125,152 @@ def test_preflight_fills_blank_model_paths_from_global_settings(tmp_path: Path, 
 
     checks = {item["key"]: item for item in result["checks"]}
     assert checks["pretrained_model_name_or_path"]["level"] == "ok"
-    assert checks["pretrained_model_name_or_path"]["path"] == "models/global-anima.safetensors"
+    assert (
+        checks["pretrained_model_name_or_path"]["path"]
+        == "models/global-anima.safetensors"
+    )
     assert checks["qwen3"]["level"] == "ok"
     assert checks["qwen3"]["path"] == "models/global-qwen.safetensors"
     assert checks["vae"]["level"] == "ok"
     assert checks["vae"]["path"] == "models/global-vae.safetensors"
-    assert "pretrained_model_name_or_path" not in {item["key"] for item in result["errors"]}
+    assert "pretrained_model_name_or_path" not in {
+        item["key"] for item in result["errors"]
+    }
+
+
+def test_preflight_accepts_z_image_diffusers_component_directories(
+    tmp_path: Path, monkeypatch
+):
+    configs, _dataset_path = _write_minimal_config_tree(tmp_path)
+    _patch_config_service_paths(monkeypatch, tmp_path)
+    model_root = tmp_path / "models" / "Z-Image"
+    for component in ("transformer", "text_encoder", "vae"):
+        component_dir = model_root / component
+        component_dir.mkdir(parents=True)
+        (component_dir / "config.json").write_text("{}", encoding="utf-8")
+        (component_dir / "model-00001-of-00002.safetensors").write_bytes(b"weights")
+    selected_config = configs / "imported" / "z_image.toml"
+    selected_config.write_text(
+        "\n".join(
+            [
+                'model_family = "z_image"',
+                'pretrained_model_name_or_path = "models/Z-Image"',
+                'qwen3 = "models/Z-Image"',
+                'vae = "models/Z-Image"',
+                'network_module = "networks.lora_anima"',
+                'mixed_precision = "bf16"',
+                'base_compute = "bf16"',
+                'attn_mode = "torch"',
+                "torch_compile = false",
+                "blocks_to_swap = 0",
+                'selective_checkpoint = "off"',
+                'timestep_sampling = "uniform"',
+                "discrete_flow_shift = 6.0",
+                'weighting_scheme = "none"',
+                "caption_dropout_rate = 0.0",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    result = config_service.preflight_training_config(
+        "lora",
+        "default",
+        "imported",
+        config_file="configs/imported/z_image.toml",
+    )
+
+    checks = {item["key"]: item for item in result["checks"]}
+    assert checks["pretrained_model_name_or_path"]["level"] == "ok"
+    assert checks["qwen3"]["level"] == "ok"
+    assert checks["vae"]["level"] == "ok"
+
+
+def test_preflight_accepts_z_image_comfyui_single_files(tmp_path: Path, monkeypatch):
+    from safetensors.torch import save_file
+    import torch
+
+    configs, _dataset_path = _write_minimal_config_tree(tmp_path)
+    _patch_config_service_paths(monkeypatch, tmp_path)
+    model_root = tmp_path / "models"
+    dit = model_root / "diffusion_models" / "z-image" / "z_image_turbo_bf16.safetensors"
+    text_encoder = model_root / "text_encoders" / "zimage" / "qwen_3_4b.safetensors"
+    vae = model_root / "vae" / "z-image-base.safetensors"
+    for path in (dit, text_encoder, vae):
+        path.parent.mkdir(parents=True, exist_ok=True)
+
+    dit_state = {f"layers.{index}.marker": torch.zeros(1) for index in range(30)}
+    dit_state.update(
+        {
+            "cap_embedder.1.weight": torch.zeros(1),
+            "noise_refiner.0.attention.qkv.weight": torch.zeros(1),
+            "context_refiner.0.attention.qkv.weight": torch.zeros(1),
+            "layers.0.attention.qkv.weight": torch.zeros(1),
+            "final_layer.linear.weight": torch.zeros(1),
+        }
+    )
+    save_file(dit_state, dit)
+    text_state = {f"model.layers.{index}.marker": torch.zeros(1) for index in range(36)}
+    text_state.update(
+        {
+            "model.embed_tokens.weight": torch.zeros(1),
+            "model.layers.0.self_attn.q_proj.weight": torch.zeros(1),
+            "model.layers.35.self_attn.q_proj.weight": torch.zeros(1),
+            "model.norm.weight": torch.zeros(1),
+        }
+    )
+    save_file(text_state, text_encoder)
+    save_file(
+        {
+            "encoder.conv_in.weight": torch.zeros(1),
+            "encoder.mid.attn_1.q.weight": torch.zeros(1),
+            "decoder.mid.attn_1.q.weight": torch.zeros(1),
+            "decoder.conv_out.weight": torch.zeros(1),
+        },
+        vae,
+    )
+    tokenizer = tmp_path / "comfy" / "text_encoders" / "qwen25_tokenizer"
+    tokenizer.mkdir(parents=True)
+    for name in ("tokenizer_config.json", "vocab.json", "merges.txt"):
+        (tokenizer / name).write_text("{}", encoding="utf-8")
+
+    selected_config = configs / "imported" / "z_image_single.toml"
+    selected_config.write_text(
+        "\n".join(
+            [
+                'model_family = "z_image"',
+                f'pretrained_model_name_or_path = "{dit}"',
+                f'qwen3 = "{text_encoder}"',
+                f'vae = "{vae}"',
+                'network_module = "networks.lora_anima"',
+                'mixed_precision = "bf16"',
+                'base_compute = "bf16"',
+                'attn_mode = "torch"',
+                "torch_compile = false",
+                "blocks_to_swap = 0",
+                'selective_checkpoint = "off"',
+                'timestep_sampling = "uniform"',
+                "discrete_flow_shift = 6.0",
+                'weighting_scheme = "none"',
+                "caption_dropout_rate = 0.0",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    result = config_service.preflight_training_config(
+        "lora",
+        "default",
+        "imported",
+        config_file="configs/imported/z_image_single.toml",
+    )
+
+    checks = {item["key"]: item for item in result["checks"]}
+    assert checks["pretrained_model_name_or_path"]["level"] == "ok"
+    assert checks["qwen3"]["level"] == "ok"
+    assert checks["vae"]["level"] == "ok"
+    assert checks["z_image_tokenizer"]["level"] == "ok"
+    assert checks["z_image_variant"]["level"] == "warning"
 
 
 def test_preflight_rejects_blank_output_name(tmp_path: Path, monkeypatch):
@@ -197,7 +345,9 @@ def test_preflight_rejects_selective_checkpoint_with_full_checkpointing(
         config_file="configs/imported/selected.toml",
     )
 
-    errors = [item for item in result["errors"] if item["key"] == "gradient_checkpointing"]
+    errors = [
+        item for item in result["errors"] if item["key"] == "gradient_checkpointing"
+    ]
     assert result["ok"] is False
     assert "selective_checkpoint" in errors[-1]["message"]
 
@@ -219,8 +369,12 @@ def test_preflight_remains_available_from_legacy_module(tmp_path: Path, monkeypa
     monkeypatch.setattr(legacy_config, "GUI_METHODS_DIR", configs / "gui-methods")
     monkeypatch.setattr(legacy_config, "IMPORTED_CONFIGS_DIR", configs / "imported")
     monkeypatch.setattr(legacy_config, "PRESETS_FILE", configs / "presets.toml")
-    monkeypatch.setattr(legacy_config, "WEB_FILE_GROUPS_FILE", configs / "web-file-groups.toml")
-    monkeypatch.setattr(legacy_config, "WEB_USER_LOCKS_FILE", configs / "web-user-locks.toml")
+    monkeypatch.setattr(
+        legacy_config, "WEB_FILE_GROUPS_FILE", configs / "web-file-groups.toml"
+    )
+    monkeypatch.setattr(
+        legacy_config, "WEB_USER_LOCKS_FILE", configs / "web-user-locks.toml"
+    )
 
     result = legacy_config.preflight_training_config(
         "lora",
@@ -230,7 +384,9 @@ def test_preflight_remains_available_from_legacy_module(tmp_path: Path, monkeypa
     )
 
     assert result["ok"] is True
-    env_checks = [item for item in result["checks"] if item["key"] == "preprocess_environment"]
+    env_checks = [
+        item for item in result["checks"] if item["key"] == "preprocess_environment"
+    ]
     assert env_checks[-1]["level"] == "ok"
 
 
@@ -338,7 +494,11 @@ def test_legacy_preflight_private_helpers_forward_to_split_module(monkeypatch):
         ),
     }
     for name in helper_args:
-        impl_name = "_inspect_network_weight_impl" if name == "_inspect_network_weight" else name
+        impl_name = (
+            "_inspect_network_weight_impl"
+            if name == "_inspect_network_weight"
+            else name
+        )
         monkeypatch.setattr(preflight_impl, impl_name, sentinel(name))
 
     for name, args in helper_args.items():
@@ -503,7 +663,11 @@ def test_preflight_rejects_dop_without_class_prompt(tmp_path: Path, monkeypatch)
         config_file="configs/imported/selected.toml",
     )
 
-    errors = [item for item in result["errors"] if item["key"] == "diff_output_preservation_class"]
+    errors = [
+        item
+        for item in result["errors"]
+        if item["key"] == "diff_output_preservation_class"
+    ]
     assert result["ok"] is False
     assert "DOP" in errors[-1]["message"]
 
@@ -519,8 +683,24 @@ def test_preflight_blocks_runtime_config_reusing_history_training_output_dir(
     (models / "qwen.safetensors").write_bytes(b"qwen")
     (models / "vae.safetensors").write_bytes(b"vae")
     source_dir = tmp_path / "image_dataset" / "selected"
-    resized_dir = tmp_path / "output" / "web-runs" / "old-run" / "dataset_cache" / "dataset-01" / "resized"
-    cache_dir = tmp_path / "output" / "web-runs" / "old-run" / "dataset_cache" / "dataset-01" / "lora"
+    resized_dir = (
+        tmp_path
+        / "output"
+        / "web-runs"
+        / "old-run"
+        / "dataset_cache"
+        / "dataset-01"
+        / "resized"
+    )
+    cache_dir = (
+        tmp_path
+        / "output"
+        / "web-runs"
+        / "old-run"
+        / "dataset_cache"
+        / "dataset-01"
+        / "lora"
+    )
     source_dir.mkdir(parents=True)
     resized_dir.mkdir(parents=True)
     cache_dir.mkdir(parents=True)
@@ -591,15 +771,19 @@ def test_preflight_blocks_runtime_config_reusing_history_training_output_dir(
     assert "完整续训" in output_checks[-1]["message"]
 
 
-def test_preflight_warns_when_sample_prompts_have_no_schedule(tmp_path: Path, monkeypatch):
+def test_preflight_warns_when_sample_prompts_have_no_schedule(
+    tmp_path: Path, monkeypatch
+):
     configs, _dataset_path = _write_minimal_config_tree(tmp_path)
     _patch_config_service_paths(monkeypatch, tmp_path)
     selected_config = configs / "imported" / "selected.toml"
     selected_config.write_text(
-        "\n".join([
-            'sample_prompts = "configs/sample_prompts.txt"',
-            'source_image_dir = "image_dataset/selected"',
-        ]),
+        "\n".join(
+            [
+                'sample_prompts = "configs/sample_prompts.txt"',
+                'source_image_dir = "image_dataset/selected"',
+            ]
+        ),
         encoding="utf-8",
     )
 
@@ -614,18 +798,22 @@ def test_preflight_warns_when_sample_prompts_have_no_schedule(tmp_path: Path, mo
     assert any("未启用训练前、按轮或按步采样" in message for message in messages)
 
 
-def test_preflight_warns_for_dual_sample_schedule_and_legacy_sampler(tmp_path: Path, monkeypatch):
+def test_preflight_warns_for_dual_sample_schedule_and_legacy_sampler(
+    tmp_path: Path, monkeypatch
+):
     configs, _dataset_path = _write_minimal_config_tree(tmp_path)
     _patch_config_service_paths(monkeypatch, tmp_path)
     selected_config = configs / "imported" / "selected.toml"
     selected_config.write_text(
-        "\n".join([
-            'sample_prompts = "configs/sample_prompts.txt"',
-            "sample_every_n_epochs = 1",
-            "sample_every_n_steps = 500",
-            'sample_sampler = "ddim"',
-            'source_image_dir = "image_dataset/selected"',
-        ]),
+        "\n".join(
+            [
+                'sample_prompts = "configs/sample_prompts.txt"',
+                "sample_every_n_epochs = 1",
+                "sample_every_n_steps = 500",
+                'sample_sampler = "ddim"',
+                'source_image_dir = "image_dataset/selected"',
+            ]
+        ),
         encoding="utf-8",
     )
 
@@ -641,7 +829,9 @@ def test_preflight_warns_for_dual_sample_schedule_and_legacy_sampler(tmp_path: P
     assert "会按 euler 兼容处理" in warnings["sample_sampler"]
 
 
-def test_preflight_checks_manual_network_weights_before_launch(tmp_path: Path, monkeypatch):
+def test_preflight_checks_manual_network_weights_before_launch(
+    tmp_path: Path, monkeypatch
+):
     configs, _dataset_path = _write_minimal_config_tree(tmp_path)
     _patch_config_service_paths(monkeypatch, tmp_path)
     source_dir = tmp_path / "image_dataset" / "selected"
@@ -687,7 +877,9 @@ def test_preflight_checks_manual_network_weights_before_launch(tmp_path: Path, m
         config_file="configs/imported/selected.toml",
     )
 
-    weight_checks = [item for item in result["checks"] if item["key"] == "network_weights"]
+    weight_checks = [
+        item for item in result["checks"] if item["key"] == "network_weights"
+    ]
     assert called == {
         "path": "weights/demo_lokr.safetensors",
         "variant": "lora",
@@ -696,8 +888,6 @@ def test_preflight_checks_manual_network_weights_before_launch(tmp_path: Path, m
     assert result["ok"] is False
     assert weight_checks[-1]["level"] == "error"
     assert "LoKr 权重需要当前变体为 lokr" in weight_checks[-1]["message"]
-
-
 
 
 def test_preflight_rejects_max_bucket_below_resolution(tmp_path: Path, monkeypatch):
@@ -732,14 +922,24 @@ def test_preflight_rejects_max_bucket_below_resolution(tmp_path: Path, monkeypat
         config_file="configs/imported/lora.toml",
     )
 
-    bucket_checks = [item for item in result["checks"] if item["key"] in {"dataset_bucket", "dataset_1_bucket"} or item["key"].endswith("_bucket")]
+    bucket_checks = [
+        item
+        for item in result["checks"]
+        if item["key"] in {"dataset_bucket", "dataset_1_bucket"}
+        or item["key"].endswith("_bucket")
+    ]
     assert result["ok"] is False
-    assert any("max_bucket_reso" in item.get("message", "") for item in result.get("errors") or [])
+    assert any(
+        "max_bucket_reso" in item.get("message", "")
+        for item in result.get("errors") or []
+    )
     assert bucket_checks
     assert bucket_checks[-1]["level"] == "error"
 
 
-def test_preflight_rejects_source_dir_with_only_cache_sidecars(tmp_path: Path, monkeypatch):
+def test_preflight_rejects_source_dir_with_only_cache_sidecars(
+    tmp_path: Path, monkeypatch
+):
     """源目录只有 latent/text 缓存、没有图片时，应在预处理前直接报错。"""
     configs, dataset_path = _write_minimal_config_tree(tmp_path)
     source_dir = tmp_path / "image_dataset" / "cache_only"
@@ -768,14 +968,18 @@ def test_preflight_rejects_source_dir_with_only_cache_sidecars(tmp_path: Path, m
         config_file="configs/imported/lora.toml",
     )
 
-    image_checks = [item for item in result["checks"] if item["key"] == "source_image_dir_images"]
+    image_checks = [
+        item for item in result["checks"] if item["key"] == "source_image_dir_images"
+    ]
     assert result["ok"] is False
     assert image_checks
     assert image_checks[-1]["level"] == "error"
     assert "没有可训练图片" in image_checks[-1]["message"]
 
 
-def test_preflight_nl_tag_mix_accepts_single_captioned_directory(tmp_path: Path, monkeypatch):
+def test_preflight_nl_tag_mix_accepts_single_captioned_directory(
+    tmp_path: Path, monkeypatch
+):
     configs, dataset_path = _write_minimal_config_tree(tmp_path)
     source_dir = tmp_path / "image_dataset" / "mixed"
     source_dir.mkdir(parents=True)
@@ -806,9 +1010,15 @@ def test_preflight_nl_tag_mix_accepts_single_captioned_directory(tmp_path: Path,
         config_file="configs/imported/lora.toml",
     )
 
-    mix_checks = [item for item in result["checks"] if item["key"] == "source_image_dir_nl_tag_mix"]
+    mix_checks = [
+        item
+        for item in result["checks"]
+        if item["key"] == "source_image_dir_nl_tag_mix"
+    ]
     assert mix_checks == []
-    source_checks = [item for item in result["checks"] if item["key"] == "source_image_dir"]
+    source_checks = [
+        item for item in result["checks"] if item["key"] == "source_image_dir"
+    ]
     assert source_checks[-1]["level"] == "ok"
 
 
@@ -862,9 +1072,15 @@ def test_preflight_nl_tag_mix_accepts_structured_caption_sources(
         config_file="configs/imported/lora.toml",
     )
 
-    caption_checks = [item for item in result["checks"] if item["key"] == "source_image_dir_nl_tag_mix_captions"]
+    caption_checks = [
+        item
+        for item in result["checks"]
+        if item["key"] == "source_image_dir_nl_tag_mix_captions"
+    ]
     assert caption_checks == []
-    source_checks = [item for item in result["checks"] if item["key"] == "source_image_dir"]
+    source_checks = [
+        item for item in result["checks"] if item["key"] == "source_image_dir"
+    ]
     assert source_checks[-1]["level"] == "ok"
 
 
@@ -890,7 +1106,7 @@ def test_preflight_nl_tag_mix_accepts_recursive_captions_json(
                 "[[datasets.subsets]]",
                 'image_dir = "post_image_dataset/mixed_resized"',
                 'cache_dir = "post_image_dataset/mixed_lora"',
-                'recursive = true',
+                "recursive = true",
                 'custom_attributes = {source_dir = "image_dataset/mixed", nl_tag_mix = {enabled = true, tag_ratio = 0.7}}',
             ]
         ),
@@ -905,13 +1121,21 @@ def test_preflight_nl_tag_mix_accepts_recursive_captions_json(
         config_file="configs/imported/lora.toml",
     )
 
-    caption_checks = [item for item in result["checks"] if item["key"] == "source_image_dir_nl_tag_mix_captions"]
+    caption_checks = [
+        item
+        for item in result["checks"]
+        if item["key"] == "source_image_dir_nl_tag_mix_captions"
+    ]
     assert caption_checks == []
-    source_checks = [item for item in result["checks"] if item["key"] == "source_image_dir"]
+    source_checks = [
+        item for item in result["checks"] if item["key"] == "source_image_dir"
+    ]
     assert source_checks[-1]["level"] == "ok"
 
 
-def test_preflight_nl_tag_mix_warns_when_no_readable_captions(tmp_path: Path, monkeypatch):
+def test_preflight_nl_tag_mix_warns_when_no_readable_captions(
+    tmp_path: Path, monkeypatch
+):
     configs, dataset_path = _write_minimal_config_tree(tmp_path)
     source_dir = tmp_path / "image_dataset" / "mixed"
     source_dir.mkdir(parents=True)
@@ -938,7 +1162,11 @@ def test_preflight_nl_tag_mix_warns_when_no_readable_captions(tmp_path: Path, mo
         config_file="configs/imported/lora.toml",
     )
 
-    caption_checks = [item for item in result["checks"] if item["key"] == "source_image_dir_nl_tag_mix_captions"]
+    caption_checks = [
+        item
+        for item in result["checks"]
+        if item["key"] == "source_image_dir_nl_tag_mix_captions"
+    ]
     assert caption_checks[-1]["level"] == "warning"
     assert "全部按 tag 处理" in caption_checks[-1]["message"]
 
@@ -970,12 +1198,18 @@ def test_preflight_trigger_clone_requires_prompt(tmp_path: Path, monkeypatch):
         config_file="configs/imported/lora.toml",
     )
 
-    prompt_checks = [item for item in result["checks"] if item["key"] == "source_image_dir_trigger_clone_prompt"]
+    prompt_checks = [
+        item
+        for item in result["checks"]
+        if item["key"] == "source_image_dir_trigger_clone_prompt"
+    ]
     assert prompt_checks[-1]["level"] == "error"
     assert "触发提示词为空" in prompt_checks[-1]["message"]
 
 
-def test_preflight_reports_missing_preprocess_environment_file(tmp_path: Path, monkeypatch):
+def test_preflight_reports_missing_preprocess_environment_file(
+    tmp_path: Path, monkeypatch
+):
     configs, _dataset_path = _write_minimal_config_tree(tmp_path)
     _patch_config_service_paths(monkeypatch, tmp_path)
     source_dir = tmp_path / "image_dataset" / "selected"
@@ -1007,13 +1241,17 @@ def test_preflight_reports_missing_preprocess_environment_file(tmp_path: Path, m
     )
 
     assert result["ok"] is False
-    errors = [item for item in result["errors"] if item["key"] == "preprocess_environment"]
+    errors = [
+        item for item in result["errors"] if item["key"] == "preprocess_environment"
+    ]
     assert errors
     assert "预处理启动环境异常" in errors[-1]["message"]
     assert "library/preprocess/__init__.py" in errors[-1]["message"]
 
 
-def test_preflight_ignores_legacy_cache_fields_for_plain_web_config(tmp_path: Path, monkeypatch):
+def test_preflight_ignores_legacy_cache_fields_for_plain_web_config(
+    tmp_path: Path, monkeypatch
+):
     configs, dataset_path = _write_minimal_config_tree(tmp_path)
     _patch_config_service_paths(monkeypatch, tmp_path)
     source_dir = tmp_path / "image_dataset" / "selected"
@@ -1066,18 +1304,30 @@ def test_preflight_ignores_legacy_cache_fields_for_plain_web_config(tmp_path: Pa
     keys = {item["key"] for item in result["checks"]}
     assert "resized_image_dir" not in keys
     assert "lora_cache_dir" not in keys
-    assert not any(key.startswith("dataset_") and (key.endswith("_image_dir") or key.endswith("_cache_dir")) for key in keys)
+    assert not any(
+        key.startswith("dataset_")
+        and (key.endswith("_image_dir") or key.endswith("_cache_dir"))
+        for key in keys
+    )
     assert result["ok"] is True
 
 
-def test_preflight_runtime_config_reports_caption_source_detection(tmp_path: Path, monkeypatch):
+def test_preflight_runtime_config_reports_caption_source_detection(
+    tmp_path: Path, monkeypatch
+):
     _write_minimal_config_tree(tmp_path)
     _patch_config_service_paths(monkeypatch, tmp_path)
     run_dir = tmp_path / "output" / "runs" / "522-20260523-114514"
     source_dir = tmp_path / "image_dataset" / "a"
     resized_dir = run_dir / "dataset_cache" / "dataset-01" / "resized"
     cache_dir = run_dir / "dataset_cache" / "dataset-01" / "lora"
-    for path in (source_dir, resized_dir, cache_dir, run_dir / "model_cache", run_dir / "training_output"):
+    for path in (
+        source_dir,
+        resized_dir,
+        cache_dir,
+        run_dir / "model_cache",
+        run_dir / "training_output",
+    ):
         path.mkdir(parents=True)
     Image.new("RGB", (8, 8), color=(20, 40, 60)).save(resized_dir / "hero.png")
     (source_dir / "captions.json").write_text(
@@ -1139,7 +1389,9 @@ def test_runtime_preflight_checks_nested_training_images_and_cache_sidecars(
     cache_dir = tmp_path / "post_image_dataset" / "nested_cache"
     for path in (source_dir / "char_a", resized_dir / "char_a", cache_dir / "char_a"):
         path.mkdir(parents=True)
-    Image.new("RGB", (8, 8), color=(20, 40, 60)).save(resized_dir / "char_a" / "hero.png")
+    Image.new("RGB", (8, 8), color=(20, 40, 60)).save(
+        resized_dir / "char_a" / "hero.png"
+    )
     (cache_dir / "char_a" / "hero_0008x0008_anima.npz").write_bytes(b"latent")
     (cache_dir / "char_a" / "hero_anima_te.safetensors").write_bytes(b"te")
     dataset_path = configs / "datasets" / "nested.toml"
@@ -1174,7 +1426,6 @@ def test_runtime_preflight_checks_nested_training_images_and_cache_sidecars(
     assert "training_images" not in by_key
     assert by_key["latent_cache"]["level"] == "ok"
     assert by_key["text_cache"]["level"] == "ok"
-
 
 
 def _write_stage_schedule_preflight_config(
@@ -1228,9 +1479,9 @@ def _write_stage_schedule_preflight_config(
         lines.append(
             "  { "
             f'name = "{stage["name"]}", '
-            f'subset_index = {int(stage["subset_index"])}, '
-            f'start_pct = {float(stage["start_pct"])}, '
-            f'end_pct = {float(stage["end_pct"])}'
+            f"subset_index = {int(stage['subset_index'])}, "
+            f"start_pct = {float(stage['start_pct'])}, "
+            f"end_pct = {float(stage['end_pct'])}"
             " },"
         )
     lines.append("]")
@@ -1258,7 +1509,10 @@ def test_preflight_rejects_invalid_stage_schedule_gap(tmp_path: Path, monkeypatc
     assert result["ok"] is False
     stage_checks = [c for c in result["checks"] if c.get("key") == "stage_schedule"]
     assert stage_checks
-    assert any("贴齐" in c.get("message", "") or "stage" in c.get("message", "").lower() for c in stage_checks)
+    assert any(
+        "贴齐" in c.get("message", "") or "stage" in c.get("message", "").lower()
+        for c in stage_checks
+    )
 
 
 def test_preflight_rejects_stage_subset_out_of_range(tmp_path: Path, monkeypatch):
@@ -1282,7 +1536,9 @@ def test_preflight_rejects_stage_subset_out_of_range(tmp_path: Path, monkeypatch
     assert any("subset_index" in c.get("message", "") for c in stage_checks)
 
 
-def test_prepare_web_runtime_config_rejects_invalid_stage_schedule(tmp_path: Path, monkeypatch):
+def test_prepare_web_runtime_config_rejects_invalid_stage_schedule(
+    tmp_path: Path, monkeypatch
+):
     from web.services import training_service
 
     configs, dataset_path = _write_minimal_config_tree(tmp_path)
@@ -1371,6 +1627,10 @@ def test_preflight_warns_unknown_config_key(tmp_path: Path, monkeypatch):
         "imported",
         config_file="configs/imported/unknown.toml",
     )
-    warnings = [c for c in result["checks"] if c.get("level") == "warning" and c.get("key") == "schema"]
+    warnings = [
+        c
+        for c in result["checks"]
+        if c.get("level") == "warning" and c.get("key") == "schema"
+    ]
     assert warnings
     assert any("custom_unknown_key" in c.get("message", "") for c in warnings)

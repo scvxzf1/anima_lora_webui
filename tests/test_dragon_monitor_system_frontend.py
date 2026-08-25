@@ -38,6 +38,26 @@ def test_dashboard_and_history_use_safe_semantic_actions():
     assert 'name="training_gpu"' in controls
 
 
+def test_history_detail_returns_to_the_page_that_opened_it():
+    entry = _read("js/dragon-ui/index.js")
+    navigation = _read("js/dragon-ui/history-return-navigation.js")
+    controller = _read("js/dragon-ui/pages/history.js")
+    view = _read("js/dragon-ui/pages/history-view.js")
+
+    assert "trackHistoryDetailEntry(acceptedHash, nextHash)" in entry
+    assert "previousTaskId" in navigation
+    assert "activeHistoryReturn?.taskId === nextTaskId" in navigation
+    assert "'#page/live-training'" in navigation
+    assert "返回当前监控" in navigation
+    assert "'#page/queue'" in navigation
+    assert "返回任务队列" in navigation
+    assert "return DEFAULT_HISTORY_RETURN" in navigation
+    assert "resolveHistoryReturnNavigation(taskId)" in controller
+    assert "window.location.hash = returnNavigation?.hash || '#history'" in controller
+    assert "renderHistoryBackButton(model.returnNavigation)" in view
+    assert "navigation?.label || '返回历史'" in view
+
+
 def test_history_page_uses_complete_backend_contract_and_archive_workspace():
     controller = _read("js/dragon-ui/pages/history.js")
     view = _read("js/dragon-ui/pages/history-view.js")
@@ -92,6 +112,16 @@ def test_history_page_uses_complete_backend_contract_and_archive_workspace():
     assert "return configGroups.map((group) => renderConfigGroup(group, workspace)).join('')" in collections
     assert "renderFlatCollectionTasks" not in collections
     assert "个任务集" in collections
+    assert "Final Loss" in collections
+    assert "loss_preview" in collections
+    assert "dragon-history-task-sparkline" in collections
+    assert "dragon-history-task-sparkline-tooltip" in collections
+    assert "Min Loss" in collections and "Max Loss" in collections
+    assert 'tabindex="0"' in collections
+    assert 'data-count-state="${counts[key] > 0 ? \'nonzero\' : \'zero\'}"' in view
+    assert "dragon-history-config-collapsed" not in collections
+    assert 'class="dragon-history-advanced"' in view
+    assert "高级筛选" in view
     assert "{ renderResults, setStatus }" in collection_controller
     shared_drag = _read("js/dragon-ui/ordered-drag-target.js")
     dataset_editor = _read("js/dragon-ui/pages/dataset-editor.js")
@@ -109,10 +139,29 @@ def test_history_page_uses_complete_backend_contract_and_archive_workspace():
     assert "max-width:2880px" in workbench_css
     assert "container:dragon-history-content / inline-size" in workbench_css
     assert "@container dragon-history-content (max-width:980px)" in workbench_css
-    assert "grid-template-columns:repeat(6,minmax(0,1fr))" in workbench_css
+    assert ".dragon-history-workbench-metrics>span" in workbench_css
+    assert ".dragon-history-task-sparkline" in workbench_css
+    assert ".dragon-history-task-sparkline-tooltip" in workbench_css
+    assert ".dragon-history-config-task-list .dragon-history-item-state{white-space:nowrap}" in workbench_css
+    assert ".dragon-history-config-task-list .dragon-history-item-state{grid-column:auto;grid-row:auto}" in workbench_css
     assert "@media(max-width:460px)" in workbench_css
     assert ".dragon-history-detail-grid" in css
     assert ".dragon-history-preview-grid" in css
+
+
+def test_history_detail_tabs_use_fluid_width_and_content_breakpoints():
+    workbench_css = _read("css/dragon/03a-dragon-history-workbench.css")
+
+    assert ".dragon-history-page,.dragon-history-detail-page{" in workbench_css
+    assert "max-width:2880px" in workbench_css
+    assert "container:dragon-history-detail / inline-size" in workbench_css
+    assert "@container dragon-history-detail (min-width:1600px)" in workbench_css
+    assert 'data-history-detail-panel="metrics"' in workbench_css
+    assert "grid-template-columns:minmax(0,2fr) minmax(360px,.8fr)" in workbench_css
+    assert "repeat(auto-fit,minmax(min(100%,220px),1fr))" in workbench_css
+    assert "repeat(auto-fit,minmax(min(100%,320px),1fr))" in workbench_css
+    assert "@container dragon-history-detail (max-width:960px)" in workbench_css
+    assert "@container dragon-history-detail (max-width:620px)" in workbench_css
 
 
 def test_live_training_uses_real_backend_contract_and_full_workspace():
@@ -177,10 +226,28 @@ def test_queue_page_exposes_classic_core_controls():
     assert "element.classList.add('dragon-in-view')" in queue
     assert "'队列空闲'" in queue_view
     assert "自动调度中" not in queue_view
+    assert 'data-count-state="${count > 0 ? \'nonzero\' : \'zero\'}"' in queue_view
+    assert 'class="dragon-queue-filter"' not in queue_view
+    assert 'data-queue-confirm-dialog' in queue_view
+    assert 'data-queue-more' in queue_view
+    assert '中止后续队列' in queue_view
+    assert '强制中止队列' in queue_view
+    assert '取消全部队列' in queue_view
+    assert '取消全部等待' in queue_view
+    assert '清理已完成' in queue_view
+    assert '清理已取消' in queue_view
+    assert 'renderBulkPanel' not in queue_view
+    assert 'dialog.showModal()' in queue
+    assert 'state.confirming = true' in queue
+    assert "event.key !== 'Escape'" in queue
+    assert "document.addEventListener('click', documentClickHandler)" in queue
+    assert '去配置页创建新任务' in queue_view
+    assert '查看已完成记录' in queue_view
     queue_css = pages.split("/* Dragon queue manager:", 1)[1].split("/* Dragon weight analysis", 1)[0]
-    mobile_queue_css = queue_css.split("@media (max-width: 734px)", 1)[1].split("@media (max-width: 430px)", 1)[0]
-    assert ".dragon-queue-filter button" in mobile_queue_css
-    assert "min-height: 40px" in mobile_queue_css
+    assert '.dragon-queue-stat[data-count-state="nonzero"][data-state="error"]' in queue_css
+    assert ".dragon-queue-confirm-dialog" in queue_css
+    assert ".dragon-queue-empty-icon" in queue_css
+    assert ".dragon-queue-more-menu" in queue_css
 
 
 def test_system_pages_keep_accessible_core_actions():
@@ -342,14 +409,16 @@ def test_config_and_preview_protect_unsaved_or_unread_state():
 
 def test_config_fields_expose_native_form_and_live_status_contracts():
     config = _read("js/dragon-ui/pages/config-page.js")
+    help_view = _read("js/dragon-ui/pages/config-field-help.js")
     assert 'role="status" aria-live="polite"' in config
     assert 'name="${name}"' in config
     assert 'autocomplete="off"' in config
     assert 'for="${fieldId}"' in config
     assert 'aria-checked="${value}"' in config
     assert "toggle.setAttribute('aria-checked'" in config
-    assert 'aria-expanded="false"' in config
-    assert "btn.setAttribute('aria-expanded'" in config
+    assert 'aria-haspopup="dialog"' in help_view
+    assert 'aria-controls="dragon-config-help-dialog"' in help_view
+    assert "dialog.showModal()" in help_view
 
 
 def test_training_config_uses_fluid_desktop_width_with_mobile_gutters():
@@ -406,10 +475,14 @@ def test_primary_navigation_exposes_centered_workspace_routes_without_duplicate_
 def test_live_monitor_exposes_current_task_context():
     state = _read("js/dragon-ui/pages/live-training-state.js")
     view = _read("js/dragon-ui/pages/live-training-view.js")
+    workspace = _read("js/dragon-ui/pages/live-training-workspace.js")
     assert "currentTask: formatCurrentTaskLabel(status)" in state
     assert "function formatCurrentTaskLabel" in state
-    assert "contextItem('activity', '当前任务', model.currentTask, 'task')" in view
-    assert "title: '当前监控'" in view
+    assert "正在训练：${model.currentTask}" in view
+    assert "renderLiveSidebar(model)" in view
+    assert "renderLiveStatePanel(model, 'idle')" in view
+    assert "renderLiveStatePanel(model, 'error')" in view
+    assert "liveWorkspaceMode" in workspace
 
 
 def test_tool_pages_use_fluid_multi_resolution_layouts():
@@ -420,7 +493,7 @@ def test_tool_pages_use_fluid_multi_resolution_layouts():
     assert ".dragon-live-context { grid-template-columns: repeat(2, minmax(0, 1fr)); }" in css
     assert ".dragon-queue-layout { grid-template-columns: 1fr; }" in css
     assert ".dragon-queue-card { grid-template-columns: 1fr; }" in css
-    assert ".dragon-queue-filter { width: 100%; justify-content: flex-start; overflow-x: auto;" in css
+    assert '.dragon-queue-manager .dragon-queue-stats {' in css
     assert ".dragon-live-context { grid-template-columns: 1fr; }" in css
 
 
@@ -457,7 +530,7 @@ def test_training_config_category_is_a_real_single_subpage():
     nav = _read("js/dragon-ui/nav.js")
     css = _read("css/dragon/04-dragon-config.css")
 
-    assert "entries.find((entry) => entry.sub.id === context.subId) || entries[0]" in config
+    assert "resolveConfigView(entries, preferredConfigSubId(context.subId, category), category)" in config
     assert "renderCategorySubPage" in config
     assert "renderConfigNavigation" in config
     assert 'href="#config/${category.id}/${item.id}"' in config
@@ -511,7 +584,7 @@ def test_training_config_matches_classic_scope_and_keeps_unclassified_fields():
 def test_training_config_long_sections_are_collapsible_and_fluid():
     page = _read("js/dragon-ui/pages/config-page.js")
     css = _read("css/dragon/04-dragon-config.css")
-    assert "function renderConfigSection(section, keys, currentValues)" in page
+    assert "function renderConfigSection(section, keys, currentValues," in page
     assert '<details class="dragon-config-section dragon-config-section-collapsible"' in page
     assert 'class="dragon-config-section-count">${keys.length} 项' in page
     assert ".dragon-config-section-summary::after" in css
@@ -520,17 +593,17 @@ def test_training_config_long_sections_are_collapsible_and_fluid():
     assert "repeat(auto-fit, minmax(min(100%, 240px), 1fr))" in css
 
 
-def test_training_config_recomputes_scoped_fields_and_supports_local_search():
+def test_training_config_recomputes_scoped_fields_and_supports_search():
     page = _read("js/dragon-ui/pages/config-page.js")
     css = _read("css/dragon/04-dragon-config.css")
     assert "function buildCategoryEntries(category, rawEntries, trainingContext, values)" in page
     assert "buildCategoryEntries(category, rawEntries, context, values)" in page
     assert "entries = nextEntries" in page
-    assert "const activeSub = activeEntry?.sub || sub" in page
+    assert "const activeSub = activeView.sub || sub" in page
     assert "function renderConfigFieldFilter(total)" in page
-    assert "function bindConfigFieldFilter(root)" in page
+    assert "function bindConfigFieldFilter(root, state)" in page
     assert "data-config-field-search" in page
-    assert "bindConfigFieldFilter(root)" in page
+    assert "bindConfigFieldFilter(root, pageState)" in page
     assert ".dragon-config-field-filter" in css
 
 
@@ -684,7 +757,7 @@ def test_training_preset_manager_refreshes_independently_from_atomic_editable_pa
     assert 'data-config-editable-pane' in page
     assert "renderEditableConfigPane" in page
     assert "transitionEditable" in page
-    assert "committed = { context, sub: target.sub, keys: target.keys, values }" in page
+    assert "committed = { context, ...nextView }" in page
     assert "currentPane.outerHTML = renderEditableConfigPane" in page
     assert "libraryController?.updateContext(committed.context)" in page
     assert "selectTrainingConfigFile(committed.context, file, { notify: false, persist: false })" in page
@@ -724,7 +797,7 @@ def test_training_context_transition_does_not_publish_mixed_render_state():
 
     commit_at = page.index("commitTrainingContext(context)")
     response_at = page.index("const res = await api(mergedConfigUrl(context))")
-    state_at = page.index("committed = { context, sub: target.sub, keys: target.keys, values }")
+    state_at = page.index("committed = { context, ...nextView }")
     render_at = page.index("currentPane.outerHTML = renderEditableConfigPane")
     assert response_at < state_at < commit_at < render_at
     assert "persist: false" in page
@@ -774,7 +847,8 @@ def test_config_transition_cancels_stale_route_and_preserves_dirty_state_on_fail
     library_destroy_at = page.index("libraryController?.destroy?.();", dispose_at)
     cleanup_at = page.index("cleanupConfigPage(pageState);", library_destroy_at)
     assert dispose_at < library_destroy_at < cleanup_at
-    assert "pageState.dirty = false;\n                    cleanupConfigPage(pageState);" in page
+    assert "if (contextChanged) resetConfigFormState(pageState, values, nextEntries);" in page
+    assert "pageState.dirty = false;" not in page
     confirm_body = page[page.index("function confirmConfigDiscard"):page.index("function cleanupConfigPage")]
     assert "state.dirty = false" not in confirm_body
     assert "const stored = readStoredContext();" in controls[controls.index("await Promise.all"):]

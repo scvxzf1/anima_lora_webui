@@ -6,6 +6,8 @@ import asyncio
 from pathlib import Path
 from typing import Any
 
+import toml
+
 from web.routes import config as config_routes
 from web.services import config_service
 
@@ -60,6 +62,64 @@ def test_save_raw_file_returns_structured_warnings(tmp_path: Path, monkeypatch):
     assert isinstance(warnings, list)
     assert warnings, "unknown key should surface as schema warning"
     assert any("custom_unknown_key" in str(w) or "unknown" in str(w).lower() for w in warnings)
+
+
+def test_raw_save_normalizes_legacy_scalar_string_types(tmp_path: Path, monkeypatch):
+    rel = _write_tree(tmp_path)
+    monkeypatch.setattr(config_service, "ROOT", tmp_path)
+    monkeypatch.setattr(config_service, "CONFIGS_DIR", tmp_path / "configs")
+    config_service.set_configs_root(tmp_path / "configs")
+
+    path = tmp_path / rel
+    content = path.read_text(encoding="utf-8") + '\nsample_ratio = "1"\n'
+    ok, msg, warnings = config_service.save_raw_file(rel, content)
+
+    assert ok, msg
+    assert warnings == []
+    saved = toml.loads(path.read_text(encoding="utf-8"))
+    assert saved["sample_ratio"] == 1.0
+    assert isinstance(saved["sample_ratio"], float)
+
+
+def test_raw_patch_normalizes_numeric_string_payload(tmp_path: Path, monkeypatch):
+    rel = _write_tree(tmp_path)
+    monkeypatch.setattr(config_service, "ROOT", tmp_path)
+    monkeypatch.setattr(config_service, "CONFIGS_DIR", tmp_path / "configs")
+    config_service.set_configs_root(tmp_path / "configs")
+
+    ok, msg, content, changed, warnings = config_service.patch_raw_file_values(
+        rel,
+        {"sample_ratio": "0.5"},
+    )
+
+    assert ok, msg
+    assert warnings == []
+    assert "sample_ratio" in changed
+    saved = toml.loads(content)
+    assert saved["sample_ratio"] == 0.5
+    assert isinstance(saved["sample_ratio"], float)
+
+
+def test_raw_patch_does_not_rewrite_already_typed_scalars(tmp_path: Path, monkeypatch):
+    rel = _write_tree(tmp_path)
+    monkeypatch.setattr(config_service, "ROOT", tmp_path)
+    monkeypatch.setattr(config_service, "CONFIGS_DIR", tmp_path / "configs")
+    config_service.set_configs_root(tmp_path / "configs")
+
+    path = tmp_path / rel
+    path.write_text(
+        path.read_text(encoding="utf-8") + "\nsample_ratio = 1.0\n",
+        encoding="utf-8",
+    )
+    ok, msg, _content, changed, warnings = config_service.patch_raw_file_values(
+        rel,
+        {"max_train_steps": 11},
+    )
+
+    assert ok, msg
+    assert warnings == []
+    assert "max_train_steps" in changed
+    assert "sample_ratio" not in changed
 
 
 def test_http_raw_put_includes_warnings_field(tmp_path: Path, monkeypatch):

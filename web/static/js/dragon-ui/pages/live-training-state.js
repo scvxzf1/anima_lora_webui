@@ -42,6 +42,10 @@ export function createLiveModel(status = {}, metricsPayload = [], logsPayload = 
         runDir: status?.run_dir || status?.output_dir || status?.training_output_dir || '尚未启动训练',
         lastActivity: status?.anomaly_message || status?.error_hint || status?.last_log_line || stateText(status?.status),
         lastLogId: Number(status?.last_log_id || logs.at?.(-1)?.id || 0),
+        queueSummary: { queued: 0, running: 0, error: 0 },
+        queueItems: [],
+        recentTasks: [],
+        queueEtaSeconds: null,
     };
     seedSystemPeaks(model);
     return model;
@@ -56,6 +60,10 @@ export function mergeStatusSnapshot(model, status = {}, metricsPayload = [], log
         logClearBeforeId: model.logClearBeforeId,
         wsState: model.wsState,
         wsError: model.wsError,
+        queueSummary: model.queueSummary,
+        queueItems: model.queueItems,
+        recentTasks: model.recentTasks,
+        queueEtaSeconds: model.queueEtaSeconds,
     };
     Object.assign(model, next, preserved);
     if (sameRun) {
@@ -133,7 +141,7 @@ export function stateText(state) {
     const map = {
         idle: '空闲', running: '训练中', training: '训练中', compiling: '编译中',
         caching: '缓存中', saving: '保存中', queued: '排队中', completed: '已完成',
-        error: '错误', stopped: '已停止', unavailable: '连接异常', unknown: '未知',
+        error: '错误', failed: '失败', interrupted: '已中断', stopped: '已停止', unavailable: '连接异常', unknown: '未知',
     };
     return map[String(state || '').toLowerCase()] || '未知';
 }

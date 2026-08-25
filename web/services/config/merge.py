@@ -29,6 +29,7 @@ WEB_FILE_GROUPS_FILE = CONFIGS_DIR / "web-file-groups.toml"
 WEB_USER_LOCKS_FILE = CONFIGS_DIR / "web-user-locks.toml"
 DEFAULT_MAX_TRAIN_STEPS = 0
 DATASET_PRESETS_DIR = CONFIGS_DIR / "datasets"
+DATASET_IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif", ".tif", ".tiff", ".avif", ".jxl"}
 
 load_dotenv()
 
@@ -235,15 +236,47 @@ def load_merged_config(variant: str, preset: str, methods_subdir: str = "gui-met
     return apply_auto_data_dirs(merged)
 
 
-def suggest_data_dirs(source_image_dir: str) -> dict[str, Any]:
+def suggest_data_dirs(source_image_dir: str, *, inspect: bool = False) -> dict[str, Any]:
     source_path = _resolve_project_path(str(source_image_dir or ""))
     if not str(source_image_dir or "").strip():
         return {"ok": False, "error": "请先填写源图像目录 / source_image_dir"}
-    return {
+    result = {
         "ok": True,
         "source_image_dir": _display_path(source_path),
         "resized_image_dir": _display_path(_derived_data_dir(source_path, "resized")),
         "lora_cache_dir": _display_path(_derived_data_dir(source_path, "lora_cache")),
+    }
+    if inspect:
+        result.update(_inspect_source_image_dir(source_path))
+    return result
+
+
+def _inspect_source_image_dir(source_path: Path) -> dict[str, Any]:
+    try:
+        exists = source_path.exists()
+        is_dir = exists and source_path.is_dir()
+    except OSError as exc:
+        return {
+            "source_exists": False,
+            "source_is_dir": False,
+            "source_image_count": 0,
+            "source_inspection_error": str(exc),
+        }
+    image_count = 0
+    inspection_error = ""
+    if is_dir:
+        try:
+            image_count = sum(
+                1 for item in source_path.rglob("*")
+                if item.is_file() and item.suffix.casefold() in DATASET_IMAGE_SUFFIXES
+            )
+        except OSError as exc:
+            inspection_error = str(exc)
+    return {
+        "source_exists": exists,
+        "source_is_dir": is_dir,
+        "source_image_count": image_count,
+        "source_inspection_error": inspection_error,
     }
 
 

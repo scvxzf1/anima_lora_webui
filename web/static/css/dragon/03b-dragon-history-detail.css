@@ -1,0 +1,160 @@
+/* Focused layouts for Dragon history detail artifacts and runtime paths. */
+
+.dragon-history-weight-list {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 520px), 1fr));
+}
+
+.dragon-history-paths-panel {
+    overflow: hidden;
+    padding: 0;
+}
+
+.dragon-history-paths-panel > summary {
+    display: flex;
+    min-height: 68px;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--dragon-sp-4);
+    padding: var(--dragon-sp-4) var(--dragon-sp-5);
+    cursor: pointer;
+    list-style: none;
+}
+
+.dragon-history-paths-panel > summary::-webkit-details-marker {
+    display: none;
+}
+
+.dragon-history-paths-heading,
+.dragon-history-paths-summary-meta,
+.dragon-history-paths-heading > span {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+}
+
+.dragon-history-paths-heading {
+    gap: var(--dragon-sp-3);
+}
+
+.dragon-history-paths-heading > .dragon-icon {
+    width: 18px;
+    height: 18px;
+    color: var(--dragon-accent);
+}
+
+.dragon-history-paths-heading > span {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.dragon-history-paths-heading small,
+.dragon-history-paths-summary-meta {
+    color: var(--dragon-text-tertiary);
+    font-size: var(--dragon-fs-tiny);
+}
+
+.dragon-history-paths-heading strong {
+    color: var(--dragon-text-primary);
+    font-family: var(--dragon-font-display);
+    font-size: var(--dragon-fs-headline-small);
+    font-weight: var(--dragon-fw-semibold);
+}
+
+.dragon-history-paths-summary-meta {
+    flex: 0 0 auto;
+    gap: var(--dragon-sp-2);
+}
+
+.dragon-history-paths-summary-meta .dragon-icon {
+    width: 16px;
+    height: 16px;
+    transition: transform var(--dragon-dur-fast) var(--dragon-ease-out);
+}
+
+.dragon-history-paths-panel[open] .dragon-history-paths-summary-meta .dragon-icon {
+    transform: rotate(180deg);
+}
+
+.dragon-history-paths-body {
+    max-height: 520px;
+    overflow: auto;
+    padding: 0 var(--dragon-sp-5) var(--dragon-sp-5);
+    border-top: 1px solid var(--dragon-divider);
+}
+
+.dragon-history-path-list {
+    display: grid;
+    gap: 1px;
+    overflow: hidden;
+    margin: var(--dragon-sp-3) 0 0;
+    border: 1px solid var(--dragon-border-light);
+    border-radius: var(--dragon-radius-md);
+    background: var(--dragon-border-light);
+}
+
+.dragon-history-path-list > div {
+    display: grid;
+    min-width: 0;
+    grid-template-columns: 118px minmax(0, 1fr);
+    align-items: center;
+    background: var(--dragon-bg-tertiary);
+}
+
+.dragon-history-path-list dt {
+    padding: 9px 12px;
+    color: var(--dragon-text-tertiary);
+    font-size: var(--dragon-fs-tiny);
+    line-height: 1.25;
+}
+
+.dragon-history-path-list dd {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: var(--dragon-sp-2);
+    margin: 0;
+    padding: 5px 7px 5px 0;
+}
+
+.dragon-history-path-list code {
+    min-width: 0;
+    flex: 1 1 auto;
+    overflow: hidden;
+    color: var(--dragon-text-secondary);
+    font-family: var(--dragon-font-mono);
+    font-size: var(--dragon-fs-tiny);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.dragon-history-path-copy {
+    width: 30px;
+    height: 30px;
+    flex: 0 0 30px;
+}
+
+.dragon-history-path-copy .dragon-icon {
+    width: 15px;
+    height: 15px;
+}
+
+@container dragon-history-detail (max-width: 620px) {
+    .dragon-history-paths-panel > summary,
+    .dragon-history-paths-body {
+        padding-right: var(--dragon-sp-4);
+        padding-left: var(--dragon-sp-4);
+    }
+
+    .dragon-history-path-list > div {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .dragon-history-path-list dt {
+        padding-bottom: 3px;
+    }
+
+    .dragon-history-path-list dd {
+        padding: 0 7px 7px 12px;
+    }
+}

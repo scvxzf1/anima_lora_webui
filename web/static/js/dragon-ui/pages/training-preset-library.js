@@ -6,7 +6,7 @@ import { createApiClient } from '../../shared/api.js?v=dragon-ui-20260812v35';
 import { escapeHtml } from '../../shared/format.js?v=dragon-ui-20260812v35';
 import { renderIcon } from '../icons.js?v=dragon-ui-20260812v35';
 import { DRAGON_VIEWPORT_QUERIES, matchesDragonViewport } from '../responsive.js?v=dragon-ui-20260824v1';
-import { loadTrainingContext, selectTrainingConfigFile } from './training-controls.js?v=dragon-ui-20260816v67';
+import { loadTrainingContext, selectTrainingConfigFile } from './training-controls.js?v=dragon-ui-20260824v114';
 
 const api = createApiClient();
 const HIDDEN_TRAINING_GROUP_IDS = new Set(['gui_methods', 'presets']);

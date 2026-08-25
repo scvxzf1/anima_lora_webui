@@ -359,6 +359,39 @@ def test_int_to_float_coerced(populated_parser):
     assert out["network_alpha"] == 64.0
 
 
+def test_scalar_strings_are_coerced_to_schema_types(populated_parser):
+    out = _flatten_toml(
+        {
+            "a": {
+                "sample_ratio": "1",
+                "max_train_epochs": "43",
+                "gradient_checkpointing": "false",
+            }
+        },
+        source="x.toml",
+    )
+
+    assert out["sample_ratio"] == 1.0
+    assert isinstance(out["sample_ratio"], float)
+    assert out["max_train_epochs"] == 43
+    assert isinstance(out["max_train_epochs"], int)
+    assert out["gradient_checkpointing"] is False
+
+
+def test_invalid_scalar_string_reports_config_location(populated_parser, tmp_path: Path):
+    config_path = tmp_path / "invalid.toml"
+    config_path.write_text('sample_ratio = "half"\n', encoding="utf-8")
+
+    with pytest.raises(
+        config_schema.ConfigSchemaError,
+        match=r"invalid\.toml:1: 'sample_ratio' expects float",
+    ):
+        _flatten_toml(
+            {"sample_ratio": "half"},
+            source=str(config_path),
+        )
+
+
 def test_train_batch_size_overrides_dataset_config_batch_size():
     import train
 

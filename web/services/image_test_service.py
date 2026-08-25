@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from library.env import anima_home, normalize_model_family, resolve_model_family
+from library.models.family_registry import get_model_family_spec
 
 import asyncio
 from collections import deque
@@ -204,6 +205,11 @@ def _normalize_image_test_request(
         raise ValueError("请输入正向提示词")
 
     model_family = _resolve_image_test_model_family(cfg)
+    family_spec = get_model_family_spec(model_family)
+    if not family_spec.supported_inference_modes:
+        raise ValueError(
+            f"{family_spec.display_name} 当前仅接入训练，尚未接入 Web 生图测试"
+        )
     sampler = _normalize_choice(payload.get("sampler") or cfg.get("sample_sampler") or "euler", ALLOWED_SAMPLERS, "采样器")
     attn_mode = _normalize_choice(payload.get("attn_mode") or cfg.get("attn_mode") or "flash", ALLOWED_ATTN_MODES, "注意力后端")
     seed = _normalize_optional_int(payload.get("seed"))
@@ -214,23 +220,48 @@ def _normalize_image_test_request(
     raw_flow_shift = payload.get("flow_shift")
     flow_shift = _normalize_float(
         raw_flow_shift,
-        default=3.0 if model_family == "krea2_raw" else 1.0,
+        default=family_spec.image_test_flow_shift_default,
         label="Flow Shift",
     )
     lora_multiplier = _normalize_float(payload.get("lora_multiplier"), default=1.0, label="LoRA 强度")
     runtime_dtype = _normalize_runtime_dtype(payload.get("runtime_dtype"), cfg)
     text_encoder_dtype = _normalize_text_encoder_dtype(payload.get("text_encoder_dtype"))
-    if model_family == "krea2_raw":
-        if sampler != "euler":
-            raise ValueError("Krea-2 推理目前仅支持 Euler 采样器")
-        if raw_flow_shift not in (None, "") and abs(flow_shift - 3.0) > 1e-9:
-            raise ValueError("Krea-2 使用自动 mu shift；请勿设置 Anima Flow Shift")
-        if attn_mode == "sdpa":
-            attn_mode = "torch"
-        elif attn_mode not in {"torch", "flash"}:
-            raise ValueError("Krea-2 注意力后端仅支持 torch 或 flash")
-        if attn_mode == "flash" and runtime_dtype not in {"fp16", "bf16"}:
-            raise ValueError("Krea-2 FlashAttention 仅支持 fp16 或 bf16 推理精度")
+    if sampler not in family_spec.supported_inference_samplers:
+        supported = ", ".join(
+            "Euler" if value == "euler" else value
+            for value in sorted(family_spec.supported_inference_samplers)
+        )
+        raise ValueError(
+            f"{family_spec.display_name} 推理不支持采样器 {sampler!r}；"
+            f"当前仅支持 {supported}"
+        )
+    if family_spec.automatic_flow_shift:
+        if raw_flow_shift not in (None, "") and abs(
+            flow_shift - family_spec.image_test_flow_shift_default
+        ) > 1e-9:
+            raise ValueError(
+                f"{family_spec.display_name} 使用自动 mu shift；请勿设置 Anima Flow Shift"
+            )
+    if attn_mode not in family_spec.supported_attention_modes:
+        raise ValueError(
+            f"{family_spec.display_name} 注意力后端不支持 {attn_mode!r}"
+        )
+    if family_spec.sdpa_aliases_to_torch and attn_mode == "sdpa":
+        attn_mode = "torch"
+    if (
+        attn_mode == "flash"
+        and family_spec.flash_runtime_dtypes is not None
+        and runtime_dtype not in family_spec.flash_runtime_dtypes
+    ):
+        dtype_order = ("fp16", "bf16")
+        supported_dtypes = " 或 ".join(
+            [value for value in dtype_order if value in family_spec.flash_runtime_dtypes]
+            + sorted(family_spec.flash_runtime_dtypes - set(dtype_order))
+        )
+        raise ValueError(
+            f"{family_spec.display_name} FlashAttention 仅支持 "
+            f"{supported_dtypes} 推理精度"
+        )
     device, gpu_index, gpu_label = _normalize_image_test_gpu_selection(
         payload.get("gpu_index"),
         available_gpus=available_gpus,
@@ -269,8 +300,10 @@ def _normalize_image_test_request(
         )
     if anima_selective_lora and not weight_path:
         raise ValueError("启用 LoRA 分层加载时，需要先选择一个 LoRA 权重")
-    if model_family == "krea2_raw" and anima_selective_lora:
-        raise ValueError("Krea-2 暂不支持 Anima LoRA 分层加载")
+    if anima_selective_lora and not family_spec.supports_anima_selective_lora:
+        raise ValueError(
+            f"{family_spec.display_name} 暂不支持 Anima LoRA 分层加载"
+        )
 
     dit = str(cfg.get("pretrained_model_name_or_path") or "").strip()
     text_encoder = str(cfg.get("qwen3") or "").strip()

@@ -15,6 +15,7 @@ from safetensors.torch import save_file
 
 from library import train_util
 from library.env import resolve_model_family, resolve_under_home
+from library.models.family_registry import dispatch_model_family
 
 logger = logging.getLogger(__name__)
 
@@ -49,34 +50,61 @@ def _path_fingerprint(value: object) -> dict[str, Any]:
     return result
 
 
+def _krea2_encoding_profile(args) -> dict[str, Any]:
+    from library.models.krea2_raw.strategy import (
+        KREA2_MAX_LENGTH,
+        KREA2_PAD_LENGTH,
+        KREA2_PREFIX_IDX,
+        KREA2_SELECT_LAYERS,
+        KREA2_TE_BUNDLED_CONFIG_DIR,
+    )
+
+    return dict(
+        max_length=KREA2_MAX_LENGTH,
+        pad_length=KREA2_PAD_LENGTH,
+        prefix_idx=KREA2_PREFIX_IDX,
+        select_layers=list(KREA2_SELECT_LAYERS),
+        tokenizer=_path_fingerprint(KREA2_TE_BUNDLED_CONFIG_DIR),
+    )
+
+
+def _anima_encoding_profile(args) -> dict[str, Any]:
+    return dict(
+        qwen3_max_token_length=getattr(args, "qwen3_max_token_length", None),
+        t5_max_token_length=getattr(args, "t5_max_token_length", None),
+        t5_tokenizer=_path_fingerprint(getattr(args, "t5_tokenizer_path", None)),
+    )
+
+
+def _z_image_encoding_profile(args) -> dict[str, Any]:
+    from library.models.z_image.strategy import Z_IMAGE_MAX_LENGTH
+    from library.models.z_image.weights import resolve_z_image_tokenizer_path
+
+    return dict(
+        max_length=Z_IMAGE_MAX_LENGTH,
+        hidden_layer=-2,
+        tokenizer=_path_fingerprint(
+            resolve_z_image_tokenizer_path(getattr(args, "qwen3", ""))
+        ),
+    )
+
+
 def _encoding_profile(args, family: str) -> dict[str, Any]:
     profile: dict[str, Any] = {
         "family": family,
         "mixed_precision": str(getattr(args, "mixed_precision", "") or ""),
         "qwen3": _path_fingerprint(getattr(args, "qwen3", None)),
     }
-    if family == "krea2_raw":
-        from library.models.krea2_raw.strategy import (
-            KREA2_MAX_LENGTH,
-            KREA2_PAD_LENGTH,
-            KREA2_PREFIX_IDX,
-            KREA2_SELECT_LAYERS,
-            KREA2_TE_BUNDLED_CONFIG_DIR,
-        )
-
-        profile.update(
-            max_length=KREA2_MAX_LENGTH,
-            pad_length=KREA2_PAD_LENGTH,
-            prefix_idx=KREA2_PREFIX_IDX,
-            select_layers=list(KREA2_SELECT_LAYERS),
-            tokenizer=_path_fingerprint(KREA2_TE_BUNDLED_CONFIG_DIR),
-        )
-    else:
-        profile.update(
-            qwen3_max_token_length=getattr(args, "qwen3_max_token_length", None),
-            t5_max_token_length=getattr(args, "t5_max_token_length", None),
-            t5_tokenizer=_path_fingerprint(getattr(args, "t5_tokenizer_path", None)),
-        )
+    handler = dispatch_model_family(
+        family,
+        operation="sample prompt text-cache profile",
+        handlers={
+            "anima": _anima_encoding_profile,
+            "krea2_raw": _krea2_encoding_profile,
+            "z_image": _z_image_encoding_profile,
+        },
+    )
+    profile.update(handler(args))
     return profile
 
 

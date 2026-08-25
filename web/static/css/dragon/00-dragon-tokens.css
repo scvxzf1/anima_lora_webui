@@ -2,24 +2,40 @@
  * the shared type scale.
  */
 
+@font-face {
+    font-family: "Inter";
+    src: url("../../fonts/inter-latin-wght-normal.woff2") format("woff2-variations");
+    font-style: normal;
+    font-weight: 100 900;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: "JetBrains Mono";
+    src: url("../../fonts/jetbrains-mono-latin-wght-normal.woff2") format("woff2-variations");
+    font-style: normal;
+    font-weight: 100 800;
+    font-display: swap;
+}
+
 :root {
-    /* Typography — system font stacks */
-   --dragon-font-stack: "SF Pro Text", "SF Pro Icons", "Helvetica Neue",
+    /* Typography — local variable fonts keep the UI crisp and offline-capable. */
+   --dragon-font-stack: "Inter", "SF Pro Text", "SF Pro Icons", "Helvetica Neue",
        "Helvetica", "Arial", "PingFang SC", sans-serif;
-   --dragon-font-display: "SF Pro Display", "SF Pro Icons", "Helvetica Neue",
+   --dragon-font-display: "Inter", "SF Pro Display", "SF Pro Icons", "Helvetica Neue",
        "Helvetica", "Arial", "PingFang SC", sans-serif;
 }
 
 /* zh-CN font override — prefer SF Pro SC for Simplified Chinese */
 :lang(zh-CN) {
-    --dragon-font-stack: "SF Pro SC", "SF Pro Text", "SF Pro Icons",
+    --dragon-font-stack: "Inter", "SF Pro SC", "SF Pro Text", "SF Pro Icons",
         "PingFang SC", "Helvetica Neue", "Helvetica", "Arial", sans-serif;
-    --dragon-font-display: "SF Pro SC", "SF Pro Display", "SF Pro Icons",
+    --dragon-font-display: "Inter", "SF Pro SC", "SF Pro Display", "SF Pro Icons",
         "PingFang SC", "Helvetica Neue", "Helvetica", "Arial", sans-serif;
 }
 
 :root {
-    --dragon-font-mono: "SF Mono", "JetBrains Mono", "Fira Code", "Cascadia Code",
+    --dragon-font-mono: "JetBrains Mono", "SF Mono", "Fira Code", "Cascadia Code",
         "Courier New", monospace;
 
     /* Font sizes — typography scale
@@ -166,9 +182,9 @@
 /* Light theme palette */
 :root,
 [data-theme="light"] {
-    --dragon-bg-primary: #ffffff;
-    --dragon-bg-secondary: #f5f5f7;
-    --dragon-bg-tertiary: #ffffff;
+    --dragon-bg-primary: #f8fafc;
+    --dragon-bg-secondary: #ffffff;
+    --dragon-bg-tertiary: #f8fafc;
     --dragon-bg-elevated: #ffffff;
     --dragon-bg-translucent: rgba(250, 250, 252, 0.8);
     --dragon-bg-translucent-strong: rgba(250, 250, 252, 0.92);
@@ -192,10 +208,18 @@
     --dragon-accent-active: #006edb;
     --dragon-accent-light: rgba(0, 113, 227, 0.08);
 
-    --dragon-success: #34c759;
-    --dragon-warning: #ff9f0a;
-    --dragon-error: #ff3b30;
-    --dragon-info: #5ac8fa;
+    --dragon-success: #10b981;
+    --dragon-warning: #f59e0b;
+    --dragon-error: #ef4444;
+    --dragon-info: #3b82f6;
+    --dragon-status-running: #3b82f6;
+    --dragon-status-success: #10b981;
+    --dragon-status-warning: #f59e0b;
+    --dragon-status-danger: #ef4444;
+    --dragon-status-running-soft: #eff6ff;
+    --dragon-status-success-soft: #ecfdf5;
+    --dragon-status-warning-soft: #fef3c7;
+    --dragon-status-danger-soft: #fee2e2;
 
     --dragon-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.06);
     --dragon-shadow-md: 0 4px 16px rgba(0, 0, 0, 0.08);
@@ -204,20 +228,20 @@
 
     --dragon-scrim: rgba(0, 0, 0, 0.4);
     --dragon-divider: rgba(0, 0, 0, 0.1);
-    --dragon-tile-bg: #f5f5f7;
-    --dragon-tile-bg-hover: #ebebed;
-    --dragon-input-bg: #f5f5f7;
+    --dragon-tile-bg: #f1f5f9;
+    --dragon-tile-bg-hover: #e8eef5;
+    --dragon-input-bg: #f1f5f9;
     --dragon-input-bg-focus: #ffffff;
 }
 
 /* Dark theme palette */
 [data-theme="dark"] {
-    --dragon-bg-primary: #000000;
-    --dragon-bg-secondary: #0a0a0c;
-    --dragon-bg-tertiary: #1c1c1e;
-    --dragon-bg-elevated: #1c1c1e;
-    --dragon-bg-translucent: rgba(22, 22, 23, 0.8);
-    --dragon-bg-translucent-strong: rgba(22, 22, 23, 0.88);
+    --dragon-bg-primary: #09090b;
+    --dragon-bg-secondary: #18181b;
+    --dragon-bg-tertiary: #111113;
+    --dragon-bg-elevated: #18181b;
+    --dragon-bg-translucent: rgba(24, 24, 27, 0.82);
+    --dragon-bg-translucent-strong: rgba(24, 24, 27, 0.92);
 
     --dragon-text-primary: #f5f5f7;
     --dragon-text-secondary: #d1d1d6;
@@ -238,10 +262,18 @@
     --dragon-accent-active: #0071e3;
     --dragon-accent-light: rgba(10, 132, 255, 0.12);
 
-    --dragon-success: #30d158;
+    --dragon-success: #34d399;
     --dragon-warning: #ff9f0a;
     --dragon-error: #ff453a;
     --dragon-info: #64d2ff;
+    --dragon-status-running: #60a5fa;
+    --dragon-status-success: #34d399;
+    --dragon-status-warning: #fbbf24;
+    --dragon-status-danger: #f87171;
+    --dragon-status-running-soft: rgba(59, 130, 246, 0.16);
+    --dragon-status-success-soft: rgba(16, 185, 129, 0.16);
+    --dragon-status-warning-soft: rgba(245, 158, 11, 0.16);
+    --dragon-status-danger-soft: rgba(239, 68, 68, 0.16);
 
     --dragon-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
     --dragon-shadow-md: 0 4px 16px rgba(0, 0, 0, 0.4);
@@ -250,10 +282,10 @@
 
    --dragon-scrim: rgba(0, 0, 0, 0.4);
    --dragon-divider: rgba(255, 255, 255, 0.1);
-   --dragon-tile-bg: #1c1c1e;
-   --dragon-tile-bg-hover: #2c2c2e;
-   --dragon-input-bg: #1c1c1e;
-   --dragon-input-bg-focus: #2c2c2e;
+   --dragon-tile-bg: #27272a;
+   --dragon-tile-bg-hover: #303034;
+   --dragon-input-bg: #27272a;
+   --dragon-input-bg-focus: #303034;
     --dragon-nav-submenu-link-color: #E8E8ED;
     --dragon-nav-submenu-header-color: #86868b;
 }

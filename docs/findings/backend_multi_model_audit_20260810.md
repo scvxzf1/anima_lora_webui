@@ -11,6 +11,14 @@
 
 ## 结论
 
+2026-08-24 后续加固：P2-1/P2-2 已完成。当前已有
+`library.models.family_registry.ModelFamilySpec` 作为 canonical family/capability/cache
+契约，核心训练、预处理、推理和 Web image-test 均使用覆盖全部已注册
+family 的显式 handler 表。新 family 被注册但漏接任一 handler 时会 fail-closed，
+不再回退 Anima。TE cache 新文件也已写入 `model_family`/`cache_schema`
+metadata，Krea cache 额外校验 hidden/mask shape、dtype 和新格式 hidden width；
+旧无 metadata cache 仍兼容。
+
 当前后端是**已贯通的双模型实现**，不是通用多模型框架：
 
 - Anima 是默认且完整的 family。
@@ -234,16 +242,18 @@ DiT + checkpoint stamp 为 Krea，但仍使用 Anima target”的组合。错误
 
 ## P2 Findings
 
-### P2-1 缓存内容仍是位置协议
+### P2-1 缓存内容仍是位置协议（已修复，2026-08-24）
 
 Krea TE cache 通过 `[hiddens, mask, caption_dropout_rate]` 与 Anima 的“末位 rate”约定兼容，
 `library/training/batch_preprocess.py` 会拆掉最后一项。后缀隔离已经降低碰撞概率，但缓存内容
 没有 family/schema/version 字段；损坏文件或错误 sidecar 可能被按位置误读。
 
-建议为 TE cache 增加轻量 header/schema 校验，至少验证 family、字段数、mask dtype/shape、
-hidden width 和 cache version。
+已为新写入的 Anima/Krea TE cache 增加 `model_family` 和 `cache_schema`
+safetensors metadata。加载显式 metadata 冲突的 cache 会拒绝；Krea 会通过
+safetensors slice header 校验 hidden/mask 的维度、dtype、序列长度以及新格式
+2560 hidden width，不需物化整份 cache。旧无 metadata cache 保持可读。
 
-### P2-2 family 扩展点是分散的二分支
+### P2-2 family 扩展点是分散的二分支（已修复，2026-08-24）
 
 当前核心结构是多处 `if family == "krea2_raw" else anima`，没有注册式 family API。
 新增 family 至少要同步：
@@ -257,8 +267,11 @@ hidden width 和 cache version。
 7. Web preflight 和 capability UI；
 8. 测试矩阵和文档。
 
-建议把首次 Krea 迁移形成的边界固化成 `ModelFamilySpec` 注册表，但不要先搬迁整个 Anima
-目录。先让现有两个 family 消费注册表，再以第三个 family 验证接口是否足够。
+已落地 `ModelFamilySpec` 注册表，集中 canonical name/alias、TE cache 契约、
+network/method-adapter capability、inference mode/sampler/attention/Flow Shift 约束。
+核心 call site 改为 `dispatch_model_family()` 显式 handler 表；该 helper 每次检查
+是否覆盖全部已注册 family，因此新增注册项不会被任一 `else anima`
+静默吸收。Anima 大目录未搬迁，训练和推理公式未改变。
 
 ### P2-3 历史文档状态落后于代码
 

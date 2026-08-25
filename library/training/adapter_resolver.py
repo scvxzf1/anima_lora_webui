@@ -8,6 +8,7 @@ hooks, which keeps the protocol independent from ``networks.methods``.
 from __future__ import annotations
 
 from library.training.method_adapter import MethodAdapter
+from library.models.family_registry import get_model_family_spec
 
 
 def resolve_adapters(args, network) -> list[MethodAdapter]:
@@ -39,10 +40,11 @@ def resolve_adapters(args, network) -> list[MethodAdapter]:
     if adapters:
         from library.env import resolve_model_family
 
-        if resolve_model_family(args) == "krea2_raw":
+        family_spec = get_model_family_spec(resolve_model_family(args))
+        if not family_spec.supports_method_adapters:
             names = ", ".join(adapter.name for adapter in adapters)
             raise ValueError(
-                "Krea-2 training currently supports only plain LoRA; "
+                f"{family_spec.display_name} training does not support method adapters; "
                 f"method adapters are unsupported: {names}"
             )
     return adapters

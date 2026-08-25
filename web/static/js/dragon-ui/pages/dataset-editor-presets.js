@@ -1,7 +1,7 @@
 /* Preset library rendering and mutations for the Dragon dataset workspace. */
 
-import { renderIcon } from '../icons.js?v=dragon-ui-20260814v43';
-import { escapeAttribute, escapeHtml } from './dataset-editor-fields.js?v=dragon-ui-20260814v43';
+import { renderIcon } from '../icons.js?v=dragon-ui-20260824v44';
+import { escapeAttribute, escapeHtml } from './dataset-editor-fields.js?v=dragon-ui-20260824v53';
 
 export async function loadDatasetPresetLibrary(api) {
     const payload = await api('/api/config/dataset-presets');
@@ -90,8 +90,8 @@ function renderPresetItem(preset, selectedFile, search = '') {
     return `
         <div class="dragon-dataset-preset-row dragon-dataset-preset-item" role="button" tabindex="0" data-preset-row="${escapeAttribute(preset.path)}" data-preset-file="${escapeAttribute(preset.path)}" data-preset-drag-source data-active="${active}" ${active ? 'aria-current="true"' : ''}>
             <span class="dragon-dataset-preset-drag-handle" draggable="${draggable ? 'true' : 'false'}" aria-hidden="true" title="拖动调整位置">${renderIcon('grip')}</span>
-            <span><strong>${escapeHtml(preset.label || preset.filename || preset.path)}</strong><small title="${escapeAttribute(preset.path)}">${escapeHtml(preset.path)}</small></span>
-            <span class="dragon-dataset-preset-item-meta"><em>${Number(summary.dataset_count || 0)} 组</em><em>重复 ${Number(summary.repeat_total || 0)}</em>${preset.readonly ? '<em>只读</em>' : ''}</span>
+            <span><strong>${escapeHtml(preset.label || preset.filename || preset.path)}</strong><small title="${escapeAttribute(preset.path)}">${escapeHtml(preset.path)}</small>${active ? '<span class="visually-hidden">当前正在编辑</span>' : ''}</span>
+            <span class="dragon-dataset-preset-item-meta"><em>${Number(summary.dataset_count || 0)}组</em><em>${Number(summary.repeat_total || 0)} Reps</em>${preset.readonly ? '<em>只读</em>' : ''}</span>
         </div>
     `;
 }

@@ -21,13 +21,17 @@ import {
     originalConfigFieldValue,
     syncConfigDraftFromForm,
 } from '../anima-app/helpers/config-form-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { fieldValueType } from '../anima-app/helpers/config-field-ui-bridge.js?v=module-bootstrap-20260809-nf4-v2';
+import {
+    fieldValueType,
+    fieldValueTypeForKey,
+} from '../anima-app/helpers/config-field-ui-bridge.js?v=module-bootstrap-20260809-nf4-v2';
 import {
     normalizeMultilineText,
     parseArrayValue,
     parseNumberValue,
     valuesEqual,
-} from '../anima-app/helpers/form-values.js?v=module-bootstrap-20260809-nf4-v2';
+    valuesEqualForFieldType,
+} from '../anima-app/helpers/form-values.js?v=module-bootstrap-20260824-config-types-v1';
 import {
     normalizePrecisionPreference,
     precisionPreferenceFromConfig,
@@ -100,7 +104,11 @@ export function collectChangedFormValues(options = {}) {
             values[key] = next;
             continue;
         }
-        if (!valuesEqual(next, original)) {
+        if (!valuesEqualForFieldType(
+            next,
+            original,
+            fieldValueTypeForKey(key, original),
+        )) {
             values[key] = next;
         }
     }

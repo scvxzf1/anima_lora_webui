@@ -7,8 +7,6 @@ imported directly without pulling in the legacy facade.
 
 from __future__ import annotations
 
-from web.services.config.schema_gate import validate_config_mapping, validate_patch_values
-
 from functools import wraps
 from pathlib import Path
 from typing import Any
@@ -17,6 +15,10 @@ from library.env import get_configs_root, load_dotenv
 from web.services.atomic_io import atomic_write_text
 from web.services.config import file_groups as _file_groups
 from web.services.config import paths as _config_paths
+from web.services.config.schema_gate import (
+    normalize_patch_values,
+    validate_config_mapping,
+)
 
 _DELETE_TOML_KEY = object()
 
@@ -276,7 +278,7 @@ def _prepare_raw_file_patch(
         for key, value in values.items()
         if key not in ui_only_fields and key not in retired_fields
     }
-    schema_errors, schema_warnings = validate_patch_values(values)
+    values, schema_errors, schema_warnings = normalize_patch_values(values)
     schema_warnings = [str(item) for item in (schema_warnings or [])]
     if schema_errors:
         return False, "; ".join(schema_errors), None, "", [], schema_warnings
@@ -460,17 +462,49 @@ def _normalize_saved_raw_config_content(content: str) -> str:
     return normalized
 
 
+def _same_scalar_type(left: Any, right: Any) -> bool:
+    if isinstance(right, bool):
+        return isinstance(left, bool)
+    if isinstance(right, int):
+        return isinstance(left, int) and not isinstance(left, bool)
+    if isinstance(right, float):
+        return isinstance(left, float)
+    if isinstance(right, str):
+        return isinstance(left, str)
+    return type(left) is type(right)
+
+
 def _normalize_saved_raw_config_content_with_changed_keys(content: str) -> tuple[str, list[str]]:
     tomlkit = _tomlkit_module()
     doc = tomlkit.parse(content or "")
     if "output_name" in doc and _is_blank_output_name(doc["output_name"]):
         raise ValueError("output_name 不能为空")
+
+    scalar_values = {
+        key: value
+        for key, value in doc.items()
+        if isinstance(key, str) and not isinstance(value, (dict, list))
+    }
+    normalized_values, schema_errors, _schema_warnings = normalize_patch_values(
+        scalar_values
+    )
+    if schema_errors:
+        raise ValueError("; ".join(schema_errors))
+
+    changed_keys: list[str] = []
+    for key, normalized in normalized_values.items():
+        original = scalar_values.get(key)
+        if _same_scalar_type(original, normalized) and original == normalized:
+            continue
+        doc[key] = normalized
+        changed_keys.append(key)
+
     optimizer_type = str(doc.get("optimizer_type") or "").strip().lower()
     if optimizer_type != "came" or "optimizer_args" not in doc:
-        return content, []
+        return (tomlkit.dumps(doc), changed_keys) if changed_keys else (content, [])
     raw_args = doc["optimizer_args"]
     if not isinstance(raw_args, list):
-        return content, []
+        return (tomlkit.dumps(doc), changed_keys) if changed_keys else (content, [])
     for index, arg in enumerate(raw_args):
         text = str(arg).strip()
         if not text.lower().startswith("betas="):
@@ -479,12 +513,11 @@ def _normalize_saved_raw_config_content_with_changed_keys(content: str) -> tuple
         parts = [item.strip() for item in raw_betas.split(",") if item.strip()]
         if len(parts) == 2:
             raw_args[index] = "betas=0.9,0.999,0.9999"
-            return tomlkit.dumps(doc), ["optimizer_args"]
-        return content, []
-    return content, []
-
-
-
+            if "optimizer_args" not in changed_keys:
+                changed_keys.append("optimizer_args")
+            return tomlkit.dumps(doc), changed_keys
+        return (tomlkit.dumps(doc), changed_keys) if changed_keys else (content, [])
+    return (tomlkit.dumps(doc), changed_keys) if changed_keys else (content, [])
 
 _SYNC_WRAPPED_EXPORTS = {
     "load_raw_file",

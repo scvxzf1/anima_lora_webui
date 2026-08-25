@@ -5,7 +5,7 @@
 import { NO_DATASET_REGULARIZATION_QUICK_PRESETS, RESOURCE_QUICK_PRESETS } from '../anima-app/helpers/app-constants.js?v=module-bootstrap-20260809-nf4-v2';
 import { setFieldInputValue } from './field-input.js?v=module-bootstrap-20260809-nf4-v2';
 import { handleFormFieldChange } from './form-fields.js?v=module-bootstrap-20260809-nf4-v2';
-import { fillGlobalModelPathsIntoConfigForm, resourceQuickCurrentValue, strongerSelectiveCheckpointValue } from './resource-values.js?v=module-bootstrap-20260809-nf4-v2';
+import { fillGlobalModelPathsIntoConfigForm, resourceQuickCurrentValue, strongerSelectiveCheckpointValue } from './resource-values.js?v=module-bootstrap-20260824-zimage-defaults-v1';
 import { setTomlStatus } from '../anima-app/helpers/toml-action-state-bridge.js?v=module-bootstrap-20260809-nf4-v2';
 import { getConfigState } from '../anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260809-nf4-v2';
 

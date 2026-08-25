@@ -31,7 +31,9 @@ class TrainerNetworkMixin:
     def load_target_model(
         self, args, weight_dtype, accelerator, load_qwen3=True, load_vae=True
     ):
-        from library.training.model_loading import load_target_model as _load_target_model
+        from library.training.model_loading import (
+            load_target_model as _load_target_model,
+        )
 
         return _load_target_model(
             self,
@@ -60,17 +62,23 @@ class TrainerNetworkMixin:
         return _impl(tokenize_strategy)
 
     def get_latents_caching_strategy(self, args):
-        from library.training.anima_strategies import get_latents_caching_strategy as _impl
+        from library.training.anima_strategies import (
+            get_latents_caching_strategy as _impl,
+        )
 
         return _impl(args)
 
     def get_text_encoding_strategy(self, args):
-        from library.training.anima_strategies import get_text_encoding_strategy as _impl
+        from library.training.anima_strategies import (
+            get_text_encoding_strategy as _impl,
+        )
 
         return _impl(args)
 
     def get_models_for_text_encoding(self, args, accelerator, text_encoders):
-        from library.training.anima_strategies import get_models_for_text_encoding as _impl
+        from library.training.anima_strategies import (
+            get_models_for_text_encoding as _impl,
+        )
 
         return _impl(args, accelerator, text_encoders)
 
@@ -92,7 +100,9 @@ class TrainerNetworkMixin:
 
     @staticmethod
     def _blank_prompt_preservation_enabled(args: argparse.Namespace) -> bool:
-        from library.training.prior_preservation import blank_prompt_preservation_enabled
+        from library.training.prior_preservation import (
+            blank_prompt_preservation_enabled,
+        )
 
         return blank_prompt_preservation_enabled(args)
 
@@ -117,8 +127,28 @@ class TrainerNetworkMixin:
         return noise_scheduler
 
     def encode_images_to_latents(self, args, vae, images):
-        vae: qwen_image_autoencoder_kl.AutoencoderKLQwenImage
-        return vae.encode_pixels_to_latents(images)  # Keep 4D for input/output
+        from library.env import resolve_model_family
+        from library.models.family_registry import dispatch_model_family
+
+        def encode_qwen_vae(loaded_vae, pixels):
+            loaded_vae: qwen_image_autoencoder_kl.AutoencoderKLQwenImage
+            return loaded_vae.encode_pixels_to_latents(pixels)
+
+        def encode_z_image_vae(loaded_vae, pixels):
+            from library.models.z_image.latent import encode_z_image_latents
+
+            return encode_z_image_latents(loaded_vae, pixels)
+
+        encoder = dispatch_model_family(
+            resolve_model_family(args),
+            operation="live VAE encoding",
+            handlers={
+                "anima": encode_qwen_vae,
+                "krea2_raw": encode_qwen_vae,
+                "z_image": encode_z_image_vae,
+            },
+        )
+        return encoder(vae, images)  # Keep 4D for input/output
 
     def shift_scale_latents(self, args, latents):
         # Latents already normalized by vae.encode with scale
@@ -217,7 +247,9 @@ class TrainerNetworkMixin:
     def run_after_backward(self, ctx: TrainCtx):
         """Dispatch the post-backward hook to adapters (between
         ``accelerator.backward`` and gradient clipping)."""
-        from library.training.step_hooks import run_after_backward as _run_after_backward
+        from library.training.step_hooks import (
+            run_after_backward as _run_after_backward,
+        )
 
         return _run_after_backward(self, ctx)
 

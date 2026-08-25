@@ -1,5 +1,5 @@
 import { fetchModelConfigLibrary } from './api.js?v=module-bootstrap-20260809-nf4-v2';
-import { MODEL_CONFIG_PATH_FIELDS, modelFamilyLabel } from './model-config-data.js?v=module-bootstrap-20260809-nf4-v2';
+import { MODEL_CONFIG_PATH_FIELDS, modelFamilyLabel } from './model-config-data.js?v=module-bootstrap-20260824-zimage-v1';
 
 function isConfigComplete(item) {
     return Boolean(item) && MODEL_CONFIG_PATH_FIELDS.every(({ key }) => Boolean(item[key]));

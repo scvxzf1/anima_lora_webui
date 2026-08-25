@@ -22,6 +22,10 @@ from library.anima.text_strategies import (
     TextEncoderOutputsCachingStrategy,
 )
 from library.models import qwen_vae as qwen_image_autoencoder_kl
+from library.models.family_registry import (
+    get_model_family_spec,
+    validate_text_cache_metadata,
+)
 
 from library.log import setup_logging
 
@@ -212,7 +216,9 @@ class AnimaTextEncoderOutputsCachingStrategy(TextEncoderOutputsCachingStrategy):
     Caches: prompt_embeds (bf16), attn_mask (int32), t5_input_ids (int64), t5_attn_mask (int32)
     """
 
-    ANIMA_TEXT_ENCODER_OUTPUTS_CACHE_SUFFIX = "_anima_te.safetensors"
+    ANIMA_TEXT_ENCODER_OUTPUTS_CACHE_SUFFIX = get_model_family_spec(
+        "anima"
+    ).text_cache.suffix
 
     def __init__(
         self,
@@ -262,6 +268,9 @@ class AnimaTextEncoderOutputsCachingStrategy(TextEncoderOutputsCachingStrategy):
 
         try:
             with _safe_open(cache_path, framework="pt") as f:
+                validate_text_cache_metadata(
+                    f.metadata(), family="anima", path=cache_path
+                )
                 keys = set(f.keys())
                 if "num_variants" in keys:
                     num_variants = int(f.get_tensor("num_variants"))
@@ -305,6 +314,9 @@ class AnimaTextEncoderOutputsCachingStrategy(TextEncoderOutputsCachingStrategy):
         # and starves the dataloader workers; safe_open + get_tensor pulls just
         # the chosen variant's bytes from the mmap.
         with _safe_open(cache_path, framework="pt") as f:
+            validate_text_cache_metadata(
+                f.metadata(), family="anima", path=cache_path
+            )
             keys = set(f.keys())
             has_variants = "num_variants" in keys
             if has_variants and "caption_multi_source" in keys:
@@ -566,7 +578,12 @@ class AnimaTextEncoderOutputsCachingStrategy(TextEncoderOutputsCachingStrategy):
                     save_dict["crossattn_emb"] = ce_i
                 if prior_ce_i is not None:
                     save_dict["prior_crossattn_emb"] = prior_ce_i
-                _save_safetensors(save_dict, info.text_encoder_outputs_npz)
+                spec = get_model_family_spec("anima")
+                _save_safetensors(
+                    save_dict,
+                    info.text_encoder_outputs_npz,
+                    metadata=spec.text_cache.metadata(spec.name),
+                )
             else:
                 if ce_i is None:
                     info.text_encoder_outputs = (

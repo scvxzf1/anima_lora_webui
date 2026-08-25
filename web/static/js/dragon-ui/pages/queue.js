@@ -2,7 +2,7 @@
 
 import { createApiClient } from '../../shared/api.js?v=dragon-ui-20260812v35';
 import { connectWebSocket, disconnectWebSocket, onClose, onMessage, onOpen } from '../ws.js?v=dragon-ui-20260812v35';
-import { normalizeQueueSnapshot, queueItemTitle, renderQueuePage } from './queue-view.js?v=dragon-ui-20260814v43';
+import { normalizeQueueSnapshot, queueItemTitle, renderQueuePage } from './queue-view.js?v=dragon-ui-20260825v2';
 
 const api = createApiClient();
 const ACTIVE_FALLBACK_INTERVAL_MS = 5000;
@@ -18,6 +18,7 @@ export async function loadQueue() {
             ? { message: `${initial.error} 请检查 WebUI 服务后重试。`, tone: 'error' }
             : { message: '', tone: '' },
         busy: false,
+        confirming: false,
         settingsDirty: false,
         hasRendered: false,
         root: null,
@@ -47,10 +48,21 @@ function mountQueue(root, state) {
     const clickHandler = (event) => handleQueueClick(event, state);
     const submitHandler = (event) => handleQueueSubmit(event, state);
     const settingsHandler = (event) => capturePolicyDraft(event.target, state);
+    const documentClickHandler = (event) => closeQueueMoreMenu(root, event.target);
+    const keydownHandler = (event) => {
+        if (event.key !== 'Escape') return;
+        const menu = root.querySelector('[data-queue-more][open]');
+        if (!menu) return;
+        event.preventDefault();
+        menu.removeAttribute('open');
+        menu.querySelector('summary')?.focus();
+    };
     root.addEventListener('click', clickHandler);
     root.addEventListener('submit', submitHandler);
     root.addEventListener('input', settingsHandler);
     root.addEventListener('change', settingsHandler);
+    document.addEventListener('click', documentClickHandler);
+    document.addEventListener('keydown', keydownHandler);
 
     let refreshTimer = null;
     let wsConnected = false;
@@ -69,7 +81,7 @@ function mountQueue(root, state) {
         }, delay);
     };
     const applyQueueEvent = (payload) => {
-        if (state.busy || state.settingsDirty || !state.root) return;
+        if (state.busy || state.confirming || state.settingsDirty || !state.root) return;
         const nextModel = normalizeQueueSnapshot(payload);
         if (queueSnapshotsEqual(state.model, nextModel)) return;
         state.model = nextModel;
@@ -106,6 +118,8 @@ function mountQueue(root, state) {
         root.removeEventListener('submit', submitHandler);
         root.removeEventListener('input', settingsHandler);
         root.removeEventListener('change', settingsHandler);
+        document.removeEventListener('click', documentClickHandler);
+        document.removeEventListener('keydown', keydownHandler);
         state.root = null;
     };
 }
@@ -127,7 +141,13 @@ async function handleQueueClick(event, state) {
 
     const actionButton = event.target.closest('[data-queue-action]');
     if (!actionButton) return;
+    actionButton.closest('[data-queue-more]')?.removeAttribute('open');
     await handleQueueAction(actionButton.dataset.queueAction, state);
+}
+
+function closeQueueMoreMenu(root, target) {
+    const menu = root.querySelector('[data-queue-more][open]');
+    if (menu && !menu.contains(target)) menu.removeAttribute('open');
 }
 
 async function handleQueueSubmit(event, state) {
@@ -181,8 +201,26 @@ async function handleQueueAction(action, state) {
 
     const operation = bulkOperation(action, state.model);
     if (!operation) return;
-    if (!window.confirm(operation.confirm)) return;
+    if (!(await confirmQueueOperation(state, operation))) return;
     await performRequest(state, operation);
+}
+
+function confirmQueueOperation(state, operation) {
+    const dialog = state.root?.querySelector('[data-queue-confirm-dialog]');
+    if (!dialog?.showModal) return Promise.resolve(window.confirm(operation.confirm));
+    const title = dialog.querySelector('[data-queue-confirm-title]');
+    const message = dialog.querySelector('[data-queue-confirm-message]');
+    if (title) title.textContent = operation.title || '确认执行队列操作？';
+    if (message) message.textContent = operation.confirm;
+    state.confirming = true;
+    dialog.returnValue = '';
+    dialog.showModal();
+    return new Promise((resolve) => {
+        dialog.addEventListener('close', () => {
+            state.confirming = false;
+            resolve(dialog.returnValue === 'confirm');
+        }, { once: true });
+    });
 }
 
 async function handleItemAction(button, state) {
@@ -223,7 +261,10 @@ async function handleItemAction(button, state) {
         : running
             ? `立即停止“${queueItemTitle(item)}”吗？\n\n已生成的运行文件会保留。`
             : `取消等待任务“${queueItemTitle(item)}”吗？\n\n已创建的运行目录会保留。`;
-    if (!window.confirm(prompt)) return;
+    const title = terminal
+        ? '确认移出这条队列记录？'
+        : (running ? '确认立即停止当前任务？' : '确认取消这个等待任务？');
+    if (!(await confirmQueueOperation(state, { title, confirm: prompt }))) return;
     await performRequest(state, {
         message: terminal ? '正在移出队列记录…' : (running ? '正在停止任务…' : '正在取消任务…'),
         success: terminal ? '队列记录已移出，运行文件保持不变。' : (running ? '停止请求已发送。' : '等待任务已取消。'),
@@ -235,26 +276,32 @@ function bulkOperation(action, model) {
     const active = model.summary.queued + model.summary.running + (model.status === 'running' && !model.summary.running ? 1 : 0);
     const operations = {
         'cancel-waiting': {
+            title: '确认取消全部等待任务？',
             confirm: `取消全部 ${model.summary.queued} 个等待任务吗？\n\n运行中任务和所有训练文件都会保留。`,
             message: '正在取消全部等待任务…', success: '等待任务已取消。', endpoint: 'cancel-waiting',
         },
         'cancel-all': {
+            title: '确认取消整个队列？',
             confirm: `取消全部 ${active} 个运行或等待任务吗？\n\n当前训练会停止，队列会暂停；训练文件不会删除。`,
             message: '正在取消全部队列任务…', success: '队列取消请求已完成。', endpoint: 'cancel-all',
         },
         'abort-after-current': {
+            title: '确认中止后续任务？',
             confirm: `当前任务完成后停止队列，并取消 ${model.summary.queued} 个后续等待任务吗？`,
             message: '正在中止后续队列…', success: '后续队列已中止，当前任务不受影响。', endpoint: 'abort-after-current',
         },
         'force-abort': {
+            title: '确认立即强制中止？',
             confirm: `立即强制中止 ${active} 个运行或等待任务吗？\n\n当前训练会立即停止，队列保持暂停；训练文件不会删除。`,
             message: '正在强制中止队列…', success: '队列已强制中止。', endpoint: 'force-abort',
         },
         'clear-completed': {
+            title: '确认清理已完成记录？',
             confirm: `清理 ${model.summary.done} 条已完成队列记录吗？\n\n训练历史、运行目录、日志和权重不会删除。`,
             message: '正在清理已完成记录…', success: '已完成记录已清理。', endpoint: 'clear-completed',
         },
         'clear-canceled': {
+            title: '确认清理已取消记录？',
             confirm: `清理 ${model.summary.canceled} 条已取消队列记录吗？\n\n训练历史、运行目录、日志和权重不会删除。`,
             message: '正在清理已取消记录…', success: '已取消记录已清理。', endpoint: 'clear-canceled',
         },
@@ -286,7 +333,7 @@ async function performRequest(state, options) {
 }
 
 async function refreshQueue(state, options = {}) {
-    if (state.busy || !state.root || !document.contains(state.root)) return;
+    if (state.busy || state.confirming || !state.root || !document.contains(state.root)) return;
     if (options.quiet && state.settingsDirty) return;
     try {
         const payload = await api('/api/training/queue');
@@ -365,12 +412,12 @@ function createPolicyDraft(model) {
 function readQueueFilter() {
     const params = new URLSearchParams(window.location.search);
     const value = params.get('queue_filter');
-    return ['active', 'all', 'queued', 'running', 'error', 'done', 'canceled'].includes(value) ? value : 'active';
+    return ['all', 'queued', 'running', 'error', 'done', 'canceled'].includes(value) ? value : 'all';
 }
 
 function writeQueueFilter(filter) {
     const url = new URL(window.location.href);
-    if (filter === 'active') url.searchParams.delete('queue_filter');
+    if (filter === 'all') url.searchParams.delete('queue_filter');
     else url.searchParams.set('queue_filter', filter);
     window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
 }

@@ -62,6 +62,8 @@ GLOBAL_UI_KEYS = (
 )
 GLOBAL_DRAGON_UI_KEYS = (
     "dragon_motion_enabled",
+    "dragon_config_help_always_visible",
+    "dragon_config_tags_always_visible",
 )
 GLOBAL_IMAGE_TEST_KEYS = (
     "image_test_allow_home_search",
@@ -239,10 +241,11 @@ def save_global_settings(data: dict[str, Any]) -> dict[str, Any]:
         else:
             next_global[key] = value
     for key in GLOBAL_DRAGON_UI_KEYS:
+        default = bool(defaults.get(key, False))
         if key in data:
-            next_global[key] = _normalize_bool_setting(data.get(key), default=True)
+            next_global[key] = _normalize_bool_setting(data.get(key), default=default)
         elif key not in next_global:
-            next_global[key] = bool(current.get(key, defaults.get(key, True)))
+            next_global[key] = bool(current.get(key, default))
     for key in GLOBAL_IMAGE_TEST_KEYS:
         if key in data:
             next_global[key] = _normalize_bool_setting(data.get(key), default=False)
@@ -378,10 +381,11 @@ def _load_settings(settings_file: Path | None = None) -> dict[str, Any]:
             value = _normalize_ui_setting(key, section.get(key))
             settings[key] = value if value is not None else defaults.get(key)
     for key in GLOBAL_DRAGON_UI_KEYS:
+        default = bool(defaults.get(key, False))
         if key in section:
-            settings[key] = _normalize_bool_setting(section.get(key), default=bool(defaults.get(key, True)))
+            settings[key] = _normalize_bool_setting(section.get(key), default=default)
         else:
-            settings[key] = bool(defaults.get(key, True))
+            settings[key] = default
     for key in GLOBAL_IMAGE_TEST_KEYS:
         if key in section:
             settings[key] = _normalize_bool_setting(section.get(key), default=bool(defaults.get(key, False)))
@@ -447,6 +451,8 @@ def _default_global_settings(*, settings_file: Path | None = None) -> dict[str, 
         "queue_root": "",
         "ui_scale": DEFAULT_UI_SCALE,
         "dragon_motion_enabled": True,
+        "dragon_config_help_always_visible": False,
+        "dragon_config_tags_always_visible": False,
         "image_test_allow_home_search": False,
         "image_test_save_root": "",
         "model_family": "",

@@ -14,6 +14,7 @@ from torch import nn
 from library.anima import weights as anima_utils
 from library.env import resolve_model_family
 from library.models import qwen_vae as qwen_image_autoencoder_kl
+from library.models.family_registry import dispatch_model_family, get_model_family_spec
 from library.training.probes import maybe_probe_components as _maybe_probe_components
 from library.training.train_bootstrap import resolve_block_swap_profile_jsonl
 from library.training.v100_flash import (
@@ -24,6 +25,50 @@ from library.training.v100_flash import (
 import logging
 
 logger = logging.getLogger(__name__)
+
+
+def _load_anima_text_encoder(args, weight_dtype):
+    logger.info("Loading Qwen3 text encoder...")
+    model, _ = anima_utils.load_qwen3_text_encoder(
+        args.qwen3, dtype=weight_dtype, device="cpu"
+    )
+    return model
+
+
+def _load_krea2_text_encoder(args, weight_dtype):
+    from library.models.krea2_raw.strategy import load_krea2_text_encoder
+
+    logger.info("Loading Krea-2 Qwen3-VL text encoder...")
+    model, _ = load_krea2_text_encoder(
+        args.qwen3, dtype=weight_dtype, device="cpu"
+    )
+    return model
+
+
+def _load_z_image_text_encoder(args, weight_dtype):
+    from library.models.z_image.weights import load_z_image_text_encoder
+
+    logger.info("Loading Z-Image Qwen3 text encoder...")
+    return load_z_image_text_encoder(args.qwen3, dtype=weight_dtype, device="cpu")
+
+
+def _load_qwen_vae(args, weight_dtype):
+    vae = qwen_image_autoencoder_kl.load_vae(
+        args.vae,
+        device="cpu",
+        disable_mmap=True,
+        spatial_chunk_size=args.vae_chunk_size,
+        disable_cache=args.vae_disable_cache,
+    )
+    vae.to(weight_dtype)
+    vae.eval()
+    return vae
+
+
+def _load_z_image_vae(args, weight_dtype):
+    from library.models.z_image.weights import load_z_image_vae
+
+    return load_z_image_vae(args.vae, dtype=weight_dtype, device="cpu")
 
 
 def load_target_model(trainer, args, weight_dtype, accelerator, load_qwen3=True, load_vae=True):
@@ -37,18 +82,16 @@ def load_target_model(trainer, args, weight_dtype, accelerator, load_qwen3=True,
     # when every text-encoder output is already cached and no live encoding
     # (sampling / TE training / cache disabled) needs it.
     if load_qwen3:
-        if family == "krea2_raw":
-            from library.models.krea2_raw.strategy import load_krea2_text_encoder
-
-            logger.info("Loading Krea-2 Qwen3-VL text encoder...")
-            qwen3_text_encoder, _ = load_krea2_text_encoder(
-                args.qwen3, dtype=weight_dtype, device="cpu"
-            )
-        else:
-            logger.info("Loading Qwen3 text encoder...")
-            qwen3_text_encoder, _ = anima_utils.load_qwen3_text_encoder(
-                args.qwen3, dtype=weight_dtype, device="cpu"
-            )
+        loader = dispatch_model_family(
+            family,
+            operation="training text-encoder loading",
+            handlers={
+                "anima": _load_anima_text_encoder,
+                "krea2_raw": _load_krea2_text_encoder,
+                "z_image": _load_z_image_text_encoder,
+            },
+        )
+        qwen3_text_encoder = loader(args, weight_dtype)
         qwen3_text_encoder.eval()
     else:
         logger.info(
@@ -58,16 +101,18 @@ def load_target_model(trainer, args, weight_dtype, accelerator, load_qwen3=True,
 
     # Load VAE. Shared across families (same AutoencoderKLQwenImage).
     if load_vae:
-        logger.info(f"Loading {'Krea-2' if family == 'krea2_raw' else 'Anima'} VAE...")
-        vae = qwen_image_autoencoder_kl.load_vae(
-            args.vae,
-            device="cpu",
-            disable_mmap=True,
-            spatial_chunk_size=args.vae_chunk_size,
-            disable_cache=args.vae_disable_cache,
+        spec = get_model_family_spec(family)
+        logger.info("Loading %s VAE...", spec.display_name)
+        loader = dispatch_model_family(
+            family,
+            operation="training VAE loading",
+            handlers={
+                "anima": _load_qwen_vae,
+                "krea2_raw": _load_qwen_vae,
+                "z_image": _load_z_image_vae,
+            },
         )
-        vae.to(weight_dtype)
-        vae.eval()
+        vae = loader(args, weight_dtype)
     else:
         logger.info("Skipping VAE load: all latents cached and no sampling.")
         vae = None
@@ -79,11 +124,45 @@ def load_target_model(trainer, args, weight_dtype, accelerator, load_qwen3=True,
 
 def load_unet_lazily(trainer, args, weight_dtype, accelerator, text_encoders) -> tuple[nn.Module, list[nn.Module]]:
     family = resolve_model_family(args)
-    if family == "krea2_raw":
-        return _load_krea2_dit(
-            trainer, args, weight_dtype, accelerator, text_encoders
-        )
-    return _load_anima_dit(trainer, args, weight_dtype, accelerator, text_encoders)
+    loader = dispatch_model_family(
+        family,
+        operation="training DiT loading",
+        handlers={
+            "anima": _load_anima_dit,
+            "krea2_raw": _load_krea2_dit,
+            "z_image": _load_z_image_dit,
+        },
+    )
+    return loader(trainer, args, weight_dtype, accelerator, text_encoders)
+
+
+def _load_z_image_dit(trainer, args, weight_dtype, accelerator, text_encoders):
+    from library.models.z_image.weights import load_z_image_transformer
+
+    logger.info(
+        "Loading Z-Image transformer from %s...",
+        args.pretrained_model_name_or_path,
+    )
+    model = load_z_image_transformer(
+        args.pretrained_model_name_or_path,
+        dtype=weight_dtype,
+        device=accelerator.device,
+    )
+    if getattr(args, "gradient_checkpointing", False):
+        model.enable_gradient_checkpointing()
+    trainer.is_swapping_blocks = False
+    trainer._use_unsloth_offload_checkpointing = False
+    _maybe_probe_components(
+        trainer,
+        "dit_loaded",
+        unet=model,
+        device=accelerator.device,
+        phase="setup",
+        loading_device=accelerator.device,
+        loading_dtype=weight_dtype,
+        attn_mode="torch",
+    )
+    return model, text_encoders
 
 
 def _load_krea2_dit(trainer, args, weight_dtype, accelerator, text_encoders):

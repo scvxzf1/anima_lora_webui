@@ -1,0 +1,208 @@
+from __future__ import annotations
+
+from dataclasses import replace
+from types import SimpleNamespace
+
+import pytest
+import torch
+from safetensors import safe_open
+from safetensors.torch import save_file
+
+from library.models.family_registry import (
+    MODEL_FAMILY_REGISTRY,
+    ModelFamilyHandlerError,
+    TextCacheSpec,
+    dispatch_model_family,
+    get_model_family_spec,
+    normalize_registered_family,
+)
+
+
+def _register_third_family(monkeypatch, **overrides):
+    spec = replace(
+        get_model_family_spec("krea2_raw"),
+        name="third_model",
+        display_name="Third Model",
+        aliases=frozenset({"third", "third_model"}),
+        text_cache=TextCacheSpec("_third_te.safetensors", "third_te_v1"),
+        **overrides,
+    )
+    monkeypatch.setitem(MODEL_FAMILY_REGISTRY, spec.name, spec)
+    return spec
+
+
+def test_registry_normalizes_declared_aliases_only(monkeypatch) -> None:
+    _register_third_family(monkeypatch)
+
+    assert normalize_registered_family("third_model") == "third_model"
+    assert normalize_registered_family("third", allow_aliases=True) == "third_model"
+    with pytest.raises(ValueError, match="model_family"):
+        normalize_registered_family("third")
+
+
+def test_dispatch_rejects_incomplete_handler_table(monkeypatch) -> None:
+    _register_third_family(monkeypatch)
+
+    with pytest.raises(ModelFamilyHandlerError, match="missing=third_model"):
+        dispatch_model_family(
+            "anima",
+            operation="test operation",
+            handlers={"anima": object(), "krea2_raw": object()},
+        )
+
+
+def test_registered_family_cannot_fall_back_to_anima_loader(monkeypatch) -> None:
+    _register_third_family(monkeypatch)
+    from library.training import model_loading
+
+    monkeypatch.setattr(
+        model_loading,
+        "_load_anima_dit",
+        lambda *args, **kwargs: pytest.fail("third family fell back to Anima"),
+    )
+
+    with pytest.raises(ModelFamilyHandlerError, match="missing=third_model"):
+        model_loading.load_unet_lazily(
+            None,
+            SimpleNamespace(model_family="third_model"),
+            None,
+            None,
+            None,
+        )
+
+
+def test_registered_family_capabilities_are_enforced(monkeypatch) -> None:
+    _register_third_family(monkeypatch)
+    from library.training.adapter_resolver import resolve_adapters
+    from library.training.compat_matrix import check_training_compat
+
+    result = check_training_compat(
+        {
+            "model_family": "third_model",
+            "network_module": "networks.methods.ip_adapter",
+            "use_ip_adapter": True,
+        }
+    )
+    assert {item.code for item in result.errors} == {"family_plain_lora_only"}
+
+    args = SimpleNamespace(
+        model_family="third_model",
+        use_ip_adapter=True,
+        use_easycontrol=False,
+        use_byg=False,
+    )
+    network = SimpleNamespace(_contrastive_target_weight=0.0)
+    with pytest.raises(ValueError, match="Third Model.*method adapters"):
+        resolve_adapters(args, network)
+
+
+def test_krea_cache_writes_family_schema_metadata(tmp_path, monkeypatch) -> None:
+    from library.models.krea2_raw.strategy import (
+        Krea2TextEncoderOutputsCachingStrategy,
+    )
+
+    cache_path = tmp_path / "sample_krea2_te.safetensors"
+    strategy = Krea2TextEncoderOutputsCachingStrategy(cache_to_disk=True)
+    monkeypatch.setattr(
+        strategy,
+        "_encode_captions",
+        lambda *args, **kwargs: (
+            torch.zeros(1, 4, 2560, dtype=torch.bfloat16),
+            torch.ones(1, 4, dtype=torch.bool),
+        ),
+    )
+    info = SimpleNamespace(
+        caption="test",
+        caption_variants=None,
+        cache_caption_variants=False,
+        caption_dropout_rate=0.0,
+        text_encoder_outputs_npz=str(cache_path),
+    )
+
+    strategy.cache_batch_outputs(None, [], None, [info])
+
+    with safe_open(cache_path, framework="pt") as handle:
+        assert handle.metadata() == {
+            "model_family": "krea2_raw",
+            "cache_schema": "krea2_te_v1",
+        }
+
+
+def test_anima_cache_writes_family_schema_metadata(tmp_path, monkeypatch) -> None:
+    from library.anima.strategy import AnimaTextEncoderOutputsCachingStrategy
+
+    cache_path = tmp_path / "sample_anima_te.safetensors"
+    strategy = AnimaTextEncoderOutputsCachingStrategy(True, 1, False)
+    monkeypatch.setattr(
+        strategy,
+        "_encode_to_tensors",
+        lambda *args, **kwargs: (
+            torch.zeros(1, 4, 8, dtype=torch.bfloat16),
+            torch.ones(1, 4, dtype=torch.int32),
+            torch.zeros(1, 4, dtype=torch.int64),
+            torch.ones(1, 4, dtype=torch.int32),
+            None,
+        ),
+    )
+    info = SimpleNamespace(
+        caption="test",
+        caption_dropout_rate=0.0,
+        text_encoder_outputs_npz=str(cache_path),
+    )
+
+    strategy.cache_batch_outputs(None, [], None, [info])
+
+    with safe_open(cache_path, framework="pt") as handle:
+        assert handle.metadata() == {
+            "model_family": "anima",
+            "cache_schema": "anima_te_v1",
+        }
+
+
+def test_krea_cache_accepts_legacy_and_rejects_explicit_wrong_family(tmp_path) -> None:
+    from library.models.krea2_raw.strategy import (
+        Krea2TextEncoderOutputsCachingStrategy,
+    )
+
+    tensors = {
+        "hiddens": torch.zeros(4, 1, 8, dtype=torch.bfloat16),
+        "mask": torch.ones(4, dtype=torch.bool),
+        "caption_dropout_rate": torch.tensor(0.0),
+    }
+    strategy = Krea2TextEncoderOutputsCachingStrategy(cache_to_disk=True)
+
+    legacy_path = tmp_path / "legacy.safetensors"
+    save_file(tensors, legacy_path)
+    assert strategy.is_disk_cached_outputs_expected(str(legacy_path))
+    assert len(strategy.load_outputs_npz(str(legacy_path))) == 3
+
+    wrong_path = tmp_path / "wrong.safetensors"
+    save_file(
+        tensors,
+        wrong_path,
+        metadata={"model_family": "anima", "cache_schema": "anima_te_v1"},
+    )
+    assert not strategy.is_disk_cached_outputs_expected(str(wrong_path))
+    with pytest.raises(ValueError, match="text cache family mismatch"):
+        strategy.load_outputs_npz(str(wrong_path))
+
+
+def test_krea_cache_rejects_malformed_tensor_layout(tmp_path) -> None:
+    from library.models.krea2_raw.strategy import (
+        Krea2TextEncoderOutputsCachingStrategy,
+    )
+
+    cache_path = tmp_path / "malformed.safetensors"
+    save_file(
+        {
+            "hiddens": torch.zeros(4, 1, 1, dtype=torch.bfloat16),
+            "mask": torch.ones(4, dtype=torch.int32),
+            "caption_dropout_rate": torch.tensor(0.0),
+        },
+        cache_path,
+    )
+    strategy = Krea2TextEncoderOutputsCachingStrategy(cache_to_disk=True)
+
+    assert not strategy.is_disk_cached_outputs_expected(str(cache_path))
+    with pytest.raises(ValueError, match="invalid Krea text cache tensor layout"):
+        strategy.load_outputs_npz(str(cache_path))

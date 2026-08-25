@@ -7,6 +7,19 @@ from library.anima import (
     text_strategies,
 )
 from library.env import resolve_model_family
+from library.models.family_registry import dispatch_model_family
+
+
+def _krea2_sample_images(*args, **kwargs):
+    from library.models.krea2_raw.training_preview import sample_images
+
+    return sample_images(*args, **kwargs)
+
+
+def _z_image_sample_images(*args, **kwargs):
+    from library.models.z_image.training_preview import sample_images
+
+    return sample_images(*args, **kwargs)
 
 
 def sample_images(
@@ -30,14 +43,15 @@ def sample_images(
 
     text_encoding_strategy = text_strategies.TextEncodingStrategy.get_strategy()
     tokenize_strategy = text_strategies.TokenizeStrategy.get_strategy()
-    if resolve_model_family(args) == "krea2_raw":
-        from library.models.krea2_raw.training_preview import (
-            sample_images as sample_krea2_images,
-        )
-
-        sample_impl = sample_krea2_images
-    else:
-        sample_impl = anima_train_utils.sample_images
+    sample_impl = dispatch_model_family(
+        resolve_model_family(args),
+        operation="training sample preview",
+        handlers={
+            "anima": anima_train_utils.sample_images,
+            "krea2_raw": _krea2_sample_images,
+            "z_image": _z_image_sample_images,
+        },
+    )
 
     sample_impl(
         accelerator,

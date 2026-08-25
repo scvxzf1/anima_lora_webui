@@ -42,6 +42,24 @@ export function valuesEqual(a, b) {
     return JSON.stringify(a) === JSON.stringify(b);
 }
 
+export function valuesEqualForFieldType(a, b, valueType = '') {
+    if (!valuesEqual(a, b)) return false;
+    if (valueType === 'number') {
+        return typeof a === 'number' && Number.isFinite(a)
+            && typeof b === 'number' && Number.isFinite(b);
+    }
+    if (valueType === 'boolean') {
+        return typeof a === 'boolean' && typeof b === 'boolean';
+    }
+    if (valueType === 'array') {
+        return Array.isArray(a) && Array.isArray(b);
+    }
+    if (valueType === 'string') {
+        return typeof a === 'string' && typeof b === 'string';
+    }
+    return true;
+}
+
 export function normalizeMultilineText(value) {
     return String(value || '')
         .split(/\r?\n/)

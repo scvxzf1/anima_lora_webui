@@ -160,13 +160,18 @@ def test_model_config_save_roundtrip_preserves_sections_and_mirrors_default(
     assert [item["id"] for item in saved["items"]] == ["krea", "anima"]
     assert saved["items"][0]["model_family"] == "krea2_raw"
     raw = toml.loads(settings_file.read_text(encoding="utf-8"))
-    assert [item["id"] for item in raw["model_config_library"]["items"]] == ["krea", "anima"]
+    assert [item["id"] for item in raw["model_config_library"]["items"]] == [
+        "krea",
+        "anima",
+    ]
     assert raw["model_config_library"]["groups"] == [
         {"id": "primary", "label": "主力模型", "item_ids": ["krea"]},
         {"id": "fallback", "label": "备用模型", "item_ids": ["anima"]},
     ]
     assert raw["global"]["model_family"] == "krea2_raw"
-    assert raw["global"]["pretrained_model_name_or_path"] == "models/krea/dit.safetensors"
+    assert (
+        raw["global"]["pretrained_model_name_or_path"] == "models/krea/dit.safetensors"
+    )
     assert raw["global"]["output_root"] == "output/custom"
     assert raw["global"]["unknown"] == "keep"
     assert raw["training_policy"] == {"max_attempts": 3}
@@ -201,7 +206,11 @@ def test_model_config_save_without_groups_preserves_existing_group_membership(
         {
             "revision": first["revision"],
             "default_id": "one",
-            "items": [_item("two", "Two"), _item("one", "One"), _item("three", "Three")],
+            "items": [
+                _item("two", "Two"),
+                _item("one", "One"),
+                _item("three", "Three"),
+            ],
         }
     )
 
@@ -244,7 +253,9 @@ def test_model_config_anima_default_removes_legacy_family_key(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     settings_file = tmp_path / "web-ui-settings.toml"
-    settings_file.write_text(toml.dumps({"global": {"model_family": "krea2_raw"}}), encoding="utf-8")
+    settings_file.write_text(
+        toml.dumps({"global": {"model_family": "krea2_raw"}}), encoding="utf-8"
+    )
     _patch_settings_file(monkeypatch, settings_file)
     revision = model_config_service.get_model_configs()["revision"]
 
@@ -260,6 +271,27 @@ def test_model_config_anima_default_removes_legacy_family_key(
     assert "model_family" not in raw["global"]
 
 
+def test_model_config_saves_z_image_family(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings_file = tmp_path / "web-ui-settings.toml"
+    _patch_settings_file(monkeypatch, settings_file)
+    revision = model_config_service.get_model_configs()["revision"]
+
+    result = model_config_service.save_model_configs(
+        {
+            "revision": revision,
+            "default_id": "z-image",
+            "items": [_item("z-image", "Z-Image BF16", "z_image")],
+        }
+    )
+
+    assert result["items"][0]["model_family"] == "z_image"
+    raw = toml.loads(settings_file.read_text(encoding="utf-8"))
+    assert raw["global"]["model_family"] == "z_image"
+
+
 @pytest.mark.parametrize(
     ("patch", "message"),
     [
@@ -272,7 +304,7 @@ def test_model_config_anima_default_removes_legacy_family_key(
         ),
         (
             {"items": [{**_item("one", "One"), "model_family": "unknown"}]},
-            "仅支持 anima 或 krea2",
+            "仅支持 anima、krea2_raw 或 z_image",
         ),
         (
             {"groups": [{"id": "a", "label": "A", "item_ids": []}]},

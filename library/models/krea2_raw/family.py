@@ -221,8 +221,6 @@ def compute_noise_pred_and_target(
     # Krea2TextEncodingStrategy.encode_tokens.
     if not text_encoder_conds or text_encoder_conds[0] is None:
         # Live encode (uncached / TE training) — reuses the shared singleton.
-        from library.training.anima_strategies import _is_krea2  # noqa: F401
-
         text_encoding_strategy = ctx.text_encoding_strategy
         tokenize_strategy = ctx.tokenize_strategy
         with torch.set_grad_enabled(is_train and False), accelerator.autocast():

@@ -1,7 +1,7 @@
 /* Inference test page backed by ImageTestService. */
 
 import { createApiClient } from '../../shared/api.js?v=dragon-ui-20260812v35';
-import { mergedConfigUrl, loadTrainingContext } from './training-controls.js?v=dragon-ui-20260812v35';
+import { mergedConfigUrl, loadTrainingContext } from './training-controls.js?v=dragon-ui-20260824v114';
 import { renderImageTestPage } from './image-test-view.js?v=dragon-ui-20260814v43';
 
 const api = createApiClient();

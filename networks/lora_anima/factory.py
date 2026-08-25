@@ -15,6 +15,7 @@ import torch
 
 from library.env import normalize_model_family
 from library.log import setup_logging
+from library.models.family_registry import get_model_family_spec
 from networks import (
     NETWORK_REGISTRY,
     detect_network_spec_from_weights,
@@ -317,9 +318,13 @@ def create_network(
     model_family = normalize_model_family(
         kwargs.get("model_family") or "anima", source="LoRA network model_family"
     )
-    if model_family == "krea2_raw" and spec.name != "lora":
+    family_spec = get_model_family_spec(model_family)
+    if (
+        family_spec.supported_network_specs is not None
+        and spec.name not in family_spec.supported_network_specs
+    ):
         raise ValueError(
-            "Krea-2 training currently supports only the plain lora network spec; "
+            f"{family_spec.display_name} training does not support this network spec; "
             f"got {spec.name!r}."
         )
 
@@ -975,11 +980,16 @@ def create_network_from_weights(
             "at inference (non-mergeable)."
         )
 
-    if model_family_meta == "krea2_raw" and spec.name != "lora":
-        raise ValueError(
-            "Krea-2 checkpoints currently support only the plain lora network spec; "
-            f"got {spec.name!r}."
-        )
+    if model_family_meta is not None:
+        family_spec = get_model_family_spec(model_family_meta)
+        if (
+            family_spec.supported_network_specs is not None
+            and spec.name not in family_spec.supported_network_specs
+        ):
+            raise ValueError(
+                f"{family_spec.display_name} checkpoints do not support this "
+                f"network spec; got {spec.name!r}."
+            )
 
     cfg = LoRANetworkCfg.from_weights(
         modules_dim=modules_dim,

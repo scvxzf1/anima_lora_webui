@@ -3,6 +3,7 @@ from __future__ import annotations
 from PIL import Image
 import toml
 import torch
+from safetensors import safe_open
 from safetensors.torch import load_file
 
 from library.preprocess import text as preprocess_text
@@ -815,7 +816,13 @@ def test_cache_text_embeddings_writes_missing_caption_caches(tmp_path, monkeypat
     assert stats.written == 3
     assert seen_captions == ["tag one", "", ""]
     for path in (captioned, missing, empty):
-        assert (tmp_path / "cache" / f"{path.stem}_anima_te.safetensors").is_file()
+        cache_path = tmp_path / "cache" / f"{path.stem}_anima_te.safetensors"
+        assert cache_path.is_file()
+        with safe_open(cache_path, framework="pt") as handle:
+            assert handle.metadata() == {
+                "model_family": "anima",
+                "cache_schema": "anima_te_v1",
+            }
 
 
 def test_cache_text_embeddings_writes_captions_json_as_multi_source_variants(tmp_path, monkeypatch):
@@ -863,11 +870,17 @@ def test_cache_text_embeddings_writes_captions_json_as_multi_source_variants(tmp
         caption_shuffle_variants=0,
     )
 
-    cache = load_file(str(tmp_path / "cache" / "hero_anima_te.safetensors"))
+    cache_path = tmp_path / "cache" / "hero_anima_te.safetensors"
+    cache = load_file(str(cache_path))
     assert stats.written == 1
     assert seen_captions == ["caption one", "caption two"]
     assert int(cache["num_variants"]) == 2
     assert int(cache["caption_multi_source"]) == 1
+    with safe_open(cache_path, framework="pt") as handle:
+        assert handle.metadata() == {
+            "model_family": "anima",
+            "cache_schema": "anima_te_v1",
+        }
 
 
 def test_cache_text_embeddings_writes_diff_output_prior_crossattn(tmp_path, monkeypatch):

@@ -82,6 +82,7 @@ def test_inference_main_rejects_krea_modes_before_anima_strategy(
     monkeypatch, from_file, interactive
 ) -> None:
     import inference
+    from library.inference import family_runtime
 
     args = _args(
         model_family="krea2_raw",
@@ -92,8 +93,8 @@ def test_inference_main_rejects_krea_modes_before_anima_strategy(
     )
     monkeypatch.setattr(inference, "parse_args", lambda: args)
     monkeypatch.setattr(
-        inference.strategy_anima,
-        "AnimaTokenizeStrategy",
+        family_runtime,
+        "_install_anima_strategies",
         lambda *args, **kwargs: pytest.fail("Anima strategy must not be installed"),
     )
 

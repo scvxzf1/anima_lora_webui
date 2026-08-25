@@ -8,7 +8,7 @@ import {
     modelFamilyLabel,
     moveModelConfig,
     moveModelConfigByOffset,
-} from './model-config-data.js?v=module-bootstrap-20260809-nf4-v2';
+} from './model-config-data.js?v=module-bootstrap-20260824-zimage-v1';
 
 const state = {
     items: [],

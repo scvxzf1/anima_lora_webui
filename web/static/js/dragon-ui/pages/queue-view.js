@@ -4,7 +4,6 @@ import { renderIcon } from '../icons.js?v=dragon-ui-20260812v35';
 import { renderStatusRegion, renderToolHero } from './tool-page.js?v=dragon-ui-20260814v43';
 
 export const QUEUE_FILTERS = [
-    ['active', '待处理'],
     ['all', '全部'],
     ['queued', '等待'],
     ['running', '运行'],
@@ -51,7 +50,7 @@ export function normalizeQueueSnapshot(payload = {}) {
 }
 
 export function renderQueuePage(model, ui = {}) {
-    const filter = ui.filter || 'active';
+    const filter = ui.filter || 'all';
     const visibleItems = filterQueueItems(model.items, filter);
     const queuedItems = model.items.filter((item) => item.state === 'queued');
     const queuedPositions = new Map(queuedItems.map((item, index) => [String(item.id || ''), index]));
@@ -74,6 +73,7 @@ export function renderQueuePage(model, ui = {}) {
         <button class="dragon-btn dragon-btn-ghost" type="button" data-queue-action="refresh">
             ${renderIcon('refresh', 'dragon-btn-icon')}<span>刷新</span>
         </button>
+        ${renderQueueMoreMenu(model)}
     `;
 
     return `
@@ -105,24 +105,19 @@ export function renderQueuePage(model, ui = {}) {
                             <h2>${filterLabel(filter)}</h2>
                             <p>显示 ${visibleItems.length} / ${model.items.length} 个任务</p>
                         </div>
-                        <div class="dragon-queue-filter" role="group" aria-label="筛选队列任务">
-                            ${QUEUE_FILTERS.map(([value, label]) => `
-                                <button type="button" data-queue-filter="${value}" aria-pressed="${filter === value}">${label}</button>
-                            `).join('')}
-                        </div>
                     </div>
                     <div class="dragon-queue-list" data-queue-list>
                         ${visibleItems.length
                             ? visibleItems.map((item) => renderQueueItem(item, model, queuedPositions)).join('')
-                            : renderQueueEmpty(model.items.length, filter)}
+                            : renderQueueEmpty(model, filter)}
                     </div>
                 </section>
 
                 <aside class="dragon-queue-sidebar">
                     ${renderPolicyPanel(model, ui.draft)}
-                    ${renderBulkPanel(model)}
                 </aside>
             </div>
+            ${renderQueueConfirmDialog()}
         </div>
     `;
 }
@@ -141,9 +136,10 @@ export function queueItemTitle(item = {}) {
 }
 
 function renderStat(label, value, filter, activeFilter) {
+    const count = Number(value) || 0;
     return `
-        <button class="dragon-stat-tile dragon-queue-stat" type="button" data-queue-filter="${filter}" aria-pressed="${activeFilter === filter}">
-            <span>${label}</span><strong>${Number(value) || 0}</strong>
+        <button class="dragon-stat-tile dragon-queue-stat" type="button" data-queue-filter="${filter}" data-state="${filter}" data-count-state="${count > 0 ? 'nonzero' : 'zero'}" aria-pressed="${activeFilter === filter}">
+            <span>${label}</span><strong>${count}</strong>
         </button>
     `;
 }
@@ -264,49 +260,54 @@ function renderPolicyPanel(model, draft = {}) {
     `;
 }
 
-function renderBulkPanel(model) {
+function renderQueueMoreMenu(model) {
     const active = model.summary.queued + model.summary.running;
     const hasActiveRuntime = active > 0 || model.status === 'running';
     return `
-        <section class="dragon-tool-panel dragon-queue-bulk dragon-reveal" data-stagger="4">
-            <div class="dragon-tool-panel-head">
-                <div><span class="dragon-eyebrow">批量操作</span><h2>队列维护</h2></div>
+        <details class="dragon-queue-more" data-queue-more>
+            <summary class="dragon-btn dragon-btn-ghost" aria-label="更多队列操作">更多</summary>
+            <div class="dragon-queue-more-menu" role="menu" aria-label="队列维护操作">
+                ${queueMenuButton('abort-after-current', '中止后续队列', model.summary.queued < 1, true)}
+                ${queueMenuButton('force-abort', '强制中止队列', !hasActiveRuntime, true)}
+                ${queueMenuButton('cancel-all', '取消全部队列', active < 1, true)}
+                ${queueMenuButton('cancel-waiting', '取消全部等待', model.summary.queued < 1, true)}
+                <span class="dragon-queue-more-divider" aria-hidden="true"></span>
+                ${queueMenuButton('clear-completed', `清理已完成（${model.summary.done}）`, model.summary.done < 1)}
+                ${queueMenuButton('clear-canceled', `清理已取消（${model.summary.canceled}）`, model.summary.canceled < 1)}
+                <p>只清理队列记录，不删除训练目录、日志或权重。</p>
             </div>
-            <div class="dragon-queue-bulk-group">
-                ${bulkButton('cancel-waiting', '取消全部等待', model.summary.queued < 1)}
-                ${bulkButton('abort-after-current', '中止后续', model.summary.queued < 1)}
-                ${bulkButton('cancel-all', '取消全部', active < 1, true)}
-                ${bulkButton('force-abort', '强制中止', !hasActiveRuntime, true)}
-            </div>
-            <div class="dragon-queue-bulk-divider"></div>
-            <div class="dragon-queue-bulk-group">
-                ${bulkButton('clear-completed', `清理完成（${model.summary.done}）`, model.summary.done < 1)}
-                ${bulkButton('clear-canceled', `清理取消（${model.summary.canceled}）`, model.summary.canceled < 1)}
-            </div>
-            <p>清理和移出列表只删除队列记录，不删除训练目录、日志、权重或历史任务。</p>
-        </section>
+        </details>
     `;
 }
 
-function bulkButton(action, label, disabled, danger = false) {
-    return `<button class="dragon-btn dragon-btn-secondary${danger ? ' dragon-btn-danger' : ''}" type="button" data-queue-action="${action}" ${disabled ? 'disabled' : ''}>${label}</button>`;
+function queueMenuButton(action, label, disabled, danger = false) {
+    return `<button class="dragon-queue-more-item${danger ? ' dragon-queue-more-danger' : ''}" type="button" role="menuitem" data-queue-action="${action}"${disabled ? ' disabled' : ''}>${label}</button>`;
 }
 
-function renderQueueEmpty(total, filter) {
+function renderQueueEmpty(model, filter) {
+    const total = model.items.length;
     const text = total
         ? `当前筛选“${filterLabel(filter)}”没有任务。`
         : '队列为空。请从训练配置页预检后加入训练队列。';
-    return `<div class="dragon-empty-state dragon-queue-empty"><p>${text}</p></div>`;
+    const action = total
+        ? (model.summary.done > 0 && filter !== 'done'
+            ? '<button class="dragon-btn dragon-btn-secondary" type="button" data-queue-filter="done">查看已完成记录</button>'
+            : '<button class="dragon-btn dragon-btn-secondary" type="button" data-queue-filter="all">查看全部任务</button>')
+        : '<a class="dragon-btn dragon-btn-primary" href="#config/training-config">去配置页创建新任务</a>';
+    return `<div class="dragon-empty-state dragon-queue-empty"><span class="dragon-queue-empty-icon" aria-hidden="true">${renderIcon('list')}</span><h3>${total ? '当前筛选暂无任务' : '还没有队列任务'}</h3><p>${text}</p><div>${action}</div></div>`;
 }
 
 function filterQueueItems(items, filter) {
     if (filter === 'all') return items;
-    if (filter === 'active') return items.filter((item) => ['queued', 'running', 'error'].includes(item.state));
     return items.filter((item) => item.state === filter);
 }
 
 function filterLabel(filter) {
-    return QUEUE_FILTERS.find(([value]) => value === filter)?.[1] || '待处理';
+    return QUEUE_FILTERS.find(([value]) => value === filter)?.[1] || '全部';
+}
+
+function renderQueueConfirmDialog() {
+    return `<dialog class="dragon-queue-confirm-dialog" data-queue-confirm-dialog aria-labelledby="dragon-queue-confirm-title"><form method="dialog"><span class="dragon-queue-confirm-symbol">${renderIcon('stop')}</span><div><span class="dragon-eyebrow">队列安全确认</span><h2 id="dragon-queue-confirm-title" data-queue-confirm-title>确认执行操作？</h2><p data-queue-confirm-message></p></div><div class="dragon-queue-confirm-actions"><button class="dragon-btn dragon-btn-secondary" type="submit" value="cancel">取消</button><button class="dragon-btn dragon-btn-danger" type="submit" value="confirm" data-queue-confirm-submit>确认执行</button></div></form></dialog>`;
 }
 
 function queueItemTime(item) {

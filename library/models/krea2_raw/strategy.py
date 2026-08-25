@@ -39,6 +39,10 @@ from library.anima.text_strategies import (
     TokenizeStrategy,
 )
 from library.io.cache import resolve_cache_path
+from library.models.family_registry import (
+    get_model_family_spec,
+    validate_text_cache_metadata,
+)
 from library.log import setup_logging
 from safetensors.torch import save_file as _save_safetensors
 
@@ -71,7 +75,9 @@ KREA2_PROMPT_PREFIX = (
 )
 KREA2_PROMPT_SUFFIX = "<|im_end|>\n<|im_start|>assistant\n"
 
-KREA2_TEXT_ENCODER_OUTPUTS_CACHE_SUFFIX = "_krea2_te.safetensors"
+KREA2_TEXT_ENCODER_OUTPUTS_CACHE_SUFFIX = get_model_family_spec(
+    "krea2_raw"
+).text_cache.suffix
 KREA2_CACHE_DTYPE = torch.bfloat16
 
 _warned_legacy_variants_cache = False
@@ -183,6 +189,10 @@ class Krea2TextEncodingStrategy(TextEncodingStrategy):
 class Krea2TextEncoderOutputsCachingStrategy(TextEncoderOutputsCachingStrategy):
     """{stem}_krea2_te.safetensors caching (suffix 隔离, 不污染 _anima_te)."""
 
+    MODEL_FAMILY = "krea2_raw"
+    CACHE_LABEL = "Krea"
+    EXPECTED_HIDDEN_RANK = 3
+
     def __init__(
         self,
         cache_to_disk: bool = True,
@@ -221,6 +231,10 @@ class Krea2TextEncoderOutputsCachingStrategy(TextEncoderOutputsCachingStrategy):
         # bfloat16 hiddens have no numpy representation; the anima base class
         # signature is nominal — the real contract carries torch tensors.
         with safe_open(npz_path, framework="pt") as f:
+            metadata = f.metadata()
+            validate_text_cache_metadata(
+                metadata, family=self.MODEL_FAMILY, path=npz_path
+            )
             keys = set(f.keys())
             if "num_variants" in keys:
                 num_variants = int(f.get_tensor("num_variants"))
@@ -230,11 +244,20 @@ class Krea2TextEncoderOutputsCachingStrategy(TextEncoderOutputsCachingStrategy):
                     v0_intact="v0_intact" in keys,
                     cache_path=npz_path,
                 )
-                hiddens = f.get_tensor(f"hiddens_v{vi}")
-                mask = f.get_tensor(f"mask_v{vi}")
+                hidden_key = f"hiddens_v{vi}"
+                mask_key = f"mask_v{vi}"
             else:
-                hiddens = f.get_tensor("hiddens")
-                mask = f.get_tensor("mask")
+                hidden_key = "hiddens"
+                mask_key = "mask"
+            self._validate_tensor_layout(
+                f,
+                hidden_key,
+                mask_key,
+                cache_path=npz_path,
+                stamped=bool((metadata or {}).get("cache_schema")),
+            )
+            hiddens = f.get_tensor(hidden_key)
+            mask = f.get_tensor(mask_key)
             caption_dropout_rate = (
                 f.get_tensor("caption_dropout_rate")
                 if "caption_dropout_rate" in keys
@@ -257,6 +280,10 @@ class Krea2TextEncoderOutputsCachingStrategy(TextEncoderOutputsCachingStrategy):
             return True
         try:
             with safe_open(npz_path, framework="pt") as f:
+                metadata = f.metadata()
+                validate_text_cache_metadata(
+                    metadata, family=self.MODEL_FAMILY, path=npz_path
+                )
                 keys = set(f.keys())
                 has_variants = "num_variants" in keys
                 num_variants = int(f.get_tensor("num_variants")) if has_variants else 0
@@ -290,16 +317,63 @@ class Krea2TextEncoderOutputsCachingStrategy(TextEncoderOutputsCachingStrategy):
                                 > 1e-7
                             ):
                                 return False
-            if "caption_dropout_rate" not in keys:
-                return False
-            if num_variants > 0:
-                return all(
-                    f"hiddens_v{vi}" in keys and f"mask_v{vi}" in keys
-                    for vi in range(num_variants)
+                if "caption_dropout_rate" not in keys:
+                    return False
+                layouts = (
+                    [(f"hiddens_v{vi}", f"mask_v{vi}") for vi in range(num_variants)]
+                    if num_variants > 0
+                    else [("hiddens", "mask")]
                 )
-            return "hiddens" in keys and "mask" in keys
+                if not all(hidden in keys and mask in keys for hidden, mask in layouts):
+                    return False
+                for hidden, mask in layouts:
+                    self._validate_tensor_layout(
+                        f,
+                        hidden,
+                        mask,
+                        cache_path=npz_path,
+                        stamped=bool((metadata or {}).get("cache_schema")),
+                    )
+                rate_slice = f.get_slice("caption_dropout_rate")
+                if rate_slice.get_shape() != [] or rate_slice.get_dtype() != "F32":
+                    return False
+            return True
         except Exception:
             return False
+
+    @classmethod
+    def _validate_tensor_layout(
+        cls,
+        handle,
+        hidden_key: str,
+        mask_key: str,
+        *,
+        cache_path: str,
+        stamped: bool,
+    ) -> None:
+        hidden_slice = handle.get_slice(hidden_key)
+        mask_slice = handle.get_slice(mask_key)
+        hidden_shape = hidden_slice.get_shape()
+        mask_shape = mask_slice.get_shape()
+        expected_width = get_model_family_spec(cls.MODEL_FAMILY).text_cache.hidden_width
+        valid = (
+            len(hidden_shape) == cls.EXPECTED_HIDDEN_RANK
+            and len(mask_shape) == 1
+            and hidden_shape[0] == mask_shape[0]
+            and hidden_slice.get_dtype() == "BF16"
+            and mask_slice.get_dtype() == "BOOL"
+            and (
+                not stamped
+                or expected_width is None
+                or hidden_shape[-1] == expected_width
+            )
+        )
+        if not valid:
+            raise ValueError(
+                f"invalid {cls.CACHE_LABEL} text cache tensor layout for {cache_path}: "
+                f"{hidden_key} shape={hidden_shape} dtype={hidden_slice.get_dtype()}, "
+                f"{mask_key} shape={mask_shape} dtype={mask_slice.get_dtype()}"
+            )
 
     def _select_variant_index(
         self,
@@ -311,7 +385,8 @@ class Krea2TextEncoderOutputsCachingStrategy(TextEncoderOutputsCachingStrategy):
     ) -> int:
         if num_variants < 1:
             raise ValueError(
-                f"invalid Krea caption variant count in {cache_path or 'memory'}: "
+                f"invalid {self.CACHE_LABEL} caption variant count in "
+                f"{cache_path or 'memory'}: "
                 f"{num_variants}"
             )
         if multi_source:
@@ -322,10 +397,11 @@ class Krea2TextEncoderOutputsCachingStrategy(TextEncoderOutputsCachingStrategy):
             global _warned_legacy_variants_cache
             if not _warned_legacy_variants_cache:
                 logger.warning(
-                    "Loaded a legacy Krea multi-variant TE cache without "
+                    "Loaded a legacy %s multi-variant TE cache without "
                     "`v0_intact` (%s); sampling variants uniformly. "
                     "Re-run preprocess-te for 20%% pristine / 80%% "
                     "shuffled sampling.",
+                    self.CACHE_LABEL,
                     cache_path,
                 )
                 _warned_legacy_variants_cache = True
@@ -444,7 +520,12 @@ class Krea2TextEncoderOutputsCachingStrategy(TextEncoderOutputsCachingStrategy):
                     "caption_dropout_rate": caption_dropout_rate,
                 }
             if self.cache_to_disk:
-                _save_safetensors(save_dict, info.text_encoder_outputs_npz)
+                spec = get_model_family_spec(self.MODEL_FAMILY)
+                _save_safetensors(
+                    save_dict,
+                    info.text_encoder_outputs_npz,
+                    metadata=spec.text_cache.metadata(spec.name),
+                )
             elif use_variant_layout:
                 end = offset + len(variants)
                 info.text_encoder_outputs = {

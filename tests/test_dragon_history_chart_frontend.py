@@ -191,5 +191,5 @@ def test_dragon_history_system_charts_are_wired_to_detail_payload() -> None:
     assert "renderHistorySystemCharts(payload.system, payload.limits)" in controller
     assert "bindHistorySystemCharts(root, model.payload.system)" in controller
     assert "renderHistoryMetrics(metrics, lossChart, systemCharts)" in view
-    assert "grid-template-columns:repeat(3,minmax(0,1fr))" in css
-    assert "@media(max-width:1120px)" in css
+    assert "grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr))" in css
+    assert "@container dragon-history-detail (min-width:1600px)" in css

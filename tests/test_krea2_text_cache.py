@@ -163,7 +163,7 @@ class _FakeEncodingStrategy:
         hiddens = torch.tensor(
             [float(len(caption)) for caption in captions],
             dtype=torch.bfloat16,
-        ).reshape(-1, 1, 1, 1)
+        ).reshape(-1, 1, 1, 1).expand(-1, 1, 1, 2560).contiguous()
         return [hiddens, torch.ones(len(captions), 1, dtype=torch.bool)]
 
 

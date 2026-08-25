@@ -44,6 +44,8 @@ def setup_training_routes(app: web.Application) -> None:
     app.router.add_get("/api/training/history/collections/settings", handle_history_collection_settings_get)
     app.router.add_put("/api/training/history/collections/settings", handle_history_collection_settings_put)
     app.router.add_get("/api/training/history/config-group/timeline", handle_config_group_timeline)
+    app.router.add_get("/api/training/history/{task_id}/logs/search", handle_history_log_search)
+    app.router.add_get("/api/training/history/{task_id}/logs", handle_history_logs)
     app.router.add_get("/api/training/history/{task_id}/logs/download", handle_history_log_download)
     app.router.add_get("/api/training/history/{task_id}/artifacts/{artifact_key}", handle_history_artifact)
     app.router.add_get("/api/training/history/{task_id}", handle_history_detail)
@@ -685,7 +687,47 @@ async def handle_history_detail(request: web.Request) -> web.Response:
     svc = request.app["training_service"]
     task_id = request.match_info["task_id"]
     try:
-        return web.json_response(svc.get_history_task(task_id))
+        payload = svc.get_history_task(task_id)
+        include_logs = str(request.query.get("include_logs") or "1").lower() not in {"0", "false", "no"}
+        if not include_logs:
+            payload["logs"] = []
+            limits = payload.setdefault("limits", {})
+            limits["logs_returned"] = 0
+            limits["logs_truncated"] = bool(limits.get("logs_total"))
+        return web.json_response(payload)
+    except FileNotFoundError as e:
+        return web.json_response({"ok": False, "error": str(e)}, status=404)
+    except ValueError as e:
+        return web.json_response({"ok": False, "error": str(e)}, status=400)
+
+
+async def handle_history_logs(request: web.Request) -> web.Response:
+    svc = request.app["training_service"]
+    task_id = request.match_info["task_id"]
+    offset_value = request.query.get("offset")
+    try:
+        offset = int(offset_value) if offset_value is not None else None
+        limit = _positive_query_int(request.query.get("limit"))
+        if offset is not None and offset < 0:
+            raise ValueError("日志偏移量不能小于 0")
+        return web.json_response(svc.get_history_log_page(task_id, offset=offset, limit=limit))
+    except FileNotFoundError as e:
+        return web.json_response({"ok": False, "error": str(e)}, status=404)
+    except ValueError as e:
+        return web.json_response({"ok": False, "error": str(e)}, status=400)
+
+
+async def handle_history_log_search(request: web.Request) -> web.Response:
+    svc = request.app["training_service"]
+    task_id = request.match_info["task_id"]
+    try:
+        cursor = int(request.query.get("cursor") or 0)
+        return web.json_response(svc.find_history_log_match(
+            task_id,
+            query=request.query.get("query") or "",
+            cursor=cursor,
+            direction=request.query.get("direction") or "forward",
+        ))
     except FileNotFoundError as e:
         return web.json_response({"ok": False, "error": str(e)}, status=404)
     except ValueError as e:

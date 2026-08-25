@@ -165,8 +165,9 @@ async def handle_steps(request: web.Request) -> web.Response:
 
 async def handle_data_dirs_suggest(request: web.Request) -> web.Response:
     source_image_dir = request.query.get("source_image_dir", "")
+    inspect = str(request.query.get("inspect", "")).strip().lower() in {"1", "true", "yes", "on"}
     try:
-        result = suggest_data_dirs(source_image_dir)
+        result = await asyncio.to_thread(suggest_data_dirs, source_image_dir, inspect=inspect)
         status = 200 if result.get("ok") else 400
         return web.json_response(result, status=status)
     except Exception as e:

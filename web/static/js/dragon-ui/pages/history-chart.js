@@ -1,5 +1,7 @@
 /* Interactive loss / learning-rate chart used by training history details. */
 
+import { areaSvgPath, emaValues, smoothSvgPath } from './trend-utils.js?v=dragon-ui-20260825v1';
+
 const WIDTH = 900;
 const HEIGHT = 300;
 const PADDING = { top: 34, right: 72, bottom: 32, left: 54 };
@@ -9,6 +11,7 @@ const LR_COLOR = '#f59e0b';
 export function renderHistoryMetricsChart(metrics = [], options = {}) {
     const rows = normalizeMetrics(metrics);
     if (!rows.length) return '<div class="dragon-empty-state"><p>暂无训练数据</p></div>';
+    const displayRows = smoothMetricRows(rows, options.smoothing ?? .2);
     const showLoss = options.lossCurve !== false;
     const showLr = options.lrCurve !== false;
     const showLossValue = options.lossValue !== false;
@@ -30,12 +33,18 @@ export function renderHistoryMetricsChart(metrics = [], options = {}) {
         const value = formatLr(lrDomain[1] - ratio * (lrDomain[1] - lrDomain[0]));
         return `<text x="${WIDTH - PADDING.right + 9}" y="${y + 4}" fill="${LR_COLOR}" font-size="10">${value}</text>`;
     }).join('') : '';
-    const lossPoints = showLoss ? linePoints(rows, x, lossY, 'loss') : '';
-    const lrPoints = showLr ? linePoints(rows, x, lrY, 'lr') : '';
-    return `<svg class="dragon-loss-chart dragon-history-metrics-chart" viewBox="0 0 ${WIDTH} ${HEIGHT}" preserveAspectRatio="xMidYMid meet" role="img" aria-labelledby="dragon-history-chart-title" data-history-chart>
-        <title id="dragon-history-chart-title">训练损失与学习率变化曲线</title>${grid}${rightTicks}
-        ${lossPoints ? `<polyline points="${lossPoints}" fill="none" stroke="${LOSS_COLOR}" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round" data-history-series="loss"/>` : ''}
-        ${lrPoints ? `<polyline points="${lrPoints}" fill="none" stroke="${LR_COLOR}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" data-history-series="lr"/>` : ''}
+    const lossPoints = showLoss ? pointPairs(displayRows, x, lossY, 'loss') : [];
+    const lrPoints = showLr ? pointPairs(displayRows, x, lrY, 'lr') : [];
+    const lossPath = smoothSvgPath(lossPoints, .2);
+    const lrPath = smoothSvgPath(lrPoints, .2);
+    const lossArea = areaSvgPath(lossPath, lossPoints, PADDING.top + innerH);
+    return `<div class="dragon-chart-glass-tooltip" data-history-chart-tooltip hidden></div><svg class="dragon-loss-chart dragon-history-metrics-chart" viewBox="0 0 ${WIDTH} ${HEIGHT}" preserveAspectRatio="xMidYMid meet" role="img" aria-labelledby="dragon-history-chart-title" data-history-chart>
+        <title id="dragon-history-chart-title">训练损失与学习率变化曲线</title>
+        <defs><linearGradient id="dragon-history-loss-area" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${LOSS_COLOR}" stop-opacity=".15"/><stop offset="1" stop-color="${LOSS_COLOR}" stop-opacity="0"/></linearGradient></defs>
+        ${grid}${rightTicks}
+        ${lossArea ? `<path d="${lossArea}" fill="url(#dragon-history-loss-area)" data-history-series="loss-area"/>` : ''}
+        ${lossPath ? `<path d="${lossPath}" fill="none" stroke="${LOSS_COLOR}" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" data-history-series="loss"/>` : ''}
+        ${lrPath ? `<path d="${lrPath}" fill="none" stroke="${LR_COLOR}" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" data-history-series="lr"/>` : ''}
         <g class="dragon-history-chart-values" data-history-chart-values hidden>
             <text x="${WIDTH - PADDING.right}" y="17" text-anchor="end" fill="${LOSS_COLOR}" font-size="12" data-history-hover-loss ${showLossValue ? '' : 'hidden'}>Loss: —</text>
             <text x="${WIDTH - PADDING.right}" y="31" text-anchor="end" fill="${LR_COLOR}" font-size="12" data-history-hover-lr ${showLrValue ? '' : 'hidden'}>LR: —</text>
@@ -52,7 +61,7 @@ export function renderHistoryMetricsChart(metrics = [], options = {}) {
 export function bindHistoryChart(root, metrics = []) {
     const container = root.querySelector('[data-history-chart-container]');
     if (!container) return () => {};
-    const state = { lossCurve: true, lrCurve: true, lossValue: true, lrValue: true };
+    const state = { lossCurve: true, lrCurve: true, lossValue: true, lrValue: true, smoothing: .2 };
     let unbindHover = () => {};
     const render = () => {
         unbindHover();
@@ -66,6 +75,15 @@ export function bindHistoryChart(root, metrics = []) {
         input.addEventListener('change', onChange);
         listeners.push(() => input.removeEventListener('change', onChange));
     });
+    const smoothingInput = root.querySelector('[data-history-chart-smoothing]');
+    const smoothingOutput = root.querySelector('[data-history-chart-smoothing-value]');
+    const onSmoothing = () => {
+        state.smoothing = Math.min(.99, Math.max(0, Number(smoothingInput?.value || 0) / 100));
+        if (smoothingOutput) smoothingOutput.textContent = `${Math.round(state.smoothing * 100)}%`;
+        render();
+    };
+    smoothingInput?.addEventListener('input', onSmoothing);
+    listeners.push(() => smoothingInput?.removeEventListener('input', onSmoothing));
     render();
     return () => { unbindHover(); listeners.forEach((remove) => remove()); };
 }
@@ -80,7 +98,9 @@ function bindHover(svg, metrics, options) {
     const guide = svg.querySelector('[data-history-hover-guide]');
     const lossText = svg.querySelector('[data-history-hover-loss]');
     const lrText = svg.querySelector('[data-history-hover-lr]');
+    const tooltip = svg.parentElement?.querySelector('[data-history-chart-tooltip]');
     const rows = normalizeMetrics(metrics);
+    const displayRows = smoothMetricRows(rows, options.smoothing ?? .2);
     const lossDomain = domain(rows.map((row) => row.loss));
     const lrDomain = domain(rows.map((row) => row.lr));
     const innerW = WIDTH - PADDING.left - PADDING.right;
@@ -98,15 +118,20 @@ function bindHover(svg, metrics, options) {
         const showLrPoint = options.lrCurve !== false && row.lr != null;
         const showLossText = options.lossValue !== false && row.loss != null;
         const showLrText = options.lrValue !== false && row.lr != null;
-        positionHoverPoint(lossPoint, cx, row.loss == null ? null : lossY(row.loss), showLossPoint);
-        positionHoverPoint(lrPoint, cx, row.lr == null ? null : lrY(row.lr), showLrPoint);
+        const displayRow = displayRows[index] || row;
+        positionHoverPoint(lossPoint, cx, displayRow.loss == null ? null : lossY(displayRow.loss), showLossPoint);
+        positionHoverPoint(lrPoint, cx, displayRow.lr == null ? null : lrY(displayRow.lr), showLrPoint);
         guide.setAttribute('x1', String(cx)); guide.setAttribute('x2', String(cx));
         if (lossText) lossText.textContent = `Loss: ${row.loss == null ? '—' : row.loss.toFixed(5)}`;
         if (lrText) lrText.textContent = `LR: ${row.lr == null ? '—' : formatLr(row.lr)}`;
+        if (tooltip) {
+            tooltip.innerHTML = `<span>STEP ${index + 1}</span><strong>${row.loss == null ? 'Loss —' : `Loss ${row.loss.toFixed(5)}`}</strong><small>${row.lr == null ? 'LR —' : `LR ${formatLr(row.lr)}`}</small>`;
+            tooltip.hidden = false;
+        }
         setSvgHidden(values, !(showLossText || showLrText));
         setSvgHidden(hover, !(showLossPoint || showLrPoint || showLossText || showLrText));
     };
-    const hide = () => { setSvgHidden(hover, true); setSvgHidden(values, true); };
+    const hide = () => { setSvgHidden(hover, true); setSvgHidden(values, true); if (tooltip) tooltip.hidden = true; };
     const onPointerOut = (event) => {
         if (!event.relatedTarget || !svg.contains(event.relatedTarget)) hide();
     };
@@ -165,8 +190,15 @@ function normalizeMetrics(metrics) {
     })).filter((row) => row.loss != null || row.lr != null);
 }
 
-function linePoints(rows, x, y, key) {
-    return rows.map((row, index) => row[key] == null ? null : `${x(index)},${y(row[key])}`).filter(Boolean).join(' ');
+function pointPairs(rows, x, y, key) {
+    return rows.map((row, index) => row[key] == null ? null : [x(index), y(row[key])]).filter(Boolean);
+}
+
+function smoothMetricRows(rows, smoothing) {
+    const lossIndices = rows.flatMap((row, index) => row.loss == null ? [] : [index]);
+    const smoothed = emaValues(lossIndices.map((index) => rows[index].loss), smoothing);
+    const lossByIndex = new Map(lossIndices.map((index, position) => [index, smoothed[position]]));
+    return rows.map((row, index) => ({ ...row, loss: lossByIndex.has(index) ? lossByIndex.get(index) : null }));
 }
 
 function numeric(value) {

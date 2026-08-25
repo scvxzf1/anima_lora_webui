@@ -28,31 +28,6 @@
     transform: scale(1.025);
 }
 
-.dragon-history-preview-grid .dragon-history-preview-open-label {
-    position: absolute;
-    right: 10px;
-    bottom: 10px;
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 5px 11px;
-    border: 1px solid color-mix(in srgb, var(--dragon-border) 70%, transparent);
-    border-radius: var(--dragon-radius-pill);
-    background: color-mix(in srgb, var(--dragon-bg-primary) 84%, transparent);
-    color: var(--dragon-text-primary);
-    font-size: var(--dragon-fs-tiny);
-    font-weight: var(--dragon-fw-medium);
-    line-height: 1;
-    box-shadow: var(--dragon-shadow-sm);
-    backdrop-filter: blur(6px);
-}
-
-.dragon-history-preview-grid .dragon-history-preview-open-label .dragon-icon {
-    width: 13px;
-    height: 13px;
-    color: var(--dragon-accent);
-}
-
 /* Native <dialog> shell. */
 body[data-dragon-ui] .dragon-sample-detail-dialog {
     position: fixed;

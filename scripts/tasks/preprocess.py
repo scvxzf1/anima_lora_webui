@@ -600,6 +600,8 @@ def _run_preprocess_vae(row: dict[str, Any], extra: list[str]) -> None:
             str(row.get("lora_cache_dir") or _path("lora_cache_dir", "post_image_dataset/lora")),
             "--vae",
             _path("vae", "models/vae/qwen_image_vae.safetensors"),
+            "--model_family",
+            _model_family(),
             "--batch_size",
             str(vae_batch_size),
             "--dtype",
@@ -634,10 +636,18 @@ def _run_preprocess_te(
     if backup_captions:
         _run_caption_backup(row)
     family = _model_family()
-    if family == "krea2_raw":
-        _run_preprocess_te_krea2(row, extra, shuffle_variants, tag_dropout_rate)
-        return
-    _run_preprocess_te_anima(row, extra, shuffle_variants, tag_dropout_rate)
+    from library.models.family_registry import dispatch_model_family
+
+    handler = dispatch_model_family(
+        family,
+        operation="text-encoder preprocessing",
+        handlers={
+            "anima": _run_preprocess_te_anima,
+            "krea2_raw": _run_preprocess_te_krea2,
+            "z_image": _run_preprocess_te_z_image,
+        },
+    )
+    handler(row, extra, shuffle_variants, tag_dropout_rate)
 
 
 def _model_family() -> str:
@@ -720,6 +730,64 @@ def _run_preprocess_te_krea2(
             *source_args,
             *_caption_extension_args_for_row(row),
             *json_args,
+            *_recursive_args(row),
+            *_path_pattern_args(row),
+            *mp_args,
+            *_reuse_overwrite_args(row, kind="te"),
+            *extra,
+        ]
+    )
+
+
+def _run_preprocess_te_z_image(
+    row: dict[str, Any],
+    extra: list[str],
+    shuffle_variants: str | None = None,
+    tag_dropout_rate: str | None = None,
+) -> None:
+    shuffle_variants = shuffle_variants or os.environ.get(
+        "CAPTION_SHUFFLE_VARIANTS", "0"
+    )
+    tag_dropout_rate = tag_dropout_rate or os.environ.get(
+        "CAPTION_TAG_DROPOUT_RATE", "0.0"
+    )
+    mp_args, extra = _resolve_lowres_filter(extra)
+    _, text_batch_size = _preprocess_cache_batch_sizes()
+    dtype = _preprocess_precision_dtype()
+    prefer_json_env = os.environ.get("CAPTION_PREFER_JSON")
+    prefer_json = (
+        _truthy(prefer_json_env)
+        if prefer_json_env is not None
+        else _truthy(row.get("prefer_json_caption"))
+    )
+    source_mode_env = os.environ.get("CAPTION_SOURCE_MODE")
+    source_mode = (
+        source_mode_env
+        if source_mode_env is not None
+        else row.get("caption_source_mode")
+    )
+    run(
+        [
+            PY,
+            "-m",
+            "scripts.z_image.preprocess_te_cache",
+            "--dir",
+            str(row.get("source_image_dir") or _path("source_image_dir", "image_dataset")),
+            "--cache_dir",
+            str(row.get("lora_cache_dir") or _path("lora_cache_dir", "post_image_dataset/lora")),
+            "--qwen3",
+            _path("qwen3", "models/diffusion_models/Z-Image"),
+            "--batch_size",
+            str(text_batch_size),
+            "--dtype",
+            dtype,
+            "--caption_shuffle_variants",
+            shuffle_variants,
+            "--caption_tag_dropout_rate",
+            tag_dropout_rate,
+            *_caption_source_args(source_mode, prefer_json),
+            *_caption_extension_args_for_row(row),
+            *(["--prefer_json_caption"] if prefer_json else []),
             *_recursive_args(row),
             *_path_pattern_args(row),
             *mp_args,

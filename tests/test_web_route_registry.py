@@ -73,6 +73,8 @@ REQUIRED_ROUTES: set[tuple[str, str]] = {
     ("DELETE", "/api/training/queue/{item_id}"),
     ("GET", "/api/training/history"),
     ("GET", "/api/training/history/{task_id}"),
+    ("GET", "/api/training/history/{task_id}/logs"),
+    ("GET", "/api/training/history/{task_id}/logs/search"),
     ("DELETE", "/api/training/history/{task_id}"),
     ("GET", "/ws/training"),
 }

@@ -10,78 +10,18 @@ from typing import Any, Optional
 
 import torch
 
-from library import train_util
 from library.datasets.buckets import snap_sample_size
 from library.models.krea2_raw.family import Krea2TextEmbedding
 from library.models.krea2_raw.inference_runner import generate_krea2
 from library.runtime.accelerator import prepare_dtype
+from library.training.sample_preview_common import (
+    failed_on_any_process as _failed_on_any_process,
+    is_cuda_oom as _is_cuda_oom,
+    load_prompts as _load_prompts,
+    should_sample as _should_sample,
+)
 
 logger = logging.getLogger(__name__)
-
-
-def _should_sample(args, epoch, steps: int) -> bool:
-    if steps == 0:
-        return bool(args.sample_at_first)
-    if epoch is not None and args.sample_every_n_epochs is not None:
-        return epoch % args.sample_every_n_epochs == 0
-    if epoch is None and args.sample_every_n_steps is not None:
-        return steps % args.sample_every_n_steps == 0
-    return False
-
-
-def _failed_on_any_process(accelerator, failed: bool, num_processes: int) -> bool:
-    if num_processes <= 1:
-        return failed
-    failure_count = accelerator.reduce(
-        torch.tensor(
-            [int(failed)],
-            device=accelerator.device,
-            dtype=torch.int32,
-        ),
-        reduction="sum",
-    )
-    return bool(failure_count.item())
-
-
-def _load_prompts(
-    accelerator,
-    args,
-    *,
-    text_encoder,
-    sample_prompts_te_outputs,
-    sample_prompts_snapshot,
-    num_processes: int,
-) -> list[dict[str, Any]]:
-    use_cached_snapshot = (
-        sample_prompts_snapshot is not None
-        and sample_prompts_te_outputs is not None
-        and text_encoder is None
-    )
-    prompt_file_missing = not use_cached_snapshot and not os.path.isfile(
-        args.sample_prompts
-    )
-    if _failed_on_any_process(accelerator, prompt_file_missing, num_processes):
-        if getattr(accelerator, "is_main_process", True):
-            logger.error(
-                "Sample prompt file is unavailable on at least one process: %s",
-                args.sample_prompts,
-            )
-        return []
-
-    prompt_error: Optional[Exception] = None
-    prompts: list[dict[str, Any]] = []
-    try:
-        if use_cached_snapshot:
-            prompts = [dict(prompt) for prompt in sample_prompts_snapshot]
-        else:
-            prompts = train_util.load_prompts(args.sample_prompts)
-    except Exception as exc:  # keep every rank on the same collective path
-        prompt_error = exc
-    if _failed_on_any_process(accelerator, prompt_error is not None, num_processes):
-        if prompt_error is not None:
-            raise prompt_error
-        raise RuntimeError("Sample prompt loading failed on another process")
-    return prompts
 
 
 def _as_embedding(encoded, *, device: torch.device, dtype: torch.dtype):
@@ -271,12 +211,6 @@ def _sample_image(
         runtime_dtype,
     )
     return _stage_latent(args, save_dir, latents, spec, epoch, steps)
-
-
-def _is_cuda_oom(exc: BaseException) -> bool:
-    return isinstance(exc, torch.cuda.OutOfMemoryError) or (
-        "out of memory" in str(exc).lower()
-    )
 
 
 def _run_local_samples(

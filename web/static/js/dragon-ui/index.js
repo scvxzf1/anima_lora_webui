@@ -9,17 +9,19 @@ import { canLeaveCurrentPage, destroyRouter, initRouter, isCurrentPage, navigate
 import { isConfigCategory } from './category-map.js?v=dragon-ui-20260824v44';
 import { destroyAnimations, initScrollAnimations, initParallax } from './animations.js?v=dragon-ui-20260824v69';
 import { destroyDragonMotion, initDragonMotion } from './motion.js?v=dragon-ui-20260824v1';
+import { applyDragonConfigChromeSettings } from './config-chrome.js?v=dragon-ui-20260825v1';
+import { trackHistoryDetailEntry } from './history-return-navigation.js?v=dragon-ui-20260825v1';
 import { loadDashboard } from './pages/dashboard.js?v=dragon-ui-20260814v43';
-import { loadConfigPage } from './pages/config-page.js?v=dragon-ui-20260824v82';
-import { loadLiveTraining } from './pages/live-training.js?v=dragon-ui-20260814v43';
-import { loadHistory } from './pages/history.js?v=dragon-ui-20260824v94';
-import { loadQueue } from './pages/queue.js?v=dragon-ui-20260814v43';
+import { loadConfigPage } from './pages/config-page.js?v=dragon-ui-20260825v134';
+import { loadLiveTraining } from './pages/live-training.js?v=dragon-ui-20260825v47';
+import { loadHistory } from './pages/history.js?v=dragon-ui-20260825v101';
+import { loadQueue } from './pages/queue.js?v=dragon-ui-20260825v2';
 import { loadWeightAnalysis } from './pages/weight-analysis.js?v=dragon-ui-20260814v43';
-import { loadImageTest } from './pages/image-test.js?v=dragon-ui-20260814v43';
+import { loadImageTest } from './pages/image-test.js?v=dragon-ui-20260824v114';
 import { loadEnvironment } from './pages/environment.js?v=dragon-ui-20260814v43';
-import { loadDatasetEditor } from './pages/dataset-editor.js?v=dragon-ui-20260816v70';
-import { loadModelConfig } from './pages/model-config.js?v=dragon-ui-20260817v5';
-import { loadGlobalSettings } from './pages/global-settings.js?v=dragon-ui-20260824v45';
+import { loadDatasetEditor } from './pages/dataset-editor.js?v=dragon-ui-20260825v118';
+import { loadModelConfig } from './pages/model-config.js?v=dragon-ui-20260824-zimage-v1';
+import { loadGlobalSettings } from './pages/global-settings.js?v=dragon-ui-20260825v46';
 import { loadPreviewWorkspace } from './pages/preview-workspace.js?v=dragon-ui-20260814v43';
 import { createApiClient } from '../shared/api.js?v=dragon-ui-20260812v35';
 import { loadAndApplyDragonUIScale } from './ui-scale.js?v=dragon-ui-20260814v43';
@@ -36,6 +38,7 @@ export async function initDragonUI() {
         if (typeof cleanupTheme === 'function') cleanupCallbacks.push(cleanupTheme);
         const globalSettings = await loadAndApplyDragonUIScale(dragonApi);
         const cleanupMotion = initDragonMotion(globalSettings || {});
+        applyDragonConfigChromeSettings(globalSettings || {});
         cleanupCallbacks.push(cleanupMotion);
         const mount = document.getElementById('dragon-main');
         if (!mount) throw new Error('#dragon-main mount point not found');
@@ -75,11 +78,14 @@ export async function initDragonUI() {
         const handleWindowHashChange = async () => {
             const nextHash = window.location.hash;
             const staysOnDatasetPage = isCurrentPage('dataset-editor') && nextHash.startsWith('#dataset-editor');
-            if (!staysOnDatasetPage && !canLeaveCurrentPage()) {
+            const staysOnConfigCategory = configCategoryFromHash(acceptedHash) === configCategoryFromHash(nextHash)
+                && configCategoryFromHash(nextHash) !== null;
+            if (!staysOnDatasetPage && !staysOnConfigCategory && !canLeaveCurrentPage()) {
                 history.replaceState(null, '', `${window.location.pathname}${window.location.search}${acceptedHash || ''}`);
                 window.dispatchEvent(new CustomEvent('dragon-route-restored'));
                 return;
             }
+            trackHistoryDetailEntry(acceptedHash, nextHash);
             acceptedHash = nextHash;
             await handleHashChange();
         };
@@ -104,6 +110,11 @@ export async function initDragonUI() {
         destroyAnimations();
         throw error;
     }
+}
+
+function configCategoryFromHash(hash) {
+    const parts = String(hash || '').replace(/^#/, '').split('/');
+    return parts[0] === 'config' && isConfigCategory(parts[1]) ? parts[1] : null;
 }
 
 export function destroyDragonUI() {

@@ -11,6 +11,11 @@ from uuid import uuid4
 import toml
 
 from library.env import resolve_model_family
+from library.models.family_registry import (
+    MODEL_FAMILY_REGISTRY,
+    get_model_family_spec,
+    normalize_registered_family,
+)
 from web.services import settings_service
 from web.services.atomic_io import atomic_write_text
 
@@ -25,11 +30,6 @@ MODEL_CONFIG_FIELDS = (
 MODEL_CONFIG_GROUP_FIELDS = ("id", "label", "item_ids")
 DEFAULT_MODEL_CONFIG_GROUP_ID = "ungrouped"
 DEFAULT_MODEL_CONFIG_GROUP_LABEL = "未分组"
-MODEL_FAMILY_ALIASES = {
-    "anima": "anima",
-    "krea2": "krea2_raw",
-    "krea2_raw": "krea2_raw",
-}
 MODEL_CONFIG_ID_PATTERN = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$")
 
 
@@ -112,10 +112,10 @@ def save_model_configs(data: dict[str, Any]) -> dict[str, Any]:
     next_global = dict(global_section)
     for key in MODEL_PATH_KEYS:
         next_global[key] = default_item[key]
-    if default_item["model_family"] == "krea2_raw":
-        next_global["model_family"] = "krea2_raw"
-    else:
+    if default_item["model_family"] == "anima":
         next_global.pop("model_family", None)
+    else:
+        next_global["model_family"] = default_item["model_family"]
     next_raw["global"] = next_global
 
     settings_file.parent.mkdir(parents=True, exist_ok=True)
@@ -168,7 +168,7 @@ def _legacy_model_configs(
     family = _normalize_family(raw_family)
     item = {
         "id": "legacy-default",
-        "name": "Krea-2 默认配置" if family == "krea2_raw" else "Anima 默认配置",
+        "name": f"{get_model_family_spec(family).display_name} 默认配置",
         "model_family": family,
     }
     for key in MODEL_PATH_KEYS:
@@ -330,11 +330,17 @@ def _sort_group_items_by_flat_order(
 
 
 def _normalize_family(value: Any) -> str:
-    raw = str(value or "").strip().lower().replace("-", "_")
-    normalized = MODEL_FAMILY_ALIASES.get(raw)
-    if normalized is None:
-        raise ValueError("模型格式仅支持 anima 或 krea2")
-    return normalized
+    try:
+        return normalize_registered_family(
+            value,
+            source="WebUI model config family",
+            allow_aliases=True,
+        )
+    except ValueError as exc:
+        raise ValueError(
+            f"模型格式仅支持 anima、krea2_raw 或 z_image；注册值: "
+            f"{', '.join(MODEL_FAMILY_REGISTRY)}: {exc}"
+        ) from exc
 
 
 def _clean_path(value: Any) -> str:

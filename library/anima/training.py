@@ -1422,6 +1422,15 @@ def decode_pending_samples(accelerator: Accelerator, args, vae) -> None:
     """
     if vae is None:
         return
+    from library.env import resolve_model_family
+
+    if resolve_model_family(args) == "z_image":
+        from library.models.z_image.training_preview import (
+            decode_pending_samples as decode_z_image_samples,
+        )
+
+        decode_z_image_samples(accelerator, args, vae)
+        return
     save_dir = os.path.join(args.output_dir, "sample")
     latents_dir = os.path.join(save_dir, "latents")
     if not os.path.isdir(latents_dir):

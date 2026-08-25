@@ -22,6 +22,11 @@ export function renderHistorySampleDialog() {
                 </div>
                 <div class="dragon-sample-detail-body" data-history-sample-body></div>
                 <footer class="dragon-sample-detail-footer">
+                    <div class="dragon-sample-detail-navigation" aria-label="切换训练样张">
+                        <button class="dragon-icon-button" type="button" data-history-sample-action="previous" aria-label="上一张样张" title="上一张">${renderIcon('chevronLeft')}</button>
+                        <span data-history-sample-position></span>
+                        <button class="dragon-icon-button" type="button" data-history-sample-action="next" aria-label="下一张样张" title="下一张">${renderIcon('chevronRight')}</button>
+                    </div>
                     <button class="dragon-btn dragon-btn-ghost dragon-btn-sm" type="button" data-history-sample-action="copy">${renderIcon('copy', 'dragon-btn-icon')}<span>复制提示词</span></button>
                     <a class="dragon-btn dragon-btn-secondary dragon-btn-sm" href="#" data-history-sample-action="open" target="_blank" rel="noopener">${renderIcon('eye', 'dragon-btn-icon')}<span>打开原图</span></a>
                     <a class="dragon-btn dragon-btn-secondary dragon-btn-sm" href="#" data-history-sample-action="download" download="sample.png">${renderIcon('download', 'dragon-btn-icon')}<span>下载原图</span></a>
@@ -37,6 +42,7 @@ export function bindHistorySampleDialog(root, images) {
     if (!dialog) return () => {};
     const list = Array.isArray(images) ? images : [];
     const openButtons = Array.from(root.querySelectorAll('[data-history-sample-open]'));
+    let activeIndex = -1;
 
     const renderContent = (image) => {
         const sample = image.sample || {};
@@ -92,9 +98,13 @@ export function bindHistorySampleDialog(root, images) {
     };
 
     const openAt = (index) => {
-        const image = list[Number(index)];
+        const normalizedIndex = ((Number(index) % list.length) + list.length) % list.length;
+        const image = list[normalizedIndex];
         if (!image) return;
+        activeIndex = normalizedIndex;
         renderContent(image);
+        const position = dialog.querySelector('[data-history-sample-position]');
+        if (position) position.textContent = `${activeIndex + 1} / ${list.length}`;
         if (!dialog.open) dialog.showModal();
     };
 
@@ -113,10 +123,24 @@ export function bindHistorySampleDialog(root, images) {
         button.addEventListener('click', handler);
         bindings.push([button, handler]);
     });
+    const previousButton = dialog.querySelector('[data-history-sample-action="previous"]');
+    const nextButton = dialog.querySelector('[data-history-sample-action="next"]');
+    const showPrevious = () => openAt(activeIndex - 1);
+    const showNext = () => openAt(activeIndex + 1);
+    previousButton?.addEventListener('click', showPrevious);
+    nextButton?.addEventListener('click', showNext);
+    if (previousButton) bindings.push([previousButton, showPrevious]);
+    if (nextButton) bindings.push([nextButton, showNext]);
     const backdropHandler = (event) => {
         if (event.target === dialog) close();
     };
     dialog.addEventListener('click', backdropHandler);
+    const keyHandler = (event) => {
+        if (!dialog.open) return;
+        if (event.key === 'ArrowLeft') openAt(activeIndex - 1);
+        if (event.key === 'ArrowRight') openAt(activeIndex + 1);
+    };
+    document.addEventListener('keydown', keyHandler);
 
     const copyButton = dialog.querySelector('[data-history-sample-action="copy"]');
     if (copyButton) {
@@ -145,6 +169,7 @@ export function bindHistorySampleDialog(root, images) {
     return () => {
         bindings.forEach(([element, handler]) => element.removeEventListener('click', handler));
         dialog.removeEventListener('click', backdropHandler);
+        document.removeEventListener('keydown', keyHandler);
     };
 }
 

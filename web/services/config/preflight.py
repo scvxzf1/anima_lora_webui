@@ -163,7 +163,6 @@ def _validate_lokr_config(cfg: dict) -> list[str]:
     return errors
 
 
-
 def preflight_training_config(
     variant: str,
     preset: str,
@@ -171,12 +170,16 @@ def preflight_training_config(
     *,
     config_file: str | None = None,
 ) -> dict[str, Any]:
-    cfg = _load_training_config_for_web_run(variant, preset, methods_subdir, config_file=config_file)
+    cfg = _load_training_config_for_web_run(
+        variant, preset, methods_subdir, config_file=config_file
+    )
     cfg = merge_stage_schedule_from_dataset_config(cfg)
     checks: list[dict[str, str]] = []
     errors: list[dict[str, str]] = []
     warnings: list[dict[str, str]] = []
-    runtime_config = is_web_runtime_config(config_file) or _looks_like_web_runtime_config(cfg)
+    runtime_config = is_web_runtime_config(
+        config_file
+    ) or _looks_like_web_runtime_config(cfg)
 
     def add(level: str, key: str, message: str, path: Path | None = None) -> None:
         item = {
@@ -209,7 +212,9 @@ def preflight_training_config(
             return
         add("ok", key, f"{label} 存在", path)
 
-    def check_dir(key: str, label: str, *, must_exist: bool, warn_empty: bool = False) -> None:
+    def check_dir(
+        key: str, label: str, *, must_exist: bool, warn_empty: bool = False
+    ) -> None:
         raw = cfg.get(key)
         if not raw:
             add("error", key, f"{label} 未填写")
@@ -229,17 +234,115 @@ def preflight_training_config(
             return
         add("ok", key, f"{label} 存在", path)
 
+    def check_diffusers_component(key: str, label: str, component: str) -> None:
+        raw = cfg.get(key)
+        if not raw:
+            add("error", key, f"{label} 未填写")
+            return
+        root = _resolve_project_path(str(raw))
+        if not root.exists():
+            add("error", key, f"{label} 不存在", root)
+            return
+        if not root.is_dir():
+            add("error", key, f"{label} 需要 Diffusers 目录", root)
+            return
+        path = root / component if (root / component).is_dir() else root
+        if not (path / "config.json").is_file():
+            add("error", key, f"{label} 缺少 {component}/config.json", root)
+            return
+        has_weights = any(path.glob("*.safetensors")) or any(
+            path.glob("*.safetensors.index.json")
+        )
+        if not has_weights:
+            add("error", key, f"{label} 缺少 safetensors 权重", root)
+            return
+        add("ok", key, f"{label} Diffusers 组件存在", root)
+
+    def check_z_image_component(key: str, label: str, component: str) -> None:
+        raw = cfg.get(key)
+        if not raw:
+            add("error", key, f"{label} 未填写")
+            return
+        root = _resolve_project_path(str(raw))
+        if not root.exists():
+            add("error", key, f"{label} 不存在", root)
+            return
+        if root.is_dir():
+            check_diffusers_component(key, label, component)
+        elif root.is_file():
+            from library.models.z_image.weights import (
+                ZImageCheckpointError,
+                validate_z_image_single_file,
+            )
+
+            try:
+                validate_z_image_single_file(str(root), component)
+            except ZImageCheckpointError as exc:
+                add("error", key, f"{label} 单文件格式不兼容: {exc}", root)
+                return
+            add("ok", key, f"{label} Z-Image 单文件存在且格式匹配", root)
+        else:
+            add("error", key, f"{label} 既不是文件也不是目录", root)
+            return
+
+        if component == "text_encoder":
+            from library.models.z_image.weights import resolve_z_image_tokenizer_path
+
+            # Keep the user-facing path here. Resolving a ComfyUI ``models``
+            # symlink first loses the sibling ``comfy/text_encoders`` tree.
+            tokenizer = Path(resolve_z_image_tokenizer_path(str(raw)))
+            has_config = (tokenizer / "tokenizer_config.json").is_file()
+            has_vocab = (tokenizer / "tokenizer.json").is_file() or (
+                (tokenizer / "vocab.json").is_file()
+                and (tokenizer / "merges.txt").is_file()
+            )
+            if not has_config or not has_vocab:
+                add(
+                    "error",
+                    "z_image_tokenizer",
+                    "Z-Image Qwen3 缺少 tokenizer 资源",
+                    tokenizer,
+                )
+            else:
+                add(
+                    "ok",
+                    "z_image_tokenizer",
+                    "Z-Image tokenizer 资源存在",
+                    tokenizer,
+                )
+
+        if component == "transformer" and "turbo" in root.name.casefold():
+            add(
+                "warning",
+                "z_image_variant",
+                "检测到 Z-Image Turbo 蒸馏模型；可以加载训练，但标准 LoRA 训练会改变其少步蒸馏特性，基础版更适合作为通用训练底模",
+                root,
+            )
+
     if "output_name" in cfg and _is_blank_output_name(cfg.get("output_name")):
         add("error", "output_name", "输出名称未填写")
     _check_checkpointing_config(cfg, add)
     _check_no_dataset_regularization_config(cfg, add)
     _check_output_dir_history_reuse(cfg, add)
-    check_file("pretrained_model_name_or_path", "基础 DiT 模型", (".safetensors", ".pt", ".pth", ".ckpt"))
-    check_file("qwen3", "Qwen3 文本编码器", (".safetensors", ".pt", ".pth", ".bin"))
-    check_file("vae", "VAE 模型", (".safetensors", ".pt", ".pth", ".ckpt"))
+    if str(cfg.get("model_family") or "anima").strip().lower() == "z_image":
+        check_z_image_component(
+            "pretrained_model_name_or_path", "基础 DiT 模型", "transformer"
+        )
+        check_z_image_component("qwen3", "Qwen3 文本编码器", "text_encoder")
+        check_z_image_component("vae", "VAE 模型", "vae")
+    else:
+        check_file(
+            "pretrained_model_name_or_path",
+            "基础 DiT 模型",
+            (".safetensors", ".pt", ".pth", ".ckpt"),
+        )
+        check_file("qwen3", "Qwen3 文本编码器", (".safetensors", ".pt", ".pth", ".bin"))
+        check_file("vae", "VAE 模型", (".safetensors", ".pt", ".pth", ".ckpt"))
     _check_network_weights(cfg, add, variant, preset, methods_subdir, config_file)
     dataset_config_path = _dataset_config_path_from_cfg(cfg)
-    if cfg.get("dataset_config") and (runtime_config or (dataset_config_path and dataset_config_path.exists())):
+    if cfg.get("dataset_config") and (
+        runtime_config or (dataset_config_path and dataset_config_path.exists())
+    ):
         check_file("dataset_config", "数据集配置", (".toml",))
 
     _check_dataset_source_paths(cfg, add)

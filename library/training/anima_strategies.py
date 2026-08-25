@@ -12,17 +12,22 @@ import torch
 
 from library.anima import strategy as strategy_anima
 from library.env import resolve_model_family
+from library.models.family_registry import dispatch_model_family
 
 
-def _is_krea2(args) -> bool:
-    return resolve_model_family(args) == "krea2_raw"
+def _krea2_tokenize_strategy(args):
+    from library.models.krea2_raw.strategy import Krea2TokenizeStrategy
+
+    return Krea2TokenizeStrategy()
 
 
-def get_tokenize_strategy(args):
-    if _is_krea2(args):
-        from library.models.krea2_raw.strategy import Krea2TokenizeStrategy
+def _z_image_tokenize_strategy(args):
+    from library.models.z_image.strategy import ZImageTokenizeStrategy
 
-        return Krea2TokenizeStrategy()
+    return ZImageTokenizeStrategy(args.qwen3)
+
+
+def _anima_tokenize_strategy(args):
     return strategy_anima.AnimaTokenizeStrategy(
         qwen3_path=args.qwen3,
         t5_tokenizer_path=args.t5_tokenizer_path,
@@ -31,37 +36,84 @@ def get_tokenize_strategy(args):
     )
 
 
+def get_tokenize_strategy(args):
+    factory = dispatch_model_family(
+        resolve_model_family(args),
+        operation="training tokenize strategy",
+        handlers={
+            "anima": _anima_tokenize_strategy,
+            "krea2_raw": _krea2_tokenize_strategy,
+            "z_image": _z_image_tokenize_strategy,
+        },
+    )
+    return factory(args)
+
+
 def get_tokenizers(tokenize_strategy):
     if isinstance(tokenize_strategy, strategy_anima.AnimaTokenizeStrategy):
         return [tokenize_strategy.qwen3_tokenizer]
-    # Krea2TokenizeStrategy wraps Qwen3-VL tokenizer
-    return [tokenize_strategy.tokenizer]
+    from library.models.krea2_raw.strategy import Krea2TokenizeStrategy
+
+    if isinstance(tokenize_strategy, Krea2TokenizeStrategy):
+        return [tokenize_strategy.tokenizer]
+    from library.models.z_image.strategy import ZImageTokenizeStrategy
+
+    if isinstance(tokenize_strategy, ZImageTokenizeStrategy):
+        return [tokenize_strategy.tokenizer]
+    raise TypeError(
+        f"Unsupported tokenize strategy: {type(tokenize_strategy).__name__}"
+    )
 
 
 def get_latents_caching_strategy(args):
     # VAE / latent cache is shared (same AutoencoderKLQwenImage); anima's
     # caching strategy is family-agnostic.
-    return strategy_anima.AnimaLatentsCachingStrategy(
+    factory = dispatch_model_family(
+        resolve_model_family(args),
+        operation="latent cache strategy",
+        handlers={
+            "anima": strategy_anima.AnimaLatentsCachingStrategy,
+            "krea2_raw": strategy_anima.AnimaLatentsCachingStrategy,
+            "z_image": _z_image_latents_caching_strategy,
+        },
+    )
+    return factory(
         args.cache_latents_to_disk, args.vae_batch_size, args.skip_cache_check
     )
 
 
 def get_text_encoding_strategy(args):
-    if _is_krea2(args):
+    def krea2_factory():
         from library.models.krea2_raw.strategy import Krea2TextEncodingStrategy
 
         return Krea2TextEncodingStrategy()
-    return strategy_anima.AnimaTextEncodingStrategy()
+
+    def z_image_factory():
+        from library.models.z_image.strategy import ZImageTextEncodingStrategy
+
+        return ZImageTextEncodingStrategy()
+
+    factory = dispatch_model_family(
+        resolve_model_family(args),
+        operation="training text-encoding strategy",
+        handlers={
+            "anima": strategy_anima.AnimaTextEncodingStrategy,
+            "krea2_raw": krea2_factory,
+            "z_image": z_image_factory,
+        },
+    )
+    return factory()
 
 
 def get_text_encoder_outputs_caching_strategy(args, weight_dtype: torch.dtype):
-    if _is_krea2(args):
+    if not args.cache_text_encoder_outputs:
+        return None
+
+    def krea2_factory():
         from library.models.krea2_raw.strategy import (
             Krea2TextEncoderOutputsCachingStrategy,
         )
 
-        if not args.cache_text_encoder_outputs:
-            return None
         return Krea2TextEncoderOutputsCachingStrategy(
             args.cache_text_encoder_outputs_to_disk,
             args.text_encoder_batch_size,
@@ -70,25 +122,56 @@ def get_text_encoder_outputs_caching_strategy(args, weight_dtype: torch.dtype):
                 args, "use_shuffled_caption_variants", False
             ),
         )
-    if not args.cache_text_encoder_outputs:
-        return None
-    return strategy_anima.AnimaTextEncoderOutputsCachingStrategy(
-        args.cache_text_encoder_outputs_to_disk,
-        args.text_encoder_batch_size,
-        args.skip_cache_check,
-        False,
-        cache_llm_adapter_outputs=getattr(args, "cache_llm_adapter_outputs", False),
-        use_shuffled_caption_variants=getattr(
-            args, "use_shuffled_caption_variants", False
-        ),
-        diff_output_preservation_trigger=getattr(
-            args, "diff_output_preservation_trigger", None
-        ),
-        diff_output_preservation_class=getattr(
-            args, "diff_output_preservation_class", None
-        ),
-        cache_dtype=weight_dtype,
+
+    def anima_factory():
+        return strategy_anima.AnimaTextEncoderOutputsCachingStrategy(
+            args.cache_text_encoder_outputs_to_disk,
+            args.text_encoder_batch_size,
+            args.skip_cache_check,
+            False,
+            cache_llm_adapter_outputs=getattr(args, "cache_llm_adapter_outputs", False),
+            use_shuffled_caption_variants=getattr(
+                args, "use_shuffled_caption_variants", False
+            ),
+            diff_output_preservation_trigger=getattr(
+                args, "diff_output_preservation_trigger", None
+            ),
+            diff_output_preservation_class=getattr(
+                args, "diff_output_preservation_class", None
+            ),
+            cache_dtype=weight_dtype,
+        )
+
+    def z_image_factory():
+        from library.models.z_image.strategy import (
+            ZImageTextEncoderOutputsCachingStrategy,
+        )
+
+        return ZImageTextEncoderOutputsCachingStrategy(
+            args.cache_text_encoder_outputs_to_disk,
+            args.text_encoder_batch_size,
+            args.skip_cache_check,
+            use_shuffled_caption_variants=getattr(
+                args, "use_shuffled_caption_variants", False
+            ),
+        )
+
+    factory = dispatch_model_family(
+        resolve_model_family(args),
+        operation="training text cache strategy",
+        handlers={
+            "anima": anima_factory,
+            "krea2_raw": krea2_factory,
+            "z_image": z_image_factory,
+        },
     )
+    return factory()
+
+
+def _z_image_latents_caching_strategy(*args):
+    from library.models.z_image.strategy import ZImageLatentsCachingStrategy
+
+    return ZImageLatentsCachingStrategy(*args)
 
 
 def get_models_for_text_encoding(args, accelerator, text_encoders):

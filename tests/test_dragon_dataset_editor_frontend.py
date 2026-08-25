@@ -156,25 +156,66 @@ def test_dragon_dataset_editor_uses_page_scroll_without_blank_nested_scroll_tail
     assert 'grid-template-columns: repeat(2, minmax(0, 1fr));' in css
     assert 'grid-template-columns: repeat(var(--dataset-field-columns, 2), minmax(0, 1fr));' in css
     assert 'grid-auto-rows: minmax(64px, auto);' in css
-    assert 'grid-template-rows: 20px 36px auto;' in css
+    assert 'grid-template-rows: minmax(20px, auto) 36px auto;' in css
     assert '.dragon-dataset-row-primary { grid-template-columns: repeat(4, minmax(0, 1fr));' in css
 
 
-def test_dragon_dataset_fields_use_adaptive_columns_without_help_annotations() -> None:
+def test_dragon_dataset_fields_use_adaptive_columns_with_compact_tooltips() -> None:
     fields = _read("js/dragon-ui/pages/dataset-editor-fields.js")
     css = _read("css/dragon/06-dragon-pages.css")
 
-    assert "function settingsGroup(title, fields)" in fields
+    assert "function settingsGroup(title, icon, fields)" in fields
     assert "const columns = count <= 3 ? count : (count === 4 ? 2 : 3);" in fields
     assert "--dataset-field-columns:${columns}" in fields
     assert "data-field-count=\"${count}\"" in fields
     assert "options.help ?" in fields
-    assert "help:" not in fields
-    assert "<header><h3>${escapeHtml(title)}</h3></header>" in fields
+    assert "data-tooltip=" in fields
+    assert "dragon-field-hint" not in fields
+    assert "renderIcon(icon, 'dragon-dataset-settings-icon')" in fields
     assert "<header><h3>${escapeHtml(title)}</h3><p>" not in fields
     assert fields.index("settingsGroup('验证集'") < fields.index("settingsGroup('分桶规则'")
     assert ".dragon-dataset-settings-group > header p" not in css
     assert ".dragon-dataset-page .dragon-field-hint" not in css
+    assert "grid-template-rows: minmax(28px, auto) 1fr;" in css
+    assert "body[data-dragon-ui] #dragon-root .dragon-dataset-settings-group > header" in css
+
+
+def test_dragon_dataset_editor_exposes_visual_status_and_path_feedback() -> None:
+    page = _read("js/dragon-ui/pages/dataset-editor.js")
+    fields = _read("js/dragon-ui/pages/dataset-editor-fields.js")
+    paths = _read("js/dragon-ui/pages/dataset-editor-paths.js")
+    presets = _read("js/dragon-ui/pages/dataset-editor-presets.js")
+    css = _read("css/dragon/06-dragon-pages.css")
+
+    assert 'class="dragon-status-badge" data-dataset-link-state' in page
+    assert 'data-dataset-dirty-text' in page
+    assert "有未保存更改" in page
+    assert "已同步至配置" in page
+    assert "已同步至预设" in page
+    assert 'data-workspace-action="apply" title="把已保存的数据集预设关联到当前训练配置"' in page
+    assert "renderIcon('save', 'dragon-btn-icon')" in page
+    assert 'data-dataset-browse' in fields
+    assert 'data-dataset-copy' in fields
+    assert 'data-dataset-path-status' in fields
+    assert "根据原始目录补全缓存路径" in fields
+    assert "source_image_dir: path, inspect: '1'" in paths
+    assert "source_image_count" in paths
+    assert "source_inspection_error" in paths
+    assert "目录存在，未检测到图片" in paths
+    assert "window.showDirectoryPicker" in paths
+    assert "navigator.clipboard?.writeText" in paths
+    assert "refreshDatasetPathStatus(api, row)" in page
+    assert "circleHelp" in fields
+    assert "先验损失权重" in fields and "打乱标注" in fields
+    assert "dragon-dataset-settings-icon" in fields
+    assert "Reps" in presets
+    assert "当前正在编辑" in presets
+    assert '.dragon-status-badge[data-state="dirty"]' in css
+    assert '.dragon-dataset-path-input-actions' in css
+    assert '.dragon-dataset-path-status[data-state="empty"]' in css
+    assert '.dragon-field-help::after' in css
+    assert '.dragon-dataset-preset-row[data-active="true"]' in css
+    assert '.dragon-dataset-preset-group-actions { opacity: 0;' in css
 
 
 def test_dragon_dataset_drag_state_recovers_after_bottom_or_noop_drop() -> None:
@@ -274,16 +315,16 @@ def test_dragon_dataset_layout_avoids_transformed_fixed_savebar() -> None:
 
 
 def test_dragon_dataset_release_token_is_consistent() -> None:
-    bootstrap_token = "dragon-ui-20260824v103"
-    entry_token = "dragon-ui-20260824v102"
-    style_token = "dragon-ui-20260824v103"
+    bootstrap_token = "dragon-ui-20260825v153"
+    entry_token = "dragon-ui-20260825v148"
+    style_token = "dragon-ui-20260825v143"
     shell_token = "dragon-ui-20260824v70"
-    config_page_token = "dragon-ui-20260824v82"
-    page_token = "dragon-ui-20260816v70"
-    fields_token = "dragon-ui-20260816v52"
-    config_style_token = "dragon-ui-20260824v69"
+    config_page_token = "dragon-ui-20260825v134"
+    page_token = "dragon-ui-20260825v118"
+    fields_token = "dragon-ui-20260824v53"
+    config_style_token = "dragon-ui-20260825v119"
     shared_style_token = "dragon-ui-20260824v65"
-    dataset_style_token = "dragon-ui-20260824v79"
+    dataset_style_token = "dragon-ui-20260825v87"
     index_html = INDEX_HTML.read_text(encoding="utf-8")
     bootstrap = _read("js/ui-bootstrap.js")
     entry = _read("js/dragon-ui/index.js")
@@ -299,7 +340,7 @@ def test_dragon_dataset_release_token_is_consistent() -> None:
     assert f"config-page.js?v={config_page_token}" in entry
     assert f"dataset-editor.js?v={page_token}" in entry
     assert f"dataset-editor-fields.js?v={fields_token}" in page
-    assert "dataset-editor-presets.js?v=dragon-ui-20260816v70" in page
+    assert "dataset-editor-presets.js?v=dragon-ui-20260824v71" in page
     assert f"06-dragon-pages.css?v={dataset_style_token}" in stylesheet
     assert f"04-dragon-config.css?v={config_style_token}" in stylesheet
     assert "04a-dragon-training-presets.css?v=dragon-ui-20260817v84" in stylesheet

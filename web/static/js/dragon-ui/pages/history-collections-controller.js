@@ -13,7 +13,7 @@ import {
     collectionValue,
     historyTaskCollection,
     normalizeCollectionSettings,
-} from './history-collections.js?v=dragon-ui-20260816v6';
+} from './history-collections.js?v=dragon-ui-20260824v7';
 
 const api = createApiClient();
 const HISTORY_DRAG_TARGET_OPTIONS = Object.freeze({

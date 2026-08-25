@@ -327,6 +327,14 @@ export const FIELD_HELP_TRAINING_ZH = {    learning_rate: help(
         ["CPU 内存不足也会导致训练不稳定或被系统杀掉。"],
         "只有 OOM 时开启。"
     ),
+    cpu_offload_checkpointing: help(
+        "在梯度检查点期间把中间激活卸载到 CPU 内存。",
+        "只有 gradient_checkpointing=true 时才有效。开启后使用标准 CPU activation offload 路径。",
+        ["可进一步降低 GPU 激活显存峰值。"],
+        ["CPU 内存占用和 PCIe 传输会增加，训练速度通常明显下降。"],
+        ["不能与 block swap、Unsloth offload 或选择性 checkpoint 组合；关闭 gradient_checkpointing 时开它基本无效。"],
+        "默认关闭；标准梯度检查点仍 OOM，且不使用上述互斥功能时再尝试。"
+    ),
     blocks_to_swap: help(
         "把多少个 DiT 模块临时放到 CPU，以减少 GPU 显存占用。",
         "0 表示尽量都放在 GPU。显存不足时可以增加，但每增加一些都会让训练更慢。",
@@ -532,6 +540,38 @@ export const FIELD_HELP_TRAINING_ZH = {    learning_rate: help(
         ["首次启动更慢，还会在缓存目录写入编译缓存。"],
         ["block swap、梯度检查点和不同显卡驱动组合仍可能触发编译问题。"],
         "新手保持默认；如果报 torch.compile/inductor/triton 相关错误，再关闭排查。"
+    ),
+    compile_dynamic_seq: help(
+        "让 torch.compile 把不同图像桶的 token 长度合并到一张动态序列图。",
+        "只在 torch_compile=true 时有意义。开启后会将序列轴标记为有界动态尺寸，减少多种分辨率分别编译的图数。",
+        ["多桶训练可以减少重复编译和编译缓存数量。"],
+        ["动态 shape 图更复杂，首次编译和错误排查成本更高。"],
+        ["序列长度超出派生范围会直接报错；Krea-2 使用固定 token-family 图，预检会自动关闭此项。"],
+        "Anima/Z-Image 多分辨率编译可保持变体默认；Krea-2 保持 false。"
+    ),
+    activation_memory_budget: help(
+        "限制 torch.compile AOT 分割器为反向传播保存的激活预算。",
+        "1.0 表示不额外限制；如 0.85 的较小值会让编译器在反向时重算更多便宜中间量。只在 torch.compile 且未启用梯度检查点时有效。",
+        ["可在不改变模型权重精度的情况下降低 compiled backward 显存。"],
+        ["预算越低，反向重算越多，速度可能下降。"],
+        ["与 gradient_checkpointing 组合可能导致前向/重算图不一致，因此检查点开启时会被忽略。"],
+        "默认 1.0；只在无梯度检查点的 compile 路径接近 OOM 时尝试 0.85。"
+    ),
+    train_adaln: help(
+        "除常规 attention/MLP 外，也训练 DiT block 的 AdaLN 调制投影适配器。",
+        "true 会将 adaln_up_* 线性层加入训练目标，可配合 adaln_rank 和 adaln_alpha；false 保持历史配方的常规目标集。",
+        ["给时间步调制分支额外容量，可学习 shift/scale/gate 的低秩变化。"],
+        ["可训练参数、激活显存和权重体积都会增加。"],
+        ["现有 recipe 大多按关闭状态调优；Soft Tokens/EasyControl 等冻结 DiT 方法中该项不生效。"],
+        "默认关闭；明确要扩展 AdaLN 学习面时再开启，并从 adaln_rank=16 开始。"
+    ),
+    model_family: help(
+        "选择当前配置所训练的底模家族和对应运行时路由。",
+        "anima、krea2_raw 和 z_image 分别使用不同的模型加载、文本缓存、训练 forward 和推理能力集。它必须与基础模型权重匹配。",
+        ["显式选择家族能让训练、缓存和保存元数据走正确实现。"],
+        ["切换家族通常需要不同模型文件、文本编码器和重建缓存。"],
+        ["家族与权重、network_args 或文本缓存 schema 不一致时会明确拒绝启动，不能只改这一项就复用旧缓存。"],
+        "使用 Anima 权重选 anima，Krea-2 Raw 选 krea2_raw，Z-Image 选 z_image；优先从对应方法变体带入。"
     ),
     compile_block_scope: help(
         "block swap 开启时，哪些 DiT block 参与 torch.compile。",

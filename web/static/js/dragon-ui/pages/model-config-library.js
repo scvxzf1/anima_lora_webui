@@ -8,7 +8,7 @@ import {
     scheduleOrderedRowDropTarget,
     setOrderedDropTarget,
 } from '../ordered-drag-target.js?v=dragon-ui-20260816v1';
-import { familyLabel, filterModelItems } from './model-config-state.js?v=dragon-ui-20260817v1';
+import { familyLabel, filterModelItems } from './model-config-state.js?v=dragon-ui-20260824-zimage-v1';
 
 const ITEM_DROP_OPTIONS = Object.freeze({
     frameKey: 'modelItemDragFrame',

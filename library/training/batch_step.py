@@ -14,20 +14,34 @@ from library.training.losses import (
 from library.training.method_adapter import ComputeLossCtx
 from library.training.noise_target import compute_noise_pred_and_target
 from library.training.contexts import TrainCtx
+from library.models.family_registry import dispatch_model_family
+
+
+def _krea2_noise_pred_and_target(*args, **kwargs):
+    from library.models.krea2_raw.family import compute_noise_pred_and_target
+
+    return compute_noise_pred_and_target(*args, **kwargs)
+
+
+def _z_image_noise_pred_and_target(*args, **kwargs):
+    from library.models.z_image.family import compute_noise_pred_and_target
+
+    return compute_noise_pred_and_target(*args, **kwargs)
 
 
 def _get_noise_pred_and_target(trainer, ctx, latents, batch, text_encoder_conds, *, is_train=True):
     from library.env import resolve_model_family
 
-    if resolve_model_family(ctx.args) == "krea2_raw":
-        # Krea-2 single-stream MMDiT path (stage 6). Keeps noise_target.py
-        # (anima cross-attn path) untouched — reverse-god rule.
-        from library.models.krea2_raw.family import (
-            compute_noise_pred_and_target as _krea2,
-        )
-
-        return _krea2(trainer, ctx, latents, batch, text_encoder_conds, is_train=is_train)
-    return compute_noise_pred_and_target(
+    handler = dispatch_model_family(
+        resolve_model_family(ctx.args),
+        operation="training batch forward",
+        handlers={
+            "anima": compute_noise_pred_and_target,
+            "krea2_raw": _krea2_noise_pred_and_target,
+            "z_image": _z_image_noise_pred_and_target,
+        },
+    )
+    return handler(
         trainer, ctx, latents, batch, text_encoder_conds, is_train=is_train
     )
 
@@ -205,4 +219,3 @@ def process_batch_inner(
         )
 
     return composer.compose(_build_loss_ctx(loss_aux))
-

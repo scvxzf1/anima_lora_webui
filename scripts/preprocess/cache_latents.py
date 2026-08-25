@@ -30,6 +30,11 @@ def main() -> None:
     )
     parser.add_argument("--vae", type=str, required=True, help="Path to VAE weights")
     parser.add_argument(
+        "--model_family",
+        choices=["anima", "krea2_raw", "z_image"],
+        default="anima",
+    )
+    parser.add_argument(
         "--chunk_size",
         type=int,
         default=64,
@@ -55,21 +60,33 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    from library.models import qwen_vae as qwen_image_autoencoder_kl
-
     data_dir = Path(args.dir)
     cache_dir = Path(args.cache_dir) if args.cache_dir else None
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     dtype = str_to_dtype(args.dtype)
 
     print(f"Loading VAE from {args.vae} ...")
-    vae = qwen_image_autoencoder_kl.load_vae(
-        args.vae,
-        device="cpu",
-        disable_mmap=True,
-        spatial_chunk_size=args.chunk_size,
-        disable_cache=args.disable_cache,
-    )
+    latent_space_name = None
+    encode_fn = None
+    if args.model_family == "z_image":
+        from library.models.z_image.latent import encode_z_image_latents
+        from library.models.z_image.weights import load_z_image_vae
+
+        vae = load_z_image_vae(args.vae, dtype=dtype, device="cpu")
+        latent_space_name = "z_image"
+
+        def encode_fn(vae, images):
+            return encode_z_image_latents(vae, images)
+    else:
+        from library.models import qwen_vae as qwen_image_autoencoder_kl
+
+        vae = qwen_image_autoencoder_kl.load_vae(
+            args.vae,
+            device="cpu",
+            disable_mmap=True,
+            spatial_chunk_size=args.chunk_size,
+            disable_cache=args.disable_cache,
+        )
     vae.to(device, dtype=dtype)
     vae.requires_grad_(False)
     vae.eval()
@@ -83,6 +100,8 @@ def main() -> None:
         batch_size=args.batch_size,
         progress=tqdm_progress("Caching latents"),
         overwrite=bool(args.overwrite),
+        latent_space_name=latent_space_name,
+        encode_fn=encode_fn,
     )
     print(
         f"\nLatent caching complete: {stats.written} cached, "
