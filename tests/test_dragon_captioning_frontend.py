@@ -159,6 +159,9 @@ def test_captioning_completion_and_dataset_preserve_running_drafts() -> None:
     assert "if (state.workspaceData.datasetRunning || !candidates.length) return" in dataset
     assert "status === 'stopped'" in dataset or "'failed', 'stopped'" in dataset
     assert "无可用 Gemini 调度" in dataset
+    assert "data-dataset-plan" in dataset and "次 API 调用" in dataset
+    assert "至少选择生成图或参考图中的一项" in dataset
+    assert "if (state.workspace) state.workspace.dataset_results" in dataset
 
 
 def test_captioning_cache_tokens_are_consistent_for_the_embedded_suite() -> None:

@@ -51,6 +51,9 @@
 .dragon-caption-inline-status { padding: 8px 10px; border-left: 3px solid var(--dragon-accent); background: var(--dragon-bg-secondary); color: var(--dragon-text-secondary); font-size: var(--dragon-fs-caption); }
 .dragon-caption-dataset-progress { display: flex; align-items: center; gap: 10px; padding: 0 18px 12px; }
 .dragon-caption-dataset-progress progress { min-width: 220px; flex: 1; accent-color: var(--dragon-accent); }
+.dragon-caption-dataset-plan { padding: 9px 11px; border-left: 3px solid var(--dragon-border); background: var(--dragon-bg-secondary); color: var(--dragon-text-secondary); font-size: var(--dragon-fs-caption); }
+.dragon-caption-dataset-plan[data-tone="warning"] { border-color: var(--dragon-warning); }
+.dragon-caption-dataset-plan[data-tone="error"] { border-color: var(--dragon-error); }
 .dragon-caption-completion-progress { display: flex; align-items: center; gap: 10px; padding: 0 18px 12px; color: var(--dragon-text-secondary); font-size: var(--dragon-fs-caption); }
 .dragon-caption-completion-progress progress { min-width: 180px; flex: 1; accent-color: var(--dragon-accent); }
 .dragon-caption-dataset-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); align-content: start; gap: 8px; padding: 0 18px 16px; overflow: auto; }
