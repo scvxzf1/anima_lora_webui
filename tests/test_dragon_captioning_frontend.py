@@ -86,6 +86,8 @@ def test_captioning_layout_has_desktop_and_mobile_constraints() -> None:
     assert "grid-template-columns: repeat(auto-fill, minmax(116px, 1fr))" in css
     assert "@media (max-width: 760px)" in css
     assert ".dragon-caption-main { grid-template-columns: 1fr; overflow: visible; }" in css
+    assert "max-height: min(250px, 30dvh)" in css
+    assert ".dragon-caption-command > .dragon-caption-engine { grid-column: 1; }" in css
 
 
 def test_captioning_workbench_covers_presets_governance_and_local_engines() -> None:
