@@ -137,6 +137,8 @@ def test_captioning_suite_covers_the_full_embedded_labeler_workflow() -> None:
     assert "captions-json" in export and "image-txt" in export
     assert "data-export-inspect" in export and "exportJobDetail" in export
     assert "项因状态不符将跳过" in export and "resolveTarget" in export
+    assert "selectedTypes" in export and "typeLabels" in export
+    assert "querySelectorAll('[name=\"types\"]')" in export
     assert "data-config-clear" in config and config.count("window.confirm") >= 2
     assert "/workspace/config" in config and "#global-settings" in config
     assert "validateConfigJson" in config and "data-config-validation" in config

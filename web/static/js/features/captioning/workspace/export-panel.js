@@ -6,22 +6,24 @@ export function renderExportPanel(state) {
     const detail = state.workspaceData.exportJobDetail;
     const eligible = detail?.results?.filter((item) => ['ready', 'committed'].includes(item.state)) || [];
     const skipped = detail ? detail.results.length - eligible.length : 0;
+    const selectedTypes = draft.types || ['tag', 'mixed_70tag_30nl', 'pure_nl'];
     const busy = state.workspaceData.exportBusy === true;
     const canExport = jobs.length && detail && eligible.length && !busy;
     return panelShell('EXPORT', 'Caption 导出', '', `<form class="dragon-caption-tool-form" data-export-form>
         <div class="dragon-caption-form-grid"><label><span>打标任务</span><select class="dragon-select" name="job_id" ${jobs.length && !busy ? '' : 'disabled'}><option value="">${jobs.length ? '选择任务' : '暂无可导出任务'}</option>${jobs.map((job) => `<option value="${escapeAttribute(job.id)}" ${job.id === draft.jobId ? 'selected' : ''}>${escapeHtml(job.directory)} · ${escapeHtml(job.model)}</option>`).join('')}</select></label><label><span>目标目录组</span><select class="dragon-select" name="group_id" ${busy ? 'disabled' : ''}><option value="">使用任务目录</option>${groupOptions(state, draft.groupId)}</select></label><label class="dragon-caption-span-2"><span>手动目标目录（优先于目录组）</span><input class="dragon-input" name="manual_directory" placeholder="/data/export" value="${escapeAttribute(draft.manualDirectory || '')}" ${busy ? 'disabled' : ''}></label></div>
-        <fieldset class="dragon-caption-check-row"><legend>输出类型</legend><label><input type="checkbox" name="types" value="tag" checked>Tag</label><label><input type="checkbox" name="types" value="mixed_70tag_30nl" checked>70% Tag + 30% NL</label><label><input type="checkbox" name="types" value="pure_nl" checked>纯自然语言</label></fieldset>
-        <div class="dragon-caption-export-scope" data-export-scope>${detail ? `<strong>${eligible.length} 项可导出</strong><span>${skipped} 项因状态不符将跳过</span><span>目标：${escapeHtml(resolveTarget(state, detail, draft))}</span>` : '<span>选择任务后先检查导出范围。</span>'}</div>
+        <fieldset class="dragon-caption-check-row"><legend>输出类型</legend><label><input type="checkbox" name="types" value="tag" ${selectedTypes.includes('tag') ? 'checked' : ''}>Tag</label><label><input type="checkbox" name="types" value="mixed_70tag_30nl" ${selectedTypes.includes('mixed_70tag_30nl') ? 'checked' : ''}>70% Tag + 30% NL</label><label><input type="checkbox" name="types" value="pure_nl" ${selectedTypes.includes('pure_nl') ? 'checked' : ''}>纯自然语言</label></fieldset>
+        <div class="dragon-caption-export-scope" data-export-scope>${detail ? `<strong>${eligible.length} 项可导出</strong><span>${skipped} 项因状态不符将跳过</span><span>格式：${escapeHtml(typeLabels(selectedTypes))}</span><span>目标：${escapeHtml(resolveTarget(state, detail, draft))}</span>` : '<span>选择任务后先检查导出范围。</span>'}</div>
         <div class="dragon-caption-form-actions"><button class="dragon-btn dragon-btn-secondary" type="button" data-export-inspect ${jobs.length && !busy ? '' : 'disabled'}>${busy && !detail ? '检查中…' : '检查导出范围'}</button><button class="dragon-btn dragon-btn-primary" type="submit" data-export-action="captions-json" ${canExport ? '' : 'disabled'}>写入 captions.json</button><button class="dragon-btn dragon-btn-secondary" type="submit" data-export-action="image-txt" ${canExport ? '' : 'disabled'}>写入同名 .txt</button><button class="dragon-btn dragon-btn-secondary" type="submit" data-export-action="download" ${canExport ? '' : 'disabled'}>下载 captions.json</button></div>
     </form><div class="dragon-caption-export-result" data-export-summary>${state.workspaceData.exportSummary ? escapeHtml(state.workspaceData.exportSummary) : ''}</div>`);
 }
 
 export function bindExportPanel(root, state) {
     const form = root.querySelector('[data-export-form]');
-    const collectDraft = () => ({jobId: form.elements.job_id.value, groupId: form.elements.group_id.value, manualDirectory: form.elements.manual_directory.value.trim()});
+    const collectDraft = () => ({jobId: form.elements.job_id.value, groupId: form.elements.group_id.value, manualDirectory: form.elements.manual_directory.value.trim(), types: [...form.querySelectorAll('[name="types"]:checked')].map((item) => item.value)});
     form?.querySelector('[name="job_id"]')?.addEventListener('change', () => { state.workspaceData.exportDraft = collectDraft(); state.workspaceData.exportJobDetail = null; state.workspaceData.exportSummary = ''; state.suiteRender(); });
     form?.querySelector('[name="group_id"]')?.addEventListener('change', () => { state.workspaceData.exportDraft = collectDraft(); state.suiteRender(); });
     form?.querySelector('[name="manual_directory"]')?.addEventListener('input', () => { state.workspaceData.exportDraft = collectDraft(); const scope = root.querySelector('[data-export-scope]'); if (scope && state.workspaceData.exportJobDetail) scope.lastElementChild.textContent = `目标：${resolveTarget(state, state.workspaceData.exportJobDetail, state.workspaceData.exportDraft)}`; });
+    form?.querySelectorAll('[name="types"]').forEach((input) => input.addEventListener('change', () => { state.workspaceData.exportDraft = collectDraft(); }));
     root.querySelector('[data-export-inspect]')?.addEventListener('click', async () => {
         const draft = collectDraft(); if (!draft.jobId) return feedback(root, '请选择打标任务', 'error');
         state.workspaceData.exportBusy = true; state.workspaceData.exportDraft = draft; state.workspaceData.exportJobDetail = null; state.suiteRender();
@@ -54,5 +56,6 @@ export function bindExportPanel(root, state) {
 }
 
 function resolveTarget(state, detail, draft) { return draft.manualDirectory || selectedGroup(state, draft.groupId)?.path || detail?.directory || '未确定'; }
+function typeLabels(types) { const labels = {tag:'Tag',mixed_70tag_30nl:'70% Tag + 30% NL',pure_nl:'纯自然语言'}; return types.map((type) => labels[type] || type).join('、') || '未选择'; }
 
 function downloadText(filename, content) { const blob = new Blob([content], {type:'application/json'}); const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = filename; link.click(); URL.revokeObjectURL(link.href); }
