@@ -36,6 +36,7 @@
 .dragon-caption-log-list { max-height: calc(100dvh - 300px); }
 .dragon-caption-result-list article, .dragon-caption-log-list article { padding: 10px 12px; border: 1px solid var(--dragon-border); background: var(--dragon-bg-secondary); }
 .dragon-caption-result-list article > header, .dragon-caption-log-list article > header { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: 10px; }
+.dragon-caption-result-list article > header > strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dragon-caption-result-list article p, .dragon-caption-log-list article p { margin: 7px 0; overflow-wrap: anywhere; white-space: pre-wrap; }
 .dragon-caption-result-list article[data-tone="error"], .dragon-caption-log-list article[data-status="failed"] { border-left: 3px solid var(--dragon-error); }
 .dragon-caption-result-list article[data-tone="success"], .dragon-caption-log-list article[data-status="success"] { border-left: 3px solid var(--dragon-success); }

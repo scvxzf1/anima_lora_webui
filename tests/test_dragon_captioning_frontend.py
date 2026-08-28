@@ -123,6 +123,8 @@ def test_captioning_suite_covers_the_full_embedded_labeler_workflow() -> None:
     assert "fileScanning" in files and "fileScanned" in files and "fileQuery" in files
     assert "aria-pressed" in files and "data-file-search-empty" in files
     assert "data-retry-all" in retry and "failure_kind" in retry
+    assert "retryLoading" in retry and "retryFilter" in retry
+    assert "筛选不改变批量范围" in retry and "重试中…" in retry
     assert "manual_directory" in export and "download-captions" in export
     assert "captions-json" in export and "image-txt" in export
     assert "data-config-clear" in config and config.count("window.confirm") >= 2
