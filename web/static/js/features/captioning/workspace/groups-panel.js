@@ -15,7 +15,7 @@ export function renderGroupsPanel(state) {
                 <div><button class="dragon-icon-button" type="button" data-group-pick title="选择目录" aria-label="选择目录">…</button><button class="dragon-icon-button" type="button" data-group-scan title="扫描图片" aria-label="扫描图片" ${scans[group.id]?.status === 'scanning' ? 'disabled' : ''}>↻</button><button class="dragon-icon-button" type="button" data-group-remove title="删除目录组" aria-label="删除目录组">×</button></div>
             </div>`).join('') || '<div class="dragon-empty-state"><p>尚未添加目录组。</p></div>'}
         </div>
-        <div class="dragon-caption-form-actions"><button class="dragon-btn dragon-btn-primary" type="button" data-group-save>${dirty ? '保存目录组（未保存）' : '保存目录组'}</button></div>`);
+        <div class="dragon-caption-form-actions"><button class="dragon-btn dragon-btn-primary" type="button" data-group-save ${dirty ? '' : 'disabled'}>${dirty ? '保存目录组（未保存）' : '目录组已保存'}</button></div>`);
 }
 
 export function bindGroupsPanel(root, state) {
@@ -28,7 +28,7 @@ export function bindGroupsPanel(root, state) {
         const index = Number(input.closest('[data-group-index]').dataset.groupIndex);
         state.workspace.groups[index][input.dataset.groupField] = input.value;
         state.workspaceData.groupsDirty = true;
-        const save = root.querySelector('[data-group-save]'); if (save) save.textContent = '保存目录组（未保存）';
+        const save = root.querySelector('[data-group-save]'); if (save) { save.disabled = false; save.textContent = '保存目录组（未保存）'; }
     }));
     root.querySelectorAll('[data-group-remove]').forEach((button) => button.addEventListener('click', () => {
         const index = Number(button.closest('[data-group-index]').dataset.groupIndex);
@@ -42,7 +42,7 @@ export function bindGroupsPanel(root, state) {
         try {
             const {captioningApi} = await import('./shared.js?v=dragon-ui-20260829v11');
             const payload = await captioningApi('/workspace/select-folder');
-            if (payload.path) { state.workspace.groups[index].path = payload.path; state.workspaceData.groupsDirty = true; row.querySelector('[data-group-field="path"]').value = payload.path; const save = root.querySelector('[data-group-save]'); if (save) save.textContent = '保存目录组（未保存）'; }
+            if (payload.path) { state.workspace.groups[index].path = payload.path; state.workspaceData.groupsDirty = true; row.querySelector('[data-group-field="path"]').value = payload.path; const save = root.querySelector('[data-group-save]'); if (save) { save.disabled = false; save.textContent = '保存目录组（未保存）'; } }
         } catch (error) { feedback(root, error.message, 'error'); }
     }));
     root.querySelectorAll('[data-group-scan]').forEach((button) => button.addEventListener('click', async () => {
@@ -59,7 +59,7 @@ export function bindGroupsPanel(root, state) {
     }));
     root.querySelector('[data-group-save]')?.addEventListener('click', async (event) => {
         event.currentTarget.disabled = true;
-        try { await saveWorkspace(state); state.workspaceData.groupsDirty = false; event.currentTarget.textContent = '保存目录组'; feedback(root, `已保存 ${state.workspace.groups.length} 个目录组`, 'success'); }
+        try { await saveWorkspace(state); state.workspaceData.groupsDirty = false; event.currentTarget.textContent = '目录组已保存'; event.currentTarget.disabled = true; feedback(root, `已保存 ${state.workspace.groups.length} 个目录组`, 'success'); }
         catch (error) { feedback(root, error.message, 'error'); }
         finally { event.currentTarget.disabled = false; }
     });
