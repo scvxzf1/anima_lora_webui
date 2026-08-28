@@ -44,6 +44,8 @@
 .dragon-caption-tag-manager section > header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .dragon-caption-dataset-progress { display: flex; align-items: center; gap: 10px; padding: 0 18px 12px; }
 .dragon-caption-dataset-progress progress { min-width: 220px; flex: 1; accent-color: var(--dragon-accent); }
+.dragon-caption-completion-progress { display: flex; align-items: center; gap: 10px; padding: 0 18px 12px; color: var(--dragon-text-secondary); font-size: var(--dragon-fs-caption); }
+.dragon-caption-completion-progress progress { min-width: 180px; flex: 1; accent-color: var(--dragon-accent); }
 .dragon-caption-dataset-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); align-content: start; gap: 8px; padding: 0 18px 16px; overflow: auto; }
 .dragon-caption-dataset-grid article { min-width: 0; overflow: hidden; border: 1px solid var(--dragon-border); background: var(--dragon-bg-secondary); }
 .dragon-caption-dataset-grid article[data-tone="error"] { border-color: var(--dragon-error); }
@@ -253,6 +255,8 @@
     .dragon-caption-log-list { max-height: 58dvh; }
     .dragon-caption-role-preview { min-height: 220px; max-height: 42dvh; }
     .dragon-caption-role-actions .dragon-btn-primary { width: 100%; }
+    .dragon-caption-completion-actions .dragon-btn-primary { width: 100%; order: -1; }
+    .dragon-caption-completion-progress { align-items: stretch; flex-direction: column; }
     .dragon-caption-list-toolbar { flex-wrap: wrap; }
     .dragon-caption-list-toolbar .dragon-input, .dragon-caption-list-toolbar .dragon-select { width: 100%; flex: 1 1 100%; }
 }

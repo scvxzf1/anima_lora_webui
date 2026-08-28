@@ -142,6 +142,7 @@ def test_captioning_completion_and_dataset_preserve_running_drafts() -> None:
     assert "completionDraft" in completion
     assert "if (state.workspaceData.completionRunning) return" in completion
     assert "data-completion-scan ${running ? 'disabled'" in completion
+    assert "data-completion-retry" in completion and "停止后续任务" in completion
     assert "datasetDraft" in dataset
     assert "if (state.workspaceData.datasetRunning || !candidates.length) return" in dataset
     assert "status === 'stopped'" in dataset or "'failed', 'stopped'" in dataset
