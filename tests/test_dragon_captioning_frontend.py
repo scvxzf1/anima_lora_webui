@@ -131,6 +131,8 @@ def test_captioning_suite_covers_the_full_embedded_labeler_workflow() -> None:
     assert "data-retry-all" in retry and "failure_kind" in retry
     assert "retryLoading" in retry and "retryFilter" in retry
     assert "筛选不改变批量范围" in retry and "重试中…" in retry
+    assert "retryJobId" in retry and "retryNotice" in retry
+    assert "已重新入队" in retry
     assert "manual_directory" in export and "download-captions" in export
     assert "captions-json" in export and "image-txt" in export
     assert "data-export-inspect" in export and "exportJobDetail" in export

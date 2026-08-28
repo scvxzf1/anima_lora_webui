@@ -6,16 +6,18 @@ export function renderRetryPanel(state) {
     const filter = state.workspaceData.retryFilter || '';
     const visible = failed.filter((item) => !filter || (item.failure_kind || 'request') === filter);
     const loading = state.workspaceData.retryLoading === true;
-    return panelShell('RETRY', '失败任务重试', '', `<div class="dragon-caption-list-toolbar"><select class="dragon-select" data-retry-job aria-label="失败任务" ${loading ? 'disabled' : ''}><option value="">选择任务</option>${(state.jobs || []).map((job) => `<option value="${job.id}" ${job.id === detail?.id ? 'selected' : ''}>${escapeHtml(job.directory)} · 失败 ${job.failed || 0}</option>`).join('')}</select><select class="dragon-select" data-retry-filter aria-label="失败类型" ${loading ? 'disabled' : ''}><option value="" ${filter ? '' : 'selected'}>全部失败</option><option value="request" ${filter === 'request' ? 'selected' : ''}>请求失败</option><option value="parse" ${filter === 'parse' ? 'selected' : ''}>解析失败</option></select><button class="dragon-btn dragon-btn-secondary" type="button" data-retry-load ${loading ? 'disabled' : ''}>${loading ? '加载中…' : '加载'}</button><button class="dragon-btn dragon-btn-primary" type="button" data-retry-all ${failed.length && !loading ? '' : 'disabled'}>重试全部失败项（${failed.length}）</button><span class="dragon-caption-list-summary">当前显示 ${visible.length}/${failed.length} · 筛选不改变批量范围</span></div>
+    const selectedJobId = state.workspaceData.retryJobId || detail?.id || '';
+    return panelShell('RETRY', '失败任务重试', '', `<div class="dragon-caption-list-toolbar"><select class="dragon-select" data-retry-job aria-label="失败任务" ${loading ? 'disabled' : ''}><option value="">选择任务</option>${(state.jobs || []).map((job) => `<option value="${job.id}" ${String(job.id) === String(selectedJobId) ? 'selected' : ''}>${escapeHtml(job.directory)} · 失败 ${job.failed || 0}</option>`).join('')}</select><select class="dragon-select" data-retry-filter aria-label="失败类型" ${loading ? 'disabled' : ''}><option value="" ${filter ? '' : 'selected'}>全部失败</option><option value="request" ${filter === 'request' ? 'selected' : ''}>请求失败</option><option value="parse" ${filter === 'parse' ? 'selected' : ''}>解析失败</option></select><button class="dragon-btn dragon-btn-secondary" type="button" data-retry-load ${loading ? 'disabled' : ''}>${loading ? '加载中…' : '加载'}</button><button class="dragon-btn dragon-btn-primary" type="button" data-retry-all ${failed.length && !loading ? '' : 'disabled'}>重试全部失败项（${failed.length}）</button><span class="dragon-caption-list-summary">当前显示 ${visible.length}/${failed.length} · 筛选不改变批量范围</span></div>${state.workspaceData.retryNotice ? `<div class="dragon-caption-inline-status" role="status">${escapeHtml(state.workspaceData.retryNotice)}</div>` : ''}
         <div class="dragon-caption-result-list" data-retry-list aria-busy="${loading}">${visible.map((item) => `<article data-retry-entry data-kind="${item.failure_kind || 'request'}"><header><strong title="${escapeAttribute(item.name)}">${escapeHtml(item.name)}</strong><span>${item.failure_kind === 'parse' ? '解析失败' : '请求失败'}</span></header><p>${escapeHtml(item.error || '未知错误')}</p><div class="dragon-caption-form-actions"><button class="dragon-btn dragon-btn-secondary" type="button" data-retry-item="${escapeAttribute(item.id)}">重试此图</button><button class="dragon-btn dragon-btn-secondary" type="button" data-review-item="${escapeAttribute(item.id)}">打开审阅</button></div></article>`).join('') || retryEmptyState({detail, failed, filter, loading, error: state.workspaceData.retryError})}</div>`);
 }
 
 export function bindRetryPanel(root, state) {
+    root.querySelector('[data-retry-job]')?.addEventListener('change', (event) => { state.workspaceData.retryJobId = event.target.value; state.workspaceData.retryNotice = ''; });
     const load = async () => {
         const id = root.querySelector('[data-retry-job]').value;
         if (!id) return feedback(root, '请选择任务', 'error');
         if (state.workspaceData.retryLoading) return;
-        state.workspaceData.retryLoading = true; state.workspaceData.retryError = ''; state.suiteRender();
+        state.workspaceData.retryJobId = id; state.workspaceData.retryLoading = true; state.workspaceData.retryError = ''; state.workspaceData.retryNotice = ''; state.suiteRender();
         try { const payload = await captioningApi(`/jobs/${encodeURIComponent(id)}`); state.workspaceData.retryJob = payload.job; }
         catch (error) { state.workspaceData.retryError = error.message; }
         finally { state.workspaceData.retryLoading = false; state.suiteRender(); }
@@ -25,12 +27,12 @@ export function bindRetryPanel(root, state) {
     root.querySelector('[data-retry-all]')?.addEventListener('click', async (event) => {
         if (!state.workspaceData.retryJob) return feedback(root, '请先加载任务', 'error');
         const button = event.currentTarget; button.disabled = true; button.textContent = '正在入队…';
-        try { await captioningApi(`/jobs/${encodeURIComponent(state.workspaceData.retryJob.id)}/retry-failed`, jsonOptions('POST', {})); state.workspaceData.retryJob.results.forEach((item) => { if (item.state === 'failed') item.state = 'queued'; }); state.suiteRender(); }
+        try { const count = state.workspaceData.retryJob.results.filter((item) => item.state === 'failed').length; await captioningApi(`/jobs/${encodeURIComponent(state.workspaceData.retryJob.id)}/retry-failed`, jsonOptions('POST', {})); state.workspaceData.retryJob.results.forEach((item) => { if (item.state === 'failed') item.state = 'queued'; }); state.workspaceData.retryNotice = `已将 ${count} 个失败项重新入队`; state.suiteRender(); }
         catch (error) { state.workspaceData.retryError = error.message; state.suiteRender(); }
     });
     root.querySelectorAll('[data-retry-item]').forEach((button) => button.addEventListener('click', async () => {
         if (button.disabled) return; button.disabled = true; button.textContent = '重试中…';
-        try { await captioningApi(`/jobs/${encodeURIComponent(state.workspaceData.retryJob.id)}/items/${encodeURIComponent(button.dataset.retryItem)}/retry`, jsonOptions('POST', {})); const item = state.workspaceData.retryJob.results.find((entry) => String(entry.id) === button.dataset.retryItem); if (item) item.state = 'queued'; state.suiteRender(); }
+        try { await captioningApi(`/jobs/${encodeURIComponent(state.workspaceData.retryJob.id)}/items/${encodeURIComponent(button.dataset.retryItem)}/retry`, jsonOptions('POST', {})); const item = state.workspaceData.retryJob.results.find((entry) => String(entry.id) === button.dataset.retryItem); if (item) { item.state = 'queued'; state.workspaceData.retryNotice = `${item.name} 已重新入队`; } state.suiteRender(); }
         catch (error) { button.disabled = false; button.textContent = '重试此图'; feedback(root, error.message, 'error'); }
     }));
     root.querySelectorAll('[data-review-item]').forEach((button) => button.addEventListener('click', () => { state.selectedJobId = state.workspaceData.retryJob.id; state.selectedItemId = button.dataset.reviewItem; state.activePanel = 'workbench'; state.suiteRender(); }));
