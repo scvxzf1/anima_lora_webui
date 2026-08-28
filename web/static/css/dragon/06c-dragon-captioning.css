@@ -292,6 +292,7 @@
     .dragon-caption-table-row > div { justify-content: flex-end; padding-top: 4px; }
     .dragon-caption-split-list { grid-template-columns: 1fr; overflow: visible; }
     .dragon-caption-split-list > aside { max-height: 280px; padding: 0 0 10px; border-right: 0; border-bottom: 1px solid var(--dragon-divider); }
+    .dragon-caption-prompts > aside { max-height: 220px; }
     .dragon-caption-split-list > form, .dragon-caption-split-list > section { padding: 12px 0 0; }
     .dragon-caption-tag-toolbar > .dragon-btn:last-child, .dragon-caption-config-grid section:last-child { grid-column: auto; }
     .dragon-caption-tag-toolbar { grid-template-columns: minmax(0, 1fr) minmax(110px, .6fr); }

@@ -167,6 +167,8 @@ def test_captioning_suite_covers_the_full_embedded_labeler_workflow() -> None:
     prompts = _read("js/features/captioning/workspace/prompts-panel.js")
     assert "promptQuery" in prompts and "promptDirtyId" in prompts
     assert "discardPromptDraft" in prompts and "内置预设只读" in prompts
+    assert "data-prompt-empty" in prompts and "data-prompt-name-label" in prompts
+    assert "prompt.name = previous.name" in prompts and "dragon-caption-prompts" in prompts
 
 
 def test_captioning_completion_and_dataset_preserve_running_drafts() -> None:
