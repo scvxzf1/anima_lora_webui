@@ -1,4 +1,4 @@
-import { captioningApi, escapeAttribute, escapeHtml, feedback, groupOptions, jsonOptions, panelShell, promptOptions, scheduleOptions, selectedGroup, selectedPrompt } from './shared.js?v=dragon-ui-20260829v11';
+import { captioningApi, escapeAttribute, escapeHtml, feedback, groupOptions, jsonOptions, panelShell, promptOptions, scheduleOptions, selectedGroup, selectedPrompt } from './shared.js?v=dragon-ui-20260829v12';
 
 export function renderCompletionPanel(state) {
     const items = state.workspaceData.completionItems || [];

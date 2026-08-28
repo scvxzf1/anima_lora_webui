@@ -1,4 +1,4 @@
-import { captioningApi, escapeAttribute, escapeHtml, feedback, groupOptions, jsonOptions, panelShell, selectedGroup } from './shared.js?v=dragon-ui-20260829v11';
+import { captioningApi, escapeAttribute, escapeHtml, feedback, groupOptions, jsonOptions, panelShell, selectedGroup } from './shared.js?v=dragon-ui-20260829v12';
 
 export function renderFilesPanel(state) {
     const images = state.workspaceData.fileImages || [];

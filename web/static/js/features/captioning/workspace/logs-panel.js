@@ -1,4 +1,4 @@
-import { captioningApi, escapeAttribute, escapeHtml, feedback, jsonOptions, panelShell } from './shared.js?v=dragon-ui-20260829v11';
+import { captioningApi, escapeAttribute, escapeHtml, feedback, jsonOptions, panelShell } from './shared.js?v=dragon-ui-20260829v12';
 
 export function renderLogsPanel(state) {
     const page = state.workspaceData.logsPage || {items:[...(state.workspace?.label_logs || [])].reverse().slice(0, 50),page:1,page_size:50,total:(state.workspace?.label_logs || []).length};

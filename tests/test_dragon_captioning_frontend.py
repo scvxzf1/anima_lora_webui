@@ -203,6 +203,6 @@ def test_captioning_cache_tokens_are_consistent_for_the_embedded_suite() -> None
     loaders = _read("js/dragon-ui/page-loaders.js")
     page = _read("js/dragon-ui/pages/captioning.js")
     styles = _read("js/dragon-ui/route-styles.js")
-    assert "captioning.js?v=dragon-ui-20260829v11" in loaders
-    assert "page.js?v=dragon-ui-20260829v11" in page
-    assert "06c-dragon-captioning.css?v=dragon-ui-20260829v11" in styles
+    assert "captioning.js?v=dragon-ui-20260829v12" in loaders
+    assert "page.js?v=dragon-ui-20260829v12" in page
+    assert "06c-dragon-captioning.css?v=dragon-ui-20260829v12" in styles

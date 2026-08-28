@@ -1,4 +1,4 @@
-import { captioningApi, escapeHtml, feedback, jsonOptions, panelShell } from './shared.js?v=dragon-ui-20260829v11';
+import { captioningApi, escapeHtml, feedback, jsonOptions, panelShell } from './shared.js?v=dragon-ui-20260829v12';
 
 export function renderConfigPanel(state) {
     const overview = state.workspaceData.overview;

@@ -1,4 +1,4 @@
-import { escapeAttribute, escapeHtml, feedback, panelShell, saveWorkspace, uid } from './shared.js?v=dragon-ui-20260829v11';
+import { escapeAttribute, escapeHtml, feedback, panelShell, saveWorkspace, uid } from './shared.js?v=dragon-ui-20260829v12';
 
 export function renderGroupsPanel(state) {
     const groups = state.workspace?.groups || [];
@@ -40,7 +40,7 @@ export function bindGroupsPanel(root, state) {
     root.querySelectorAll('[data-group-pick]').forEach((button) => button.addEventListener('click', async () => {
         const row = button.closest('[data-group-index]'); const index = Number(row.dataset.groupIndex);
         try {
-            const {captioningApi} = await import('./shared.js?v=dragon-ui-20260829v11');
+            const {captioningApi} = await import('./shared.js?v=dragon-ui-20260829v12');
             const payload = await captioningApi('/workspace/select-folder');
             if (payload.path) { state.workspace.groups[index].path = payload.path; state.workspaceData.groupsDirty = true; row.querySelector('[data-group-field="path"]').value = payload.path; const save = root.querySelector('[data-group-save]'); if (save) { save.disabled = false; save.textContent = '保存目录组（未保存）'; } }
         } catch (error) { feedback(root, error.message, 'error'); }
@@ -51,7 +51,7 @@ export function bindGroupsPanel(root, state) {
         if (!String(group.path || '').trim()) return feedback(root, '请先填写目录路径', 'error');
         state.workspaceData.groupScans ||= {}; state.workspaceData.groupScans[group.id] = {status: 'scanning'}; state.suiteRender();
         try {
-            const {captioningApi, jsonOptions} = await import('./shared.js?v=dragon-ui-20260829v11');
+            const {captioningApi, jsonOptions} = await import('./shared.js?v=dragon-ui-20260829v12');
             const payload = await captioningApi('/workspace/images', jsonOptions('POST', {directory: group.path}));
             state.workspaceData.groupScans[group.id] = {status: 'ready', count: payload.images.length};
         } catch (error) { state.workspaceData.groupScans[group.id] = {status: 'error', error: error.message}; }

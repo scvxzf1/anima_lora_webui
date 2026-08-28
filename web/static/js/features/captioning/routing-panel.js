@@ -1,5 +1,5 @@
-import { captioningApi, jsonOptions } from './api.js?v=dragon-ui-20260829v11';
-import { escapeAttribute, escapeHtml } from './utils.js?v=dragon-ui-20260829v11';
+import { captioningApi, jsonOptions } from './api.js?v=dragon-ui-20260829v12';
+import { escapeAttribute, escapeHtml } from './utils.js?v=dragon-ui-20260829v12';
 
 export function renderRoutingPanel(routing) {
     return `<section class="dragon-caption-section dragon-caption-routing-section" data-caption-settings-section="routing">

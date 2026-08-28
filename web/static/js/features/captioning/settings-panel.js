@@ -1,5 +1,5 @@
-import { captioningApi, jsonOptions } from './api.js?v=dragon-ui-20260829v11';
-import { bindRoutingPanel, renderRoutingPanel } from './routing-panel.js?v=dragon-ui-20260829v11';
+import { captioningApi, jsonOptions } from './api.js?v=dragon-ui-20260829v12';
+import { bindRoutingPanel, renderRoutingPanel } from './routing-panel.js?v=dragon-ui-20260829v12';
 
 const SETTING_KEYS = ['base_url', 'api_key', 'model', 'retry_count', 'retry_interval_seconds', 'concurrency', 'timeout_seconds', 'allow_private_network'];
 

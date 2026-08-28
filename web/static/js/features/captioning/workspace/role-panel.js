@@ -1,4 +1,4 @@
-import { captioningApi, escapeAttribute, escapeHtml, feedback, fileToDataUrl, groupOptions, jsonOptions, panelShell, promptOptions, scheduleOptions, selectedGroup, selectedPrompt } from './shared.js?v=dragon-ui-20260829v11';
+import { captioningApi, escapeAttribute, escapeHtml, feedback, fileToDataUrl, groupOptions, jsonOptions, panelShell, promptOptions, scheduleOptions, selectedGroup, selectedPrompt } from './shared.js?v=dragon-ui-20260829v12';
 
 const ROLE_SYSTEM = 'Return only a clean comma-separated English Booru tag sequence for the visible character. Do not use Markdown or sentences.';
 

@@ -1,6 +1,6 @@
 # Captioning 13 界面 UI/UX 两轮优化记录
 
-状态：进行中  
+状态：已完成
 日期：2026-08-29  
 范围：Dragon UI → 打标，桌面 `1440×900` 与移动端 `390×844`
 
@@ -47,3 +47,17 @@
 - 每阶段都需要代码改动、本文档状态更新和独立本地提交。
 - 不改动真实训练 caption，测试数据仅使用 `/tmp/krea-caption-audit`。
 - 第二轮完成后统一记录测试结果、控制台状态和剩余风险。
+
+## 最终验收
+
+- 桌面 `1440×900`：13 个界面均无横向溢出、重复 ID 或无名称按钮。
+- 移动端 `390×844`：13 个界面均无横向溢出、重复 ID 或无名称按钮。
+- 浏览器控制台：最终轮询无 `warning` / `error`。
+- 前端语法：`web/static/js/features/captioning/` 及 `workspace/` 全部模块通过 `node --check`。
+- 前后端定向测试：`54 passed`，覆盖 Captioning service、routing、workspace、Dragon 前端与 Web 路由注册。
+- 缓存链：Captioning 页面、样式和内部模块统一升级到 `dragon-ui-20260829v12`。
+
+## 剩余边界
+
+- 未向第三方视觉模型上传本地路径和数据集截图；视觉复核依据本地真实页面、双视口截图与 `frontend-uiux-review` rubric。
+- 本轮未改写真实训练 Caption，验证数据限定在 `/tmp/krea-caption-audit`。

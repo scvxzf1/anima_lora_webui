@@ -1,15 +1,15 @@
-import { mountWorkbench } from './workbench.js?v=dragon-ui-20260829v11';
-import { bindGroupsPanel, renderGroupsPanel } from './workspace/groups-panel.js?v=dragon-ui-20260829v11';
-import { bindRolePanel, renderRolePanel } from './workspace/role-panel.js?v=dragon-ui-20260829v11';
-import { bindCompletionPanel, renderCompletionPanel } from './workspace/completion-panel.js?v=dragon-ui-20260829v11';
-import { bindTagManagerPanel, renderTagManagerPanel } from './workspace/tag-manager-panel.js?v=dragon-ui-20260829v11';
-import { bindExportPanel, renderExportPanel } from './workspace/export-panel.js?v=dragon-ui-20260829v11';
-import { bindDatasetPanel, renderDatasetPanel } from './workspace/dataset-panel.js?v=dragon-ui-20260829v11';
-import { bindPromptsPanel, renderPromptsPanel } from './workspace/prompts-panel.js?v=dragon-ui-20260829v11';
-import { bindLogsPanel, renderLogsPanel } from './workspace/logs-panel.js?v=dragon-ui-20260829v11';
-import { bindConfigPanel, renderConfigPanel } from './workspace/config-panel.js?v=dragon-ui-20260829v11';
-import { bindFilesPanel, renderFilesPanel } from './workspace/files-panel.js?v=dragon-ui-20260829v11';
-import { bindRetryPanel, renderRetryPanel } from './workspace/retry-panel.js?v=dragon-ui-20260829v11';
+import { mountWorkbench } from './workbench.js?v=dragon-ui-20260829v12';
+import { bindGroupsPanel, renderGroupsPanel } from './workspace/groups-panel.js?v=dragon-ui-20260829v12';
+import { bindRolePanel, renderRolePanel } from './workspace/role-panel.js?v=dragon-ui-20260829v12';
+import { bindCompletionPanel, renderCompletionPanel } from './workspace/completion-panel.js?v=dragon-ui-20260829v12';
+import { bindTagManagerPanel, renderTagManagerPanel } from './workspace/tag-manager-panel.js?v=dragon-ui-20260829v12';
+import { bindExportPanel, renderExportPanel } from './workspace/export-panel.js?v=dragon-ui-20260829v12';
+import { bindDatasetPanel, renderDatasetPanel } from './workspace/dataset-panel.js?v=dragon-ui-20260829v12';
+import { bindPromptsPanel, renderPromptsPanel } from './workspace/prompts-panel.js?v=dragon-ui-20260829v12';
+import { bindLogsPanel, renderLogsPanel } from './workspace/logs-panel.js?v=dragon-ui-20260829v12';
+import { bindConfigPanel, renderConfigPanel } from './workspace/config-panel.js?v=dragon-ui-20260829v12';
+import { bindFilesPanel, renderFilesPanel } from './workspace/files-panel.js?v=dragon-ui-20260829v12';
+import { bindRetryPanel, renderRetryPanel } from './workspace/retry-panel.js?v=dragon-ui-20260829v12';
 
 const PANELS = [
     ['workbench', '审阅台'],

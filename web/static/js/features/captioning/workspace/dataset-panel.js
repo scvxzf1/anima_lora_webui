@@ -1,4 +1,4 @@
-import { captioningApi, escapeAttribute, escapeHtml, feedback, fileToDataUrl, groupOptions, jsonOptions, panelShell, selectedGroup, uid } from './shared.js?v=dragon-ui-20260829v11';
+import { captioningApi, escapeAttribute, escapeHtml, feedback, fileToDataUrl, groupOptions, jsonOptions, panelShell, selectedGroup, uid } from './shared.js?v=dragon-ui-20260829v12';
 
 export function renderDatasetPanel(state) {
     state.workspaceData.datasetResults ||= state.workspace?.dataset_results || [];

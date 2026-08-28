@@ -1,9 +1,9 @@
-import { captioningApi, jsonOptions } from './api.js?v=dragon-ui-20260829v11';
-import { bindControlBar, renderControlBar } from './control-bar.js?v=dragon-ui-20260829v11';
-import { bindGallery, renderGallery } from './gallery.js?v=dragon-ui-20260829v11';
-import { bindGovernance, renderGovernance } from './governance.js?v=dragon-ui-20260829v11';
-import { bindInspector, renderInspector } from './inspector.js?v=dragon-ui-20260829v11';
-import { escapeAttribute, escapeHtml, showFeedback, withBusy } from './utils.js?v=dragon-ui-20260829v11';
+import { captioningApi, jsonOptions } from './api.js?v=dragon-ui-20260829v12';
+import { bindControlBar, renderControlBar } from './control-bar.js?v=dragon-ui-20260829v12';
+import { bindGallery, renderGallery } from './gallery.js?v=dragon-ui-20260829v12';
+import { bindGovernance, renderGovernance } from './governance.js?v=dragon-ui-20260829v12';
+import { bindInspector, renderInspector } from './inspector.js?v=dragon-ui-20260829v12';
+import { escapeAttribute, escapeHtml, showFeedback, withBusy } from './utils.js?v=dragon-ui-20260829v12';
 
 export function renderWorkbench(state, prefill = {}) {
     const item = selectedItem(state);

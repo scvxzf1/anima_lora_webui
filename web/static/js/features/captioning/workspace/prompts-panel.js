@@ -1,4 +1,4 @@
-import { escapeAttribute, escapeHtml, feedback, panelShell, saveWorkspace, uid } from './shared.js?v=dragon-ui-20260829v11';
+import { escapeAttribute, escapeHtml, feedback, panelShell, saveWorkspace, uid } from './shared.js?v=dragon-ui-20260829v12';
 
 export function renderPromptsPanel(state) {
     const kind = state.workspaceData.promptKind || 'system';

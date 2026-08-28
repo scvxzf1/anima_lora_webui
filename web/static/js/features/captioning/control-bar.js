@@ -1,6 +1,6 @@
-import { captioningApi, jsonOptions } from './api.js?v=dragon-ui-20260829v11';
-import { findPreset, presetOptions } from './presets.js?v=dragon-ui-20260829v11';
-import { escapeAttribute, escapeHtml, showFeedback, stateLabel, withBusy } from './utils.js?v=dragon-ui-20260829v11';
+import { captioningApi, jsonOptions } from './api.js?v=dragon-ui-20260829v12';
+import { findPreset, presetOptions } from './presets.js?v=dragon-ui-20260829v12';
+import { escapeAttribute, escapeHtml, showFeedback, stateLabel, withBusy } from './utils.js?v=dragon-ui-20260829v12';
 
 export function renderControlBar(state, prefill = {}) {
     const job = state.selectedJob;
