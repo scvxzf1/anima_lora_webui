@@ -20,7 +20,7 @@ import {
     renderDatasetDefaults,
     renderDatasetRow,
     validateDatasetEditor,
-} from './dataset-editor-fields.js?v=dragon-ui-20260824v53';
+} from './dataset-editor-fields.js?v=dragon-ui-20260824v54';
 import { bindDatasetPathTools, refreshDatasetPathStatus } from './dataset-editor-paths.js?v=dragon-ui-20260824v3';
 import {
     applyDatasetPreset,
@@ -941,7 +941,7 @@ function clearLegacyStageDraftMarkers(state) {
 }
 
 function prepareForSave(root, state) {
-    const errors = validateDatasetEditor(root);
+    const errors = validateDatasetEditor(root, { stageScheduleEnabled: state.stageScheduleEnabled });
     if (errors.length) { showFeedback(root, errors[0].message, 'error'); return false; }
     syncStateFromForm(root, state);
     return true;

@@ -82,4 +82,23 @@ describe('dataset form domain', () => {
     expect(row.settings).toMatchObject({ resolution: 640, validation_seed: 7, caption_source_mode: 'txt' });
     expect(row).toMatchObject({ recursive: true, path_pattern: '*' });
   });
+
+  it('rejects regularization datasets with stage scheduling', () => {
+    const form = emptyDatasetForm();
+    form.datasets[0].source_dir = 'image_dataset/train';
+    form.datasets.push({
+      ...emptyDatasetRow(form.defaults),
+      source_dir: 'image_dataset/reg',
+      is_reg: true,
+    });
+    form.stage_schedule_enabled = true;
+    form.stage_schedule = [{ name: 'train', subset_index: 0, start_pct: 0, end_pct: 1 }];
+
+    const result = datasetFormSchema.safeParse(form);
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues.map((issue) => issue.path.join('.'))).toContain('stage_schedule_enabled');
+    }
+  });
 });

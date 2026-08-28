@@ -24,6 +24,30 @@ from library.datasets.subsets import (
 logger = logging.getLogger(__name__)
 
 
+def _register_reg_infos(
+    entries: Sequence[Tuple["DreamBoothDataset", ImageInfo, DreamBoothSubset]],
+    target_repeats: int,
+) -> int:
+    """Register regularization samples round-robin up to the repeat target."""
+    if target_repeats <= 0 or not entries:
+        return 0
+
+    registered = 0
+    first_loop = True
+    while registered < target_repeats:
+        for dataset, info, subset in entries:
+            if first_loop:
+                dataset.register_image(info, subset)
+                registered += info.num_repeats
+            else:
+                info.num_repeats += 1
+                registered += 1
+            if registered >= target_repeats:
+                break
+        first_loop = False
+    return registered
+
+
 def read_caption(img_path, caption_extension, enable_wildcard):
     """Read the caption sidecar for ``img_path``.
 
@@ -457,24 +481,52 @@ class DreamBoothDataset(BaseDataset):
         self.num_train_images = num_train_images
 
         logger.info(f"{num_reg_images} reg images with repeats.")
-        if num_train_images < num_reg_images:
+        if num_train_images > 0 and num_train_images < num_reg_images:
             logger.warning("some of reg images are not used")
 
         if num_reg_images == 0:
             logger.warning("no regularization images")
+            self._pending_reg_infos = []
+        elif num_train_images > 0:
+            _register_reg_infos(
+                [(self, info, subset) for info, subset in reg_infos],
+                num_train_images,
+            )
+            self._pending_reg_infos = []
         else:
-            n = 0
-            first_loop = True
-            while n < num_train_images:
-                for info, subset in reg_infos:
-                    if first_loop:
-                        self.register_image(info, subset)
-                        n += info.num_repeats
-                    else:
-                        info.num_repeats += 1
-                        n += 1
-                    if n >= num_train_images:
-                        break
-                first_loop = False
+            # WebUI rows are separate dataset members. Defer reg-only members
+            # until every member is known so they can balance the whole group.
+            self._pending_reg_infos = reg_infos
 
         self.num_reg_images = num_reg_images
+
+
+def balance_reg_datasets(datasets: Sequence[DreamBoothDataset]) -> int:
+    """Balance deferred reg-only members against unpaired training repeats."""
+    total_train_repeats = sum(dataset.num_train_images for dataset in datasets)
+    registered_reg_repeats = sum(
+        info.num_repeats
+        for dataset in datasets
+        for info in dataset.image_data.values()
+        if info.is_reg
+    )
+    pending = [
+        (dataset, info, subset)
+        for dataset in datasets
+        for info, subset in getattr(dataset, "_pending_reg_infos", [])
+    ]
+    pending_reg_repeats = sum(info.num_repeats for _, info, _ in pending)
+    target_repeats = max(0, total_train_repeats - registered_reg_repeats)
+    registered = _register_reg_infos(pending, target_repeats)
+
+    for dataset in datasets:
+        dataset._pending_reg_infos = []
+
+    if pending and target_repeats < pending_reg_repeats:
+        logger.warning("some cross-dataset regularization images are not used")
+    elif registered:
+        logger.info(
+            "registered %s cross-dataset regularization image repeats",
+            registered,
+        )
+    return registered

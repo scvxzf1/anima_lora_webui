@@ -32,6 +32,7 @@ from library.datasets import (
     glob_images,
 )
 from library.datasets.subsets import filter_paths_by_glob
+from library.datasets.dreambooth import balance_reg_datasets
 from library.training import (
     add_dataset_arguments,
     add_training_arguments,
@@ -653,6 +654,8 @@ def generate_dataset_group_by_blueprint(
             )
             continue
         val_datasets.append(dataset)
+
+    balance_reg_datasets(datasets)
 
     def print_info(_datasets, dataset_type: str):
         info = ""

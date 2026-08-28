@@ -2164,6 +2164,43 @@ def test_save_dataset_preset_roundtrips_stage_schedule(tmp_path: Path, monkeypat
     assert "stage_schedule" in text
 
 
+def test_save_dataset_preset_rejects_regularization_with_stage_schedule(
+    tmp_path: Path,
+    monkeypatch,
+):
+    (tmp_path / "configs" / "datasets").mkdir(parents=True)
+    _patch_config_service_paths(monkeypatch, tmp_path)
+    rows = [
+        {
+            "source_dir": "image_dataset/train",
+            "image_dir": "post_image_dataset/train",
+            "cache_dir": "post_image_dataset/train-cache",
+        },
+        {
+            "source_dir": "image_dataset/reg",
+            "image_dir": "post_image_dataset/reg",
+            "cache_dir": "post_image_dataset/reg-cache",
+            "is_reg": True,
+        },
+    ]
+
+    with pytest.raises(ValueError, match="分阶段调度暂不支持正则化数据集"):
+        config_service.save_dataset_preset(
+            "configs/datasets/reg-stage.toml",
+            rows,
+            overwrite=True,
+            stage_schedule_enabled=True,
+            stage_schedule=[
+                {
+                    "name": "train",
+                    "subset_index": 0,
+                    "start_pct": 0,
+                    "end_pct": 1,
+                }
+            ],
+        )
+
+
 def test_dataset_preset_route_rejects_invalid_stage_schedule_without_overwrite(
     tmp_path: Path,
     monkeypatch,

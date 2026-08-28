@@ -9,6 +9,7 @@ from library.training.stage_schedule import (
     parse_stage_specs,
     validate_stage_specs,
 )
+from web.services.config.common import _bool_value
 
 
 def check_stage_schedule(
@@ -27,6 +28,16 @@ def check_stage_schedule(
         add("error", "stage_schedule", "已启用分阶段调度，但 stage_schedule 为空")
         return
 
+    has_unsupported_reg = any(
+        _bool_value(row.get("is_reg"), False) for row in dataset_rows or []
+    )
+    if has_unsupported_reg:
+        add(
+            "error",
+            "stage_schedule",
+            "分阶段调度暂不支持正则化数据集；请关闭分阶段调度或移除 is_reg 数据行",
+        )
+
     subset_count = len(dataset_rows or [])
     specs = parse_stage_specs(stages)
     problems = validate_stage_specs(
@@ -37,7 +48,7 @@ def check_stage_schedule(
         add("error", "stage_schedule", "已启用分阶段调度，但当前配置没有数据集行")
     for msg in problems:
         add("error", "stage_schedule", msg)
-    if not problems and subset_count > 0:
+    if not problems and subset_count > 0 and not has_unsupported_reg:
         add("ok", "stage_schedule", f"分阶段调度有效，共 {len(specs)} 个阶段")
 
 
