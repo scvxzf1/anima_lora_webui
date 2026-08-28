@@ -140,6 +140,9 @@ def test_captioning_suite_covers_the_full_embedded_labeler_workflow() -> None:
     groups = _read("js/features/captioning/workspace/groups-panel.js")
     assert "groupsDirty" in groups and "groupScans" in groups
     assert "删除目录组“" in groups and "扫描中…" in groups
+    tags = _read("js/features/captioning/workspace/tag-manager-panel.js")
+    assert "tagDirtyName" in tags and "discardDirty" in tags
+    assert "matches.length" in tags and "替换中" in tags and "tagQuery" in tags
 
 
 def test_captioning_completion_and_dataset_preserve_running_drafts() -> None:

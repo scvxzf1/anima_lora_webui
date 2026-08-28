@@ -45,6 +45,7 @@
 .dragon-caption-tag-toolbar { display: grid; grid-template-columns: minmax(180px, 1fr) auto minmax(140px, .7fr) minmax(140px, .7fr) auto; align-items: end; gap: 8px; padding: 14px 18px 0; }
 .dragon-caption-tag-manager { padding-top: 10px; }
 .dragon-caption-tag-manager section > header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.dragon-caption-inline-status { padding: 8px 10px; border-left: 3px solid var(--dragon-accent); background: var(--dragon-bg-secondary); color: var(--dragon-text-secondary); font-size: var(--dragon-fs-caption); }
 .dragon-caption-dataset-progress { display: flex; align-items: center; gap: 10px; padding: 0 18px 12px; }
 .dragon-caption-dataset-progress progress { min-width: 220px; flex: 1; accent-color: var(--dragon-accent); }
 .dragon-caption-completion-progress { display: flex; align-items: center; gap: 10px; padding: 0 18px 12px; color: var(--dragon-text-secondary); font-size: var(--dragon-fs-caption); }
