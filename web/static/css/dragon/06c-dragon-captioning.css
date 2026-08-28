@@ -292,6 +292,8 @@
     .dragon-caption-split-list > aside { max-height: 280px; padding: 0 0 10px; border-right: 0; border-bottom: 1px solid var(--dragon-divider); }
     .dragon-caption-split-list > form, .dragon-caption-split-list > section { padding: 12px 0 0; }
     .dragon-caption-tag-toolbar > .dragon-btn:last-child, .dragon-caption-config-grid section:last-child { grid-column: auto; }
+    .dragon-caption-tag-toolbar { grid-template-columns: minmax(0, 1fr) minmax(110px, .6fr); }
+    .dragon-caption-tag-toolbar > .dragon-btn:last-child { grid-column: 1 / -1; }
     .dragon-caption-config-scope { align-items: flex-start; flex-direction: column; }
     .dragon-caption-save-generated > label:not(:first-child) { min-height: 30px; }
     .dragon-caption-gallery-tools, .dragon-caption-file-browser { grid-template-columns: 1fr; }
