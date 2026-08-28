@@ -10,12 +10,12 @@ export function renderRolePanel(state) {
         <div class="dragon-caption-form-grid dragon-caption-role-source">
             <label><span>目录组</span><select class="dragon-select" name="group_id"><option value="">上传单图</option>${groupOptions(state, state.workspaceData.roleGroupId)}</select></label>
             <label><span>组内图片</span><select class="dragon-select" name="image_name" data-role-image><option value="">选择图片</option>${images.map((item) => `<option value="${escapeAttribute(item.name)}" ${item.name === state.workspaceData.roleImageName ? 'selected' : ''}>${item.name}</option>`).join('')}</select></label>
-            <label><span>调度组</span><select class="dragon-select" name="schedule_id">${scheduleOptions(state)}</select></label>
-            <label><span>提示词预设</span><select class="dragon-select" name="prompt_id"><option value="">角色 Tag 默认</option>${promptOptions(state, 'system')}</select></label>
+            <label><span>调度组</span><select class="dragon-select" name="schedule_id">${scheduleOptions(state, state.workspaceData.roleScheduleId)}</select></label>
+            <label><span>提示词预设</span><select class="dragon-select" name="prompt_id"><option value="">角色 Tag 默认</option>${promptOptions(state, 'system', state.workspaceData.rolePromptId)}</select></label>
             <label class="dragon-caption-span-2"><span>本地图片</span><input class="dragon-input" type="file" name="image_file" accept="image/*"></label>
         </div>
         <div class="dragon-caption-role-preview" data-role-drop tabindex="0">${state.workspaceData.rolePreview ? `<img src="${escapeAttribute(state.workspaceData.rolePreview)}" alt="角色图片预览">` : '<span>选择目录图片，或上传 / 拖入一张图片</span>'}<small>${source ? `当前来源：${escapeHtml(source)}` : '尚未选择图片'}</small></div>
-        <details class="dragon-caption-role-details" open><summary>角色约束（可选）</summary><div class="dragon-caption-form-grid">
+        <details class="dragon-caption-role-details"><summary>角色约束（可选）</summary><div class="dragon-caption-form-grid">
             <label><span>角色名</span><input class="dragon-input" name="character_name"></label>
             <label><span>作品名</span><input class="dragon-input" name="series_name"></label>
             <label><span>外观特征</span><input class="dragon-input" name="appearance"></label>
@@ -29,6 +29,8 @@ export function renderRolePanel(state) {
 
 export function bindRolePanel(root, state) {
     const form = root.querySelector('[data-role-form]');
+    form.elements.schedule_id.addEventListener('change', () => { state.workspaceData.roleScheduleId = form.elements.schedule_id.value; });
+    form.elements.prompt_id.addEventListener('change', () => { state.workspaceData.rolePromptId = form.elements.prompt_id.value; });
     form.elements.group_id.addEventListener('change', async () => {
         const group = selectedGroup(state, form.elements.group_id.value);
         if (!group) return;

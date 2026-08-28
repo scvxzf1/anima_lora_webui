@@ -147,6 +147,8 @@ def test_captioning_suite_covers_the_full_embedded_labeler_workflow() -> None:
     assert "formatTimestamp" in logs and "清空全部日志" in logs
     assert "data-role-drop" in role and "rolePreview" in role
     assert "roleSource" in role and "正在生成…" in role
+    assert "roleScheduleId" in role and "rolePromptId" in role
+    assert 'dragon-caption-role-details"><summary>' in role
     assert "已复制角色 Tag" in role
     groups = _read("js/features/captioning/workspace/groups-panel.js")
     assert "groupsDirty" in groups and "groupScans" in groups
