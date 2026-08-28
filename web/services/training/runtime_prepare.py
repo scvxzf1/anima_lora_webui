@@ -154,6 +154,7 @@ def _prepare_web_runtime_config(
             "image_dir": binding["image_dir"],
             "cache_dir": binding["cache_dir"],
             "num_repeats": row.get("num_repeats") or 1,
+            "is_reg": _bool_value_for_row(row.get("is_reg"), False),
             "recursive": _bool_value_for_row(row.get("recursive"), True),
             "path_pattern": _normalize_path_pattern(row.get("path_pattern")),
             "settings": row.get("settings") if isinstance(row.get("settings"), dict) else {},
