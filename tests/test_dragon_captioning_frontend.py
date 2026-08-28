@@ -145,6 +145,9 @@ def test_captioning_suite_covers_the_full_embedded_labeler_workflow() -> None:
     tags = _read("js/features/captioning/workspace/tag-manager-panel.js")
     assert "tagDirtyName" in tags and "discardDirty" in tags
     assert "matches.length" in tags and "替换中" in tags and "tagQuery" in tags
+    prompts = _read("js/features/captioning/workspace/prompts-panel.js")
+    assert "promptQuery" in prompts and "promptDirtyId" in prompts
+    assert "discardPromptDraft" in prompts and "内置预设只读" in prompts
 
 
 def test_captioning_completion_and_dataset_preserve_running_drafts() -> None:
