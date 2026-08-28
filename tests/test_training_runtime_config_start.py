@@ -417,6 +417,7 @@ def test_web_runtime_trigger_clone_materializes_extra_subset(tmp_path, monkeypat
                 "recursive = true",
                 'custom_attributes = {source_dir = "image_dataset/mixed", nl_tag_mix = {enabled = true, tag_ratio = 1.0}, trigger_clone = {enabled = true, prompt = "my_character", num_repeats = 3}}',
                 "num_repeats = 5",
+                "is_reg = true",
                 "",
                 "[[datasets]]",
                 "",
@@ -473,7 +474,9 @@ def test_web_runtime_trigger_clone_materializes_extra_subset(tmp_path, monkeypat
     clone_dataset = dataset_cfg["datasets"][1]
     clone_subset = clone_dataset["subsets"][0]
     assert original_subset["num_repeats"] == 5
+    assert original_subset["is_reg"] is True
     assert clone_subset["num_repeats"] == 3
+    assert clone_subset["is_reg"] is True
     assert clone_subset["image_dir"].endswith("dataset-01/trigger-clone-resized")
     assert clone_subset["cache_dir"].endswith("dataset-01/trigger-clone-lora")
     assert clone_subset["custom_attributes"]["source_dir"].endswith(
@@ -520,6 +523,7 @@ def test_clone_runtime_dataset_rows_preserves_trigger_clone_materialized_dirs(
                 "image_dir": resized.as_posix(),
                 "cache_dir": lora.as_posix(),
                 "num_repeats": 3,
+                "is_reg": True,
                 "settings": {"caption_source_mode": "captions_json"},
             }
         ],
@@ -536,3 +540,4 @@ def test_clone_runtime_dataset_rows_preserves_trigger_clone_materialized_dirs(
     assert cloned[0]["source_dir"].endswith("dataset-01/trigger-clone-source")
     assert cloned[0]["image_dir"].endswith("dataset-01/trigger-clone-resized")
     assert cloned[0]["cache_dir"].endswith("dataset-01/trigger-clone-lora")
+    assert cloned[0]["is_reg"] is True

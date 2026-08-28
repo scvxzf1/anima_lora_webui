@@ -183,6 +183,7 @@ def _prepare_web_runtime_config(
                 "image_dir": clone_binding["image_dir"],
                 "cache_dir": clone_binding["cache_dir"],
                 "num_repeats": trigger_clone["num_repeats"],
+                "is_reg": _bool_value_for_row(row.get("is_reg"), False),
                 "recursive": _bool_value_for_row(row.get("recursive"), True),
                 "path_pattern": _normalize_path_pattern(row.get("path_pattern")),
                 "settings": clone_settings,
