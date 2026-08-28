@@ -39,6 +39,12 @@
 .dragon-caption-list-toolbar .dragon-select { width: min(220px, 40%); flex: 0 0 auto; }
 .dragon-caption-result-list, .dragon-caption-log-list { display: grid; align-content: start; gap: 7px; padding: 0 18px 16px; overflow: auto; }
 .dragon-caption-log-list { max-height: calc(100dvh - 300px); }
+.dragon-caption-logs-toolbar { position: sticky; z-index: 2; top: 0; padding: 10px 18px; border-bottom: 1px solid var(--dragon-divider); background: var(--dragon-bg-primary); }
+.dragon-caption-log-summary { display: flex; align-items: center; flex-wrap: wrap; gap: 5px; margin-left: auto; }
+.dragon-caption-log-summary span { padding: 3px 6px; background: var(--dragon-bg-secondary); color: var(--dragon-text-secondary); font-size: var(--dragon-fs-tiny); }
+.dragon-caption-log-summary span[data-tone="success"] { color: var(--dragon-success); }
+.dragon-caption-log-summary span[data-tone="error"], .dragon-caption-danger-action { color: var(--dragon-error); }
+.dragon-caption-log-list pre { max-width: 100%; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
 .dragon-caption-result-list article, .dragon-caption-log-list article { padding: 10px 12px; border: 1px solid var(--dragon-border); background: var(--dragon-bg-secondary); }
 .dragon-caption-result-list article > header, .dragon-caption-log-list article > header { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: 10px; }
 .dragon-caption-result-list article > header > strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -266,6 +272,7 @@
     .dragon-caption-file-grid { max-height: min(300px, 36dvh); }
     .dragon-caption-file-preview { min-height: min(320px, 42dvh); }
     .dragon-caption-log-list { max-height: 58dvh; }
+    .dragon-caption-log-summary { width: 100%; margin-left: 0; }
     .dragon-caption-role-preview { min-height: 220px; max-height: 42dvh; }
     .dragon-caption-role-actions .dragon-btn-primary { width: 100%; }
     .dragon-caption-completion-actions .dragon-btn-primary { width: 100%; order: -1; }

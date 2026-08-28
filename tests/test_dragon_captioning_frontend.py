@@ -136,6 +136,8 @@ def test_captioning_suite_covers_the_full_embedded_labeler_workflow() -> None:
     assert "确认清空全部打标日志" in logs
     assert "logSearchTimer" in logs and "addEventListener('input'" in logs
     assert "logsRequestId" in logs
+    assert "logsLoading" in logs and "dragon-caption-log-summary" in logs
+    assert "formatTimestamp" in logs and "清空全部日志" in logs
     assert "data-role-drop" in role and "rolePreview" in role
     assert "roleSource" in role and "正在生成…" in role
     assert "已复制角色 Tag" in role
