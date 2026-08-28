@@ -16,6 +16,9 @@
 .dragon-caption-check-row { display: flex; align-items: center; flex-wrap: wrap; gap: 14px; padding: 10px; border: 1px solid var(--dragon-border); }
 .dragon-caption-check-row legend { padding: 0 5px; color: var(--dragon-text-secondary); font-size: var(--dragon-fs-caption); }
 .dragon-caption-check-row label { display: inline-flex; align-items: center; gap: 5px; }
+.dragon-caption-export-scope { display: flex; min-width: 0; align-items: center; flex-wrap: wrap; gap: 8px 14px; padding: 10px 12px; border: 1px solid var(--dragon-border); background: var(--dragon-bg-secondary); color: var(--dragon-text-secondary); font-size: var(--dragon-fs-caption); }
+.dragon-caption-export-scope span:last-child { min-width: 0; overflow-wrap: anywhere; }
+.dragon-caption-export-result { padding: 0 18px 14px; overflow-wrap: anywhere; color: var(--dragon-text-secondary); }
 .dragon-caption-table { display: grid; align-content: start; padding: 14px 18px; overflow: auto; }
 .dragon-caption-table-head, .dragon-caption-table-row { display: grid; grid-template-columns: minmax(130px, .7fr) minmax(280px, 1.8fr) minmax(150px, 1fr) 80px 82px; align-items: center; gap: 8px; padding: 7px 0; border-bottom: 1px solid var(--dragon-divider); }
 .dragon-caption-table-head { color: var(--dragon-text-tertiary); font-size: var(--dragon-fs-tiny); font-weight: 650; }
