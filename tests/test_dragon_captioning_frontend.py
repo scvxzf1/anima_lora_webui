@@ -137,6 +137,9 @@ def test_captioning_suite_covers_the_full_embedded_labeler_workflow() -> None:
     assert "data-role-drop" in role and "rolePreview" in role
     assert "roleSource" in role and "正在生成…" in role
     assert "已复制角色 Tag" in role
+    groups = _read("js/features/captioning/workspace/groups-panel.js")
+    assert "groupsDirty" in groups and "groupScans" in groups
+    assert "删除目录组“" in groups and "扫描中…" in groups
 
 
 def test_captioning_completion_and_dataset_preserve_running_drafts() -> None:

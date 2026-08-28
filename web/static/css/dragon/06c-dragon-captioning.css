@@ -19,6 +19,8 @@
 .dragon-caption-table { display: grid; align-content: start; padding: 14px 18px; overflow: auto; }
 .dragon-caption-table-head, .dragon-caption-table-row { display: grid; grid-template-columns: minmax(130px, .7fr) minmax(280px, 1.8fr) minmax(150px, 1fr) 80px 82px; align-items: center; gap: 8px; padding: 7px 0; border-bottom: 1px solid var(--dragon-divider); }
 .dragon-caption-table-head { color: var(--dragon-text-tertiary); font-size: var(--dragon-fs-tiny); font-weight: 650; }
+.dragon-caption-table-row > label { display: grid; min-width: 0; gap: 4px; }
+.dragon-caption-table-row > label > span { display: none; color: var(--dragon-text-tertiary); font-size: var(--dragon-fs-tiny); }
 .dragon-caption-table-row > div { display: flex; gap: 5px; }
 .dragon-caption-workspace-panel > .dragon-caption-form-actions { padding: 0 18px 14px; }
 .dragon-caption-split-list { display: grid; min-height: 0; grid-template-columns: minmax(250px, 30%) minmax(0, 1fr); padding: 14px 18px; overflow: hidden; }
@@ -245,6 +247,8 @@
     .dragon-caption-form-grid, .dragon-caption-table-head, .dragon-caption-table-row, .dragon-caption-tag-toolbar, .dragon-caption-config-grid, .dragon-caption-save-generated { grid-template-columns: 1fr; }
     .dragon-caption-table-head { display: none; }
     .dragon-caption-table-row { gap: 6px; padding: 12px 0; }
+    .dragon-caption-table-row > label > span { display: block; }
+    .dragon-caption-table-row > div { justify-content: flex-end; padding-top: 4px; }
     .dragon-caption-split-list { grid-template-columns: 1fr; overflow: visible; }
     .dragon-caption-split-list > aside { max-height: 280px; padding: 0 0 10px; border-right: 0; border-bottom: 1px solid var(--dragon-divider); }
     .dragon-caption-split-list > form, .dragon-caption-split-list > section { padding: 12px 0 0; }
