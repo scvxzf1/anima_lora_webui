@@ -120,6 +120,8 @@ def test_captioning_suite_covers_the_full_embedded_labeler_workflow() -> None:
     for filter_name in ("全部", "可导出", "失败", "解析失败", "已选择"):
         assert filter_name in gallery
     assert "data-file-grid" in files and "data-file-open-workbench" in files
+    assert "fileScanning" in files and "fileScanned" in files and "fileQuery" in files
+    assert "aria-pressed" in files and "data-file-search-empty" in files
     assert "data-retry-all" in retry and "failure_kind" in retry
     assert "manual_directory" in export and "download-captions" in export
     assert "captions-json" in export and "image-txt" in export

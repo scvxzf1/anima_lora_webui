@@ -174,6 +174,7 @@
 .dragon-caption-file-grid > button[data-active="true"] { border-color: var(--dragon-accent); }
 .dragon-caption-file-grid img { width: 100%; aspect-ratio: 1; object-fit: cover; }
 .dragon-caption-file-grid span { overflow: hidden; font-size: var(--dragon-fs-tiny); text-overflow: ellipsis; white-space: nowrap; }
+.dragon-caption-list-summary { margin-left: auto; color: var(--dragon-text-tertiary); font-size: var(--dragon-fs-caption); white-space: nowrap; }
 .dragon-caption-file-preview { display: grid; min-width: 0; min-height: 0; grid-template-rows: minmax(0, 1fr) auto; place-items: center; overflow: hidden; background: #17191d; color: #f2f3f4; }
 .dragon-caption-file-preview img { width: 100%; height: 100%; min-height: 0; object-fit: contain; }
 .dragon-caption-file-preview strong { width: 100%; padding: 8px; box-sizing: border-box; overflow: hidden; text-align: center; text-overflow: ellipsis; white-space: nowrap; }
@@ -250,8 +251,8 @@
     .dragon-caption-save-generated > label:not(:first-child) { min-height: 30px; }
     .dragon-caption-gallery-tools, .dragon-caption-file-browser { grid-template-columns: 1fr; }
     .dragon-caption-file-browser { min-height: auto; overflow: visible; }
-    .dragon-caption-file-grid { max-height: 360px; }
-    .dragon-caption-file-preview { min-height: 360px; }
+    .dragon-caption-file-grid { max-height: min(300px, 36dvh); }
+    .dragon-caption-file-preview { min-height: min(320px, 42dvh); }
     .dragon-caption-log-list { max-height: 58dvh; }
     .dragon-caption-role-preview { min-height: 220px; max-height: 42dvh; }
     .dragon-caption-role-actions .dragon-btn-primary { width: 100%; }
@@ -259,4 +260,6 @@
     .dragon-caption-completion-progress { align-items: stretch; flex-direction: column; }
     .dragon-caption-list-toolbar { flex-wrap: wrap; }
     .dragon-caption-list-toolbar .dragon-input, .dragon-caption-list-toolbar .dragon-select { width: 100%; flex: 1 1 100%; }
+    .dragon-caption-list-toolbar [data-file-scan], .dragon-caption-list-toolbar [data-file-open-workbench] { flex: 1 1 calc(50% - 5px); }
+    .dragon-caption-list-summary { width: 100%; margin-left: 0; }
 }
