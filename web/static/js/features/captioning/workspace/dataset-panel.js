@@ -8,7 +8,7 @@ export function renderDatasetPanel(state) {
     const compatibleSchedules = geminiSchedules(state);
     const canGenerate = compatibleSchedules.length > 0;
     return panelShell('DATASET', '数据集生成', '', `<form class="dragon-caption-tool-form" data-dataset-form>
-        <div class="dragon-caption-form-grid"><label class="dragon-caption-span-2"><span>参考图片</span><input class="dragon-input" type="file" name="images" accept="image/*" multiple required ${running ? 'disabled' : ''}></label><label><span>调度组</span><select class="dragon-select" name="schedule_id" ${running ? 'disabled' : ''}>${datasetScheduleOptions(state, compatibleSchedules, draft.scheduleId)}</select></label><label><span>并发</span><input class="dragon-input" type="number" name="concurrency" min="1" max="12" value="${escapeAttribute(String(draft.concurrency ?? 2))}" ${running ? 'disabled' : ''}></label><label><span>保存目录组</span><select class="dragon-select" name="group_id" ${running ? 'disabled' : ''}><option value="">稍后选择</option>${groupOptions(state, draft.groupId)}</select></label></div>
+        <div class="dragon-caption-form-grid dragon-caption-dataset-fields"><label class="dragon-caption-span-2"><span>参考图片</span><input class="dragon-input" type="file" name="images" accept="image/*" multiple required ${running ? 'disabled' : ''}></label><label><span>调度组</span><select class="dragon-select" name="schedule_id" ${running ? 'disabled' : ''}>${datasetScheduleOptions(state, compatibleSchedules, draft.scheduleId)}</select></label><label><span>并发</span><input class="dragon-input" type="number" name="concurrency" min="1" max="12" value="${escapeAttribute(String(draft.concurrency ?? 2))}" ${running ? 'disabled' : ''}></label><label><span>保存目录组</span><select class="dragon-select" name="group_id" ${running ? 'disabled' : ''}><option value="">稍后选择</option>${groupOptions(state, draft.groupId)}</select></label></div>
         <label><span>Prompt（每行一个任务）</span><textarea class="dragon-textarea" name="prompts" rows="5" required ${running ? 'disabled' : ''}>${escapeHtml(draft.prompts || '')}</textarea></label>
         <div class="dragon-caption-dataset-plan" data-dataset-plan>选择参考图并输入 Prompt 后显示调用规模。</div>
         <div class="dragon-caption-form-actions"><button class="dragon-btn dragon-btn-primary" type="submit" ${running || !canGenerate ? 'disabled' : ''}>开始生成</button><button class="dragon-btn dragon-btn-secondary" type="button" data-dataset-retry ${results.some((item) => ['failed', 'stopped'].includes(item.status)) && !running && canGenerate ? '' : 'disabled'}>重跑失败 / 已停止项</button><button class="dragon-btn dragon-btn-secondary" type="button" data-dataset-stop ${running ? '' : 'disabled'}>${state.workspaceData.datasetStopped && running ? '正在停止排队项…' : '停止等待中任务'}</button><button class="dragon-btn dragon-btn-secondary" type="button" data-dataset-clear ${running ? 'disabled' : ''}>清空结果</button></div>
@@ -49,16 +49,19 @@ export function bindDatasetPanel(root, state) {
     root.querySelector('[data-dataset-retry]')?.addEventListener('click', () => {
         if (!state.workspaceData.datasetRunning) runQueue(root, state, state.workspaceData.datasetResults.filter((item) => ['failed', 'stopped'].includes(item.status)));
     });
+    root.querySelectorAll('[data-dataset-retry-item]').forEach((button) => button.addEventListener('click', () => { const item = state.workspaceData.datasetResults.find((entry) => entry.id === button.dataset.datasetRetryItem); if (item && !state.workspaceData.datasetRunning) runQueue(root, state, [item]); }));
     root.querySelector('[data-dataset-clear]')?.addEventListener('click', () => { state.workspaceData.datasetResults = []; state.suiteRender(); });
     root.querySelector('[data-dataset-save]')?.addEventListener('submit', async (event) => {
-        event.preventDefault(); const form = event.currentTarget; const group = selectedGroup(state, form.elements.group_id.value);
+        event.preventDefault(); const form = event.currentTarget; const button = event.submitter; const group = selectedGroup(state, form.elements.group_id.value);
         if (!group) return feedback(root, '请选择目标目录组', 'error');
+        button.disabled = true; button.textContent = '保存中…';
         try {
             const parts = [...form.querySelectorAll('[name="parts"]:checked')].map((item) => item.value);
             if (!parts.length) throw new Error('至少选择生成图或参考图中的一项');
             const payload = await captioningApi('/workspace/save-generated', jsonOptions('POST', {directory: group.path, results: state.workspaceData.datasetResults.filter((item) => item.status === 'success'), parts, options: {include_prompt_line_suffix: form.elements.prompt_line.checked, append_timestamp_suffix: form.elements.timestamp.checked}}));
             feedback(root, `已保存 ${payload.count} 张图片`, 'success');
         } catch (error) { feedback(root, error.message, 'error'); }
+        finally { button.disabled = false; button.textContent = '保存图片'; }
     });
 }
 
@@ -85,7 +88,7 @@ async function runQueue(root, state, candidates) {
 
 function renderResult(item) {
     const src = item.generated_data_url || item.source_data_url;
-    return `<article data-tone="${item.status === 'failed' ? 'error' : item.status === 'success' ? 'success' : 'info'}">${src ? `<img src="${escapeAttribute(src)}" alt="${escapeAttribute(item.source_name)}">` : ''}<header><strong>${escapeHtml(item.source_name)}</strong><span>${datasetStatusLabel(item.status)}</span></header><p>${escapeHtml(item.prompt)}</p>${item.error ? `<small>${escapeHtml(item.error)}</small>` : ''}</article>`;
+    return `<article data-tone="${item.status === 'failed' ? 'error' : item.status === 'success' ? 'success' : 'info'}">${src ? `<img src="${escapeAttribute(src)}" alt="${escapeAttribute(item.source_name)}">` : ''}<header><strong>${escapeHtml(item.source_name)}</strong><span>${datasetStatusLabel(item.status)}</span></header><p>${escapeHtml(item.prompt)}</p>${item.error ? `<small>${escapeHtml(item.error)}</small>` : ''}${['failed','stopped'].includes(item.status) ? `<button class="dragon-btn dragon-btn-secondary" type="button" data-dataset-retry-item="${escapeAttribute(item.id)}">仅重跑此项</button>` : ''}</article>`;
 }
 
 function datasetStatusLabel(status) {

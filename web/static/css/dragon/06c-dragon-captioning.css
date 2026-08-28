@@ -282,6 +282,8 @@
     .dragon-caption-channel-actions { width: 100%; flex-wrap: wrap; }
     .dragon-caption-form-grid, .dragon-caption-table-head, .dragon-caption-table-row, .dragon-caption-tag-toolbar, .dragon-caption-config-grid, .dragon-caption-save-generated { grid-template-columns: 1fr; }
     .dragon-caption-completion-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .dragon-caption-dataset-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .dragon-caption-dataset-fields > label:first-child, .dragon-caption-dataset-fields > label:nth-child(2) { grid-column: 1 / -1; }
     .dragon-caption-role-source { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .dragon-caption-role-source .dragon-caption-span-2 { grid-column: 1 / -1; }
     .dragon-caption-table-head { display: none; }
@@ -306,6 +308,7 @@
     .dragon-caption-role-actions .dragon-btn-primary { width: 100%; }
     .dragon-caption-completion-actions .dragon-btn-primary { width: 100%; order: -1; }
     .dragon-caption-completion-progress { align-items: stretch; flex-direction: column; }
+    .dragon-caption-dataset-progress { align-items: stretch; flex-direction: column; }
     .dragon-caption-list-toolbar { flex-wrap: wrap; }
     .dragon-caption-list-toolbar .dragon-input, .dragon-caption-list-toolbar .dragon-select { width: 100%; flex: 1 1 100%; }
     .dragon-caption-list-toolbar [data-file-scan], .dragon-caption-list-toolbar [data-file-open-workbench] { flex: 1 1 calc(50% - 5px); }
