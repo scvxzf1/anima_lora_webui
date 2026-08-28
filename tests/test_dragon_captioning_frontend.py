@@ -127,6 +127,7 @@ def test_captioning_suite_covers_the_full_embedded_labeler_workflow() -> None:
     assert "data-file-grid" in files and "data-file-open-workbench" in files
     assert "fileScanning" in files and "fileScanned" in files and "fileQuery" in files
     assert "aria-pressed" in files and "data-file-search-empty" in files
+    assert "ArrowLeft" in files and "ArrowRight" in files and "CSS.escape" in files
     assert "data-retry-all" in retry and "failure_kind" in retry
     assert "retryLoading" in retry and "retryFilter" in retry
     assert "筛选不改变批量范围" in retry and "重试中…" in retry

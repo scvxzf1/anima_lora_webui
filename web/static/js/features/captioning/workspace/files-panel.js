@@ -11,12 +11,12 @@ export function renderFilesPanel(state) {
     const preview = group && selected ? `/api/captioning/workspace/image?directory=${encodeURIComponent(group.path)}&name=${encodeURIComponent(selected)}` : '';
     return panelShell('FILES', '目录图片浏览', '', `<div class="dragon-caption-list-toolbar">
         <select class="dragon-select" data-file-group aria-label="目录组" ${scanning ? 'disabled' : ''}><option value="">选择目录组</option>${groupOptions(state, state.workspaceData.fileGroupId)}</select>
-        <button class="dragon-btn dragon-btn-secondary" type="button" data-file-scan ${scanning ? 'disabled' : ''}>${scanning ? '扫描中…' : '扫描目录'}</button>
         <input class="dragon-input" data-file-search aria-label="搜索文件名" placeholder="搜索文件名" value="${escapeAttribute(query)}" ${images.length ? '' : 'disabled'}>
+        <button class="dragon-btn dragon-btn-secondary" type="button" data-file-scan ${scanning ? 'disabled' : ''}>${scanning ? '扫描中…' : '扫描目录'}</button>
         <button class="dragon-btn dragon-btn-primary" type="button" data-file-open-workbench ${group ? '' : 'disabled'}>在审阅台打标</button>
         <span class="dragon-caption-list-summary" data-file-count>${visibleImages.length}/${images.length} 张</span>
     </div><div class="dragon-caption-file-browser" aria-busy="${scanning}">
-        <div class="dragon-caption-file-grid" data-file-grid aria-label="目录图片">${images.map((item) => `<button type="button" data-file-item="${escapeAttribute(item.name)}" data-active="${item.name === selected}" aria-pressed="${item.name === selected}" ${visibleImages.includes(item) ? '' : 'hidden'}><img src="/api/captioning/workspace/image?directory=${encodeURIComponent(group?.path || '')}&name=${encodeURIComponent(item.name)}" alt="${escapeAttribute(item.name)}"><span>${escapeHtml(item.name)}</span></button>`).join('') || renderEmptyState({group, scanned, scanning, error: state.workspaceData.fileError})}<div class="dragon-empty-state" data-file-search-empty ${images.length && !visibleImages.length ? '' : 'hidden'}><p>没有匹配“${escapeHtml(query)}”的图片。</p></div></div>
+        <div class="dragon-caption-file-grid" data-file-grid aria-label="目录图片">${images.map((item) => `<button type="button" data-file-item="${escapeAttribute(item.name)}" data-active="${item.name === selected}" aria-pressed="${item.name === selected}" aria-label="查看 ${escapeAttribute(item.name)}" title="${escapeAttribute(item.name)}" ${visibleImages.includes(item) ? '' : 'hidden'}><img src="/api/captioning/workspace/image?directory=${encodeURIComponent(group?.path || '')}&name=${encodeURIComponent(item.name)}" alt="${escapeAttribute(item.name)}"><span>${escapeHtml(item.name)}</span></button>`).join('') || renderEmptyState({group, scanned, scanning, error: state.workspaceData.fileError})}<div class="dragon-empty-state" data-file-search-empty ${images.length && !visibleImages.length ? '' : 'hidden'}><p>没有匹配“${escapeHtml(query)}”的图片。</p></div></div>
         <div class="dragon-caption-file-preview">${preview ? `<img src="${escapeAttribute(preview)}" alt="${escapeAttribute(selected)}"><strong>${escapeHtml(selected)}</strong>` : '<div class="dragon-empty-state"><p>选择图片查看预览。</p></div>'}</div>
     </div>`);
 }
@@ -35,12 +35,18 @@ export function bindFilesPanel(root, state) {
         } catch (error) { state.workspaceData.fileError = error.message; }
         finally { state.workspaceData.fileScanning = false; state.suiteRender(); }
     });
-    root.querySelector('[data-file-grid]')?.addEventListener('click', (event) => { const item = event.target.closest('[data-file-item]'); if (item) { state.workspaceData.fileSelected = item.dataset.fileItem; state.suiteRender(); } });
+    const grid = root.querySelector('[data-file-grid]');
+    grid?.addEventListener('click', (event) => { const item = event.target.closest('[data-file-item]'); if (item) { state.workspaceData.fileSelected = item.dataset.fileItem; state.suiteRender(); } });
+    grid?.addEventListener('keydown', (event) => {
+        if (!['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
+        const visible = [...grid.querySelectorAll('[data-file-item]:not([hidden])')]; const current = visible.indexOf(event.target.closest('[data-file-item]')); if (current < 0) return;
+        event.preventDefault(); const next = visible[Math.max(0, Math.min(visible.length - 1, current + (event.key === 'ArrowRight' ? 1 : -1)))]; state.workspaceData.fileSelected = next.dataset.fileItem; state.suiteRender(); requestAnimationFrame(() => root.querySelector(`[data-file-item="${CSS.escape(next.dataset.fileItem)}"]`)?.focus());
+    });
     root.querySelector('[data-file-search]')?.addEventListener('input', (event) => {
         const query = event.target.value.toLocaleLowerCase(); let visible = 0;
         state.workspaceData.fileQuery = event.target.value;
         root.querySelectorAll('[data-file-item]').forEach((item) => { item.hidden = query && !item.dataset.fileItem.toLocaleLowerCase().includes(query); if (!item.hidden) visible += 1; });
-        const empty = root.querySelector('[data-file-search-empty]'); if (empty) empty.hidden = visible > 0;
+        const empty = root.querySelector('[data-file-search-empty]'); if (empty) { empty.hidden = visible > 0; const message = empty.querySelector('p'); if (message) message.textContent = `没有匹配“${event.target.value}”的图片。`; }
         const count = root.querySelector('[data-file-count]'); if (count) count.textContent = `${visible}/${state.workspaceData.fileImages.length} 张`;
     });
     root.querySelector('[data-file-open-workbench]')?.addEventListener('click', () => { const group = selectedGroup(state, groupSelect.value); if (!group) return; state.workspaceData.workbenchDirectory = group.path; state.activePanel = 'workbench'; state.suiteRender(); });
