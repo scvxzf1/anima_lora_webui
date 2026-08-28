@@ -2,7 +2,7 @@ import { captioningApi, jsonOptions } from './api.js?v=dragon-ui-20260829v11';
 import { escapeAttribute, escapeHtml } from './utils.js?v=dragon-ui-20260829v11';
 
 export function renderRoutingPanel(routing) {
-    return `<section class="dragon-caption-section dragon-caption-routing-section">
+    return `<section class="dragon-caption-section dragon-caption-routing-section" data-caption-settings-section="routing">
         <header class="dragon-caption-section-head"><div><span class="dragon-eyebrow">ROUTING</span><h2>渠道与调度</h2><p>${routing.channels?.length || 0} 个渠道 · ${routing.schedules?.length || 0} 个调度组 · 默认：${escapeHtml(routing.default_schedule_id || '未设置')}</p></div></header>
         <div data-caption-routing-editor>${renderEditor(makeDraft(routing))}</div>
     </section>`;
@@ -12,8 +12,8 @@ export function bindRoutingPanel(root, state) {
     const host = root.querySelector('[data-caption-routing-editor]');
     if (!host) return;
     let draft = makeDraft(state.routing);
-    host.addEventListener('input', (event) => updateDraft(draft, event.target));
-    host.addEventListener('change', (event) => updateDraft(draft, event.target));
+    host.addEventListener('input', (event) => { updateDraft(draft, event.target); markDirty(host); });
+    host.addEventListener('change', (event) => { updateDraft(draft, event.target); markDirty(host); });
     host.addEventListener('click', async (event) => {
         const button = event.target.closest('[data-routing-action]');
         if (!button) return;
@@ -24,7 +24,7 @@ export function bindRoutingPanel(root, state) {
         }
         if (action === 'fetch-models') {
             const payload = await testChannel(button, host, draft, 'ping');
-            if (payload?.models?.length) { draft.channels[Number(button.dataset.channelIndex)]._models = payload.models; host.innerHTML = renderEditor(draft); }
+            if (payload?.models?.length) { draft.channels[Number(button.dataset.channelIndex)]._models = payload.models; host.innerHTML = renderEditor(draft, host.closest('dialog')?.dataset.routingDirty === 'true'); }
             return;
         }
         if (action === 'save') {
@@ -32,18 +32,19 @@ export function bindRoutingPanel(root, state) {
             draft = makeDraft(state.routing);
             return;
         }
+        if (['remove-channel', 'remove-schedule'].includes(action) && !window.confirm(action === 'remove-channel' ? '删除此渠道并将相关步骤切换到备用渠道？' : '删除此调度组？')) return;
         mutateDraft(draft, action, button.dataset);
-        host.innerHTML = renderEditor(draft);
+        host.innerHTML = renderEditor(draft, true);
     });
 }
 
-function renderEditor(draft) {
+function renderEditor(draft, dirty = false) {
     return `<form class="dragon-caption-routing-form" data-caption-routing-form>
         <div class="dragon-caption-routing-heading"><h3>API 渠道 <small>${draft.channels.length}</small></h3><button class="dragon-btn dragon-btn-secondary" type="button" data-routing-action="add-channel">＋ 添加渠道</button></div>
         <div class="dragon-caption-routing-list">${draft.channels.map(renderChannel).join('')}</div>
         <div class="dragon-caption-routing-heading"><h3>调度组 <small>${draft.schedules.length}</small></h3><button class="dragon-btn dragon-btn-secondary" type="button" data-routing-action="add-schedule">＋ 添加调度组</button></div>
         <div class="dragon-caption-routing-list">${draft.schedules.map((schedule, index) => renderSchedule(schedule, index, draft)).join('')}</div>
-        <footer class="dragon-caption-routing-actions"><button class="dragon-btn dragon-btn-primary" type="button" data-routing-action="save">保存渠道与调度</button><span class="dragon-caption-feedback" data-caption-routing-feedback role="status" aria-live="polite"></span></footer>
+        <footer class="dragon-caption-routing-actions"><button class="dragon-btn dragon-btn-primary" type="button" data-routing-action="save">保存渠道与调度</button><span class="dragon-caption-feedback" data-caption-routing-feedback data-tone="${dirty ? 'warning' : 'info'}" role="status" aria-live="polite">${dirty ? '有未保存修改' : ''}</span></footer>
     </form>`;
 }
 
@@ -145,6 +146,7 @@ async function saveDraft(button, host, state, draft) {
     try {
         const payload = await captioningApi('/routing', jsonOptions('PUT', serialize(draft)));
         state.routing = payload;
+        const dialog = host.closest('dialog'); if (dialog) dialog.dataset.routingDirty = 'false';
         host.innerHTML = renderEditor(makeDraft(payload));
         state.suiteRender?.();
         show(host.querySelector('[data-caption-routing-feedback]'), '渠道与调度已保存', 'success');
@@ -204,3 +206,4 @@ function newStep(channelId) { return {channel_id: channelId || '', model: '', re
 function move(items, from, to) { const [item] = items.splice(from, 1); items.splice(to, 0, item); }
 function nextNumber(items, prefix) { let index = items.length + 1; while (items.some((item) => item.id === `${prefix}-${index}`)) index += 1; return index; }
 function show(node, message, tone) { if (node) { node.textContent = message; node.dataset.tone = tone; } }
+function markDirty(host) { const dialog = host.closest('dialog'); if (dialog) dialog.dataset.routingDirty = 'true'; show(host.querySelector('[data-caption-routing-feedback]'), '有未保存修改', 'warning'); }

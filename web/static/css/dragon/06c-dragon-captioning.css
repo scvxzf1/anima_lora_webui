@@ -170,6 +170,7 @@
 .dragon-caption-settings-toolbar { position: sticky; z-index: 4; top: 0; margin: -20px -20px 14px; padding: 14px 20px; border-bottom: 1px solid var(--dragon-border); background: var(--dragon-bg-primary); }
 .dragon-caption-settings-summary { display: flex; align-items: center; flex-wrap: wrap; justify-content: flex-end; gap: 6px; color: var(--dragon-text-tertiary); font-size: var(--dragon-fs-tiny); }
 .dragon-caption-settings-summary > span:not(.dragon-caption-key-state) { padding: 4px 7px; background: var(--dragon-bg-secondary); }
+.dragon-caption-settings-summary > button:not(.dragon-icon-button) { padding: 4px 7px; border: 1px solid var(--dragon-border); background: var(--dragon-bg-secondary); color: var(--dragon-text-secondary); cursor: pointer; font: inherit; }
 .dragon-caption-provider-form { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
 .dragon-caption-provider-form .dragon-field { display: grid; min-width: 0; gap: 5px; }
 .dragon-caption-wide { grid-column: span 2; }
@@ -201,7 +202,7 @@
 .dragon-caption-step-number { align-self: center; color: var(--dragon-text-tertiary); font-family: var(--dragon-font-mono); font-size: var(--dragon-fs-tiny); text-align: center; }
 .dragon-caption-step-actions { display: flex; gap: 3px; }
 .dragon-caption-step-actions button { width: 27px; height: 30px; border: 1px solid var(--dragon-border); border-radius: 3px; background: var(--dragon-bg-primary); color: var(--dragon-text-primary); cursor: pointer; }
-.dragon-caption-routing-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; position: sticky; bottom: -20px; padding: 10px 0; background: var(--dragon-bg-primary); }
+.dragon-caption-routing-actions { display: flex; z-index: 3; align-items: center; flex-wrap: wrap; gap: 10px; position: sticky; bottom: 0; padding: 10px 0; border-top: 1px solid var(--dragon-divider); background: var(--dragon-bg-primary); }
 .dragon-caption-file-browser { display: grid; min-height: 520px; grid-template-columns: minmax(320px, .9fr) minmax(380px, 1.1fr); gap: 12px; padding: 0 18px 18px; overflow: hidden; }
 .dragon-caption-file-grid { display: grid; min-height: 0; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); align-content: start; gap: 7px; overflow: auto; }
 .dragon-caption-file-grid > button { display: grid; min-width: 0; gap: 5px; padding: 5px; overflow: hidden; border: 1px solid var(--dragon-border); border-radius: var(--dragon-radius-sm); background: var(--dragon-bg-secondary); color: var(--dragon-text-primary); cursor: pointer; }
@@ -278,6 +279,7 @@
     .dragon-caption-settings-toolbar { align-items: flex-start; }
     .dragon-caption-settings-summary { width: 100%; justify-content: flex-start; }
     .dragon-caption-settings-summary .dragon-icon-button { margin-left: auto; }
+    .dragon-caption-provider-actions { position: sticky; z-index: 3; bottom: 0; padding: 9px 0; background: var(--dragon-bg-primary); }
     .dragon-caption-wide { grid-column: auto; }
     .dragon-caption-routing-fields { grid-template-columns: 1fr; }
     .dragon-caption-span-2 { grid-column: auto; }

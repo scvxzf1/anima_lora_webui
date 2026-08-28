@@ -50,6 +50,9 @@ def test_captioning_frontend_exposes_provider_and_scheduler_controls() -> None:
     assert "data-channel-feedback" in routing and "Ping 中…" in routing
     assert "dragon-caption-settings-summary" in settings
     assert "querySelectorAll('[data-caption-settings-close]')" in settings
+    assert "data-caption-settings-jump" in settings and "providerDirty" in settings
+    assert "routingDirty" in routing and "有未保存修改" in routing
+    assert "删除此渠道并将相关步骤切换到备用渠道" in routing
     assert 'name="schedule_id"' in controls
     assert "mixed_70tag_30nl" in controls and "pure_nl" in controls
     assert "captioningApi('/routing')" in page

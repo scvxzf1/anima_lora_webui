@@ -4,8 +4,8 @@ import { bindRoutingPanel, renderRoutingPanel } from './routing-panel.js?v=drago
 const SETTING_KEYS = ['base_url', 'api_key', 'model', 'retry_count', 'retry_interval_seconds', 'concurrency', 'timeout_seconds', 'allow_private_network'];
 
 export function renderProviderPanel(settings, routing) {
-    return `<dialog class="dragon-caption-settings-dialog" data-caption-settings-dialog aria-labelledby="caption-provider-title"><section class="dragon-caption-section">
-        <header class="dragon-caption-section-head dragon-caption-settings-toolbar"><div><span class="dragon-eyebrow">PROVIDER</span><h2 id="caption-provider-title">外部 API 与调度</h2><p>密钥只写入本机受限文件，页面重新读取时仅返回配置状态。</p></div><div class="dragon-caption-settings-summary"><span class="dragon-caption-key-state" data-key-state="${settings.api_key_configured ? 'ready' : 'missing'}">${escapeHtml(settings.api_key_hint)}</span><span>${routing.channels?.length || 0} 渠道</span><span>${routing.schedules?.length || 0} 调度组</span><button class="dragon-icon-button" type="button" data-caption-settings-close title="关闭" aria-label="关闭 API 与调度设置">×</button></div></header>
+    return `<dialog class="dragon-caption-settings-dialog" data-caption-settings-dialog aria-labelledby="caption-provider-title"><section class="dragon-caption-section" data-caption-settings-section="provider">
+        <header class="dragon-caption-section-head dragon-caption-settings-toolbar"><div><span class="dragon-eyebrow">PROVIDER</span><h2 id="caption-provider-title">外部 API 与调度</h2><p>密钥只写入本机受限文件，页面重新读取时仅返回配置状态。</p></div><div class="dragon-caption-settings-summary"><span class="dragon-caption-key-state" data-key-state="${settings.api_key_configured ? 'ready' : 'missing'}">${escapeHtml(settings.api_key_hint)}</span><button type="button" data-caption-settings-jump="provider">基础 API</button><button type="button" data-caption-settings-jump="routing">${routing.channels?.length || 0} 渠道 / ${routing.schedules?.length || 0} 调度组</button><button class="dragon-icon-button" type="button" data-caption-settings-close title="关闭" aria-label="关闭 API 与调度设置">×</button></div></header>
         <form class="dragon-caption-provider-form" data-caption-provider-form>
             <label class="dragon-field dragon-caption-wide"><span>API URL</span><input class="dragon-input" type="url" name="base_url" value="${escapeAttribute(settings.base_url)}" placeholder="https://api.example.com" required></label>
             <label class="dragon-field"><span>API Key</span><input class="dragon-input" type="password" name="api_key" value="" autocomplete="new-password" placeholder="${settings.api_key_configured ? '留空以保留已保存密钥' : '输入 API Key'}"></label>
@@ -30,12 +30,14 @@ export function renderProviderPanel(settings, routing) {
 export function bindProviderPanel(root, state) {
     bindRoutingPanel(root, state);
     const form = root.querySelector('[data-caption-provider-form]');
+    form?.addEventListener('input', () => { const dialog = root.querySelector('[data-caption-settings-dialog]'); if (dialog) dialog.dataset.providerDirty = 'true'; show(root.querySelector('[data-caption-provider-feedback]'), '基础 API 配置有未保存修改', 'warning'); });
     form?.addEventListener('submit', async (event) => {
         event.preventDefault();
         await runAction(root, state, 'save');
     });
     root.querySelectorAll('[data-caption-test]').forEach((button) => button.addEventListener('click', () => runAction(root, state, button.dataset.captionTest)));
-    root.querySelectorAll('[data-caption-settings-close]').forEach((button) => button.addEventListener('click', () => root.querySelector('[data-caption-settings-dialog]')?.close()));
+    root.querySelectorAll('[data-caption-settings-close]').forEach((button) => button.addEventListener('click', () => { const dialog = root.querySelector('[data-caption-settings-dialog]'); if ((dialog?.dataset.providerDirty === 'true' || dialog?.dataset.routingDirty === 'true') && !window.confirm('API 或调度配置有未保存修改，仍要关闭？')) return; dialog?.close(); }));
+    root.querySelectorAll('[data-caption-settings-jump]').forEach((button) => button.addEventListener('click', () => root.querySelector(`[data-caption-settings-section="${button.dataset.captionSettingsJump}"]`)?.scrollIntoView({block:'start'})));
 }
 
 export function collectProviderDraft(root) {
@@ -60,6 +62,7 @@ async function runAction(root, state, action) {
         const payload = await captioningApi(path, jsonOptions(method, draft));
         if (action === 'save') {
             state.settings = payload;
+            const dialog = root.querySelector('[data-caption-settings-dialog]'); if (dialog) dialog.dataset.providerDirty = 'false';
             const keyInput = root.querySelector('[name="api_key"]');
             if (keyInput) keyInput.value = '';
             root.querySelector('[data-key-state]').textContent = payload.api_key_hint;
