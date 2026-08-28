@@ -177,6 +177,11 @@
 .dragon-caption-file-preview strong { width: 100%; padding: 8px; box-sizing: border-box; overflow: hidden; text-align: center; text-overflow: ellipsis; white-space: nowrap; }
 .dragon-caption-role-preview { display: grid; min-height: 280px; place-items: center; overflow: hidden; border: 1px dashed var(--dragon-border); background: #17191d; color: #d5d7da; }
 .dragon-caption-role-preview img { width: 100%; height: min(440px, 48dvh); object-fit: contain; }
+.dragon-caption-role-preview small { padding: 7px 10px; color: #aeb3ba; }
+.dragon-caption-role-details { border: 1px solid var(--dragon-border); }
+.dragon-caption-role-details > summary { padding: 10px 12px; cursor: pointer; font-weight: 650; }
+.dragon-caption-role-details > .dragon-caption-form-grid { padding: 0 12px 12px; }
+.dragon-caption-role-actions > span { color: var(--dragon-text-tertiary); font-size: var(--dragon-fs-caption); }
 .dragon-caption-pagination { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 12px 18px 18px; }
 
 @media (max-width: 1050px) {
@@ -246,6 +251,8 @@
     .dragon-caption-file-grid { max-height: 360px; }
     .dragon-caption-file-preview { min-height: 360px; }
     .dragon-caption-log-list { max-height: 58dvh; }
+    .dragon-caption-role-preview { min-height: 220px; max-height: 42dvh; }
+    .dragon-caption-role-actions .dragon-btn-primary { width: 100%; }
     .dragon-caption-list-toolbar { flex-wrap: wrap; }
     .dragon-caption-list-toolbar .dragon-input, .dragon-caption-list-toolbar .dragon-select { width: 100%; flex: 1 1 100%; }
 }

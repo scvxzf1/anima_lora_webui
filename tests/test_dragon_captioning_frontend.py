@@ -131,6 +131,8 @@ def test_captioning_suite_covers_the_full_embedded_labeler_workflow() -> None:
     assert "logSearchTimer" in logs and "addEventListener('input'" in logs
     assert "logsRequestId" in logs
     assert "data-role-drop" in role and "rolePreview" in role
+    assert "roleSource" in role and "正在生成…" in role
+    assert "已复制角色 Tag" in role
 
 
 def test_captioning_completion_and_dataset_preserve_running_drafts() -> None:
