@@ -7,7 +7,7 @@ export function renderCompletionPanel(state) {
     const done = items.filter((item) => ['ready', 'failed', 'saved'].includes(item.state)).length;
     const failed = items.filter((item) => item.state === 'failed').length;
     return panelShell('COMPLETION', '打标补全', '', `<form class="dragon-caption-tool-form" data-completion-form>
-        <div class="dragon-caption-form-grid">
+        <div class="dragon-caption-form-grid dragon-caption-completion-grid">
             <label><span>目录组</span><select class="dragon-select" name="group_id" required ${running ? 'disabled' : ''}><option value="">选择目录组</option>${groupOptions(state, draft.groupId || state.workspaceData.completionGroupId)}</select></label>
             <label><span>调度组</span><select class="dragon-select" name="schedule_id" ${running ? 'disabled' : ''}>${scheduleOptions(state, draft.scheduleId)}</select></label>
             <label><span>失败阈值</span><input class="dragon-input" type="number" name="threshold" min="0" max="10000" value="${escapeAttribute(String(draft.threshold ?? 40))}" ${running ? 'disabled' : ''}></label>
@@ -15,7 +15,7 @@ export function renderCompletionPanel(state) {
         </div>
         <label><span>补全要求</span><textarea class="dragon-textarea" name="prompt" rows="3" ${running ? 'disabled' : ''}>${escapeHtml(draft.prompt || 'Complete the existing short or missing caption with accurate visible English tags. Return only comma-separated tags.')}</textarea></label>
         <div class="dragon-caption-form-actions dragon-caption-completion-actions"><button class="dragon-btn dragon-btn-secondary" type="button" data-completion-scan ${running ? 'disabled' : ''}>扫描短标注</button><button class="dragon-btn dragon-btn-primary" type="submit" data-completion-start ${items.length && !running ? '' : 'disabled'}>开始补全</button><button class="dragon-btn dragon-btn-secondary" type="button" data-completion-stop ${running ? '' : 'disabled'}>停止后续任务</button><button class="dragon-btn dragon-btn-secondary" type="button" data-completion-save ${items.some((item) => item.proposed) && !running ? '' : 'disabled'}>保存全部候选</button></div>
-    </form>${items.length ? `<div class="dragon-caption-completion-progress"><progress max="${items.length}" value="${done}"></progress><span>${done}/${items.length} 已处理 · ${failed} 失败${state.workspaceData.completionStopped ? ' · 已停止' : ''}</span></div>` : ''}<div class="dragon-caption-result-list" data-completion-list>${items.map(renderItem).join('') || '<div class="dragon-empty-state"><p>扫描后显示需要补全的图片。</p></div>'}</div>`);
+    </form>${state.workspaceData.completionNotice ? `<div class="dragon-caption-inline-status" role="status">${escapeHtml(state.workspaceData.completionNotice)}</div>` : ''}${items.length ? `<div class="dragon-caption-completion-progress"><progress max="${items.length}" value="${done}"></progress><span>${done}/${items.length} 已处理 · ${failed} 失败${state.workspaceData.completionStopped ? ' · 已停止' : ''}</span></div>` : ''}<div class="dragon-caption-result-list" data-completion-list>${items.map(renderItem).join('') || '<div class="dragon-empty-state"><p>扫描后显示需要补全的图片。</p></div>'}</div>`);
 }
 
 export function bindCompletionPanel(root, state) {
@@ -78,14 +78,14 @@ export function bindCompletionPanel(root, state) {
     }));
     root.querySelector('[data-completion-save]')?.addEventListener('click', async (event) => {
         const group = selectedGroup(state, state.workspaceData.completionGroupId);
-        event.currentTarget.disabled = true; let saved = 0;
+        event.currentTarget.disabled = true; let saved = 0, failed = 0;
         try {
             if (!group) throw new Error('补全目录组已失效，请重新扫描');
             for (const item of state.workspaceData.completionItems.filter((entry) => entry.proposed)) {
-                await captioningApi('/workspace/tag', jsonOptions('PATCH', {directory: group.path, image_name: item.name, text: item.proposed, expected: item.text}));
-                item.text = item.proposed; item.proposed = ''; item.state = 'saved'; saved += 1;
+                try { await captioningApi('/workspace/tag', jsonOptions('PATCH', {directory: group.path, image_name: item.name, text: item.proposed, expected: item.text})); item.text = item.proposed; item.proposed = ''; item.state = 'saved'; item.error = ''; saved += 1; }
+                catch (error) { item.state = 'failed'; item.error = `保存失败：${error.message}`; failed += 1; }
             }
-            state.suiteRender(); feedback(root, `已保存 ${saved} 个标注`, 'success');
+            state.workspaceData.completionNotice = `已保存 ${saved} 个标注${failed ? `，${failed} 个保存失败并保留候选` : ''}`; state.suiteRender();
         } catch (error) { feedback(root, error.message, 'error'); }
         finally { event.currentTarget.disabled = false; }
     });

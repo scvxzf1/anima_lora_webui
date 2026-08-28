@@ -241,6 +241,7 @@
     .dragon-caption-suite-tabs { position: static; padding-left: 6px; }
     .dragon-caption-workspace-panel { min-height: auto; }
     .dragon-caption-workspace-panel > header { align-items: flex-start; flex-direction: column; }
+    .dragon-caption-workspace-panel > header h2 { font-size: var(--dragon-fs-headline); }
     .dragon-caption-workbench { grid-template-rows: auto auto auto; }
     .dragon-caption-controls { position: static; padding: 10px; }
     .dragon-caption-command { grid-template-columns: repeat(2, minmax(0, 1fr)) 40px; }
@@ -280,6 +281,7 @@
     .dragon-caption-step > label, .dragon-caption-step-actions { grid-column: 2; }
     .dragon-caption-channel-actions { width: 100%; flex-wrap: wrap; }
     .dragon-caption-form-grid, .dragon-caption-table-head, .dragon-caption-table-row, .dragon-caption-tag-toolbar, .dragon-caption-config-grid, .dragon-caption-save-generated { grid-template-columns: 1fr; }
+    .dragon-caption-completion-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .dragon-caption-role-source { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .dragon-caption-role-source .dragon-caption-span-2 { grid-column: 1 / -1; }
     .dragon-caption-table-head { display: none; }
