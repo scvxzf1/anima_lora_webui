@@ -71,6 +71,12 @@
 .dragon-caption-save-generated { display: grid; grid-template-columns: minmax(190px, 1fr) repeat(4, auto) auto; align-items: end; gap: 10px; padding: 12px 18px; border-top: 1px solid var(--dragon-divider); }
 .dragon-caption-save-generated > label:not(:first-child) { display: flex; min-height: 38px; align-items: center; flex-direction: row; }
 .dragon-caption-config-grid { display: grid; grid-template-columns: .8fr 1fr 1.4fr; gap: 18px; padding: 16px 18px; overflow: auto; }
+.dragon-caption-config-scope { display: flex; align-items: baseline; gap: 10px; padding: 10px 18px; border-bottom: 1px solid var(--dragon-divider); color: var(--dragon-text-secondary); font-size: var(--dragon-fs-caption); }
+.dragon-caption-config-validation { margin: 8px 0; color: var(--dragon-success); font-size: var(--dragon-fs-caption); }
+.dragon-caption-config-validation[data-tone="error"] { color: var(--dragon-error); }
+.dragon-caption-danger-zone { display: grid; gap: 7px; margin-top: 18px; padding: 10px; border: 1px solid color-mix(in srgb, var(--dragon-error) 45%, var(--dragon-border)); }
+.dragon-caption-danger-zone span { color: var(--dragon-text-tertiary); font-size: var(--dragon-fs-caption); }
+.dragon-caption-danger-zone .dragon-btn { justify-self: start; }
 .dragon-caption-config-grid section { min-width: 0; }
 .dragon-caption-config-grid h3 { margin: 0 0 10px; }
 .dragon-caption-config-grid dl { display: grid; gap: 4px; }
@@ -266,6 +272,7 @@
     .dragon-caption-split-list > aside { max-height: 280px; padding: 0 0 10px; border-right: 0; border-bottom: 1px solid var(--dragon-divider); }
     .dragon-caption-split-list > form, .dragon-caption-split-list > section { padding: 12px 0 0; }
     .dragon-caption-tag-toolbar > .dragon-btn:last-child, .dragon-caption-config-grid section:last-child { grid-column: auto; }
+    .dragon-caption-config-scope { align-items: flex-start; flex-direction: column; }
     .dragon-caption-save-generated > label:not(:first-child) { min-height: 30px; }
     .dragon-caption-gallery-tools, .dragon-caption-file-browser { grid-template-columns: 1fr; }
     .dragon-caption-file-browser { min-height: auto; overflow: visible; }
