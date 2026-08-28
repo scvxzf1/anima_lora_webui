@@ -143,6 +143,8 @@ def test_captioning_suite_covers_the_full_embedded_labeler_workflow() -> None:
     assert "/workspace/config" in config and "#global-settings" in config
     assert "validateConfigJson" in config and "data-config-validation" in config
     assert "dragon-caption-danger-zone" in config and "configBusy" in config
+    assert "dragon-caption-config-json" in config and "高级 JSON 编辑" in config
+    assert "configNotice" in config and "诊断失败" in config
     assert "/workspace/logs?page=" in logs and "data-log-page" in logs
     assert "Number.isFinite(entry.duration_ms)" in logs
     assert "确认清空全部打标日志" in logs

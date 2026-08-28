@@ -75,6 +75,9 @@
 .dragon-caption-config-scope { display: flex; align-items: baseline; gap: 10px; padding: 10px 18px; border-bottom: 1px solid var(--dragon-divider); color: var(--dragon-text-secondary); font-size: var(--dragon-fs-caption); }
 .dragon-caption-config-validation { margin: 8px 0; color: var(--dragon-success); font-size: var(--dragon-fs-caption); }
 .dragon-caption-config-validation[data-tone="error"] { color: var(--dragon-error); }
+.dragon-caption-config-json { margin-top: 12px; border: 1px solid var(--dragon-border); }
+.dragon-caption-config-json > summary { padding: 10px; cursor: pointer; font-weight: 650; }
+.dragon-caption-config-json > .dragon-textarea, .dragon-caption-config-json > .dragon-btn, .dragon-caption-config-json > .dragon-caption-config-validation { margin: 0 10px 10px; width: calc(100% - 20px); box-sizing: border-box; }
 .dragon-caption-danger-zone { display: grid; gap: 7px; margin-top: 18px; padding: 10px; border: 1px solid color-mix(in srgb, var(--dragon-error) 45%, var(--dragon-border)); }
 .dragon-caption-danger-zone span { color: var(--dragon-text-tertiary); font-size: var(--dragon-fs-caption); }
 .dragon-caption-danger-zone .dragon-btn { justify-self: start; }
