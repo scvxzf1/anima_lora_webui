@@ -39,6 +39,8 @@ def test_captioning_frontend_exposes_provider_and_scheduler_controls() -> None:
         assert field in settings
     assert 'data-caption-test="ping"' in settings
     assert 'data-caption-test="actual"' in settings
+    assert "data-toggle-api-key" in settings
+    assert "有效数字" in settings
     assert "留空以保留已保存密钥" in settings
     assert "data-caption-routing-form" in routing
     assert "data-channel-field=\"_apiKeys\"" in routing
@@ -168,6 +170,7 @@ def test_captioning_suite_covers_the_full_embedded_labeler_workflow() -> None:
     assert "logsLoading" in logs and "dragon-caption-log-summary" in logs
     assert "formatTimestamp" in logs and "清空全部日志" in logs
     assert "data-log-copy" in logs and "日志详情已复制" in logs
+    assert "data-log-empty-refresh" in logs
     assert "data-log-retry-error" in logs
     assert "data-role-drop" in role and "rolePreview" in role
     assert "roleSource" in role and "正在生成…" in role

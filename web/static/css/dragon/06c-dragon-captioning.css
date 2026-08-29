@@ -191,6 +191,8 @@
 .dragon-caption-settings-summary > button:not(.dragon-icon-button) { padding: 4px 7px; border: 1px solid var(--dragon-border); background: var(--dragon-bg-secondary); color: var(--dragon-text-secondary); cursor: pointer; font: inherit; }
 .dragon-caption-provider-form { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
 .dragon-caption-provider-form .dragon-field { display: grid; min-width: 0; gap: 5px; }
+.dragon-caption-secret-field { display: flex; min-width: 0; gap: 5px; }
+.dragon-caption-secret-field .dragon-input { min-width: 0; flex: 1; }
 .dragon-caption-wide { grid-column: span 2; }
 .dragon-caption-provider-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
 .dragon-caption-section-head { display: flex; align-items: start; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
