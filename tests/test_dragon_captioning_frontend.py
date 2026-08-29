@@ -135,6 +135,7 @@ def test_captioning_suite_covers_the_full_embedded_labeler_workflow() -> None:
         assert filter_name in gallery
     assert "data-file-grid" in files and "data-file-open-workbench" in files
     assert "data-file-open-groups" in files and "管理目录组" in files
+    assert "目录组已切换，请点击“扫描目录”加载图片。" in files
     assert "fileScanning" in files and "fileScanned" in files and "fileQuery" in files
     assert "aria-pressed" in files and "data-file-search-empty" in files
     assert "ArrowLeft" in files and "ArrowRight" in files and "CSS.escape" in files
@@ -148,6 +149,7 @@ def test_captioning_suite_covers_the_full_embedded_labeler_workflow() -> None:
     assert "manual_directory" in export and "download-captions" in export
     assert "captions-json" in export and "image-txt" in export
     assert "data-export-inspect" in export and "exportJobDetail" in export
+    assert "将写入 ${Object.keys(captions).length} 项 Caption" in export
     assert "项因状态不符将跳过" in export and "resolveTarget" in export
     assert "selectedTypes" in export and "typeLabels" in export
     assert "querySelectorAll('[name=\"types\"]')" in export
@@ -190,6 +192,7 @@ def test_captioning_suite_covers_the_full_embedded_labeler_workflow() -> None:
     assert "discardPromptDraft" in prompts and "内置预设只读" in prompts
     assert "data-prompt-empty" in prompts and "data-prompt-name-label" in prompts
     assert "prompt.name = previous.name" in prompts and "dragon-caption-prompts" in prompts
+    assert "data-prompt-char-count" in prompts
     assert "data-completion-focus-group" in _read("js/features/captioning/workspace/completion-panel.js")
     assert "失败阈值必须是 0 到 10000 之间的数字" in _read("js/features/captioning/workspace/completion-panel.js")
     assert "data-tag-focus-group" in tags
@@ -210,6 +213,7 @@ def test_captioning_completion_and_dataset_preserve_running_drafts() -> None:
     assert "status === 'stopped'" in dataset or "'failed', 'stopped'" in dataset
     assert "无可用 Gemini 调度" in dataset
     assert "data-dataset-plan" in dataset and "次 API 调用" in dataset
+    assert "清空 ${state.workspaceData.datasetResults.length} 条生成结果？" in dataset
     assert "至少选择生成图或参考图中的一项" in dataset
     assert "if (state.workspace) state.workspace.dataset_results" in dataset
     assert "data-dataset-retry-item" in dataset and "仅重跑此项" in dataset

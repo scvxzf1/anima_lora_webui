@@ -9,7 +9,7 @@ export function renderFilesPanel(state) {
     const scanning = state.workspaceData.fileScanning === true;
     const scanned = state.workspaceData.fileScanned === true;
     const preview = group && selected ? `/api/captioning/workspace/image?directory=${encodeURIComponent(group.path)}&name=${encodeURIComponent(selected)}` : '';
-    return panelShell('FILES', '目录图片浏览', '', `<div class="dragon-caption-list-toolbar">
+    return panelShell('FILES', '目录图片浏览', '', `${state.workspaceData.fileNotice ? `<div class="dragon-caption-inline-status" role="status">${escapeHtml(state.workspaceData.fileNotice)}</div>` : ''}<div class="dragon-caption-list-toolbar">
         <select class="dragon-select" data-file-group aria-label="目录组" ${scanning ? 'disabled' : ''}><option value="">选择目录组</option>${groupOptions(state, state.workspaceData.fileGroupId)}</select>
         <input class="dragon-input" data-file-search aria-label="搜索文件名" placeholder="搜索文件名" value="${escapeAttribute(query)}" ${images.length ? '' : 'disabled'}>
         <button class="dragon-btn dragon-btn-secondary" type="button" data-file-scan ${scanning ? 'disabled' : ''}>${scanning ? '扫描中…' : '扫描目录'}</button>
@@ -23,7 +23,7 @@ export function renderFilesPanel(state) {
 
 export function bindFilesPanel(root, state) {
     const groupSelect = root.querySelector('[data-file-group]');
-    groupSelect?.addEventListener('change', () => { state.workspaceData.fileGroupId = groupSelect.value; state.workspaceData.fileImages = []; state.workspaceData.fileSelected = ''; state.workspaceData.fileQuery = ''; state.workspaceData.fileScanned = false; state.workspaceData.fileError = ''; state.suiteRender(); });
+    groupSelect?.addEventListener('change', () => { state.workspaceData.fileGroupId = groupSelect.value; state.workspaceData.fileImages = []; state.workspaceData.fileSelected = ''; state.workspaceData.fileQuery = ''; state.workspaceData.fileScanned = false; state.workspaceData.fileError = ''; state.workspaceData.fileNotice = groupSelect.value ? '目录组已切换，请点击“扫描目录”加载图片。' : ''; state.suiteRender(); });
     root.querySelector('[data-file-scan]')?.addEventListener('click', async () => {
         const group = selectedGroup(state, groupSelect.value);
         if (!group) return feedback(root, '请选择目录组', 'error');
@@ -31,7 +31,7 @@ export function bindFilesPanel(root, state) {
         state.workspaceData.fileScanning = true; state.workspaceData.fileError = ''; state.suiteRender();
         try {
             const payload = await captioningApi('/workspace/images', jsonOptions('POST', {directory: group.path}));
-            state.workspaceData.fileGroupId = group.id; state.workspaceData.fileImages = payload.images; state.workspaceData.fileSelected = payload.images[0]?.name || ''; state.workspaceData.fileScanned = true;
+            state.workspaceData.fileGroupId = group.id; state.workspaceData.fileImages = payload.images; state.workspaceData.fileSelected = payload.images[0]?.name || ''; state.workspaceData.fileScanned = true; state.workspaceData.fileNotice = payload.images.length ? `已扫描 ${payload.images.length} 张图片` : '扫描完成，但目录中没有支持的图片。';
         } catch (error) { state.workspaceData.fileError = error.message; }
         finally { state.workspaceData.fileScanning = false; state.suiteRender(); }
     });
@@ -50,11 +50,12 @@ export function bindFilesPanel(root, state) {
         const count = root.querySelector('[data-file-count]'); if (count) count.textContent = `${visible}/${state.workspaceData.fileImages.length} 张`;
     });
     root.querySelector('[data-file-open-workbench]')?.addEventListener('click', () => { const group = selectedGroup(state, groupSelect.value); if (!group) return; state.workspaceData.workbenchDirectory = group.path; state.activePanel = 'workbench'; state.suiteRender(); });
+    root.querySelector('[data-file-open-groups]')?.addEventListener('click', () => { state.activePanel = 'groups'; state.suiteRender(); });
 }
 
 function renderEmptyState({group, scanned, scanning, error}) {
     if (scanning) return '<div class="dragon-empty-state"><p>正在扫描目录图片…</p></div>';
     if (error) return `<div class="dragon-empty-state" data-tone="error"><p>扫描失败：${escapeHtml(error)}</p></div>`;
     if (group && scanned) return '<div class="dragon-empty-state"><p>该目录没有支持的图片。</p></div>';
-    return '<div class="dragon-empty-state"><p>选择目录组并扫描图片。</p></div>';
+    return '<div class="dragon-empty-state"><p>选择目录组并扫描图片。</p><button class="dragon-btn dragon-btn-secondary dragon-caption-empty-action" type="button" data-file-open-groups>管理目录组</button></div>';
 }

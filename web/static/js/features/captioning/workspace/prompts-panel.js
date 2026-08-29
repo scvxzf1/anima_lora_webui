@@ -31,7 +31,7 @@ export function bindPromptsPanel(root, state) {
         const prompt = {id: uid('prompt'), name: '新提示词', content: '', kind, builtin: false};
         state.workspace.prompts[kind].push(prompt); state.workspaceData.promptId = prompt.id; state.workspaceData.promptDirtyId = prompt.id; state.workspaceData.promptNewId = prompt.id; state.workspaceData.promptNotice = '新预设尚未保存'; state.suiteRender();
     });
-    root.querySelector('[data-prompt-form]')?.addEventListener('input', (event) => { if (!event.target.matches('[name="name"], [name="content"]')) return; const id = root.querySelector('[data-prompt-editor-id]')?.value; if (id) { state.workspaceData.promptDirtyId = id; state.workspaceData.promptNotice = '当前预设有未保存修改'; const label = root.querySelector('[data-prompt-name-label]'); if (label) label.textContent = '名称 · 未保存'; } });
+    root.querySelector('[data-prompt-form]')?.addEventListener('input', (event) => { if (!event.target.matches('[name="name"], [name="content"]')) return; const id = root.querySelector('[data-prompt-editor-id]')?.value; if (event.target.name === 'content') root.querySelector('[data-prompt-char-count]')?.replaceChildren(`${event.target.value.length} 字符`); if (id) { state.workspaceData.promptDirtyId = id; state.workspaceData.promptNotice = '当前预设有未保存修改'; const label = root.querySelector('[data-prompt-name-label]'); if (label) label.textContent = '名称 · 未保存'; } });
     root.querySelector('[data-prompt-form]')?.addEventListener('submit', async (event) => {
         event.preventDefault();
         const kind = state.workspaceData.promptKind || 'system';
@@ -57,7 +57,7 @@ export function bindPromptsPanel(root, state) {
 function renderEditor(prompt, state) {
     if (!prompt) return '<div class="dragon-empty-state"><p>选择或添加一个提示词。</p></div>';
     const dirty = state.workspaceData.promptDirtyId === prompt.id;
-    return `<input type="hidden" data-prompt-editor-id value="${escapeAttribute(prompt.id)}">${prompt.builtin ? '<div class="dragon-caption-inline-status">内置预设只读；可新建自定义版本。</div>' : ''}<label><span data-prompt-name-label>名称${dirty ? ' · 未保存' : ''}</span><input class="dragon-input" name="name" value="${escapeAttribute(prompt.name)}" ${prompt.builtin ? 'readonly' : ''}></label><label><span>内容</span><textarea class="dragon-textarea" name="content" rows="16" ${prompt.builtin ? 'readonly' : ''}>${escapeHtml(prompt.content)}</textarea></label><div class="dragon-caption-form-actions">${prompt.builtin ? '' : '<button class="dragon-btn dragon-btn-primary" type="submit">保存</button><button class="dragon-btn dragon-btn-secondary" type="button" data-prompt-remove>删除</button>'}</div>`;
+    return `<input type="hidden" data-prompt-editor-id value="${escapeAttribute(prompt.id)}">${prompt.builtin ? '<div class="dragon-caption-inline-status">内置预设只读；可新建自定义版本。</div>' : ''}<label><span data-prompt-name-label>名称${dirty ? ' · 未保存' : ''}</span><input class="dragon-input" name="name" value="${escapeAttribute(prompt.name)}" ${prompt.builtin ? 'readonly' : ''}></label><label><span>内容 <small data-prompt-char-count>${prompt.content.length} 字符</small></span><textarea class="dragon-textarea" name="content" rows="16" ${prompt.builtin ? 'readonly' : ''}>${escapeHtml(prompt.content)}</textarea></label><div class="dragon-caption-form-actions">${prompt.builtin ? '' : '<button class="dragon-btn dragon-btn-primary" type="submit">保存</button><button class="dragon-btn dragon-btn-secondary" type="button" data-prompt-remove>删除</button>'}</div>`;
 }
 
 function discardPromptDraft(state) {

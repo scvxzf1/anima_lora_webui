@@ -50,7 +50,7 @@ export function bindDatasetPanel(root, state) {
         if (!state.workspaceData.datasetRunning) runQueue(root, state, state.workspaceData.datasetResults.filter((item) => ['failed', 'stopped'].includes(item.status)));
     });
     root.querySelectorAll('[data-dataset-retry-item]').forEach((button) => button.addEventListener('click', () => { const item = state.workspaceData.datasetResults.find((entry) => entry.id === button.dataset.datasetRetryItem); if (item && !state.workspaceData.datasetRunning) runQueue(root, state, [item]); }));
-    root.querySelector('[data-dataset-clear]')?.addEventListener('click', () => { state.workspaceData.datasetResults = []; state.suiteRender(); });
+    root.querySelector('[data-dataset-clear]')?.addEventListener('click', () => { if (!state.workspaceData.datasetResults.length || window.confirm(`清空 ${state.workspaceData.datasetResults.length} 条生成结果？`)) { state.workspaceData.datasetResults = []; state.suiteRender(); } });
     root.querySelector('[data-dataset-save]')?.addEventListener('submit', async (event) => {
         event.preventDefault(); const form = event.currentTarget; const button = event.submitter; const group = selectedGroup(state, form.elements.group_id.value);
         if (!group) return feedback(root, '请选择目标目录组', 'error');

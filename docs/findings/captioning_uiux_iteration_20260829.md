@@ -141,6 +141,21 @@
 - `tests/test_dragon_captioning_frontend.py` 与 `tests/test_captioning_workspace.py`：`17 passed`。
 - 仍需在真实多文件名、并发重试和 API 失败数据下补充运行时浏览器用例；本阶段未改变后端协议。
 
+## 长期专项阶段 06：目录、导出、生成与提示词编辑（2026-08-29）
+
+### 本阶段落地
+
+- `files-panel.js`：目录组切换和扫描完成后提供明确状态反馈，用户能知道何时需要重新扫描以及扫描结果数量。
+- `export-panel.js`：写入 `captions.json` 或同名 `.txt` 前展示实际可导出数量并要求确认；下载动作不重复确认。
+- `dataset-panel.js`：清空生成结果前展示结果数量确认，避免误删可复用结果。
+- `prompts-panel.js`：编辑器增加实时字符计数，输入变化时同步更新并保留未保存状态。
+
+### 阶段验收
+
+- 四个模块 `node --check` 通过。
+- `tests/test_dragon_captioning_frontend.py` 与 `tests/test_captioning_workspace.py`：`17 passed`。
+- 其他 3 个面板（日志、配置中心、API/调度）将在下一阶段分别补充危险操作和密钥状态验证。
+
 ## 增量截图评审（长期任务阶段 01）
 
 日期：2026-08-29。基于本地页面重新采集桌面 `1440×900`、移动端 `390×844` 截图，证据目录为 `/tmp/captioning-uiux-20260829/`（共 26 张，另有 `after/` 复核截图）。使用用户授权的 OpenAI-compatible 视觉 API 对桌面、移动拼图进行一次模型评审；密钥未写入仓库。

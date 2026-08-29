@@ -44,6 +44,7 @@ export function bindExportPanel(root, state) {
                 captions[item.name] = values.length ? values : [item.proposed_caption];
             });
             if (!Object.keys(captions).length) throw new Error('当前任务没有可导出的 Caption');
+            if (action !== 'download' && !window.confirm(`将写入 ${Object.keys(captions).length} 项 Caption 到目标目录，是否继续？`)) return;
             if (action === 'download') {
                 const payload = await captioningApi('/workspace/download-captions', jsonOptions('POST', {captions}));
                 downloadText(payload.filename, payload.content); state.workspaceData.exportSummary = `已下载 ${Object.keys(captions).length} 项，跳过 ${detail.results.length - Object.keys(captions).length} 项`; state.suiteRender(); return;
