@@ -88,6 +88,8 @@
 .dragon-caption-config-grid dd { margin: 0; font-family: var(--dragon-font-mono); }
 .dragon-caption-rules { display: grid; gap: 8px; margin-top: 16px; }
 .dragon-caption-rules label { display: grid; gap: 4px; color: var(--dragon-text-secondary); font-size: var(--dragon-fs-caption); }
+.dragon-caption-rules label.dragon-caption-rule-check { display: flex; min-height: 38px; align-items: center; gap: 8px; }
+.dragon-caption-rules label.dragon-caption-rule-check input { flex: 0 0 auto; }
 .dragon-caption-diagnostics p { display: flex; gap: 8px; padding: 8px; border-left: 3px solid var(--dragon-border); background: var(--dragon-bg-secondary); }
 .dragon-caption-diagnostics p[data-tone="error"] { border-color: var(--dragon-error); }
 .dragon-caption-diagnostics p[data-tone="warning"] { border-color: var(--dragon-warning); }

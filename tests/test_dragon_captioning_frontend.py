@@ -91,6 +91,7 @@ def test_captioning_layout_has_desktop_and_mobile_constraints() -> None:
     assert ".dragon-caption-main { grid-template-columns: 1fr; overflow: visible; }" in css
     assert "max-height: min(250px, 30dvh)" in css
     assert ".dragon-caption-command > .dragon-caption-engine { grid-column: 1; }" in css
+    assert ".dragon-caption-rules label.dragon-caption-rule-check { display: flex;" in css
 
 
 def test_captioning_workbench_covers_presets_governance_and_local_engines() -> None:
@@ -146,6 +147,7 @@ def test_captioning_suite_covers_the_full_embedded_labeler_workflow() -> None:
     assert "/workspace/config" in config and "#global-settings" in config
     assert "validateConfigJson" in config and "data-config-validation" in config
     assert "dragon-caption-danger-zone" in config and "configBusy" in config
+    assert 'class="dragon-caption-rule-check"' in config
     assert "dragon-caption-config-json" in config and "高级 JSON 编辑" in config
     assert "configNotice" in config and "诊断失败" in config
     assert "/workspace/logs?page=" in logs and "data-log-page" in logs
