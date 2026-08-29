@@ -21,6 +21,8 @@
 
 | 文档 | 说明 |
 | --- | --- |
+| [dragon_frontend_performance_20260826.md](dragon_frontend_performance_20260826.md) | Dragon 五个核心路由的按需模块、后台轮询、输入合并与历史详情并发优化记录 |
+| [dragon_frontend_uiux_review_20260829.md](dragon_frontend_uiux_review_20260829.md) | Dragon 13 页面双视口截图评审、外部视觉模型意见与实施顺序 |
 | [dragon_responsive_hardcoding_audit_20260824.md](dragon_responsive_hardcoding_audit_20260824.md) | Dragon 视口硬编码解耦、浏览器降级和响应式验证记录 |
 | [dragon_classic_feature_parity_audit_20260815.md](dragon_classic_feature_parity_audit_20260815.md) | Classic、现有 Dragon 与 React 新前端的逐功能对照审计及迁移证据 |
 | [dragon_dataset_subset_field_audit_20260815.md](dragon_dataset_subset_field_audit_20260815.md) | Dragon 数据集 subset 字段与后端契约对照审计 |
