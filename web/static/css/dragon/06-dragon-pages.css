@@ -742,9 +742,11 @@ body[data-dragon-ui] #stage-resolution-dialog .stage-resolution-table-panel {
     .dragon-dataset-row-actions .dragon-btn { flex: 1 1 auto; justify-content: center; }
     .dragon-dataset-advanced summary { align-items: start; }
     .dragon-dataset-advanced summary small { max-width: 58%; text-align: right; }
-    .dragon-dataset-savebar { right: var(--dragon-content-pad-mobile); bottom: max(var(--dragon-sp-3), env(safe-area-inset-bottom)); left: var(--dragon-content-pad-mobile); align-items: stretch; flex-direction: column; padding: var(--dragon-sp-4); }
-    .dragon-dataset-savebar-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
-    .dragon-dataset-savebar-actions .dragon-btn { justify-content: center; padding-right: 10px; padding-left: 10px; }
+    .dragon-dataset-savebar { right: var(--dragon-content-pad-mobile); bottom: max(var(--dragon-sp-3), env(safe-area-inset-bottom)); left: var(--dragon-content-pad-mobile); align-items: stretch; flex-direction: column; gap: var(--dragon-sp-2); padding: var(--dragon-sp-3); }
+    .dragon-dataset-savebar > div:first-child span { display: none; }
+    .dragon-dataset-savebar-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--dragon-sp-2); }
+    .dragon-dataset-savebar-actions .dragon-btn { justify-content: center; min-height: 36px; padding: 6px 8px; }
+    .dragon-dataset-savebar-actions [data-workspace-action="save"] { grid-column: 1 / -1; grid-row: 1; min-height: 40px; }
     .dragon-dataset-group-action { width: 40px; height: 40px; }
 }
 

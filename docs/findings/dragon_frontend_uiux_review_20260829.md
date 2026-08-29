@@ -46,3 +46,10 @@
 - 首页最近训练不再出现纯数字 epoch；无效时间仍显示 `-`。
 - 相关 Python 前端契约测试、Node 语法检查和两视口截图回归通过。
 
+## 实施与验证（阶段 2）
+
+- 历史工作台：任务行改为可收缩名称列，指标列固定最小宽度；名称及其元信息在窄列中省略，保留 hover/focus 可读的原始文本。
+- 数据集编辑器：移动端保存条隐藏重复说明，压缩间距，保存按钮独占一行，重新加载/另存为并列，减少对编辑区域的遮挡。
+- 训练仪表盘：数字 epoch 通过 `Intl.DateTimeFormat('zh-CN')` 转为本地日期时间，原始值保留在 `title`。
+- 截图复核：`history-fixed.png`、`dataset-mobile-fixed.png`、`dashboard-fixed.png` 已在 1440x900 / 390x844 视口重新渲染；历史指标不再被名称覆盖，保存条高度降低，首页时间可读。
+- 测试：`tests/test_dragon_uiux_review_fixes.py`（3 passed）；`node --check web/static/js/dragon-ui/pages/dashboard.js`。

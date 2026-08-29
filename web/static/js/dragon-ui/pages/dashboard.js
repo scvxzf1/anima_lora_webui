@@ -4,6 +4,7 @@ import { createApiClient } from '../../shared/api.js?v=dragon-ui-20260812v35';
 import { calculateTrainingEtaMetricInfo, formatLr } from '../../features/live-training/index.js?v=dragon-ui-20260812v35';
 import { connectWebSocket, disconnectWebSocket, onMessage } from '../ws.js?v=dragon-ui-20260812v35';
 import { renderIcon } from '../icons.js?v=dragon-ui-20260812v35';
+import { createVisibilityPoller } from '../visibility-poller.js?v=dragon-ui-20260826v2';
 
 const api = createApiClient();
 
@@ -225,7 +226,7 @@ function mountDashboard(wrapper, initialData) {
     connectWebSocket();
     bindDashboardActions(wrapper, model);
 
-    const pollTimer = window.setInterval(async () => {
+    const poller = createVisibilityPoller({ poll: async () => {
         const [status, metrics] = await Promise.all([
             readApi('/api/training/status', {}),
             readApi('/api/training/metrics', []),
@@ -237,10 +238,11 @@ function mountDashboard(wrapper, initialData) {
         model.status = live.status;
         model.metrics = live.metrics;
         renderDashboardState(wrapper, model);
-    }, 5000);
+    }, delay: 5000 });
+    poller.start();
 
     return () => {
-        window.clearInterval(pollTimer);
+        poller.stop();
         subscriptions.forEach((unsubscribe) => unsubscribe());
         disconnectWebSocket();
     };
@@ -474,14 +476,28 @@ function stateText(state) {
 function renderHistoryItem(task) {
     const state = normalizeState(task.status || task.state);
     const name = task.output_name || task.task_name || task.id || '未命名任务';
-    const time = task.started_at || task.created_at || '';
+    const rawTime = task.started_at || task.created_at || '';
+    const time = formatTaskTimestamp(rawTime);
     return `
         <li><a class="dragon-history-item" href="#history/${encodeURIComponent(task.id || '')}">
             <span class="dragon-history-item-name">${escapeHtml(name)}</span>
             <span class="dragon-history-item-state" data-state="${state}">${stateText(state)}</span>
-            <span class="dragon-history-item-meta">${escapeHtml(time)}</span>
+            <span class="dragon-history-item-meta" title="${escapeHtml(rawTime)}">${escapeHtml(time)}</span>
         </a></li>
     `;
+}
+
+function formatTaskTimestamp(value) {
+    if (value === null || value === undefined || value === '') return '-';
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return String(value);
+    const milliseconds = numeric > 1e12 ? numeric : numeric * 1000;
+    const date = new Date(milliseconds);
+    if (Number.isNaN(date.getTime())) return String(value);
+    return new Intl.DateTimeFormat('zh-CN', {
+        year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit', hour12: false,
+    }).format(date);
 }
 
 function escapeHtml(value) {
