@@ -9,12 +9,12 @@ export function renderRolePanel(state) {
     return panelShell('ROLE TAG', '角色 Tag', '', `<form class="dragon-caption-tool-form" data-role-form>
         <div class="dragon-caption-form-grid dragon-caption-role-source">
             <label><span>目录组</span><select class="dragon-select" name="group_id"><option value="">上传单图</option>${groupOptions(state, state.workspaceData.roleGroupId)}</select></label>
-            <label><span>组内图片</span><select class="dragon-select" name="image_name" data-role-image><option value="">选择图片</option>${images.map((item) => `<option value="${escapeAttribute(item.name)}" ${item.name === state.workspaceData.roleImageName ? 'selected' : ''}>${item.name}</option>`).join('')}</select></label>
+            <label><span>组内图片</span><select class="dragon-select" name="image_name" data-role-image><option value="">选择图片</option>${images.map((item) => `<option value="${escapeAttribute(item.name)}" ${item.name === state.workspaceData.roleImageName ? 'selected' : ''}>${escapeHtml(item.name)}</option>`).join('')}</select></label>
             <label><span>调度组</span><select class="dragon-select" name="schedule_id">${scheduleOptions(state, state.workspaceData.roleScheduleId)}</select></label>
             <label><span>提示词预设</span><select class="dragon-select" name="prompt_id"><option value="">角色 Tag 默认</option>${promptOptions(state, 'system', state.workspaceData.rolePromptId)}</select></label>
             <label class="dragon-caption-span-2"><span>本地图片</span><input class="dragon-input" type="file" name="image_file" accept="image/*"></label>
         </div>
-        <div class="dragon-caption-role-preview" data-role-drop tabindex="0">${state.workspaceData.rolePreview ? `<img src="${escapeAttribute(state.workspaceData.rolePreview)}" alt="角色图片预览">` : '<span>选择目录图片，或上传 / 拖入一张图片</span>'}<small>${source ? `当前来源：${escapeHtml(source)}` : '尚未选择图片'}</small></div>
+        <div class="dragon-caption-role-preview" data-role-drop tabindex="0">${state.workspaceData.rolePreview ? `<img src="${escapeAttribute(state.workspaceData.rolePreview)}" alt="角色图片预览">` : '<span>选择目录图片，或上传 / 拖入一张图片</span><button class="dragon-btn dragon-btn-secondary dragon-caption-empty-action" type="button" data-role-open-files>从目录浏览选择</button>'}<small>${source ? `当前来源：${escapeHtml(source)}` : '尚未选择图片'}</small></div>
         <details class="dragon-caption-role-details"><summary>角色约束（可选）</summary><div class="dragon-caption-form-grid">
             <label><span>角色名</span><input class="dragon-input" name="character_name"></label>
             <label><span>作品名</span><input class="dragon-input" name="series_name"></label>
@@ -37,12 +37,20 @@ export function bindRolePanel(root, state) {
         try {
             const payload = await captioningApi('/workspace/images', jsonOptions('POST', {directory: group.path}));
             state.workspaceData.roleGroupId = group.id; state.workspaceData.roleImages = payload.images;
-            form.elements.image_name.innerHTML = '<option value="">选择图片</option>' + payload.images.map((item) => `<option value="${item.name}">${item.name}</option>`).join('');
+            form.elements.image_name.innerHTML = '<option value="">选择图片</option>' + payload.images.map((item) => `<option value="${escapeAttribute(item.name)}">${escapeHtml(item.name)}</option>`).join('');
+            if (payload.images[0]) {
+                const first = payload.images[0];
+                state.workspaceData.roleImageName = first.name;
+                state.workspaceData.roleSource = `目录图片 · ${first.name}`;
+                state.workspaceData.rolePreview = `/api/captioning/workspace/image?directory=${encodeURIComponent(group.path)}&name=${encodeURIComponent(first.name)}`;
+                state.suiteRender();
+            }
         } catch (error) { feedback(root, error.message, 'error'); }
     });
     form.elements.image_name.addEventListener('change', () => { const group = selectedGroup(state, form.elements.group_id.value); if (!group || !form.elements.image_name.value) return; state.workspaceData.roleFile = null; state.workspaceData.roleImageName = form.elements.image_name.value; state.workspaceData.roleSource = `目录图片 · ${form.elements.image_name.value}`; state.workspaceData.rolePreview = `/api/captioning/workspace/image?directory=${encodeURIComponent(group.path)}&name=${encodeURIComponent(form.elements.image_name.value)}`; state.suiteRender(); });
     form.elements.image_file.addEventListener('change', async () => { const file = form.elements.image_file.files[0]; if (file) { state.workspaceData.roleImageName = ''; state.workspaceData.roleFile = file; state.workspaceData.roleSource = `本地图片 · ${file.name}`; state.workspaceData.rolePreview = await fileToDataUrl(file); state.suiteRender(); } });
     const drop = root.querySelector('[data-role-drop]');
+    root.querySelector('[data-role-open-files]')?.addEventListener('click', () => { state.activePanel = 'files'; state.suiteRender(); });
     drop?.addEventListener('dragover', (event) => event.preventDefault());
     drop?.addEventListener('drop', async (event) => { event.preventDefault(); const file = event.dataTransfer.files[0]; if (!file) return; state.workspaceData.roleImageName = ''; state.workspaceData.roleFile = file; state.workspaceData.roleSource = `拖入图片 · ${file.name}`; state.workspaceData.rolePreview = await fileToDataUrl(file); state.suiteRender(); });
     form.addEventListener('submit', async (event) => {

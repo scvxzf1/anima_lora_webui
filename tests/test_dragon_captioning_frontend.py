@@ -140,6 +140,7 @@ def test_captioning_suite_covers_the_full_embedded_labeler_workflow() -> None:
     assert "ArrowLeft" in files and "ArrowRight" in files and "CSS.escape" in files
     assert "data-retry-all" in retry and "failure_kind" in retry
     assert "将重新入队 ${count} 个失败项" in retry
+    assert "state.workspaceData.retryJob = null" in retry
     assert "retryLoading" in retry and "retryFilter" in retry
     assert "筛选不改变批量范围" in retry and "重试中…" in retry
     assert "retryJobId" in retry and "retryNotice" in retry
@@ -190,6 +191,7 @@ def test_captioning_suite_covers_the_full_embedded_labeler_workflow() -> None:
     assert "data-prompt-empty" in prompts and "data-prompt-name-label" in prompts
     assert "prompt.name = previous.name" in prompts and "dragon-caption-prompts" in prompts
     assert "data-completion-focus-group" in _read("js/features/captioning/workspace/completion-panel.js")
+    assert "失败阈值必须是 0 到 10000 之间的数字" in _read("js/features/captioning/workspace/completion-panel.js")
     assert "data-tag-focus-group" in tags
 
 

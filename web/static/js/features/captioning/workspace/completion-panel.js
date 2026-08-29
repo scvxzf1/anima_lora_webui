@@ -27,8 +27,9 @@ export function bindCompletionPanel(root, state) {
         try {
             const group = selectedGroup(state, form.elements.group_id.value);
             if (!group) throw new Error('请选择目录组');
+            const threshold = Number(form.elements.threshold.value);
+            if (!Number.isFinite(threshold) || threshold < 0 || threshold > 10000) throw new Error('失败阈值必须是 0 到 10000 之间的数字');
             const payload = await captioningApi('/workspace/tags', jsonOptions('POST', {directory: group.path}));
-            const threshold = Number(form.elements.threshold.value || 40);
             state.workspaceData.completionDraft = collectDraft(form);
             state.workspaceData.completionGroupId = group.id;
             state.workspaceData.completionItems = payload.results.filter((item) => item.text_length < threshold).map((item) => ({...item, state: 'waiting', proposed: '', error: ''}));

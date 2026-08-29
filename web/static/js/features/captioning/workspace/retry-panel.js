@@ -19,7 +19,7 @@ export function bindRetryPanel(root, state) {
         if (state.workspaceData.retryLoading) return;
         state.workspaceData.retryJobId = id; state.workspaceData.retryLoading = true; state.workspaceData.retryError = ''; state.workspaceData.retryNotice = ''; state.suiteRender();
         try { const payload = await captioningApi(`/jobs/${encodeURIComponent(id)}`); state.workspaceData.retryJob = payload.job; }
-        catch (error) { state.workspaceData.retryError = error.message; }
+        catch (error) { state.workspaceData.retryError = error.message; state.workspaceData.retryJob = null; }
         finally { state.workspaceData.retryLoading = false; state.suiteRender(); }
     };
     root.querySelector('[data-retry-load]')?.addEventListener('click', load);
@@ -33,9 +33,11 @@ export function bindRetryPanel(root, state) {
         catch (error) { state.workspaceData.retryError = error.message; state.suiteRender(); }
     });
     root.querySelectorAll('[data-retry-item]').forEach((button) => button.addEventListener('click', async () => {
-        if (button.disabled) return; button.disabled = true; button.textContent = '重试中…';
+        if (button.disabled || state.workspaceData.retryLoading) return;
+        const retryButtons = root.querySelectorAll('[data-retry-all],[data-retry-item]'); retryButtons.forEach((entry) => { entry.disabled = true; });
+        button.textContent = '重试中…';
         try { await captioningApi(`/jobs/${encodeURIComponent(state.workspaceData.retryJob.id)}/items/${encodeURIComponent(button.dataset.retryItem)}/retry`, jsonOptions('POST', {})); const item = state.workspaceData.retryJob.results.find((entry) => String(entry.id) === button.dataset.retryItem); if (item) { item.state = 'queued'; state.workspaceData.retryNotice = `${item.name} 已重新入队`; } state.suiteRender(); }
-        catch (error) { button.disabled = false; button.textContent = '重试此图'; feedback(root, error.message, 'error'); }
+        catch (error) { retryButtons.forEach((entry) => { entry.disabled = false; }); button.textContent = '重试此图'; feedback(root, error.message, 'error'); }
     }));
     root.querySelectorAll('[data-review-item]').forEach((button) => button.addEventListener('click', () => { state.selectedJobId = state.workspaceData.retryJob.id; state.selectedItemId = button.dataset.reviewItem; state.activePanel = 'workbench'; state.suiteRender(); }));
 }
