@@ -15,11 +15,12 @@ export function renderCompletionPanel(state) {
         </div>
         <label><span>补全要求</span><textarea class="dragon-textarea" name="prompt" rows="3" ${running ? 'disabled' : ''}>${escapeHtml(draft.prompt || 'Complete the existing short or missing caption with accurate visible English tags. Return only comma-separated tags.')}</textarea></label>
         <div class="dragon-caption-form-actions dragon-caption-completion-actions"><button class="dragon-btn dragon-btn-secondary" type="button" data-completion-scan ${running ? 'disabled' : ''}>扫描短标注</button><button class="dragon-btn dragon-btn-primary" type="submit" data-completion-start ${items.length && !running ? '' : 'disabled'}>开始补全</button><button class="dragon-btn dragon-btn-secondary" type="button" data-completion-stop ${running ? '' : 'disabled'}>停止后续任务</button><button class="dragon-btn dragon-btn-secondary" type="button" data-completion-save ${items.some((item) => item.proposed) && !running ? '' : 'disabled'}>保存全部候选</button></div>
-    </form>${state.workspaceData.completionNotice ? `<div class="dragon-caption-inline-status" role="status">${escapeHtml(state.workspaceData.completionNotice)}</div>` : ''}${items.length ? `<div class="dragon-caption-completion-progress"><progress max="${items.length}" value="${done}"></progress><span>${done}/${items.length} 已处理 · ${failed} 失败${state.workspaceData.completionStopped ? ' · 已停止' : ''}</span></div>` : ''}<div class="dragon-caption-result-list" data-completion-list>${items.map(renderItem).join('') || '<div class="dragon-empty-state"><p>扫描后显示需要补全的图片。</p></div>'}</div>`);
+    </form>${state.workspaceData.completionNotice ? `<div class="dragon-caption-inline-status" role="status">${escapeHtml(state.workspaceData.completionNotice)}</div>` : ''}${items.length ? `<div class="dragon-caption-completion-progress"><progress max="${items.length}" value="${done}"></progress><span>${done}/${items.length} 已处理 · ${failed} 失败${state.workspaceData.completionStopped ? ' · 已停止' : ''}</span></div>` : ''}<div class="dragon-caption-result-list" data-completion-list>${items.map(renderItem).join('') || '<div class="dragon-empty-state"><p>选择目录组后扫描短标注。</p><button class="dragon-btn dragon-btn-secondary" type="button" data-completion-focus-group>选择目录组</button></div>'}</div>`);
 }
 
 export function bindCompletionPanel(root, state) {
     const form = root.querySelector('[data-completion-form]');
+    root.querySelector('[data-completion-focus-group]')?.addEventListener('click', () => form?.elements.group_id?.focus());
     root.querySelector('[data-completion-scan]')?.addEventListener('click', async (event) => {
         const button = event.currentTarget;
         button.disabled = true;

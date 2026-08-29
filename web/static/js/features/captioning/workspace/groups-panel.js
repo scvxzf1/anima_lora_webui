@@ -13,17 +13,19 @@ export function renderGroupsPanel(state) {
                 <label><span>备注</span><input class="dragon-input" value="${escapeAttribute(group.note)}" data-group-field="note" aria-label="目录组备注"></label>
                 <span data-group-count>${scanLabel(scans[group.id])}</span>
                 <div><button class="dragon-icon-button" type="button" data-group-pick title="选择目录" aria-label="选择目录">…</button><button class="dragon-icon-button" type="button" data-group-scan title="扫描图片" aria-label="扫描图片" ${scans[group.id]?.status === 'scanning' ? 'disabled' : ''}>↻</button><button class="dragon-icon-button" type="button" data-group-remove title="删除目录组" aria-label="删除目录组">×</button></div>
-            </div>`).join('') || '<div class="dragon-empty-state"><p>尚未添加目录组。</p></div>'}
+            </div>`).join('') || '<div class="dragon-empty-state"><p>尚未添加目录组。</p><button class="dragon-btn dragon-btn-primary" type="button" data-group-add-empty>添加第一个目录组</button></div>'}
         </div>
         <div class="dragon-caption-form-actions"><button class="dragon-btn dragon-btn-primary" type="button" data-group-save ${dirty ? '' : 'disabled'}>${dirty ? '保存目录组（未保存）' : '目录组已保存'}</button></div>`);
 }
 
 export function bindGroupsPanel(root, state) {
-    root.querySelector('[data-group-add]')?.addEventListener('click', () => {
+    const addGroup = () => {
         state.workspace.groups.push({id: uid('group'), name: '新目录组', path: '', note: ''});
         state.workspaceData.groupsDirty = true;
         state.suiteRender();
-    });
+    };
+    root.querySelector('[data-group-add]')?.addEventListener('click', addGroup);
+    root.querySelector('[data-group-add-empty]')?.addEventListener('click', addGroup);
     root.querySelectorAll('[data-group-field]').forEach((input) => input.addEventListener('input', () => {
         const index = Number(input.closest('[data-group-index]').dataset.groupIndex);
         state.workspace.groups[index][input.dataset.groupField] = input.value;

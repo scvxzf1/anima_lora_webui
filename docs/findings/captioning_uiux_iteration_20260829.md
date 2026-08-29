@@ -107,6 +107,26 @@
 - `tests/test_dragon_captioning_frontend.py`：`9 passed`。
 - Playwright Chrome `1440×1000`：重试按钮尺寸从约 `210×695px` 修正为 `210×41px`；新截图为 `/tmp/captioning-retry-after.png`。
 
+## 长期专项阶段 04：空态下一步引导（2026-08-29）
+
+### 评审裁决
+
+- 13 格拼图中 `文件目录管理`、`打标补全`、`Tag 管理` 的无数据状态仍只给出说明文字，用户需要回到顶部寻找下一步；该建议与源码和截图均可核验，按 P1 处理。
+- 视觉模型建议的图标和文件选择器自动弹出属于增强项，当前保留既有目录组/API 契约，仅提供就地焦点引导。
+
+### 本阶段落地
+
+- `groups-panel.js`：目录组为空时显示“添加第一个目录组”，与页首新增按钮共用处理器。
+- `completion-panel.js`：未扫描时显示“选择目录组”，点击聚焦目录组选择器。
+- `tag-manager-panel.js`：未加载标注时显示“选择目录组”，点击聚焦目录组选择器；搜索无匹配仍保留原有动态空态。
+- `tests/test_dragon_captioning_frontend.py`：补充三个 CTA 契约。
+
+### 阶段验收
+
+- 三个模块 `node --check` 通过。
+- `tests/test_dragon_captioning_frontend.py`：`9 passed`。
+- Playwright Chrome `390×844`：三面板横向溢出均为 `0`，各自 CTA 数量为 `1`；未触碰真实数据和后端接口。
+
 ## 增量截图评审（长期任务阶段 01）
 
 日期：2026-08-29。基于本地页面重新采集桌面 `1440×900`、移动端 `390×844` 截图，证据目录为 `/tmp/captioning-uiux-20260829/`（共 26 张，另有 `after/` 复核截图）。使用用户授权的 OpenAI-compatible 视觉 API 对桌面、移动拼图进行一次模型评审；密钥未写入仓库。

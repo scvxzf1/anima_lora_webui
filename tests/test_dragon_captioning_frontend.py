@@ -174,6 +174,7 @@ def test_captioning_suite_covers_the_full_embedded_labeler_workflow() -> None:
     assert "data-role-open-files" in role and "从目录浏览选择" in role
     groups = _read("js/features/captioning/workspace/groups-panel.js")
     assert "groupsDirty" in groups and "groupScans" in groups
+    assert "data-group-add-empty" in groups
     assert "删除目录组“" in groups and "扫描中…" in groups
     assert "目录组已保存" in groups
     assert "groupsDirty && !window.confirm" in suite and 'aria-current="page"' in suite
@@ -188,6 +189,8 @@ def test_captioning_suite_covers_the_full_embedded_labeler_workflow() -> None:
     assert "discardPromptDraft" in prompts and "内置预设只读" in prompts
     assert "data-prompt-empty" in prompts and "data-prompt-name-label" in prompts
     assert "prompt.name = previous.name" in prompts and "dragon-caption-prompts" in prompts
+    assert "data-completion-focus-group" in _read("js/features/captioning/workspace/completion-panel.js")
+    assert "data-tag-focus-group" in tags
 
 
 def test_captioning_completion_and_dataset_preserve_running_drafts() -> None:
