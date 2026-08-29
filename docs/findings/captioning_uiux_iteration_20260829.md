@@ -62,6 +62,57 @@
 - 未向第三方视觉模型上传本地路径和数据集截图；视觉复核依据本地真实页面、双视口截图与 `frontend-uiux-review` rubric。
 - 本轮未改写真实训练 Caption，验证数据限定在 `/tmp/krea-caption-audit`。
 
+## 长期专项阶段 02：13 界面工作流与移动审阅（2026-08-29）
+
+### 评审输入
+
+- 真实页面截图：`/tmp/captioning-desktop-baseline.png`（1440×1000）与 `/tmp/captioning-mobile-baseline.png`（390×2075）。
+- 已按用户授权调用 `frontend-uiux-review` 的 OpenAI-compatible 视觉接口一次：`gemini-3.7-flash`，HTTP 200；结果保存于 `/tmp/captioning-review-baseline.json`。
+- 评审确认的高优先级问题：窄屏图库/检查器垂直挤压、导航浮层遮挡、全量覆盖写回误触风险、错误状态与 API 尝试记录距离过远。
+
+### 本阶段落地
+
+- `suite.js`：阶段菜单互斥展开，并在点击菜单外区域时自动收起，降低配置区被浮层遮挡的概率。
+- `workbench.js`：移动端增加“图库 / 单图审阅”视图切换，默认进入单图审阅；“写回已选”提升为主操作；“覆盖写回全部”改为危险次操作，显示可写数量且无可写项时禁用。
+- `inspector.js`：将失败摘要提升到 Inspector 头部，摘要按钮可直接展开 API 尝试记录，移除重复的底部错误行。
+- `06c-dragon-captioning.css`：补充移动视图 tab、危险按钮和 Inspector 状态摘要布局；保留桌面双栏。
+
+### 阶段验收
+
+- `node --check`：`suite.js`、`workbench.js`、`inspector.js` 通过。
+- `tests/test_dragon_captioning_frontend.py`：`9 passed`。
+- Playwright Chrome：桌面双栏保持可见；移动端 `document.documentElement.scrollWidth - innerWidth = 0`；图库/检查器切换状态正确；错误摘要点击后 API 尝试记录展开。
+- 新截图：`/tmp/captioning-desktop-after.png`、`/tmp/captioning-mobile-after-inspector.png`、`/tmp/captioning-mobile-after-gallery.png`。
+
+### 后续验证边界
+
+- 其他 11 个子面板仍需在真实数据量和长文本条件下做交互可用性测试；本阶段只改变审阅台共享导航、移动布局和写回风险提示。
+
+## 增量截图评审（长期任务阶段 01）
+
+日期：2026-08-29。基于本地页面重新采集桌面 `1440×900`、移动端 `390×844` 截图，证据目录为 `/tmp/captioning-uiux-20260829/`（共 26 张，另有 `after/` 复核截图）。使用用户授权的 OpenAI-compatible 视觉 API 对桌面、移动拼图进行一次模型评审；密钥未写入仓库。
+
+### 评审裁决
+
+- **已采纳 P1：工作流阶段关系不清。** 截图中 13 个入口以同级横向标签呈现，移动端需要横向扫描。将入口按“准备 / 生成 / 审阅 / 处理”分为四个可展开阶段，保留原面板按钮契约和当前项高亮。
+- **已采纳 P1：空态缺少下一步。** 目录浏览和角色 Tag 的空态原先只有提示文字；增加“管理目录组”和“从目录浏览选择”两个就地 CTA，分别跳转到可执行的下一步。
+- **降级为验证项：** 模型建议将失败重试改成表格、增加全局步骤指示器、放大审阅图。当前实现已有失败项逐项重试、统一进度和可缩放 Inspector；截图未证明这些功能缺失，故不做重复重构。
+- **降级为 P2：** 术语中英文混用和表单密度属于持续优化项，现有 Dragon 术语与密集工作流保持一致，本阶段不引入全局文案迁移。
+
+### 本阶段实现
+
+- `suite.js` 新增 `PANEL_GROUPS`，阶段菜单在桌面和移动端均可访问；当前阶段自动展开，活动面板保留 `aria-current="page"`。
+- `06c-dragon-captioning.css` 增加阶段菜单、移动端两列布局、触控尺寸和 API 设置窄屏图标化样式。
+- 目录浏览空态增加目录组管理 CTA；角色 Tag 空态增加跳转目录浏览 CTA。
+- 前端契约测试新增阶段分组和空态跳转断言。
+
+### 阶段验收
+
+- 视觉复核：桌面/移动关键面板重新截图，阶段菜单、空态 CTA、图片预览均无重叠或横向溢出。
+- DOM 审计：13 个面板无重复 id、无无名称按钮；`document.documentElement.scrollWidth === innerWidth`。
+- 测试：`tests/test_captioning_routing.py`、`tests/test_captioning_service.py`、`tests/test_captioning_workspace.py`、`tests/test_dragon_captioning_frontend.py`、`tests/test_web_route_registry.py` 共 `54 passed`。
+- JavaScript：新增/修改模块通过 `node --check`。
+
 ## 增量截图复审（2026-08-29）
 
 - 证据：本地 Chrome 采集桌面 `1440×900`、移动 `390×844` 共 26 张面板截图，并以 `frontend-uiux-review` rubric 复核。

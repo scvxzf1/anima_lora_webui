@@ -5,15 +5,15 @@ import { escapeAttribute, escapeHtml, showFeedback, splitTags, stateLabel, withB
 export function renderInspector(job, item, editorMode = 'pills', zoom = 1) {
     if (!job || !item) return `<section class="dragon-caption-inspector"><div class="dragon-empty-state"><p>从画廊选择一张图片开始审阅。</p></div></section>`;
     const tagMode = job.output_mode === 'tags' || job.output_mode === 'style_trigger_json' || (job.output_mode === 'three_format' && job.output_variant === 'tag');
+    const alertText = item.error || '';
     return `<section class="dragon-caption-inspector" aria-label="审阅与标注编辑器">
-        <header><div><span class="dragon-eyebrow">INSPECTOR</span><h2>${escapeHtml(item.name)}</h2></div><span data-tone="${item.state === 'failed' ? 'error' : 'success'}">${escapeHtml(stateLabel(item.state))}</span></header>
+        <header><div><span class="dragon-eyebrow">INSPECTOR</span><h2>${escapeHtml(item.name)}</h2></div><div class="dragon-caption-inspector-status"><span data-tone="${item.state === 'failed' ? 'error' : 'success'}">${escapeHtml(stateLabel(item.state))}</span>${alertText ? `<button type="button" class="dragon-caption-alert" data-caption-open-attempts aria-label="查看错误详情">${escapeHtml(alertText)}</button>` : ''}</div></header>
         <div class="dragon-caption-image-stage" data-caption-image-stage><img src="${escapeAttribute(item.image_url)}" alt="${escapeAttribute(item.name)}" style="--caption-zoom:${zoom}" data-caption-preview></div>
         <div class="dragon-caption-zoom"><button type="button" data-caption-zoom="out" aria-label="缩小">−</button><output>${Math.round(zoom * 100)}%</output><button type="button" data-caption-zoom="in" aria-label="放大">＋</button><button type="button" data-caption-zoom="reset">适配</button></div>
         <div class="dragon-caption-editor-head"><div class="dragon-segmented"><button type="button" data-caption-editor-mode="pills" data-active="${editorMode === 'pills'}" ${tagMode ? '' : 'disabled'}>标签胶囊</button><button type="button" data-caption-editor-mode="raw" data-active="${editorMode === 'raw'}">纯文本</button></div><small>← → 快速切图</small></div>
         ${editorMode === 'pills' && tagMode ? renderPills(item) : `<textarea class="dragon-textarea dragon-caption-raw" data-caption-raw rows="7">${escapeHtml(item.proposed_caption || item.original_caption || '')}</textarea>`}
         ${renderVariants(item)}
         ${renderAttemptLog(item)}
-        ${item.error ? `<p class="dragon-caption-error">${escapeHtml(item.error)}</p>` : ''}
         <footer><button class="dragon-btn dragon-btn-primary" type="button" data-caption-save-next ${editable(item) ? '' : 'disabled'}>保存并下一张</button><button class="dragon-btn dragon-btn-secondary" type="button" data-caption-retry-item ${['ready', 'failed'].includes(item.state) ? '' : 'disabled'}>重新请求此图</button><button class="dragon-btn dragon-btn-secondary" type="button" data-caption-save ${editable(item) ? '' : 'disabled'}>仅保存候选</button></footer>
     </section>`;
 }
@@ -29,6 +29,10 @@ export function bindInspector(root, state, actions) {
     root.querySelector('[data-caption-save-next]')?.addEventListener('click', (event) => saveCurrent(event.currentTarget, root, state, actions, true));
     root.querySelector('[data-caption-retry-item]')?.addEventListener('click', (event) => retryItem(event.currentTarget, root, state, actions));
     root.querySelectorAll('[data-caption-use-variant]').forEach((button) => button.addEventListener('click', () => useVariant(button, root, state)));
+    root.querySelector('[data-caption-open-attempts]')?.addEventListener('click', () => {
+        const details = root.querySelector('[data-caption-attempts]');
+        if (details) details.open = true;
+    });
 }
 
 export function currentEditorValue(root) {
@@ -76,7 +80,7 @@ function renderVariants(item) {
 function renderAttemptLog(item) {
     const entries = item.attempt_log || [];
     if (!entries.length) return '';
-    return `<details class="dragon-caption-attempts"><summary>API 尝试记录（${entries.length}）</summary>${entries.map((entry) => `<p data-tone="${entry.ok ? 'success' : 'error'}"><strong>${escapeHtml(entry.channel || `步骤 ${entry.step}`)}</strong> · ${escapeHtml(entry.model || '')} · 第 ${escapeHtml(entry.attempt || 1)} 次${entry.status ? ` · HTTP ${escapeHtml(entry.status)}` : ''}${entry.error ? `<br>${escapeHtml(entry.error)}` : ''}</p>`).join('')}</details>`;
+    return `<details class="dragon-caption-attempts" data-caption-attempts><summary>API 尝试记录（${entries.length}）</summary>${entries.map((entry) => `<p data-tone="${entry.ok ? 'success' : 'error'}"><strong>${escapeHtml(entry.channel || `步骤 ${entry.step}`)}</strong> · ${escapeHtml(entry.model || '')} · 第 ${escapeHtml(entry.attempt || 1)} 次${entry.status ? ` · HTTP ${escapeHtml(entry.status)}` : ''}${entry.error ? `<br>${escapeHtml(entry.error)}` : ''}</p>`).join('')}</details>`;
 }
 
 function useVariant(button, root, state) {

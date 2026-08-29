@@ -8,11 +8,14 @@ import { escapeAttribute, escapeHtml, showFeedback, withBusy } from './utils.js?
 export function renderWorkbench(state, prefill = {}) {
     const item = selectedItem(state);
     const selectedCount = (state.workspaceData.gallerySelected || []).length;
+    const mobileView = state.workspaceData.workbenchView || 'inspector';
+    const readyCount = state.selectedJob?.results?.filter((entry) => ['ready', 'committed'].includes(entry.state)).length || 0;
     const job = state.selectedJob;
     return `<div class="dragon-caption-workbench" data-caption-workbench>
         ${renderControlBar(state, prefill)}
-        <div class="dragon-caption-main">${renderGallery(state)}${renderInspector(state.selectedJob, item, state.editorMode, state.zoom)}</div>
-        <footer class="dragon-caption-footer"><div class="dragon-caption-job-context"><label>当前任务 <select class="dragon-select" data-caption-job-select>${jobOptions(state.jobs, state.selectedJobId)}</select></label><span>${job ? `${escapeHtml(job.directory)} · ${job.completed || 0}/${job.total || job.results?.length || 0}` : '未选择任务'}</span></div><div class="dragon-caption-bulk-actions"><span class="dragon-caption-selection-count" aria-live="polite">已选 ${selectedCount} 项</span><button class="dragon-btn dragon-btn-secondary" type="button" data-caption-governance-open ${job ? '' : 'disabled'}>词频统计 / 查找替换</button><button class="dragon-btn dragon-btn-secondary" type="button" data-caption-commit-selected ${selectedCount ? '' : 'disabled'}>写回已选 ${selectedCount ? `(${selectedCount})` : ''}</button><button class="dragon-btn dragon-btn-primary" type="button" data-caption-commit-all ${job ? '' : 'disabled'}>覆盖写回全部</button></div></footer>
+        <div class="dragon-caption-mobile-view-toggle" role="tablist" aria-label="审阅视图"><button type="button" role="tab" data-caption-mobile-view="gallery" aria-selected="${mobileView === 'gallery'}">图库 <span>${state.selectedJob?.results?.length || 0}</span></button><button type="button" role="tab" data-caption-mobile-view="inspector" aria-selected="${mobileView === 'inspector'}">单图审阅</button></div>
+        <div class="dragon-caption-main" data-mobile-view="${mobileView}">${renderGallery(state)}${renderInspector(state.selectedJob, item, state.editorMode, state.zoom)}</div>
+        <footer class="dragon-caption-footer"><div class="dragon-caption-job-context"><label>当前任务 <select class="dragon-select" data-caption-job-select>${jobOptions(state.jobs, state.selectedJobId)}</select></label><span>${job ? `${escapeHtml(job.directory)} · ${job.completed || 0}/${job.total || job.results?.length || 0}` : '未选择任务'}</span></div><div class="dragon-caption-bulk-actions"><span class="dragon-caption-selection-count" aria-live="polite">已选 ${selectedCount} 项</span><button class="dragon-btn dragon-btn-secondary" type="button" data-caption-governance-open ${job ? '' : 'disabled'}>词频统计 / 查找替换</button><button class="dragon-btn dragon-btn-primary" type="button" data-caption-commit-selected ${selectedCount ? '' : 'disabled'}>写回已选 ${selectedCount ? `(${selectedCount})` : ''}</button><button class="dragon-btn dragon-btn-danger" type="button" data-caption-commit-all ${readyCount ? '' : 'disabled'}>覆盖写回全部 <span>(${readyCount})</span></button></div></footer>
         ${state.governanceOpen ? renderGovernance(state.selectedJob) : ''}
     </div>`;
 }
@@ -60,6 +63,10 @@ function bindAll(root, state, actions, prefill) {
     bindGallery(root, state, actions.selectItem);
     bindInspector(root, state, actions);
     bindGovernance(root, state, actions);
+    root.querySelectorAll('[data-caption-mobile-view]').forEach((button) => button.addEventListener('click', () => {
+        state.workspaceData.workbenchView = button.dataset.captionMobileView;
+        renderInto(root, state, actions, prefill);
+    }));
     root.querySelector('[data-caption-job-select]')?.addEventListener('change', (event) => selectJob(root, state, actions, event.target.value, prefill).catch((error) => showFeedback(root, error.message, 'error')));
     root.querySelector('[data-caption-governance-open]')?.addEventListener('click', () => { state.governanceOpen = true; renderInto(root, state, actions, prefill); });
     root.querySelector('[data-caption-commit-all]')?.addEventListener('click', async (event) => {

@@ -26,6 +26,13 @@ const PANELS = [
     ['config', '配置中心'],
 ];
 
+const PANEL_GROUPS = [
+    { id: 'prepare', label: '准备', items: ['files', 'groups', 'prompts', 'config'] },
+    { id: 'generate', label: '生成', items: ['role', 'completion', 'dataset'] },
+    { id: 'review', label: '审阅', items: ['workbench', 'tags', 'logs'] },
+    { id: 'delivery', label: '处理', items: ['retry', 'export'] },
+];
+
 export function mountCaptioningSuite(root, state, prefill = {}) {
     state.activePanel ||= 'workbench';
     state.suiteRender = () => renderSuite(root, state, prefill);
@@ -36,7 +43,7 @@ function renderSuite(root, state, prefill) {
     if (state.pollTimer) window.clearTimeout(state.pollTimer);
     const host = root.querySelector('[data-caption-suite-host]');
     host.innerHTML = `<div class="dragon-caption-suite">
-        <nav class="dragon-caption-suite-tabs" aria-label="打标工作流">${PANELS.map(([id, label]) => `<button type="button" data-caption-suite-panel="${id}" data-active="${state.activePanel === id}" ${state.activePanel === id ? 'aria-current="page"' : ''}>${label}</button>`).join('')}<button class="dragon-caption-suite-settings" type="button" data-caption-suite-settings>API / 调度</button></nav>
+        <nav class="dragon-caption-suite-tabs" aria-label="打标工作流阶段"><div class="dragon-caption-stage-nav">${PANEL_GROUPS.map((group) => `<details class="dragon-caption-stage" ${group.items.includes(state.activePanel) ? 'open' : ''}><summary>${group.label}<span>${group.items.includes(state.activePanel) ? '当前' : `${group.items.length} 项`}</span></summary><div class="dragon-caption-stage-items">${group.items.map((id) => { const label = PANELS.find(([panelId]) => panelId === id)?.[1] || id; return `<button type="button" data-caption-suite-panel="${id}" data-active="${state.activePanel === id}" ${state.activePanel === id ? 'aria-current="page"' : ''}>${label}</button>`; }).join('')}</div></details>`).join('')}</div><button class="dragon-caption-suite-settings" type="button" data-caption-suite-settings>API / 调度</button></nav>
         <div class="dragon-caption-suite-panel" data-caption-suite-panel-host>${renderPanel(state)}</div>
     </div>`;
     host.querySelectorAll('[data-caption-suite-panel]').forEach((button) => button.addEventListener('click', () => {
@@ -44,6 +51,14 @@ function renderSuite(root, state, prefill) {
         state.activePanel = button.dataset.captionSuitePanel;
         renderSuite(root, state, prefill);
     }));
+    host.querySelectorAll('.dragon-caption-stage').forEach((stage) => stage.addEventListener('toggle', () => {
+        if (!stage.open) return;
+        host.querySelectorAll('.dragon-caption-stage').forEach((other) => { if (other !== stage) other.open = false; });
+    }));
+    host.querySelector('.dragon-caption-suite-tabs')?.addEventListener('click', (event) => {
+        if (event.target.closest('.dragon-caption-stage')) return;
+        host.querySelectorAll('.dragon-caption-stage').forEach((stage) => { stage.open = false; });
+    });
     host.querySelector('[data-caption-suite-settings]')?.addEventListener('click', () => root.querySelector('[data-caption-settings-dialog]')?.showModal());
     bindPanel(root, state, prefill);
 }

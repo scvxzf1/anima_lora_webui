@@ -70,6 +70,7 @@ def test_captioning_frontend_reviews_before_committing() -> None:
     assert "renderGallery" in workbench
     assert "已选 ${selectedCount} 项" in workbench
     assert "将覆盖写回 ${count}" in workbench
+    assert "data-caption-mobile-view" in workbench
     assert "data-dataset-caption" in dataset_fields
     assert "dragon-captioning-prefill" in dataset_page
 
@@ -88,6 +89,8 @@ def test_captioning_layout_has_desktop_and_mobile_constraints() -> None:
     assert "grid-template-columns: minmax(360px, 44%) minmax(480px, 56%)" in css
     assert "grid-template-columns: repeat(auto-fill, minmax(116px, 1fr))" in css
     assert "@media (max-width: 760px)" in css
+    assert ".dragon-caption-mobile-view-toggle" in css
+    assert "data-mobile-view" in css
     assert ".dragon-caption-main { grid-template-columns: 1fr; overflow: visible; }" in css
     assert "max-height: min(250px, 30dvh)" in css
     assert ".dragon-caption-command > .dragon-caption-engine { grid-column: 1; }" in css
@@ -112,6 +115,8 @@ def test_captioning_workbench_covers_presets_governance_and_local_engines() -> N
     assert "draggable=\"true\"" in inspector
     assert "data-caption-use-variant" in inspector
     assert "API 尝试记录" in inspector
+    assert "data-caption-open-attempts" in inspector
+    assert "data-caption-attempts" in inspector
 
 
 def test_captioning_suite_covers_the_full_embedded_labeler_workflow() -> None:
@@ -129,6 +134,7 @@ def test_captioning_suite_covers_the_full_embedded_labeler_workflow() -> None:
     for filter_name in ("全部", "可导出", "失败", "解析失败", "已选择"):
         assert filter_name in gallery
     assert "data-file-grid" in files and "data-file-open-workbench" in files
+    assert "data-file-open-groups" in files and "管理目录组" in files
     assert "fileScanning" in files and "fileScanned" in files and "fileQuery" in files
     assert "aria-pressed" in files and "data-file-search-empty" in files
     assert "ArrowLeft" in files and "ArrowRight" in files and "CSS.escape" in files
@@ -164,11 +170,14 @@ def test_captioning_suite_covers_the_full_embedded_labeler_workflow() -> None:
     assert "roleScheduleId" in role and "rolePromptId" in role
     assert 'dragon-caption-role-details"><summary>' in role
     assert "已复制角色 Tag" in role
+    assert "data-role-open-files" in role and "从目录浏览选择" in role
     groups = _read("js/features/captioning/workspace/groups-panel.js")
     assert "groupsDirty" in groups and "groupScans" in groups
     assert "删除目录组“" in groups and "扫描中…" in groups
     assert "目录组已保存" in groups
     assert "groupsDirty && !window.confirm" in suite and 'aria-current="page"' in suite
+    assert "PANEL_GROUPS" in suite and "dragon-caption-stage-nav" in suite
+    assert "准备" in suite and "生成" in suite and "审阅" in suite and "处理" in suite
     tags = _read("js/features/captioning/workspace/tag-manager-panel.js")
     assert "tagDirtyName" in tags and "discardDirty" in tags
     assert "matches.length" in tags and "替换中" in tags and "tagQuery" in tags
