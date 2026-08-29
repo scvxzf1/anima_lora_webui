@@ -44,7 +44,7 @@
 .dragon-caption-split-list > aside button strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dragon-caption-split-list > aside button small { color: var(--dragon-text-tertiary); }
 .dragon-caption-split-list > form, .dragon-caption-split-list > section { display: grid; align-content: start; gap: 12px; padding-left: 16px; overflow: auto; }
-.dragon-caption-list-toolbar { display: flex; gap: 6px; }
+.dragon-caption-list-toolbar { display: flex; align-items: center; gap: 6px; }
 .dragon-caption-list-toolbar .dragon-input { min-width: 0; flex: 1; }
 .dragon-caption-list-toolbar .dragon-select { width: min(220px, 40%); flex: 0 0 auto; }
 .dragon-caption-result-list, .dragon-caption-log-list { display: grid; align-content: start; gap: 7px; padding: 0 18px 16px; overflow: auto; }

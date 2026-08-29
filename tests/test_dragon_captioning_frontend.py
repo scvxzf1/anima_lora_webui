@@ -139,6 +139,7 @@ def test_captioning_suite_covers_the_full_embedded_labeler_workflow() -> None:
     assert "aria-pressed" in files and "data-file-search-empty" in files
     assert "ArrowLeft" in files and "ArrowRight" in files and "CSS.escape" in files
     assert "data-retry-all" in retry and "failure_kind" in retry
+    assert "将重新入队 ${count} 个失败项" in retry
     assert "retryLoading" in retry and "retryFilter" in retry
     assert "筛选不改变批量范围" in retry and "重试中…" in retry
     assert "retryJobId" in retry and "retryNotice" in retry

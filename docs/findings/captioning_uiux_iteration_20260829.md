@@ -88,6 +88,25 @@
 
 - 其他 11 个子面板仍需在真实数据量和长文本条件下做交互可用性测试；本阶段只改变审阅台共享导航、移动布局和写回风险提示。
 
+## 长期专项阶段 03：失败重试布局核验（2026-08-29）
+
+### 评审裁决
+
+- 13 格总览拼图经视觉模型复审后，唯一确认的 P0 是“失败任务重试”工具栏按钮被拉伸为约 695px 高的巨大纵向胶囊；浏览器计算样式与截图一致。
+- API / 调度对话框、空态和配置危险区的建议在当前截图中证据不足或已有实现，列为后续真实数据量验证项，不做重复重构。
+
+### 本阶段落地
+
+- `06c-dragon-captioning.css`：`.dragon-caption-list-toolbar` 明确 `align-items: center`，阻止网格剩余高度拉伸控件。
+- `workspace/retry-panel.js`：批量重试执行前显示待入队数量确认，保留加载中、成功和失败反馈。
+- `tests/test_dragon_captioning_frontend.py`：补充批量重试确认文案契约。
+
+### 阶段验收
+
+- `node --check web/static/js/features/captioning/workspace/retry-panel.js` 通过。
+- `tests/test_dragon_captioning_frontend.py`：`9 passed`。
+- Playwright Chrome `1440×1000`：重试按钮尺寸从约 `210×695px` 修正为 `210×41px`；新截图为 `/tmp/captioning-retry-after.png`。
+
 ## 增量截图评审（长期任务阶段 01）
 
 日期：2026-08-29。基于本地页面重新采集桌面 `1440×900`、移动端 `390×844` 截图，证据目录为 `/tmp/captioning-uiux-20260829/`（共 26 张，另有 `after/` 复核截图）。使用用户授权的 OpenAI-compatible 视觉 API 对桌面、移动拼图进行一次模型评审；密钥未写入仓库。

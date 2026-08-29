@@ -26,8 +26,10 @@ export function bindRetryPanel(root, state) {
     root.querySelector('[data-retry-filter]')?.addEventListener('change', (event) => { state.workspaceData.retryFilter = event.target.value; state.suiteRender(); });
     root.querySelector('[data-retry-all]')?.addEventListener('click', async (event) => {
         if (!state.workspaceData.retryJob) return feedback(root, '请先加载任务', 'error');
+        const count = state.workspaceData.retryJob.results.filter((item) => item.state === 'failed').length;
+        if (!window.confirm(`将重新入队 ${count} 个失败项，是否继续？`)) return;
         const button = event.currentTarget; button.disabled = true; button.textContent = '正在入队…';
-        try { const count = state.workspaceData.retryJob.results.filter((item) => item.state === 'failed').length; await captioningApi(`/jobs/${encodeURIComponent(state.workspaceData.retryJob.id)}/retry-failed`, jsonOptions('POST', {})); state.workspaceData.retryJob.results.forEach((item) => { if (item.state === 'failed') item.state = 'queued'; }); state.workspaceData.retryNotice = `已将 ${count} 个失败项重新入队`; state.suiteRender(); }
+        try { await captioningApi(`/jobs/${encodeURIComponent(state.workspaceData.retryJob.id)}/retry-failed`, jsonOptions('POST', {})); state.workspaceData.retryJob.results.forEach((item) => { if (item.state === 'failed') item.state = 'queued'; }); state.workspaceData.retryNotice = `已将 ${count} 个失败项重新入队`; state.suiteRender(); }
         catch (error) { state.workspaceData.retryError = error.message; state.suiteRender(); }
     });
     root.querySelectorAll('[data-retry-item]').forEach((button) => button.addEventListener('click', async () => {
