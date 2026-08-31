@@ -92,7 +92,7 @@ import { savePreviewSettings, resetPreviewSettings, loadPreviewImages, loadPrevi
 import { bindTrainingViewTabKeyboard, showTrainingView } from '../anima-app/helpers/queue-view-bridge.js?v=module-bootstrap-20260809-nf4-v2';
 import { loadTrainingHistoryList, renderHistoryManager } from '../anima-app/helpers/history-list-bridge.js?v=module-bootstrap-20260809-nf4-v2';
 import { installBeginnerTooltips } from './beginner-tooltips.js?v=module-bootstrap-20260809-nf4-v2';
-import { SETUP_EVENT_DOM_CONTRACT } from './event-listeners-contract.js?v=module-bootstrap-20260809-nf4-v2';
+import { SETUP_EVENT_DOM_CONTRACT } from './event-listeners-contract.js?v=module-bootstrap-20260828-model-family-filter-v1';
 import { debounce } from '../../shared/debounce.js?v=module-bootstrap-20260809-nf4-v2';
 import { bindBrowseDialogBackdropClose } from '../../shared/dialog.js?v=module-bootstrap-20260809-nf4-v2';
 import { bindModelConfigEvents, bindModelConfigPickerEvents } from '../model-configs/index.js?v=module-bootstrap-20260809-nf4-v2';
@@ -298,6 +298,7 @@ export function setupEventListeners() {
         'history-filter-state': 'state',
         'history-filter-archived': 'archived',
         'history-filter-source': 'source',
+        'history-filter-model-family': 'modelFamily',
         'history-filter-training-variant': 'trainingVariant',
         'history-filter-preprocess-precision': 'preprocessPrecision',
         'history-filter-block-swap-precision': 'blockSwapPrecision',

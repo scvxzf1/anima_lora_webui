@@ -69,7 +69,9 @@ const root = document.querySelector('#root');
 const cleanup = bindHistoryChart(root, [{ loss: .8, lr: 1e-5 }, { loss: .4, lr: 2e-5 }]);
 const svg = root.querySelector('[data-history-chart]');
 svg.getBoundingClientRect = () => ({ left: 0, top: 0, width: 900, height: 300, right: 900, bottom: 300 });
-root.querySelector('.dragon-history-chart-hitarea').dispatchEvent(new dom.window.MouseEvent('mousemove', { clientX: 441, clientY: 150, bubbles: true }));
+const moveEvent = typeof dom.window.PointerEvent === 'function' ? 'pointermove' : 'mousemove';
+root.querySelector('.dragon-history-chart-hitarea').dispatchEvent(new dom.window.MouseEvent(moveEvent, { clientX: 441, clientY: 150, bubbles: true }));
+await new Promise((resolve) => dom.window.requestAnimationFrame(resolve));
 const tooltip = root.querySelector('[data-history-chart-tooltip]');
 console.log(JSON.stringify({ hidden: tooltip.hidden, text: tooltip.textContent.trim() }));
 cleanup();
@@ -100,11 +102,11 @@ console.log(JSON.stringify({ html }));
 
 
 def test_training_polish_styles_are_reachable_and_responsive() -> None:
-    entry = (REPO_ROOT / "web/static/css/dragon-style.css").read_text(encoding="utf-8")
+    route_styles = (REPO_ROOT / "web/static/js/dragon-ui/route-styles.js").read_text(encoding="utf-8")
     css = (REPO_ROOT / "web/static/css/dragon/07-dragon-training-polish.css").read_text(encoding="utf-8")
     workbench = (REPO_ROOT / "web/static/css/dragon/07a-dragon-live-workbench.css").read_text(encoding="utf-8")
     tokens = (REPO_ROOT / "web/static/css/dragon/00-dragon-tokens.css").read_text(encoding="utf-8")
-    assert "07-dragon-training-polish.css" in entry
+    assert "07-dragon-training-polish.css" in route_styles
     assert "max-width: 1600px" in css
     width_rules = css.split(".dragon-tool-panel", 1)[0]
     assert ".dragon-tool-page" in width_rules
@@ -113,7 +115,7 @@ def test_training_polish_styles_are_reachable_and_responsive() -> None:
     assert ".dragon-live-log-stream" in css and "#0f172a" in css
     assert ".dragon-history-config-summary" in css
     assert "@media (max-width: 460px)" in css
-    assert "07a-dragon-live-workbench.css" in entry
+    assert "07a-dragon-live-workbench.css" in route_styles
     assert "grid-template-columns: 284px minmax(0, 1fr)" in workbench
     assert "@media (max-width: 1199px)" in workbench
     assert "white-space: pre" in workbench and "word-break: normal" in workbench

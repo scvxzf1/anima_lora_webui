@@ -477,6 +477,7 @@ export function applyHistoryStatFilter(state) {
         state: 'all',
         archived: 'all',
         source: 'all',
+        modelFamily: 'all',
         trainingVariant: 'all',
         preprocessPrecision: 'all',
         blockSwapPrecision: 'all',
@@ -506,6 +507,7 @@ export function historyStatFilterIsActive(state) {
     const base =
         searchEmpty &&
         Boolean(historyState.historyManagerFilters.sort || 'newest') &&
+        (historyState.historyManagerFilters.modelFamily || 'all') === 'all' &&
         (historyState.historyManagerFilters.trainingVariant || 'all') === 'all' &&
         (historyState.historyManagerFilters.preprocessPrecision || 'all') === 'all' &&
         (historyState.historyManagerFilters.blockSwapPrecision || 'all') === 'all' &&
@@ -605,6 +607,11 @@ export function historyTaskMatchesSourceFilter(task, filter) {
 }
 
 export function historyTaskMatchesChipFilters(task, filters = {}) {
+    const modelFamily = filters.modelFamily || 'all';
+    if (modelFamily !== 'all') {
+        const value = String(task?.model_family || '').trim().toLowerCase();
+        if (value !== modelFamily) return false;
+    }
     const trainingVariant = filters.trainingVariant || 'all';
     if (trainingVariant !== 'all') {
         const value = String(task?.training_variant || '').trim().toLowerCase();
@@ -644,6 +651,7 @@ export function historyTaskSearchText(task) {
         task.history_run_label,
         task.methods_subdir,
         task.variant,
+        task.model_family,
         task.training_variant,
         task.preprocess_precision,
         task.block_swap_precision,

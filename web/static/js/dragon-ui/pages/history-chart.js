@@ -1,6 +1,8 @@
 /* Interactive loss / learning-rate chart used by training history details. */
 
 import { areaSvgPath, emaValues, smoothSvgPath } from './trend-utils.js?v=dragon-ui-20260825v1';
+import { bindLatestPointerMove, pointerEventName } from '../pointer-frame.js?v=dragon-ui-20260826v1';
+import { createFrameScheduler } from '../frame-scheduler.js?v=dragon-ui-20260826v1';
 
 const WIDTH = 900;
 const HEIGHT = 300;
@@ -68,6 +70,7 @@ export function bindHistoryChart(root, metrics = []) {
         container.innerHTML = renderHistoryMetricsChart(metrics, state);
         unbindHover = bindHover(container.querySelector('[data-history-chart]'), metrics, state);
     };
+    const renderFrame = createFrameScheduler(render, root.ownerDocument?.defaultView);
     const listeners = [];
     root.querySelectorAll('[data-history-chart-toggle]').forEach((input) => {
         const onChange = () => { state[input.dataset.historyChartToggle] = input.checked; render(); };
@@ -80,12 +83,12 @@ export function bindHistoryChart(root, metrics = []) {
     const onSmoothing = () => {
         state.smoothing = Math.min(.99, Math.max(0, Number(smoothingInput?.value || 0) / 100));
         if (smoothingOutput) smoothingOutput.textContent = `${Math.round(state.smoothing * 100)}%`;
-        render();
+        renderFrame.schedule();
     };
     smoothingInput?.addEventListener('input', onSmoothing);
     listeners.push(() => smoothingInput?.removeEventListener('input', onSmoothing));
     render();
-    return () => { unbindHover(); listeners.forEach((remove) => remove()); };
+    return () => { renderFrame.cancel(); unbindHover(); listeners.forEach((remove) => remove()); };
 }
 
 function bindHover(svg, metrics, options) {
@@ -108,9 +111,12 @@ function bindHover(svg, metrics, options) {
     const x = (index) => PADDING.left + (index / Math.max(rows.length - 1, 1)) * innerW;
     const lossY = (value) => PADDING.top + (1 - (value - lossDomain[0]) / (lossDomain[1] - lossDomain[0])) * innerH;
     const lrY = (value) => PADDING.top + (1 - (value - lrDomain[0]) / (lrDomain[1] - lrDomain[0])) * innerH;
+    let lastIndex = -1;
     const onMove = (event) => {
         const svgX = clientPointToSvg(svg, event.clientX, event.clientY).x;
         const index = Math.max(0, Math.min(rows.length - 1, Math.round((svgX - PADDING.left) / innerW * Math.max(rows.length - 1, 1))));
+        if (index === lastIndex) return;
+        lastIndex = index;
         const row = rows[index];
         if (!row) return;
         const cx = x(index);
@@ -131,23 +137,20 @@ function bindHover(svg, metrics, options) {
         setSvgHidden(values, !(showLossText || showLrText));
         setSvgHidden(hover, !(showLossPoint || showLrPoint || showLossText || showLrText));
     };
-    const hide = () => { setSvgHidden(hover, true); setSvgHidden(values, true); if (tooltip) tooltip.hidden = true; };
-    const onPointerOut = (event) => {
-        if (!event.relatedTarget || !svg.contains(event.relatedTarget)) hide();
+    const hide = () => {
+        lastIndex = -1;
+        setSvgHidden(hover, true);
+        setSvgHidden(values, true);
+        if (tooltip) tooltip.hidden = true;
     };
-    const onDocumentMove = (event) => { if (!svg.contains(event.target)) hide(); };
-    hitarea?.addEventListener('pointermove', onMove);
-    hitarea?.addEventListener('mousemove', onMove);
-    hitarea?.addEventListener('pointerleave', hide);
-    hitarea?.addEventListener('mouseleave', hide);
-    hitarea?.addEventListener('pointerout', onPointerOut);
-    svg.addEventListener('pointerleave', hide);
-    svg.addEventListener('mouseleave', hide);
-    document.addEventListener('pointermove', onDocumentMove);
-    document.addEventListener('mousemove', onDocumentMove);
+    const unbindMove = bindLatestPointerMove(hitarea, onMove);
+    const leaveEvent = pointerEventName(svg, 'pointerleave', 'mouseleave');
+    hitarea?.addEventListener(leaveEvent, hide);
+    svg.addEventListener(leaveEvent, hide);
     return () => {
-        document.removeEventListener('pointermove', onDocumentMove);
-        document.removeEventListener('mousemove', onDocumentMove);
+        unbindMove();
+        hitarea?.removeEventListener(leaveEvent, hide);
+        svg.removeEventListener(leaveEvent, hide);
     };
 }
 

@@ -61,6 +61,14 @@ export function collectLiveCompatIssues(config = {}) {
                 message: 'live 兼容：Krea-2 使用固定 token-family 编译图，训练启动时会自动关闭 compile_dynamic_seq。',
             });
         }
+        if (boolValue(config.compile_seq_bands, false)) {
+            issues.push({
+                code: 'krea2_compile_seq_bands',
+                key: 'compile_seq_bands',
+                severity: 'warning',
+                message: 'live 兼容：Krea-2 使用固定 token-family 编译图，训练启动时会自动关闭 compile_seq_bands。',
+            });
+        }
         const compileMode = String(config.compile_inductor_mode ?? 'default').trim().toLowerCase() || 'default';
         if (compileMode !== 'default') {
             issues.push({
@@ -87,6 +95,15 @@ export function collectLiveCompatIssues(config = {}) {
                 message: 'live 兼容：v100_flash_stability 是 Anima 专用项，Krea-2 下必须关闭。',
             });
         }
+    }
+
+    if (modelFamily === 'z_image' && boolValue(config.compile_seq_bands, false)) {
+        issues.push({
+            code: 'z_image_compile_seq_bands',
+            key: 'compile_seq_bands',
+            severity: 'warning',
+            message: 'live 兼容：分带动态序列编译仅适用于 Anima，Z-Image 启动时会自动关闭。',
+        });
     }
 
     if (selectiveEnabled && gradientCheckpointing) {

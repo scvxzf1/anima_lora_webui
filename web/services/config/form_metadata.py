@@ -190,6 +190,10 @@ FIELD_HELP: dict[str, dict[str, str]] = {
         "en": "Mark the native token-sequence axis dynamic inside compiled DiT blocks so compatible buckets reuse one graph.",
         "ko": "컴파일된 DiT 블록의 토큰 시퀀스 축을 동적으로 표시해 호환 버킷이 하나의 그래프를 재사용합니다.",
     },
+    "compile_seq_bands": {
+        "en": "Split Anima dynamic sequence lengths into tight data-derived bands. Off by default; requires compile_dynamic_seq.",
+        "ko": "Anima 동적 시퀀스 길이를 데이터 기반의 좁은 밴드로 나눉니다. 기본값은 비활성화이며 compile_dynamic_seq가 필요합니다.",
+    },
     "gradient_checkpointing": {
         "en": "Recompute activations during backward pass instead of storing them. Trades compute for VRAM. Essential for low-VRAM setups.",
         "ko": "역전파 시 활성값을 저장 대신 재계산. 연산으로 VRAM 절약. 저사양 필수.",
@@ -378,6 +382,7 @@ FORM_GROUPS = {
         "v100_flash_stability",
         "debug_finite_checks",
         "compile_dynamic_seq",
+        "compile_seq_bands",
         "gradient_checkpointing",
         "unsloth_offload_checkpointing",
         "blocks_to_swap",

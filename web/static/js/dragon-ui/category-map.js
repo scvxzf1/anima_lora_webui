@@ -4,7 +4,7 @@
  * Structure: grouped flyout columns with section headers.
  */
 
-import { FORM_CATEGORY_DEFS } from '../config/catalog/form-layout.js?v=dragon-ui-20260812v35';
+import { FORM_CATEGORY_DEFS } from '../config/catalog/form-category-defs.js?v=dragon-ui-20260826v1';
 
 const TRAINING_CONFIG_LEGACY_IDS = Object.freeze({
     required: ['base-models', 'data-behavior', 'dataset-filter'],

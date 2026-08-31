@@ -15,7 +15,7 @@ import { configureQueueViewBridge } from './helpers/queue-view-bridge.js?v=modul
 import { configureHistoryListBridge } from './helpers/history-list-bridge.js?v=module-bootstrap-20260809-nf4-v2';
 import { configureTomlStateBridge } from './helpers/toml-state-bridge.js?v=module-bootstrap-20260809-nf4-v2';
 import { configureTrainingStateBridge } from './helpers/training-state-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { createAnimaRuntime } from './runtime.js?v=module-bootstrap-20260809-nf4-v2';
+import { createAnimaRuntime } from './runtime.js?v=module-bootstrap-20260828-model-family-filter-v1';
 
 export async function createAnimaApp(ctx) {
     const runtime = createAnimaRuntime(ctx);
@@ -88,18 +88,18 @@ export async function createAnimaApp(ctx) {
     configureStatusPollingBridge(statusPollingBridge);
     // History self-configuring chunks share merge-style bridges; load as one batch.
     await Promise.all([
-        import('./chunks/27-render-history-collections-workbench.js?v=module-bootstrap-20260809-nf4-v2'),
+        import('./chunks/27-render-history-collections-workbench.js?v=module-bootstrap-20260828-model-family-filter-v1'),
         import('./chunks/28-history-collection-search-text.js?v=module-bootstrap-20260809-nf4-v2'),
         import('./chunks/29-start-history-config-group-pointer-drag.js?v=module-bootstrap-20260809-nf4-v2'),
         import('./chunks/30-start-history-collection-pointer-drag.js?v=module-bootstrap-20260809-nf4-v2'),
         import('./chunks/31-create-history-collection-workbench-card.js?v=module-bootstrap-20260809-nf4-v2'),
-        import('./chunks/32-history-task-collection-label.js?v=module-bootstrap-20260809-nf4-v2'),
+        import('./chunks/32-history-task-collection-label.js?v=module-bootstrap-20260828-model-family-filter-v1'),
         import('./chunks/33-create-history-task-item.js?v=module-bootstrap-20260809-nf4-v2'),
         import('./chunks/34-show-history-collection-select-dialog.js?v=module-bootstrap-20260809-nf4-v2'),
         import('./chunks/35-render-config-group-timeline.js?v=module-bootstrap-20260809-nf4-v2'),
     ]);
     await Promise.all([
-        import('./chunks/36-setup-event-listeners.js?v=module-bootstrap-20260809-nf4-v2'),
+        import('./chunks/36-setup-event-listeners.js?v=module-bootstrap-20260828-model-family-filter-v1'),
         import('./chunks/37-config-training-source.js?v=module-bootstrap-20260809-nf4-v2'),
     ]);
     return appShellModule.startAnimaApp();

@@ -1,4 +1,4 @@
-import { DRAGON_NAV_CATEGORIES } from './category-map.js?v=dragon-ui-20260824v44';
+import { DRAGON_NAV_CATEGORIES } from './category-map.js?v=dragon-ui-20260826v45';
 import { getThemePreference, setThemePreference } from './theme.js?v=dragon-ui-20260814v45';
 import { renderIcon } from './icons.js?v=dragon-ui-20260812v35';
 import { switchToClassicUI } from '../shared/ui-mode.js?v=dragon-ui-20260814v45';
@@ -15,10 +15,9 @@ let globalAbortController = null;
 const PRIMARY_NAV_ITEMS = [
     { id: 'training-config', label: '训练配置', hash: '#config/training-config' },
     { id: 'datasets', label: '数据集', hash: '#dataset-editor' },
-    { id: 'live-training', label: '当前监控', hash: '#page/live-training' },
-    { id: 'queue', label: '训练队列', hash: '#page/queue' },
-    { id: 'history', label: '训练历史', hash: '#history' },
+    { id: 'training-tasks', label: '训练任务', hash: '#page/live-training' },
     { id: 'model-config', label: '模型配置', hash: '#model-config' },
+    { id: 'captioning', label: '打标', hash: '#page/captioning' },
 ];
 
 const NAV_SHORTCUTS = [
@@ -251,17 +250,20 @@ function updateShortcutState() {
         if (active) button.setAttribute('aria-current', 'page');
         else button.removeAttribute('aria-current');
     });
+    const trainingTasksActive = hash.startsWith('#page/live-training')
+        || hash.startsWith('#live-training')
+        || hash.startsWith('#page/queue')
+        || hash.startsWith('#queue')
+        || hash.startsWith('#history');
     const activePrimaryId = hash.startsWith('#dataset-editor')
         ? 'datasets'
-        : (hash.startsWith('#page/live-training')
-            ? 'live-training'
-            : (hash.startsWith('#page/queue')
-                ? 'queue'
-                : (hash.startsWith('#history')
-                    ? 'history'
-                    : (hash.startsWith('#model-config')
-                        ? 'model-config'
-                        : (hash.startsWith('#config/training-config') ? 'training-config' : '')))));
+        : (trainingTasksActive
+            ? 'training-tasks'
+            : (hash.startsWith('#model-config')
+                ? 'model-config'
+                : ((hash.startsWith('#page/captioning') || hash.startsWith('#page/tagging') || hash === '#captioning' || hash === '#tagging')
+                    ? 'captioning'
+                    : (hash.startsWith('#config/training-config') ? 'training-config' : ''))));
     document.querySelectorAll('[data-primary-nav]').forEach((link) => {
         const active = link.dataset.primaryNav === activePrimaryId;
         link.dataset.active = String(active);

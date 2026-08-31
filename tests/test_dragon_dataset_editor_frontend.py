@@ -37,6 +37,19 @@ def test_dragon_dataset_editor_has_complete_workspace_contract() -> None:
     assert "当前训练配置正在使用这个预设" in page
     assert "await applyDatasetPreset(api, result.file, state.context.configFile)" in page
     assert '<main class="dragon-dataset-editor-panel">' not in page
+    assert "数据与标注" not in page
+    assert "管理可复用的数据集预设" not in page
+
+
+def test_dragon_dataset_editor_uses_compact_page_header() -> None:
+    css = _read("css/dragon/06-dragon-pages.css")
+    hero_rule = css[css.index(".dragon-dataset-hero {"):css.index(".dragon-dataset-hero > div:first-child")]
+    title_rule = css[css.index(".dragon-dataset-hero h1 {"):css.index(".dragon-dataset-hero-actions,", css.index(".dragon-dataset-hero h1 {"))]
+
+    assert "align-items: center;" in hero_rule
+    assert "gap: var(--dragon-sp-4);" in hero_rule
+    assert "padding: var(--dragon-sp-3) 0;" in hero_rule
+    assert "margin: 0;" in title_rule
 
 
 def test_dragon_dataset_preset_group_management_contract() -> None:
@@ -132,13 +145,12 @@ def test_dragon_dataset_preset_group_management_contract() -> None:
     assert "transition: max-height" not in dropzone_rule
 
 
-def test_dragon_dataset_editor_uses_page_scroll_without_blank_nested_scroll_tail() -> None:
+def test_dragon_dataset_editor_uses_desktop_internal_scroll_and_single_column_page_flow() -> None:
     page = _read("js/dragon-ui/pages/dataset-editor.js")
     css = _read("css/dragon/06-dragon-pages.css")
 
     assert 'data-dataset-form' in page
-    assert 'data-dataset-editor-scroll' not in page
-    assert 'dragon-dataset-defaults-scroll' not in page
+    assert page.index('class="dragon-dataset-editor-panel"') < page.index('class="dragon-dataset-savebar"') < page.index("${renderDatasetPresetLibrary(state)}")
     form_rule = css[css.index('.dragon-dataset-form {'):css.index('.dragon-dataset-section {')]
     assert 'max-height: none;' in form_rule
     assert 'min-height: 0;' in form_rule
@@ -148,11 +160,20 @@ def test_dragon_dataset_editor_uses_page_scroll_without_blank_nested_scroll_tail
     assert 'padding: 0;' in form_rule
     assert 'margin: 0;' in form_rule
     assert 'overflow-y: auto;' not in form_rule
-    assert 'max-height: min(720px' not in form_rule
-    assert 'dragon-dataset-scroll-tail' not in page
-    assert 'dragon-dataset-scroll-tail' not in css
-    assert 'bindEditorScrollTail' not in page
-    assert 'disposeEditorScrollTail' not in page
+    desktop_rule = css[css.index('@media (min-width: 1069px) {'):css.index('.visually-hidden', css.index('@media (min-width: 1069px) {'))]
+    assert 'body[data-dragon-ui]:has(.dragon-dataset-page-host)' in desktop_rule
+    assert 'grid-template-rows: auto auto minmax(0, 1fr);' in desktop_rule
+    assert '.dragon-dataset-editor-panel {' in desktop_rule
+    assert 'flex-direction: column;' in desktop_rule
+    assert '.dragon-dataset-form {' in desktop_rule
+    assert 'overflow-y: auto;' in desktop_rule
+    assert 'overscroll-behavior: contain;' in desktop_rule
+    assert 'scrollbar-gutter: stable;' in desktop_rule
+    assert '.dragon-dataset-savebar {' in desktop_rule
+    assert 'position: relative;' in desktop_rule
+    assert '.dragon-dataset-library {' in desktop_rule
+    assert 'box-sizing: border-box;' in desktop_rule
+    assert 'height: 100%;' in desktop_rule
     assert 'grid-template-columns: repeat(2, minmax(0, 1fr));' in css
     assert 'grid-template-columns: repeat(var(--dataset-field-columns, 2), minmax(0, 1fr));' in css
     assert 'grid-auto-rows: minmax(64px, auto);' in css
@@ -315,36 +336,45 @@ def test_dragon_dataset_layout_avoids_transformed_fixed_savebar() -> None:
 
 
 def test_dragon_dataset_release_token_is_consistent() -> None:
-    bootstrap_token = "dragon-ui-20260825v153"
-    entry_token = "dragon-ui-20260825v148"
-    style_token = "dragon-ui-20260825v143"
-    shell_token = "dragon-ui-20260824v70"
-    config_page_token = "dragon-ui-20260825v134"
+    bootstrap_token = "dragon-ui-20260831v21"
+    entry_token = "dragon-ui-20260831v21"
+    style_token = "dragon-ui-20260828v155"
+    shell_token = "dragon-ui-20260828v74"
+    config_page_token = "dragon-ui-20260831v153"
     page_token = "dragon-ui-20260825v118"
-    fields_token = "dragon-ui-20260824v53"
-    config_style_token = "dragon-ui-20260825v119"
-    shared_style_token = "dragon-ui-20260824v65"
-    dataset_style_token = "dragon-ui-20260825v87"
+    fields_token = "dragon-ui-20260828v54"
+    config_style_token = "dragon-ui-20260825v120"
+    shared_style_token = "dragon-ui-20260831v74"
+    dataset_style_token = "dragon-ui-20260831v90"
     index_html = INDEX_HTML.read_text(encoding="utf-8")
     bootstrap = _read("js/ui-bootstrap.js")
     entry = _read("js/dragon-ui/index.js")
+    page_loaders = _read("js/dragon-ui/page-loaders.js")
     page = _read("js/dragon-ui/pages/dataset-editor.js")
+    preview_controller = _read("js/dragon-ui/pages/dataset-preview-controller.js")
+    preview = _read("js/dragon-ui/pages/dataset-editor-preview.js")
     stylesheet = _read("css/dragon-style.css")
+    route_styles = _read("js/dragon-ui/route-styles.js")
 
     assert f"dragon-style.css?v={style_token}" in index_html
     assert f"ui-bootstrap.js?v={bootstrap_token}" in index_html
     assert f"dragon-ui/index.js?v={entry_token}" in bootstrap
     assert f"dragon-style.css?v={style_token}" in bootstrap
     assert f"router.js?v={shell_token}" in entry
-    assert "nav.js?v=dragon-ui-20260824v74" in entry
-    assert f"config-page.js?v={config_page_token}" in entry
-    assert f"dataset-editor.js?v={page_token}" in entry
+    assert "nav.js?v=dragon-ui-20260828v77" in entry
+    assert f"config-page.js?v={config_page_token}" in page_loaders
+    assert "route-styles.js?v=dragon-ui-20260831v14" in page_loaders
+    assert "dataset-editor.js?v=dragon-ui-20260831v133" in page_loaders
+    assert "dataset-preview-controller.js?v=dragon-ui-20260831v7" in page
+    assert "dataset-editor-preview.js?v=dragon-ui-20260831v52" in preview_controller
+    assert "dataset-preview-window.js?v=dragon-ui-20260831v3" in preview
+    assert "dataset-preview-detail.js?v=dragon-ui-20260831v3" in preview_controller or "dataset-preview-detail.js?v=dragon-ui-20260831v3" in _read("js/dragon-ui/pages/dataset-editor-preview.js")
     assert f"dataset-editor-fields.js?v={fields_token}" in page
     assert "dataset-editor-presets.js?v=dragon-ui-20260824v71" in page
-    assert f"06-dragon-pages.css?v={dataset_style_token}" in stylesheet
-    assert f"04-dragon-config.css?v={config_style_token}" in stylesheet
-    assert "04a-dragon-training-presets.css?v=dragon-ui-20260817v84" in stylesheet
-    assert f"06a-dragon-shared-dialogs.css?v={shared_style_token}" in stylesheet
+    assert f"06-dragon-pages.css?v={dataset_style_token}" in route_styles
+    assert f"04-dragon-config.css?v={config_style_token}" in route_styles
+    assert "04a-dragon-training-presets.css?v=dragon-ui-20260817v84" in route_styles
+    assert f"06a-dragon-shared-dialogs.css?v={shared_style_token}" in route_styles
 
 
 def test_dragon_dataset_preset_library_exposes_current_and_group_exports():

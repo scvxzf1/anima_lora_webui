@@ -31,6 +31,7 @@ _KNOWN_VARIANTS = frozenset(
 )
 
 _EMPTY = {
+    "model_family": "",
     "training_variant": "",
     "preprocess_precision": "",
     "block_swap_precision": "",
@@ -62,6 +63,7 @@ def history_config_chips_from_snapshot_text(text: str, *, variant: str = "") -> 
         data = {}
     flat = _flatten_toml_dict(data)
     return {
+        "model_family": _infer_model_family(flat),
         "training_variant": _infer_training_variant(flat, raw, variant=variant),
         "preprocess_precision": _norm_precision(flat.get("preprocess_precision_preference")),
         "block_swap_precision": _norm_precision(flat.get("block_swap_transfer_dtype")),
@@ -93,6 +95,12 @@ def _truthy(value: Any) -> bool:
 def _norm_precision(value: Any) -> str:
     text = str(value or "").strip().lower()
     return text
+
+
+def _infer_model_family(flat: dict[str, Any]) -> str:
+    """Resolve the same canonical family values used by the model config UI."""
+    value = str(flat.get("model_family") or "anima").strip().lower()
+    return value if value in {"anima", "krea2_raw", "z_image"} else ""
 
 
 def _infer_precision_preference(flat: dict[str, Any]) -> str:

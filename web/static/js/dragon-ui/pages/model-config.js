@@ -1,7 +1,7 @@
 /* Ordered model configuration library backed by /api/settings/model-configs. */
 
 import { createApiClient } from '../../shared/api.js?v=dragon-ui-20260812v35';
-import { renderIcon } from '../icons.js?v=dragon-ui-20260814v43';
+import { renderIcon } from '../icons.js?v=dragon-ui-20260812v35';
 import {
     bindModelConfigDrag,
     disposeModelConfigDrag,

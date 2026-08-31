@@ -146,6 +146,7 @@ def create_app_with_options(*, auth_token: str | None = None) -> web.Application
     app["root"] = ROOT
     app["training_service"] = None  # lazy init on first import
     app["image_test_service"] = None
+    app["tagging_service"] = None
 
     from web.routes import setup_routes
 
@@ -168,15 +169,20 @@ def create_app() -> web.Application:
 
 async def _on_startup(app: web.Application) -> None:
     from web.services.image_test_service import ImageTestService
+    from web.services.tagging import TaggingService
     from web.services.training_service import TrainingService
 
     svc = TrainingService(app)
     app["image_test_service"] = ImageTestService(app)
+    app["tagging_service"] = TaggingService(app)
     app["training_service"] = svc
     await svc.start_queue_on_startup()
 
 
 async def _on_shutdown(app: web.Application) -> None:
+    tagging_svc = app.get("tagging_service")
+    if tagging_svc:
+        await tagging_svc.shutdown()
     image_test_svc = app["image_test_service"]
     if image_test_svc:
         await image_test_svc.shutdown()

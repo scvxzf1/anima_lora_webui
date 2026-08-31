@@ -616,14 +616,6 @@ body[data-dragon-ui] #dragon-root .dragon-history-detail-tabs{display:flex;flex-
     line-height: 1.2;
 }
 
-.dragon-btn-icon,
-.dragon-icon {
-    display: block;
-    width: 17px;
-    height: 17px;
-    flex: 0 0 17px;
-}
-
 .dragon-dashboard-runband {
     display: grid;
     grid-template-columns: 0.9fr 1.25fr 1fr;

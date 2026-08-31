@@ -11,16 +11,16 @@
 
 .dragon-live-shell {
     display: grid;
-    min-height: calc(100dvh - 96px);
+    min-height: calc(100dvh - var(--dragon-nav-height) - var(--dragon-training-workspace-height) - var(--dragon-sp-7) - var(--dragon-sp-12));
     grid-template-columns: 284px minmax(0, 1fr);
     gap: 18px;
 }
 
 .dragon-live-sidebar {
     position: sticky;
-    top: 72px;
+    top: calc(var(--dragon-nav-height) + var(--dragon-training-workspace-height) + var(--dragon-sp-4));
     align-self: start;
-    max-height: calc(100dvh - 92px);
+    max-height: calc(100dvh - var(--dragon-nav-height) - var(--dragon-training-workspace-height) - (2 * var(--dragon-sp-4)));
     overflow: hidden auto;
     border: 1px solid var(--dragon-border-light);
     border-radius: 8px;
@@ -224,6 +224,9 @@ body[data-dragon-ui] #dragon-root .dragon-live-console-head { display: flex; jus
 }
 
 @media (max-width: 734px) {
+    .dragon-live-shell {
+        min-height: calc(100dvh - var(--dragon-nav-height) - var(--dragon-training-workspace-height) - var(--dragon-sp-5) - var(--dragon-sp-9));
+    }
     body[data-dragon-ui] #dragon-root .dragon-live-workbench-header { align-items: flex-start; flex-direction: column; gap: 12px; }
     .dragon-live-workbench-copy > div { align-items: flex-start; flex-direction: column; gap: 7px; }
     .dragon-live-workbench-copy h1 { max-width: 100%; white-space: normal; }

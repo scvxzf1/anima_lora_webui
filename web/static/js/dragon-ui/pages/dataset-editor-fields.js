@@ -1,6 +1,6 @@
 /* Field and row rendering helpers for the Dragon dataset workspace. */
 
-import { renderIcon } from '../icons.js?v=dragon-ui-20260824v44';
+import { renderIcon } from '../icons.js?v=dragon-ui-20260812v35';
 
 export const CAPTION_MODES = [
     ['auto', '自动识别'],

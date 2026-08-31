@@ -14,7 +14,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 def test_history_detail_routes_include_task_subview() -> None:
     entry = (REPO_ROOT / "web/static/js/dragon-ui/index.js").read_text(encoding="utf-8")
     router = (REPO_ROOT / "web/static/js/dragon-ui/router.js").read_text(encoding="utf-8")
-    history = (REPO_ROOT / "web/static/js/dragon-ui/pages/history.js").read_text(encoding="utf-8")
+    history = (REPO_ROOT / "web/static/js/dragon-ui/pages/history-detail.js").read_text(encoding="utf-8")
 
     assert "sub: parts[2] || null" in entry
     assert "taskId: decodeHashPart(parts[1])" in entry
@@ -134,7 +134,7 @@ console.log(JSON.stringify({
 
 
 def test_history_detail_binds_weight_path_copy_feedback() -> None:
-    history = (REPO_ROOT / "web/static/js/dragon-ui/pages/history.js").read_text(encoding="utf-8")
+    history = (REPO_ROOT / "web/static/js/dragon-ui/pages/history-detail.js").read_text(encoding="utf-8")
 
     assert "button.addEventListener('click', () => copyHistoryWeightPath(button))" in history
     assert "button.addEventListener('click', () => copyHistoryTaskPath(button))" in history

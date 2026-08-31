@@ -50,7 +50,7 @@ import {
     runLabelFromPath,
     historyGroupDisplayLabel,
     createHistoryGroupHeading,
-} from '../../history-list/task-collections.js?v=module-bootstrap-20260809-nf4-v2';
+} from '../../history-list/task-collections.js?v=module-bootstrap-20260828-model-family-filter-v1';
 
 export {
     historyTaskCollectionLabel,
@@ -99,7 +99,7 @@ export {
     runLabelFromPath,
     historyGroupDisplayLabel,
     createHistoryGroupHeading,
-} from '../../history-list/task-collections.js?v=module-bootstrap-20260809-nf4-v2';
+} from '../../history-list/task-collections.js?v=module-bootstrap-20260828-model-family-filter-v1';
 
 configureHistoryCollectionsBridge({
         historyTaskCollectionLabel,

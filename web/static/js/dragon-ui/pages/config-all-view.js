@@ -62,12 +62,17 @@ export function renderConfigViewSwitch(activeId) {
 export function renderAllConfigWorkspace({
     blocks,
     chapters,
+    bilingual = false,
     renderBlock,
     renderActions,
+    renderChapterLead = () => '',
+    renderChapterFooter = () => '',
     renderModelPickerTrigger,
     renderModelPickerDialog,
+    renderDatasetDialog = () => '',
 }) {
     const total = blocks.length;
+    const bilingualAction = bilingual ? '关闭双语渲染' : '开启双语渲染';
     const capsules = [{ id: 'all', label: '全部', count: total, color: 'neutral', accent: NEUTRAL_SECTION_ACCENT }, ...chapters].map((tag) => `
         <button class="dragon-config-tag-filter" type="button" data-config-tag-filter="${escapeHtml(tag.id)}"
                 data-color="${escapeHtml(tag.color || 'neutral')}" data-active="${tag.id === 'all'}"
@@ -81,8 +86,10 @@ export function renderAllConfigWorkspace({
                  aria-labelledby="section-${escapeHtml(chapter.id)}-title">
             ${renderSectionDivider(chapter)}
             <div class="dragon-config-section-grid">
+                ${renderChapterLead(chapter)}
                 ${chapter.blocks.map(renderBlock).join('')}
             </div>
+            ${renderChapterFooter(chapter)}
         </section>`).join('');
 
     return `<div class="dragon-config-workspace dragon-config-all-workspace" data-config-editable-workspace>
@@ -114,6 +121,11 @@ export function renderAllConfigWorkspace({
                 </div>
                 <div class="dragon-config-capsule-row">
                     <div class="dragon-config-tag-filters" role="toolbar" aria-label="参数章节导航">${capsules}</div>
+                    <button class="dragon-config-bilingual-toggle" type="button"
+                            data-config-bilingual-toggle data-active="${Boolean(bilingual)}"
+                            aria-pressed="${Boolean(bilingual)}" aria-label="${bilingualAction}" title="${bilingualAction}">
+                        ${renderIcon('tags', 'dragon-btn-icon')}<span>双语渲染</span>
+                    </button>
                     <div class="dragon-config-capsule-mode" role="group" aria-label="胶囊点击行为">
                         <button type="button" data-config-capsule-mode="jump" data-active="true" aria-pressed="true">定位</button>
                         <button type="button" data-config-capsule-mode="filter" data-active="false" aria-pressed="false">过滤</button>
@@ -128,6 +140,7 @@ export function renderAllConfigWorkspace({
             </footer>
         </section>
         ${renderModelPickerDialog()}
+        ${renderDatasetDialog()}
     </div>`;
 }
 

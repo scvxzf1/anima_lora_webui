@@ -20,7 +20,7 @@ def test_training_monitor_does_not_repeat_dashboard_entry():
 
 def test_dashboard_and_history_use_safe_semantic_actions():
     dashboard = _read("js/dragon-ui/pages/dashboard.js")
-    history = _read("js/dragon-ui/pages/history-view.js")
+    history = _read("js/dragon-ui/pages/history-list-view.js")
     image_test = _read("js/dragon-ui/pages/image-test.js")
     queue_view = _read("js/dragon-ui/pages/queue-view.js")
     controls = _read("js/dragon-ui/pages/training-controls.js")
@@ -28,8 +28,7 @@ def test_dashboard_and_history_use_safe_semantic_actions():
     assert "window.confirm('确认停止当前训练吗？" in dashboard
     assert "model.status.status = 'idle'" not in dashboard
     assert 'href="#history/${encodeURIComponent(task.id || \'\')}"' in dashboard
-    history_view = _read("js/dragon-ui/pages/history-view.js")
-    assert 'href="#history/${encodeURIComponent(task.id || \'\')}"' in history_view
+    assert 'href="#history/${encodeURIComponent(task.id || \'\')}"' in history
     assert 'role="button" tabindex="0"' not in history
     assert "window.confirm('确认停止当前推理吗？" in image_test
     assert '<main class="dragon-tool-panel dragon-queue-worklist' not in queue_view
@@ -41,7 +40,7 @@ def test_dashboard_and_history_use_safe_semantic_actions():
 def test_history_detail_returns_to_the_page_that_opened_it():
     entry = _read("js/dragon-ui/index.js")
     navigation = _read("js/dragon-ui/history-return-navigation.js")
-    controller = _read("js/dragon-ui/pages/history.js")
+    controller = _read("js/dragon-ui/pages/history-detail.js")
     view = _read("js/dragon-ui/pages/history-view.js")
 
     assert "trackHistoryDetailEntry(acceptedHash, nextHash)" in entry
@@ -59,8 +58,10 @@ def test_history_detail_returns_to_the_page_that_opened_it():
 
 
 def test_history_page_uses_complete_backend_contract_and_archive_workspace():
-    controller = _read("js/dragon-ui/pages/history.js")
-    view = _read("js/dragon-ui/pages/history-view.js")
+    controller = _read("js/dragon-ui/pages/history.js") + _read("js/dragon-ui/pages/history-detail.js")
+    detail_view = _read("js/dragon-ui/pages/history-view.js")
+    list_view = _read("js/dragon-ui/pages/history-list-view.js")
+    model = _read("js/dragon-ui/pages/history-model.js")
     css = _read("css/dragon/03-dragon-dashboard.css")
 
     assert "/api/training/history?limit=200" in controller
@@ -70,22 +71,24 @@ def test_history_page_uses_complete_backend_contract_and_archive_workspace():
     assert "'/api/training/resume'" in controller
     assert "'/api/training/queue/resume'" in controller
     assert "window.confirm(`确认${action}" in controller
-    assert "task.name" in view
-    assert "task.group" in view
-    assert "task.started_at_text" in view
-    assert "task.config_snapshot" in view
-    assert "payload.config_toml" in view
-    assert 'type="search" name="history_search" autocomplete="off"' in view
-    assert 'name="history_status"' in view
+    assert "task.name" in model
+    assert "task.group" in detail_view
+    assert "task.started_at_text" in detail_view
+    assert "task.config_snapshot" in detail_view
+    assert "payload.config_toml" in detail_view
+    assert 'type="search" name="history_search" autocomplete="off"' in list_view
+    assert 'name="history_${key}"' in list_view
+    assert "key === 'status' ? ' data-history-status'" in list_view
     for state in ("done", "interrupted", "canceled", "compiling"):
-        assert state in view
-    assert 'width="${escapeAttribute(image.width || 1)}"' in view
-    assert 'height="${escapeAttribute(image.height || 1)}"' in view
-    assert 'loading="lazy"' in view
-    assert "Intl.DateTimeFormat" in view
-    assert "historyFilterOptionAvailable" in view
-    assert "${disabled ? ' disabled' : ''}" in view
-    assert "expandArchiveScopeForMatches(state)" in controller
+        assert state in model
+    assert 'width="${escapeAttribute(image.width || 1)}"' in detail_view
+    assert 'height="${escapeAttribute(image.height || 1)}"' in detail_view
+    assert 'loading="lazy"' in detail_view
+    assert "Intl.DateTimeFormat" in detail_view
+    assert "historyFilterOptionAvailable" in list_view
+    assert "historyFilterOptionAvailable(tasks, key, value) ? '' : ' disabled'" in list_view
+    assert "resolveArchiveScopeForMatches(state, key, filtered)" in controller
+    assert "createHistorySearchIndex(state.tasks)" in controller
     assert "expanded = { ...state.filters, archived: 'all' }" in controller
     collection_controller = _read("js/dragon-ui/pages/history-collections-controller.js")
     assert "/api/training/history/collections/settings" in controller
@@ -93,7 +96,7 @@ def test_history_page_uses_complete_backend_contract_and_archive_workspace():
     assert "/api/training/history/batch" in collection_controller
     assert "renderHistoryCollectionWorkbench" in controller
     assert "handleCollectionDrop" in collection_controller
-    assert "data-history-collections" not in view
+    assert "data-history-collections" not in list_view
     assert "resultsHtml: renderHistoryCollectionWorkbench" in controller
     collections = _read("js/dragon-ui/pages/history-collections.js")
     assert "COLLECTION WORKBENCH" in collections
@@ -118,10 +121,10 @@ def test_history_page_uses_complete_backend_contract_and_archive_workspace():
     assert "dragon-history-task-sparkline-tooltip" in collections
     assert "Min Loss" in collections and "Max Loss" in collections
     assert 'tabindex="0"' in collections
-    assert 'data-count-state="${counts[key] > 0 ? \'nonzero\' : \'zero\'}"' in view
+    assert 'data-count-state="${counts[key] > 0 ? \'nonzero\' : \'zero\'}"' in list_view
     assert "dragon-history-config-collapsed" not in collections
-    assert 'class="dragon-history-advanced"' in view
-    assert "高级筛选" in view
+    assert 'class="dragon-history-advanced"' in list_view
+    assert "高级筛选" in list_view
     assert "{ renderResults, setStatus }" in collection_controller
     shared_drag = _read("js/dragon-ui/ordered-drag-target.js")
     dataset_editor = _read("js/dragon-ui/pages/dataset-editor.js")
@@ -149,17 +152,18 @@ def test_history_page_uses_complete_backend_contract_and_archive_workspace():
     assert ".dragon-history-preview-grid" in css
 
 
-def test_history_detail_tabs_use_fluid_width_and_content_breakpoints():
+def test_history_detail_tabs_keep_metrics_charts_full_width_with_content_breakpoints():
     workbench_css = _read("css/dragon/03a-dragon-history-workbench.css")
 
     assert ".dragon-history-page,.dragon-history-detail-page{" in workbench_css
     assert "max-width:2880px" in workbench_css
     assert "container:dragon-history-detail / inline-size" in workbench_css
-    assert "@container dragon-history-detail (min-width:1600px)" in workbench_css
-    assert 'data-history-detail-panel="metrics"' in workbench_css
-    assert "grid-template-columns:minmax(0,2fr) minmax(360px,.8fr)" in workbench_css
-    assert "repeat(auto-fit,minmax(min(100%,220px),1fr))" in workbench_css
-    assert "repeat(auto-fit,minmax(min(100%,320px),1fr))" in workbench_css
+    assert "@container dragon-history-detail (min-width:1600px)" not in workbench_css
+    assert "grid-template-columns:minmax(0,2fr) minmax(360px,.8fr)" not in workbench_css
+    assert ".dragon-history-system-chart-shell" in workbench_css
+    assert "aspect-ratio:3/1" in workbench_css
+    assert "repeat(auto-fill,minmax(min(100%,220px),1fr))" in workbench_css
+    assert "grid-template-columns:repeat(3,minmax(0,1fr))" in workbench_css
     assert "@container dragon-history-detail (max-width:960px)" in workbench_css
     assert "@container dragon-history-detail (max-width:620px)" in workbench_css
 
@@ -394,6 +398,7 @@ def test_config_and_preview_protect_unsaved_or_unread_state():
     controls = _read("js/dragon-ui/pages/training-controls.js")
     preview = _read("js/dragon-ui/pages/preview-workspace.js")
     css = _read("css/dragon/04-dragon-config.css")
+    controls_css = _read("css/dragon/02a-dragon-controls.css")
     assert "renderConfigLoadError" in config
     assert "不会展示默认值，也不会允许保存或启动训练" in config
     assert "beforeLeave: () => confirmConfigDiscard" in config
@@ -403,7 +408,7 @@ def test_config_and_preview_protect_unsaved_or_unread_state():
     assert "已恢复默认路径；点击“保存路径设置”后生效。" in preview
     restore_body = preview[preview.index("function restoreDefaults"):preview.index("function syncPreviewDirty")]
     assert "saveSettings(" not in restore_body
-    assert ".dragon-input:focus-visible" in css
+    assert ".dragon-input:focus-visible" in controls_css
     assert ".dragon-config-load-error" in css
 
 
@@ -414,7 +419,7 @@ def test_config_fields_expose_native_form_and_live_status_contracts():
     assert 'name="${name}"' in config
     assert 'autocomplete="off"' in config
     assert 'for="${fieldId}"' in config
-    assert 'aria-checked="${value}"' in config
+    assert 'aria-checked="${checked}"' in config
     assert "toggle.setAttribute('aria-checked'" in config
     assert 'aria-haspopup="dialog"' in help_view
     assert 'aria-controls="dragon-config-help-dialog"' in help_view
@@ -451,10 +456,10 @@ def test_primary_navigation_exposes_centered_workspace_routes_without_duplicate_
     assert "const PRIMARY_NAV_ITEMS = [" in nav
     assert "{ id: 'training-config', label: '训练配置', hash: '#config/training-config' }" in nav
     assert "{ id: 'datasets', label: '数据集', hash: '#dataset-editor' }" in nav
-    assert "{ id: 'history', label: '训练历史', hash: '#history' }" in nav
+    assert "{ id: 'training-tasks', label: '训练任务', hash: '#page/live-training' }" in nav
     assert "{ id: 'model-config', label: '模型配置', hash: '#model-config' }" in nav
-    assert "{ id: 'live-training', label: '当前监控', hash: '#page/live-training' }" in nav
-    assert "{ id: 'queue', label: '训练队列', hash: '#page/queue' }" in nav
+    assert "{ id: 'history', label: '训练历史', hash: '#history' }" not in nav
+    assert "{ id: 'queue', label: '训练队列', hash: '#page/queue' }" not in nav
     assert "PRIMARY_NAV_ITEMS.map(renderPrimaryNavItem)" in nav
     assert 'data-primary-nav="${item.id}"' in nav
     shortcut_catalog = nav[nav.index("const NAV_SHORTCUTS = ["):nav.index("];", nav.index("const NAV_SHORTCUTS = ["))]
@@ -465,11 +470,50 @@ def test_primary_navigation_exposes_centered_workspace_routes_without_duplicate_
     assert "icon: 'folder'" not in shortcut_catalog
     assert "document.querySelectorAll('.dragon-nav-mobile-link[data-sub-id]')" in nav
     assert "const activePrimaryId" in nav
+    assert "trainingTasksActive" in nav
+    for route in ("#page/live-training", "#live-training", "#page/queue", "#queue", "#history"):
+        assert route in nav
     assert "'global-settings': hash.startsWith('#global-settings')" in nav
     assert ".dragon-nav-primary-link[data-active=\"true\"]" in css
     assert ".dragon-nav-primary-link[data-active=\"true\"]::after" in css
     assert ".dragon-nav-utility-button[data-active=\"true\"]" in css
     assert ".dragon-nav-mobile-shortcut[data-active=\"true\"]" in css
+
+
+def test_training_task_pages_share_segmented_navigation_and_keep_deep_links():
+    router = _read("js/dragon-ui/router.js")
+    workspace_nav = _read("js/dragon-ui/training-workspace-nav.js")
+    controls_css = _read("css/dragon/02a-dragon-controls.css")
+    live_css = _read("css/dragon/07a-dragon-live-workbench.css")
+
+    assert "renderTrainingWorkspaceNav(pageType)" in router
+    assert "mountElement.innerHTML = renderTrainingWorkspaceNav(pageType)" in router
+    assert "const currentWrapper = mountElement.querySelector('.dragon-page-wrapper')" in router
+    assert "currentWrapper.classList.add('dragon-page-leave')" in router
+    assert "mountElement.firstElementChild.classList.add('dragon-page-leave')" not in router
+    for page, label, route in (
+        ("live-training", "当前监控", "#page/live-training"),
+        ("queue", "训练队列", "#page/queue"),
+        ("history", "训练历史", "#history"),
+    ):
+        assert f"page: '{page}', label: '{label}', hash: '{route}'" in workspace_nav
+    assert 'aria-label="训练任务视图"' in workspace_nav
+    assert 'aria-current="page"' in workspace_nav
+    assert ".dragon-training-workspace-tabs" in controls_css
+    assert "grid-template-columns: repeat(3, minmax(0, 1fr));" in controls_css
+    assert "position: sticky;" in controls_css
+    assert "grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);" in controls_css
+    assert "var(--dragon-training-workspace-height)" in live_css
+
+
+def test_static_file_entry_explains_that_webui_service_is_required():
+    index = _read("index.html")
+
+    assert "window.location.protocol === 'file:'" in index
+    assert "document.documentElement.dataset.staticFile = 'true'" in index
+    assert 'class="static-file-warning" role="alert"' in index
+    assert "请通过 WebUI 服务打开页面" in index
+    assert ".venv/bin/python tasks.py web --host 127.0.0.1 --port 20102" in index
 
 
 def test_live_monitor_exposes_current_task_context():
@@ -746,6 +790,10 @@ def test_training_preset_library_imports_and_saves_as_editable_config():
     assert '[data-training-preset-action="save-updates"]' in css
     assert "onSaveChanges: () => saveCurrentChanges?.() ?? false" in page
     assert "await state.onSaveChanges()" in library
+    assert "pageState.onDirtyChange = (dirty) => libraryController?.updateDirty(dirty)" in page
+    assert "state.onDirtyChange?.(state.dirty)" in page
+    assert "button.disabled = saving || !state.dirty || !state.context.configFile" in library
+    assert "syncSaveUpdatesButton(library, state);" in library
 
 
 def test_training_preset_manager_refreshes_independently_from_atomic_editable_pane():

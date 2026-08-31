@@ -1,4 +1,9 @@
+import json
+import shutil
+import subprocess
 from pathlib import Path
+
+import pytest
 
 
 STATIC = Path(__file__).resolve().parents[1] / "web" / "static"
@@ -73,7 +78,7 @@ def test_all_config_view_has_global_search_navigation_and_change_summary() -> No
         assert contract in view
     assert "data-config-section-jump" not in view
     assert "data-config-sections" not in view
-    assert "state.dirtyKeys = new Set(Object.keys(rawChanges))" in page
+    assert "replaceConfigDirtyKeys(state, Object.keys(rawChanges))" in page
     assert "data-config-dirty-count" in page
     assert "data-config-changed-only" in page
     assert "matchesChanged" in page
@@ -90,9 +95,9 @@ def test_all_config_restore_is_explicit_and_skips_unknown_defaults() -> None:
 
 def test_all_config_layout_bounds_fields_and_collapses_preset_library() -> None:
     css = _read("css/dragon/04c-dragon-config-all.css")
-    entry = _read("css/dragon-style.css")
+    route_styles = _read("js/dragon-ui/route-styles.js")
 
-    assert "04c-dragon-config-all.css" in entry
+    assert "04c-dragon-config-all.css" in route_styles
     assert ".dragon-config-block-grid" in css
     assert "grid-auto-flow: row dense" in css
     assert "grid-auto-rows: 132px" in css
@@ -119,6 +124,118 @@ def test_all_config_persists_view_and_sidebar_preferences() -> None:
     assert 'data-config-view-mode="all"' in view
     assert "anima_dragon_config_ui" in preferences
     assert "localStorage.setItem" in preferences
+    assert "preferredConfigCapsuleMode()" in page
+    assert "persistConfigCapsuleMode(state.capsuleMode)" in page
+    assert "preferredConfigBilingual()" in page
+    assert "persistConfigBilingual(state.bilingual)" in page
+    assert "data-config-bilingual-toggle" in view
+    assert "data-config-bilingual" in page
+    assert "dragon-config-label-key" in page
+    assert "dragon-config-label-key" in _read("js/dragon-ui/pages/config-training-data.js")
+    assert "const CONFIG_CAPSULE_MODES = new Set(['jump', 'filter'])" in preferences
+    assert "export function preferredConfigCapsuleMode" in preferences
+    assert "export function persistConfigCapsuleMode" in preferences
+    assert "export function preferredConfigBilingual" in preferences
+    assert "export function persistConfigBilingual" in preferences
+
+    assert view.index("data-config-bilingual-toggle") < view.index("data-config-capsule-mode")
+    config_css = _read("css/dragon/04-dragon-config.css")
+    all_css = _read("css/dragon/04c-dragon-config-all.css")
+    assert '.dragon-config-label-key {\n    display: none;' in config_css
+    assert '[data-config-bilingual="true"] .dragon-config-label-key' in config_css
+    assert ".dragon-config-bilingual-toggle[data-active=\"true\"]" in all_css
+
+
+def test_config_capsule_mode_preference_round_trips_without_overwriting_siblings() -> None:
+    if not shutil.which("node"):
+        pytest.skip("node is required for config preference checks")
+    module_uri = (STATIC / "js/dragon-ui/pages/config-ui-preferences.js").resolve().as_uri()
+    script = f"""
+const storage = new Map([
+  ['anima_dragon_config_ui', JSON.stringify({{ viewMode: 'all', presetCollapsed: true, capsuleMode: 'unknown' }})],
+]);
+globalThis.localStorage = {{
+  getItem(key) {{ return storage.has(key) ? storage.get(key) : null; }},
+  setItem(key, value) {{ storage.set(key, String(value)); }},
+}};
+const mod = await import({json.dumps(module_uri + '?capsule-mode-test')});
+const invalidFallback = mod.preferredConfigCapsuleMode();
+const customFallback = mod.preferredConfigCapsuleMode('filter');
+mod.persistConfigCapsuleMode('filter');
+const afterFilter = JSON.parse(storage.get('anima_dragon_config_ui'));
+mod.persistConfigCapsuleMode('jump');
+const afterJump = JSON.parse(storage.get('anima_dragon_config_ui'));
+console.log(JSON.stringify({{
+  invalidFallback,
+  customFallback,
+  afterFilter,
+  afterJump,
+}}));
+"""
+    result = subprocess.run(
+        ["node", "--input-type=module", "--eval", script],
+        cwd=STATIC.parents[1],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=20,
+    )
+    payload = json.loads(result.stdout)
+
+    assert payload["invalidFallback"] == "jump"
+    assert payload["customFallback"] == "filter"
+    assert payload["afterFilter"] == {
+        "viewMode": "all",
+        "presetCollapsed": True,
+        "capsuleMode": "filter",
+    }
+    assert payload["afterJump"]["capsuleMode"] == "jump"
+    assert payload["afterJump"]["viewMode"] == "all"
+    assert payload["afterJump"]["presetCollapsed"] is True
+
+
+def test_config_bilingual_preference_round_trips_without_overwriting_siblings() -> None:
+    if not shutil.which("node"):
+        pytest.skip("node is required for config preference checks")
+    module_uri = (STATIC / "js/dragon-ui/pages/config-ui-preferences.js").resolve().as_uri()
+    script = f"""
+const storage = new Map([
+  ['anima_dragon_config_ui', JSON.stringify({{ viewMode: 'all', presetCollapsed: true, capsuleMode: 'filter', bilingual: 'yes' }})],
+]);
+globalThis.localStorage = {{
+  getItem(key) {{ return storage.has(key) ? storage.get(key) : null; }},
+  setItem(key, value) {{ storage.set(key, String(value)); }},
+}};
+const mod = await import({json.dumps(module_uri + '?bilingual-test')});
+const invalidFallback = mod.preferredConfigBilingual();
+const customFallback = mod.preferredConfigBilingual(true);
+mod.persistConfigBilingual(true);
+const afterTrue = JSON.parse(storage.get('anima_dragon_config_ui'));
+mod.persistConfigBilingual(false);
+const afterFalse = JSON.parse(storage.get('anima_dragon_config_ui'));
+console.log(JSON.stringify({{ invalidFallback, customFallback, afterTrue, afterFalse }}));
+"""
+    result = subprocess.run(
+        ["node", "--input-type=module", "--eval", script],
+        cwd=STATIC.parents[1],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=20,
+    )
+    payload = json.loads(result.stdout)
+
+    assert payload["invalidFallback"] is False
+    assert payload["customFallback"] is True
+    assert payload["afterTrue"] == {
+        "viewMode": "all",
+        "presetCollapsed": True,
+        "capsuleMode": "filter",
+        "bilingual": True,
+    }
+    assert payload["afterFalse"]["bilingual"] is False
+    assert payload["afterFalse"]["viewMode"] == "all"
+    assert payload["afterFalse"]["presetCollapsed"] is True
 
 
 def test_config_fields_show_dirty_state_and_support_single_field_undo() -> None:
@@ -127,8 +244,9 @@ def test_config_fields_show_dirty_state_and_support_single_field_undo() -> None:
 
     assert "data-config-field-key" in page
     assert "data-config-reset-field" in page
-    assert "const dirty = state.dirtyKeys.has(field.dataset.configFieldKey)" in page
-    assert "if (reset) reset.hidden = !dirty" in page
+    dirty_state = _read("js/dragon-ui/pages/config-dirty-state.js")
+    assert "const dirty = state.dirtyKeys.has(field.dataset.configFieldKey)" in dirty_state
+    assert "if (reset && reset.hidden === dirty) reset.hidden = !dirty" in dirty_state
     assert "setConfigControlValue(input, displayConfigValue(key, state.baselineValues))" in page
     assert '.dragon-field[data-dirty="true"]::before' in css
     assert '.dragon-field[data-dirty="true"] .dragon-field-reset' in css
@@ -290,17 +408,24 @@ def test_grouped_config_renders_complete_structured_field_help() -> None:
     page = _read("js/dragon-ui/pages/config-page.js")
     help_view = _read("js/dragon-ui/pages/config-field-help.js")
     css = _read("css/dragon/04-dragon-config.css")
+    controls_css = _read("css/dragon/02a-dragon-controls.css")
 
     for heading in ['怎么设置', '收益', '代价', '风险', '推荐', '补充']:
         assert heading in help_view
     assert "normalizeHelpItems(value)" in help_view
-    assert "bindConfigFieldHelpDialog(wrapper, FIELD_HELP_ZH)" in page
-    assert "resolveConfigFieldHelp(key, label, FIELD_HELP_ZH)" in page
+    assert "bindConfigFieldHelpDialog(wrapper, loadFieldHelpCatalog)" in page
+    assert "FIELD_HELP_SUMMARY_ZH[key]" in page
+    assert "import('../../config/catalog/field-help.js?v=" in page
+    assert "import { FIELD_HELP_ZH }" not in page
     assert "const help = resolveConfigFieldHelp(key, label, helpCatalog)" in help_view
+    assert "await resolveHelpCatalog(helpCatalogSource)" in help_view
     assert "当前字段尚无专项说明" in help_view
     assert "renderConfigHelpButton(key, label)" in page
     assert 'aria-haspopup="dialog"' in help_view
     assert '<dialog class="dragon-config-help-dialog"' in help_view
+    assert 'class="dragon-icon-button"' in help_view
+    assert '.dragon-icon-button {' in controls_css
+    assert 'border-radius: 50%' in controls_css
     assert "dialog.showModal()" in help_view
     assert "event.target === dialog" in help_view
     assert 'class="dragon-field-help"' not in help_view
@@ -308,6 +433,30 @@ def test_grouped_config_renders_complete_structured_field_help() -> None:
     assert '.dragon-config-help-dialog-body' in css
     assert 'grid-template-columns: repeat(2, minmax(0, 1fr))' in css
     assert 'data-help-open="true"' not in css
+
+
+def test_config_help_summary_matches_full_catalog() -> None:
+    if not shutil.which("node"):
+        pytest.skip("node is required for config help catalog checks")
+    script = """
+import { FIELD_HELP_ZH } from './web/static/js/config/catalog/field-help.js';
+import { FIELD_HELP_SUMMARY_ZH } from './web/static/js/config/catalog/field-help-summary.js';
+const expected = Object.fromEntries(Object.entries(FIELD_HELP_ZH).map(([key, help]) => [key, String(help?.summary || help?.['作用'] || '').trim()]));
+const keys = [...new Set([...Object.keys(expected), ...Object.keys(FIELD_HELP_SUMMARY_ZH)])];
+const mismatches = keys.filter((key) => expected[key] !== FIELD_HELP_SUMMARY_ZH[key]);
+console.log(JSON.stringify({ expected: Object.keys(expected).length, summaries: Object.keys(FIELD_HELP_SUMMARY_ZH).length, mismatches }));
+"""
+    result = subprocess.run(
+        ["node", "--input-type=module", "--eval", script],
+        cwd=STATIC.parents[1],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=20,
+    )
+    payload = json.loads(result.stdout)
+    assert payload["expected"] == payload["summaries"]
+    assert payload["mismatches"] == []
 
 
 def test_advanced_config_fields_visible_in_flat_view_have_help_coverage() -> None:
@@ -330,6 +479,7 @@ def test_advanced_config_fields_visible_in_flat_view_have_help_coverage() -> Non
     training_keys = (
         "model_family",
         "compile_dynamic_seq",
+        "compile_seq_bands",
         "activation_memory_budget",
         "train_adaln",
         "cpu_offload_checkpointing",

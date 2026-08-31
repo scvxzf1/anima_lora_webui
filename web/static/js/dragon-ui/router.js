@@ -7,9 +7,10 @@
  *   3. { html: string, onMount: (wrapper) => void }
  */
 
-import { findSubItem, isConfigCategory } from './category-map.js?v=dragon-ui-20260824v44';
+import { findSubItem, isConfigCategory } from './category-map.js?v=dragon-ui-20260826v45';
 import { scanForReveal } from './animations.js?v=dragon-ui-20260824v69';
 import { dragonScrollBehavior, isDragonMotionEnabled } from './motion.js?v=dragon-ui-20260824v1';
+import { renderTrainingWorkspaceNav } from './training-workspace-nav.js?v=dragon-ui-20260828v1';
 
 let mountElement = null;
 let currentPage = null;
@@ -119,7 +120,7 @@ function focusMountedConfigCategory(categoryId, subId) {
 async function renderPage(pageType, context) {
     const loader = pageLoaders[pageType];
     if (!loader) {
-        mountElement.innerHTML = '<div class="dragon-empty-state"><p>页面暂未实现</p></div>';
+        mountElement.innerHTML = `${renderTrainingWorkspaceNav(pageType)}<div class="dragon-empty-state"><p>页面暂未实现</p></div>`;
         return;
     }
 
@@ -139,8 +140,9 @@ async function renderPage(pageType, context) {
     }
 
     // Fade out current content
-    if (currentPage && mountElement.firstElementChild && isDragonMotionEnabled()) {
-        mountElement.firstElementChild.classList.add('dragon-page-leave');
+    const currentWrapper = mountElement.querySelector('.dragon-page-wrapper');
+    if (currentPage && currentWrapper && isDragonMotionEnabled()) {
+        currentWrapper.classList.add('dragon-page-leave');
         await new Promise((r) => setTimeout(r, 200));
         if (sequence !== navigationSequence) return;
     }
@@ -156,7 +158,7 @@ async function renderPage(pageType, context) {
     } catch (error) {
         if (sequence !== navigationSequence) return;
         currentPage = { pageType, context, beforeLeave: null, onUnmount: null };
-        renderLoadError(error);
+        renderLoadError(pageType, error);
         console.error(`[dragon-ui] ${pageLabel(pageType)}加载失败`, error);
         return false;
     }
@@ -164,7 +166,7 @@ async function renderPage(pageType, context) {
         content?.onUnmount?.();
         return;
     }
-    mountElement.innerHTML = '';
+    mountElement.innerHTML = renderTrainingWorkspaceNav(pageType);
     mountElement.removeAttribute('aria-busy');
     if (content) {
         const wrapper = document.createElement('div');
@@ -203,6 +205,7 @@ function renderLoadingState(pageType) {
     if (!mountElement) return;
     mountElement.setAttribute('aria-busy', 'true');
     mountElement.innerHTML = `
+        ${renderTrainingWorkspaceNav(pageType)}
         <div class="dragon-route-loading" role="status" aria-live="polite">
             <span class="dragon-spinner" aria-hidden="true"></span>
             <div><strong>正在打开${pageLabel(pageType)}…</strong><span>正在读取最新内容</span></div>
@@ -210,11 +213,11 @@ function renderLoadingState(pageType) {
     `;
 }
 
-function renderLoadError(error) {
+function renderLoadError(pageType, error) {
     if (!mountElement) return;
     mountElement.removeAttribute('aria-busy');
     const message = escapeHtml(error?.message || '页面数据读取失败');
-    mountElement.innerHTML = `<div class="dragon-empty-state" role="alert"><p>${message}</p><p>请确认 WebUI 服务仍在运行，然后刷新重试。</p></div>`;
+    mountElement.innerHTML = `${renderTrainingWorkspaceNav(pageType)}<div class="dragon-empty-state" role="alert"><p>${message}</p><p>请确认 WebUI 服务仍在运行，然后刷新重试。</p></div>`;
 }
 
 function pageLabel(pageType) {
@@ -224,6 +227,10 @@ function pageLabel(pageType) {
         'image-test': '生图测试', environment: '环境检测',
         'dataset-editor': '数据集配置', 'model-config': '模型配置',
         'global-settings': '全局设置', 'preview-workspace': '预览工作区',
+        captioning: '外部 API 打标', tagging: '外部 API 打标',
+        'captioning-prompts': '提示词预设',
+        'captioning-results': '最终打标结果',
+        'captioning-logs': '打标日志',
     };
     return labels[pageType] || '页面';
 }

@@ -4,18 +4,34 @@ const validationTimers = new WeakMap();
 const validationVersions = new WeakMap();
 
 export function bindDatasetPathTools(api, root, { onFeedback } = {}) {
+    const cleanups = [];
     root.querySelectorAll('[data-dataset-row]').forEach((row) => {
         const input = row.querySelector('[data-field="source_dir"]');
         if (!input) return;
         const copyButton = row.querySelector('[data-dataset-copy]');
-        input.addEventListener('input', () => {
+        const onInput = () => {
             if (copyButton) copyButton.disabled = !String(input.value || '').trim();
             schedulePathValidation(api, row, input);
+        };
+        const copy = row.querySelector('[data-dataset-copy]');
+        const browse = row.querySelector('[data-dataset-browse]');
+        const onCopy = () => copyPath(input, onFeedback);
+        const onBrowse = () => chooseDirectory(input, onFeedback);
+        input.addEventListener('input', onInput);
+        copy?.addEventListener('click', onCopy);
+        browse?.addEventListener('click', onBrowse);
+        cleanups.push(() => {
+            input.removeEventListener('input', onInput);
+            copy?.removeEventListener('click', onCopy);
+            browse?.removeEventListener('click', onBrowse);
+            const timer = validationTimers.get(input);
+            if (timer) window.clearTimeout(timer);
+            validationTimers.delete(input);
+            validationVersions.set(input, Number(validationVersions.get(input) || 0) + 1);
         });
-        row.querySelector('[data-dataset-copy]')?.addEventListener('click', () => copyPath(input, onFeedback));
-        row.querySelector('[data-dataset-browse]')?.addEventListener('click', () => chooseDirectory(input, onFeedback));
         schedulePathValidation(api, row, input, 80);
     });
+    return () => cleanups.forEach((cleanup) => cleanup());
 }
 
 export function refreshDatasetPathStatus(api, row) {

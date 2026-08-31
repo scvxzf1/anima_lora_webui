@@ -30,7 +30,7 @@ export function bindTrainingPresetLibrary(root, context, {
 } = {}) {
     const library = root.querySelector('[data-training-preset-library]');
     if (!library) return null;
-    const state = { context, groups: context.groups || [], draggedFile: '', onConfigFileChange, onSaveChanges };
+    const state = { context, groups: context.groups || [], draggedFile: '', dirty: false, onConfigFileChange, onSaveChanges };
     const viewportLayout = bindTrainingPresetViewport(library);
     bindLibraryEvents(library, state, beforeContextChange);
     return {
@@ -41,11 +41,15 @@ export function bindTrainingPresetLibrary(root, context, {
                 files: state.context.files,
             };
             const scrollTop = library.querySelector('[data-training-preset-groups]')?.scrollTop || 0;
-            library.innerHTML = renderLibraryContent(state.context);
+            library.innerHTML = renderLibraryContent(state.context, state.dirty);
             bindLibraryEvents(library, state, beforeContextChange);
             const groups = library.querySelector('[data-training-preset-groups]');
             if (groups) groups.scrollTop = scrollTop;
             viewportLayout.schedule();
+        },
+        updateDirty(dirty) {
+            state.dirty = Boolean(dirty);
+            syncSaveUpdatesButton(library, state);
         },
         destroy: () => viewportLayout.destroy(),
     };
@@ -84,7 +88,7 @@ function bindTrainingPresetViewport(library) {
     };
 }
 
-function renderLibraryContent(context) {
+function renderLibraryContent(context, dirty = false) {
     const allGroups = Array.isArray(context.groups) ? context.groups : [];
     const groups = visibleTrainingGroups(allGroups);
     const files = groups.flatMap((group) => group.files || []);
@@ -102,7 +106,7 @@ function renderLibraryContent(context) {
         </section>
         <div class="dragon-training-preset-toolbar">
             <div class="dragon-training-preset-toolbar-actions">
-                <button class="dragon-btn dragon-btn-primary dragon-btn-sm" type="button" data-training-preset-action="save-updates" ${context.configFile && !selected?.readonly && !selected?.locked ? '' : 'disabled'}>${renderIcon('check', 'dragon-btn-icon')}<span>保存更新</span></button>
+                <button class="dragon-btn dragon-btn-primary dragon-btn-sm" type="button" data-training-preset-action="save-updates" ${dirty && context.configFile && !selected?.readonly && !selected?.locked ? '' : 'disabled'}>${renderIcon('check', 'dragon-btn-icon')}<span>保存更新</span></button>
                 <button class="dragon-btn dragon-btn-secondary dragon-btn-sm" type="button" data-training-preset-action="new-group">${renderIcon('folder', 'dragon-btn-icon')}<span>新建分组</span></button>
                 <button class="dragon-btn dragon-btn-secondary dragon-btn-sm" type="button" data-training-preset-action="import">${renderIcon('upload', 'dragon-btn-icon')}<span>导入配置</span></button>
                 <button class="dragon-btn dragon-btn-secondary dragon-btn-sm" type="button" data-training-preset-action="save-as" ${context.configFile ? '' : 'disabled'}>${renderIcon('copy', 'dragon-btn-icon')}<span>另存为</span></button>
@@ -178,8 +182,8 @@ function bindLibraryEvents(library, state, beforeContextChange) {
 
 async function saveCurrentUpdates(library, state) {
     const button = library.querySelector('[data-training-preset-action="save-updates"]');
-    if (!button || !state.onSaveChanges) return;
-    button.disabled = true;
+    if (!button || button.disabled || !state.onSaveChanges) return;
+    syncSaveUpdatesButton(library, state, { saving: true });
     setFeedback(library, '正在保存当前配置…');
     try {
         const saved = await state.onSaveChanges();
@@ -188,7 +192,16 @@ async function saveCurrentUpdates(library, state) {
     } catch (error) {
         setFeedback(library, error.message || '保存当前配置失败', true);
     } finally {
-        button.disabled = false;
+        syncSaveUpdatesButton(library, state);
+    }
+}
+
+function syncSaveUpdatesButton(library, state, { saving = false } = {}) {
+    const button = library.querySelector('[data-training-preset-action="save-updates"]');
+    const selected = (state.context.groups || []).flatMap((group) => group.files || [])
+        .find((file) => file.path === state.context.configFile);
+    if (button) {
+        button.disabled = saving || !state.dirty || !state.context.configFile || Boolean(selected?.readonly || selected?.locked);
     }
 }
 
@@ -419,7 +432,7 @@ async function refreshLibrary(library, state, beforeContextChange, message = '')
         groups: state.groups,
         files: inventory.files || [],
     };
-    library.innerHTML = renderLibraryContent(state.context);
+    library.innerHTML = renderLibraryContent(state.context, state.dirty);
     bindLibraryEvents(library, state, beforeContextChange);
     if (message) setFeedback(library, message);
     clearDropPreview(library, state);

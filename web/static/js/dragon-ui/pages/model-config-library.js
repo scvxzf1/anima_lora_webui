@@ -1,6 +1,6 @@
 /* Grouped model-configuration library with ordered native drag/drop. */
 
-import { renderIcon } from '../icons.js?v=dragon-ui-20260814v43';
+import { renderIcon } from '../icons.js?v=dragon-ui-20260812v35';
 import {
     clearActiveOrderedDropTarget,
     clearOrderedDropTargetIf,

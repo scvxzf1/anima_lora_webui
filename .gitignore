@@ -41,9 +41,11 @@ logs
 .env
 .anima-update-backups
 .anima-webui-settings.toml
+.anima-captioning-secrets.toml
 configs.backup/
 configs/datasets/
 configs/imported/
+configs/captioning/
 configs/web-file-groups.toml
 configs/web-training-history/
 configs/web-training-queue/

@@ -1,6 +1,5 @@
 import { createApiClient } from '../../shared/api.js?v=dragon-ui-20260812v35';
 import { escapeHtml } from '../../shared/format.js?v=dragon-ui-20260812v35';
-import { renderIcon } from '../icons.js?v=dragon-ui-20260817v44';
 import {
     cleanModelItem,
     familyLabel,
@@ -10,8 +9,6 @@ import {
 
 const api = createApiClient();
 
-export const MODEL_QUICK_PATH_KEYS = Object.freeze(MODEL_PATH_FIELDS.map(([key]) => key));
-
 export function orderedModelGroups(payload = {}) {
     const items = Array.isArray(payload.items) ? payload.items.map(cleanModelItem) : [];
     const groups = normalizeModelGroups(Array.isArray(payload.groups) ? payload.groups : [], items);
@@ -20,45 +17,6 @@ export function orderedModelGroups(payload = {}) {
         ...group,
         items: group.item_ids.map((itemId) => byId.get(itemId)).filter(Boolean),
     }));
-}
-
-export function renderModelQuickPickerTrigger() {
-    return `<button class="dragon-btn dragon-btn-secondary dragon-model-quick-trigger" type="button" data-model-quick-action="open">${renderIcon('layers', 'dragon-btn-icon')}<span>快速配置模型</span></button>`;
-}
-
-export function renderModelQuickPickerDialog() {
-    return `
-        <dialog class="dragon-model-quick-dialog" data-model-quick-dialog aria-labelledby="dragon-model-quick-title">
-            <div class="dragon-model-quick-shell">
-                <div class="dragon-model-quick-head">
-                    <div>
-                        <span class="dragon-eyebrow">模型配置库</span>
-                        <h2 id="dragon-model-quick-title">快速配置模型</h2>
-                        <p>全局模型配置 · 分组顺序同步</p>
-                    </div>
-                    <div class="dragon-model-quick-head-actions">
-                        <button class="dragon-icon-button" type="button" data-model-quick-action="refresh" aria-label="刷新模型配置" title="刷新">${renderIcon('refresh')}</button>
-                        <button class="dragon-icon-button" type="button" data-model-quick-action="close" aria-label="关闭快速配置" title="关闭">${renderIcon('x')}</button>
-                    </div>
-                </div>
-                <div class="dragon-model-quick-status" data-model-quick-status role="status" aria-live="polite"></div>
-                <div class="dragon-model-quick-workspace">
-                    <aside class="dragon-model-quick-library" aria-label="模型配置列表">
-                        <label class="dragon-model-quick-search">
-                            <span class="visually-hidden">搜索模型配置</span>
-                            <input class="dragon-input" type="search" autocomplete="off" data-model-quick-search placeholder="搜索名称、模型族或路径…">
-                        </label>
-                        <div class="dragon-model-quick-groups" data-model-quick-list></div>
-                    </aside>
-                    <section class="dragon-model-quick-preview" data-model-quick-preview aria-label="模型路径预览"></section>
-                </div>
-                <div class="dragon-model-quick-footer">
-                    <div class="dragon-model-quick-selection" data-model-quick-selection></div>
-                    <button class="dragon-btn dragon-btn-primary" type="button" data-model-quick-action="apply">应用此配置</button>
-                </div>
-            </div>
-        </dialog>
-    `;
 }
 
 function allItems(state) {

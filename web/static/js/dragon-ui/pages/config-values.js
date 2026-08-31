@@ -1,9 +1,10 @@
-import { FORM_UI_DEFAULTS, NETWORK_ARG_FIELD_MAP } from '../../config/catalog/defaults.js?v=dragon-ui-20260812v35';
+import { FORM_UI_DEFAULTS, NETWORK_ARG_FIELD_MAP } from '../../config/catalog/defaults.js?v=dragon-ui-20260830v2';
 import { coerceNetworkArgValue, formatNetworkArg, parseNetworkArgEntry } from '../../features/anima-app/helpers/network-args.js?v=dragon-ui-20260812v35';
 import { loraAdapterFlagsForKind, loraAdapterKindFromConfig, precisionPreferenceFromConfig, precisionPreferencePatch } from '../../features/anima-app/helpers/config-values.js?v=dragon-ui-20260812v35';
+import { isBooleanConfigField, normalizeBooleanConfigValue } from './config-field-types.js?v=dragon-ui-20260830v1';
 
 function networkArgMap(config) {
-    const entries = Array.isArray(config.network_args) ? config.network_args : [];
+    const entries = Array.isArray(config?.network_args) ? config.network_args : [];
     return new Map(entries.map(parseNetworkArgEntry).filter(Boolean).map((item) => [item.arg, item.value]));
 }
 
@@ -15,15 +16,21 @@ export function displayConfigValue(key, config) {
         const args = networkArgMap(config);
         return coerceNetworkArgValue(args.has(spec.arg) ? args.get(spec.arg) : spec.default, spec);
     }
-    return config[key] ?? FORM_UI_DEFAULTS[key] ?? '';
+    if (isBooleanConfigField(key, config?.[key])) {
+        return normalizeBooleanConfigValue(key, config?.[key]);
+    }
+    return config?.[key] ?? FORM_UI_DEFAULTS[key] ?? '';
 }
 
 export function serializeConfigValue(input, originalValue) {
-    if (input.classList.contains('dragon-toggle')) return input.dataset.checked === 'true';
+    if (input.classList?.contains?.('dragon-toggle')) return input.dataset.checked === 'true';
     if (Array.isArray(originalValue)) {
         return input.value.split(/[\n,]/).map((item) => item.trim()).filter(Boolean);
     }
-    if (typeof originalValue === 'boolean') return input.value === 'true';
+    if (input.type === 'checkbox') return input.checked;
+    if (typeof originalValue === 'boolean' || isBooleanConfigField(input.dataset?.key, originalValue)) {
+        return normalizeBooleanConfigValue(input.dataset?.key, input.value, originalValue);
+    }
     if (typeof originalValue === 'number' || input.type === 'number') {
         return input.value === '' ? '' : Number(input.value);
     }

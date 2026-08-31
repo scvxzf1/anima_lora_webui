@@ -4,7 +4,7 @@
 
 import { createApiClient } from '../../shared/api.js?v=dragon-ui-20260812v35';
 import { connectWebSocket, disconnectWebSocket, onClose, onMessage, onOpen } from '../ws.js?v=dragon-ui-20260812v35';
-import { bindLiveLogTools, renderLogView, updateLogSummary } from './live-training-log-tools.js?v=dragon-ui-20260825v46';
+import { bindLiveLogTools, createLiveLogBindings, renderLogView, updateLogSummary } from './live-training-log-tools.js?v=dragon-ui-20260826v47';
 import {
     applyProgress,
     applySystem,
@@ -36,6 +36,16 @@ import {
     lossDelta,
     renderLiveSidebarBody,
 } from './live-training-workspace.js?v=dragon-ui-20260825v46';
+import { createVisibilityPoller } from '../visibility-poller.js?v=dragon-ui-20260826v2';
+import {
+    createLiveDomBindings,
+    setLiveAttribute,
+    setLiveDataset,
+    setLiveProperty,
+    setLiveText,
+    setLiveWidth,
+} from './live-training-dom.js?v=dragon-ui-20260826v2';
+import { createFrameScheduler } from '../frame-scheduler.js?v=dragon-ui-20260826v1';
 
 const api = createApiClient();
 
@@ -101,11 +111,13 @@ function renderLiveTraining(model) {
 
 function mountLiveTraining(root, model) {
     model.chartSmoothing = Number.isFinite(Number(model.chartSmoothing)) ? Number(model.chartSmoothing) : .2;
-    const renderScheduler = createLiveRenderScheduler((options) => renderLiveState(root, model, options));
+    const dom = createLiveDomBindings(root);
+    const logDom = createLiveLogBindings(root);
+    const renderScheduler = createLiveRenderScheduler((options) => renderLiveState(dom, logDom, model, options));
     const subscriptions = subscribeToLiveEvents(model, renderScheduler);
 
     connectWebSocket();
-    const unbindActions = bindLiveActions(root, model, async () => {
+    const unbindActions = bindLiveActions(root, dom, logDom, model, async () => {
         const snapshot = await readLiveSnapshot();
         if (!snapshot.ok) return false;
         mergeStatusSnapshot(model, snapshot.status, snapshot.metrics, snapshot.logs);
@@ -115,17 +127,21 @@ function mountLiveTraining(root, model) {
         renderScheduler.flush({ chart: true, logs: true, sidebar: true });
         return true;
     });
-    bindLiveLogTools(root, model, (options = {}) => renderLiveState(root, model, options));
+    const unbindLogTools = bindLiveLogTools(logDom, model, (options = {}) => renderLiveState(dom, logDom, model, options));
     const smoothingInput = root.querySelector('[data-live-chart-smoothing]');
+    const smoothingRender = createFrameScheduler(
+        () => renderLiveState(dom, logDom, model, { chart: true, logs: false }),
+        root.ownerDocument?.defaultView,
+    );
     const onSmoothingInput = () => {
         model.chartSmoothing = Math.min(.99, Math.max(0, Number(smoothingInput?.value || 0) / 100));
-        setText(root, '[data-live-chart-smoothing-value]', `${Math.round(model.chartSmoothing * 100)}%`);
-        renderLiveState(root, model, { chart: true, logs: false });
+        setLiveText(dom, 'chartSmoothing', `${Math.round(model.chartSmoothing * 100)}%`);
+        smoothingRender.schedule();
     };
     smoothingInput?.addEventListener('input', onSmoothingInput);
-    renderLiveState(root, model, { chart: false, logs: false });
+    renderLiveState(dom, logDom, model, { chart: false, logs: false });
 
-    const pollTimer = window.setInterval(async () => {
+    const poller = createVisibilityPoller({ poll: async () => {
         const snapshot = await readLiveSnapshot();
         if (snapshot.ok) {
             mergeStatusSnapshot(model, snapshot.status, snapshot.metrics, snapshot.logs);
@@ -139,14 +155,17 @@ function mountLiveTraining(root, model) {
         model.apiError = `${snapshot.error}。请检查 WebUI 服务后重试。`;
         model.lastActivity = model.apiError;
         renderScheduler.flush();
-    }, 5000);
+    }, delay: 5000 });
+    poller.start();
 
     return () => {
-        window.clearInterval(pollTimer);
+        poller.stop();
         subscriptions.forEach((unsubscribe) => unsubscribe());
         smoothingInput?.removeEventListener('input', onSmoothingInput);
+        smoothingRender.cancel();
         renderScheduler.cancel();
         unbindActions?.();
+        unbindLogTools?.();
         disconnectWebSocket();
     };
 }
@@ -205,62 +224,59 @@ function subscribeToLiveEvents(model, renderScheduler) {
     ].filter(Boolean);
 }
 
-function renderLiveState(root, model, options = {}) {
+function renderLiveState(dom, logDom, model, options = {}) {
+    const { root } = dom;
     if (!document.contains(root)) return;
     const mode = liveWorkspaceMode(model.state);
     const delta = lossDelta(model.metrics);
-    root.dataset.liveMode = mode;
-    root.querySelectorAll('[data-live-section]').forEach((section) => { section.hidden = section.dataset.liveSection !== mode; });
-    setText(root, '[data-live-state-text]', stateText(model.state));
-    setText(root, '[data-live-header-title]', liveHeaderTitle(model, mode));
-    setText(root, '[data-live-header-meta]', liveHeaderMeta(model, mode));
-    setText(root, '[data-live-error-message]', model.lastActivity || '训练已异常中断，请检查日志或历史任务。');
-    setText(root, '[data-live-progress-text]', model.total > 0 ? `${model.progressPct.toFixed(1)}%` : '-');
-    setText(root, '[data-live-step-text]', `${model.step} / ${model.total} 步`);
-    setText(root, '[data-live-epoch-text]', `第 ${model.epoch ?? '-'} 轮`);
-    setText(root, '[data-live-metric="live-loss"] strong', formatLoss(model.loss));
-    setText(root, '[data-live-metric="live-loss"] small', delta.text);
-    const lossDetail = root.querySelector('[data-live-metric="live-loss"] small');
-    if (lossDetail) lossDetail.dataset.tone = delta.tone;
-    setText(root, '[data-live-metric="live-lr"] strong', formatLr(model.lr));
-    setText(root, '[data-live-metric="live-rate"] strong', formatRate(model.rate));
-    setText(root, '[data-live-metric-detail="live-eta"]', formatEta(model));
-    setText(root, '[data-live-metric="live-vram"] strong', formatVram(model.vram, null));
-    setText(root, '[data-live-metric="live-vram"] small', `Max ${formatVram(model.vramTotal, null)} · ${peakMetricText(formatVram(model.peakVram, null))}`);
-    setText(root, '[data-live-metric="live-gpu-util"] strong', formatPercent(model.gpuUtil));
-    setText(root, '[data-live-metric="live-gpu-util"] small', peakMetricText(formatPercent(model.peakGpuUtil)));
-    setText(root, '[data-live-metric="live-gpu-temp"] strong', formatTemperature(model.gpuTemp));
-    setText(root, '[data-live-metric="live-gpu-temp"] small', Number(model.gpuTemp) >= 80 ? `高温预警 · 峰值 ${formatTemperature(model.peakGpuTemp)}` : `峰值 ${formatTemperature(model.peakGpuTemp)}`);
-    updateHardwareMeter(root, 'live-vram', hardwarePercent(model.vram, model.vramTotal));
-    updateHardwareMeter(root, 'live-gpu-util', Number(model.gpuUtil) || 0);
-    updateHardwareMeter(root, 'live-gpu-temp', Number(model.gpuTemp) || 0);
-    const temperatureCard = root.querySelector('[data-live-metric="live-gpu-temp"]');
-    if (temperatureCard) temperatureCard.dataset.tone = Number(model.gpuTemp) >= 80 ? 'warning' : 'normal';
-    setText(root, '[data-live-chart-count]', `最近 ${model.metrics.length} 条记录`);
+    const visual = visualState(model.state);
+    const running = isRunningState(model.state);
+    setLiveDataset(root, 'liveMode', mode);
+    dom.sections.forEach((section) => setLiveProperty(section, 'hidden', section.dataset.liveSection !== mode));
+    setLiveText(dom, 'state', stateText(model.state));
+    setLiveText(dom, 'headerTitle', liveHeaderTitle(model, mode));
+    setLiveText(dom, 'headerMeta', liveHeaderMeta(model, mode));
+    setLiveText(dom, 'errorMessage', model.lastActivity || '训练已异常中断，请检查日志或历史任务。');
+    setLiveText(dom, 'progressText', model.total > 0 ? `${model.progressPct.toFixed(1)}%` : '-');
+    setLiveText(dom, 'stepText', `${model.step} / ${model.total} 步`);
+    setLiveText(dom, 'epochText', `第 ${model.epoch ?? '-'} 轮`);
+    setLiveText(dom, 'lossValue', formatLoss(model.loss));
+    setLiveText(dom, 'lossDetail', delta.text);
+    const lossDetail = dom.text.lossDetail;
+    setLiveDataset(lossDetail, 'tone', delta.tone);
+    setLiveText(dom, 'lrValue', formatLr(model.lr));
+    setLiveText(dom, 'rateValue', formatRate(model.rate));
+    setLiveText(dom, 'eta', formatEta(model));
+    setLiveText(dom, 'vramValue', formatVram(model.vram, null));
+    setLiveText(dom, 'vramDetail', `Max ${formatVram(model.vramTotal, null)} · ${peakMetricText(formatVram(model.peakVram, null))}`);
+    setLiveText(dom, 'gpuValue', formatPercent(model.gpuUtil));
+    setLiveText(dom, 'gpuDetail', peakMetricText(formatPercent(model.peakGpuUtil)));
+    setLiveText(dom, 'temperatureValue', formatTemperature(model.gpuTemp));
+    setLiveText(dom, 'temperatureDetail', Number(model.gpuTemp) >= 80 ? `高温预警 · 峰值 ${formatTemperature(model.peakGpuTemp)}` : `峰值 ${formatTemperature(model.peakGpuTemp)}`);
+    setLiveWidth(dom.meters.vram, hardwarePercent(model.vram, model.vramTotal));
+    setLiveWidth(dom.meters.gpu, Number(model.gpuUtil) || 0);
+    setLiveWidth(dom.meters.temperature, Number(model.gpuTemp) || 0);
+    setLiveDataset(dom.temperatureCard, 'tone', Number(model.gpuTemp) >= 80 ? 'warning' : 'normal');
+    setLiveText(dom, 'chartCount', `最近 ${model.metrics.length} 条记录`);
     if (options.sidebar) {
-        const sidebar = root.querySelector('[data-live-sidebar-body]');
-        if (sidebar) sidebar.innerHTML = renderLiveSidebarBody(model);
+        if (dom.sidebar) dom.sidebar.innerHTML = renderLiveSidebarBody(model);
     }
-    renderConnectionState(root, model);
+    renderConnectionState(dom, model);
     if (options.chart !== false) {
-        const chart = root.querySelector('[data-live-chart]');
-        if (chart) chart.innerHTML = renderLossChart(model.metrics, model.chartSmoothing);
+        if (dom.chart) dom.chart.innerHTML = renderLossChart(model.metrics, model.chartSmoothing);
     }
-    if (options.logs) renderLogView(root, model, { forceBottom: options.forceLogBottom });
-    else updateLogSummary(root, model, visibleLogs(model).length);
-    const badge = root.querySelector('[data-live-state]');
-    if (badge) badge.dataset.state = visualState(model.state);
-    const dot = root.querySelector('[data-live-state] .dragon-nav-status-dot');
-    if (dot) dot.dataset.state = visualState(model.state);
-    const fill = root.querySelector('[data-live-progress-fill]');
-    if (fill) fill.style.width = `${model.progressPct}%`;
-    const progress = root.querySelector('[data-live-progress]');
-    if (progress) progress.setAttribute('aria-valuenow', String(Math.round(model.progressPct)));
-    const stop = root.querySelector('[data-tool-action="stop"]');
-    if (stop) {
-        stop.hidden = !isRunningState(model.state);
-        stop.disabled = !isRunningState(model.state);
-    }
+    if (options.logs) renderLogView(logDom, model, { forceBottom: options.forceLogBottom });
+    else updateLogSummary(
+        logDom,
+        model,
+        Number.isFinite(model.visibleLogCount) ? model.visibleLogCount : visibleLogs(model).length,
+    );
+    setLiveDataset(dom.stateBadge, 'state', visual);
+    setLiveDataset(dom.stateDot, 'state', visual);
+    setLiveWidth(dom.progressFill, model.progressPct);
+    setLiveAttribute(dom.progress, 'aria-valuenow', Math.round(model.progressPct));
+    setLiveProperty(dom.stop, 'hidden', !running);
+    setLiveProperty(dom.stop, 'disabled', !running);
 }
 
 function createLiveRenderScheduler(render, delay = 150) {
@@ -334,12 +350,7 @@ export function renderLossChart(metrics, smoothing = .2) {
     `;
 }
 
-function setText(root, selector, value) {
-    const node = root.querySelector(selector);
-    if (node) node.textContent = value;
-}
-
-function bindLiveActions(root, model, refresh) {
+function bindLiveActions(root, dom, logDom, model, refresh) {
     const queue = root.querySelector('[data-tool-action="queue"]');
     const stop = root.querySelector('[data-tool-action="stop"]');
     const retry = root.querySelector('[data-tool-action="retry"]');
@@ -364,7 +375,7 @@ function bindLiveActions(root, model, refresh) {
             model.lastActivity = payload.message || '停止请求已发送';
             dialog?.close('confirmed');
             showFeedback(root, model.lastActivity, 'success');
-            renderLiveState(root, model, { chart: false, logs: false });
+            renderLiveState(dom, logDom, model, { chart: false, logs: false });
         } catch (error) {
             showFeedback(root, error.message || '停止训练失败', 'error');
         } finally {
@@ -391,17 +402,12 @@ function showFeedback(root, message, tone) {
     feedback.classList.add('dragon-config-feedback-visible');
 }
 
-function renderConnectionState(root, model) {
+function renderConnectionState(dom, model) {
     const connection = connectionState(model);
-    const container = root.querySelector('[data-live-connection]');
-    if (container) container.dataset.tone = connection.tone;
-    setText(root, '[data-live-connection-label]', connection.label);
-    setText(root, '[data-live-connection-detail]', connection.detail);
-}
-
-function updateHardwareMeter(root, key, value) {
-    const meter = root.querySelector(`[data-live-metric="${key}"] .dragon-live-meter i`);
-    if (meter) meter.style.width = `${Math.max(0, Math.min(100, Number(value) || 0))}%`;
+    const container = dom.connection;
+    setLiveDataset(container, 'tone', connection.tone);
+    setLiveText(dom, 'connectionLabel', connection.label);
+    setLiveText(dom, 'connectionDetail', connection.detail);
 }
 
 function liveHeaderTitle(model, mode) { return mode === 'running' ? `正在训练：${model.currentTask}` : (mode === 'error' ? '训练异常' : '训练监控工作台'); }

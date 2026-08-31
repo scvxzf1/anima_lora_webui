@@ -1,4 +1,5 @@
-import { SECTION_GROUPS } from './section-groups.js?v=dragon-ui-20260824v36';
+import { SECTION_GROUPS } from './section-groups.js?v=dragon-ui-20260826v37';
+import { isBooleanConfigField } from './config-field-types.js?v=dragon-ui-20260830v1';
 
 const TAG_META = Object.freeze({
     '基础模型路径': { id: 'models', label: '模型', tone: 'required' },
@@ -53,8 +54,8 @@ function spanForField(key, value, options) {
 }
 
 function controlKind(value, options, key) {
+    if (isBooleanConfigField(key, value, options)) return 'toggle';
     if (options) return 'select';
-    if (typeof value === 'boolean') return 'toggle';
     if (typeof value === 'number') return 'number';
     if (key.includes('prompt') || key === 'optimizer_args' || key === 'network_args') return 'textarea';
     return 'text';

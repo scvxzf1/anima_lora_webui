@@ -121,6 +121,7 @@
     /* Layout — nav and header metrics */
     --dragon-nav-height: 44px;
     --dragon-nav-height-mobile: 48px;
+    --dragon-training-workspace-height: 51px;
     --dragon-content-max: 980px;
     --dragon-content-wide: 1024px;
     --dragon-content-pad: 22px;
@@ -176,6 +177,7 @@
 @media (max-width: 833px) {
     :root {
         --dragon-nav-height: var(--dragon-nav-height-mobile);
+        --dragon-training-workspace-height: 56px;
     }
 }
 

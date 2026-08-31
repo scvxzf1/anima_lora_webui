@@ -1,4 +1,4 @@
-import { renderIcon } from '../icons.js?v=dragon-ui-20260816v36';
+import { renderIcon } from '../icons.js?v=dragon-ui-20260812v35';
 import { escapeHtml } from '../../shared/format.js?v=dragon-ui-20260812v35';
 
 const HISTORY_PATH_SPECS = [

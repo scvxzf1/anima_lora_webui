@@ -1,7 +1,7 @@
 /* Dragon history collection workbench: pure rendering and collection helpers. */
 
 import { escapeHtml } from '../../shared/format.js?v=dragon-ui-20260812v35';
-import { filterHistoryTasks, stateText, taskDisplayName } from './history-view.js?v=dragon-ui-20260825v96';
+import { filterHistoryTasks, stateText, taskDisplayName } from './history-model.js?v=dragon-ui-20260828v3';
 
 export const HISTORY_COLLECTION_ALL = '__all__';
 export const HISTORY_COLLECTION_UNGROUPED = '__ungrouped__';
@@ -43,8 +43,8 @@ export function collectionValue(key) {
     return String(key || '').startsWith('collection:') ? String(key).slice(11) : '';
 }
 
-export function renderHistoryCollectionWorkbench(tasks = [], filters = {}, workspace) {
-    const filtered = filterHistoryTasks(tasks, filters);
+export function renderHistoryCollectionWorkbench(tasks = [], filters = {}, workspace, filteredTasks = null) {
+    const filtered = Array.isArray(filteredTasks) ? filteredTasks : filterHistoryTasks(tasks, filters);
     const collections = buildCollections(filtered, workspace.settings);
     const active = resolveActiveCollection(collections, workspace.activeKey);
     workspace.activeKey = active.key;

@@ -35,14 +35,16 @@ export function renderConfigHelpButton(key, label) {
         aria-label="查看${escapeHtml(label)}说明" title="查看说明">?</button>`;
 }
 
-export function bindConfigFieldHelpDialog(root, helpCatalog) {
+export function bindConfigFieldHelpDialog(root, helpCatalogSource) {
     const dialog = ensureConfigHelpDialog(root);
     if (!dialog) return;
     root.querySelectorAll('.dragon-field-help-btn:not([data-help-dialog-bound])').forEach((button) => {
         button.dataset.helpDialogBound = 'true';
-        button.addEventListener('click', () => {
+        button.addEventListener('click', async () => {
             const key = button.dataset.helpKey || '';
             const label = button.dataset.helpLabel || key;
+            const helpCatalog = await resolveHelpCatalog(helpCatalogSource);
+            if (!button.isConnected) return;
             const help = resolveConfigFieldHelp(key, label, helpCatalog);
             dialog.querySelector('[data-config-help-title]').textContent = label;
             dialog.querySelector('[data-config-help-key]').textContent = key;
@@ -50,6 +52,14 @@ export function bindConfigFieldHelpDialog(root, helpCatalog) {
             if (!dialog.open) dialog.showModal();
         });
     });
+}
+
+async function resolveHelpCatalog(source) {
+    try {
+        return typeof source === 'function' ? await source() : source;
+    } catch {
+        return null;
+    }
 }
 
 function ensureConfigHelpDialog(root) {

@@ -552,6 +552,7 @@ def list_dataset_preset_images(
     *,
     source: str = "training",
     limit: int = DATASET_PREVIEW_LIMIT,
+    offset: int = 0,
 ) -> dict[str, Any]:
     _sync_from_facade()
     from web.services.config import datasets as _datasets
@@ -591,6 +592,7 @@ def list_dataset_preset_images(
     listing = _list_dataset_image_files(
         image_dir,
         limit,
+        offset=offset,
         recursive=recursive,
         path_pattern=path_pattern,
     )
@@ -626,7 +628,12 @@ def list_dataset_preset_images(
         "caption_summary": caption_summary,
         "count": len(images),
         "total": listing["total"],
+        "offset": listing["offset"],
         "limit": listing["limit"],
+        "returned": listing["returned"],
+        "next_offset": listing["next_offset"],
+        "has_more_before": listing["has_more_before"],
+        "has_more_after": listing["has_more_after"],
         "images": images,
         "row": row,
         "settings": settings,

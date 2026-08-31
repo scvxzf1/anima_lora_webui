@@ -16,6 +16,7 @@ export function createHistoryState() {
             state: 'all',
             archived: 'active',
             source: 'all',
+            modelFamily: 'all',
             trainingVariant: 'all',
             preprocessPrecision: 'all',
             blockSwapPrecision: 'all',

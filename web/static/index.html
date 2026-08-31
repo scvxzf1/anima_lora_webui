@@ -5,6 +5,19 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="theme-color" content="#000000" id="dragon-theme-color">
     <title>Dragon trainer</title>
+    <style>
+        .static-file-warning { display: none; }
+        html[data-static-file="true"] body > :not(.static-file-warning) { display: none !important; }
+        html[data-static-file="true"] .static-file-warning {
+            display: grid; min-height: 100vh; min-height: 100dvh; box-sizing: border-box;
+            place-content: center; gap: 12px; padding: 32px; background: #f5f6f8;
+            color: #202124; font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            text-align: center;
+        }
+        .static-file-warning h1 { margin: 0; font-size: 22px; letter-spacing: 0; }
+        .static-file-warning p { max-width: 620px; margin: 0; color: #5f6368; }
+        .static-file-warning code { padding: 3px 6px; border-radius: 4px; background: #e8eaed; color: #202124; }
+    </style>
     <link rel="icon" type="image/svg+xml" href="/static/favicon.svg?v=20260517-1">
     <script>
         (() => {
@@ -21,6 +34,10 @@
     <link id="app-ui-stylesheet" rel="stylesheet">
     <script>
         (() => {
+            if (window.location.protocol === 'file:') {
+                document.documentElement.dataset.staticFile = 'true';
+                return;
+            }
             const requestedMode = new URLSearchParams(window.location.search).get('ui');
             const storedMode = (() => {
                 try { return localStorage.getItem('anima_ui_mode'); } catch { return null; }
@@ -41,12 +58,17 @@
                 delete stylesheet.dataset.loaded;
             });
             stylesheet.href = mode === 'dragon'
-                ? '/static/css/dragon-style.css?v=dragon-ui-20260825v143'
+                ? '/static/css/dragon-style.css?v=dragon-ui-20260828v155'
                 : '/static/style.css?v=frontend-chain-20260809-model-config1';
         })();
     </script>
 </head>
 <body>
+    <section class="static-file-warning" role="alert">
+        <h1>请通过 WebUI 服务打开页面</h1>
+        <p>直接打开 <code>web/static/index.html</code> 没有后端 API，训练监控、队列和历史都无法正常工作。</p>
+        <p>请在项目根目录运行 <code>.venv/bin/python tasks.py web --host 127.0.0.1 --port 20102</code>，然后访问服务显示的地址。</p>
+    </section>
     <script>
         if (document.documentElement.dataset.uiMode === 'dragon') {
             document.body.dataset.dragonUi = '';
@@ -57,7 +79,7 @@
         <div id="dragon-nav"></div>
         <main class="dragon-main" id="dragon-main" tabindex="-1"></main>
     </div>
-    <script type="module" src="/static/js/ui-bootstrap.js?v=dragon-ui-20260825v153"></script>
+    <script type="module" src="/static/js/ui-bootstrap.js?v=dragon-ui-20260831v21"></script>
     <header>
         <h1>Dragon trainer</h1>
         <nav>
@@ -500,6 +522,15 @@
                                     <option value="queue">来自队列</option>
                                     <option value="resume">续训</option>
                                     <option value="continue">权重热启动</option>
+                                </select>
+                            </label>
+                            <label>
+                                <span>基座模型</span>
+                                <select id="history-filter-model-family">
+                                    <option value="all">全部</option>
+                                    <option value="anima">Anima</option>
+                                    <option value="krea2_raw">Krea-2</option>
+                                    <option value="z_image">Z-Image</option>
                                 </select>
                             </label>
                             <label>

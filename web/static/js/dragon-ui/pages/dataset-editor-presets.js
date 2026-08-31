@@ -1,7 +1,7 @@
 /* Preset library rendering and mutations for the Dragon dataset workspace. */
 
-import { renderIcon } from '../icons.js?v=dragon-ui-20260824v44';
-import { escapeAttribute, escapeHtml } from './dataset-editor-fields.js?v=dragon-ui-20260824v53';
+import { renderIcon } from '../icons.js?v=dragon-ui-20260812v35';
+import { escapeAttribute, escapeHtml } from './dataset-editor-fields.js?v=dragon-ui-20260828v54';
 
 export async function loadDatasetPresetLibrary(api) {
     const payload = await api('/api/config/dataset-presets');

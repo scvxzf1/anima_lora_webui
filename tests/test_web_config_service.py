@@ -68,6 +68,7 @@ def test_config_metadata_exports_remain_available_from_legacy_facade():
     assert "learning_rate" in groups["basic"]
     performance = groups["groups"]["Performance"]
     assert "compile_dynamic_seq" in performance
+    assert "compile_seq_bands" in performance
     assert "v100_flash_stability" in performance
     assert "debug_finite_checks" in performance
 

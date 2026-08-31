@@ -1,7 +1,7 @@
 import { createAppShellState } from './state/app-shell-state.js?v=module-bootstrap-20260809-nf4-v2';
 import { createConfigState } from './state/config-state.js?v=module-bootstrap-20260809-nf4-v2';
 import { createDatasetState } from './state/dataset-state.js?v=module-bootstrap-20260809-nf4-v2';
-import { createHistoryState } from './state/history-state.js?v=module-bootstrap-20260809-nf4-v2';
+import { createHistoryState } from './state/history-state.js?v=module-bootstrap-20260828-model-family-filter-v1';
 import { createTomlState } from './state/toml-state.js?v=module-bootstrap-20260809-nf4-v2';
 import { createTrainingState } from './state/training-state.js?v=module-bootstrap-20260809-nf4-v2';
 import { createRuntimeApi } from './runtime/api.js?v=module-bootstrap-20260809-nf4-v2';

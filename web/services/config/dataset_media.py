@@ -7,8 +7,11 @@ available, but pure helpers can still run without importing the facade.
 
 from __future__ import annotations
 
+from collections import OrderedDict
 from datetime import datetime
 from pathlib import Path
+from threading import RLock
+from time import monotonic
 from typing import Any
 from urllib.parse import quote
 
@@ -21,7 +24,7 @@ from library.preprocess.captions import (
     read_caption_source_from_dirs,
 )
 from web.services.config import paths as _config_paths
-from web.services.config.common import _positive_int
+from web.services.config.common import _nonnegative_int, _positive_int
 from web.services.image_size import probe_image_size
 from web.services.config.dataset_rows import (
     _normalize_path_pattern,
@@ -42,6 +45,14 @@ ROOT = Path(__file__).resolve().parents[3]
 CONFIGS_DIR = get_configs_root()
 
 load_dotenv()
+
+_DATASET_IMAGE_LIST_CACHE_TTL_SECONDS = 2.0
+_DATASET_IMAGE_LIST_CACHE_ITEMS = 64
+_DATASET_IMAGE_LIST_CACHE: OrderedDict[
+    tuple[str, tuple[str, ...], bool, str],
+    tuple[float, int, tuple[Path, ...]],
+] = OrderedDict()
+_DATASET_IMAGE_LIST_CACHE_LOCK = RLock()
 
 
 def _sync_from_facade() -> None:
@@ -83,17 +94,32 @@ def _list_dataset_image_files(
     directory: Path,
     limit: int,
     *,
+    offset: int = 0,
     recursive: bool = True,
     path_pattern: str = "*",
 ) -> dict[str, Any]:
     clean_limit = max(1, min(_positive_int(limit, DATASET_PREVIEW_LIMIT), DATASET_PREVIEW_LIMIT))
+    clean_offset = _nonnegative_int(offset, 0)
     items = _dataset_image_files(
         directory,
         DATASET_IMAGE_EXTS,
         recursive=recursive,
         path_pattern=path_pattern,
     )
-    return {"items": items[:clean_limit], "total": len(items), "limit": clean_limit}
+    total = len(items)
+    resolved_offset = min(clean_offset, total)
+    page = items[resolved_offset:resolved_offset + clean_limit]
+    next_offset = min(total, resolved_offset + len(page))
+    return {
+        "items": page,
+        "total": total,
+        "offset": resolved_offset,
+        "limit": clean_limit,
+        "returned": len(page),
+        "next_offset": next_offset,
+        "has_more_before": resolved_offset > 0,
+        "has_more_after": next_offset < total,
+    }
 
 
 def _dataset_image_preview_meta(
@@ -126,10 +152,19 @@ def _dataset_image_preview_meta(
         f"&source={quote(source)}"
         f"&image={quote(rel_path)}"
     )
+    thumbnail_url = (
+        "/api/config/dataset-presets/thumbnail"
+        f"?file={quote(preset_file)}"
+        f"&dataset_index={dataset_index}"
+        f"&source={quote(source)}"
+        f"&image={quote(rel_path)}"
+        f"&v={stat.st_mtime_ns:x}-{stat.st_size:x}"
+    )
     return {
         "file": rel_path,
         "name": path.name,
         "url": url,
+        "thumbnail_url": thumbnail_url,
         "mtime": stat.st_mtime,
         "mtime_text": datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M:%S"),
         "size_bytes": stat.st_size,
@@ -287,15 +322,40 @@ def _dataset_image_files(
 ) -> list[Path]:
     if not path.is_dir():
         return []
-    return sorted(
+    normalized_pattern = _normalize_path_pattern(path_pattern)
+    cache_key = (
+        str(path.resolve()),
+        tuple(sorted(image_exts)),
+        bool(recursive),
+        normalized_pattern,
+    )
+    directory_mtime_ns = path.stat().st_mtime_ns
+    now = monotonic()
+    with _DATASET_IMAGE_LIST_CACHE_LOCK:
+        cached = _DATASET_IMAGE_LIST_CACHE.get(cache_key)
+        if cached and cached[0] > now and cached[1] == directory_mtime_ns:
+            _DATASET_IMAGE_LIST_CACHE.move_to_end(cache_key)
+            return list(cached[2])
+
+    items = tuple(sorted(
         item
         for item in walk_images(
             path,
             recursive=recursive,
-            pattern=_normalize_path_pattern(path_pattern),
+            pattern=normalized_pattern,
         )
         if item.suffix.lower() in image_exts
-    )
+    ))
+    with _DATASET_IMAGE_LIST_CACHE_LOCK:
+        _DATASET_IMAGE_LIST_CACHE[cache_key] = (
+            monotonic() + _DATASET_IMAGE_LIST_CACHE_TTL_SECONDS,
+            directory_mtime_ns,
+            items,
+        )
+        _DATASET_IMAGE_LIST_CACHE.move_to_end(cache_key)
+        while len(_DATASET_IMAGE_LIST_CACHE) > _DATASET_IMAGE_LIST_CACHE_ITEMS:
+            _DATASET_IMAGE_LIST_CACHE.popitem(last=False)
+    return list(items)
 
 
 def _count_images(

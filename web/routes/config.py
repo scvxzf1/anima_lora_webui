@@ -7,6 +7,7 @@ from urllib.parse import quote
 
 from aiohttp import web
 
+from web.services.config.dataset_preview_thumbnail import render_dataset_preview_thumbnail
 from web.services.config_service import (
     apply_dataset_preset_to_training_config,
     create_config_file_group,
@@ -77,6 +78,7 @@ def setup_config_routes(app: web.Application) -> None:
     app.router.add_delete("/api/config/dataset-presets", handle_dataset_preset_delete)
     app.router.add_post("/api/config/dataset-presets/apply", handle_dataset_preset_apply)
     app.router.add_get("/api/config/dataset-presets/images", handle_dataset_preset_images)
+    app.router.add_get("/api/config/dataset-presets/thumbnail", handle_dataset_preset_thumbnail)
     app.router.add_get("/api/config/dataset-presets/image", handle_dataset_preset_image)
     app.router.add_get("/api/config/output-runs", handle_output_runs_list)
     app.router.add_get("/api/config/output-runs/read", handle_output_run_read)
@@ -337,12 +339,14 @@ async def handle_dataset_preset_images(request: web.Request) -> web.Response:
     try:
         dataset_index = int(request.query.get("dataset_index", "0") or 0)
         limit = int(request.query.get("limit", "120") or 120)
+        offset = int(request.query.get("offset", "0") or 0)
         return web.json_response(await asyncio.to_thread(
             list_dataset_preset_images,
             file,
             dataset_index,
             source=source,
             limit=limit,
+            offset=offset,
         ))
     except FileNotFoundError as e:
         return web.json_response({"ok": False, "error": str(e)}, status=404)
@@ -362,6 +366,30 @@ async def handle_dataset_preset_image(request: web.Request) -> web.StreamRespons
     except Exception as e:
         return web.json_response({"ok": False, "error": str(e)}, status=403)
     return web.FileResponse(path)
+
+
+async def handle_dataset_preset_thumbnail(request: web.Request) -> web.StreamResponse:
+    file = request.query.get("file", "")
+    image = request.query.get("image", "")
+    source = request.query.get("source", "training")
+    try:
+        dataset_index = int(request.query.get("dataset_index", "0") or 0)
+        path = resolve_dataset_preview_image(file, dataset_index, image, source=source)
+        thumbnail = await asyncio.to_thread(render_dataset_preview_thumbnail, path)
+    except FileNotFoundError as e:
+        return web.json_response({"ok": False, "error": str(e)}, status=404)
+    except ValueError as e:
+        return web.json_response({"ok": False, "error": str(e)}, status=400)
+    except Exception as e:
+        return web.json_response({"ok": False, "error": str(e)}, status=403)
+
+    headers = {
+        "Cache-Control": "private, max-age=86400",
+        "ETag": thumbnail.etag,
+    }
+    if request.headers.get("If-None-Match") == thumbnail.etag:
+        return web.Response(status=304, headers=headers)
+    return web.Response(body=thumbnail.content, content_type=thumbnail.content_type, headers=headers)
 
 
 async def handle_output_runs_list(request: web.Request) -> web.Response:

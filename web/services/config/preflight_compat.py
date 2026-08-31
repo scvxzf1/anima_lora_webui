@@ -71,6 +71,18 @@ def _compat_web_message(item) -> str:
             "Krea-2 使用两张固定 token-family 编译图；"
             "训练启动时会自动关闭 compile_dynamic_seq。"
         ),
+        "compile_seq_bands_requires_dynamic_seq": (
+            "compile_seq_bands 只在 compile_dynamic_seq=true 时生效；"
+            "训练启动时会自动关闭。"
+        ),
+        "krea2_compile_seq_bands": (
+            "Krea-2 使用固定 token-family 编译图；"
+            "训练启动时会自动关闭 compile_seq_bands。"
+        ),
+        "z_image_compile_seq_bands": (
+            "compile_seq_bands 仅适用于 Anima native-flatten 路径；"
+            "Z-Image 训练启动时会自动关闭。"
+        ),
         "krea2_compile_inductor_mode": (
             "Krea-2 仅支持 compile_inductor_mode=default。"
         ),

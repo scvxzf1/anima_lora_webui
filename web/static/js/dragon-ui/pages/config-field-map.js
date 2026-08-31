@@ -1,4 +1,4 @@
-import { FORM_SECTION_DEFS } from '../../config/catalog/form-layout.js?v=dragon-ui-20260812v35';
+import { FORM_SECTION_DEFS } from '../../config/catalog/form-layout.js?v=dragon-ui-20260830v2';
 
 export const CONFIG_KEY_OVERRIDES = {
     'data-behavior': ['use_shuffled_caption_variants', 'masked_loss', 'caption_dropout_rate', 'path_pattern', 'drop_lowres_images', 'min_pixels'],

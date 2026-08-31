@@ -39,6 +39,7 @@ export const FORM_UI_DEFAULTS = {
     preprocess_precision_preference: 'bf16',
     v100_flash_stability: 'off',
     compile_dynamic_seq: false,
+    compile_seq_bands: false,
     debug_finite_checks: false,
     save_last_n_epochs: -1,
     checkpointing_last_n_epochs: 1,

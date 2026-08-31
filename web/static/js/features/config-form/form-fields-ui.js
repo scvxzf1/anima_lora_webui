@@ -101,7 +101,13 @@ function filterFieldOptionsForFamily(key, options, currentValue) {
 }
 
 function applyFamilyFieldConstraints(input, key) {
-    if (currentModelFamily() !== 'krea2_raw') return input;
+    const family = currentModelFamily();
+    if (key === 'compile_seq_bands' && family && family !== 'anima') {
+        input.checked = false;
+        input.disabled = true;
+        input.title = '分带动态序列编译仅适用于 Anima native-flatten 路径';
+    }
+    if (family !== 'krea2_raw') return input;
     const supportedSelectValues = {
         attn_mode: new Set(['torch', 'flash']),
         selective_checkpoint: new Set(['off', 'every_other']),

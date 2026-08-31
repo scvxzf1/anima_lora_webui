@@ -1,4 +1,5 @@
 const STORAGE_KEY = 'anima_dragon_config_ui';
+const CONFIG_CAPSULE_MODES = new Set(['jump', 'filter']);
 
 function readPreferences() {
     try {
@@ -33,6 +34,29 @@ export function persistPresetLibraryCollapsed(collapsed) {
 
 export function persistConfigViewMode(isAll) {
     writePreferences({ viewMode: isAll ? 'all' : 'grouped' });
+}
+
+function normalizeConfigCapsuleMode(mode, fallback = 'jump') {
+    const safeFallback = CONFIG_CAPSULE_MODES.has(fallback) ? fallback : 'jump';
+    return CONFIG_CAPSULE_MODES.has(mode) ? mode : safeFallback;
+}
+
+export function preferredConfigCapsuleMode(fallback = 'jump') {
+    return normalizeConfigCapsuleMode(readPreferences().capsuleMode, fallback);
+}
+
+export function persistConfigCapsuleMode(mode) {
+    writePreferences({ capsuleMode: normalizeConfigCapsuleMode(mode) });
+}
+
+export function preferredConfigBilingual(fallback = false) {
+    const safeFallback = typeof fallback === 'boolean' ? fallback : false;
+    const stored = readPreferences().bilingual;
+    return typeof stored === 'boolean' ? stored : safeFallback;
+}
+
+export function persistConfigBilingual(enabled) {
+    writePreferences({ bilingual: Boolean(enabled) });
 }
 
 export function bindConfigViewPreference(root) {

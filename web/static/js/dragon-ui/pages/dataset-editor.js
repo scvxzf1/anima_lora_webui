@@ -1,6 +1,6 @@
 /* Complete Dragon dataset workspace backed by dataset editor and preset APIs. */
 
-import { createApiClient } from '../../shared/api.js?v=dragon-ui-20260814v43';
+import { createApiClient } from '../../shared/api.js?v=dragon-ui-20260812v35';
 import {
     clearActiveOrderedDropTarget,
     clearOrderedDropTargetIf,
@@ -8,7 +8,7 @@ import {
     scheduleOrderedRowDropTarget,
     setOrderedDropTarget,
 } from '../ordered-drag-target.js?v=dragon-ui-20260816v1';
-import { renderIcon } from '../icons.js?v=dragon-ui-20260824v44';
+import { renderIcon } from '../icons.js?v=dragon-ui-20260812v35';
 import {
     collectDatasetFields,
     collectDatasetRows,
@@ -20,7 +20,14 @@ import {
     renderDatasetDefaults,
     renderDatasetRow,
     validateDatasetEditor,
-} from './dataset-editor-fields.js?v=dragon-ui-20260824v53';
+} from './dataset-editor-fields.js?v=dragon-ui-20260828v54';
+import {
+    createDatasetEditorBindings,
+    disableDatasetPreviews,
+    renderDatasetDirtyState,
+    updateDatasetRowSummaries,
+    updateDatasetRowSummaryForControl,
+} from './dataset-editor-runtime.js?v=dragon-ui-20260826v1';
 import { bindDatasetPathTools, refreshDatasetPathStatus } from './dataset-editor-paths.js?v=dragon-ui-20260824v3';
 import {
     applyDatasetPreset,
@@ -39,8 +46,9 @@ import {
     saveDatasetPreset,
     saveDatasetPresetAs,
 } from './dataset-editor-presets.js?v=dragon-ui-20260824v71';
-import { bindDatasetPreviewRefresh, openDatasetPreview } from './dataset-editor-preview.js?v=dragon-ui-20260814v43';
+import { createDatasetPreviewController } from './dataset-preview-controller.js?v=dragon-ui-20260831v7';
 import { loadTrainingContext, mergedConfigUrl } from './training-controls.js?v=dragon-ui-20260824v114';
+import { writeTaggingPrefill } from './tagging-context.js?v=dragon-ui-20260831v2';
 
 const api = createApiClient();
 let activeEditor = null;
@@ -71,6 +79,7 @@ export async function loadDatasetEditor() {
         presetAutoScrollClientY: null,
         presetDragRecovery: null,
         presetSuppressClickUntil: 0,
+        presetSearchTimer: null,
         selectedFile: linked.dataset_config || '',
         datasetConfig: linked.dataset_config || '',
         rows: linked.datasets?.length ? linked.datasets : [createEmptyDatasetRow(linked.defaults)],
@@ -109,10 +118,11 @@ function renderPage(state) {
     return `
         <div class="dragon-page dragon-page-wide dragon-dataset-page" data-dataset-page>
             <header class="dragon-dataset-hero dragon-reveal">
-                <div><span class="dragon-eyebrow">数据与标注</span><h1>数据集蓝图</h1><p>管理可复用的数据集预设，并把路径、分桶、验证与标注规则应用到当前训练配置。</p></div>
+                <div><h1>数据集蓝图</h1></div>
                 <div class="dragon-dataset-hero-actions">
                     <button class="dragon-btn dragon-btn-secondary" type="button" data-workspace-action="stage">${renderIcon('layers', 'dragon-btn-icon')}<span>分阶段调度</span></button>
                     <button class="dragon-btn dragon-btn-secondary" type="button" data-workspace-action="apply" title="把已保存的数据集预设关联到当前训练配置" ${state.selectedFile ? '' : 'disabled'}>${renderIcon('check', 'dragon-btn-icon')}<span>应用到训练</span></button>
+                    <button class="dragon-btn dragon-btn-primary" type="button" data-workspace-action="tagging" title="使用外部视觉模型生成候选 caption" ${state.selectedFile && !state.fatalError ? '' : 'disabled'}>${renderIcon('wand', 'dragon-btn-icon')}<span>打开打标工作台</span></button>
                 </div>
             </header>
             <section class="dragon-dataset-context dragon-reveal" data-stagger="1" aria-label="当前训练上下文">
@@ -124,17 +134,17 @@ function renderPage(state) {
             <div class="dragon-dataset-workspace" data-stagger="2">
                 <div class="dragon-dataset-editor-panel">
                     ${renderEditorPanel(state)}
+                    <div class="dragon-dataset-savebar" data-dataset-savebar>
+                        <div><strong data-savebar-title>${state.selectedFile ? escapeHtml(shortName(state.selectedFile)) : '未命名数据集预设'}</strong><span data-savebar-status>${state.readonly ? '系统预设只读，请复制后编辑。' : '修改会保留在当前页面，保存后写入 TOML。'}</span></div>
+                        <div class="dragon-dataset-savebar-actions">
+                            <button class="dragon-btn dragon-btn-secondary" type="button" data-workspace-action="reload">重新加载</button>
+                            <button class="dragon-btn dragon-btn-secondary" type="button" data-workspace-action="save-as">${state.readonly ? '复制后编辑' : '另存为'}</button>
+                            <button class="dragon-btn dragon-btn-primary" type="button" data-workspace-action="save" title="将当前草稿持久化到数据集 TOML" ${state.readonly || state.fatalError ? 'disabled' : ''}>${renderIcon('save', 'dragon-btn-icon')}<span>保存数据集预设</span></button>
+                        </div>
+                        <span class="dragon-config-feedback" data-dataset-feedback role="status" aria-live="polite"></span>
+                    </div>
                 </div>
                 ${renderDatasetPresetLibrary(state)}
-            </div>
-            <div class="dragon-dataset-savebar" data-dataset-savebar>
-                <div><strong data-savebar-title>${state.selectedFile ? escapeHtml(shortName(state.selectedFile)) : '未命名数据集预设'}</strong><span data-savebar-status>${state.readonly ? '系统预设只读，请复制后编辑。' : '修改会保留在当前页面，保存后写入 TOML。'}</span></div>
-                <div class="dragon-dataset-savebar-actions">
-                    <button class="dragon-btn dragon-btn-secondary" type="button" data-workspace-action="reload">重新加载</button>
-                    <button class="dragon-btn dragon-btn-secondary" type="button" data-workspace-action="save-as">${state.readonly ? '复制后编辑' : '另存为'}</button>
-                    <button class="dragon-btn dragon-btn-primary" type="button" data-workspace-action="save" title="将当前草稿持久化到数据集 TOML" ${state.readonly || state.fatalError ? 'disabled' : ''}>${renderIcon('save', 'dragon-btn-icon')}<span>保存数据集预设</span></button>
-                </div>
-                <span class="dragon-config-feedback" data-dataset-feedback role="status" aria-live="polite"></span>
             </div>
         </div>
     `;
@@ -167,17 +177,18 @@ function renderEditorPanel(state) {
 
 function bindEditor(root, state) {
     state.root = root;
+    state.ui = createDatasetEditorBindings(root);
     root.classList.add('dragon-dataset-page-host');
     state.beforeUnload = (event) => { if (!state.dirty) return; event.preventDefault(); event.returnValue = ''; };
     window.addEventListener('beforeunload', state.beforeUnload);
-    bindDatasetPreviewRefresh(api, state);
+    state.previewController?.dispose();
+    state.previewController = createDatasetPreviewController(api, state);
     bindStageScheduleEvents(root, state);
     bindWorkspace(root, state);
     bindPresetLibrary(root, state);
     bindForm(root, state);
     syncLegacyDatasetState(state);
 }
-
 
 
 function bindWorkspace(root, state) {
@@ -194,12 +205,20 @@ function bindWorkspace(root, state) {
         if (action === 'export') return exportCurrentPreset(root, state);
         if (action === 'rename') return renameCurrentPreset(root, state);
         if (action === 'stage') return openStageSchedule(root, state);
+        if (action === 'tagging') return openTaggingWorkspace(root, state);
         });
     });
 }
 
 function bindPresetLibrary(root, state) {
-    root.querySelector('[data-preset-search]')?.addEventListener('input', (event) => { state.search = event.target.value; refreshPresetList(root, state); });
+    root.querySelector('[data-preset-search]')?.addEventListener('input', (event) => {
+        state.search = event.target.value;
+        if (state.presetSearchTimer) window.clearTimeout(state.presetSearchTimer);
+        state.presetSearchTimer = window.setTimeout(() => {
+            state.presetSearchTimer = null;
+            refreshPresetList(root, state);
+        }, 100);
+    });
     root.querySelectorAll('[data-preset-action]').forEach((button) => button.addEventListener('click', async () => {
         if (button.dataset.presetAction === 'refresh') return refreshLibrary(root, state);
         if (button.dataset.presetAction === 'new') return startNewPreset(root, state);
@@ -208,40 +227,52 @@ function bindPresetLibrary(root, state) {
         if (button.dataset.presetAction === 'import') root.querySelector('[data-preset-import]')?.click();
     }));
     root.querySelector('[data-preset-import]')?.addEventListener('change', (event) => importPresetFile(root, state, event));
+    bindPresetListActions(root, state);
     bindPresetButtons(root, state);
 }
 
-function bindPresetButtons(root, state) {
-    root.querySelectorAll('.dragon-dataset-preset-item[data-preset-file]').forEach((item) => {
-        const activate = () => {
-            if (performance.now() < state.presetSuppressClickUntil) return;
-            selectPreset(root, state, item.dataset.presetFile);
-        };
-        item.addEventListener('click', activate);
-        item.addEventListener('keydown', (event) => {
-            if (!['Enter', ' '].includes(event.key)) return;
-            event.preventDefault();
-            activate();
-        });
-    });
-    root.querySelectorAll('[data-preset-group-action]').forEach((button) => button.addEventListener('click', () => {
+function bindPresetListActions(root, state) {
+    const list = root.querySelector('[data-preset-list]');
+    if (!list || list.dataset.dragonPresetActionsBound === 'true') return;
+    list.dataset.dragonPresetActionsBound = 'true';
+    const activate = (item) => {
+        if (!item || performance.now() < state.presetSuppressClickUntil) return;
+        selectPreset(root, state, item.dataset.presetFile);
+    };
+    list.addEventListener('click', (event) => {
+        if (event.target.closest('.dragon-dataset-preset-drag-handle')) return;
+        const button = event.target.closest('[data-preset-group-action]');
+        if (!button) return activate(event.target.closest('.dragon-dataset-preset-item[data-preset-file]'));
         const group = state.groups.find((item) => item.id === button.dataset.groupId);
         if (!group) return;
         if (button.dataset.presetGroupAction === 'rename') return renamePresetGroup(root, state, group);
         if (button.dataset.presetGroupAction === 'delete') return removePresetGroup(root, state, group);
-    }));
-    bindPresetDragAndDrop(root, state);
+    });
+    list.addEventListener('keydown', (event) => {
+        if (!['Enter', ' '].includes(event.key)) return;
+        const item = event.target.closest('.dragon-dataset-preset-item[data-preset-file]');
+        if (!item) return;
+        event.preventDefault();
+        activate(item);
+    });
+}
+
+function bindPresetButtons(root, state) {
+    if (!String(state.search || '').trim()) bindPresetDragAndDrop(root, state);
 }
 
 function bindPresetDragAndDrop(root, state) {
     bindPresetDragRecovery(root, state);
     const list = root.querySelector('[data-preset-list]');
-    list?.addEventListener('dragover', (event) => {
-        if (state.draggedPresetFile) schedulePresetListAutoScroll(state, list, event.clientY);
-    }, true);
-    list?.addEventListener('dragleave', (event) => {
-        if (!event.relatedTarget || !list.contains(event.relatedTarget)) stopPresetListAutoScroll(state);
-    });
+    if (list && list.dataset.dragonPresetDragBound !== 'true') {
+        list.dataset.dragonPresetDragBound = 'true';
+        list.addEventListener('dragover', (event) => {
+            if (state.draggedPresetFile) schedulePresetListAutoScroll(state, list, event.clientY);
+        }, true);
+        list.addEventListener('dragleave', (event) => {
+            if (!event.relatedTarget || !list.contains(event.relatedTarget)) stopPresetListAutoScroll(state);
+        });
+    }
     root.querySelectorAll('[data-preset-row]').forEach((row) => {
         const handle = row.querySelector('.dragon-dataset-preset-drag-handle[draggable="true"]');
         handle?.addEventListener('click', (event) => event.stopPropagation());
@@ -438,8 +469,14 @@ function canDropPresetToGroup(state, file, groupId) {
 function bindForm(root, state) {
     hydrateDatasetFieldA11y(root.querySelector('[data-dataset-form]'));
     const form = root.querySelector('[data-dataset-form]');
-    form?.addEventListener('input', () => markDirty(root, state));
-    form?.addEventListener('change', () => { markDirty(root, state); updateRowSummaries(root); });
+    form?.addEventListener('input', (event) => {
+        markDirty(root, state);
+        updateDatasetRowSummaryForControl(event.target);
+    });
+    form?.addEventListener('change', (event) => {
+        markDirty(root, state);
+        updateDatasetRowSummaryForControl(event.target);
+    });
     root.querySelector('[data-dataset-add]')?.addEventListener('click', () => {
         syncStateFromForm(root, state);
         state.rows.push(createEmptyDatasetRow(state.defaults));
@@ -462,7 +499,8 @@ function applyDefaultsToRows(root, state) {
 }
 
 function bindRowActions(root, state) {
-    bindDatasetPathTools(api, root, { onFeedback: (message, tone) => showFeedback(root, message, tone) });
+    state.rowPathCleanup?.();
+    state.rowPathCleanup = bindDatasetPathTools(api, root, { onFeedback: (message, tone) => showFeedback(root, message, tone) });
     root.querySelectorAll('[data-dataset-remove]').forEach((button) => button.addEventListener('click', () => {
         const rows = [...root.querySelectorAll('[data-dataset-row]')];
         if (rows.length <= 1) return showFeedback(root, '至少需要保留 1 个数据集组', 'error');
@@ -496,7 +534,7 @@ function bindRowActions(root, state) {
     });
     root.querySelectorAll('[data-dataset-suggest]').forEach((button) => button.addEventListener('click', () => suggestDirectories(root, state, button)));
     root.querySelectorAll('[data-dataset-preview]').forEach((button) => button.addEventListener('click', async () => {
-        try { await openDatasetPreview(api, state, Number(button.closest('[data-dataset-row]')?.dataset.index || 0)); } catch (error) { showFeedback(root, error.message, 'error'); }
+        try { await state.previewController.open(Number(button.closest('[data-dataset-row]')?.dataset.index || 0)); } catch (error) { showFeedback(root, error.message, 'error'); }
     }));
 }
 
@@ -964,20 +1002,16 @@ function syncStateFromForm(root, state) {
 }
 
 function markDirty(root, state) {
+    if (state.dirty) return;
     state.dirty = true;
     updateDirtyUi(root, state);
-    root.querySelectorAll('[data-dataset-preview]').forEach((button) => { button.disabled = true; });
+    disableDatasetPreviews(root);
     syncLegacyDatasetState(state);
 }
 
 function updateDirtyUi(root, state) {
-    const dirty = root.querySelector('[data-dataset-dirty]');
-    const dirtyText = root.querySelector('[data-dataset-dirty-text]');
-    if (dirtyText) dirtyText.textContent = state.dirty ? '有未保存更改' : (state.selectedFile === state.datasetConfig ? '已同步至配置' : '已同步至预设');
-    if (dirty) dirty.dataset.state = state.dirty ? 'dirty' : 'synced';
-    const status = root.querySelector('[data-savebar-status]');
-    if (status) status.textContent = state.readonly ? '系统预设只读，请复制后编辑。' : (state.dirty ? '当前修改尚未写入 TOML。' : '数据集预设已同步。');
-    root.querySelector('[data-dataset-sync-card]')?.setAttribute('data-dirty', String(state.dirty));
+    state.ui ||= createDatasetEditorBindings(root);
+    renderDatasetDirtyState(state.ui, state);
 }
 
 function updateContextUi(root, state) {
@@ -997,7 +1031,7 @@ function refreshRows(root, state) {
     if (!rows) return;
     rows.innerHTML = state.rows.map((row, index) => renderDatasetRow(row, index, state.defaults, { readonly: state.readonly, canPreview: Boolean(state.selectedFile) && !state.dirty, totalRows: state.rows.length })).join('');
     bindRowActions(root, state);
-    updateRowSummaries(root);
+    updateDatasetRowSummaries(root);
 }
 
 function refreshEditor(root, state) {
@@ -1018,18 +1052,23 @@ function refreshPresetList(root, state) {
     bindPresetButtons(root, state);
 }
 
-function updateRowSummaries(root) {
-    root.querySelectorAll('[data-dataset-row]').forEach((row) => {
-        const isReg = row.querySelector('[data-field="is_reg"]')?.value === 'true';
-        const repeat = row.querySelector('[data-field="num_repeats"]')?.value || '1';
-        const resolution = row.querySelector('[data-field="resolution"]')?.value || '1024';
-        const summary = row.querySelector('[data-row-summary]');
-        if (summary) summary.textContent = `${isReg ? '正则数据' : '训练数据'} · 重复 ${repeat} · ${resolution}px`;
-    });
-}
-
 function confirmDiscard(state, action) {
     return !state.dirty || window.confirm(`当前数据集有未保存修改。${action}会丢弃这些修改，是否继续？`);
+}
+
+function openTaggingWorkspace(root, state) {
+    const datasetFile = state.selectedFile || state.datasetConfig;
+    if (!datasetFile) {
+        showFeedback(root, '请先选择或保存一个数据集预设', 'error');
+        return;
+    }
+    if (!shouldLeaveEditor(state)) return;
+    writeTaggingPrefill({
+        dataset_file: datasetFile,
+        dataset_index: state.previewIndex,
+        source: 'source',
+    });
+    window.location.hash = '#page/captioning';
 }
 
 function shouldLeaveEditor(state) {
@@ -1042,11 +1081,18 @@ function shouldLeaveEditor(state) {
 }
 
 function cleanupEditor(state) {
+    if (state.presetSearchTimer) window.clearTimeout(state.presetSearchTimer);
+    state.presetSearchTimer = null;
     if (state.root) disposePresetDragRecovery(state.root, state);
     if (state.beforeUnload) window.removeEventListener('beforeunload', state.beforeUnload);
     const dialog = document.getElementById('stage-resolution-dialog');
     if (dialog && state.stageDialogHandler) dialog.removeEventListener('close', state.stageDialogHandler);
     if (state.stageScheduleHandler) window.removeEventListener('anima-stage-schedule-change', state.stageScheduleHandler);
+    state.previewController?.dispose();
+    state.previewController = null;
+    state.rowPathCleanup?.();
+    state.rowPathCleanup = null;
+    state.ui = null;
     if (activeEditor === state) activeEditor = null;
 }
 

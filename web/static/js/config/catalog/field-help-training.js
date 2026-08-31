@@ -549,6 +549,14 @@ export const FIELD_HELP_TRAINING_ZH = {    learning_rate: help(
         ["序列长度超出派生范围会直接报错；Krea-2 使用固定 token-family 图，预检会自动关闭此项。"],
         "Anima/Z-Image 多分辨率编译可保持变体默认；Krea-2 保持 false。"
     ),
+    compile_seq_bands: help(
+        "把 Anima 的动态 token 长度拆成多个紧凑分带编译。",
+        "只在 torch_compile=true 且 compile_dynamic_seq=true 时有意义。分带由当前数据桶和启动时采样尺寸的实际 token 数自动推导，不会把中间空档并入一张 union 图。",
+        ["多个相距较远的 token tier 可以获得更紧的 Dynamo guard。"],
+        ["每个 band 首次命中都要编译，会增加启动成本；单 tier 时等价于 union。"],
+        ["Krea-2 和 Z-Image 不使用 Anima native-flatten band，预检会自动关闭。"],
+        "默认保持 false。只在有明确多 band 数据池并接受更高首次编译成本时开启。"
+    ),
     activation_memory_budget: help(
         "限制 torch.compile AOT 分割器为反向传播保存的激活预算。",
         "1.0 表示不额外限制；如 0.85 的较小值会让编译器在反向时重算更多便宜中间量。只在 torch.compile 且未启用梯度检查点时有效。",

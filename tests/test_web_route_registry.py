@@ -41,6 +41,9 @@ REQUIRED_ROUTES: set[tuple[str, str]] = {
     ("GET", "/api/config/field-help"),
     ("GET", "/api/config/groups"),
     ("GET", "/api/config/dataset-presets"),
+    ("GET", "/api/config/dataset-presets/images"),
+    ("GET", "/api/config/dataset-presets/image"),
+    ("GET", "/api/config/dataset-presets/thumbnail"),
     ("GET", "/api/config/output-runs"),
     # settings / preview / analysis / environment / image-test
     ("GET", "/api/settings/global"),
@@ -59,6 +62,11 @@ REQUIRED_ROUTES: set[tuple[str, str]] = {
     ("GET", "/api/image-test/status"),
     ("POST", "/api/image-test/start"),
     ("POST", "/api/image-test/stop"),
+    # tagging workbench: captioning is canonical, tagging is a compatibility alias
+    ("GET", "/api/captioning/settings"),
+    ("POST", "/api/captioning/jobs"),
+    ("GET", "/api/tagging/settings"),
+    ("POST", "/api/tagging/jobs"),
     # training / queue / history / ws
     ("POST", "/api/training/preflight"),
     ("POST", "/api/training/start"),
@@ -101,6 +109,8 @@ def test_setup_routes_registers_expected_domain_prefixes():
         "/api/analysis/",
         "/api/environment/",
         "/api/image-test/",
+        "/api/captioning/",
+        "/api/tagging/",
         "/api/training/",
         "/ws/training",
     ):

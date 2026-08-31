@@ -15,6 +15,11 @@ body[data-dragon-ui] :is(#dataset-preview-dialog, #stage-resolution-dialog) form
     flex-direction: column;
 }
 
+body[data-dragon-ui] #dataset-preview-dialog form {
+    height: 100%;
+    min-height: 0;
+}
+
 body[data-dragon-ui] :is(#dataset-preview-dialog, #stage-resolution-dialog) .preview-dialog-header {
     display: flex;
     align-items: flex-start;
@@ -88,6 +93,10 @@ body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-dialog-body {
     padding: var(--dragon-sp-4);
 }
 
+body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-dialog-body[hidden] {
+    display: none !important;
+}
+
 body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-info {
     position: sticky;
     top: 0;
@@ -112,7 +121,126 @@ body[data-dragon-ui] #dataset-preview-dialog .preview-dialog-details {
 }
 
 body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-results {
+    position: relative;
     min-width: 0;
+}
+
+body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-pagination {
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    display: grid;
+    grid-template-columns: 32px minmax(0, auto) 32px;
+    align-items: center;
+    justify-content: center;
+    gap: var(--dragon-sp-2);
+    min-height: 36px;
+    margin-bottom: var(--dragon-sp-3);
+    padding: var(--dragon-sp-2);
+    border: 1px solid var(--dragon-border-light);
+    border-radius: var(--dragon-radius-md);
+    background: var(--dragon-bg-secondary);
+}
+
+body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-pagination[hidden] {
+    display: none;
+}
+
+body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-page-button {
+    width: 32px;
+    height: 32px;
+}
+
+body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-page-jump {
+    display: flex;
+    max-height: none;
+    min-width: 0;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    align-items: center;
+    justify-content: center;
+    gap: var(--dragon-sp-2);
+    color: var(--dragon-text-secondary);
+    font-size: var(--dragon-fs-caption);
+    white-space: nowrap;
+}
+
+body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-page-input {
+    box-sizing: border-box;
+    width: 56px;
+    min-width: 0;
+    height: 32px;
+    padding: 4px 6px;
+    border: 1px solid var(--dragon-border);
+    border-radius: var(--dragon-radius-sm);
+    background: var(--dragon-bg-primary);
+    color: var(--dragon-text-primary);
+    font: inherit;
+    font-variant-numeric: tabular-nums;
+    text-align: center;
+}
+
+body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-page-input:focus-visible {
+    border-color: var(--dragon-accent);
+    outline: 2px solid var(--dragon-border-focus);
+    outline-offset: 1px;
+}
+
+body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-page-status {
+    grid-column: 1 / -1;
+    min-width: 0;
+    color: var(--dragon-text-secondary);
+    font-size: var(--dragon-fs-tiny);
+    font-variant-numeric: tabular-nums;
+    text-align: center;
+}
+
+body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-page-icon.previous {
+    transform: rotate(-90deg);
+}
+
+body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-page-icon.next {
+    transform: rotate(90deg);
+}
+
+body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-load-more {
+    position: relative;
+    display: grid;
+    min-height: 68px;
+    place-items: center;
+    gap: var(--dragon-sp-2);
+    margin-top: var(--dragon-sp-3);
+    padding: var(--dragon-sp-3);
+    border: 1px dashed var(--dragon-border);
+    border-radius: var(--dragon-radius-md);
+    color: var(--dragon-text-tertiary);
+    font-size: var(--dragon-fs-caption);
+    text-align: center;
+}
+
+body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-load-before {
+    margin-top: 0;
+    margin-bottom: var(--dragon-sp-3);
+}
+
+body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-load-more[hidden] {
+    display: none;
+}
+
+body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-load-more.has-error {
+    border-color: var(--dragon-error);
+}
+
+body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-load-more.has-error .dataset-preview-load-more-status {
+    color: var(--dragon-error);
+}
+
+body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-sentinel {
+    position: absolute;
+    top: -1px;
+    left: 50%;
+    width: 1px;
+    height: 1px;
 }
 
 body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-empty {
@@ -126,7 +254,7 @@ body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-empty {
 
 body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr));
     gap: var(--dragon-sp-3);
 }
 
@@ -137,6 +265,8 @@ body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-card {
     border: 1px solid var(--dragon-border-light);
     border-radius: var(--dragon-radius-md);
     background: var(--dragon-bg-secondary);
+    content-visibility: auto;
+    contain-intrinsic-size: 380px;
 }
 
 body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-card-error {
@@ -144,20 +274,35 @@ body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-card-error {
 }
 
 body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-image-btn {
+    position: relative;
     display: grid;
     width: 100%;
     height: 160px;
+    overflow: hidden;
     place-items: center;
     padding: 0;
     border: 0;
     border-bottom: 1px solid var(--dragon-border-light);
     background: var(--dragon-bg-tertiary);
+    color: inherit;
+    font: inherit;
     cursor: pointer;
 }
 
+body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-image-btn:focus-visible {
+    z-index: 1;
+    outline: 2px solid var(--dragon-accent);
+    outline-offset: -2px;
+}
+
 body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-image-btn img {
+    position: absolute;
+    inset: 0;
+    display: block;
     width: 100%;
     height: 100%;
+    min-width: 0;
+    min-height: 0;
     object-fit: contain;
 }
 
@@ -214,6 +359,163 @@ body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-caption pre {
     font-family: var(--dragon-font-mono);
     font-size: var(--dragon-fs-tiny);
     white-space: pre-wrap;
+}
+
+/* The detail view shares the dialog shell with the grid.  The grid remains
+ * mounted while it is hidden, which keeps lazy-loaded pages and scroll state.
+ */
+body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-detail-view {
+    display: flex;
+    min-height: 0;
+    flex: 1 1 auto;
+    flex-direction: column;
+    gap: var(--dragon-sp-3);
+    padding: var(--dragon-sp-4);
+    background: var(--dragon-bg-primary);
+}
+
+body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-detail-view[hidden] {
+    display: none;
+}
+
+body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-detail-toolbar {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--dragon-sp-3);
+}
+
+body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-detail-position {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--dragon-text-tertiary);
+    font-size: var(--dragon-fs-caption);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-detail-back-icon {
+    transform: rotate(-90deg);
+}
+
+body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-detail-content {
+    display: grid;
+    min-height: 0;
+    flex: 1 1 auto;
+    grid-template-columns: minmax(0, 1.25fr) minmax(280px, 0.75fr);
+    gap: var(--dragon-sp-4);
+    overflow: hidden;
+}
+
+body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-detail-image-wrap {
+    position: relative;
+    display: grid;
+    min-width: 0;
+    min-height: 0;
+    place-items: center;
+    overflow: hidden;
+    border: 1px solid var(--dragon-border-light);
+    border-radius: var(--dragon-radius-md);
+    background: var(--dragon-bg-tertiary);
+}
+
+body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-detail-image-wrap img {
+    position: absolute;
+    inset: 0;
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    height: 100%;
+    max-height: 100%;
+    object-fit: contain;
+}
+
+body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-detail-info {
+    display: flex;
+    min-width: 0;
+    min-height: 0;
+    flex-direction: column;
+    gap: var(--dragon-sp-3);
+    overflow: auto;
+}
+
+body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-detail-section {
+    min-width: 0;
+    padding: var(--dragon-sp-4);
+    border: 1px solid var(--dragon-border-light);
+    border-radius: var(--dragon-radius-md);
+    background: var(--dragon-bg-secondary);
+}
+
+body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-detail-section h3 {
+    margin: 0 0 var(--dragon-sp-3);
+    color: var(--dragon-text-primary);
+    font-size: var(--dragon-fs-callout-medium);
+}
+
+body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-detail-meta,
+body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-detail-section dl {
+    display: grid;
+    gap: var(--dragon-sp-2);
+    margin: 0;
+}
+
+body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-detail-section dl > div {
+    display: grid;
+    grid-template-columns: minmax(76px, 0.35fr) minmax(0, 1fr);
+    gap: var(--dragon-sp-3);
+    min-width: 0;
+    align-items: start;
+}
+
+body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-detail-section dt {
+    color: var(--dragon-text-tertiary);
+    font-size: var(--dragon-fs-tiny);
+}
+
+body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-detail-section dd {
+    min-width: 0;
+    margin: 0;
+    color: var(--dragon-text-secondary);
+    font-family: var(--dragon-font-mono);
+    font-size: var(--dragon-fs-tiny);
+    overflow-wrap: anywhere;
+}
+
+body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-detail-section-head {
+    display: flex;
+    min-width: 0;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--dragon-sp-2);
+}
+
+body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-detail-section-head h3 {
+    min-width: 0;
+}
+
+body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-detail-caption-source {
+    margin: 0 0 var(--dragon-sp-2);
+    color: var(--dragon-text-tertiary);
+    font-size: var(--dragon-fs-tiny);
+    overflow-wrap: anywhere;
+}
+
+body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-detail-caption pre {
+    max-height: min(360px, 42vh);
+    margin: 0;
+    padding: var(--dragon-sp-3);
+    overflow: auto;
+    border: 1px solid var(--dragon-border-light);
+    border-radius: var(--dragon-radius-sm);
+    background: var(--dragon-bg-primary);
+    color: var(--dragon-text-secondary);
+    font-family: var(--dragon-font-mono);
+    font-size: var(--dragon-fs-tiny);
+    line-height: 1.55;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
 }
 
 body[data-dragon-ui] #stage-resolution-dialog .stage-resolution-dialog-body {
@@ -474,7 +776,37 @@ body[data-dragon-ui] #stage-resolution-dialog .stage-resolution-target-candidate
     }
 
     body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-grid {
+        grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr));
+    }
+
+    body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-pagination {
+        grid-template-columns: 32px minmax(0, 1fr) 32px;
+    }
+
+    body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-page-jump {
+        gap: var(--dragon-sp-1);
+    }
+
+    body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-page-input {
+        width: 50px;
+    }
+
+    body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-detail-content {
         grid-template-columns: 1fr;
+        grid-template-rows: minmax(220px, 1fr) minmax(180px, 1fr);
+        overflow: auto;
+    }
+
+    body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-detail-image-wrap {
+        min-height: 220px;
+    }
+
+    body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-detail-info {
+        overflow: visible;
+    }
+
+    body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-detail-section-head {
+        align-items: center;
     }
 
     body[data-dragon-ui] #stage-resolution-dialog #stage-resolution-chart {

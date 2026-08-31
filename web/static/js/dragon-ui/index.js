@@ -4,25 +4,15 @@
  */
 
 import { initTheme } from './theme.js?v=dragon-ui-20260814v45';
-import { destroyNav, initNav } from './nav.js?v=dragon-ui-20260824v74';
-import { canLeaveCurrentPage, destroyRouter, initRouter, isCurrentPage, navigate, refreshCurrentRoute } from './router.js?v=dragon-ui-20260824v70';
-import { isConfigCategory } from './category-map.js?v=dragon-ui-20260824v44';
+import { destroyNav, initNav } from './nav.js?v=dragon-ui-20260828v77';
+import { canLeaveCurrentPage, destroyRouter, initRouter, isCurrentPage, navigate, refreshCurrentRoute } from './router.js?v=dragon-ui-20260828v74';
+import { isConfigCategory } from './category-map.js?v=dragon-ui-20260826v45';
 import { destroyAnimations, initScrollAnimations, initParallax } from './animations.js?v=dragon-ui-20260824v69';
 import { destroyDragonMotion, initDragonMotion } from './motion.js?v=dragon-ui-20260824v1';
 import { applyDragonConfigChromeSettings } from './config-chrome.js?v=dragon-ui-20260825v1';
 import { trackHistoryDetailEntry } from './history-return-navigation.js?v=dragon-ui-20260825v1';
-import { loadDashboard } from './pages/dashboard.js?v=dragon-ui-20260814v43';
-import { loadConfigPage } from './pages/config-page.js?v=dragon-ui-20260825v134';
-import { loadLiveTraining } from './pages/live-training.js?v=dragon-ui-20260825v47';
-import { loadHistory } from './pages/history.js?v=dragon-ui-20260825v101';
-import { loadQueue } from './pages/queue.js?v=dragon-ui-20260825v2';
-import { loadWeightAnalysis } from './pages/weight-analysis.js?v=dragon-ui-20260814v43';
-import { loadImageTest } from './pages/image-test.js?v=dragon-ui-20260824v114';
-import { loadEnvironment } from './pages/environment.js?v=dragon-ui-20260814v43';
-import { loadDatasetEditor } from './pages/dataset-editor.js?v=dragon-ui-20260825v118';
-import { loadModelConfig } from './pages/model-config.js?v=dragon-ui-20260824-zimage-v1';
-import { loadGlobalSettings } from './pages/global-settings.js?v=dragon-ui-20260825v46';
-import { loadPreviewWorkspace } from './pages/preview-workspace.js?v=dragon-ui-20260814v43';
+import { createDragonPageLoaders } from './page-loaders.js?v=dragon-ui-20260831v21';
+import { clearDragonRouteStyles } from './route-styles.js?v=dragon-ui-20260831v14';
 import { createApiClient } from '../shared/api.js?v=dragon-ui-20260812v35';
 import { loadAndApplyDragonUIScale } from './ui-scale.js?v=dragon-ui-20260814v43';
 
@@ -43,20 +33,7 @@ export async function initDragonUI() {
         const mount = document.getElementById('dragon-main');
         if (!mount) throw new Error('#dragon-main mount point not found');
 
-        const loaders = {
-            dashboard: loadDashboard,
-            config: loadConfigPage,
-            'live-training': loadLiveTraining,
-            history: loadHistory,
-            queue: loadQueue,
-            'weight-analysis': loadWeightAnalysis,
-            'image-test': loadImageTest,
-            environment: loadEnvironment,
-            'dataset-editor': loadDatasetEditor,
-            'model-config': loadModelConfig,
-            'global-settings': loadGlobalSettings,
-            'preview-workspace': loadPreviewWorkspace,
-        };
+        const loaders = createDragonPageLoaders();
 
         initRouter(mount, loaders);
         initNav(async (route) => {
@@ -108,6 +85,7 @@ export async function initDragonUI() {
         destroyNav();
         destroyRouter();
         destroyAnimations();
+        clearDragonRouteStyles();
         throw error;
     }
 }
@@ -126,6 +104,7 @@ export function destroyDragonUI() {
     destroyRouter();
     destroyAnimations();
     destroyDragonMotion();
+    clearDragonRouteStyles();
 }
 
 async function handleHashChange() {
@@ -148,7 +127,7 @@ async function handleHashChange() {
             } else if (parts[0] === 'dashboard') {
                 await navigate({ type: 'page', page: 'dashboard' });
             } else if (parts[0] === 'page' && parts[1]) {
-                await navigate({ type: 'page', page: parts[1] });
+                await navigate({ type: 'page', page: normalizePageType(parts[1]) });
             } else if (parts[0] === 'history') {
                 await navigate({
                     type: 'page',
@@ -157,7 +136,9 @@ async function handleHashChange() {
                     sub: parts[2] || null,
                 });
             } else if (parts[0]) {
-                await navigate({ type: 'sub', subId: parts[0] });
+                const page = normalizePageType(parts[0]);
+                if (isPageAlias(parts[0])) await navigate({ type: 'page', page });
+                else await navigate({ type: 'sub', subId: parts[0] });
             } else {
                 await navigate({ type: 'page', page: 'dashboard' });
             }
@@ -183,6 +164,15 @@ function pageTypeForHash(hash) {
     const parts = String(hash || '').split('/');
     if (parts[0] === 'config') return 'config';
     if (parts[0] === 'history') return 'history';
-    if (parts[0] === 'page') return parts[1] || 'dashboard';
-    return parts[0] || 'dashboard';
+    if (parts[0] === 'page') return normalizePageType(parts[1] || 'dashboard');
+    return normalizePageType(parts[0] || 'dashboard');
+}
+
+function normalizePageType(value) {
+    const page = String(value || '').trim();
+    return page === 'tagging' ? 'captioning' : page;
+}
+
+function isPageAlias(value) {
+    return ['captioning', 'tagging'].includes(String(value || '').trim());
 }

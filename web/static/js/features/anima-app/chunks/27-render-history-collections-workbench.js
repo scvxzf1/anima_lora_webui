@@ -33,7 +33,7 @@ import {
     compactHistoryResumeLabel,
     createHistoryMoreActions,
     selectedHistoryConfigGroups,
-} from '../../history-list/collections-workbench.js?v=module-bootstrap-20260809-nf4-v2';
+} from '../../history-list/collections-workbench.js?v=module-bootstrap-20260828-model-family-filter-v1';
 
 export {
     renderHistoryCollectionsWorkbench,
@@ -65,7 +65,7 @@ export {
     compactHistoryResumeLabel,
     createHistoryMoreActions,
     selectedHistoryConfigGroups,
-} from '../../history-list/collections-workbench.js?v=module-bootstrap-20260809-nf4-v2';
+} from '../../history-list/collections-workbench.js?v=module-bootstrap-20260828-model-family-filter-v1';
 
 configureHistoryCollectionsBridge({
         renderHistoryCollectionsWorkbench,

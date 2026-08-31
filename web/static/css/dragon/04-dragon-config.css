@@ -840,6 +840,36 @@ body[data-dragon-ui] .dragon-training-dialog-actions {
     line-height: 1.21;
 }
 
+.dragon-config-page .dragon-field-label-text {
+    display: inline-flex;
+    min-width: 0;
+    max-width: 100%;
+    flex: 1 1 auto;
+    align-items: baseline;
+    overflow: hidden;
+}
+
+.dragon-config-page .dragon-toggle-label {
+    min-width: 0;
+}
+
+.dragon-config-label-key {
+    display: none;
+    min-width: 0;
+    overflow: hidden;
+    color: var(--dragon-text-tertiary);
+    font-family: var(--dragon-font-mono);
+    font-size: .84em;
+    font-weight: var(--dragon-fw-regular);
+    letter-spacing: 0;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+[data-config-bilingual="true"] .dragon-config-label-key {
+    display: inline;
+}
+
 .dragon-field-help-btn {
     background: var(--dragon-tile-bg);
     border: none;
@@ -993,33 +1023,6 @@ body[data-dragon-ui] #dragon-root .dragon-config-help-dialog-header {
 }
 .dragon-config-field-help-section[data-help-tone="risk"] .dragon-config-field-help-heading { color: var(--dragon-warning); }
 
-/* Input controls */
-.dragon-input,
-.dragon-select,
-.dragon-textarea {
-    width: 100%;
-    background: var(--dragon-input-bg);
-    border: 1px solid var(--dragon-border);
-    border-radius: var(--dragon-radius-sm);
-    padding: 8px 12px;
-    font-family: inherit;
-    font-size: var(--dragon-fs-body);
-    color: var(--dragon-text-primary);
-    transition: background-color var(--dragon-dur-fast) var(--dragon-ease), border-color var(--dragon-dur-fast) var(--dragon-ease), color var(--dragon-dur-fast) var(--dragon-ease), transform var(--dragon-dur-fast) var(--dragon-ease);
-    box-sizing: border-box;
-    line-height: 1.4705882353;
-    letter-spacing: var(--dragon-ls-normal);
-}
-
-.dragon-input:focus-visible,
-.dragon-select:focus-visible,
-.dragon-textarea:focus-visible {
-    background: var(--dragon-input-bg-focus);
-    border-color: var(--dragon-border-focus);
-    outline: none;
-    box-shadow: 0 0 0 3px var(--dragon-accent-light);
-}
-
 .dragon-config-load-error {
     display: grid;
     gap: var(--dragon-sp-3);
@@ -1034,112 +1037,6 @@ body[data-dragon-ui] #dragon-root .dragon-config-help-dialog-header {
 .dragon-config-load-error p { margin: 0; }
 .dragon-config-load-error p { max-width: 760px; overflow-wrap: anywhere; color: var(--dragon-text-secondary); }
 .dragon-config-load-error .dragon-btn { justify-self: start; margin-top: var(--dragon-sp-2); }
-
-.dragon-textarea {
-    min-height: 80px;
-    resize: vertical;
-    line-height: 1.5;
-    font-family: var(--dragon-font-mono);
-    font-size: var(--dragon-fs-caption);
-}
-
-.dragon-input[type="number"] {
-    max-width: 240px;
-}
-
-/* Checkbox / toggle - iOS style */
-.dragon-toggle-row {
-    display: flex;
-    align-items: center;
-    gap: var(--dragon-sp-4);
-    padding: 12px 32px 12px 0;
-    cursor: pointer;
-}
-
-.dragon-toggle {
-    position: relative;
-    width: 42px;
-    height: 26px;
-    background: var(--dragon-text-quaternary);
-    border-radius: var(--dragon-radius-pill);
-    cursor: pointer;
-    transition: background var(--dragon-dur-fast) var(--dragon-ease);
-    flex-shrink: 0;
-}
-
-.dragon-toggle::after {
-    content: "";
-    position: absolute;
-    top: 2px;
-    left: 2px;
-    width: 22px;
-    height: 22px;
-    background: white;
-    border-radius: 50%;
-    transition: transform var(--dragon-dur-fast) var(--dragon-ease-spring);
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
-}
-
-.dragon-toggle[data-checked="true"] {
-    background: var(--dragon-success);
-}
-.dragon-toggle[data-checked="true"]::after {
-    transform: translateX(20px);
-}
-
-.dragon-toggle-label {
-    font-size: var(--dragon-fs-callout);
-    color: var(--dragon-text-primary);
-    flex: 1;
-    letter-spacing: var(--dragon-ls-normal);
-    font-weight: var(--dragon-fw-semibold);
-    line-height: 1.21;
-}
-
-/* Toggle description */
-.dragon-toggle-desc {
-    font-size: var(--dragon-fs-caption);
-    color: var(--dragon-text-tertiary);
-    margin-top: 2px;
-    letter-spacing: var(--dragon-ls-normal);
-    line-height: 1.3333733333;
-}
-
-/* Action buttons - pill style */
-.dragon-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--dragon-sp-2);
-    padding: var(--dragon-sp-2) var(--dragon-sp-5);
-    border-radius: var(--dragon-radius-pill);
-    font-family: var(--dragon-font-stack);
-    font-size: var(--dragon-fs-body);
-    font-weight: var(--dragon-fw-regular);
-    border: none;
-    cursor: pointer;
-    transition: background-color var(--dragon-dur-fast) var(--dragon-ease), border-color var(--dragon-dur-fast) var(--dragon-ease), color var(--dragon-dur-fast) var(--dragon-ease), box-shadow var(--dragon-dur-fast) var(--dragon-ease), opacity var(--dragon-dur-fast) var(--dragon-ease), transform var(--dragon-dur-fast) var(--dragon-ease);
-    text-decoration: none;
-    letter-spacing: var(--dragon-ls-normal);
-}
-
-.dragon-btn-primary {
-    background: var(--dragon-accent);
-    color: white;
-}
-.dragon-btn-primary:hover { background: var(--dragon-accent-hover); }
-
-.dragon-btn-secondary {
-    background: var(--dragon-tile-bg);
-    color: var(--dragon-text-primary);
-    border: 1px solid var(--dragon-border);
-}
-.dragon-btn-secondary:hover { background: var(--dragon-tile-bg-hover); }
-
-.dragon-btn-ghost {
-    background: none;
-    color: var(--dragon-accent);
-}
-.dragon-btn-ghost:hover { color: var(--dragon-accent-hover); }
 
 /* Config page footer actions */
 .dragon-config-actions {

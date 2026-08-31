@@ -252,6 +252,43 @@ body[data-dragon-ui]:has(.dragon-config-all-workspace) .dragon-page-wrapper {
 }
 
 .dragon-config-capsule-row .dragon-config-tag-filters { flex: 1 1 auto; }
+.dragon-config-bilingual-toggle {
+    display: inline-flex;
+    min-height: 28px;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 9px;
+    border: 1px solid var(--dragon-border-light);
+    border-radius: var(--dragon-radius-pill);
+    background: var(--dragon-bg-secondary);
+    color: var(--dragon-text-tertiary);
+    font: inherit;
+    font-size: var(--dragon-fs-tiny);
+    cursor: pointer;
+}
+
+.dragon-config-bilingual-toggle:hover {
+    border-color: var(--dragon-border-focus);
+    color: var(--dragon-text-primary);
+}
+
+.dragon-config-bilingual-toggle:focus-visible {
+    outline: 2px solid var(--dragon-border-focus);
+    outline-offset: 2px;
+}
+
+.dragon-config-bilingual-toggle[data-active="true"] {
+    border-color: color-mix(in srgb, var(--dragon-accent) 42%, var(--dragon-border));
+    background: var(--dragon-accent-light);
+    color: var(--dragon-accent);
+}
+
+.dragon-config-bilingual-toggle .dragon-btn-icon {
+    width: 14px;
+    height: 14px;
+}
+
 .dragon-config-capsule-mode {
     display: inline-flex;
     flex: 0 0 auto;
@@ -731,6 +768,7 @@ html[data-dragon-config-help="always"] .dragon-config-block .dragon-field-help-b
     .dragon-config-all-search { grid-column: 1; }
     .dragon-config-field-filter-count { grid-column: 2; }
     .dragon-config-capsule-row { align-items: stretch; flex-direction: column; }
+    .dragon-config-bilingual-toggle { align-self: flex-end; }
     .dragon-config-capsule-mode { align-self: flex-end; }
     .dragon-config-block[data-field-span="2"] { grid-column: auto; }
     .dragon-config-all-detail .dragon-config-actions-sticky { flex-wrap: wrap; }

@@ -322,6 +322,7 @@ def _history_summary(meta: dict[str, Any], task_dir: Path) -> dict[str, Any]:
         task_dir,
         variant=str(out.get("variant") or ""),
     )
+    out["model_family"] = chips["model_family"] or str(out.get("model_family") or "")
     out["training_variant"] = chips["training_variant"]
     out["preprocess_precision"] = chips["preprocess_precision"]
     out["block_swap_precision"] = chips["block_swap_precision"]

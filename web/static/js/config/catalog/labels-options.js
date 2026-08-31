@@ -10,6 +10,7 @@ export const FIELD_LABEL_ZH = {
     v100_flash_stability: 'V100 Flash 诊断模式',
     debug_finite_checks: '有限值快速失败',
     compile_dynamic_seq: '动态令牌序列编译',
+    compile_seq_bands: '分带动态序列编译',
     balance_loss_warmup_ratio: '均衡损失预热比例',
     balance_loss_weight: '均衡损失权重',
     balance_w_content: '内容池均衡权重',

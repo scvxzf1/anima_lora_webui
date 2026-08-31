@@ -191,29 +191,21 @@
 
 .dragon-dataset-hero {
     display: flex;
-    align-items: end;
+    align-items: center;
     justify-content: space-between;
-    gap: var(--dragon-sp-6);
-    padding: var(--dragon-sp-5) 0 var(--dragon-sp-6);
+    gap: var(--dragon-sp-4);
+    padding: var(--dragon-sp-3) 0;
 }
 
 .dragon-dataset-hero > div:first-child { min-width: 0; }
 .dragon-dataset-hero-actions { flex: 0 0 auto; justify-content: flex-end; }
 .dragon-dataset-hero h1 {
-    margin: 0 0 var(--dragon-sp-2);
+    margin: 0;
     font-family: var(--dragon-font-display);
     font-size: var(--dragon-fs-title-medium);
     line-height: var(--dragon-lh-tight);
     letter-spacing: var(--dragon-ls-title);
     text-wrap: balance;
-}
-.dragon-dataset-hero p {
-    max-width: 720px;
-    margin: 0;
-    color: var(--dragon-text-secondary);
-    font-size: var(--dragon-fs-callout);
-    line-height: var(--dragon-lh-body);
-    text-wrap: pretty;
 }
 .dragon-dataset-hero-actions,
 .dragon-dataset-editor-tools,
@@ -406,27 +398,8 @@
 .dragon-dataset-editor-panel { min-width: 0; }
 .dragon-dataset-editor-head { padding: 0 0 var(--dragon-sp-5); border-bottom: 1px solid var(--dragon-divider); }
 .dragon-dataset-editor-head p { max-width: 680px; margin: 5px 0 0; overflow-wrap: anywhere; color: var(--dragon-text-tertiary); font-family: var(--dragon-font-mono); font-size: var(--dragon-fs-tiny); }
-.dragon-icon-button {
-    display: inline-grid;
-    width: 38px;
-    height: 38px;
-    place-items: center;
-    padding: 0;
-    border: 1px solid var(--dragon-border-light);
-    border-radius: 50%;
-    background: var(--dragon-tile-bg);
-    color: var(--dragon-text-primary);
-    cursor: pointer;
-}
-.dragon-icon-button:hover { background: var(--dragon-tile-bg-hover); }
-.dragon-icon-button-danger { color: var(--dragon-error); }
-.dragon-icon-button svg { width: 17px; height: 17px; }
-.dragon-icon-button:disabled { opacity: .35; cursor: default; }
-
 .dragon-dataset-form {
-    /* Keep one page-level scroll container. The previous fixed-height nested
-     * scroller ended above the viewport bottom and exposed a large blank band
-     * beside the taller sticky preset library. */
+    /* Single-column layouts keep the form in normal document flow. */
     max-height: none;
     min-height: 0;
     overflow: visible;
@@ -487,7 +460,7 @@
  * the flex and spacing needed by this page's structural headers. */
 body[data-dragon-ui] #dragon-root .dragon-dataset-hero {
     display: flex;
-    padding: var(--dragon-sp-5) 0 var(--dragon-sp-6);
+    padding: var(--dragon-sp-3) 0;
 }
 
 body[data-dragon-ui] #dragon-root .dragon-dataset-preset-group > header {
@@ -522,6 +495,14 @@ body[data-dragon-ui] #stage-resolution-dialog {
     background: var(--dragon-bg-elevated);
     color: var(--dragon-text-primary);
     box-shadow: var(--dragon-shadow-lg);
+}
+
+body[data-dragon-ui] #dataset-preview-dialog {
+    width: min(80vw, 1600px);
+    height: min(80vh, 960px);
+    max-width: calc(100vw - 24px);
+    max-height: min(80dvh, 960px);
+    box-sizing: border-box;
 }
 
 body[data-dragon-ui] #dataset-preview-dialog::backdrop,
@@ -559,6 +540,12 @@ body[data-dragon-ui] #stage-resolution-dialog .stage-resolution-dialog-body {
     background: var(--dragon-bg-primary);
 }
 
+body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-dialog-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    max-height: none;
+}
+
 body[data-dragon-ui] #stage-resolution-dialog .stage-resolution-summary-item,
 body[data-dragon-ui] #stage-resolution-dialog .stage-resolution-chart-panel,
 body[data-dragon-ui] #stage-resolution-dialog .stage-resolution-editor,
@@ -591,6 +578,114 @@ body[data-dragon-ui] #stage-resolution-dialog .stage-resolution-table-panel {
 .dragon-dataset-savebar strong { overflow: hidden; font-size: var(--dragon-fs-callout-medium); text-overflow: ellipsis; white-space: nowrap; }
 .dragon-dataset-savebar > div:first-child span { margin-top: 2px; color: var(--dragon-text-tertiary); font-size: var(--dragon-fs-caption); }
 .dragon-dataset-savebar .dragon-config-feedback { position: absolute; right: 16px; bottom: calc(100% + 8px); max-width: min(560px, calc(100vw - 40px)); padding: 7px 11px; border-radius: var(--dragon-radius-pill); background: var(--dragon-bg-elevated); box-shadow: var(--dragon-shadow-md); }
+
+@media (min-width: 1069px) {
+    html:has(body[data-dragon-ui] .dragon-dataset-page-host),
+    body[data-dragon-ui]:has(.dragon-dataset-page-host) {
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+    }
+
+    body[data-dragon-ui]:has(.dragon-dataset-page-host) #dragon-root,
+    body[data-dragon-ui]:has(.dragon-dataset-page-host) .dragon-main,
+    body[data-dragon-ui]:has(.dragon-dataset-page-host) .dragon-page-wrapper.dragon-dataset-page-host {
+        height: 100vh;
+        height: 100dvh;
+        min-height: 0;
+        overflow: hidden;
+    }
+
+    body[data-dragon-ui]:has(.dragon-dataset-page-host) .dragon-main {
+        box-sizing: border-box;
+    }
+
+    body[data-dragon-ui]:has(.dragon-dataset-page-host) .dragon-page-wrapper.dragon-dataset-page-host {
+        height: 100%;
+    }
+
+    .dragon-dataset-page {
+        display: grid;
+        height: 100%;
+        min-height: 0;
+        grid-template-rows: auto auto minmax(0, 1fr);
+        overflow: hidden;
+        padding-bottom: var(--dragon-sp-4);
+    }
+
+    .dragon-dataset-workspace {
+        min-height: 0;
+        align-items: stretch;
+        overflow: hidden;
+    }
+
+    .dragon-dataset-editor-panel {
+        display: flex;
+        min-height: 0;
+        flex-direction: column;
+        overflow: hidden;
+    }
+
+    .dragon-dataset-form {
+        flex: 1 1 0;
+        max-height: none;
+        min-height: 0;
+        overflow-x: hidden;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        scrollbar-color: color-mix(in srgb, var(--dragon-text-tertiary) 54%, transparent) transparent;
+        scrollbar-gutter: stable;
+        scrollbar-width: thin;
+        scroll-padding-block: var(--dragon-sp-4);
+        padding: 0 8px 18px 0;
+        margin: 0;
+    }
+
+    .dragon-dataset-savebar {
+        position: relative;
+        z-index: 2;
+        right: auto;
+        bottom: auto;
+        left: auto;
+        flex: 0 0 auto;
+        margin-top: var(--dragon-sp-3);
+    }
+
+    .dragon-dataset-library {
+        position: static;
+        box-sizing: border-box;
+        min-height: 0;
+        height: 100%;
+        max-height: none;
+    }
+
+    .dragon-dataset-editor-panel > .dragon-dataset-blocking-error {
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow: auto;
+    }
+
+    .dragon-dataset-form::-webkit-scrollbar {
+        width: 6px;
+        height: 6px;
+    }
+
+    .dragon-dataset-form::-webkit-scrollbar-track {
+        border: 0;
+        background: transparent;
+    }
+
+    .dragon-dataset-form::-webkit-scrollbar-thumb {
+        min-height: 36px;
+        border: 0;
+        border-radius: var(--dragon-radius-pill);
+        background: color-mix(in srgb, var(--dragon-text-tertiary) 54%, transparent);
+    }
+
+    .dragon-dataset-form::-webkit-scrollbar-thumb:hover {
+        background: color-mix(in srgb, var(--dragon-text-secondary) 78%, transparent);
+    }
+}
 
 .visually-hidden { position: absolute !important; width: 1px !important; height: 1px !important; padding: 0 !important; margin: -1px !important; overflow: hidden !important; clip: rect(0, 0, 0, 0) !important; white-space: nowrap !important; border: 0 !important; }
 .dragon-dataset-page button,
@@ -3673,6 +3768,14 @@ body[data-dragon-ui] #dragon-root .dragon-global-settings-group-header {
 }
 
 @media (max-width: 734px) {
+    /* Keep the 80% desktop target usable on narrow touch screens. */
+    body[data-dragon-ui] #dataset-preview-dialog {
+        width: calc(100vw - 24px);
+        height: min(80dvh, 960px);
+        max-width: calc(100vw - 24px);
+        max-height: calc(100dvh - 24px);
+    }
+
     .dragon-dataset-context .dragon-status-badge { white-space: normal; }
     .dragon-dataset-path-meta { align-items: flex-start; flex-direction: column; }
     .dragon-dataset-path-status { align-self: flex-start; }
