@@ -7,8 +7,8 @@
 ## 执行摘要
 
 当前测试集确实过多且过杂，但问题不能用批量删除解决。2026-08-09 的五轮清理把 Git 跟踪的
-`tests/test_*.py` 从 225 个降到 191 个；当前又增长到 252 个、77,008 行、pytest 收集
-2,804 项。净增 61 个文件（+31.9%）中有相当部分来自 Dragon、Tagging、Z-Image 和多模型
+`tests/test_*.py` 从 225 个降到 191 个；当前又增长到 251 个、77,140 行、pytest 收集
+2,820 项。净增 60 个文件（+31.4%）中有相当部分来自 Dragon、Tagging、Z-Image 和多模型
 能力，属于真实功能增长；失控点是这些测试没有进入明确的层级和预算。
 
 本轮审计的核心结论：
@@ -32,12 +32,33 @@
 审计基于当前脏工作区。审计期间已有多个前端和前端测试文件由用户修改；本轮没有覆盖、回退或
 归因这些改动。
 
+### 第一批治理进度
+
+2026-08-31 已开始落地阶段 1 和一项阶段 2 收口：
+
+- 注册 `integration`、`hardware`、`benchmark`、`probe` marker；
+- 新增 `test-core`、`test-integration`、`test-hardware`、`test-experimental`、`test-all`；
+- 保持 `test-unit` 的完整 `tests/` 发现行为不变；
+- 首批 8 个纯领域文件完成文件级分层，混合职责文件暂不整文件排除；
+- 三套 runner 的 6 个复制测试收口为 2 个参数化 contract，仍保留 6 个收集 case；收口后
+  `test_signal_probe_runner.py` 只剩空壳，因此已删除并从 fast 目标表移除。
+
+第二批按测试级迁移 daemon/socket、Gloo 和 Node subprocess 后，当前分层收集为：core 2,731、
+integration 61、hardware 3、experimental 25、all 2,820。随后补充的 3 个 CLI 分隔符回归用例
+仍归入 core。各层合计与完整收集守恒，测试文件
+降为 251 个。
+
+实跑也修正了最初的耗时目标：迁移前 core 180 秒只推进到约 73%，迁移后 60 秒仍约 47%；
+`test-fast` 则为 48 项、2.66 秒。因此 60 秒反馈由 `test-fast` 承担，`test-core` 定义为未被显式
+标记为 integration、hardware、benchmark 或 probe 的完整层，暂用 300 秒保护窗口并在后续按慢项
+证据继续压缩。
+
 | 指标 | 当前值 |
 | --- | ---: |
-| Git 跟踪的 `tests/test_*.py` | 252 |
-| 总行数 | 77,008 |
-| pytest 收集项 | 2,804 |
-| 收集耗时 | 12.37 秒 |
+| Git 跟踪的 `tests/test_*.py` | 251 |
+| 总行数 | 77,140 |
+| pytest 收集项 | 2,820 |
+| 收集耗时 | 11.16 秒 |
 | 超过 1,000 行的测试文件 | 13 |
 | 少于 100 行的测试文件 | 64 |
 | 使用 `read_text()` 的测试文件 | 91 |
@@ -161,7 +182,7 @@ config 等领域套件，并复用统一 Node/jsdom harness。
 
 仓库只有 `.github/workflows/release.yml`，并明确注明不设 test gate。CUDA/FlashAttention 无法在免费
 runner 上覆盖是合理限制，但纯 CPU unit、配置、路径安全、Web 后端 smoke 和 Node 语法/行为测试
-仍可以分层运行。当前本地 2,804 项与发布流程之间没有自动连接。
+仍可以分层运行。当前本地 2,820 项与发布流程之间没有自动连接。
 
 ## 不应删除的覆盖
 
@@ -190,7 +211,8 @@ runner 上覆盖是合理限制，但纯 CPU unit、配置、路径安全、Web 
 3. 为 Node/jsdom、CUDA 和外部网络能力提供集中 fixture/gate，不再每个文件自行 skip。
 4. 将上表首批 8 个文件标入正确层级；混合文件按 test 粒度标记，避免整文件误排除。
 
-阶段验收：CPU `test-core` 在 60 秒内完成；`test-all --collect-only` 仍收集全部预期测试且无错误。
+阶段验收：`test-fast` 在 60 秒内完成；`test-core` 不选择显式标记的硬件或研究探针；
+`test-all --collect-only` 仍收集全部预期测试且无错误。
 
 ### 阶段 2：删除真实重复和实验伪单测
 
@@ -226,7 +248,7 @@ runner 上覆盖是合理限制，但纯 CPU unit、配置、路径安全、Web 
 规模目标用于约束增长，不作为删覆盖的 KPI：
 
 - 第一轮通过 Dragon 归并和实验迁层，将顶层测试文件数控制到约 225--235；
-- 默认 CPU core 在 60 秒内完成，完整收集保持无错误；
+- `test-fast` 在 60 秒内完成；CPU core 建立耗时基线并持续下降；完整收集保持无错误；
 - 单测试文件原则上不超过 1,200 行，前端行为文件优先控制在 600--800 行；
 - 新功能优先加入现有领域套件，只有新的独立运行时、服务边界或依赖层级才新建文件；
 - 每个 hardware/probe 测试必须有显式入口、依赖条件和对应生产 contract。
@@ -236,7 +258,21 @@ runner 上覆盖是合理限制，但纯 CPU unit、配置、路径安全、Web 
 
 ## 本轮验证
 
+审计基线：
+
 - `pytest --collect-only -q tests`：2,804 项，12.37 秒，collection error 为 0。
-- `timeout 60 pytest -q tests --durations=25`：超时退出，进度约 15%；因未完成，无法获得可靠
-  durations 排名。
-- 审计仅新增本文并更新 findings 索引；未修改测试、生产代码、用户配置或运行数据。
+- `timeout 60 pytest -q tests --durations=25`：超时退出，进度约 15%。
+
+第一、二批治理后：
+
+- `test-all --collect-only`：最终工作区为 2,820 项、11.16 秒，collection error 为 0。首批实现
+  后是 2,811 项，其中新增 7 项来自分层任务自身的命令构造回归；治理期间并行工作区又增加
+  6 个 core case，随后补充 3 个 CLI 分隔符回归，本轮未回退。
+- `test-fast`：48 passed，2.66 秒。
+- `test-integration`：61 passed，66.95 秒（含前端 Node 层）。
+- `test-experimental`：25 passed，31.69 秒。
+- `test-hardware`：3 skipped，均由显式 GPU/V100 环境条件门控。
+- `test_tasks_runner.py`：28 passed；`test_training_hot_runner.py`：17 passed；文档完整性：8 passed。
+- core 60 秒推进约 47%，180 秒探测推进约 73%，未伪装为通过；后续继续按慢项拆分和压缩。
+
+本轮未修改模型、训练或 WebUI 生产行为，也未触碰用户配置和运行数据。

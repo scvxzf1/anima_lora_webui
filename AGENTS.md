@@ -65,7 +65,10 @@
 - 常用维护入口：
   - WebUI：`.venv/bin/python tasks.py web --host 127.0.0.1 --port 20102`
   - 单元测试：`timeout 60 .venv/bin/python -m pytest tests/<test_file>.py`
-  - 全量单测：`timeout 60 .venv/bin/python tasks.py test-unit`
+  - 快速反馈：`timeout 60 .venv/bin/python tasks.py test-fast`
+  - Core layer：`timeout 300 .venv/bin/python tasks.py test-core`
+  - 分层测试：`test-integration`、`test-hardware`、`test-experimental`
+  - 完整测试：`.venv/bin/python tasks.py test-all`（`test-unit` 保留为兼容别名）
   - 合并配置：`.venv/bin/python tasks.py print-config METHOD=<name> PRESET=<name>`
 - 老文档中的命令若不在 `tasks.py --help` 当前列表中，按历史或兼容入口处理，不要直接假定仍可用。
 
@@ -534,7 +537,9 @@ T-LoRA mask 是共享 buffer，每个 denoising step 更新一次。
 - 需要项目 Python 依赖的验证命令，默认使用 `.venv/bin/python`，避免系统 Python
   缺少 torch、pytest 插件或本仓依赖导致误判。
 - 优先从 [`tests/`](tests/) 中按改动模块和文件名选择定向测试；跨模块改动再扩大到
-  `timeout 60 .venv/bin/python tasks.py test-unit`。
+  `timeout 300 .venv/bin/python tasks.py test-core`。涉及多进程/多组件、真实硬件或研究探针时，
+  再显式运行 `test-integration`、`test-hardware` 或 `test-experimental`；完整收集使用
+  `.venv/bin/python tasks.py test-all --collect-only`。
 - 大模型、真实训练、下载类验证不要默认执行；涉及 GPU 的代码优先使用小 fixture 或 monkeypatch。
 - lint/format 会改文件时，只在范围明确时运行。
 
