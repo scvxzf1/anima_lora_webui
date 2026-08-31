@@ -1,11 +1,14 @@
 import math
 
+import pytest
 import torch
 
 from scripts.krea2.probe_nf4_ex_spectrum import (
     _aggregate_layers,
     _spectrum_summary,
 )
+
+pytestmark = pytest.mark.probe
 
 
 def test_spectrum_summary_exact_energy() -> None:

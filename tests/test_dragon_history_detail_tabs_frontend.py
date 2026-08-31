@@ -23,6 +23,7 @@ def test_history_detail_routes_include_task_subview() -> None:
     assert "if (context.taskId !== mountedTaskId || !mountedRoot) return false" in history
 
 
+@pytest.mark.integration
 def test_history_detail_tabs_render_and_switch_without_reload() -> None:
     if not shutil.which("node"):
         pytest.skip("node is required for Dragon history detail tab checks")

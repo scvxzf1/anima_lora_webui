@@ -3,7 +3,11 @@ from __future__ import annotations
 import json
 import subprocess
 
+import pytest
+
 from tests.frontend_test_support import REPO_ROOT
+
+pytestmark = pytest.mark.integration
 
 
 def test_live_log_search_batches_renders_and_cleans_up() -> None:

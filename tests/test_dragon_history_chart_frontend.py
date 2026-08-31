@@ -11,6 +11,7 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
+@pytest.mark.integration
 def test_dragon_history_chart_hover_tracks_each_series() -> None:
     """Loss and LR hover markers use their own scales and visibility toggles."""
     if not shutil.which("node"):
@@ -104,6 +105,7 @@ console.log(JSON.stringify({ initial, curveToggle, valuesHidden, lrPointStillVis
     assert payload["lrPointStillVisible"] is True
 
 
+@pytest.mark.integration
 def test_dragon_history_system_chart_filters_series_and_renders_hover_values() -> None:
     """The full-width single-GPU chart filters series and links hover values."""
     if not shutil.which("node"):
@@ -220,7 +222,6 @@ console.log(JSON.stringify({ initial, filtered, allHidden, empty }));
 
 
 def test_dragon_history_system_charts_are_wired_to_detail_payload() -> None:
-    controller = (REPO_ROOT / "web/static/js/dragon-ui/pages/history-detail.js").read_text(encoding="utf-8")
     metrics_controller = (REPO_ROOT / "web/static/js/dragon-ui/pages/history-metrics-controller.js").read_text(encoding="utf-8")
     view = (REPO_ROOT / "web/static/js/dragon-ui/pages/history-view.js").read_text(encoding="utf-8")
     css = (REPO_ROOT / "web/static/css/dragon/03a-dragon-history-workbench.css").read_text(encoding="utf-8")

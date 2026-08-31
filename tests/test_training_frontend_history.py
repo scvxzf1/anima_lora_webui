@@ -10,6 +10,7 @@ for _k, _v in vars(_frontend_support).items():
     if not _k.startswith("__"):
         globals()[_k] = _v
 
+@pytest.mark.integration
 def test_history_artifact_helper_builds_urls() -> None:
     if not shutil.which("node"):
         pytest.skip("node is required for anima-app history artifact helper checks")
@@ -165,6 +166,7 @@ def test_history_refresh_reuses_open_detail_content() -> None:
     assert history_dialog.index("if (cached) {") < history_dialog.index("content.replaceChildren();\n        let node = null;")
 
 
+@pytest.mark.integration
 def test_history_log_scroll_position_is_clamped_after_atomic_rerender() -> None:
     if not shutil.which("node"):
         pytest.skip("node is required for history log scroll checks")
@@ -211,6 +213,7 @@ console.log(JSON.stringify({ captured, preserved, clamped }));
     }
 
 
+@pytest.mark.integration
 def test_live_status_merges_current_history_task_without_full_history_fetch() -> None:
     if not shutil.which("node"):
         pytest.skip("node is required for live history merge checks")
@@ -1342,6 +1345,7 @@ def test_history_collection_drag_drop_frontend_hooks_are_present() -> None:
     assert "min-width: 0;" in single_task_handle_css
 
 
+@pytest.mark.integration
 def test_history_curve_data_helpers_normalize_filter_and_downsample() -> None:
     if not shutil.which("node"):
         pytest.skip("node is required for history curve data checks")
@@ -1432,6 +1436,7 @@ console.log(JSON.stringify({
     }
 
 
+@pytest.mark.integration
 def test_history_detail_state_aliases_and_resume_labels() -> None:
     if not shutil.which("node"):
         pytest.skip("node is required for history detail state checks")
@@ -1794,6 +1799,7 @@ def test_history_config_group_card_imports_storage_key() -> None:
     assert "card.dataset.collectionKey = historyCollectionStorageKey(options.collection || '__all__');" in config_card
 
 
+@pytest.mark.integration
 def test_history_workbench_renders_items_in_chunks() -> None:
     """Large history workbench lists should append cards in rAF chunks, not one blocking loop only."""
     helper = _frontend_module_text("js/features/history-list/chunked-render.js")

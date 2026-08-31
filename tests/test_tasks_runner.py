@@ -32,6 +32,132 @@ def test_tasks_main_prints_global_help(monkeypatch, capsys) -> None:
     assert "type-check" in out
 
 
+def test_tasks_main_lists_layered_test_commands(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(sys, "argv", ["tasks.py", "--help"])
+
+    with pytest.raises(SystemExit) as exc:
+        tasks.main()
+
+    out = capsys.readouterr().out
+    assert exc.value.code == 0
+    for command in (
+        "test-core",
+        "test-integration",
+        "test-hardware",
+        "test-experimental",
+        "test-all",
+    ):
+        assert command in out
+
+
+@pytest.mark.parametrize(
+    ("command", "expected"),
+    [
+        (
+            tasks.utilities.cmd_test_core,
+            ["-m", tasks.utilities.CORE_TEST_MARKERS],
+        ),
+        (
+            tasks.utilities.cmd_test_integration,
+            ["-m", tasks.utilities.INTEGRATION_TEST_MARKERS],
+        ),
+        (
+            tasks.utilities.cmd_test_hardware,
+            ["-m", tasks.utilities.HARDWARE_TEST_MARKERS],
+        ),
+        (
+            tasks.utilities.cmd_test_experimental,
+            ["-m", tasks.utilities.EXPERIMENTAL_TEST_MARKERS],
+        ),
+    ],
+)
+def test_layered_test_commands_forward_marker_and_extra_args(
+    monkeypatch,
+    command,
+    expected,
+) -> None:
+    commands: list[list[str]] = []
+    monkeypatch.setattr(tasks.utilities, "run", lambda value: commands.append(value))
+
+    command(["--maxfail=1"])
+
+    assert commands == [
+        [
+            tasks.utilities.PY,
+            "-m",
+            "pytest",
+            "-q",
+            *expected,
+            "tests/",
+            "--maxfail=1",
+        ]
+    ]
+
+
+@pytest.mark.parametrize(
+    "command",
+    [tasks.utilities.cmd_test_unit, tasks.utilities.cmd_test_all],
+)
+def test_full_test_commands_keep_legacy_discovery_and_extra_args(
+    monkeypatch,
+    command,
+) -> None:
+    commands: list[list[str]] = []
+    monkeypatch.setattr(tasks.utilities, "run", lambda value: commands.append(value))
+
+    command(["--collect-only"])
+
+    assert commands == [
+        [
+            tasks.utilities.PY,
+            "-m",
+            "pytest",
+            "-q",
+            "tests/",
+            "--collect-only",
+        ]
+    ]
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        tasks.utilities.cmd_test_unit,
+        tasks.utilities.cmd_test_core,
+        tasks.utilities.cmd_test_integration,
+        tasks.utilities.cmd_test_hardware,
+        tasks.utilities.cmd_test_experimental,
+        tasks.utilities.cmd_test_all,
+    ],
+)
+def test_test_commands_strip_forwarding_separator(monkeypatch, command) -> None:
+    commands: list[list[str]] = []
+    monkeypatch.setattr(tasks.utilities, "run", lambda value: commands.append(value))
+
+    command(["--", "--collect-only"])
+
+    assert commands[0][-1] == "--collect-only"
+    assert "--" not in commands[0]
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        tasks.utilities.cmd_test_backend_smoke,
+        tasks.utilities.cmd_test_fast,
+        tasks.utilities.cmd_test_focused,
+    ],
+)
+def test_additional_test_commands_strip_forwarding_separator(monkeypatch, command) -> None:
+    commands: list[list[str]] = []
+    monkeypatch.setattr(tasks.utilities, "run", lambda value: commands.append(value))
+
+    command(["--", "--collect-only"])
+
+    assert commands[0][-1] == "--collect-only"
+    assert "--" not in commands[0]
+
+
 def test_tasks_main_rejects_unknown_command(monkeypatch, capsys) -> None:
     monkeypatch.setattr(sys, "argv", ["tasks.py", "nope"])
 

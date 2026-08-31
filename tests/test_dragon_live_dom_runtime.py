@@ -3,7 +3,11 @@ from __future__ import annotations
 import json
 import subprocess
 
+import pytest
+
 from tests.frontend_test_support import STATIC_DIR
+
+pytestmark = pytest.mark.integration
 
 
 def test_live_dom_bindings_query_once_and_skip_identical_writes() -> None:

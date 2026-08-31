@@ -15,6 +15,8 @@ from library.runtime.offloading import ModelOffloader
 from networks.attention_dispatch import AttentionParams
 from networks.lora_modules.lora import LoRAModule
 
+pytestmark = pytest.mark.integration
+
 
 @dataclass(frozen=True)
 class _HotScenario:

@@ -501,6 +501,7 @@ def _gloo_gradient_worker(
         dist.destroy_process_group()
 
 
+@pytest.mark.integration
 @pytest.mark.focused
 def test_two_process_gloo_syncs_conditional_gradients_and_optimizer_steps(tmp_path):
     if not dist.is_available() or not dist.is_gloo_available():

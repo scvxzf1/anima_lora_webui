@@ -115,6 +115,7 @@ def test_dragon_dataset_preview_module_has_valid_syntax() -> None:
     assert result.returncode == 0, result.stderr or result.stdout
 
 
+@pytest.mark.integration
 def test_dragon_dataset_preview_window_keeps_anchor_and_bounds_resident_pages() -> None:
     script = r"""
 import {
@@ -182,6 +183,7 @@ console.log(JSON.stringify({
     }
 
 
+@pytest.mark.integration
 def test_dragon_dataset_preview_detail_restores_list_state() -> None:
     if not shutil.which("node"):
         pytest.skip("node is required for Dragon dataset preview detail checks")

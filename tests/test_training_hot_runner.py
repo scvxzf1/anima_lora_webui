@@ -10,9 +10,81 @@ from types import SimpleNamespace
 
 import pytest
 
+from bench.mfu import run_training as mfu_run_training
+from bench.plain_lora_speed import run_matrix as plain_lora_run_matrix
+from bench.signal_probe import run_training as signal_run_training
 from bench.training_hot import run_matrix
 
 pytestmark = pytest.mark.fast
+
+GPU_ROWS = [
+    {
+        "index": "0",
+        "name": "NVIDIA GeForce GTX 1050",
+        "memory_total_mb": "4096",
+        "memory_used_mb": "100",
+        "utilization_gpu_pct": "0",
+    },
+    {
+        "index": "1",
+        "name": "NVIDIA GeForce RTX 3080 Ti Laptop GPU",
+        "memory_total_mb": "16384",
+        "memory_used_mb": "100",
+        "utilization_gpu_pct": "0",
+    },
+]
+
+
+def _gpu_guard_args(gpu_index: str) -> argparse.Namespace:
+    return argparse.Namespace(
+        gpu_index=gpu_index,
+        allow_gpu0=False,
+        min_vram_mb=12000,
+        allow_low_vram=False,
+        python=Path(".venv/bin/python"),
+    )
+
+
+@pytest.mark.parametrize(
+    "runner",
+    [plain_lora_run_matrix, mfu_run_training, signal_run_training],
+    ids=["plain-lora", "mfu", "signal-probe"],
+)
+def test_runner_gpu_guard_refuses_gpu0_without_override(monkeypatch, runner) -> None:
+    monkeypatch.setattr(runner, "_gpu_rows", lambda: GPU_ROWS)
+
+    with pytest.raises(SystemExit, match="physical GPU 0"):
+        runner._check_gpu(_gpu_guard_args("0"))
+
+
+@pytest.mark.parametrize(
+    "runner",
+    [plain_lora_run_matrix, mfu_run_training, signal_run_training],
+    ids=["plain-lora", "mfu", "signal-probe"],
+)
+def test_runner_torch_mapping_sets_pci_order(monkeypatch, runner) -> None:
+    seen_env = {}
+
+    def fake_run(cmd, cwd, env, capture_output, text, timeout):
+        seen_env.update(env)
+        payload = {
+            "count": 1,
+            "name": "NVIDIA GeForce RTX 3080 Ti Laptop GPU",
+            "memory_total_mb": 15982,
+        }
+        return SimpleNamespace(
+            returncode=0,
+            stdout=json.dumps(payload) + "\n",
+            stderr="",
+        )
+
+    monkeypatch.setattr(runner.subprocess, "run", fake_run)
+
+    info = runner._verify_torch_mapping(_gpu_guard_args("1"))
+
+    assert seen_env["CUDA_DEVICE_ORDER"] == "PCI_BUS_ID"
+    assert seen_env["CUDA_VISIBLE_DEVICES"] == "1"
+    assert "3080 Ti" in info["name"]
 
 
 def _args(**overrides):

@@ -296,6 +296,7 @@ def _gloo_sampling_worker(
         dist.destroy_process_group()
 
 
+@pytest.mark.integration
 @pytest.mark.focused
 def test_two_process_gloo_shards_before_main_process_decode(tmp_path) -> None:
     if not dist.is_available() or not dist.is_gloo_available():
@@ -319,6 +320,7 @@ def test_two_process_gloo_shards_before_main_process_decode(tmp_path) -> None:
     assert (tmp_path / "finished-1").exists()
 
 
+@pytest.mark.integration
 @pytest.mark.focused
 def test_two_process_gloo_propagates_sampling_failure_without_barrier_hang(
     tmp_path,

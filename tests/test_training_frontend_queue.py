@@ -293,6 +293,7 @@ def test_resume_queue_button_is_wired() -> None:
     assert "btn-queue-resume-training" in listener_section
 
 
+@pytest.mark.integration
 def test_training_queue_renderer_updates_dom_fixture() -> None:
     if not shutil.which("node"):
         pytest.skip("node is required for queue DOM fixture checks")
@@ -518,6 +519,7 @@ console.log(JSON.stringify({
     }
 
 
+@pytest.mark.integration
 def test_queue_state_preserves_snapshot_on_error_payloads() -> None:
     if not shutil.which("node"):
         pytest.skip("node is required for queue state checks")
@@ -606,4 +608,3 @@ console.log(JSON.stringify({ fallbackCounts, errorSnapshot, doneSections, cancel
             {"key": "canceled", "collapsed": False, "itemIds": ["cancel-4"]},
         ],
     }
-

@@ -150,6 +150,7 @@ def daemon(tmp_path, monkeypatch):
         srv.server_close()
 
 
+@pytest.mark.integration
 def test_health(daemon):
     cl, _ = daemon
     h = cl.health()
@@ -157,6 +158,7 @@ def test_health(daemon):
     assert h["active_job"] is None
 
 
+@pytest.mark.integration
 def test_serial_queue(daemon):
     cl, _ = daemon
     j1 = cl.submit(method="lora", overrides={"duration": 1.0})["job_id"]
@@ -173,6 +175,7 @@ def test_serial_queue(daemon):
     assert g1["latest"]["ev"] == "run_end"
 
 
+@pytest.mark.integration
 def test_cli_queue_submits_instead_of_launching(daemon, monkeypatch):
     """`train(..., extra=["--queue"])` enqueues on the daemon and returns,
     rather than calling accelerate_launch inline."""
@@ -200,6 +203,7 @@ def test_cli_queue_submits_instead_of_launching(daemon, monkeypatch):
     assert "--queue" not in job["extra"]
 
 
+@pytest.mark.integration
 def test_cli_queue_folds_artist_into_extra(daemon, monkeypatch):
     """ARTIST env is folded into the queued job's extra (the daemon's own
     build_method_args doesn't read env vars)."""
@@ -219,6 +223,7 @@ def test_cli_queue_folds_artist_into_extra(daemon, monkeypatch):
     assert "alice" in job["extra"]
 
 
+@pytest.mark.integration
 def test_stop_running_job(daemon):
     cl, mgr = daemon
     jid = cl.submit(method="lora", overrides={"duration": 60.0})["job_id"]
@@ -379,6 +384,7 @@ def real_cmd_daemon(tmp_path, monkeypatch):
         srv.server_close()
 
 
+@pytest.mark.integration
 def test_command_job_end_to_end(real_cmd_daemon):
     """submit_command → detached exec → exit-code finalize (no progress.jsonl),
     with extra_env applied and stdout captured."""
@@ -398,6 +404,7 @@ def test_command_job_end_to_end(real_cmd_daemon):
     assert "shuf=7" in log
 
 
+@pytest.mark.integration
 def test_command_job_missing_argv_rejected(real_cmd_daemon):
     """A command submission without argv is a 400 (urllib raises HTTPError)."""
     import urllib.error
@@ -408,6 +415,7 @@ def test_command_job_missing_argv_rejected(real_cmd_daemon):
     assert ei.value.code == 400
 
 
+@pytest.mark.integration
 def test_serve_falls_back_when_port_held_by_stranger():
     """A non-anima process on the preferred port → bind an ephemeral one
     instead of failing (``serve_with_fallback``)."""
@@ -435,6 +443,7 @@ def test_serve_falls_back_when_port_held_by_stranger():
         stranger.close()
 
 
+@pytest.mark.integration
 def test_serve_defers_to_a_live_sibling_daemon(daemon):
     """If an anima daemon already answers on the port, ``serve_with_fallback``
     re-raises so the second process stands down (no duplicate daemon)."""

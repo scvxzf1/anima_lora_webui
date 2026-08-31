@@ -6,9 +6,12 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT_PATH = ROOT / "scripts" / "experiments" / "int8_blockswap_equivalence_probe.py"
+pytestmark = pytest.mark.probe
 
 
 def _load_module():

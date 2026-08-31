@@ -213,6 +213,7 @@ def test_legacy_globals_file_has_no_repo_source_consumers() -> None:
     assert not failures
 
 
+@pytest.mark.integration
 def test_runtime_bridge_helpers_do_not_require_legacy_globals_shim() -> None:
     if not shutil.which("node"):
         pytest.skip("node is required for anima-app runtime state bridge checks")
@@ -937,6 +938,7 @@ def test_image_test_feature_modules_are_loaded_from_production_entrypoint() -> N
         assert tooltip_id in tooltip_section
 
 
+@pytest.mark.integration
 def test_format_path_label_contract_and_call_sites() -> None:
     """Shared path labels support length/basename/parent-basename and keep full-path titles."""
     format_source = _frontend_module_text("js/shared/format.js")
@@ -1068,6 +1070,7 @@ def test_anima_app_startup_import_groups_use_promise_all() -> None:
     assert "Promise.all(" in index_source[index_source.index(history_marker) - 200 : index_source.index(history_marker) + 80]
 
 
+@pytest.mark.integration
 def test_history_task_actions_bridge_fails_fast_when_unconfigured() -> None:
     """Unconfigured history-task-actions methods must throw instead of silent no-op."""
     bridge_source = _frontend_module_text(

@@ -11,6 +11,7 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
+@pytest.mark.integration
 def test_history_log_viewer_windows_segments_across_full_scroll_range() -> None:
     if not shutil.which("node"):
         pytest.skip("node is required for Dragon history log viewer checks")
@@ -191,6 +192,7 @@ def test_history_log_viewer_is_wired_without_twelve_line_slice() -> None:
     assert "line.dataset.searchActive = 'true'" in viewer
 
 
+@pytest.mark.integration
 def test_history_log_viewer_loads_arbitrary_pages_without_mounting_all_rows() -> None:
     if not shutil.which("node"):
         pytest.skip("node is required for Dragon history log viewer checks")
@@ -310,6 +312,7 @@ console.log(JSON.stringify({ latest, top, middle, search }));
     }
 
 
+@pytest.mark.integration
 def test_history_log_search_navigates_full_virtualized_range() -> None:
     if not shutil.which("node"):
         pytest.skip("node is required for Dragon history log search checks")

@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import argparse
 
+import pytest
 import torch
 
 from bench.attention_injection import probe
+
+pytestmark = pytest.mark.probe
 
 
 def test_tensor_stats_reports_finite_values() -> None:

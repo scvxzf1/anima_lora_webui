@@ -1,6 +1,6 @@
 """Misc utility entry-points: merge, comfy-batch, distill-prep, distill-mod,
-test-unit, test-fast, test-focused, type-check, update, export-logs,
-print-config, explain-config, config-compat, training-hot."""
+test suites, type-check, update, export-logs, print-config, explain-config,
+config-compat, training-hot."""
 
 from __future__ import annotations
 
@@ -14,10 +14,16 @@ from ._common import PY, _path, _preset, bespoke_preset_flags, run
 FAST_TEST_TARGETS = [
     "tests/test_training_hot_runner.py",
     "tests/test_plain_lora_speed_runner.py",
-    "tests/test_signal_probe_runner.py",
     "tests/test_mfu_bench.py",
     "tests/test_mfu_gpu_theoretical.py",
 ]
+
+CORE_TEST_MARKERS = "not integration and not hardware and not benchmark and not probe"
+INTEGRATION_TEST_MARKERS = (
+    "integration and not hardware and not benchmark and not probe"
+)
+HARDWARE_TEST_MARKERS = "hardware"
+EXPERIMENTAL_TEST_MARKERS = "(benchmark or probe) and not hardware"
 
 TYPE_CHECK_TARGETS = [
     "library/config",
@@ -119,7 +125,53 @@ def cmd_distill_mod(extra):
 
 
 def cmd_test_unit(extra):
-    run([PY, "-m", "pytest", "-q", "tests/", *extra])
+    """Run the historical full-suite entry point."""
+    run([PY, "-m", "pytest", "-q", "tests/", *_pytest_extra(extra)])
+
+
+def _pytest_extra(extra):
+    return extra[1:] if extra and extra[0] == "--" else extra
+
+
+def _run_marked_test_suite(marker_expression: str, extra) -> None:
+    extra = _pytest_extra(extra)
+    run(
+        [
+            PY,
+            "-m",
+            "pytest",
+            "-q",
+            "-m",
+            marker_expression,
+            "tests/",
+            *extra,
+        ]
+    )
+
+
+def cmd_test_core(extra):
+    """Run tests outside explicitly marked integration, hardware, and research layers."""
+    _run_marked_test_suite(CORE_TEST_MARKERS, extra)
+
+
+def cmd_test_integration(extra):
+    """Run cross-process and multi-component tests that do not require hardware."""
+    _run_marked_test_suite(INTEGRATION_TEST_MARKERS, extra)
+
+
+def cmd_test_hardware(extra):
+    """Run tests that require explicitly enabled accelerator hardware."""
+    _run_marked_test_suite(HARDWARE_TEST_MARKERS, extra)
+
+
+def cmd_test_experimental(extra):
+    """Run benchmark helper and research probe tests."""
+    _run_marked_test_suite(EXPERIMENTAL_TEST_MARKERS, extra)
+
+
+def cmd_test_all(extra):
+    """Run every test layer, subject to each test's environment guards."""
+    run([PY, "-m", "pytest", "-q", "tests/", *_pytest_extra(extra)])
 
 
 def cmd_test_backend_smoke(extra):
@@ -145,12 +197,12 @@ def cmd_test_backend_smoke(extra):
         "tests/test_queue_item_retry_override.py",
         "tests/test_image_test_service.py",
     ]
-    run([PY, "-m", "pytest", "-q", *targets, *extra])
+    run([PY, "-m", "pytest", "-q", *targets, *_pytest_extra(extra)])
 
 
 def cmd_test_fast(extra):
     """Run the fast smoke layer for task runners and bench safety guards."""
-    run([PY, "-m", "pytest", "-q", "-m", "fast", *FAST_TEST_TARGETS, *extra])
+    run([PY, "-m", "pytest", "-q", "-m", "fast", *FAST_TEST_TARGETS, *_pytest_extra(extra)])
 
 
 def cmd_test_focused(extra):
@@ -160,6 +212,7 @@ def cmd_test_focused(extra):
     command. This guard prevents accidentally turning a focused run into a
     full-repo test run.
     """
+    extra = _pytest_extra(extra)
     if not extra:
         print(
             "Usage: python tasks.py test-focused -- <pytest target, -k expr, or -m marker>",

@@ -10,6 +10,7 @@ for _k, _v in vars(_frontend_support).items():
     if not _k.startswith("__"):
         globals()[_k] = _v
 
+@pytest.mark.integration
 def test_live_training_eta_metric_helper_computes_display_states() -> None:
     if not shutil.which("node"):
         pytest.skip("node is required for live-training ES module behavior checks")
@@ -78,6 +79,7 @@ console.log(JSON.stringify(cases));
     ]
 
 
+@pytest.mark.integration
 def test_live_training_progress_helpers_parse_runtime_text() -> None:
     if not shutil.which("node"):
         pytest.skip("node is required for live-training ES module behavior checks")
@@ -154,6 +156,7 @@ console.log(JSON.stringify(results));
     }
 
 
+@pytest.mark.integration
 def test_live_training_status_and_progress_update_dom_fixture() -> None:
     if not shutil.which("node"):
         pytest.skip("node is required for live-training DOM fixture checks")
@@ -432,6 +435,7 @@ console.log(JSON.stringify({
     }
 
 
+@pytest.mark.integration
 def test_live_training_idle_status_clears_stale_runtime_snapshot() -> None:
     if not shutil.which("node"):
         pytest.skip("node is required for live-training DOM fixture checks")
@@ -823,6 +827,7 @@ def test_live_training_rest_fallbacks_are_wired() -> None:
     assert "recoverLiveTrainingState();" in ready_section
 
 
+@pytest.mark.integration
 def test_status_poll_incrementally_updates_live_history_and_full_refreshes_only_at_boundaries() -> None:
     if not shutil.which("node"):
         pytest.skip("node is required for status polling policy checks")
@@ -874,6 +879,7 @@ console.log(JSON.stringify(calls));
     assert json.loads(result.stdout) == {"history": 2, "queue": 3, "merge": 3}
 
 
+@pytest.mark.integration
 def test_live_training_status_snapshot_fallbacks_replay_latest_payloads() -> None:
     if not shutil.which("node"):
         pytest.skip("node is required for live-training status snapshot checks")

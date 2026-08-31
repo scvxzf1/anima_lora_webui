@@ -16,10 +16,13 @@ def _v100_flash_available() -> bool:
     return interface.flash_attn_func.__module__.startswith("flash_attn_v100.")
 
 
-pytestmark = pytest.mark.skipif(
-    not _v100_flash_available(),
-    reason="requires ANIMA_TEST_GPU=1, CUDA, and flash-attention-v100",
-)
+pytestmark = [
+    pytest.mark.hardware,
+    pytest.mark.skipif(
+        not _v100_flash_available(),
+        reason="requires ANIMA_TEST_GPU=1, CUDA, and flash-attention-v100",
+    ),
+]
 
 
 def test_v100_flash_dense_inductor_fullgraph_dynamic_backward():

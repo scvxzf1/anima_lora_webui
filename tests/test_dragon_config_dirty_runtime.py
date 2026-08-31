@@ -3,7 +3,11 @@ from __future__ import annotations
 import json
 import subprocess
 
+import pytest
+
 from tests.frontend_test_support import STATIC_DIR
+
+pytestmark = pytest.mark.integration
 
 
 def test_config_dirty_updates_are_incremental_after_binding() -> None:

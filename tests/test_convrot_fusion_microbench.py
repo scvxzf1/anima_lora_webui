@@ -5,8 +5,11 @@ from __future__ import annotations
 import importlib.util
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "experiments" / "convrot_fusion_microbench.py"
+pytestmark = pytest.mark.benchmark
 
 
 def _load_mod():

@@ -232,7 +232,27 @@ COMMANDS = {
         utilities.cmd_distill_mod,
         "Distill pooled_text_proj MLP for modulation guidance",
     ),
-    "test-unit": (utilities.cmd_test_unit, "Run smoke/unit tests (pytest tests/)"),
+    "test-unit": (
+        utilities.cmd_test_unit,
+        "Run every pytest layer (legacy compatibility entry).",
+    ),
+    "test-core": (
+        utilities.cmd_test_core,
+        "Run tests outside explicitly marked integration, hardware, and research layers.",
+    ),
+    "test-integration": (
+        utilities.cmd_test_integration,
+        "Run integration tests that do not require accelerator hardware.",
+    ),
+    "test-hardware": (
+        utilities.cmd_test_hardware,
+        "Run explicitly enabled accelerator hardware tests.",
+    ),
+    "test-experimental": (
+        utilities.cmd_test_experimental,
+        "Run benchmark helper and research probe tests.",
+    ),
+    "test-all": (utilities.cmd_test_all, "Run every test layer."),
     "test-backend-smoke": (utilities.cmd_test_backend_smoke, "Run backend web/training smoke subset"),
     "test-fast": (
         utilities.cmd_test_fast,

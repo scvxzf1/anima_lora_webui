@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import pytest
+
 from scripts.experiments.convrot_step_profile_probe import (
     _bucket_for_event,
     _decision_from_results,
 )
+
+pytestmark = pytest.mark.probe
 
 
 def test_bucket_for_event_markers() -> None:

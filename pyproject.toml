@@ -85,8 +85,12 @@ override-dependencies = ["numpy>=2.0.0"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = [
+    "benchmark: benchmark and performance helper tests",
     "fast: quick smoke tests intended to finish within 60 seconds",
     "focused: targeted subsystem tests for active development",
+    "hardware: tests requiring explicit accelerator hardware opt-in",
+    "integration: cross-process or multi-component integration tests",
+    "probe: experimental research probe tests",
 ]
 
 [tool.pyright]

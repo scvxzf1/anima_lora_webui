@@ -1,3 +1,4 @@
+import pytest
 import torch
 import torch.nn.functional as F
 
@@ -6,6 +7,8 @@ from scripts.krea2.probe_nf4_correction import (
     FixedCorrectionBank,
     fit_activation_weighted_factors,
 )
+
+pytestmark = pytest.mark.probe
 
 
 def test_activation_weighted_factors_recover_low_rank_error() -> None:

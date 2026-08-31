@@ -690,6 +690,7 @@ def test_state_bucket_bridges_reach_hotspot_chunks() -> None:
         assert snippet in training_source
 
 
+@pytest.mark.integration
 def test_runtime_dataset_preset_api_timeout_contract() -> None:
     if not shutil.which("node"):
         pytest.skip("node is required for anima-app runtime api checks")
@@ -767,6 +768,7 @@ console.log(JSON.stringify({
     }
 
 
+@pytest.mark.integration
 def test_network_arg_helpers_are_exported() -> None:
     if not shutil.which("node"):
         pytest.skip("node is required for anima-app network arg helper checks")
@@ -816,6 +818,7 @@ console.log(JSON.stringify(result));
     }
 
 
+@pytest.mark.integration
 def test_form_value_helpers_are_exported() -> None:
     if not shutil.which("node"):
         pytest.skip("node is required for anima-app form value helper checks")
@@ -892,6 +895,7 @@ def test_config_form_repairs_legacy_scalar_types() -> None:
     assert "fieldValueTypeForKey(key, original)" in collector_source
 
 
+@pytest.mark.integration
 def test_config_value_helpers_are_exported() -> None:
     if not shutil.which("node"):
         pytest.skip("node is required for anima-app config value helper checks")
@@ -949,6 +953,7 @@ console.log(JSON.stringify(result));
     }
 
 
+@pytest.mark.integration
 def test_optimizer_value_helpers_are_exported() -> None:
     if not shutil.which("node"):
         pytest.skip("node is required for anima-app optimizer value helper checks")
@@ -1166,6 +1171,7 @@ def test_start_training_resolves_pending_change_helpers() -> None:
     )
 
 
+@pytest.mark.integration
 def test_status_poll_skips_log_and_metric_replay_for_idle_snapshot_recovery() -> None:
     if not shutil.which("node"):
         pytest.skip("node is required for live-training status snapshot checks")
@@ -2724,6 +2730,7 @@ def test_file_group_drag_matches_history_style_same_list_reorder() -> None:
     assert ".dataset-preset-group-list" in css or ".file-group-drop-host" in css
 
 
+@pytest.mark.integration
 def test_move_file_near_list_inserts_across_groups() -> None:
     """跨组拖入：source 不在目标 DOM 顺序时，仍插入到 anchor 旁（同组/跨组共用 helper）。"""
     if not shutil.which("node"):
@@ -3526,6 +3533,7 @@ def test_form_ui_defaults_and_help_align_with_base_facts() -> None:
     assert "默认 true" not in custom_down_help
     assert "false" in custom_down_help
 
+@pytest.mark.integration
 def test_live_compat_warnings_mirror_key_conflict_codes() -> None:
     """Live compat helper surfaces key conflict codes without replacing preflight."""
     source = _frontend_module_text("js/features/config-form/live-compat.js")
