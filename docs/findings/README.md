@@ -9,6 +9,7 @@
 
 | 文档 | 说明 |
 | --- | --- |
+| [test_suite_audit_20260831.md](test_suite_audit_20260831.md) | 2026-08-31 测试集规模、分层、重复、source-probe 与默认门禁审计 |
 | [test_script_audit_20260809.md](test_script_audit_20260809.md) | 2026-08-09 测试脚本审计、精简结果与 probe 保护边界 |
 | [documentation_consolidation_20260706.md](documentation_consolidation_20260706.md) | 2026-07-06 文档库合并整理报告 |
 | [project_cleanup_checkpoint_20260705.md](project_cleanup_checkpoint_20260705.md) | 项目清理检查点 |
