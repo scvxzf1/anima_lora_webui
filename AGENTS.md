@@ -74,20 +74,50 @@
 
 ## Git 推送和回滚
 
-- 默认线上目标由仓库和分支确定，而不是由本机 remote 别名确定：
-  `github.com/scvxzf1/anima_lora_webui` 的 `main`。用户说“拉取线上更新”“同步线上 main”
-  或“推送更新到线上”时，默认指向该目标。
+- 默认线上仓库由 URL 确定，而不是由本机 remote 别名确定：
+  `github.com/scvxzf1/anima_lora_webui`。`main` 是发布分支，`dev` 是日常集成分支。
+  用户说“拉取线上更新”或“同步线上 main”时，按指定分支操作；未指定分支的日常开发推送
+  默认使用 `dev`，只有明确要求发布或推送 `main` 时才写入发布分支。
+- 不要把 `main` 当作日常开发分支。开始新任务前先同步 `dev`；独立任务优先从最新 `dev`
+  创建 `codex/<task>`，单人小改动才直接在 `dev` 上提交。多个 Agent 不要共用同一工作树和
+  分支进行并行写入。
 - 操作前先运行 `git remote -v`，找到 URL 匹配目标仓库的 remote；它在不同 checkout 中可能叫
   `origin`、`webui` 或其他名字。命令和汇报使用实际 remote，不要凭文档假定别名存在。
 - 指向个人 fork、私有镜像或 `sorryhyun/anima_lora` 等参考仓的 remote 不是默认发布目标。
   除非用户明确点名，不要向它们 pull、push、reset，也不要把上游参考合入和线上发布混为一谈。
+- 日常开发的最小同步流程是：
+  ```text
+  git status --short --branch
+  git fetch <target-remote> --prune
+  git switch dev
+  git pull --rebase
+  ```
+  工作树有未提交内容时，先区分代码、用户配置和运行数据；不得用切换、reset 或清理命令
+  偷换或删除它们。
+- 首次使用本流程时，在没有需要保留的未提交改动的工作树中，从已同步的 `main` 创建并发布 `dev`：
+  ```text
+  git switch main
+  git pull --ff-only
+  git switch -c dev
+  git push -u <target-remote> dev:dev
+  ```
+  若线上已经存在 `dev`，改用 `git switch --track <target-remote>/dev`，不要用本地分支覆盖
+  线上历史。
 - 推送前至少检查：`git status --short --branch`、`git fetch <target-remote> --prune`、
-  `git rev-list --left-right --count HEAD...<target-remote>/main` 和
-  `git log --oneline <target-remote>/main..HEAD`，再跑与改动直接相关的测试。
-  未跟踪文件默认不随推送发布，除非用户明确要求或本次任务确认需要纳入版本控制。
-- 用户要求直接“推送更新到线上”时，默认目标是 `<target-remote> main:main`。若当前身份没有
-  写权限，使用个人 fork 分支和 PR，不要因此把个人 fork 改称线上主仓。完成后汇报仓库、remote、
-  分支、最新提交 hash，以及是否还有未提交或未跟踪改动。
+  对日常分支使用 `git rev-list --left-right --count HEAD...<target-remote>/dev`，对发布分支
+  使用对应的 `main` 比较，并查看 `git log --oneline <target-remote>/<branch>..HEAD`，再跑
+  与改动直接相关的测试。
+- 未跟踪文件默认不随推送发布，除非用户明确要求或本次任务确认需要纳入版本控制。
+- 用户要求直接“推送更新到线上”但未指定分支时，默认目标是 `<target-remote> dev:dev`；明确
+  发布时才使用 `<target-remote> main:main`。若当前身份没有写权限，使用个人 fork 分支和 PR，
+  不要因此把个人 fork 改称线上主仓。完成后汇报仓库、remote、分支、最新提交 hash，以及是否
+  还有未提交或未跟踪改动。
+- 发布 `main` 前应先将 `dev` 的提交通过 review/定向测试，再使用 fast-forward 或普通 PR 合入；
+  不要为了绕过分支差异强推。逻辑相关的代码、测试和文档可拆成独立提交，但每个提交都必须
+  保持可解释、可验证。
+- 暂存时使用明确的路径白名单，不要在含有本机设置、模型路径、训练历史、队列、日志、导入
+  prompt 或输出的工作树执行 `git add -A`。`configs/web-ui-settings.toml` 的本机覆盖应迁到
+  已忽略的 `.anima-webui-settings.toml` 或外置配置根；不能把绝对路径带入提交。
 - 用户说“回滚”时，先分清是哪一种：
   - 本地工作区回退：丢弃未提交改动。只有用户明确要求时才做，执行前说明会丢失哪些内容。
   - 本地提交回退：撤销本地一个或多个提交。共享分支默认优先 `git revert`，不要默认改写历史。
@@ -101,6 +131,8 @@
   分支、抹掉哪些提交、是否影响其他协作者。
 - 可以使用环境变量中的凭据或本机已配置的 SSH key 推送，但不要把 PAT、cookie、私钥或
   带密钥的远程 URL 写进仓库文件、文档、日志样例或长期说明。
+- fetch/push 协议应尽量保持一致并使用已配置的 credential helper；SSH 不可达时可临时改用
+  HTTPS，但不要把令牌嵌入 remote URL，也不要把认证诊断输出写入仓库。
 - 面向人的精简操作说明见 [Git 同步规则](docs/guidelines/git-sync-policy.md)。
 
 ## 项目地图
