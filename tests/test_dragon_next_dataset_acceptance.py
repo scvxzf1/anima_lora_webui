@@ -19,7 +19,14 @@ def _payload(response) -> dict:
     return json.loads(response.text or "{}")
 
 
-def _save_request(file: str, source: str, *, repeats: int, schedule: bool = False):
+def _save_request(
+    file: str,
+    source: str,
+    *,
+    repeats: int,
+    schedule: bool = False,
+    secondary_is_reg: bool = True,
+):
     return _JsonRequest({
         "file": file,
         "overwrite": False,
@@ -41,7 +48,7 @@ def _save_request(file: str, source: str, *, repeats: int, schedule: bool = Fals
             "image_dir": f"post_{source}_secondary",
             "cache_dir": f"cache_{source}_secondary",
             "num_repeats": 1,
-            "is_reg": True,
+            "is_reg": secondary_is_reg,
             "settings": {"prior_loss_weight": 1.5},
         }],
         "stage_schedule_enabled": schedule,
@@ -69,6 +76,7 @@ def test_dragon_dataset_write_order_and_apply_persist_in_isolated_config_root(
             "image_dataset/dragon_alpha",
             repeats=5,
             schedule=True,
+            secondary_is_reg=False,
         )
     ))
     beta_response = asyncio.run(config_routes.handle_dataset_preset_put(

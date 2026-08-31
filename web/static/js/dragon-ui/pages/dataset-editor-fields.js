@@ -246,7 +246,7 @@ export function collectDatasetRows(root, defaults) {
     });
 }
 
-export function validateDatasetEditor(root) {
+export function validateDatasetEditor(root, options = {}) {
     root.querySelectorAll('[data-field-error]').forEach((item) => { item.hidden = true; item.textContent = ''; });
     root.querySelectorAll('[data-field-shell]').forEach((item) => {
         delete item.dataset.invalid;
@@ -265,6 +265,9 @@ export function validateDatasetEditor(root) {
     });
     if (rows.length && rows.every((row) => row.querySelector('[data-field="is_reg"]')?.value === 'true')) {
         errors.push({ field: rows[0].querySelector('[data-field="is_reg"]'), message: '至少保留 1 组普通训练数据；正则化数据只能作为辅助数据' });
+    }
+    if (options.stageScheduleEnabled && rows.some((row) => row.querySelector('[data-field="is_reg"]')?.value === 'true')) {
+        errors.push({ field: rows.find((row) => row.querySelector('[data-field="is_reg"]')?.value === 'true')?.querySelector('[data-field="is_reg"]'), message: '分阶段调度暂不支持正则化数据集' });
     }
     root.querySelectorAll('[data-dataset-defaults], [data-dataset-row]').forEach((scope) => validateBucketFields(scope, errors));
     root.querySelectorAll('input[type="number"][data-field]').forEach((field) => validateNumberField(field, errors));

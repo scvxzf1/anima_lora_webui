@@ -608,7 +608,7 @@ def test_preflight_runtime_config_checks_cache_sidecars_per_dataset(tmp_path: Pa
         path.mkdir(parents=True)
     Image.new("RGB", (8, 8), color=(20, 40, 60)).save(resized_a / "a.png")
     Image.new("RGB", (8, 8), color=(60, 40, 20)).save(resized_b / "b.png")
-    (cache_a / "a.npz").write_bytes(b"latent")
+    (cache_a / "a_0008x0008_anima.npz").write_bytes(b"latent")
     (cache_a / "a_anima_te.safetensors").write_bytes(b"te")
     (tmp_path / "models").mkdir()
     (tmp_path / "models" / "anima.safetensors").write_bytes(b"model")
@@ -2162,6 +2162,43 @@ def test_save_dataset_preset_roundtrips_stage_schedule(tmp_path: Path, monkeypat
     text = (configs / "datasets" / "stage_demo.toml").read_text(encoding="utf-8")
     assert "stage_schedule_enabled = true" in text.lower()
     assert "stage_schedule" in text
+
+
+def test_save_dataset_preset_rejects_regularization_with_stage_schedule(
+    tmp_path: Path,
+    monkeypatch,
+):
+    (tmp_path / "configs" / "datasets").mkdir(parents=True)
+    _patch_config_service_paths(monkeypatch, tmp_path)
+    rows = [
+        {
+            "source_dir": "image_dataset/train",
+            "image_dir": "post_image_dataset/train",
+            "cache_dir": "post_image_dataset/train-cache",
+        },
+        {
+            "source_dir": "image_dataset/reg",
+            "image_dir": "post_image_dataset/reg",
+            "cache_dir": "post_image_dataset/reg-cache",
+            "is_reg": True,
+        },
+    ]
+
+    with pytest.raises(ValueError, match="分阶段调度暂不支持正则化数据集"):
+        config_service.save_dataset_preset(
+            "configs/datasets/reg-stage.toml",
+            rows,
+            overwrite=True,
+            stage_schedule_enabled=True,
+            stage_schedule=[
+                {
+                    "name": "train",
+                    "subset_index": 0,
+                    "start_pct": 0,
+                    "end_pct": 1,
+                }
+            ],
+        )
 
 
 def test_dataset_preset_route_rejects_invalid_stage_schedule_without_overwrite(

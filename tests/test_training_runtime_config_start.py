@@ -497,6 +497,50 @@ def test_web_runtime_trigger_clone_materializes_extra_subset(tmp_path, monkeypat
     assert active_subset_indices_for_step(args, 50) == {2}
 
 
+def test_web_runtime_preserves_is_reg_for_primary_and_trigger_clone(tmp_path, monkeypatch):
+    _write_runtime_config_tree(tmp_path)
+    _patch_runtime_service_paths(monkeypatch, tmp_path)
+
+    train_source = tmp_path / "image_dataset" / "train"
+    reg_source = tmp_path / "image_dataset" / "reg"
+    train_source.mkdir(parents=True)
+    reg_source.mkdir(parents=True)
+    Image.new("RGB", (8, 8), color=(20, 40, 60)).save(train_source / "train.png")
+    Image.new("RGB", (8, 8), color=(60, 40, 20)).save(reg_source / "reg.png")
+    (tmp_path / "configs" / "datasets" / "522.toml").write_text(
+        "\n".join(
+            [
+                "[[datasets]]",
+                "[[datasets.subsets]]",
+                'image_dir = "old/train-resized"',
+                'cache_dir = "old/train-cache"',
+                'custom_attributes = {source_dir = "image_dataset/train"}',
+                "",
+                "[[datasets]]",
+                "[[datasets.subsets]]",
+                'image_dir = "old/reg-resized"',
+                'cache_dir = "old/reg-cache"',
+                "is_reg = true",
+                'custom_attributes = {source_dir = "image_dataset/reg", trigger_clone = {enabled = true, prompt = "class", num_repeats = 2}}',
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    runtime = training_service._prepare_web_runtime_config(
+        "522",
+        "default",
+        "imported",
+        source_config_file="configs/imported/522.toml",
+    )
+
+    dataset_cfg = toml.load(tmp_path / runtime["dataset_config_file"])
+    assert len(dataset_cfg["datasets"]) == 3
+    assert "is_reg" not in dataset_cfg["datasets"][0]["subsets"][0]
+    assert dataset_cfg["datasets"][1]["subsets"][0]["is_reg"] is True
+    assert dataset_cfg["datasets"][2]["subsets"][0]["is_reg"] is True
+
+
 def test_clone_runtime_dataset_rows_preserves_trigger_clone_materialized_dirs(
     tmp_path,
 ):
@@ -520,6 +564,7 @@ def test_clone_runtime_dataset_rows_preserves_trigger_clone_materialized_dirs(
                 "image_dir": resized.as_posix(),
                 "cache_dir": lora.as_posix(),
                 "num_repeats": 3,
+                "is_reg": True,
                 "settings": {"caption_source_mode": "captions_json"},
             }
         ],
@@ -536,3 +581,4 @@ def test_clone_runtime_dataset_rows_preserves_trigger_clone_materialized_dirs(
     assert cloned[0]["source_dir"].endswith("dataset-01/trigger-clone-source")
     assert cloned[0]["image_dir"].endswith("dataset-01/trigger-clone-resized")
     assert cloned[0]["cache_dir"].endswith("dataset-01/trigger-clone-lora")
+    assert cloned[0]["is_reg"] is True

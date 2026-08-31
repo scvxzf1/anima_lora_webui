@@ -979,7 +979,7 @@ function clearLegacyStageDraftMarkers(state) {
 }
 
 function prepareForSave(root, state) {
-    const errors = validateDatasetEditor(root);
+    const errors = validateDatasetEditor(root, { stageScheduleEnabled: state.stageScheduleEnabled });
     if (errors.length) { showFeedback(root, errors[0].message, 'error'); return false; }
     syncStateFromForm(root, state);
     return true;

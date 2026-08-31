@@ -85,6 +85,13 @@ export const datasetFormSchema = z.object({
     });
   }
   if (value.stage_schedule_enabled) {
+    if (value.datasets.some((row) => row.is_reg)) {
+      context.addIssue({
+        code: 'custom',
+        path: ['stage_schedule_enabled'],
+        message: '分阶段调度暂不支持正则化数据集',
+      });
+    }
     validateStageSchedule(value.stage_schedule, value.datasets.length).forEach((issue) => {
       context.addIssue({
         code: 'custom',

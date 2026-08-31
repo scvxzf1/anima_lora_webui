@@ -33,6 +33,8 @@ def test_dragon_dataset_editor_has_complete_workspace_contract() -> None:
     assert "aria-invalid" in fields
     assert "最大桶尺寸不能小于训练分辨率" in fields
     assert "启用触发词复制后必须填写触发词" in fields
+    assert "分阶段调度暂不支持正则化数据集" in fields
+    assert "validateDatasetEditor(root, { stageScheduleEnabled: state.stageScheduleEnabled })" in page
     assert "DATASET_SETTING_KEYS.filter" in page
     assert "当前训练配置正在使用这个预设" in page
     assert "await applyDatasetPreset(api, result.file, state.context.configFile)" in page
