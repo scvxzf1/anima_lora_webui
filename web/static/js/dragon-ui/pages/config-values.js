@@ -25,7 +25,7 @@ export function displayConfigValue(key, config) {
 export function serializeConfigValue(input, originalValue) {
     if (input.classList?.contains?.('dragon-toggle')) return input.dataset.checked === 'true';
     if (Array.isArray(originalValue)) {
-        return input.value.split(/[\n,]/).map((item) => item.trim()).filter(Boolean);
+        return input.value.split(/\n/).map((item) => item.trim()).filter(Boolean);
     }
     if (input.type === 'checkbox') return input.checked;
     if (typeof originalValue === 'boolean' || isBooleanConfigField(input.dataset?.key, originalValue)) {
