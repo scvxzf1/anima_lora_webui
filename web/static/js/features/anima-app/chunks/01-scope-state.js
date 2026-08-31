@@ -5,11 +5,11 @@
 import {
     configurePreviewFeatureEnsurer,
     configureQueueFeatureEnsurer,
-} from '../helpers/feature-ensurers.js?v=module-bootstrap-20260809-nf4-v2';
-import { getAppShellState } from '../helpers/app-shell-state-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { getAppContext } from '../helpers/app-context-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { getDatasetState } from '../helpers/dataset-state-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { getHistoryState } from '../helpers/history-state-bridge.js?v=module-bootstrap-20260809-nf4-v2';
+} from '../helpers/feature-ensurers.js?v=module-bootstrap-20260831-release-v1';
+import { getAppShellState } from '../helpers/app-shell-state-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { getAppContext } from '../helpers/app-context-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { getDatasetState } from '../helpers/dataset-state-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { getHistoryState } from '../helpers/history-state-bridge.js?v=module-bootstrap-20260831-release-v1';
 import {
     configTrainingSourceMode,
     continueTrainingRequestPayload,
@@ -18,26 +18,26 @@ import {
     selectContinueLoraWeight,
     startConfigFullResumeSource,
     trainingSourceLaunchBlockReason,
-} from '../helpers/training-source-bridge.js?v=module-bootstrap-20260809-nf4-v2';
+} from '../helpers/training-source-bridge.js?v=module-bootstrap-20260831-release-v1';
 import {
     currentTrainingConfigIsRuntime,
     isCliOnlySpdSource,
     showPreflightDialog,
-} from '../helpers/training-launch-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { canPreviewHistoryConfigGroup, historyConfigGroupFromTask, historyTaskIsArchived, runLabelFromPath } from '../helpers/history-collections-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { historyTaskLabel, loadConfigGroupTimeline, loadHistoryTask, showHistoryTaskConfirmDialog } from '../helpers/history-task-actions-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { configGroupLabel, historyStateLabel } from '../helpers/history-timeline-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { getGpuPicker } from '../helpers/app-shell-startup-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { ensureHistoryDetailFeature } from '../helpers/history-detail-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { hasPendingConfigChanges, showAppConfirmDialog } from '../helpers/toml-selection-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { currentTrainingConfigFile, renderPreflightPending, showPreflightRequestError } from '../helpers/preflight-dialog-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { appendLog } from '../helpers/live-log-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { renderTrainingViewMode, showTrainingView } from '../helpers/queue-view-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { loadTrainingHistoryList } from '../helpers/history-list-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { renderDatasetImageDialogDetails } from '../helpers/preview-view-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { setTomlStatus, updateTomlActionState } from '../helpers/toml-action-state-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { getTomlState } from '../helpers/toml-state-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { getTrainingState } from '../helpers/training-state-bridge.js?v=module-bootstrap-20260809-nf4-v2';
+} from '../helpers/training-launch-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { canPreviewHistoryConfigGroup, historyConfigGroupFromTask, historyTaskIsArchived, runLabelFromPath } from '../helpers/history-collections-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { historyTaskLabel, loadConfigGroupTimeline, loadHistoryTask, showHistoryTaskConfirmDialog } from '../helpers/history-task-actions-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { configGroupLabel, historyStateLabel } from '../helpers/history-timeline-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { getGpuPicker } from '../helpers/app-shell-startup-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { ensureHistoryDetailFeature } from '../helpers/history-detail-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { hasPendingConfigChanges, showAppConfirmDialog } from '../helpers/toml-selection-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { currentTrainingConfigFile, renderPreflightPending, showPreflightRequestError } from '../helpers/preflight-dialog-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { appendLog } from '../helpers/live-log-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { renderTrainingViewMode, showTrainingView } from '../helpers/queue-view-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { loadTrainingHistoryList } from '../helpers/history-list-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { renderDatasetImageDialogDetails } from '../helpers/preview-view-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { setTomlStatus, updateTomlActionState } from '../helpers/toml-action-state-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { getTomlState } from '../helpers/toml-state-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { getTrainingState } from '../helpers/training-state-bridge.js?v=module-bootstrap-20260831-release-v1';
 
 const ctx = getAppContext();
 const appShellState = getAppShellState();

@@ -2,14 +2,14 @@
  * Resource quick-preset helpers + global model path fill.
  * Extracted from anima-app chunk 06.
  */
-import { SELECTIVE_CHECKPOINT_STRENGTH } from '../anima-app/helpers/app-constants.js?v=module-bootstrap-20260809-nf4-v2';
-import { originalConfigFieldValue, readFieldInputValue } from '../anima-app/helpers/config-form-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { getConfigState } from '../anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { handleFormFieldChange } from './form-fields.js?v=module-bootstrap-20260809-nf4-v2';
-import { setTomlStatus } from '../anima-app/helpers/toml-action-state-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { openModelConfigPickerDialog } from '../model-configs/index.js?v=module-bootstrap-20260809-nf4-v2';
-import { setFieldInputValue } from './field-input.js?v=module-bootstrap-20260809-nf4-v2';
-import { modelFamilyFormDefaults } from './model-family-defaults.js?v=module-bootstrap-20260824-zimage-defaults-v1';
+import { SELECTIVE_CHECKPOINT_STRENGTH } from '../anima-app/helpers/app-constants.js?v=module-bootstrap-20260831-release-v1';
+import { originalConfigFieldValue, readFieldInputValue } from '../anima-app/helpers/config-form-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { getConfigState } from '../anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { handleFormFieldChange } from './form-fields.js?v=module-bootstrap-20260831-release-v1';
+import { setTomlStatus } from '../anima-app/helpers/toml-action-state-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { openModelConfigPickerDialog } from '../model-configs/index.js?v=module-bootstrap-20260831-release-v1';
+import { setFieldInputValue } from './field-input.js?v=module-bootstrap-20260831-release-v1';
+import { modelFamilyFormDefaults } from './model-family-defaults.js?v=module-bootstrap-20260831-release-v1';
 
 const configState = getConfigState();
 

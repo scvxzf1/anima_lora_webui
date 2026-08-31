@@ -1,4 +1,4 @@
-import { historySystemSummary, formatSystemPercent, formatSystemVram } from './system.js?v=module-bootstrap-20260809-nf4-v2';
+import { historySystemSummary, formatSystemPercent, formatSystemVram } from './system.js?v=module-bootstrap-20260831-release-v1';
 import {
     createHistoryDetailCopyButton,
     historyDetailEmptyText,
@@ -6,7 +6,7 @@ import {
     historyDetailRunRoot,
     historyDetailSection,
     normalizedHistoryDetailPath,
-} from './ui.js?v=module-bootstrap-20260809-nf4-v2';
+} from './ui.js?v=module-bootstrap-20260831-release-v1';
 import {
     formatHistoryTrainingPrecision,
     formatHistoryTrainingVariant,
@@ -14,7 +14,7 @@ import {
     formatHistoryBlockSwapPrecision,
     formatHistoryBaseCompute,
     formatHistoryPrecisionPreference,
-} from './config-chips.js?v=module-bootstrap-20260809-nf4-v2';
+} from './config-chips.js?v=module-bootstrap-20260831-release-v1';
 
 export function createHistoryOverviewRenderer({ ctx, state, deps, renderHistoryDetailResume }) {
     const {

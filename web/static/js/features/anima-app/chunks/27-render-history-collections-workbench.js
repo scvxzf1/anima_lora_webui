@@ -2,7 +2,7 @@
  * Compatibility shim.
  * Domain truth: js/features/history-list/collections-workbench.js
  */
-import { configureHistoryCollectionsBridge } from '../helpers/history-collections-bridge.js?v=module-bootstrap-20260809-nf4-v2';
+import { configureHistoryCollectionsBridge } from '../helpers/history-collections-bridge.js?v=module-bootstrap-20260831-release-v1';
 import {
     renderHistoryCollectionsWorkbench,
     refreshHistoryWorkbenchConfigPanel,
@@ -33,7 +33,7 @@ import {
     compactHistoryResumeLabel,
     createHistoryMoreActions,
     selectedHistoryConfigGroups,
-} from '../../history-list/collections-workbench.js?v=module-bootstrap-20260828-model-family-filter-v1';
+} from '../../history-list/collections-workbench.js?v=module-bootstrap-20260831-release-v1';
 
 export {
     renderHistoryCollectionsWorkbench,
@@ -65,7 +65,7 @@ export {
     compactHistoryResumeLabel,
     createHistoryMoreActions,
     selectedHistoryConfigGroups,
-} from '../../history-list/collections-workbench.js?v=module-bootstrap-20260828-model-family-filter-v1';
+} from '../../history-list/collections-workbench.js?v=module-bootstrap-20260831-release-v1';
 
 configureHistoryCollectionsBridge({
         renderHistoryCollectionsWorkbench,

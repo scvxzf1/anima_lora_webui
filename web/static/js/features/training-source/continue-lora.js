@@ -2,17 +2,17 @@
  * Continue-training LoRA weight hotstart helpers.
  * Extracted from anima-app chunk 06.
  */
-import { historyTaskDisplayName } from '../anima-app/helpers/history-collections-bridge.js?v=module-bootstrap-20260809-nf4-v2';
+import { historyTaskDisplayName } from '../anima-app/helpers/history-collections-bridge.js?v=module-bootstrap-20260831-release-v1';
 import {
     setTomlStatus,
     updateTomlActionState,
-} from '../anima-app/helpers/toml-action-state-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { getHistoryState } from '../anima-app/helpers/history-state-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { loadTrainingHistoryList } from '../anima-app/helpers/history-list-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { api, val } from '../anima-app/helpers/runtime-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { getTomlState } from '../anima-app/helpers/toml-state-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { getTrainingState } from '../anima-app/helpers/training-state-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { currentTrainingConfigFile } from '../anima-app/helpers/preflight-dialog-bridge.js?v=module-bootstrap-20260809-nf4-v2';
+} from '../anima-app/helpers/toml-action-state-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { getHistoryState } from '../anima-app/helpers/history-state-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { loadTrainingHistoryList } from '../anima-app/helpers/history-list-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { api, val } from '../anima-app/helpers/runtime-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { getTomlState } from '../anima-app/helpers/toml-state-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { getTrainingState } from '../anima-app/helpers/training-state-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { currentTrainingConfigFile } from '../anima-app/helpers/preflight-dialog-bridge.js?v=module-bootstrap-20260831-release-v1';
 
 const historyState = getHistoryState();
 const tomlState = getTomlState();

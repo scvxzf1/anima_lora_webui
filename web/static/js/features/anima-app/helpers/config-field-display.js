@@ -1,8 +1,8 @@
 import {
     FIELD_LABEL_ZH,
     FIELD_OPTIONS,
-} from '../../../config/catalog.js?v=module-bootstrap-20260809-nf4-v2';
-import { isTruthy } from './config-values.js?v=module-bootstrap-20260809-nf4-v2';
+} from '../../../config/catalog.js?v=module-bootstrap-20260831-release-v1';
+import { isTruthy } from './config-values.js?v=module-bootstrap-20260831-release-v1';
 
 export function compactList(items) {
     return items.filter((item) => item !== undefined && item !== null && String(item).trim() !== '');

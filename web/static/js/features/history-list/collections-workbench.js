@@ -1,8 +1,8 @@
 /**
  * History collections workbench rendering and filter/search helpers.
  */
-import { HISTORY_UNGROUPED_COLLECTION_KEY } from '../anima-app/helpers/app-constants.js?v=module-bootstrap-20260809-nf4-v2';
-import { openHistoryNewCollectionPopover, renderHistoryDropPopover } from '../anima-app/helpers/history-collection-drag-bridge.js?v=module-bootstrap-20260809-nf4-v2';
+import { HISTORY_UNGROUPED_COLLECTION_KEY } from '../anima-app/helpers/app-constants.js?v=module-bootstrap-20260831-release-v1';
+import { openHistoryNewCollectionPopover, renderHistoryDropPopover } from '../anima-app/helpers/history-collection-drag-bridge.js?v=module-bootstrap-20260831-release-v1';
 import {
     applySelectedHistoryTasksToCollection,
     clearSelectedHistoryCollection,
@@ -35,7 +35,7 @@ import {
     sortHistoryManagerGroupTasks,
     sortedHistoryConfigGroups,
     syncHistoryFilterControls,
-} from '../anima-app/helpers/history-collections-bridge.js?v=module-bootstrap-20260809-nf4-v2';
+} from '../anima-app/helpers/history-collections-bridge.js?v=module-bootstrap-20260831-release-v1';
 import {
     archiveHistoryTask,
     createHistoryActionButton,
@@ -45,11 +45,11 @@ import {
     groupSelectedHistoryTasks,
     isHistoryDetailDialogOpen,
     loadHistoryTask,
-} from '../anima-app/helpers/history-task-actions-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { historyStateLabel } from '../anima-app/helpers/history-timeline-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { renderHistoryManager } from '../anima-app/helpers/history-list-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { fillHistoryWorkbenchCardLists } from './workbench-chunk-fill.js?v=module-bootstrap-20260809-nf4-v2';
-import { getHistoryState } from '../anima-app/helpers/history-state-bridge.js?v=module-bootstrap-20260809-nf4-v2';
+} from '../anima-app/helpers/history-task-actions-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { historyStateLabel } from '../anima-app/helpers/history-timeline-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { renderHistoryManager } from '../anima-app/helpers/history-list-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { fillHistoryWorkbenchCardLists } from './workbench-chunk-fill.js?v=module-bootstrap-20260831-release-v1';
+import { getHistoryState } from '../anima-app/helpers/history-state-bridge.js?v=module-bootstrap-20260831-release-v1';
 
 const historyState = getHistoryState();
 

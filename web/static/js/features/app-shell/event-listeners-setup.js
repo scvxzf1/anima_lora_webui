@@ -4,12 +4,12 @@
 import {
     GLOBAL_UI_OVERRIDE_FIELDS,
     help,
-} from '../../config/catalog.js?v=module-bootstrap-20260809-nf4-v2';
+} from '../../config/catalog.js?v=module-bootstrap-20260831-release-v1';
 import {
     ensureEnvironmentCheckFeature,
     ensureQueueFeature,
     ensureWeightAnalysisFeature,
-} from '../anima-app/helpers/feature-ensurers.js?v=module-bootstrap-20260809-nf4-v2';
+} from '../anima-app/helpers/feature-ensurers.js?v=module-bootstrap-20260831-release-v1';
 import {
     closeOutputRunSaveAs,
     confirmOutputRunSaveAs,
@@ -20,17 +20,17 @@ import {
     renderOutputRunList,
     saveTomlFile,
     selectAndApplyTomlFile,
-} from '../anima-app/helpers/output-run-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { loadOutputRuns, setTomlManagerMode, switchTomlManagerMode } from '../anima-app/helpers/toml-manager-bridge.js?v=module-bootstrap-20260809-nf4-v2';
+} from '../anima-app/helpers/output-run-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { loadOutputRuns, setTomlManagerMode, switchTomlManagerMode } from '../anima-app/helpers/toml-manager-bridge.js?v=module-bootstrap-20260831-release-v1';
 import {
     deleteTomlFile,
     moveCurrentTomlToGroup,
     restoreSystemTomlPresets,
-} from '../anima-app/helpers/toml-actions-bridge.js?v=module-bootstrap-20260809-nf4-v2';
+} from '../anima-app/helpers/toml-actions-bridge.js?v=module-bootstrap-20260831-release-v1';
 import {
     queueCurrentTrainingFromConfig,
     startTraining,
-} from '../anima-app/helpers/training-launch-bridge.js?v=module-bootstrap-20260809-nf4-v2';
+} from '../anima-app/helpers/training-launch-bridge.js?v=module-bootstrap-20260831-release-v1';
 import {
     copyDatasetPreset,
     createDatasetPresetGroup,
@@ -41,28 +41,28 @@ import {
     importDatasetPreset,
     renameDatasetPreset,
     saveDatasetPresetEditor,
-} from '../anima-app/helpers/dataset-preset-actions-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { renderDatasetPresetList } from '../anima-app/helpers/dataset-render-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { historyManagerFilterDefault, openHistoryCollectionsWorkbench } from '../anima-app/helpers/history-collections-bridge.js?v=module-bootstrap-20260809-nf4-v2';
+} from '../anima-app/helpers/dataset-preset-actions-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { renderDatasetPresetList } from '../anima-app/helpers/dataset-render-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { historyManagerFilterDefault, openHistoryCollectionsWorkbench } from '../anima-app/helpers/history-collections-bridge.js?v=module-bootstrap-20260831-release-v1';
 import {
     archiveSelectedHistoryTasks,
     deleteSelectedHistoryTasks,
     groupSelectedHistoryTasks,
     mergeSelectedHistoryTasks,
     refreshHistoryView,
-} from '../anima-app/helpers/history-task-actions-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { loadResumeOptionsForTask, queueResumeTrainingFromCheckpoint, renderResumePanelState, resumeTrainingFromCheckpoint, returnToLiveTraining } from '../anima-app/helpers/history-timeline-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { getAppShellState } from '../anima-app/helpers/app-shell-state-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { getAppContext } from '../anima-app/helpers/app-context-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { getDatasetState } from '../anima-app/helpers/dataset-state-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { getHistoryState } from '../anima-app/helpers/history-state-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { loadConfig, loadVariants, openTutorialDialog, reloadCurrentConfig } from '../anima-app/helpers/app-shell-startup-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { ensureHistoryDetailFeature, isHistoryReviewMode } from '../anima-app/helpers/history-detail-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { ensureImageTestFeature } from '../anima-app/helpers/image-test-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { confirmDiscardTomlChanges, updateTomlDirtyState } from '../anima-app/helpers/toml-selection-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { val } from '../anima-app/helpers/runtime-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { getTomlState } from '../anima-app/helpers/toml-state-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { createBlankPresetFromLoraTemplate, exportTomlFile, handleTomlImport, importTomlFile, saveTomlAs } from '../anima-app/helpers/toml-io-bridge.js?v=module-bootstrap-20260809-nf4-v2';
+} from '../anima-app/helpers/history-task-actions-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { loadResumeOptionsForTask, queueResumeTrainingFromCheckpoint, renderResumePanelState, resumeTrainingFromCheckpoint, returnToLiveTraining } from '../anima-app/helpers/history-timeline-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { getAppShellState } from '../anima-app/helpers/app-shell-state-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { getAppContext } from '../anima-app/helpers/app-context-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { getDatasetState } from '../anima-app/helpers/dataset-state-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { getHistoryState } from '../anima-app/helpers/history-state-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { loadConfig, loadVariants, openTutorialDialog, reloadCurrentConfig } from '../anima-app/helpers/app-shell-startup-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { ensureHistoryDetailFeature, isHistoryReviewMode } from '../anima-app/helpers/history-detail-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { ensureImageTestFeature } from '../anima-app/helpers/image-test-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { confirmDiscardTomlChanges, updateTomlDirtyState } from '../anima-app/helpers/toml-selection-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { val } from '../anima-app/helpers/runtime-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { getTomlState } from '../anima-app/helpers/toml-state-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { createBlankPresetFromLoraTemplate, exportTomlFile, handleTomlImport, importTomlFile, saveTomlAs } from '../anima-app/helpers/toml-io-bridge.js?v=module-bootstrap-20260831-release-v1';
 import {
     auditConfigFullResumeSource,
     clearContinueTrainingSource,
@@ -70,32 +70,32 @@ import {
     handleConfigFullResumeTaskChange,
     selectContinueLoraWeight,
     setConfigTrainingSourceMode,
-} from '../anima-app/helpers/training-source-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { resetLogOutputLines, stopTraining, updateLogStatusText } from '../anima-app/helpers/live-log-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { getTrainingState } from '../anima-app/helpers/training-state-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { setCurrentTrainingSourceFromVariant } from '../training-source/source-state.js?v=module-bootstrap-20260809-nf4-v2';
-import { confirmBeforeConfigSelectionChange, rememberSelectionSnapshot, updateChoiceGuide } from '../config-form/choice-guide-ui.js?v=module-bootstrap-20260809-nf4-v2';
-import { loadDatasetPreviewImages } from '../dataset-editor/preview.js?v=module-bootstrap-20260809-nf4-v2';
-import { loadDatasetPresets } from '../dataset-editor/load.js?v=module-bootstrap-20260809-nf4-v2';
-import { renderLiveChartPanel } from '../live-training/dashboard-ui.js?v=module-bootstrap-20260809-nf4-v2';
-import { selectConfigCategory, updateConfigStickyPlacement } from '../config-form/group-entry.js?v=module-bootstrap-20260809-nf4-v2';
-import { closeConfigDatasetPickerDialog } from '../config-form/dataset-picker.js?v=module-bootstrap-20260809-nf4-v2';
-import { loadContinueLoraWeights, openContinueLoraDialog } from '../training-source/continue-lora.js?v=module-bootstrap-20260809-nf4-v2';
+} from '../anima-app/helpers/training-source-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { resetLogOutputLines, stopTraining, updateLogStatusText } from '../anima-app/helpers/live-log-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { getTrainingState } from '../anima-app/helpers/training-state-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { setCurrentTrainingSourceFromVariant } from '../training-source/source-state.js?v=module-bootstrap-20260831-release-v1';
+import { confirmBeforeConfigSelectionChange, rememberSelectionSnapshot, updateChoiceGuide } from '../config-form/choice-guide-ui.js?v=module-bootstrap-20260831-release-v1';
+import { loadDatasetPreviewImages } from '../dataset-editor/preview.js?v=module-bootstrap-20260831-release-v1';
+import { loadDatasetPresets } from '../dataset-editor/load.js?v=module-bootstrap-20260831-release-v1';
+import { renderLiveChartPanel } from '../live-training/dashboard-ui.js?v=module-bootstrap-20260831-release-v1';
+import { selectConfigCategory, updateConfigStickyPlacement } from '../config-form/group-entry.js?v=module-bootstrap-20260831-release-v1';
+import { closeConfigDatasetPickerDialog } from '../config-form/dataset-picker.js?v=module-bootstrap-20260831-release-v1';
+import { loadContinueLoraWeights, openContinueLoraDialog } from '../training-source/continue-lora.js?v=module-bootstrap-20260831-release-v1';
 import {
     applyTomlToConfig,
     copyTomlEditorContent,
     toggleTomlEditorPanel,
     toggleTomlUserLock,
-} from '../anima-app/helpers/toml-action-state-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { saveGlobalSettings, resetGlobalSettings, toggleGlobalSettingHelp, syncGlobalUIScaleOverrideField, syncAllGlobalUIScaleOverrideFields } from '../anima-app/helpers/global-settings-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { savePreviewSettings, resetPreviewSettings, loadPreviewImages, loadPreviewWeights, setPreviewSource, openCurrentTrainingPreview, openLiveSamplingPreview, closePreviewPanel, togglePreviewWeightSort, changePreviewTask, restorePreviewWorkspaceAfterPanelClose } from '../anima-app/helpers/preview-view-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { bindTrainingViewTabKeyboard, showTrainingView } from '../anima-app/helpers/queue-view-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { loadTrainingHistoryList, renderHistoryManager } from '../anima-app/helpers/history-list-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { installBeginnerTooltips } from './beginner-tooltips.js?v=module-bootstrap-20260809-nf4-v2';
-import { SETUP_EVENT_DOM_CONTRACT } from './event-listeners-contract.js?v=module-bootstrap-20260828-model-family-filter-v1';
-import { debounce } from '../../shared/debounce.js?v=module-bootstrap-20260809-nf4-v2';
-import { bindBrowseDialogBackdropClose } from '../../shared/dialog.js?v=module-bootstrap-20260809-nf4-v2';
-import { bindModelConfigEvents, bindModelConfigPickerEvents } from '../model-configs/index.js?v=module-bootstrap-20260809-nf4-v2';
+} from '../anima-app/helpers/toml-action-state-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { saveGlobalSettings, resetGlobalSettings, toggleGlobalSettingHelp, syncGlobalUIScaleOverrideField, syncAllGlobalUIScaleOverrideFields } from '../anima-app/helpers/global-settings-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { savePreviewSettings, resetPreviewSettings, loadPreviewImages, loadPreviewWeights, setPreviewSource, openCurrentTrainingPreview, openLiveSamplingPreview, closePreviewPanel, togglePreviewWeightSort, changePreviewTask, restorePreviewWorkspaceAfterPanelClose } from '../anima-app/helpers/preview-view-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { bindTrainingViewTabKeyboard, showTrainingView } from '../anima-app/helpers/queue-view-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { loadTrainingHistoryList, renderHistoryManager } from '../anima-app/helpers/history-list-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { installBeginnerTooltips } from './beginner-tooltips.js?v=module-bootstrap-20260831-release-v1';
+import { SETUP_EVENT_DOM_CONTRACT } from './event-listeners-contract.js?v=module-bootstrap-20260831-release-v1';
+import { debounce } from '../../shared/debounce.js?v=module-bootstrap-20260831-release-v1';
+import { bindBrowseDialogBackdropClose } from '../../shared/dialog.js?v=module-bootstrap-20260831-release-v1';
+import { bindModelConfigEvents, bindModelConfigPickerEvents } from '../model-configs/index.js?v=module-bootstrap-20260831-release-v1';
 
 const ctx = getAppContext();
 const appShellState = getAppShellState();

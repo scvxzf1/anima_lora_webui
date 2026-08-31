@@ -8,7 +8,7 @@ export {
     createDatasetRowSettingsEditor,
     createDatasetAdvancedSettingsEditor,
     createDatasetCaptionExtensionEditor,
-} from './row-settings-basic.js?v=module-bootstrap-20260809-nf4-v2';
+} from './row-settings-basic.js?v=module-bootstrap-20260831-release-v1';
 
 export {
     createDatasetNlTagMixEditor,
@@ -17,4 +17,4 @@ export {
     createDatasetMainPolicyRow,
     createDatasetExperimentalScopePicker,
     createDatasetTriggerCloneEditor,
-} from './row-settings-experimental.js?v=module-bootstrap-20260809-nf4-v2';
+} from './row-settings-experimental.js?v=module-bootstrap-20260831-release-v1';

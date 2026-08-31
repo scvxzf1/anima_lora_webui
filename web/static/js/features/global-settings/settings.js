@@ -7,14 +7,14 @@ import {
     GLOBAL_SETTING_INPUTS,
     GLOBAL_UI_OVERRIDE_FIELDS,
     help,
-} from '../../config/catalog.js?v=module-bootstrap-20260809-nf4-v2';
-import { loadOutputRuns } from '../anima-app/helpers/toml-manager-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { updateChoiceGuide } from '../config-form/choice-guide-ui.js?v=module-bootstrap-20260809-nf4-v2';
-import { getUiScaleController } from '../anima-app/helpers/app-shell-startup-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { getAppShellState } from '../anima-app/helpers/app-shell-state-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { getHistoryDetailFeature } from '../anima-app/helpers/history-detail-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { api } from '../anima-app/helpers/runtime-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { getTomlState } from '../anima-app/helpers/toml-state-bridge.js?v=module-bootstrap-20260809-nf4-v2';
+} from '../../config/catalog.js?v=module-bootstrap-20260831-release-v1';
+import { loadOutputRuns } from '../anima-app/helpers/toml-manager-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { updateChoiceGuide } from '../config-form/choice-guide-ui.js?v=module-bootstrap-20260831-release-v1';
+import { getUiScaleController } from '../anima-app/helpers/app-shell-startup-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { getAppShellState } from '../anima-app/helpers/app-shell-state-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { getHistoryDetailFeature } from '../anima-app/helpers/history-detail-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { api } from '../anima-app/helpers/runtime-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { getTomlState } from '../anima-app/helpers/toml-state-bridge.js?v=module-bootstrap-20260831-release-v1';
 
 const appShellState = getAppShellState();
 const tomlState = getTomlState();

@@ -1,23 +1,23 @@
 /**
  * Config form field rows, live change handling, and field input factory.
  */
-import { updateChoiceGuide } from './choice-guide-ui.js?v=module-bootstrap-20260809-nf4-v2';
-import { updateStepEstimatePanel } from './step-estimate.js?v=module-bootstrap-20260809-nf4-v2';
-import { valuesEqual } from '../anima-app/helpers/form-values.js?v=module-bootstrap-20260809-nf4-v2';
-import { collectLiveCompatIssues, formatLiveCompatStatus } from './live-compat.js?v=module-bootstrap-20260809-nf4-v2';
-import { setTomlStatus } from '../anima-app/helpers/toml-action-state-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { buildFieldPresentation, fieldSourceBadgeLabel } from './field-presentation.js?v=module-bootstrap-20260809-nf4-v2';
+import { updateChoiceGuide } from './choice-guide-ui.js?v=module-bootstrap-20260831-release-v1';
+import { updateStepEstimatePanel } from './step-estimate.js?v=module-bootstrap-20260831-release-v1';
+import { valuesEqual } from '../anima-app/helpers/form-values.js?v=module-bootstrap-20260831-release-v1';
+import { collectLiveCompatIssues, formatLiveCompatStatus } from './live-compat.js?v=module-bootstrap-20260831-release-v1';
+import { setTomlStatus } from '../anima-app/helpers/toml-action-state-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { buildFieldPresentation, fieldSourceBadgeLabel } from './field-presentation.js?v=module-bootstrap-20260831-release-v1';
 import {
     isTruthy,
     loraAdapterFlagsForKind,
     normalizeLoraAdapterKind,
     precisionPreferencePatch,
-} from '../anima-app/helpers/config-values.js?v=module-bootstrap-20260809-nf4-v2';
-import { getConfigState } from '../anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260809-nf4-v2';
+} from '../anima-app/helpers/config-values.js?v=module-bootstrap-20260831-release-v1';
+import { getConfigState } from '../anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260831-release-v1';
 import {
     formatFieldName,
     shouldRenderSelectInput,
-} from '../anima-app/helpers/config-field-display.js?v=module-bootstrap-20260809-nf4-v2';
+} from '../anima-app/helpers/config-field-display.js?v=module-bootstrap-20260831-release-v1';
 import {
     allowsNegativeNumberField,
     createHelpContent,
@@ -25,14 +25,14 @@ import {
     fieldValueTypeForKey,
     isIntegerNumericField,
     isNumericField,
-} from '../anima-app/helpers/config-field-ui-bridge.js?v=module-bootstrap-20260809-nf4-v2';
+} from '../anima-app/helpers/config-field-ui-bridge.js?v=module-bootstrap-20260831-release-v1';
 import {
     CONFIG_FORM_INTERNAL_KEYS,
     FIELD_OPTIONS,
     FORM_UI_DEFAULTS,
     help,
-} from '../../config/catalog.js?v=module-bootstrap-20260809-nf4-v2';
-import { LOSS_WEIGHTING_DEPENDENT_FIELDS } from '../anima-app/helpers/app-constants.js?v=module-bootstrap-20260809-nf4-v2';
+} from '../../config/catalog.js?v=module-bootstrap-20260831-release-v1';
+import { LOSS_WEIGHTING_DEPENDENT_FIELDS } from '../anima-app/helpers/app-constants.js?v=module-bootstrap-20260831-release-v1';
 import {
     applyLossWeightingFieldInputState,
     collectNetworkArgsFromForm,
@@ -48,15 +48,15 @@ import {
     updateLoKrFieldState,
     updateLossWeightingFieldState,
     updateVeRAFieldState,
-} from '../anima-app/helpers/config-form-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { updateTomlDirtyState } from '../anima-app/helpers/toml-selection-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { renderConfigForm } from '../anima-app/helpers/app-shell-startup-bridge.js?v=module-bootstrap-20260809-nf4-v2';
+} from '../anima-app/helpers/config-form-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { updateTomlDirtyState } from '../anima-app/helpers/toml-selection-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { renderConfigForm } from '../anima-app/helpers/app-shell-startup-bridge.js?v=module-bootstrap-20260831-release-v1';
 import {
     createSamplePromptAddButton,
     createSamplePromptTextModeButton,
     createSamplePromptsEditor,
     createSamplePromptsPathInput,
-} from './form-fields-sample.js?v=module-bootstrap-20260809-nf4-v2';
+} from './form-fields-sample.js?v=module-bootstrap-20260831-release-v1';
 
 let updateNoDatasetRegularizationModePanelCallback = () => {};
 const configState = getConfigState();

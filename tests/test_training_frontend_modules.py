@@ -325,8 +325,10 @@ def test_frontend_module_cache_tokens_match_entrypoint() -> None:
             if token:
                 graph_tokens.add(token)
 
-    assert len(graph_tokens) == 1, f"classic module graph uses mixed cache tokens: {sorted(graph_tokens)}"
-    assert next(iter(graph_tokens)).startswith("module-bootstrap-")
+    assert graph_tokens == {entry_token}, (
+        f"classic module graph cache tokens {sorted(graph_tokens)} "
+        f"do not match entrypoint {entry_token!r}"
+    )
 
 
 def test_frontend_css_import_cache_tokens_match_entrypoint() -> None:

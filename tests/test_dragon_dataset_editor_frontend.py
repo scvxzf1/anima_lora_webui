@@ -262,13 +262,13 @@ def test_dragon_dataset_editor_bindings_and_stage_bridge_are_safe() -> None:
     stage_dialog = _read("js/features/config-form/stage-resolution-ui-dialog.js")
 
     assert "button.dataset.dragonDatasetBound === 'true'" in page
-    assert "stage-resolution-ui.js?v=module-bootstrap-20260809-nf4-v2" in page
+    assert "stage-resolution-ui.js?v=module-bootstrap-20260831-release-v1" in page
     for bridge in (
-        "app-context-bridge.js?v=module-bootstrap-20260809-nf4-v2",
-        "config-state-bridge.js?v=module-bootstrap-20260809-nf4-v2",
-        "dataset-state-bridge.js?v=module-bootstrap-20260809-nf4-v2",
-        "runtime-bridge.js?v=module-bootstrap-20260809-nf4-v2",
-        "toml-action-state-bridge.js?v=module-bootstrap-20260809-nf4-v2",
+        "app-context-bridge.js?v=module-bootstrap-20260831-release-v1",
+        "config-state-bridge.js?v=module-bootstrap-20260831-release-v1",
+        "dataset-state-bridge.js?v=module-bootstrap-20260831-release-v1",
+        "runtime-bridge.js?v=module-bootstrap-20260831-release-v1",
+        "toml-action-state-bridge.js?v=module-bootstrap-20260831-release-v1",
     ):
         assert bridge in page
     assert "let legacyStageDatasetState = null" in page
@@ -338,8 +338,8 @@ def test_dragon_dataset_layout_avoids_transformed_fixed_savebar() -> None:
 
 
 def test_dragon_dataset_release_token_is_consistent() -> None:
-    bootstrap_token = "dragon-ui-20260831v21"
-    entry_token = "dragon-ui-20260831v21"
+    bootstrap_token = "dragon-ui-20260831v22"
+    entry_token = "dragon-ui-20260831v22"
     style_token = "dragon-ui-20260828v155"
     shell_token = "dragon-ui-20260828v74"
     config_page_token = "dragon-ui-20260831v153"
@@ -366,7 +366,7 @@ def test_dragon_dataset_release_token_is_consistent() -> None:
     assert "nav.js?v=dragon-ui-20260828v77" in entry
     assert f"config-page.js?v={config_page_token}" in page_loaders
     assert "route-styles.js?v=dragon-ui-20260831v14" in page_loaders
-    assert "dataset-editor.js?v=dragon-ui-20260831v133" in page_loaders
+    assert "dataset-editor.js?v=dragon-ui-20260831v134" in page_loaders
     assert "dataset-preview-controller.js?v=dragon-ui-20260831v7" in page
     assert "dataset-editor-preview.js?v=dragon-ui-20260831v52" in preview_controller
     assert "dataset-preview-window.js?v=dragon-ui-20260831v3" in preview

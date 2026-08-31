@@ -52,7 +52,7 @@ export function createDragonPageLoaders() {
         'weight-analysis': styledPage('pages', lazyPage(() => import('./pages/weight-analysis.js?v=dragon-ui-20260814v43'), 'loadWeightAnalysis')),
         'image-test': styledPage('pages', lazyPage(() => import('./pages/image-test.js?v=dragon-ui-20260824v114'), 'loadImageTest')),
         environment: styledPage('pages', lazyPage(() => import('./pages/environment.js?v=dragon-ui-20260814v43'), 'loadEnvironment')),
-        'dataset-editor': styledPage('dataset', lazyPage(() => import('./pages/dataset-editor.js?v=dragon-ui-20260831v133'), 'loadDatasetEditor')),
+        'dataset-editor': styledPage('dataset', lazyPage(() => import('./pages/dataset-editor.js?v=dragon-ui-20260831v134'), 'loadDatasetEditor')),
         'model-config': styledPage('pages', lazyPage(() => import('./pages/model-config.js?v=dragon-ui-20260824-zimage-v1'), 'loadModelConfig')),
         'global-settings': styledPage('pages', lazyPage(() => import('./pages/global-settings.js?v=dragon-ui-20260825v46'), 'loadGlobalSettings')),
         'preview-workspace': styledPage('pages', lazyPage(() => import('./pages/preview-workspace.js?v=dragon-ui-20260814v43'), 'loadPreviewWorkspace')),

@@ -5,8 +5,8 @@ import {
     FORM_UI_DEFAULTS,
     LOKR_SCOPED_FIELD_KEYS,
     VERA_SCOPED_FIELD_KEYS,
-} from '../../config/catalog.js?v=module-bootstrap-20260809-nf4-v2';
-import { valuesEqual } from '../anima-app/helpers/form-values.js?v=module-bootstrap-20260809-nf4-v2';
+} from '../../config/catalog.js?v=module-bootstrap-20260831-release-v1';
+import { valuesEqual } from '../anima-app/helpers/form-values.js?v=module-bootstrap-20260831-release-v1';
 import {
     loraAdapterFlagsForKind,
     loraAdapterFlagsMatchConfig,
@@ -15,11 +15,11 @@ import {
     normalizePrecisionPreference,
     precisionPreferenceFromConfig,
     precisionPreferencePatch,
-} from '../anima-app/helpers/config-values.js?v=module-bootstrap-20260809-nf4-v2';
-import { getConfigState } from '../anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { normalizeCameOptimizerArgs, normalizeOptimizerType } from '../anima-app/helpers/optimizer-values.js?v=module-bootstrap-20260809-nf4-v2';
-import { setDoRADraftValue } from '../anima-app/helpers/config-form-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { parseNetworkArgEntry } from '../anima-app/helpers/network-args.js?v=module-bootstrap-20260809-nf4-v2';
+} from '../anima-app/helpers/config-values.js?v=module-bootstrap-20260831-release-v1';
+import { getConfigState } from '../anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { normalizeCameOptimizerArgs, normalizeOptimizerType } from '../anima-app/helpers/optimizer-values.js?v=module-bootstrap-20260831-release-v1';
+import { setDoRADraftValue } from '../anima-app/helpers/config-form-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { parseNetworkArgEntry } from '../anima-app/helpers/network-args.js?v=module-bootstrap-20260831-release-v1';
 
 const configState = getConfigState();
 

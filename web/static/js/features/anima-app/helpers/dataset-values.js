@@ -1,8 +1,8 @@
 import {
     DATASET_SETTING_KEYS,
     DEFAULT_NL_TAG_MIX,
-} from '../../../config/catalog.js?v=module-bootstrap-20260809-nf4-v2';
-import { normalizeCaptionSourceMode } from './caption-source.js?v=module-bootstrap-20260809-nf4-v2';
+} from '../../../config/catalog.js?v=module-bootstrap-20260831-release-v1';
+import { normalizeCaptionSourceMode } from './caption-source.js?v=module-bootstrap-20260831-release-v1';
 
 export function normalizeNlTagMix(raw) {
     const source = raw && typeof raw === 'object' ? raw : {};

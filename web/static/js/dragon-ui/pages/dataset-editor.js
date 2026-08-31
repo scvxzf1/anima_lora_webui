@@ -842,13 +842,13 @@ async function openStageSchedule(root, state) {
     syncLegacyDatasetState(state);
     try {
         const [{ configureAppContextBridge }, { configureDatasetStateBridge }, { configureConfigStateBridge }, { configureRuntimeBridge }, { configureTomlActionStateBridge }, { createDatasetState }, { createConfigState }] = await Promise.all([
-            import('../../features/anima-app/helpers/app-context-bridge.js?v=module-bootstrap-20260809-nf4-v2'),
-            import('../../features/anima-app/helpers/dataset-state-bridge.js?v=module-bootstrap-20260809-nf4-v2'),
-            import('../../features/anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260809-nf4-v2'),
-            import('../../features/anima-app/helpers/runtime-bridge.js?v=module-bootstrap-20260809-nf4-v2'),
-            import('../../features/anima-app/helpers/toml-action-state-bridge.js?v=module-bootstrap-20260809-nf4-v2'),
-            import('../../features/anima-app/state/dataset-state.js?v=module-bootstrap-20260809-nf4-v2'),
-            import('../../features/anima-app/state/config-state.js?v=module-bootstrap-20260809-nf4-v2'),
+            import('../../features/anima-app/helpers/app-context-bridge.js?v=module-bootstrap-20260831-release-v1'),
+            import('../../features/anima-app/helpers/dataset-state-bridge.js?v=module-bootstrap-20260831-release-v1'),
+            import('../../features/anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260831-release-v1'),
+            import('../../features/anima-app/helpers/runtime-bridge.js?v=module-bootstrap-20260831-release-v1'),
+            import('../../features/anima-app/helpers/toml-action-state-bridge.js?v=module-bootstrap-20260831-release-v1'),
+            import('../../features/anima-app/state/dataset-state.js?v=module-bootstrap-20260831-release-v1'),
+            import('../../features/anima-app/state/config-state.js?v=module-bootstrap-20260831-release-v1'),
         ]);
         if (!legacyStageDatasetState) {
             legacyStageDatasetState = createDatasetState();
@@ -865,7 +865,7 @@ async function openStageSchedule(root, state) {
         configureConfigStateBridge(state.legacyConfigState);
         syncLegacyDatasetState(state);
         bindStageDialogSync(root, state);
-        const { openStageResolutionDialog } = await import('../../features/config-form/stage-resolution-ui.js?v=module-bootstrap-20260809-nf4-v2');
+        const { openStageResolutionDialog } = await import('../../features/config-form/stage-resolution-ui.js?v=module-bootstrap-20260831-release-v1');
         openStageResolutionDialog();
     } catch (error) { showFeedback(root, `分阶段调度加载失败：${error.message}`, 'error'); }
 }

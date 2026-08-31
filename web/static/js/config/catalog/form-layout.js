@@ -1,4 +1,4 @@
-import { FORM_CATEGORY_DEFS } from './form-category-defs.js?v=dragon-ui-20260826v1';
+import { FORM_CATEGORY_DEFS } from './form-category-defs.js?v=module-bootstrap-20260831-release-v1';
 
 export { FORM_CATEGORY_DEFS };
 

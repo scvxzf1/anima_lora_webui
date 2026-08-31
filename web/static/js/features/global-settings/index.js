@@ -1,2 +1,2 @@
 /** Global settings feature entry. */
-export * from './settings.js?v=module-bootstrap-20260809-nf4-v2';
+export * from './settings.js?v=module-bootstrap-20260831-release-v1';

@@ -1,4 +1,4 @@
-import { DEFAULT_EXPANDED_DAYS, GROUP_INITIAL_RENDER_COUNT } from './constants.js?v=module-bootstrap-20260809-nf4-v2';
+import { DEFAULT_EXPANDED_DAYS, GROUP_INITIAL_RENDER_COUNT } from './constants.js?v=module-bootstrap-20260831-release-v1';
 import {
     cutoffTimestampMs,
     dateKeyFromTimestamp,
@@ -9,7 +9,7 @@ import {
     imageKey,
     imageTimestampMs,
     startOfTodayMs,
-} from './image-meta.js?v=module-bootstrap-20260809-nf4-v2';
+} from './image-meta.js?v=module-bootstrap-20260831-release-v1';
 
 /**
  * 历史分组数据：筛选、展开、窗口计数、新鲜标记。

@@ -2,7 +2,7 @@ import {
     GROUP_INITIAL_RENDER_COUNT,
     GROUP_LOAD_MORE_ROOT_MARGIN,
     GROUP_RENDER_INCREMENT,
-} from './constants.js?v=module-bootstrap-20260809-nf4-v2';
+} from './constants.js?v=module-bootstrap-20260831-release-v1';
 
 /**
  * 纯函数：在网格中定位某个 history group section。

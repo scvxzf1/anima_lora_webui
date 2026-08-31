@@ -229,20 +229,20 @@ globalThis.previewFeature = {
 globalThis.formatDuration = (seconds) => `${seconds}s`;
     globalThis.copyText = async () => {};
 
-    const { configureAppShellStateBridge } = await import('./web/static/js/features/anima-app/helpers/app-shell-state-bridge.js?v=module-bootstrap-20260809-nf4-v2');
-    const { configureAppContextBridge } = await import('./web/static/js/features/anima-app/helpers/app-context-bridge.js?v=module-bootstrap-20260809-nf4-v2');
-    const { configureConfigStateBridge } = await import('./web/static/js/features/anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260809-nf4-v2');
-    const { configureDatasetStateBridge } = await import('./web/static/js/features/anima-app/helpers/dataset-state-bridge.js?v=module-bootstrap-20260809-nf4-v2');
-    const { configureHistoryStateBridge } = await import('./web/static/js/features/anima-app/helpers/history-state-bridge.js?v=module-bootstrap-20260809-nf4-v2');
-    const { configureRuntimeBridge } = await import('./web/static/js/features/anima-app/helpers/runtime-bridge.js?v=module-bootstrap-20260809-nf4-v2');
-    const { configureTomlStateBridge } = await import('./web/static/js/features/anima-app/helpers/toml-state-bridge.js?v=module-bootstrap-20260809-nf4-v2');
-    const { configureTrainingStateBridge } = await import('./web/static/js/features/anima-app/helpers/training-state-bridge.js?v=module-bootstrap-20260809-nf4-v2');
-    const { createAppShellState } = await import('./web/static/js/features/anima-app/state/app-shell-state.js?v=module-bootstrap-20260809-nf4-v2');
-    const { createConfigState } = await import('./web/static/js/features/anima-app/state/config-state.js?v=module-bootstrap-20260809-nf4-v2');
-    const { createDatasetState } = await import('./web/static/js/features/anima-app/state/dataset-state.js?v=module-bootstrap-20260809-nf4-v2');
-    const { createHistoryState } = await import('./web/static/js/features/anima-app/state/history-state.js?v=module-bootstrap-20260809-nf4-v2');
-    const { createTomlState } = await import('./web/static/js/features/anima-app/state/toml-state.js?v=module-bootstrap-20260809-nf4-v2');
-    const { createTrainingState } = await import('./web/static/js/features/anima-app/state/training-state.js?v=module-bootstrap-20260809-nf4-v2');
+    const { configureAppShellStateBridge } = await import('./web/static/js/features/anima-app/helpers/app-shell-state-bridge.js?v=module-bootstrap-20260831-release-v1');
+    const { configureAppContextBridge } = await import('./web/static/js/features/anima-app/helpers/app-context-bridge.js?v=module-bootstrap-20260831-release-v1');
+    const { configureConfigStateBridge } = await import('./web/static/js/features/anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260831-release-v1');
+    const { configureDatasetStateBridge } = await import('./web/static/js/features/anima-app/helpers/dataset-state-bridge.js?v=module-bootstrap-20260831-release-v1');
+    const { configureHistoryStateBridge } = await import('./web/static/js/features/anima-app/helpers/history-state-bridge.js?v=module-bootstrap-20260831-release-v1');
+    const { configureRuntimeBridge } = await import('./web/static/js/features/anima-app/helpers/runtime-bridge.js?v=module-bootstrap-20260831-release-v1');
+    const { configureTomlStateBridge } = await import('./web/static/js/features/anima-app/helpers/toml-state-bridge.js?v=module-bootstrap-20260831-release-v1');
+    const { configureTrainingStateBridge } = await import('./web/static/js/features/anima-app/helpers/training-state-bridge.js?v=module-bootstrap-20260831-release-v1');
+    const { createAppShellState } = await import('./web/static/js/features/anima-app/state/app-shell-state.js?v=module-bootstrap-20260831-release-v1');
+    const { createConfigState } = await import('./web/static/js/features/anima-app/state/config-state.js?v=module-bootstrap-20260831-release-v1');
+    const { createDatasetState } = await import('./web/static/js/features/anima-app/state/dataset-state.js?v=module-bootstrap-20260831-release-v1');
+    const { createHistoryState } = await import('./web/static/js/features/anima-app/state/history-state.js?v=module-bootstrap-20260831-release-v1');
+    const { createTomlState } = await import('./web/static/js/features/anima-app/state/toml-state.js?v=module-bootstrap-20260831-release-v1');
+    const { createTrainingState } = await import('./web/static/js/features/anima-app/state/training-state.js?v=module-bootstrap-20260831-release-v1');
     const appShellState = createAppShellState();
     const configState = createConfigState();
     const datasetState = createDatasetState();
@@ -281,7 +281,7 @@ globalThis.formatDuration = (seconds) => `${seconds}s`;
     });
     globalThis.trainingRuntime = trainingState.trainingRuntime;
     configureAppContextBridge(globalThis.ctx);
-const { configureQueueViewBridge } = await import('./web/static/js/features/anima-app/helpers/queue-view-bridge.js?v=module-bootstrap-20260809-nf4-v2');
+const { configureQueueViewBridge } = await import('./web/static/js/features/anima-app/helpers/queue-view-bridge.js?v=module-bootstrap-20260831-release-v1');
 configureQueueViewBridge({
     refreshQueueRunningProgressViews: () => {},
     loadTrainingQueue: async () => {},
@@ -313,16 +313,16 @@ configureQueueViewBridge({
     configureTomlStateBridge(tomlState);
     configureTrainingStateBridge(trainingState);
 
-const featureEnsurers = await import('./web/static/js/features/anima-app/helpers/feature-ensurers.js?v=module-bootstrap-20260809-nf4-v2');
+const featureEnsurers = await import('./web/static/js/features/anima-app/helpers/feature-ensurers.js?v=module-bootstrap-20260831-release-v1');
 featureEnsurers.configurePreviewFeatureEnsurer(globalThis.ctx, globalThis, {});
 
-const { configureHistoryDetailBridge } = await import('./web/static/js/features/anima-app/helpers/history-detail-bridge.js?v=module-bootstrap-20260809-nf4-v2');
+const { configureHistoryDetailBridge } = await import('./web/static/js/features/anima-app/helpers/history-detail-bridge.js?v=module-bootstrap-20260831-release-v1');
 configureHistoryDetailBridge({
     isHistoryReviewMode: () => false,
     ensureHistoryDetailFeature: () => ({}),
     openHistoryDetailDialog: () => {},
 });
-const { configureLiveStatusBridge } = await import('./web/static/js/features/anima-app/helpers/live-status-bridge.js?v=module-bootstrap-20260809-nf4-v2');
+const { configureLiveStatusBridge } = await import('./web/static/js/features/anima-app/helpers/live-status-bridge.js?v=module-bootstrap-20260831-release-v1');
 // liveStatus module will overwrite these after import if needed; provide safe no-ops for early calls
 configureLiveStatusBridge({
     updateProgress: () => {},
@@ -333,7 +333,7 @@ configureLiveStatusBridge({
 });
 
 
-const { configureLiveLogBridge } = await import('./web/static/js/features/anima-app/helpers/live-log-bridge.js?v=module-bootstrap-20260809-nf4-v2');
+const { configureLiveLogBridge } = await import('./web/static/js/features/anima-app/helpers/live-log-bridge.js?v=module-bootstrap-20260831-release-v1');
 configureLiveLogBridge({
     logLineTone: () => '',
     appendLog: () => {},
@@ -342,7 +342,7 @@ configureLiveLogBridge({
 });
 
 
-const { configureHistoryTimelineBridge } = await import('./web/static/js/features/anima-app/helpers/history-timeline-bridge.js?v=module-bootstrap-20260809-nf4-v2');
+const { configureHistoryTimelineBridge } = await import('./web/static/js/features/anima-app/helpers/history-timeline-bridge.js?v=module-bootstrap-20260831-release-v1');
 configureHistoryTimelineBridge({
     runtimePathItems: () => [],
     renderHistoryPaths: () => {},
@@ -506,20 +506,20 @@ globalThis.previewFeature = {
 globalThis.formatDuration = (seconds) => `${seconds}s`;
 globalThis.copyText = async () => {};
 
-const { configureAppShellStateBridge } = await import('./web/static/js/features/anima-app/helpers/app-shell-state-bridge.js?v=module-bootstrap-20260809-nf4-v2');
-const { configureAppContextBridge } = await import('./web/static/js/features/anima-app/helpers/app-context-bridge.js?v=module-bootstrap-20260809-nf4-v2');
-const { configureConfigStateBridge } = await import('./web/static/js/features/anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260809-nf4-v2');
-const { configureDatasetStateBridge } = await import('./web/static/js/features/anima-app/helpers/dataset-state-bridge.js?v=module-bootstrap-20260809-nf4-v2');
-const { configureHistoryStateBridge } = await import('./web/static/js/features/anima-app/helpers/history-state-bridge.js?v=module-bootstrap-20260809-nf4-v2');
-const { configureRuntimeBridge } = await import('./web/static/js/features/anima-app/helpers/runtime-bridge.js?v=module-bootstrap-20260809-nf4-v2');
-const { configureTomlStateBridge } = await import('./web/static/js/features/anima-app/helpers/toml-state-bridge.js?v=module-bootstrap-20260809-nf4-v2');
-const { configureTrainingStateBridge } = await import('./web/static/js/features/anima-app/helpers/training-state-bridge.js?v=module-bootstrap-20260809-nf4-v2');
-const { createAppShellState } = await import('./web/static/js/features/anima-app/state/app-shell-state.js?v=module-bootstrap-20260809-nf4-v2');
-const { createConfigState } = await import('./web/static/js/features/anima-app/state/config-state.js?v=module-bootstrap-20260809-nf4-v2');
-const { createDatasetState } = await import('./web/static/js/features/anima-app/state/dataset-state.js?v=module-bootstrap-20260809-nf4-v2');
-const { createHistoryState } = await import('./web/static/js/features/anima-app/state/history-state.js?v=module-bootstrap-20260809-nf4-v2');
-const { createTomlState } = await import('./web/static/js/features/anima-app/state/toml-state.js?v=module-bootstrap-20260809-nf4-v2');
-const { createTrainingState } = await import('./web/static/js/features/anima-app/state/training-state.js?v=module-bootstrap-20260809-nf4-v2');
+const { configureAppShellStateBridge } = await import('./web/static/js/features/anima-app/helpers/app-shell-state-bridge.js?v=module-bootstrap-20260831-release-v1');
+const { configureAppContextBridge } = await import('./web/static/js/features/anima-app/helpers/app-context-bridge.js?v=module-bootstrap-20260831-release-v1');
+const { configureConfigStateBridge } = await import('./web/static/js/features/anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260831-release-v1');
+const { configureDatasetStateBridge } = await import('./web/static/js/features/anima-app/helpers/dataset-state-bridge.js?v=module-bootstrap-20260831-release-v1');
+const { configureHistoryStateBridge } = await import('./web/static/js/features/anima-app/helpers/history-state-bridge.js?v=module-bootstrap-20260831-release-v1');
+const { configureRuntimeBridge } = await import('./web/static/js/features/anima-app/helpers/runtime-bridge.js?v=module-bootstrap-20260831-release-v1');
+const { configureTomlStateBridge } = await import('./web/static/js/features/anima-app/helpers/toml-state-bridge.js?v=module-bootstrap-20260831-release-v1');
+const { configureTrainingStateBridge } = await import('./web/static/js/features/anima-app/helpers/training-state-bridge.js?v=module-bootstrap-20260831-release-v1');
+const { createAppShellState } = await import('./web/static/js/features/anima-app/state/app-shell-state.js?v=module-bootstrap-20260831-release-v1');
+const { createConfigState } = await import('./web/static/js/features/anima-app/state/config-state.js?v=module-bootstrap-20260831-release-v1');
+const { createDatasetState } = await import('./web/static/js/features/anima-app/state/dataset-state.js?v=module-bootstrap-20260831-release-v1');
+const { createHistoryState } = await import('./web/static/js/features/anima-app/state/history-state.js?v=module-bootstrap-20260831-release-v1');
+const { createTomlState } = await import('./web/static/js/features/anima-app/state/toml-state.js?v=module-bootstrap-20260831-release-v1');
+const { createTrainingState } = await import('./web/static/js/features/anima-app/state/training-state.js?v=module-bootstrap-20260831-release-v1');
 const appShellState = createAppShellState();
 const configState = createConfigState();
 const datasetState = createDatasetState();
@@ -566,7 +566,7 @@ Object.assign(trainingState.trainingRuntime, {
 });
 globalThis.trainingRuntime = trainingState.trainingRuntime;
 configureAppContextBridge(globalThis.ctx);
-const { configureQueueViewBridge } = await import('./web/static/js/features/anima-app/helpers/queue-view-bridge.js?v=module-bootstrap-20260809-nf4-v2');
+const { configureQueueViewBridge } = await import('./web/static/js/features/anima-app/helpers/queue-view-bridge.js?v=module-bootstrap-20260831-release-v1');
 configureQueueViewBridge({
     refreshQueueRunningProgressViews: () => {},
     loadTrainingQueue: async () => {},
@@ -598,16 +598,16 @@ configureRuntimeBridge({
 configureTomlStateBridge(tomlState);
 configureTrainingStateBridge(trainingState);
 
-const featureEnsurers = await import('./web/static/js/features/anima-app/helpers/feature-ensurers.js?v=module-bootstrap-20260809-nf4-v2');
+const featureEnsurers = await import('./web/static/js/features/anima-app/helpers/feature-ensurers.js?v=module-bootstrap-20260831-release-v1');
 featureEnsurers.configurePreviewFeatureEnsurer(globalThis.ctx, globalThis, {});
 
-const { configureHistoryDetailBridge } = await import('./web/static/js/features/anima-app/helpers/history-detail-bridge.js?v=module-bootstrap-20260809-nf4-v2');
+const { configureHistoryDetailBridge } = await import('./web/static/js/features/anima-app/helpers/history-detail-bridge.js?v=module-bootstrap-20260831-release-v1');
 configureHistoryDetailBridge({
     isHistoryReviewMode: () => false,
     ensureHistoryDetailFeature: () => ({}),
     openHistoryDetailDialog: () => {},
 });
-const { configureLiveStatusBridge } = await import('./web/static/js/features/anima-app/helpers/live-status-bridge.js?v=module-bootstrap-20260809-nf4-v2');
+const { configureLiveStatusBridge } = await import('./web/static/js/features/anima-app/helpers/live-status-bridge.js?v=module-bootstrap-20260831-release-v1');
 // liveStatus module will overwrite these after import if needed; provide safe no-ops for early calls
 configureLiveStatusBridge({
     updateProgress: () => {},
@@ -618,7 +618,7 @@ configureLiveStatusBridge({
 });
 
 
-const { configureLiveLogBridge } = await import('./web/static/js/features/anima-app/helpers/live-log-bridge.js?v=module-bootstrap-20260809-nf4-v2');
+const { configureLiveLogBridge } = await import('./web/static/js/features/anima-app/helpers/live-log-bridge.js?v=module-bootstrap-20260831-release-v1');
 configureLiveLogBridge({
     logLineTone: () => '',
     appendLog: () => {},
@@ -627,7 +627,7 @@ configureLiveLogBridge({
 });
 
 
-const { configureHistoryTimelineBridge } = await import('./web/static/js/features/anima-app/helpers/history-timeline-bridge.js?v=module-bootstrap-20260809-nf4-v2');
+const { configureHistoryTimelineBridge } = await import('./web/static/js/features/anima-app/helpers/history-timeline-bridge.js?v=module-bootstrap-20260831-release-v1');
 configureHistoryTimelineBridge({
     runtimePathItems: () => [],
     renderHistoryPaths: () => {},
@@ -834,7 +834,7 @@ globalThis.WebSocket = { OPEN: 1 };
 let now = 100000;
 Date.now = () => now;
 
-const token = 'module-bootstrap-20260809-nf4-v2';
+const token = 'module-bootstrap-20260831-release-v1';
 const { configureHistoryStateBridge } = await import(`./web/static/js/features/anima-app/helpers/history-state-bridge.js?v=${token}`);
 const { configureHistoryListBridge } = await import(`./web/static/js/features/anima-app/helpers/history-list-bridge.js?v=${token}`);
 const { configureQueueViewBridge } = await import(`./web/static/js/features/anima-app/helpers/queue-view-bridge.js?v=${token}`);
@@ -897,20 +897,20 @@ globalThis.updateProgress = () => {};
 globalThis.updateMetrics = () => {};
 globalThis.updateSystem = () => {};
 
-const { configureAppContextBridge: configureAppContextBridgeForSnapshot } = await import('./web/static/js/features/anima-app/helpers/app-context-bridge.js?v=module-bootstrap-20260809-nf4-v2');
-const { configureAppShellStateBridge: configureAppShellStateBridgeForSnapshot } = await import('./web/static/js/features/anima-app/helpers/app-shell-state-bridge.js?v=module-bootstrap-20260809-nf4-v2');
-const { configureConfigStateBridge: configureConfigStateBridgeForSnapshot } = await import('./web/static/js/features/anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260809-nf4-v2');
-const { configureDatasetStateBridge: configureDatasetStateBridgeForSnapshot } = await import('./web/static/js/features/anima-app/helpers/dataset-state-bridge.js?v=module-bootstrap-20260809-nf4-v2');
-const { configureHistoryStateBridge: configureHistoryStateBridgeForSnapshot } = await import('./web/static/js/features/anima-app/helpers/history-state-bridge.js?v=module-bootstrap-20260809-nf4-v2');
-const { configureTomlStateBridge: configureTomlStateBridgeForSnapshot } = await import('./web/static/js/features/anima-app/helpers/toml-state-bridge.js?v=module-bootstrap-20260809-nf4-v2');
-const { configureTrainingStateBridge: configureTrainingStateBridgeForSnapshot } = await import('./web/static/js/features/anima-app/helpers/training-state-bridge.js?v=module-bootstrap-20260809-nf4-v2');
-const { configureRuntimeBridge: configureRuntimeBridgeForSnapshot } = await import('./web/static/js/features/anima-app/helpers/runtime-bridge.js?v=module-bootstrap-20260809-nf4-v2');
-const { createAppShellState: createAppShellStateForSnapshot } = await import('./web/static/js/features/anima-app/state/app-shell-state.js?v=module-bootstrap-20260809-nf4-v2');
-const { createConfigState: createConfigStateForSnapshot } = await import('./web/static/js/features/anima-app/state/config-state.js?v=module-bootstrap-20260809-nf4-v2');
-const { createDatasetState: createDatasetStateForSnapshot } = await import('./web/static/js/features/anima-app/state/dataset-state.js?v=module-bootstrap-20260809-nf4-v2');
-const { createHistoryState: createHistoryStateForSnapshot } = await import('./web/static/js/features/anima-app/state/history-state.js?v=module-bootstrap-20260809-nf4-v2');
-const { createTomlState: createTomlStateForSnapshot } = await import('./web/static/js/features/anima-app/state/toml-state.js?v=module-bootstrap-20260809-nf4-v2');
-const { createTrainingState: createTrainingStateForSnapshot } = await import('./web/static/js/features/anima-app/state/training-state.js?v=module-bootstrap-20260809-nf4-v2');
+const { configureAppContextBridge: configureAppContextBridgeForSnapshot } = await import('./web/static/js/features/anima-app/helpers/app-context-bridge.js?v=module-bootstrap-20260831-release-v1');
+const { configureAppShellStateBridge: configureAppShellStateBridgeForSnapshot } = await import('./web/static/js/features/anima-app/helpers/app-shell-state-bridge.js?v=module-bootstrap-20260831-release-v1');
+const { configureConfigStateBridge: configureConfigStateBridgeForSnapshot } = await import('./web/static/js/features/anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260831-release-v1');
+const { configureDatasetStateBridge: configureDatasetStateBridgeForSnapshot } = await import('./web/static/js/features/anima-app/helpers/dataset-state-bridge.js?v=module-bootstrap-20260831-release-v1');
+const { configureHistoryStateBridge: configureHistoryStateBridgeForSnapshot } = await import('./web/static/js/features/anima-app/helpers/history-state-bridge.js?v=module-bootstrap-20260831-release-v1');
+const { configureTomlStateBridge: configureTomlStateBridgeForSnapshot } = await import('./web/static/js/features/anima-app/helpers/toml-state-bridge.js?v=module-bootstrap-20260831-release-v1');
+const { configureTrainingStateBridge: configureTrainingStateBridgeForSnapshot } = await import('./web/static/js/features/anima-app/helpers/training-state-bridge.js?v=module-bootstrap-20260831-release-v1');
+const { configureRuntimeBridge: configureRuntimeBridgeForSnapshot } = await import('./web/static/js/features/anima-app/helpers/runtime-bridge.js?v=module-bootstrap-20260831-release-v1');
+const { createAppShellState: createAppShellStateForSnapshot } = await import('./web/static/js/features/anima-app/state/app-shell-state.js?v=module-bootstrap-20260831-release-v1');
+const { createConfigState: createConfigStateForSnapshot } = await import('./web/static/js/features/anima-app/state/config-state.js?v=module-bootstrap-20260831-release-v1');
+const { createDatasetState: createDatasetStateForSnapshot } = await import('./web/static/js/features/anima-app/state/dataset-state.js?v=module-bootstrap-20260831-release-v1');
+const { createHistoryState: createHistoryStateForSnapshot } = await import('./web/static/js/features/anima-app/state/history-state.js?v=module-bootstrap-20260831-release-v1');
+const { createTomlState: createTomlStateForSnapshot } = await import('./web/static/js/features/anima-app/state/toml-state.js?v=module-bootstrap-20260831-release-v1');
+const { createTrainingState: createTrainingStateForSnapshot } = await import('./web/static/js/features/anima-app/state/training-state.js?v=module-bootstrap-20260831-release-v1');
 configureAppContextBridgeForSnapshot(globalThis.ctx || {});
 configureAppShellStateBridgeForSnapshot(createAppShellStateForSnapshot());
 configureConfigStateBridgeForSnapshot(createConfigStateForSnapshot());
@@ -919,13 +919,13 @@ configureHistoryStateBridgeForSnapshot(createHistoryStateForSnapshot());
 configureTomlStateBridgeForSnapshot(createTomlStateForSnapshot());
 configureTrainingStateBridgeForSnapshot(createTrainingStateForSnapshot());
 configureRuntimeBridgeForSnapshot({ api: globalThis.ctx?.api, timers: {} });
-const { configureLiveLogBridge: configureLiveLogBridgeForSnapshot } = await import('./web/static/js/features/anima-app/helpers/live-log-bridge.js?v=module-bootstrap-20260809-nf4-v2');
+const { configureLiveLogBridge: configureLiveLogBridgeForSnapshot } = await import('./web/static/js/features/anima-app/helpers/live-log-bridge.js?v=module-bootstrap-20260831-release-v1');
 configureLiveLogBridgeForSnapshot({ logLineTone: () => '', appendLog: () => {}, clearLogs: () => {}, renderLogs: () => {} });
-const { configureHistoryDetailBridge: configureHistoryDetailBridgeForSnapshot } = await import('./web/static/js/features/anima-app/helpers/history-detail-bridge.js?v=module-bootstrap-20260809-nf4-v2');
+const { configureHistoryDetailBridge: configureHistoryDetailBridgeForSnapshot } = await import('./web/static/js/features/anima-app/helpers/history-detail-bridge.js?v=module-bootstrap-20260831-release-v1');
 configureHistoryDetailBridgeForSnapshot({ isHistoryReviewMode: () => false, ensureHistoryDetailFeature: () => ({}), openHistoryDetailDialog: () => {} });
-const { configureQueueViewBridge: configureQueueViewBridgeForSnapshot } = await import('./web/static/js/features/anima-app/helpers/queue-view-bridge.js?v=module-bootstrap-20260809-nf4-v2');
+const { configureQueueViewBridge: configureQueueViewBridgeForSnapshot } = await import('./web/static/js/features/anima-app/helpers/queue-view-bridge.js?v=module-bootstrap-20260831-release-v1');
 configureQueueViewBridgeForSnapshot({ refreshQueueRunningProgressViews: () => {} });
-const { configureLiveStatusBridge: configureLiveStatusBridgeForSnapshot } = await import('./web/static/js/features/anima-app/helpers/live-status-bridge.js?v=module-bootstrap-20260809-nf4-v2');
+const { configureLiveStatusBridge: configureLiveStatusBridgeForSnapshot } = await import('./web/static/js/features/anima-app/helpers/live-status-bridge.js?v=module-bootstrap-20260831-release-v1');
 const recordLiveStatus = (kind) => (payload, options) => {
     calls.push({ kind, payload, options });
 };

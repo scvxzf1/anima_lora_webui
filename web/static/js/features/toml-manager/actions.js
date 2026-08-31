@@ -2,13 +2,13 @@
  * TOML group/file move-delete actions.
  * Moved out of anima-app mechanical chunks.
  */
-import { showHistoryTaskConfirmDialog, showHistoryTaskDialog } from '../anima-app/helpers/history-task-actions-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { configureTomlActionsBridge } from '../anima-app/helpers/toml-actions-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { loadTomlFileList } from '../anima-app/helpers/toml-manager-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { api, val } from '../anima-app/helpers/runtime-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { setCurrentTrainingSourceFromVariant } from '../training-source/source-state.js?v=module-bootstrap-20260809-nf4-v2';
-import { hasPendingConfigChanges, showAppConfirmDialog, updateTomlDirtyState, updateTomlSelectionUI } from '../anima-app/helpers/toml-selection-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { isTrainingTomlGroup, reorderTomlFileGroups } from '../anima-app/helpers/toml-io-bridge.js?v=module-bootstrap-20260809-nf4-v2';
+import { showHistoryTaskConfirmDialog, showHistoryTaskDialog } from '../anima-app/helpers/history-task-actions-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { configureTomlActionsBridge } from '../anima-app/helpers/toml-actions-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { loadTomlFileList } from '../anima-app/helpers/toml-manager-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { api, val } from '../anima-app/helpers/runtime-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { setCurrentTrainingSourceFromVariant } from '../training-source/source-state.js?v=module-bootstrap-20260831-release-v1';
+import { hasPendingConfigChanges, showAppConfirmDialog, updateTomlDirtyState, updateTomlSelectionUI } from '../anima-app/helpers/toml-selection-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { isTrainingTomlGroup, reorderTomlFileGroups } from '../anima-app/helpers/toml-io-bridge.js?v=module-bootstrap-20260831-release-v1';
 import {
     applyTomlLockState,
     armTomlDeleteConfirm,
@@ -17,10 +17,10 @@ import {
     setTomlStatus,
     tomlLockLabel,
     updateTomlActionState,
-} from '../anima-app/helpers/toml-action-state-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { getDatasetState } from '../anima-app/helpers/dataset-state-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { getTomlState } from '../anima-app/helpers/toml-state-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { getTrainingState } from '../anima-app/helpers/training-state-bridge.js?v=module-bootstrap-20260809-nf4-v2';
+} from '../anima-app/helpers/toml-action-state-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { getDatasetState } from '../anima-app/helpers/dataset-state-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { getTomlState } from '../anima-app/helpers/toml-state-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { getTrainingState } from '../anima-app/helpers/training-state-bridge.js?v=module-bootstrap-20260831-release-v1';
 
 const datasetState = getDatasetState();
 const tomlState = getTomlState();

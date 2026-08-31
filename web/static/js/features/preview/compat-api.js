@@ -2,8 +2,8 @@
  * Preview settings/view compatibility API for older bridge consumers.
  * Thin wrappers around the real preview feature.
  */
-import { ensurePreviewFeature } from '../anima-app/helpers/feature-ensurers.js?v=module-bootstrap-20260809-nf4-v2';
-import { getAppContext } from '../anima-app/helpers/app-context-bridge.js?v=module-bootstrap-20260809-nf4-v2';
+import { ensurePreviewFeature } from '../anima-app/helpers/feature-ensurers.js?v=module-bootstrap-20260831-release-v1';
+import { getAppContext } from '../anima-app/helpers/app-context-bridge.js?v=module-bootstrap-20260831-release-v1';
 
 const ctx = getAppContext();
 

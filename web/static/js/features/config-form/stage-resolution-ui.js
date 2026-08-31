@@ -8,7 +8,7 @@ export {
     createStageResolutionEditor,
     createStageResolutionTable,
     syncStageResolutionEditorInputs,
-} from './stage-resolution-ui-widgets.js?v=module-bootstrap-20260809-nf4-v2';
+} from './stage-resolution-ui-widgets.js?v=module-bootstrap-20260831-release-v1';
 
 export {
     drawStageResolutionChart,
@@ -18,4 +18,4 @@ export {
     createStageScheduleInlineSummary,
     resolveStageScheduleTargetFile,
     listStageScheduleTargetCandidates,
-} from './stage-resolution-ui-dialog.js?v=module-bootstrap-20260809-nf4-v2';
+} from './stage-resolution-ui-dialog.js?v=module-bootstrap-20260831-release-v1';

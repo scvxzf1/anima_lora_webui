@@ -9,23 +9,23 @@ import {
     createDatasetInlineHelpButton,
     datasetExperimentalOpenState,
     datasetLocalHelpSpec,
-} from './inline-help.js?v=module-bootstrap-20260809-nf4-v2';
-import { createDatasetEditorDragHandle } from './item-drag.js?v=module-bootstrap-20260809-nf4-v2';
-import { CAPTION_SOURCE_MODE_OPTIONS, help } from '../../config/catalog.js?v=module-bootstrap-20260809-nf4-v2';
-import { normalizeCaptionSourceMode } from '../anima-app/helpers/caption-source.js?v=module-bootstrap-20260809-nf4-v2';
-import { createHelpContent } from '../anima-app/helpers/config-field-ui-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { datasetConfigLabel, datasetConfigValue } from '../anima-app/helpers/dataset-config-fields.js?v=module-bootstrap-20260809-nf4-v2';
-import { getDatasetState } from '../anima-app/helpers/dataset-state-bridge.js?v=module-bootstrap-20260809-nf4-v2';
+} from './inline-help.js?v=module-bootstrap-20260831-release-v1';
+import { createDatasetEditorDragHandle } from './item-drag.js?v=module-bootstrap-20260831-release-v1';
+import { CAPTION_SOURCE_MODE_OPTIONS, help } from '../../config/catalog.js?v=module-bootstrap-20260831-release-v1';
+import { normalizeCaptionSourceMode } from '../anima-app/helpers/caption-source.js?v=module-bootstrap-20260831-release-v1';
+import { createHelpContent } from '../anima-app/helpers/config-field-ui-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { datasetConfigLabel, datasetConfigValue } from '../anima-app/helpers/dataset-config-fields.js?v=module-bootstrap-20260831-release-v1';
+import { getDatasetState } from '../anima-app/helpers/dataset-state-bridge.js?v=module-bootstrap-20260831-release-v1';
 import {
     normalizeDatasetDefaults,
     normalizeDatasetEditorRows,
     normalizeTriggerClone,
-} from '../anima-app/helpers/dataset-values.js?v=module-bootstrap-20260809-nf4-v2';
-import { datasetPreviewValidationText } from '../anima-app/helpers/dataset-preview.js?v=module-bootstrap-20260809-nf4-v2';
-import { datasetEditorStateForActivePanel, isDatasetTabActive, refreshDatasetEditorItem, renderDatasetEditor } from '../anima-app/helpers/dataset-render-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { createDatasetPathField, createDatasetRowCaptionSourceModeEditor, createDatasetRowSettingInput, updateDatasetEditorRow } from './row-fields.js?v=module-bootstrap-20260809-nf4-v2';
-import { openDatasetPreview } from './preview.js?v=module-bootstrap-20260809-nf4-v2';
-import { escapeHtml } from '../config-form/field-input.js?v=module-bootstrap-20260809-nf4-v2';
+} from '../anima-app/helpers/dataset-values.js?v=module-bootstrap-20260831-release-v1';
+import { datasetPreviewValidationText } from '../anima-app/helpers/dataset-preview.js?v=module-bootstrap-20260831-release-v1';
+import { datasetEditorStateForActivePanel, isDatasetTabActive, refreshDatasetEditorItem, renderDatasetEditor } from '../anima-app/helpers/dataset-render-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { createDatasetPathField, createDatasetRowCaptionSourceModeEditor, createDatasetRowSettingInput, updateDatasetEditorRow } from './row-fields.js?v=module-bootstrap-20260831-release-v1';
+import { openDatasetPreview } from './preview.js?v=module-bootstrap-20260831-release-v1';
+import { escapeHtml } from '../config-form/field-input.js?v=module-bootstrap-20260831-release-v1';
 import {
     datasetExperimentalScopeIndices,
     removeDatasetEditorRow,
@@ -33,7 +33,7 @@ import {
     updateDatasetEditorRowNlTagMix,
     updateDatasetEditorRowTriggerClone,
     updateDatasetEditorRowsSettingValue,
-} from './mutations.js?v=module-bootstrap-20260809-nf4-v2';
+} from './mutations.js?v=module-bootstrap-20260831-release-v1';
 import {
     createDatasetAdvancedSettingsEditor,
     createDatasetCaptionExtensionEditor,
@@ -43,7 +43,7 @@ import {
     createDatasetRepeatSettingField,
     createDatasetRowSettingsEditor,
     createDatasetTriggerCloneEditor,
-} from './row-settings.js?v=module-bootstrap-20260809-nf4-v2';
+} from './row-settings.js?v=module-bootstrap-20260831-release-v1';
 
 const datasetState = getDatasetState();
 

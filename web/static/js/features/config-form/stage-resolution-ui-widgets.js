@@ -1,8 +1,8 @@
 /**
  * Stage schedule widgets: summary, editor, table, and stage mutations.
  */
-import { getConfigState } from '../anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { setTomlStatus } from '../anima-app/helpers/toml-action-state-bridge.js?v=module-bootstrap-20260809-nf4-v2';
+import { getConfigState } from '../anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { setTomlStatus } from '../anima-app/helpers/toml-action-state-bridge.js?v=module-bootstrap-20260831-release-v1';
 import {
     clamp01,
     defaultStageScheduleStages,
@@ -11,8 +11,8 @@ import {
     pctLabel,
     stageResolutionStatus,
     toFraction,
-} from './stage-resolution-model.js?v=module-bootstrap-20260809-nf4-v2';
-import { requestStageResolutionRender } from './stage-resolution-ui-render.js?v=module-bootstrap-20260809-nf4-v2';
+} from './stage-resolution-model.js?v=module-bootstrap-20260831-release-v1';
+import { requestStageResolutionRender } from './stage-resolution-ui-render.js?v=module-bootstrap-20260831-release-v1';
 
 const configState = getConfigState();
 const stageResolutionState = configState.stageResolutionState;

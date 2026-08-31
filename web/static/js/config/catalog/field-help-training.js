@@ -1,4 +1,4 @@
-import { help } from './help-builder.js?v=module-bootstrap-20260809-nf4-v2';
+import { help } from './help-builder.js?v=module-bootstrap-20260831-release-v1';
 
 export const FIELD_HELP_TRAINING_ZH = {    learning_rate: help(
         "学习率，决定每一步参数改动有多大。",

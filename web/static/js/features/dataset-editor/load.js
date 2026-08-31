@@ -2,36 +2,36 @@
  * Dataset editor / preset loaders.
  * Extracted from anima-app chunk 03.
  */
-import { HIDDEN_DATASET_PRESET_FILES } from '../anima-app/helpers/app-constants.js?v=module-bootstrap-20260809-nf4-v2';
-import { getConfigState } from '../anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { getDatasetState } from '../anima-app/helpers/dataset-state-bridge.js?v=module-bootstrap-20260809-nf4-v2';
+import { HIDDEN_DATASET_PRESET_FILES } from '../anima-app/helpers/app-constants.js?v=module-bootstrap-20260831-release-v1';
+import { getConfigState } from '../anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { getDatasetState } from '../anima-app/helpers/dataset-state-bridge.js?v=module-bootstrap-20260831-release-v1';
 import {
     normalizeDatasetDefaults,
     normalizeDatasetEditorRows,
-} from '../anima-app/helpers/dataset-values.js?v=module-bootstrap-20260809-nf4-v2';
+} from '../anima-app/helpers/dataset-values.js?v=module-bootstrap-20260831-release-v1';
 import {
     datasetPresetSummaryByFile,
     orderDatasetPresetsForGroups,
     selectedDatasetConfigOverride,
     sortDatasetPresetGroups,
-} from '../anima-app/helpers/dataset-presets.js?v=module-bootstrap-20260809-nf4-v2';
+} from '../anima-app/helpers/dataset-presets.js?v=module-bootstrap-20260831-release-v1';
 import {
     renderConfigDatasetPickerDialog,
     renderDatasetEditor,
     renderDatasetPresetHeader,
     renderDatasetPresetList,
     isDatasetTabActive,
-} from '../anima-app/helpers/dataset-render-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { isCliOnlySpdSource } from '../anima-app/helpers/training-launch-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { confirmUnsavedDiscard } from '../anima-app/helpers/toml-selection-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { api, datasetPresetApi, val } from '../anima-app/helpers/runtime-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { getTrainingState } from '../anima-app/helpers/training-state-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { currentTrainingConfigFile } from '../anima-app/helpers/preflight-dialog-bridge.js?v=module-bootstrap-20260809-nf4-v2';
+} from '../anima-app/helpers/dataset-render-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { isCliOnlySpdSource } from '../anima-app/helpers/training-launch-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { confirmUnsavedDiscard } from '../anima-app/helpers/toml-selection-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { api, datasetPresetApi, val } from '../anima-app/helpers/runtime-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { getTrainingState } from '../anima-app/helpers/training-state-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { currentTrainingConfigFile } from '../anima-app/helpers/preflight-dialog-bridge.js?v=module-bootstrap-20260831-release-v1';
 import {
     isConfigDatasetPickerDialogOpen,
     renderConfigDatasetPicker,
-} from '../config-form/dataset-picker.js?v=module-bootstrap-20260809-nf4-v2';
-import { hydrateStageScheduleFromDatasetPreset } from '../config-form/stage-resolution-model.js?v=module-bootstrap-20260809-nf4-v2';
+} from '../config-form/dataset-picker.js?v=module-bootstrap-20260831-release-v1';
+import { hydrateStageScheduleFromDatasetPreset } from '../config-form/stage-resolution-model.js?v=module-bootstrap-20260831-release-v1';
 
 const configState = getConfigState();
 const datasetState = getDatasetState();

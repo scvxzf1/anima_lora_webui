@@ -1199,8 +1199,8 @@ globalThis.updateLogStatusText = () => {};
 globalThis.loadTrainingQueue = async () => {};
 globalThis.loadTrainingHistoryList = async () => {};
 
-const { configureRuntimeBridge } = await import('./web/static/js/features/anima-app/helpers/runtime-bridge.js?v=module-bootstrap-20260809-nf4-v2');
-const { configureHistoryDetailBridge } = await import('./web/static/js/features/anima-app/helpers/history-detail-bridge.js?v=module-bootstrap-20260809-nf4-v2');
+const { configureRuntimeBridge } = await import('./web/static/js/features/anima-app/helpers/runtime-bridge.js?v=module-bootstrap-20260831-release-v1');
+const { configureHistoryDetailBridge } = await import('./web/static/js/features/anima-app/helpers/history-detail-bridge.js?v=module-bootstrap-20260831-release-v1');
 configureHistoryDetailBridge({
     isHistoryReviewMode: () => false,
 });

@@ -2,9 +2,9 @@
  * Mechanical split from the former monolithic app closure.
  * Keep image-test feature wiring out of 01-scope-state so the scope chunk stays small.
  */
-import { ensurePreviewFeature } from '../helpers/feature-ensurers.js?v=module-bootstrap-20260809-nf4-v2';
-import { precisionPreferenceFromConfig } from '../helpers/config-values.js?v=module-bootstrap-20260809-nf4-v2';
-import { createImageTestFeature } from '../../image-test/index.js?v=module-bootstrap-20260809-nf4-v2';
+import { ensurePreviewFeature } from '../helpers/feature-ensurers.js?v=module-bootstrap-20260831-release-v1';
+import { precisionPreferenceFromConfig } from '../helpers/config-values.js?v=module-bootstrap-20260831-release-v1';
+import { createImageTestFeature } from '../../image-test/index.js?v=module-bootstrap-20260831-release-v1';
 
 export function createImageTestFeatureBridge(runtime) {
     const ctx = runtime.ctx;

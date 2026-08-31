@@ -6,25 +6,25 @@ import {
     datasetRowsForPayload,
     normalizeDatasetDefaults,
     normalizeDatasetEditorRows,
-} from '../helpers/dataset-values.js?v=module-bootstrap-20260809-nf4-v2';
-import { getConfigState } from '../helpers/config-state-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { configureConfigFormBridge } from '../helpers/config-form-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { getDatasetState } from '../helpers/dataset-state-bridge.js?v=module-bootstrap-20260809-nf4-v2';
+} from '../helpers/dataset-values.js?v=module-bootstrap-20260831-release-v1';
+import { getConfigState } from '../helpers/config-state-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { configureConfigFormBridge } from '../helpers/config-form-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { getDatasetState } from '../helpers/dataset-state-bridge.js?v=module-bootstrap-20260831-release-v1';
 import {
     configureDatasetPresetActionsBridge,
     setDatasetPresetStatus,
-} from '../helpers/dataset-preset-actions-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { loadTomlFileList } from '../helpers/toml-manager-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { api, val } from '../helpers/runtime-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { loadDatasetPresets, loadStepEstimate } from './03-parse-network-arg-entry.js?v=module-bootstrap-20260809-nf4-v2';
-import { renderConfigDatasetPicker } from './06-stronger-selective-checkpoint-value.js?v=module-bootstrap-20260809-nf4-v2';
-import { syncDatasetEditorToCompatFields } from './13-update-dataset-editor-rows-setting-value.js?v=module-bootstrap-20260809-nf4-v2';
-import { renderDatasetEditor } from '../helpers/dataset-render-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { showHistoryTaskConfirmDialog } from '../helpers/history-task-actions-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { currentTomlEditorContentForFile, updateTomlDirtyState } from '../helpers/toml-selection-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { getTomlState } from '../helpers/toml-state-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { setTomlStatus } from '../helpers/toml-action-state-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { getTrainingState } from '../helpers/training-state-bridge.js?v=module-bootstrap-20260809-nf4-v2';
+} from '../helpers/dataset-preset-actions-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { loadTomlFileList } from '../helpers/toml-manager-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { api, val } from '../helpers/runtime-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { loadDatasetPresets, loadStepEstimate } from './03-parse-network-arg-entry.js?v=module-bootstrap-20260831-release-v1';
+import { renderConfigDatasetPicker } from './06-stronger-selective-checkpoint-value.js?v=module-bootstrap-20260831-release-v1';
+import { syncDatasetEditorToCompatFields } from './13-update-dataset-editor-rows-setting-value.js?v=module-bootstrap-20260831-release-v1';
+import { renderDatasetEditor } from '../helpers/dataset-render-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { showHistoryTaskConfirmDialog } from '../helpers/history-task-actions-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { currentTomlEditorContentForFile, updateTomlDirtyState } from '../helpers/toml-selection-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { getTomlState } from '../helpers/toml-state-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { setTomlStatus } from '../helpers/toml-action-state-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { getTrainingState } from '../helpers/training-state-bridge.js?v=module-bootstrap-20260831-release-v1';
 import {
     collectChangedFormValues,
     collectNetworkArgsFromForm,
@@ -33,7 +33,7 @@ import {
     prepareFormPatchValues,
     readFieldInputValue,
     shouldSkipUiDefaultField,
-} from '../../config-form/config-value-collector.js?v=module-bootstrap-20260824-config-types-v1';
+} from '../../config-form/config-value-collector.js?v=module-bootstrap-20260831-release-v1';
 import {
     applyLossWeightingFieldInputState,
     currentLossWeightingScheme,
@@ -47,7 +47,7 @@ import {
     updateLoKrFieldState,
     updateLossWeightingFieldState,
     updateVeRAFieldState,
-} from '../../config-form/adapter-field-state.js?v=module-bootstrap-20260809-nf4-v2';
+} from '../../config-form/adapter-field-state.js?v=module-bootstrap-20260831-release-v1';
 
 const configState = getConfigState();
 const datasetState = getDatasetState();

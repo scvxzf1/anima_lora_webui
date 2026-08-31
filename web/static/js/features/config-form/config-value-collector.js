@@ -8,45 +8,45 @@ import {
     NETWORK_ARG_FIELD_MAP,
     OPTIONAL_EMPTY_FIELDS,
     OPTIONAL_EMPTY_NUMBER_FIELDS,
-} from '../../config/catalog.js?v=module-bootstrap-20260809-nf4-v2';
+} from '../../config/catalog.js?v=module-bootstrap-20260831-release-v1';
 import {
     coerceNetworkArgValue,
     formatNetworkArg,
     parseNetworkArgEntry,
-} from '../anima-app/helpers/network-args.js?v=module-bootstrap-20260809-nf4-v2';
-import { getConfigState } from '../anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260809-nf4-v2';
+} from '../anima-app/helpers/network-args.js?v=module-bootstrap-20260831-release-v1';
+import { getConfigState } from '../anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260831-release-v1';
 import {
     displayConfigFieldValue,
     isActiveNetworkArgFieldKey,
     originalConfigFieldValue,
     syncConfigDraftFromForm,
-} from '../anima-app/helpers/config-form-bridge.js?v=module-bootstrap-20260809-nf4-v2';
+} from '../anima-app/helpers/config-form-bridge.js?v=module-bootstrap-20260831-release-v1';
 import {
     fieldValueType,
     fieldValueTypeForKey,
-} from '../anima-app/helpers/config-field-ui-bridge.js?v=module-bootstrap-20260809-nf4-v2';
+} from '../anima-app/helpers/config-field-ui-bridge.js?v=module-bootstrap-20260831-release-v1';
 import {
     normalizeMultilineText,
     parseArrayValue,
     parseNumberValue,
     valuesEqual,
     valuesEqualForFieldType,
-} from '../anima-app/helpers/form-values.js?v=module-bootstrap-20260824-config-types-v1';
+} from '../anima-app/helpers/form-values.js?v=module-bootstrap-20260831-release-v1';
 import {
     normalizePrecisionPreference,
     precisionPreferenceFromConfig,
     precisionPreferencePatch,
-} from '../anima-app/helpers/config-values.js?v=module-bootstrap-20260809-nf4-v2';
+} from '../anima-app/helpers/config-values.js?v=module-bootstrap-20260831-release-v1';
 import {
     normalizeNetworkArgArray,
     parseNetworkArgMap,
-} from '../anima-app/helpers/app-shell-startup-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { saveSamplePrompts } from '../anima-app/helpers/sample-prompts-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { serializeSamplePromptsEditor } from '../sample-prompts/model.js?v=module-bootstrap-20260809-nf4-v2';
+} from '../anima-app/helpers/app-shell-startup-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { saveSamplePrompts } from '../anima-app/helpers/sample-prompts-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { serializeSamplePromptsEditor } from '../sample-prompts/model.js?v=module-bootstrap-20260831-release-v1';
 import {
     applyLoraAdapterPatch,
     applyOptimizerCompatibilityPatch,
-} from './form-fields-adapters.js?v=module-bootstrap-20260809-nf4-v2';
+} from './form-fields-adapters.js?v=module-bootstrap-20260831-release-v1';
 
 const configState = getConfigState();
 

@@ -1,14 +1,14 @@
 /**
  * Dragon trainer — ES module bootstrap.
  */
-import { MetricsChart } from './chart.js?v=module-bootstrap-20260809-nf4-v2';
-import { createCatalog } from './js/config/catalog.js?v=module-bootstrap-20260809-nf4-v2';
-import { createAnimaApp } from './js/features/anima-app/index.js?v=module-bootstrap-20260828-model-family-filter-v1';
-import { createApiClient } from './js/shared/api.js?v=module-bootstrap-20260809-nf4-v2';
-import * as dom from './js/shared/dom.js?v=module-bootstrap-20260809-nf4-v2';
-import * as download from './js/shared/download.js?v=module-bootstrap-20260809-nf4-v2';
-import * as format from './js/shared/format.js?v=module-bootstrap-20260809-nf4-v2';
-import { createAppContext } from './js/state/create-app-context.js?v=module-bootstrap-20260809-nf4-v2';
+import { MetricsChart } from './chart.js?v=module-bootstrap-20260831-release-v1';
+import { createCatalog } from './js/config/catalog.js?v=module-bootstrap-20260831-release-v1';
+import { createAnimaApp } from './js/features/anima-app/index.js?v=module-bootstrap-20260831-release-v1';
+import { createApiClient } from './js/shared/api.js?v=module-bootstrap-20260831-release-v1';
+import * as dom from './js/shared/dom.js?v=module-bootstrap-20260831-release-v1';
+import * as download from './js/shared/download.js?v=module-bootstrap-20260831-release-v1';
+import * as format from './js/shared/format.js?v=module-bootstrap-20260831-release-v1';
+import { createAppContext } from './js/state/create-app-context.js?v=module-bootstrap-20260831-release-v1';
 
 let classicAppPromise = null;
 

@@ -8,12 +8,12 @@ export {
     createStepEstimatePanel,
     scheduleStepEstimatePanelRefresh,
     updateStepEstimatePanel,
-} from '../../config-form/step-estimate.js?v=module-bootstrap-20260809-nf4-v2';
+} from '../../config-form/step-estimate.js?v=module-bootstrap-20260831-release-v1';
 export {
     loadDatasetEditor,
     loadDatasetPresets,
     loadDatasetPreset,
-} from '../../dataset-editor/load.js?v=module-bootstrap-20260809-nf4-v2';
+} from '../../dataset-editor/load.js?v=module-bootstrap-20260831-release-v1';
 export {
     setText,
     metricValueIsEmpty,
@@ -26,4 +26,4 @@ export {
     syncLiveChartControls,
     renderLiveChartPanel,
     updateTrainingToolbarState,
-} from '../../live-training/dashboard-ui.js?v=module-bootstrap-20260809-nf4-v2';
+} from '../../live-training/dashboard-ui.js?v=module-bootstrap-20260831-release-v1';

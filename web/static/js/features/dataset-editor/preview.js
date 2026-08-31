@@ -2,16 +2,16 @@
  * Dataset subset preview dialog and image loading.
  * Extracted from former chunk 12 / row-fields.
  */
-import { setDatasetPresetStatus } from '../anima-app/helpers/dataset-preset-actions-bridge.js?v=module-bootstrap-20260809-nf4-v2';
+import { setDatasetPresetStatus } from '../anima-app/helpers/dataset-preset-actions-bridge.js?v=module-bootstrap-20260831-release-v1';
 import {
     datasetPreviewImageToPreviewImage,
     datasetPreviewValidationText,
-} from '../anima-app/helpers/dataset-preview.js?v=module-bootstrap-20260809-nf4-v2';
-import { captionSourceModeLabel } from '../anima-app/helpers/caption-source.js?v=module-bootstrap-20260809-nf4-v2';
-import { normalizeDatasetDefaults } from '../anima-app/helpers/dataset-values.js?v=module-bootstrap-20260809-nf4-v2';
-import { getDatasetState } from '../anima-app/helpers/dataset-state-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { datasetPresetApi } from '../anima-app/helpers/runtime-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { openPreviewDialog, createPreviewDetailRow, copyText } from '../anima-app/helpers/preview-view-bridge.js?v=module-bootstrap-20260809-nf4-v2';
+} from '../anima-app/helpers/dataset-preview.js?v=module-bootstrap-20260831-release-v1';
+import { captionSourceModeLabel } from '../anima-app/helpers/caption-source.js?v=module-bootstrap-20260831-release-v1';
+import { normalizeDatasetDefaults } from '../anima-app/helpers/dataset-values.js?v=module-bootstrap-20260831-release-v1';
+import { getDatasetState } from '../anima-app/helpers/dataset-state-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { datasetPresetApi } from '../anima-app/helpers/runtime-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { openPreviewDialog, createPreviewDetailRow, copyText } from '../anima-app/helpers/preview-view-bridge.js?v=module-bootstrap-20260831-release-v1';
 
 const datasetState = getDatasetState();
 

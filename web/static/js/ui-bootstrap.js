@@ -1,7 +1,7 @@
-const CLASSIC_ENTRY = '/static/app.js?v=module-bootstrap-20260828-model-family-filter-v1';
+const CLASSIC_ENTRY = '/static/app.js?v=module-bootstrap-20260831-release-v1';
 const CLASSIC_STYLESHEET = '/static/style.css?v=frontend-chain-20260809-model-config1';
 const UI_MODE_ENTRY = '/static/js/shared/ui-mode.js?v=dragon-ui-20260816v48';
-const DRAGON_ENTRY = '/static/js/dragon-ui/index.js?v=dragon-ui-20260831v21';
+const DRAGON_ENTRY = '/static/js/dragon-ui/index.js?v=dragon-ui-20260831v22';
 const DRAGON_STYLESHEET = '/static/css/dragon-style.css?v=dragon-ui-20260828v155';
 const STYLESHEET_TIMEOUT_MS = 10_000;
 

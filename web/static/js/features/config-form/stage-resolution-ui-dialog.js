@@ -5,10 +5,10 @@
  * (configs/datasets/*.toml). Applying a dataset or preparing runtime injects
  * the schedule into the training config so the trainer still sees it.
  */
-import { getConfigState } from '../anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { getDatasetState } from '../anima-app/helpers/dataset-state-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { setTomlStatus } from '../anima-app/helpers/toml-action-state-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { datasetPresetApi } from '../anima-app/helpers/runtime-bridge.js?v=module-bootstrap-20260809-nf4-v2';
+import { getConfigState } from '../anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { getDatasetState } from '../anima-app/helpers/dataset-state-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { setTomlStatus } from '../anima-app/helpers/toml-action-state-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { datasetPresetApi } from '../anima-app/helpers/runtime-bridge.js?v=module-bootstrap-20260831-release-v1';
 import {
     activeStageScheduleDatasetState,
     hydrateStageScheduleFromConfig,
@@ -18,16 +18,16 @@ import {
     stageResolutionMetrics,
     stageSchedulePayload,
     normalizeRawStages,
-} from './stage-resolution-model.js?v=module-bootstrap-20260809-nf4-v2';
+} from './stage-resolution-model.js?v=module-bootstrap-20260831-release-v1';
 import {
     createStageResolutionSummary,
     createStageResolutionChartPanel,
     createStageResolutionEditor,
     createStageResolutionTable,
     syncStageResolutionEditorInputs,
-} from './stage-resolution-ui-widgets.js?v=module-bootstrap-20260809-nf4-v2';
-import { registerStageResolutionRenderer } from './stage-resolution-ui-render.js?v=module-bootstrap-20260809-nf4-v2';
-import { datasetRowsForPayload, normalizeDatasetDefaults } from '../anima-app/helpers/dataset-values.js?v=module-bootstrap-20260809-nf4-v2';
+} from './stage-resolution-ui-widgets.js?v=module-bootstrap-20260831-release-v1';
+import { registerStageResolutionRenderer } from './stage-resolution-ui-render.js?v=module-bootstrap-20260831-release-v1';
+import { datasetRowsForPayload, normalizeDatasetDefaults } from '../anima-app/helpers/dataset-values.js?v=module-bootstrap-20260831-release-v1';
 
 const configState = getConfigState();
 const stageResolutionState = configState.stageResolutionState;

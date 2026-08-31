@@ -1,4 +1,4 @@
-import { help } from './help-builder.js?v=module-bootstrap-20260809-nf4-v2';
+import { help } from './help-builder.js?v=module-bootstrap-20260831-release-v1';
 
 function advancedHelp(summary, fill, benefit, cost, risk, recommend) {
     return help(summary, fill, [benefit], [cost], [risk], recommend);

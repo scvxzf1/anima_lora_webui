@@ -2,21 +2,21 @@
  * Dataset editor panel rendering and active-row helpers.
  */
 
-import { captureDatasetExperimentalOpenStates } from './inline-help.js?v=module-bootstrap-20260809-nf4-v2';
-import { help } from '../../config/catalog.js?v=module-bootstrap-20260809-nf4-v2';
-import { datasetConfigLabel, datasetConfigValue } from '../anima-app/helpers/dataset-config-fields.js?v=module-bootstrap-20260809-nf4-v2';
-import { createHelpContent } from '../anima-app/helpers/config-field-ui-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { getConfigState } from '../anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { getDatasetState } from '../anima-app/helpers/dataset-state-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { renderDatasetPresetHeader } from '../anima-app/helpers/dataset-render-bridge.js?v=module-bootstrap-20260809-nf4-v2';
+import { captureDatasetExperimentalOpenStates } from './inline-help.js?v=module-bootstrap-20260831-release-v1';
+import { help } from '../../config/catalog.js?v=module-bootstrap-20260831-release-v1';
+import { datasetConfigLabel, datasetConfigValue } from '../anima-app/helpers/dataset-config-fields.js?v=module-bootstrap-20260831-release-v1';
+import { createHelpContent } from '../anima-app/helpers/config-field-ui-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { getConfigState } from '../anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { getDatasetState } from '../anima-app/helpers/dataset-state-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { renderDatasetPresetHeader } from '../anima-app/helpers/dataset-render-bridge.js?v=module-bootstrap-20260831-release-v1';
 import {
     normalizeDatasetDefaults,
     normalizeDatasetEditorRows,
-} from '../anima-app/helpers/dataset-values.js?v=module-bootstrap-20260809-nf4-v2';
-import { createDatasetConfigInput } from './config-input.js?v=module-bootstrap-20260809-nf4-v2';
-import { createDatasetEditorItem } from './item-drag.js?v=module-bootstrap-20260809-nf4-v2';
-import { addDatasetEditorRow, datasetValidTargetIndices } from './mutations.js?v=module-bootstrap-20260809-nf4-v2';
-import { createDatasetEditorToolbarActions } from './toolbar.js?v=module-bootstrap-20260809-nf4-v2';
+} from '../anima-app/helpers/dataset-values.js?v=module-bootstrap-20260831-release-v1';
+import { createDatasetConfigInput } from './config-input.js?v=module-bootstrap-20260831-release-v1';
+import { createDatasetEditorItem } from './item-drag.js?v=module-bootstrap-20260831-release-v1';
+import { addDatasetEditorRow, datasetValidTargetIndices } from './mutations.js?v=module-bootstrap-20260831-release-v1';
+import { createDatasetEditorToolbarActions } from './toolbar.js?v=module-bootstrap-20260831-release-v1';
 
 const configState = getConfigState();
 const datasetState = getDatasetState();

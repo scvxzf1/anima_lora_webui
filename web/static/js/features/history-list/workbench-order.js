@@ -1,7 +1,7 @@
 /**
  * History workbench ordering and collection grouping helpers.
  */
-import { HISTORY_UNGROUPED_COLLECTION_KEY } from '../anima-app/helpers/app-constants.js?v=module-bootstrap-20260809-nf4-v2';
+import { HISTORY_UNGROUPED_COLLECTION_KEY } from '../anima-app/helpers/app-constants.js?v=module-bootstrap-20260831-release-v1';
 import {
     configGroupKey,
     groupHistoryTasks,
@@ -10,9 +10,9 @@ import {
     historyTaskCollectionKey,
     historyTaskCollectionLabel,
     historyTaskSortComparator,
-} from '../anima-app/helpers/history-collections-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { saveHistoryCollectionSettings, uniqueStringList } from '../anima-app/helpers/history-list-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { getHistoryState } from '../anima-app/helpers/history-state-bridge.js?v=module-bootstrap-20260809-nf4-v2';
+} from '../anima-app/helpers/history-collections-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { saveHistoryCollectionSettings, uniqueStringList } from '../anima-app/helpers/history-list-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { getHistoryState } from '../anima-app/helpers/history-state-bridge.js?v=module-bootstrap-20260831-release-v1';
 
 const historyState = getHistoryState();
 

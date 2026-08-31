@@ -15,7 +15,7 @@ import {
     startHistoryConfigGroupMouseDrag,
     startHistoryConfigGroupPointerDrag,
     startHistoryConfigGroupTouchDrag,
-} from '../anima-app/helpers/history-collection-drag-bridge.js?v=module-bootstrap-20260809-nf4-v2';
+} from '../anima-app/helpers/history-collection-drag-bridge.js?v=module-bootstrap-20260831-release-v1';
 import {
     clearHistoryCollectionForTasks,
     commonHistoryCollectionValue,
@@ -44,7 +44,7 @@ import {
     setHistoryCollectionForTasks,
     setHistoryCollectionForTasksDirect,
     toggleHistoryTaskSelection,
-} from '../anima-app/helpers/history-collections-bridge.js?v=module-bootstrap-20260809-nf4-v2';
+} from '../anima-app/helpers/history-collections-bridge.js?v=module-bootstrap-20260831-release-v1';
 import {
     archiveHistoryTask,
     createHistoryActionButton,
@@ -52,14 +52,14 @@ import {
     createHistoryTaskPreviewButton,
     deleteHistoryTask,
     loadHistoryTask,
-} from '../anima-app/helpers/history-task-actions-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { historyStateLabel } from '../anima-app/helpers/history-timeline-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { getHistoryState } from '../anima-app/helpers/history-state-bridge.js?v=module-bootstrap-20260809-nf4-v2';
+} from '../anima-app/helpers/history-task-actions-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { historyStateLabel } from '../anima-app/helpers/history-timeline-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { getHistoryState } from '../anima-app/helpers/history-state-bridge.js?v=module-bootstrap-20260831-release-v1';
 import {
     historyCollectionNamesForTasks,
     historyCollectionStorageKey,
     moveHistoryConfigGroup,
-} from './workbench-order.js?v=module-bootstrap-20260809-nf4-v2';
+} from './workbench-order.js?v=module-bootstrap-20260831-release-v1';
 
 const historyState = getHistoryState();
 

@@ -6,10 +6,10 @@ import {
     configureDatasetRenderBridge,
     createDatasetPresetGroupNode,
     renderDatasetEditor,
-} from '../anima-app/helpers/dataset-render-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { datasetPresetGroupsForDisplay } from '../anima-app/helpers/dataset-presets.js?v=module-bootstrap-20260809-nf4-v2';
-import { getDatasetState } from '../anima-app/helpers/dataset-state-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { escapeHtml } from '../config-form/field-input.js?v=module-bootstrap-20260809-nf4-v2';
+} from '../anima-app/helpers/dataset-render-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { datasetPresetGroupsForDisplay } from '../anima-app/helpers/dataset-presets.js?v=module-bootstrap-20260831-release-v1';
+import { getDatasetState } from '../anima-app/helpers/dataset-state-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { escapeHtml } from '../config-form/field-input.js?v=module-bootstrap-20260831-release-v1';
 
 const datasetState = getDatasetState();
 

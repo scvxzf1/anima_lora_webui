@@ -62,7 +62,7 @@ def test_dragon_motion_runtime_disables_effect_costs():
     assert "new window.IntersectionObserver" in animations
     assert "typeof window.requestAnimationFrame === 'function'" in animations
     assert "window.setTimeout(callback, 16)" in animations
-    assert "if (currentPage && mountElement.firstElementChild && isDragonMotionEnabled())" in router
+    assert "if (currentPage && currentWrapper && isDragonMotionEnabled())" in router
     assert "behavior: dragonScrollBehavior()" in router
     assert "initDragonMotion(globalSettings || {})" in entry
     assert "window.addEventListener('dragon-motion-change', handleMotionChange)" in entry

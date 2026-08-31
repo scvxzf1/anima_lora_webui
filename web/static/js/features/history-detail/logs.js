@@ -1,5 +1,5 @@
-import { historyDetailLimitNotice } from './system.js?v=module-bootstrap-20260809-nf4-v2';
-import { debounce } from '../../shared/debounce.js?v=module-bootstrap-20260809-nf4-v2';
+import { historyDetailLimitNotice } from './system.js?v=module-bootstrap-20260831-release-v1';
+import { debounce } from '../../shared/debounce.js?v=module-bootstrap-20260831-release-v1';
 
 const HISTORY_LOG_RENDER_BATCH_SIZE = 200;
 

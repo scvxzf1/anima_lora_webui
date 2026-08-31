@@ -1,16 +1,16 @@
 /**
  * TOML group/file drag placement helpers.
  */
-import { createFileGroupDragHandle } from './file-group-drag.js?v=module-bootstrap-20260809-nf4-v2';
-import { loadTomlFileList } from '../anima-app/helpers/toml-manager-bridge.js?v=module-bootstrap-20260809-nf4-v2';
+import { createFileGroupDragHandle } from './file-group-drag.js?v=module-bootstrap-20260831-release-v1';
+import { loadTomlFileList } from '../anima-app/helpers/toml-manager-bridge.js?v=module-bootstrap-20260831-release-v1';
 import {
     setTomlStatus,
     updateTomlActionState,
-} from '../anima-app/helpers/toml-action-state-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { api } from '../anima-app/helpers/runtime-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { hasPendingConfigChanges } from '../anima-app/helpers/toml-selection-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { getSortableTomlGroups, isTomlGroupDraggable, isTrainingTomlGroup } from '../anima-app/helpers/toml-io-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { getTomlState } from '../anima-app/helpers/toml-state-bridge.js?v=module-bootstrap-20260809-nf4-v2';
+} from '../anima-app/helpers/toml-action-state-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { api } from '../anima-app/helpers/runtime-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { hasPendingConfigChanges } from '../anima-app/helpers/toml-selection-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { getSortableTomlGroups, isTomlGroupDraggable, isTrainingTomlGroup } from '../anima-app/helpers/toml-io-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { getTomlState } from '../anima-app/helpers/toml-state-bridge.js?v=module-bootstrap-20260831-release-v1';
 
 const tomlState = getTomlState();
 

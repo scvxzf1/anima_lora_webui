@@ -2,7 +2,7 @@
  * Compatibility shim.
  * Domain truth: js/features/history-list/task-collections.js
  */
-import { configureHistoryCollectionsBridge } from '../helpers/history-collections-bridge.js?v=module-bootstrap-20260809-nf4-v2';
+import { configureHistoryCollectionsBridge } from '../helpers/history-collections-bridge.js?v=module-bootstrap-20260831-release-v1';
 import {
     historyTaskCollectionLabel,
     historyTaskCollectionKey,
@@ -50,7 +50,7 @@ import {
     runLabelFromPath,
     historyGroupDisplayLabel,
     createHistoryGroupHeading,
-} from '../../history-list/task-collections.js?v=module-bootstrap-20260828-model-family-filter-v1';
+} from '../../history-list/task-collections.js?v=module-bootstrap-20260831-release-v1';
 
 export {
     historyTaskCollectionLabel,
@@ -99,7 +99,7 @@ export {
     runLabelFromPath,
     historyGroupDisplayLabel,
     createHistoryGroupHeading,
-} from '../../history-list/task-collections.js?v=module-bootstrap-20260828-model-family-filter-v1';
+} from '../../history-list/task-collections.js?v=module-bootstrap-20260831-release-v1';
 
 configureHistoryCollectionsBridge({
         historyTaskCollectionLabel,

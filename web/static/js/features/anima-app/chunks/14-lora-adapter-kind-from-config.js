@@ -12,4 +12,4 @@ export {
     handleFormFieldChange,
     setSamplePromptsEditorContent,
     markSamplePromptsEditorTouched,
-} from '../../config-form/form-fields.js?v=module-bootstrap-20260809-nf4-v2';
+} from '../../config-form/form-fields.js?v=module-bootstrap-20260831-release-v1';

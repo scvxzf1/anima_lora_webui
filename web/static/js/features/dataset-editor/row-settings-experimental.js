@@ -6,31 +6,31 @@ import {
     createDatasetInlineHelp,
     createDatasetInlineHelpButton,
     datasetLocalHelpSpec,
-} from './inline-help.js?v=module-bootstrap-20260809-nf4-v2';
-import { help } from '../../config/catalog.js?v=module-bootstrap-20260809-nf4-v2';
-import { createHelpContent } from '../anima-app/helpers/config-field-ui-bridge.js?v=module-bootstrap-20260809-nf4-v2';
-import { datasetConfigLabel, datasetConfigValue } from '../anima-app/helpers/dataset-config-fields.js?v=module-bootstrap-20260809-nf4-v2';
-import { getDatasetState } from '../anima-app/helpers/dataset-state-bridge.js?v=module-bootstrap-20260809-nf4-v2';
+} from './inline-help.js?v=module-bootstrap-20260831-release-v1';
+import { help } from '../../config/catalog.js?v=module-bootstrap-20260831-release-v1';
+import { createHelpContent } from '../anima-app/helpers/config-field-ui-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { datasetConfigLabel, datasetConfigValue } from '../anima-app/helpers/dataset-config-fields.js?v=module-bootstrap-20260831-release-v1';
+import { getDatasetState } from '../anima-app/helpers/dataset-state-bridge.js?v=module-bootstrap-20260831-release-v1';
 import {
     nlTagMixSummary,
     normalizeDatasetDefaults,
     normalizeDatasetEditorRows,
     normalizeNlTagMix,
     normalizeTriggerClone,
-} from '../anima-app/helpers/dataset-values.js?v=module-bootstrap-20260809-nf4-v2';
-import { datasetEditorStateForActivePanel, isDatasetTabActive, refreshDatasetEditorItem, renderDatasetEditor } from '../anima-app/helpers/dataset-render-bridge.js?v=module-bootstrap-20260809-nf4-v2';
+} from '../anima-app/helpers/dataset-values.js?v=module-bootstrap-20260831-release-v1';
+import { datasetEditorStateForActivePanel, isDatasetTabActive, refreshDatasetEditorItem, renderDatasetEditor } from '../anima-app/helpers/dataset-render-bridge.js?v=module-bootstrap-20260831-release-v1';
 import {
     createDatasetRowSettingInput,
     updateDatasetEditorRow,
     updateDatasetEditorRowSettingValue,
-} from './row-fields.js?v=module-bootstrap-20260809-nf4-v2';
+} from './row-fields.js?v=module-bootstrap-20260831-release-v1';
 import {
     datasetExperimentalScopeIndices,
     setDatasetExperimentalScopeIndices,
     updateDatasetEditorRowNlTagMix,
     updateDatasetEditorRowTriggerClone,
     updateDatasetEditorRowsSettingValue,
-} from './mutations.js?v=module-bootstrap-20260809-nf4-v2';
+} from './mutations.js?v=module-bootstrap-20260831-release-v1';
 
 const datasetState = getDatasetState();
 
