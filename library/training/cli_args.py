@@ -459,6 +459,18 @@ def add_training_arguments(parser: argparse.ArgumentParser, support_dreambooth: 
         ),
     )
     parser.add_argument(
+        "--compile_seq_bands",
+        action="store_true",
+        help=(
+            "With --compile_dynamic_seq, dispatch each native token-count "
+            "cluster through its own tight dynamic-sequence band instead of "
+            "one union range. Bands are derived from the active dataset and "
+            "startup sample resolutions; register-token tails widen their "
+            "upper bounds and refuse silent band merging. Anima-only and "
+            "off by default; Krea-2 keeps its fixed padded sequence graphs."
+        ),
+    )
+    parser.add_argument(
         "--activation_memory_budget",
         type=float,
         default=1.0,

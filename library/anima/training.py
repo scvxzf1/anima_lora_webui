@@ -1207,14 +1207,19 @@ def _sample_image_inference(
     # would otherwise take down the whole run).
     seq_len = (width // 16) * (height // 16)
     seq_range = getattr(dit, "_dynamic_seq_range", None)
+    seq_bands = getattr(dit, "_dynamic_seq_bands", None) or (
+        [seq_range] if seq_range is not None else None
+    )
+    from library.datasets.buckets import band_for_seq
+
     if (
         getattr(dit, "_dynamic_seq", False)
-        and seq_range is not None
-        and not (seq_range[0] <= seq_len <= seq_range[1])
+        and seq_bands is not None
+        and band_for_seq(seq_bands, seq_len) is None
     ):
         logger.warning(
             f"Skipping sample prompt at {width}x{height} ({seq_len} tokens): outside "
-            f"the compiled dynamic-seq token range {seq_range}. Automatic range "
+            f"the compiled dynamic-seq token band(s) {seq_bands}. Automatic range "
             "expansion was unavailable for this compile state; lower --w/--h, "
             "restart training, or disable torch_compile."
         )

@@ -364,6 +364,7 @@ def compile_dit_blocks(
     dynamic_seq: bool = False,
     n_token_families: Optional[int] = None,
     seq_range: Optional[tuple] = None,
+    seq_bands: Optional[list] = None,
 ) -> None:
     """``torch.compile`` each ``Block._forward`` for a distillation/training run.
 
@@ -399,6 +400,7 @@ def compile_dit_blocks(
         n_token_families=n_token_families,
         dynamic_seq=dynamic_seq,
         seq_range=seq_range,
+        seq_bands=seq_bands,
     )
 
 
@@ -409,6 +411,7 @@ def compile_signature(
     dynamic_seq: bool,
     backend: str = "inductor",
     mode: Optional[str] = None,
+    seq_bands: Optional[list] = None,
 ) -> str:
     """Canonical signature string for ``maybe_clear_stale_compile_cache``.
 
@@ -419,10 +422,15 @@ def compile_signature(
     is normalized so the two "inductor default" spellings (``None`` and ``""``)
     don't read as a signature change.
     """
-    return (
+    signature = (
         f"families={n_token_families};seq_range={seq_range};"
         f"dynamic_seq={dynamic_seq};backend={backend};mode={mode or None}"
     )
+    if seq_bands:
+        signature += ";seq_bands=" + str(
+            sorted((int(lo), int(hi)) for lo, hi in seq_bands)
+        )
+    return signature
 
 
 # Original torch.compile cache base, captured on the first isolate_compile_cache
@@ -714,6 +722,7 @@ def compile_blocks_for_training(
     bucket_resolutions: Optional[Sequence[tuple[int, int]]] = None,
     n_token_families: Optional[int] = None,
     seq_range: Optional[tuple] = None,
+    seq_bands: Optional[list] = None,
     dynamic_seq: bool = False,
     activation_memory_budget: float = 1.0,
     partitioner_recompute_views: bool = False,
@@ -746,7 +755,8 @@ def compile_blocks_for_training(
       4. ``unet.compile_blocks(...)`` with the caller-derived token budget
          (``train.py::_collect_compile_resolutions`` — the buckets the dataset
          actually populated plus startup sample prompt resolutions, not
-         ``args.target_res``).
+         ``args.target_res``). ``seq_bands`` optionally splits that budget into
+         tight per-band dynamic-seq ranges.
       5. ``network.compile_cond_stream(...)`` when the adapter exposes it:
          EasyControl's patched ``Block.forward`` routes the active cond path
          through ``_two_stream_inner``, bypassing the just-compiled
@@ -771,7 +781,9 @@ def compile_blocks_for_training(
         return
 
     if bucket_resolutions and (
-        n_token_families is None or (dynamic_seq and seq_range is None)
+        n_token_families is None
+        or (dynamic_seq and seq_range is None)
+        or (dynamic_seq and seq_bands is not None)
     ):
         counts = pixel_bucket_token_counts(
             bucket_resolutions,
@@ -785,6 +797,10 @@ def compile_blocks_for_training(
                 n_token_families = len(counts)
             if dynamic_seq and seq_range is None:
                 seq_range = (min(counts), max(counts))
+            if dynamic_seq and seq_bands is not None and not seq_bands:
+                # An explicitly empty list is a valid opt-out; leave it empty
+                # rather than silently turning union mode into a new band.
+                seq_bands = []
 
     _pin_lokr_checkpoint_compile_budget(
         network,
@@ -809,6 +825,7 @@ def compile_blocks_for_training(
             dynamic_seq=dynamic_seq,
             backend=backend,
             mode=mode,
+            seq_bands=seq_bands,
         )
     )
     unet.compile_blocks(
@@ -818,6 +835,7 @@ def compile_blocks_for_training(
         n_token_families=n_token_families,
         dynamic_seq=dynamic_seq,
         seq_range=seq_range,
+        seq_bands=seq_bands,
         compile_block_scope=compile_block_scope,
     )
     if hasattr(network, "compile_cond_stream"):
@@ -841,6 +859,17 @@ def compile_blocks_for_training(
             "mode": mode,
             "n_token_families": n_token_families,
             "seq_range": active_seq_range,
+            "seq_bands": (
+                sorted((int(lo), int(hi)) for lo, hi in seq_bands)
+                if seq_bands is not None
+                else None
+            ),
+            "bucket_resolutions": (
+                [tuple(map(int, resolution)) for resolution in bucket_resolutions]
+                if bucket_resolutions is not None
+                else None
+            ),
+            "extra_seq_tokens": int(getattr(network, "extra_seq_tokens", 0) or 0),
             "dynamic_seq": dynamic_seq,
             "activation_memory_budget": activation_memory_budget,
             # Both partitioner knobs must round-trip: a recompile that dropped
@@ -896,16 +925,46 @@ def ensure_training_compile_seq_range(
     if seq_range is None:
         return False
     lo, hi = int(seq_range[0]), int(seq_range[1])
-    outside = {seq_len for seq_len in requested if seq_len < lo or seq_len > hi}
+    configured_bands = config.get("seq_bands")
+    if configured_bands:
+        from library.datasets.buckets import band_for_seq
+
+        outside = {
+            seq_len
+            for seq_len in requested
+            if band_for_seq(configured_bands, seq_len) is None
+        }
+    else:
+        outside = {seq_len for seq_len in requested if seq_len < lo or seq_len > hi}
     if not outside:
         return False
 
-    new_range = (min([lo, *outside]), max([hi, *outside]))
+    extra_seq = int(config.get("extra_seq_tokens", 0) or 0)
+    new_ranges = [(seq_len, seq_len + extra_seq) for seq_len in sorted(outside)]
+    new_range = (
+        min([lo, *(band_lo for band_lo, _ in new_ranges)]),
+        max([hi, *(band_hi for _, band_hi in new_ranges)]),
+    )
     seen = set(getattr(unet, "_training_compile_seen_seq_lens", set()) or set())
     old_n = int(config.get("n_token_families") or max(2, len(seen) or 1))
     # Family count only feeds the dynamo recompile-limit heuristic, so erring
     # high (counting in-range-but-unseen lengths too) just buys headroom.
-    new_n = old_n + len(requested - seen)
+    new_n = max(old_n, old_n + len(requested - seen))
+
+    expanded_bands = None
+    if configured_bands:
+        # Add new prompt ranges as independent bands. Merge only when the
+        # register-token tail makes a collision unavoidable; never widen a
+        # pre-existing band across an inter-band dead zone.
+        pending = [tuple(map(int, band)) for band in configured_bands] + new_ranges
+        pending.sort()
+        expanded_bands = []
+        for band_lo, band_hi in pending:
+            if expanded_bands and band_lo <= expanded_bands[-1][1]:
+                prev_lo, prev_hi = expanded_bands[-1]
+                expanded_bands[-1] = (prev_lo, max(prev_hi, band_hi))
+            else:
+                expanded_bands.append((band_lo, band_hi))
 
     logger.info(
         "Expanding torch_compile dynamic-seq range for sample preview: "
@@ -919,8 +978,10 @@ def ensure_training_compile_seq_range(
         network,
         backend=config["backend"],
         mode=config.get("mode"),
+        bucket_resolutions=config.get("bucket_resolutions"),
         n_token_families=new_n,
         seq_range=new_range,
+        seq_bands=expanded_bands,
         dynamic_seq=True,
         activation_memory_budget=float(config.get("activation_memory_budget", 1.0)),
         partitioner_recompute_views=bool(

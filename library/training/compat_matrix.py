@@ -182,9 +182,33 @@ def check_training_compat(config: Mapping[str, Any] | object) -> TrainingCompatR
     krea2_family = family_spec.name == "krea2_raw"
     z_image_family = family_spec.name == "z_image"
     compile_dynamic_seq = _bool_value(_get(config, "compile_dynamic_seq"), False)
+    compile_seq_bands = _bool_value(_get(config, "compile_seq_bands"), False)
     v100_flash_stability = (
         str(_get(config, "v100_flash_stability", "off") or "off").strip().lower()
     )
+
+    # Krea-2 gets a family-specific message/mutation below. Avoid emitting a
+    # duplicate generic mutation when its fixed-padded gate is the real cause.
+    if (
+        compile_seq_bands
+        and not compile_dynamic_seq
+        and family_spec.name == "anima"
+    ):
+        message = (
+            "compile_seq_bands only applies with compile_dynamic_seq; "
+            "compile_seq_bands will be disabled."
+        )
+        out.warning(
+            "compile_seq_bands_requires_dynamic_seq",
+            "compile_seq_bands",
+            message,
+        )
+        out.mutate(
+            "compile_seq_bands_requires_dynamic_seq",
+            "compile_seq_bands",
+            False,
+            message,
+        )
 
     if selective_checkpoint not in VALID_SELECTIVE_CHECKPOINTS:
         out.error(
@@ -254,6 +278,22 @@ def check_training_compat(config: Mapping[str, Any] | object) -> TrainingCompatR
                 False,
                 message,
             )
+        if compile_seq_bands:
+            message = (
+                "Krea-2 compile uses fixed padded token-family graphs; "
+                "compile_seq_bands will be disabled."
+            )
+            out.warning(
+                "krea2_compile_seq_bands",
+                "compile_seq_bands",
+                message,
+            )
+            out.mutate(
+                "krea2_compile_seq_bands",
+                "compile_seq_bands",
+                False,
+                message,
+            )
         normalized_inductor_mode = (
             str(compile_inductor_mode or "default").strip().lower()
         )
@@ -279,6 +319,22 @@ def check_training_compat(config: Mapping[str, Any] | object) -> TrainingCompatR
             )
 
     if z_image_family:
+        if compile_seq_bands:
+            message = (
+                "compile_seq_bands is Anima-only; Z-Image does not use "
+                "native-flatten dynamic sequence bands, so it will be disabled."
+            )
+            out.warning(
+                "z_image_compile_seq_bands",
+                "compile_seq_bands",
+                message,
+            )
+            out.mutate(
+                "z_image_compile_seq_bands",
+                "compile_seq_bands",
+                False,
+                message,
+            )
         attn_mode = str(_get(config, "attn_mode", "torch") or "torch").strip().lower()
         if attn_mode not in {"torch", "sdpa"} or _bool_value(
             _get(config, "xformers"), False
@@ -312,11 +368,12 @@ def check_training_compat(config: Mapping[str, Any] | object) -> TrainingCompatR
                 "torch_compile",
                 "Z-Image torch.compile has not been validated; keep torch_compile=false.",
             )
-        if blocks_to_swap > 0:
+        if blocks_to_swap > 28:
             out.error(
-                "z_image_block_swap",
+                "z_image_block_swap_range",
                 "blocks_to_swap",
-                "Z-Image block swap is not implemented; keep blocks_to_swap=0.",
+                "Z-Image has 30 main layers and requires at least two resident layers; "
+                "use blocks_to_swap between 0 and 28.",
             )
         if selective_checkpoint != "off":
             out.error(

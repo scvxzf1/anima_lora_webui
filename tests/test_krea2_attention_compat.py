@@ -69,6 +69,26 @@ def test_krea2_compat_disables_dynamic_sequence_inherited_from_base() -> None:
     ]
 
 
+def test_krea2_compat_disables_per_band_sequence() -> None:
+    result = check_training_compat(
+        {
+            "model_family": "krea2_raw",
+            "attn_mode": "flash",
+            "compile_dynamic_seq": False,
+            "compile_seq_bands": True,
+            "compile_inductor_mode": "default",
+            "selective_checkpoint": "off",
+            "v100_flash_stability": "off",
+        }
+    )
+
+    assert result.ok
+    assert "krea2_compile_seq_bands" in _codes(result.warnings)
+    assert [(item.key, item.value) for item in result.mutations] == [
+        ("compile_seq_bands", False)
+    ]
+
+
 def test_anima_keeps_general_attention_and_compile_options() -> None:
     result = check_training_compat(
         {

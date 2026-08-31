@@ -177,7 +177,9 @@ def assert_training_extra_args(
         )
         if not os.path.exists(index_path):
             raise FileNotFoundError(
-                f"ip_pair_index not found: {index_path}. Run `make caption-index`."
+                f"ip_pair_index not found: {index_path}. Run "
+                "`python tasks.py download-tagger`, then "
+                "`python tasks.py caption-index`."
             )
         pair_kwargs = dict(
             index_path=index_path,
@@ -221,7 +223,8 @@ def assert_training_extra_args(
             if not os.path.exists(con_index):
                 raise FileNotFoundError(
                     f"contrastive_index not found: {con_index}. "
-                    f"Run `make caption-index`."
+                    "Run `python tasks.py download-tagger`, then "
+                    "`python tasks.py caption-index`."
                 )
             if not getattr(args, "cache_llm_adapter_outputs", False):
                 raise ValueError(

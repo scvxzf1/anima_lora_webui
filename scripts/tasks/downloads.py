@@ -16,10 +16,16 @@ failures at the end.
 
 from __future__ import annotations
 
+import os
 import shutil
+import subprocess
 from pathlib import Path
 
 from ._common import ROOT, run
+
+
+_TAGGER_DOWNLOAD_TIMEOUT_SECONDS = 120
+_TAGGER_REQUEST_TIMEOUT_SECONDS = 30
 
 
 def _present(paths: list[Path]) -> bool:
@@ -87,23 +93,36 @@ def cmd_download_pe_spatial(_extra):
 
 def cmd_download_tagger(_extra):
     # Just the Anima Tagger v2 ``vocab.json`` (~0.7 MB) — the only piece
-    # ``make caption-index`` / ``make preprocess`` need to classify tags. The
-    # full tagger model is not fetched here (train it locally or pull it
-    # separately); this deliberately won't clobber a local ``model.safetensors``.
+    # ``caption-index`` needs to classify tags. The full tagger model is not
+    # fetched here (train it locally or pull it separately); this deliberately
+    # won't clobber a local ``model.safetensors``.
     dst = ROOT / "models" / "captioners" / "anima-tagger-v2"
     if _skip("Anima Tagger vocab", [dst / "vocab.json"], _extra):
         return
     dst.mkdir(parents=True, exist_ok=True)
-    run(
-        [
-            "hf",
-            "download",
-            "sorryhyun/anima-tagger",
-            "v2/vocab.json",
-            "--local-dir",
-            "models/captioners/anima-tagger-v2",
-        ]
-    )
+    env = os.environ.copy()
+    request_timeout = str(_TAGGER_REQUEST_TIMEOUT_SECONDS)
+    env.setdefault("HF_HUB_ETAG_TIMEOUT", request_timeout)
+    env.setdefault("HF_HUB_DOWNLOAD_TIMEOUT", request_timeout)
+    try:
+        run(
+            [
+                "hf",
+                "download",
+                "sorryhyun/anima-tagger",
+                "v2/vocab.json",
+                "--local-dir",
+                "models/captioners/anima-tagger-v2",
+            ],
+            env=env,
+            timeout=_TAGGER_DOWNLOAD_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired as e:
+        print(
+            "  ✗ Anima Tagger vocab download timed out after "
+            f"{_TAGGER_DOWNLOAD_TIMEOUT_SECONDS}s"
+        )
+        raise SystemExit(124) from e
     # The file lands under the repo's ``v2/`` prefix; flatten it up one level.
     sub = dst / "v2"
     if sub.exists():

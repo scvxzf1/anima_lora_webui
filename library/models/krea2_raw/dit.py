@@ -543,14 +543,22 @@ class SingleStreamDiT(nn.Module):
         dynamic_seq: bool = False,
         seq_range: tuple[int, int] | None = None,
         compile_block_scope: str = "resident",
+        seq_bands: list[tuple[int, int]] | None = None,
     ) -> None:
         """Compile block computation after adapters and checkpoint setup.
 
         Krea-2 pads the combined text/image sequence to a multiple of 256, so
         it does not use Anima's native-flatten bucket machinery. The matching
-        arguments remain in the signature for the shared training harness.
+        arguments remain in the signature for the shared training harness;
+        ``seq_bands`` is accepted only to provide an explicit incompatibility
+        error if a caller bypasses the normal family compatibility gate.
         """
         del bucket_resolutions, n_token_families, seq_range
+        if seq_bands:
+            raise ValueError(
+                "Krea-2 compile_blocks uses fixed padded sequence lengths; "
+                "per-band dynamic sequence is not supported"
+            )
         if dynamic_seq:
             raise ValueError(
                 "Krea-2 compile_blocks currently supports fixed padded "

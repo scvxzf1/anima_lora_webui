@@ -2,6 +2,8 @@
 # Original code: NVIDIA CORPORATION & AFFILIATES, licensed under Apache-2.0
 
 import math
+from contextlib import nullcontext
+from numbers import Integral
 from typing import Any, Optional, Sequence, Tuple
 
 import torch
@@ -140,18 +142,35 @@ def unsloth_checkpoint(function, *args):
     return UnslothOffloadedGradientCheckpointer.apply(function, *args)
 
 
-def _mark_seq_axis_dynamic(tensor: torch.Tensor, axis: int, lo: int, hi: int) -> None:
-    # op 级峰值探针会在 compiled block 内制造 graph break，并读取 tensor.shape。
-    # 强制 mark_dynamic 遇到这种“可被专门化”的轴会触发 ConstraintViolationError；
-    # maybe_mark_dynamic 允许 Dynamo 在必要时退回静态 guard，同时保留普通路径的动态收益。
+def _mark_seq_axis_dynamic(
+    tensor: torch.Tensor,
+    axis: int,
+    lo: int,
+    hi: int,
+    *,
+    strict: bool = False,
+) -> None:
+    """Mark one sequence axis, retaining the peak-probe compatibility path.
+
+    The historical union-range path uses ``maybe_mark_dynamic`` because the
+    optional op-level peak probe deliberately creates graph breaks. Per-band
+    dispatch opts into strict bounds so each specialization retains its tight
+    ``(lo, hi)`` contract; the scoped SDPA backend in ``forward_mini_train_dit``
+    avoids the alignment guard that strict arbitrary ranges can otherwise hit.
+    """
+    if strict:
+        torch._dynamo.mark_dynamic(tensor, axis, min=int(lo), max=int(hi))
+        return
     maybe_mark_dynamic = getattr(torch._dynamo, "maybe_mark_dynamic", None)
     if callable(maybe_mark_dynamic):
         maybe_mark_dynamic(tensor, axis)
     else:
-        torch._dynamo.mark_dynamic(tensor, axis, min=lo, max=hi)
+        torch._dynamo.mark_dynamic(tensor, axis, min=int(lo), max=int(hi))
 
 
-def _make_dynamic_seq_forward(compiled_inner, lo: int, hi: int):
+def _make_dynamic_seq_forward(
+    compiled_inner, bands, hi: Optional[int] = None, *, strict_marks: bool = False
+):
     """Wrap a compiled ``Block._forward`` with recompute-safe dynamic marks.
 
     Under gradient checkpointing, backward recompute detaches tensor inputs into
@@ -161,6 +180,36 @@ def _make_dynamic_seq_forward(compiled_inner, lo: int, hi: int):
     callable makes forward and recompute see the same symbolic seq axis.
     """
 
+    # Keep the old ``(compiled, lo, hi)`` call form usable for external probes
+    # while the training path passes a list of explicit bands.
+    if hi is not None:
+        normalized_bands = [(int(bands), int(hi))]
+    elif isinstance(bands, tuple) and len(bands) == 2 and all(
+        isinstance(value, Integral) for value in bands
+    ):
+        normalized_bands = [(int(bands[0]), int(bands[1]))]
+    else:
+        normalized_bands = sorted(
+            (int(lo), int(high)) for lo, high in (bands or [])
+        )
+    if not normalized_bands:
+        raise ValueError("dynamic-seq requires at least one token band")
+    for band_lo, band_hi in normalized_bands:
+        if band_lo < 1 or band_hi < band_lo:
+            raise ValueError(f"invalid dynamic-seq token band {(band_lo, band_hi)}")
+    for previous, current in zip(normalized_bands, normalized_bands[1:]):
+        if current[0] <= previous[1]:
+            raise ValueError(
+                "dynamic-seq token bands must be non-overlapping; "
+                f"got {normalized_bands}"
+            )
+    strict_marks = bool(strict_marks)
+
+    from library.datasets.buckets import band_for_seq
+
+    warned_oob: set[int] = set()
+
+    @torch._disable_dynamo
     def marked_forward(
         x_B_T_H_W_D,
         emb_B_T_D,
@@ -171,23 +220,40 @@ def _make_dynamic_seq_forward(compiled_inner, lo: int, hi: int):
         use_fp32: bool = False,
     ):
         # native_flatten shape is (B, 1, seq_len, 1, D), so seq_len is dim 2.
-        marked_seq = False
         if (
             x_B_T_H_W_D.ndim == 5
             and int(x_B_T_H_W_D.shape[1]) == 1
             and int(x_B_T_H_W_D.shape[3]) == 1
         ):
             seq_len = int(x_B_T_H_W_D.shape[2])
-            if not lo <= seq_len <= hi:
-                raise RuntimeError(
-                    f"compile_dynamic_seq seq_len {seq_len} is outside "
-                    f"derived range [{lo}, {hi}]"
+            band = band_for_seq(normalized_bands, seq_len)
+            if band is None:
+                if not strict_marks:
+                    lo, high = normalized_bands[0][0], normalized_bands[-1][1]
+                    raise RuntimeError(
+                        f"compile_dynamic_seq seq_len {seq_len} is outside "
+                        f"derived range [{lo}, {high}]"
+                    )
+                if seq_len not in warned_oob:
+                    warned_oob.add(seq_len)
+                    logger.warning(
+                        "dynamic-seq: %s tokens falls outside every compiled band "
+                        "%s; running an unmarked (static) specialization",
+                        seq_len,
+                        normalized_bands,
+                    )
+            else:
+                lo, high = band
+                _mark_seq_axis_dynamic(
+                    x_B_T_H_W_D, 2, lo, high, strict=strict_marks
                 )
-            _mark_seq_axis_dynamic(x_B_T_H_W_D, 2, lo, hi)
-            marked_seq = True
-        if marked_seq and rope_cos_sin is not None:
-            _mark_seq_axis_dynamic(rope_cos_sin[0], 0, lo, hi)
-            _mark_seq_axis_dynamic(rope_cos_sin[1], 0, lo, hi)
+                if rope_cos_sin is not None:
+                    _mark_seq_axis_dynamic(
+                        rope_cos_sin[0], 0, lo, high, strict=strict_marks
+                    )
+                    _mark_seq_axis_dynamic(
+                        rope_cos_sin[1], 0, lo, high, strict=strict_marks
+                    )
         return compiled_inner(
             x_B_T_H_W_D,
             emb_B_T_D,
@@ -1834,6 +1900,13 @@ class Anima(nn.Module):
         # (one graph per resolution). Eager forwards leave it False and skip the
         # reshape — bit-exact to the flattened path, slightly cheaper.
         self._native_flatten: bool = False
+        # Dynamic-seq state is populated by compile_blocks().  A classic union
+        # compile stores one band; per-band mode stores one tight range per
+        # cluster.  Static/eager paths keep the value unset.
+        self._dynamic_seq: bool = False
+        self._dynamic_seq_range: Optional[tuple[int, int]] = None
+        self._dynamic_seq_bands: Optional[list[tuple[int, int]]] = None
+        self._dynamic_seq_strict_marks: bool = False
 
         self.build_patch_embed()
         self.build_pos_embed()
@@ -2055,6 +2128,7 @@ class Anima(nn.Module):
         dynamic_seq: bool = False,
         seq_range: Optional[tuple[int, int]] = None,
         compile_block_scope: str = "resident",
+        seq_bands: Optional[Sequence[tuple[int, int]]] = None,
     ):
         """Enable native-shape flattening and torch.compile each block's _forward.
 
@@ -2099,6 +2173,10 @@ class Anima(nn.Module):
         native-flattened sequence axis dynamic via an eager wrapper around the
         compiled inner. The wrapper is the checkpointed callable, so marks are
         re-applied during backward recompute as well as the original forward.
+        ``seq_bands`` optionally supplies sorted, non-overlapping ``(lo, hi)``
+        ranges. Inputs are dispatched to their containing range, giving each
+        token-count cluster a tight dynamic specialization. It is inert when
+        ``dynamic_seq`` is false.
         """
         self._native_flatten = True
 
@@ -2118,11 +2196,34 @@ class Anima(nn.Module):
         limit = pin_dynamo_limit("recompile_limit", 2 * n + 8)
 
         self._dynamic_seq = bool(dynamic_seq)
+        self._dynamic_seq_range = None
+        self._dynamic_seq_bands = None
+        self._dynamic_seq_strict_marks = bool(self._dynamic_seq and seq_bands)
         if self._dynamic_seq:
             if seq_range is not None:
                 self._dynamic_seq_range = (int(seq_range[0]), int(seq_range[1]))
             else:
                 self._dynamic_seq_range = (min(counts), max(counts))
+            if seq_bands:
+                normalized_bands = sorted(
+                    (int(lo), int(hi)) for lo, hi in seq_bands
+                )
+                for band_lo, band_hi in normalized_bands:
+                    if band_lo < 1 or band_hi < band_lo:
+                        raise ValueError(
+                            f"invalid dynamic-seq token band {(band_lo, band_hi)}"
+                        )
+                for previous, current in zip(
+                    normalized_bands, normalized_bands[1:]
+                ):
+                    if current[0] <= previous[1]:
+                        raise ValueError(
+                            "dynamic-seq token bands must be sorted and "
+                            f"non-overlapping; got {normalized_bands}"
+                        )
+                self._dynamic_seq_bands = normalized_bands
+            else:
+                self._dynamic_seq_bands = [self._dynamic_seq_range]
             # Inductor's mix-order-reduction fusion (torch 2.12, default-on) is
             # incompatible with the strict seq marks: its profitability check
             # calls guard_or_true(Ge(nrow, 4096)) where nrow is the symbolic seq
@@ -2137,9 +2238,14 @@ class Anima(nn.Module):
             # grad-enabled step-0 compile (grad-ckpt recompute / AOT backward
             # path) schedules in a context where a plain override is absent and
             # the read falls back to the env-derived default True.
+            straddles_4096 = (
+                any(lo < 4096 <= hi for lo, hi in self._dynamic_seq_bands)
+                if self._dynamic_seq_strict_marks
+                else True
+            )
             import torch._inductor.config as _inductor_config
 
-            if _inductor_config.triton.mix_order_reduction:
+            if _inductor_config.triton.mix_order_reduction and straddles_4096:
                 from library.runtime.dynamo import pin_inductor_flag
 
                 pin_inductor_flag("triton.mix_order_reduction", False)
@@ -2177,15 +2283,27 @@ class Anima(nn.Module):
             base_forward = block._anima_compile_base_forward
             compiled_inner = torch.compile(base_forward, **compile_kwargs)
             if self._dynamic_seq:
-                lo, hi = self._dynamic_seq_range
-                block._forward = _make_dynamic_seq_forward(compiled_inner, lo, hi)
+                block._forward = _make_dynamic_seq_forward(
+                    compiled_inner,
+                    self._dynamic_seq_bands,
+                    strict_marks=self._dynamic_seq_strict_marks,
+                )
             else:
                 block._forward = compiled_inner
-        graph_mode = (
-            f"dynamic-seq maybe-dynamic seq∈{self._dynamic_seq_range} (1 graph)"
-            if self._dynamic_seq
-            else f"static ({n} graphs)"
-        )
+        if (
+            self._dynamic_seq_strict_marks
+            and len(self._dynamic_seq_bands) > 1
+        ):
+            graph_mode = (
+                f"dynamic-seq per-band mark_dynamic seq∈{self._dynamic_seq_bands} "
+                f"({len(self._dynamic_seq_bands)} graphs)"
+            )
+        elif self._dynamic_seq:
+            graph_mode = (
+                f"dynamic-seq mark_dynamic seq∈{self._dynamic_seq_range} (1 graph)"
+            )
+        else:
+            graph_mode = f"static ({n} graphs)"
         if n_swap and compile_scope == "all":
             swap_note = f"{n_resident} resident + {n_swap} swapped compiled"
         elif n_swap:
@@ -2619,13 +2737,34 @@ class Anima(nn.Module):
 
         # Block stack runs in _run_blocks — a split point kept so pre/post-block
         # regions stay eager while the block loop is the compiled hot path.
-        x_B_T_H_W_D = self._run_blocks(
-            x_B_T_H_W_D,
-            t_embedding_B_T_D,
-            crossattn_emb,
-            attn_params,
-            **block_kwargs,
-        )
+        # PyTorch 2.12's generic SDPA lowering can add a seq % 8 guard.  A
+        # strict per-band range may contain arbitrary native token counts, so
+        # select the alignment-tolerant cuDNN/efficient/mathematical kernels for
+        # this dynamic path without changing the token shape or padding it.
+        sdpa_scope = nullcontext()
+        if self._dynamic_seq_strict_marks and self.attn_mode == "torch":
+            try:
+                from torch.nn.attention import SDPBackend, sdpa_kernel
+
+                sdpa_scope = sdpa_kernel(
+                    [
+                        SDPBackend.CUDNN_ATTENTION,
+                        SDPBackend.EFFICIENT_ATTENTION,
+                        SDPBackend.MATH,
+                    ]
+                )
+            except (ImportError, AttributeError, RuntimeError):
+                # Older builds may not expose scoped SDPA selection. Preserve
+                # the historical dispatcher there rather than failing startup.
+                sdpa_scope = nullcontext()
+        with sdpa_scope:
+            x_B_T_H_W_D = self._run_blocks(
+                x_B_T_H_W_D,
+                t_embedding_B_T_D,
+                crossattn_emb,
+                attn_params,
+                **block_kwargs,
+            )
 
         # --- Native flatten: restore the original 5D shape ---
         # Delegated to a @torch.compiler.disable'd helper so the bucket-

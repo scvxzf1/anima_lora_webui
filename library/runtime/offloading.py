@@ -327,6 +327,10 @@ class Offloader:
         self._swap_gpu_slab_cache: dict[
             int, tuple[torch.Tensor, tuple[tuple[str, torch.Tensor], ...]]
         ] = {}
+        # A slab slot follows its physical GPU storage as blocks rotate through
+        # it. Logical block indices stop matching ``idx % slot_count`` after a
+        # forward-only wrap when num_blocks is not divisible by slot_count.
+        self._slab_slot_by_block: dict[int, int] = {}
         self._copy_stream: Optional[Any] = None
         # Per-slot copy streams let multiple in-flight H2D restores run on
         # independent streams instead of queueing on one. Keyed by slot id.
@@ -757,6 +761,8 @@ class Offloader:
         block_idx_to_cpu: int,
         block_idx_to_cuda: int,
         swap_plan: _SwapPlan,
+        *,
+        slot_id: Optional[int] = None,
     ) -> Optional[tuple[torch.Tensor, torch.Tensor, tuple[tuple[str, torch.Tensor], ...]]]:
         if self.restore_mode != "slab":
             return None
@@ -778,7 +784,10 @@ class Offloader:
         slot_count = self.num_blocks - self.blocks_to_swap
         if slot_count <= 0:
             return None
-        slot_id = block_idx_to_cpu % slot_count
+        if slot_id is None:
+            slot_id = self._slab_slot_by_block.get(
+                block_idx_to_cpu, block_idx_to_cpu % slot_count
+            )
         slab_entries, slab_numel = self._get_swap_slab_plan(
             block_idx_to_cpu,
             block_idx_to_cuda,
@@ -862,7 +871,31 @@ class Offloader:
         slot_count = self._swap_slot_count()
         if slot_count <= 0:
             return None
+        if self.restore_mode == "slab":
+            owned_slot = self._slab_slot_by_block.get(int(block_idx_to_cpu))
+            if owned_slot is not None:
+                return owned_slot
         return int(block_idx_to_cpu) % slot_count
+
+    def _reset_slab_slot_ownership(self) -> None:
+        self._slab_slot_by_block = {}
+        if self.restore_mode != "slab":
+            return
+        self._slab_slot_by_block = {
+            block_idx: block_idx for block_idx in range(self._swap_slot_count())
+        }
+
+    def _transfer_slab_slot_ownership(
+        self,
+        block_idx_to_cpu: int,
+        block_idx_to_cuda: int,
+        slot_id: Optional[int],
+    ) -> None:
+        if self.restore_mode != "slab" or slot_id is None:
+            return
+        self._slab_slot_by_block.pop(int(block_idx_to_cpu), None)
+        self._slab_slot_by_block.pop(int(block_idx_to_cuda), None)
+        self._slab_slot_by_block[int(block_idx_to_cuda)] = slot_id
 
     def _prefetch_lead_blocks(
         self,
@@ -1222,6 +1255,7 @@ class Offloader:
             "event_wait_ms": 0.0,
             "nf4_ms": nf4_ms,
             "_event_timing": profile_timings,
+            "_slab_slot_id": None,
         }
         if ready_event is not None:
             timings["_ready_event"] = ready_event
@@ -1233,7 +1267,10 @@ class Offloader:
             block_idx_to_cpu,
             block_idx_to_cuda,
             swap_plan,
+            slot_id=slot_id,
         )
+        if slab_bundle is not None:
+            timings["_slab_slot_id"] = slot_id
         with torch.cuda.stream(stream):
             if ready_event is not None:
                 stream.wait_event(ready_event)
@@ -1453,6 +1490,7 @@ class Offloader:
             weighs_to_device(block, device, include_trainable=True)
             set_block_swap_payload_placement(block, active=False)
         synchronize_device(device)
+        self._slab_slot_by_block = {}
 
     def _submit_move_blocks(
         self,
@@ -1581,7 +1619,7 @@ class Offloader:
             meta["wait_trigger_block_idx"] = (
                 int(block_idx) + 1 if str(phase or "").startswith("backward") else block_idx
             )
-        _, bidx_to_cuda, timings, enqueued_at = future.result()
+        bidx_to_cpu, bidx_to_cuda, timings, enqueued_at = future.result()
         if self.cuda_available:
             wait_start_event = None
             wait_end_event = None
@@ -1602,6 +1640,11 @@ class Offloader:
 
         assert block_idx == bidx_to_cuda, (
             f"Block index mismatch: {block_idx} != {bidx_to_cuda}"
+        )
+        self._transfer_slab_slot_ownership(
+            bidx_to_cpu,
+            bidx_to_cuda,
+            timings.get("_slab_slot_id"),
         )
         if self.profiler is not None:
             self._queue_profile_wait_event(
@@ -1767,6 +1810,7 @@ class ModelOffloader(Offloader):
         self.profile_step += 1
         self._ensure_cpu_weight_masters(blocks)
         self._warm_swap_plan_cache(blocks)
+        self._reset_slab_slot_ownership()
 
         for block in blocks:
             set_block_swap_payload_placement(block, active=True)

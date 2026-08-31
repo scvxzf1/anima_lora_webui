@@ -165,9 +165,24 @@ def test_compile_blocks_dynamic_seq_marks_range_and_runs():
     assert model._native_flatten is True
     assert model._dynamic_seq is True
     assert model._dynamic_seq_range == (4032, 4200)
+    assert model._dynamic_seq_strict_marks is False
 
     out = model.forward_mini_train_dit(*_inputs(126, 128))
     assert out.shape == (1, 16, 1, 126, 128)
+
+
+@torch.no_grad()
+def test_compile_blocks_per_band_enables_strict_marks_only_for_opt_in():
+    model = _tiny_anima()
+    model.compile_blocks(
+        backend="eager",
+        dynamic_seq=True,
+        bucket_resolutions=[(1008, 1024), (960, 1120)],
+        seq_bands=[(4032, 4200)],
+    )
+
+    assert model._dynamic_seq_bands == [(4032, 4200)]
+    assert model._dynamic_seq_strict_marks is True
 
 
 @torch.no_grad()

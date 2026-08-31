@@ -52,12 +52,14 @@ def test_training_form_filters_and_locks_krea2_attention_options() -> None:
     assert "attn_mode: new Set(['torch', 'flash'])" in form
     assert "selective_checkpoint: new Set(['off', 'every_other'])" in form
     assert "key === 'compile_dynamic_seq'" in form
+    assert "key === 'compile_seq_bands'" in form
     assert "key === 'compile_inductor_mode'" in form
     assert "key === 'v100_flash_stability'" in form
     assert "option.disabled = true" in form
     assert "input.disabled = true" in form
     assert "krea2_invalid_attn_mode" in live
     assert "krea2_compile_dynamic_seq" in live
+    assert "krea2_compile_seq_bands" in live
 
 
 def test_image_test_options_are_family_aware() -> None:

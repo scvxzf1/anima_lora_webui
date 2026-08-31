@@ -931,28 +931,20 @@ def cmd_caption_index(extra):
 
 
 def _build_caption_index_best_effort() -> None:
-    """Build caption-index after GPU preprocess without making it fatal."""
+    """Build caption-index when its optional vocab is already available."""
     vocab = _path("caption_index_vocab", _CAPTION_INDEX_VOCAB)
     if not os.path.exists(vocab):
-        print("  [preprocess] tagger vocab missing; fetching it for caption-index")
-        try:
-            from .downloads import cmd_download_tagger
-
-            cmd_download_tagger([])
-        except (SystemExit, OSError, Exception) as e:  # noqa: BLE001
-            print(f"  [preprocess] tagger vocab auto-download failed: {e}")
-
-    if os.path.exists(vocab):
-        try:
-            cmd_caption_index([])
-        except (SystemExit, OSError, Exception) as e:  # noqa: BLE001
-            print(f"  [preprocess] caption-index build failed: {e}")
-    else:
         print(
             "  [preprocess] skipping caption-index: tagger vocab not found at "
-            f"{_CAPTION_INDEX_VOCAB}. Run `make download-tagger`, then "
-            "`make caption-index` if soft-tokens contrastive training needs it."
+            f"{vocab}. Run `python tasks.py download-tagger`, then "
+            "`python tasks.py caption-index` if the selected method needs it."
         )
+        return
+
+    try:
+        cmd_caption_index([])
+    except (SystemExit, OSError, Exception) as e:  # noqa: BLE001
+        print(f"  [preprocess] caption-index build failed: {e}")
 
 
 def cmd_preprocess(extra):

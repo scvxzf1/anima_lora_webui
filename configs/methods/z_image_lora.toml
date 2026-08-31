@@ -18,6 +18,7 @@ cpu_offload_checkpointing = false
 unsloth_offload_checkpointing = false
 selective_checkpoint = "off"
 torch_compile = false
+# Optional VRAM reduction: swaps only the 30 main transformer layers (valid 0..28).
 blocks_to_swap = 0
 
 cache_latents = true

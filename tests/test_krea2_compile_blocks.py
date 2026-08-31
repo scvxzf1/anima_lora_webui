@@ -61,6 +61,14 @@ def test_krea2_compile_blocks_rejects_dynamic_sequence() -> None:
         _tiny_dit().compile_blocks(backend="eager", dynamic_seq=True)
 
 
+def test_krea2_compile_blocks_rejects_per_band_sequence() -> None:
+    with pytest.raises(ValueError, match="per-band dynamic sequence"):
+        _tiny_dit().compile_blocks(
+            backend="eager",
+            seq_bands=[(3000, 3024), (4032, 4200)],
+        )
+
+
 @pytest.mark.parametrize(
     "mode", ["reduce-overhead", "max-autotune", "max-autotune-no-cudagraphs"]
 )

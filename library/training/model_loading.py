@@ -137,8 +137,13 @@ def load_unet_lazily(trainer, args, weight_dtype, accelerator, text_encoders) ->
 
 
 def _load_z_image_dit(trainer, args, weight_dtype, accelerator, text_encoders):
+    from library.models.z_image.block_swap import enable_z_image_block_swap
     from library.models.z_image.weights import load_z_image_transformer
 
+    trainer.is_swapping_blocks = bool(
+        args.blocks_to_swap is not None and args.blocks_to_swap > 0
+    )
+    loading_device = "cpu" if trainer.is_swapping_blocks else accelerator.device
     logger.info(
         "Loading Z-Image transformer from %s...",
         args.pretrained_model_name_or_path,
@@ -146,19 +151,39 @@ def _load_z_image_dit(trainer, args, weight_dtype, accelerator, text_encoders):
     model = load_z_image_transformer(
         args.pretrained_model_name_or_path,
         dtype=weight_dtype,
-        device=accelerator.device,
+        device=loading_device,
     )
     if getattr(args, "gradient_checkpointing", False):
         model.enable_gradient_checkpointing()
-    trainer.is_swapping_blocks = False
     trainer._use_unsloth_offload_checkpointing = False
+    if trainer.is_swapping_blocks:
+        profile_jsonl = resolve_block_swap_profile_jsonl(args)
+        enable_z_image_block_swap(
+            model,
+            args.blocks_to_swap,
+            accelerator.device,
+            profile_jsonl=profile_jsonl,
+            transfer_dtype=args.block_swap_transfer_dtype,
+            restore_mode=args.block_swap_restore_mode,
+        )
+        _maybe_probe_components(
+            trainer,
+            "block_swap_enabled",
+            unet=model,
+            device=accelerator.device,
+            phase="setup",
+            blocks_to_swap=args.blocks_to_swap,
+            block_swap_profile_jsonl=profile_jsonl or "off",
+            block_swap_transfer_dtype=args.block_swap_transfer_dtype,
+            block_swap_restore_mode=args.block_swap_restore_mode,
+        )
     _maybe_probe_components(
         trainer,
         "dit_loaded",
         unet=model,
         device=accelerator.device,
         phase="setup",
-        loading_device=accelerator.device,
+        loading_device=loading_device,
         loading_dtype=weight_dtype,
         attn_mode="torch",
     )

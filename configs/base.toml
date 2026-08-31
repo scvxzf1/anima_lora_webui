@@ -82,6 +82,7 @@ torch_compile = true
 attn_mode = "flash"
 compile_block_scope = "resident"
 compile_dynamic_seq = true
+compile_seq_bands = false
 # Optional AOT partitioner cap for torch.compile. It is auto-ignored when
 # gradient_checkpointing=true because repartitioning can break checkpoint
 # forward/recompute graph matching.

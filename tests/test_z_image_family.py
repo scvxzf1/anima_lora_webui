@@ -41,6 +41,34 @@ def test_z_image_registry_uses_isolated_cache_contract() -> None:
     assert spec.plain_lora_only is True
 
 
+def test_z_image_compat_disables_anima_compile_seq_bands() -> None:
+    result = check_training_compat(
+        {
+            "model_family": "z_image",
+            "network_module": "networks.lora_anima",
+            "mixed_precision": "bf16",
+            "base_compute": "bf16",
+            "attn_mode": "torch",
+            "torch_compile": False,
+            "compile_dynamic_seq": False,
+            "compile_seq_bands": True,
+            "selective_checkpoint": "off",
+            "discrete_flow_shift": 6.0,
+            "timestep_sampling": "uniform",
+            "weighting_scheme": "none",
+            "v100_flash_stability": "off",
+        }
+    )
+
+    assert result.ok
+    assert {item.code for item in result.warnings} == {
+        "z_image_compile_seq_bands"
+    }
+    assert [(item.key, item.value) for item in result.mutations] == [
+        ("compile_seq_bands", False)
+    ]
+
+
 def test_z_image_tokenizer_resolves_comfyui_assets(tmp_path) -> None:
     checkpoint = (
         tmp_path / "models" / "text_encoders" / "zimage" / "qwen_3_4b.safetensors"
@@ -146,6 +174,16 @@ def test_tiny_diffusers_transformer_checkpoint_forward_backward() -> None:
         axes_dims=[32, 48, 48],
         axes_lens=[64, 64, 64],
     )
+    # Direct construction leaves learned pad tokens uninitialized; production
+    # from_pretrained() replaces them with checkpoint weights.
+    with torch.no_grad():
+        for name, parameter in model.named_parameters():
+            if parameter.ndim >= 2:
+                parameter.normal_(0, 0.01)
+            elif name.endswith("weight"):
+                parameter.fill_(1)
+            else:
+                parameter.zero_()
     model.enable_gradient_checkpointing()
     latents = torch.randn(2, 16, 1, 4, 4, requires_grad=True)
     prompts = [torch.randn(3, 32), torch.randn(5, 32)]
@@ -325,7 +363,6 @@ def test_z_image_compat_rejects_unverified_optimizations() -> None:
         "z_image_bf16_only",
         "z_image_base_compute",
         "z_image_torch_compile",
-        "z_image_block_swap",
         "z_image_selective_checkpoint",
         "z_image_flow_shift",
         "z_image_timestep_sampling",
@@ -338,6 +375,27 @@ def test_z_image_compat_rejects_unverified_optimizations() -> None:
         "z_image_training_sampler",
         "z_image_v100_flash_stability",
     } <= codes
+
+
+def test_z_image_compat_accepts_block_swap_and_rejects_out_of_range() -> None:
+    supported = check_training_compat(
+        {
+            "model_family": "z_image",
+            "network_module": "networks.lora_anima",
+            "mixed_precision": "bf16",
+            "base_compute": "bf16",
+            "attn_mode": "torch",
+            "gradient_checkpointing": True,
+            "blocks_to_swap": 20,
+            "discrete_flow_shift": 6.0,
+            "timestep_sampling": "uniform",
+            "weighting_scheme": "none",
+        }
+    )
+    assert "z_image_block_swap_range" not in {item.code for item in supported.errors}
+
+    rejected = check_training_compat({"model_family": "z_image", "blocks_to_swap": 29})
+    assert "z_image_block_swap_range" in {item.code for item in rejected.errors}
 
 
 def test_z_image_compat_rejects_subset_caption_dropout() -> None:

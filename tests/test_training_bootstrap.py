@@ -5,6 +5,8 @@ from pathlib import Path
 from types import ModuleType
 from types import SimpleNamespace
 
+import pytest
+
 import library.training.bootstrap as bootstrap_mod
 import train
 from library.training.bootstrap import TrainingBootstrap
@@ -233,7 +235,14 @@ def test_bootstrap_warns_register_tokens_with_block_swap(monkeypatch, caplog):
     assert "Register tokens + blocks_to_swap>0 is unaudited" in caplog.text
 
 
-def test_bootstrap_widens_compile_seq_range_for_register_tokens(monkeypatch):
+@pytest.mark.parametrize(
+    "bucket_resolutions",
+    [[(896, 1152), (960, 1120)], None],
+    ids=["explicit-buckets", "canonical-fallback"],
+)
+def test_bootstrap_widens_compile_seq_range_for_register_tokens(
+    monkeypatch, bucket_resolutions
+):
     captured = {}
 
     class FakeNetwork:
@@ -295,8 +304,9 @@ def test_bootstrap_widens_compile_seq_range_for_register_tokens(monkeypatch):
         network_args=None,
         dynamo_backend="eager",
         compile_inductor_mode=None,
-        bucket_resolutions=[(896, 1152), (960, 1120)],
+        bucket_resolutions=bucket_resolutions,
         compile_dynamic_seq=True,
+        compile_seq_bands=True,
         activation_memory_budget=1.0,
         partitioner_recompute_views=False,
         partitioner_aggressive_recomputation=False,
@@ -321,6 +331,9 @@ def test_bootstrap_widens_compile_seq_range_for_register_tokens(monkeypatch):
     assert result is not None
     assert captured["n_token_families"] == 2
     assert captured["seq_range"] == (4032, 4204)
+    # The two canonical 1024 token counts are within the 10% clustering
+    # threshold, so they intentionally form one widened band.
+    assert captured["seq_bands"] == [(4032, 4204)]
 
 
 def test_bootstrap_compiles_after_apply_load_and_gradient_checkpointing(monkeypatch):

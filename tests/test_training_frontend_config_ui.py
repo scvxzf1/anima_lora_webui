@@ -1343,7 +1343,8 @@ def test_config_form_uses_navigation_search_and_progressive_disclosure() -> None
     dataset_picker_source = _frontend_module_text("js/features/config-form/dataset-picker.js")
     field_input_source = _frontend_module_text("js/features/config-form/field-input.js")
 
-    category_defs = _section(source, "const FORM_CATEGORY_DEFS = [", "const FORM_CATEGORY_SECTION_MAP")
+    category_catalog = _frontend_module_text("js/config/catalog/form-category-defs.js")
+    category_defs = _section(category_catalog, "export const FORM_CATEGORY_DEFS = [", "];\n")
     render_section = _section(source, "function renderConfigForm", "function shouldRenderConfigSection")
     order_section = _section(source, "function appendConfigGroupsByCategory", "function createGroup")
     collect_impl = _chunk18_compat_text()
@@ -1716,7 +1717,7 @@ def test_config_form_uses_navigation_search_and_progressive_disclosure() -> None
     assert "keys: ['peak_probe_jsonl', 'peak_probe_max_steps', 'peak_probe_level']" in resource_compact
     assert "keys: ['preprocess_vae_cache_batch_size', 'preprocess_text_cache_batch_size', 'preprocess_memory_profile', 'reuse_dataset_cache_copy', 'reuse_vae_latents', 'reuse_text_encoder_cache', 'cache_fingerprint_mode', 'force_rebuild_preprocess_cache']" in resource_compact
     assert "keys: ['attn_mode', 'v100_flash_stability', 'torch_compile', 'compile_block_scope', 'compile_inductor_mode']" in resource_compact
-    assert "keys: ['compile_dynamic_seq', 'debug_finite_checks']" in resource_compact
+    assert "keys: ['compile_dynamic_seq', 'compile_seq_bands', 'debug_finite_checks']" in resource_compact
     assert "'preprocess_precision_preference'," in optimization_section
     assert "'precision_preference'," in optimization_section
     assert "'mixed_precision'," not in optimization_section

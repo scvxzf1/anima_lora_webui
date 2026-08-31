@@ -166,6 +166,81 @@ def test_prefetch_depth_forward_backward_cuda(monkeypatch) -> None:
         offloader.thread_pool.shutdown(wait=False)
 
 
+def test_slab_slot_ownership_tracks_forward_only_wraparound() -> None:
+    blocks = nn.ModuleList([_TinyBlock() for _ in range(30)])
+    offloader = ModelOffloader(
+        blocks,
+        blocks_to_swap=26,
+        device=torch.device("cpu"),
+        supports_backward=False,
+        restore_mode="slab",
+    )
+    try:
+        offloader._reset_slab_slot_ownership()
+        for block_idx_to_cpu in range(30):
+            block_idx_to_cuda = (4 + block_idx_to_cpu) % 30
+            slot_id = offloader._swap_slot_id(block_idx_to_cpu)
+            offloader._transfer_slab_slot_ownership(
+                block_idx_to_cpu,
+                block_idx_to_cuda,
+                slot_id,
+            )
+
+        assert offloader._slab_slot_by_block == {0: 2, 1: 3, 2: 0, 3: 1}
+        assert [offloader._swap_slot_id(index) for index in range(4)] == [2, 3, 0, 1]
+
+        offloader._reset_slab_slot_ownership()
+        assert offloader._slab_slot_by_block == {0: 0, 1: 1, 2: 2, 3: 3}
+    finally:
+        offloader.thread_pool.shutdown(wait=False)
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA block swap")
+def test_bf16_slab_forward_only_wraparound_matches_baseline() -> None:
+    """A slab slot must follow its physical storage across denoising forwards."""
+    device = torch.device("cuda")
+    torch.manual_seed(20260828)
+    baseline_blocks = nn.ModuleList(
+        [_TinyBlock().to(device=device, dtype=torch.bfloat16) for _ in range(30)]
+    )
+    swapped_blocks = nn.ModuleList(
+        [_TinyBlock().to(device=device, dtype=torch.bfloat16) for _ in range(30)]
+    )
+    swapped_blocks.load_state_dict(baseline_blocks.state_dict())
+    offloader = ModelOffloader(
+        swapped_blocks,
+        blocks_to_swap=26,
+        device=device,
+        supports_backward=False,
+        transfer_dtype="bf16",
+        restore_mode="slab",
+    )
+    x = torch.randn(1, 2, device=device, dtype=torch.bfloat16)
+
+    def run(blocks: nn.ModuleList, active_offloader=None) -> torch.Tensor:
+        hidden = x.clone()
+        for block_idx, block in enumerate(blocks):
+            if active_offloader is not None:
+                active_offloader.wait_for_block(block_idx)
+            hidden = block(hidden)
+            if active_offloader is not None:
+                active_offloader.submit_move_blocks(blocks, block_idx)
+        return hidden
+
+    try:
+        offloader.prepare_block_devices_before_forward(
+            swapped_blocks, free_cache=False
+        )
+        expected = run(baseline_blocks)
+        for _ in range(3):
+            actual = run(swapped_blocks, offloader)
+            torch.testing.assert_close(actual, expected, rtol=0, atol=0)
+    finally:
+        for block_idx in list(offloader.futures):
+            offloader._wait_blocks_move(block_idx, phase="test_cleanup")
+        offloader.thread_pool.shutdown(wait=False)
+
+
 class _ConvRotPayloadBlock(nn.Module):
     def __init__(self, value: int, *, device: torch.device) -> None:
         super().__init__()

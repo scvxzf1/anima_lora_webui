@@ -640,12 +640,25 @@ class TrainingBootstrap:
 
             bucket_resolutions = getattr(args, "bucket_resolutions", None)
             dynamic_seq = bool(getattr(args, "compile_dynamic_seq", False))
+            compile_seq_bands_enabled = bool(
+                getattr(args, "compile_seq_bands", False) and dynamic_seq
+            )
             compile_n_token_families = None
             compile_seq_range = None
+            compile_seq_bands = None
             extra_seq = int(getattr(network, "extra_seq_tokens", 0) or 0)
-            if bucket_resolutions and dynamic_seq and extra_seq > 0:
+            if dynamic_seq and (extra_seq > 0 or compile_seq_bands_enabled):
+                # ``compile_blocks`` falls back to the canonical bucket table
+                # when no explicit resolution set is available. Derive the
+                # sequence budget from that same fallback so direct bootstrap
+                # callers still cover register-token tails and per-band marks.
+                budget_resolutions = bucket_resolutions
+                if not budget_resolutions:
+                    from library.datasets.buckets import CONSTANT_TOKEN_BUCKETS
+
+                    budget_resolutions = CONSTANT_TOKEN_BUCKETS
                 counts = pixel_bucket_token_counts(
-                    bucket_resolutions,
+                    budget_resolutions,
                     patch_spatial=getattr(unet, "patch_spatial", 16),
                     vae_spatial_compression=getattr(
                         unet, "vae_spatial_compression", 8
@@ -654,6 +667,17 @@ class TrainingBootstrap:
                 if counts:
                     compile_n_token_families = len(counts)
                     compile_seq_range = (min(counts), max(counts) + extra_seq)
+                    if compile_seq_bands_enabled:
+                        from library.datasets.buckets import (
+                            cluster_token_bands,
+                            widen_bands,
+                        )
+
+                        compile_seq_bands = cluster_token_bands(counts)
+                        if extra_seq > 0:
+                            compile_seq_bands = widen_bands(
+                                compile_seq_bands, extra_seq
+                            )
 
             compile_blocks_for_training(
                 unet,
@@ -663,6 +687,7 @@ class TrainingBootstrap:
                 bucket_resolutions=bucket_resolutions,
                 n_token_families=compile_n_token_families,
                 seq_range=compile_seq_range,
+                seq_bands=compile_seq_bands,
                 dynamic_seq=dynamic_seq,
                 activation_memory_budget=float(
                     getattr(args, "activation_memory_budget", 1.0) or 1.0
@@ -694,6 +719,10 @@ class TrainingBootstrap:
                     compile_dynamic_seq=bool(
                         getattr(args, "compile_dynamic_seq", False)
                     ),
+                    # Record the effective compile mode. The flag can be set
+                    # without an active bucket set (e.g. a unit-test/fallback
+                    # path), in which case no bands were actually generated.
+                    compile_seq_bands=bool(compile_seq_bands),
                 )
 
         return NetworkBuildResult(

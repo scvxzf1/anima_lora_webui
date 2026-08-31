@@ -113,6 +113,71 @@ def token_counts_for_sample_prompts(prompts) -> set:
     return counts
 
 
+def cluster_token_bands(counts, rel_gap: float = 0.10) -> "list[tuple[int, int]]":
+    """Cluster token counts into tight, data-driven dynamic-seq bands.
+
+    Counts are sorted and split when the relative gap from the previous count
+    exceeds ``rel_gap``.  This deliberately operates on the counts actually
+    present in a run rather than on the canonical bucket table: sample prompts
+    and auxiliary/demoted resolutions can therefore form their own singleton
+    band without widening an unrelated tier across a dead zone.
+    """
+    ordered = sorted({int(count) for count in counts})
+    if not ordered:
+        return []
+
+    bands: list[tuple[int, int]] = []
+    lo = previous = ordered[0]
+    for count in ordered[1:]:
+        if (count - previous) > rel_gap * previous:
+            bands.append((lo, previous))
+            lo = count
+        previous = count
+    bands.append((lo, previous))
+    return bands
+
+
+def band_for_seq(bands, seq: int) -> "tuple[int, int] | None":
+    """Return the sorted non-overlapping band containing ``seq``.
+
+    ``None`` means that the sequence is in an inter-band gap or outside the
+    compiled budget.  ``cluster_token_bands`` produces the required ordering.
+    """
+    import bisect
+
+    if not bands:
+        return None
+    starts = [int(band[0]) for band in bands]
+    index = bisect.bisect_right(starts, int(seq)) - 1
+    if index < 0:
+        return None
+    band = bands[index]
+    if int(seq) > int(band[1]):
+        return None
+    return (int(band[0]), int(band[1]))
+
+
+def widen_bands(bands, extra: int) -> "list[tuple[int, int]]":
+    """Increase each band's upper bound for constant register-token tails.
+
+    Register tokens are inserted after the pre-insert blocks, so only the
+    upper bound grows.  Refuse a widening that would touch or overlap the next
+    band; silently merging bands would defeat the purpose of per-band guards.
+    """
+    normalized = [(int(lo), int(hi)) for lo, hi in bands]
+    if extra <= 0:
+        return normalized
+    for (_, hi), (next_lo, _) in zip(normalized, normalized[1:]):
+        if hi + int(extra) >= next_lo:
+            raise ValueError(
+                f"extra_seq_tokens={extra} >= inter-band gap "
+                f"({next_lo - hi} between hi={hi} and next lo={next_lo}); "
+                "bands would merge — widen the clustering gap or drop "
+                "--compile_seq_bands for this run"
+            )
+    return [(lo, hi + int(extra)) for lo, hi in normalized]
+
+
 def make_bucket_resolutions(max_reso, min_size=256, max_size=1024, divisible=64):
     """Generate bucket resolutions for multi-aspect-ratio training.
     Moved from model_util.py to avoid dependency."""
