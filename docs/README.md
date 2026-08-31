@@ -11,6 +11,7 @@
 | 推理与组合 DCW、Spectrum | [推理参考](guidelines/inference.md) |
 | 理解配置合并和外置路径 | [配置索引](configuration/README.md) |
 | 使用 WebUI 独立功能 | [功能索引](features/README.md) |
+| 使用外部模型 API 打标 | [打标工作台](features/tagging-workbench.md) |
 | 切换 Dragon / classic 界面 | [Dragon UI 指南](features/dragon-ui.md) |
 | 审核当前分支前端健康度 | [前端健康度评分卡](features/frontend-health-scorecard.md) |
 | 查稳定方法 | [方法索引](methods/README.md) |

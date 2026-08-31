@@ -1,11 +1,15 @@
 # Krea-2-Raw 迁移 阶段 6: 块交换 + 检查点 (findings)
 
-状态：稳定
-适用版本：当前 main
+状态：历史阶段快照 / 阶段 6 已完成
+适用版本：阶段 6 block swap/checkpoint 与配置收口时点；不作为当前完整能力说明
 入口命令：
 - `.venv/bin/python scripts/krea2/probe_blockswap.py`
 - `.venv/bin/python scripts/krea2/probe_checkpoint.py`
 相关代码：`library/models/krea2_raw/dit.py`、`scripts/krea2/probe_blockswap.py`、`scripts/krea2/probe_checkpoint.py`
+
+> 本文保留阶段 6 当时尚未完成的推理事项；当前已通过 family runtime 和
+> `library/models/krea2_raw/inference_runner.py` 完成 single/euler 推理及 LoRA attach。
+> 当前边界见 [`../multi_model_support.md`](../multi_model_support.md)。
 
 ## 目标
 
@@ -353,22 +357,21 @@ family dispatch。
 - 默认空 / krea2 round-trip (save 返回 + on-disk toml + get 重读) / anima 存空 / 未知值
   存空 / on-disk 未知值读空。全过。
 
-### 后续
+### 阶段 6 截止时的后续（历史快照）
 
-- **推理侧 family dispatch 未串通**: `library/inference/{generation,models,text}.py`
-  全部硬编码 anima (DiT 加载走 `anima_utils.load_anima_model`, denoise loop 调 anima
-  forward 签名, 文本走 `AnimaTokenizeStrategy`)。子代理核实 generation.py 零
-  `resolve_model_family` / 零 krea2 import。`ss_model_family` stamp 已让加载侧能识别
-  family, 但 generation.py 的 DiT 加载 + 文本链路 + denoise loop family fork 是独立工作
-  (非本轮 goal 五条件), 留阶段 6 后续。
-- **WebUI 预设生成未接 model_family**: 当前新建空白预设从方法 TOML 继承
-  `model_family` (base.toml=anima / krea2_lora.toml=krea2_raw)。全局设置的 `model_family`
-  选择器是面板默认值, 尚未流入新预设生成的 TOML — 该连接是增强项, 非五条件要求。
+- **通用 `library/inference/generation.py` family fork 当时未串通**：该通用 facade
+  当时仍偏 Anima；当前 Krea-2 通过 `library/inference/family_runtime.py` 和
+  `library/models/krea2_raw/inference_runner.py` 提供独立 single/euler 推理，不能再将
+  本条理解为“Krea-2 无推理”。
+- **WebUI 预设生成与全局 `model_family` 的联动**：阶段 6 时新建空白预设从方法 TOML
+  继承 `model_family`，全局选择器尚未覆盖新预设 TOML；该连接属于增强项而非五条件。
+  当前是否需要联动以 WebUI 配置服务和测试为准，不把阶段 6 观察直接当作整个系统状态。
 
-## 已知限制 / 后续
+## 阶段 6 截止时的验证缺口与后续（历史快照）
 
-- **未串通 train.py / generation.py**: 块交换和检查点都仅探针验证 (反上帝守则,
-  不动 train.py / generation.py 热点文件). 正式串通是阶段 6 配置收口.
+- **训练侧已串通；通用 generation facade 当时仍未 fork**：块交换和检查点在探针之外，
+  训练侧 `train.py`/family dispatch 已在本阶段后接通；通用 `generation.py` 仍由专用
+  Krea-2 runner 承担，详见当前多模型说明。
   - **create_network_from_weights family gap 已闭合**: `ss_model_family` stamp 闭环
     (见上 "metadata stamp family dispatch" 章节), 加载侧可从 checkpoint 识别 family。
     train.py/generation.py 的 DiT/TE/forward family fork 仍待续 (推理侧)。
@@ -379,6 +382,6 @@ family dispatch。
   但没测 train.py 从 checkpoint resume 训练 (optimizer state / scheduler state
   未在本探针范围 — 探针只存 LoRA 权重, 不存 optimizer state). 1024 正式训练的
   checkpoint (92 MB) 已落盘, 可作为 resume 测试的输入.
-- **未挂 LoRA 推理对比**: 阶段 5 推理探针只测 base model; 阶段 6 配置收口应验证
-  加载 checkpoint → attach → sample → 与 base 对比风格可控. 推理侧 family dispatch
-  (generation.py fork) 是前置 (见上 "后续").
+- **尚缺端到端 LoRA 推理对比记录**：阶段 5 探针只测 base model；当前 loader 已有
+  checkpoint attach，若需质量结论仍应补充“加载 checkpoint → sample → 与 base 对比”
+  的独立运行记录，不把验证缺口写成能力未实现。

@@ -1,10 +1,10 @@
 # 后端多模型兼容审计
 
-状态：完成
+状态：历史审计快照（后续加固已记录）
 
 日期：2026-08-10
 
-适用版本：当前 `krea2-migration` 工作树（审计时 `HEAD=df8ff775`，工作树包含用户未提交改动）
+适用版本：2026-08-10 的 `krea2-migration` 工作树（审计时 `HEAD=df8ff775`，工作树包含用户未提交改动）；当前能力以 [`../multi_model_support.md`](../multi_model_support.md) 和实时源码为准
 
 范围：基础模型 family 的配置、预处理、训练、LoRA/checkpoint、推理、Web/API 和测试边界。
 这里的“多模型”指 `model_family`，不等同于 LoRA / LoKr / Hydra 等 adapter family。
@@ -19,14 +19,17 @@ family 的显式 handler 表。新 family 被注册但漏接任一 handler 时�
 metadata，Krea cache 额外校验 hidden/mask shape、dtype 和新格式 hidden width；
 旧无 metadata cache 仍兼容。
 
-当前后端是**已贯通的双模型实现**，不是通用多模型框架：
+审计时后端是**已贯通的双模型实现**；2026-08-24 后续加固又注册了 Z-Image v1，
+但系统仍是显式静态 family 集合，不是动态插件框架：
 
 - Anima 是默认且完整的 family。
 - Krea-2 Raw 已贯通 Qwen3-VL 文本链、共享 Qwen VAE、SingleStreamDiT、plain LoRA
   训练、TE cache、NF4、block swap、checkpoint、fixed compile、`torch` / `flash`
   attention，以及标准单提示词 Euler + CFG 推理。
-- 第三个 family 仍需修改配置解析、训练 loader/strategy/forward、推理入口、LoRA target、
-  checkpoint metadata、Web 白名单和兼容矩阵；当前没有统一 `ModelFamily` 注册协议。
+- Z-Image 已作为第三个 family 接入训练与训练预览；通用推理仍未注册，并由空的
+  inference mode/sampler 集合 fail closed。
+- 当前已有统一 `ModelFamilySpec` registry，但没有动态 `ModelFamily` plugin Protocol；
+  每项 operation 仍通过覆盖全部已注册 family 的显式 handler 表分派。
 
 审计未发现必须立即停用现有 Anima 或 Krea plain-LoRA 主链的 P0 问题，初始发现
 **6 项 P1**。这些 P1 已于 2026-08-10 在当前工作树完成 fail-closed 修复；不支持的能力
@@ -47,11 +50,14 @@ metadata，Krea cache 额外校验 hidden/mask shape、dtype 和新格式 hidden
 字段一旦存在就必须是合法 canonical family。Krea 推理要求 checkpoint 明确盖
 `ss_model_family=krea2_raw`。
 
-## 能力矩阵
+## 审计时能力矩阵（2026-08-10）
+
+下表是双模型审计时的历史快照。Z-Image 于 2026-08-24 后续接入训练和训练预览，
+不应从本表的“第三个 family”行推断当前 registry 状态。
 
 | 能力 | Anima | Krea-2 Raw | 审计结论 |
 | --- | --- | --- | --- |
-| CLI/TOML family 选择 | 完整 | 完整 | args/env/内部入口统一校验，仅允许两个 canonical family |
+| CLI/TOML family 选择 | 完整 | 完整 | 审计时 args/env/内部入口统一校验，仅允许两个 canonical family |
 | 文本编码 | Qwen3 + LLM adapter | Qwen3-VL + MFA | 训练和单提示词推理已分流 |
 | VAE / latent | Qwen Image VAE | 共享同一 VAE | 4D cache、5D DiT 边界可复用 |
 | TE cache | `_anima_te` | `_krea2_te` | 后缀和 preprocess fingerprint 已隔离 |
@@ -66,7 +72,7 @@ metadata，Krea cache 额外校验 hidden/mask shape、dtype 和新格式 hidden
 | 非 Euler sampler / SMC / CNS | 支持或按 Anima 约束 | **显式拒绝** | 未接线参数不再静默忽略 |
 | 编辑、蒸馏、DCW、Spectrum | 支持或实验支持 | 不支持 | 部分入口已显式拒绝 |
 | Web 模型配置库 | 支持 | 支持 | 原子写入、revision 冲突保护已完成 |
-| 第三个基础模型 family | 无 | 无 | 需要跨模块开发，不是注册即用 |
+| 第三个基础模型 family | 无（审计时） | 无（审计时） | 审计时未注册；后续已加入 Z-Image v1（训练/预览），通用推理仍为空 |
 
 ## 已建立的正确边界
 

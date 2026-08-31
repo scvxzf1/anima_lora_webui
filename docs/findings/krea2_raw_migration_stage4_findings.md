@@ -1,9 +1,13 @@
 # Krea-2-Raw 迁移 阶段 4: 训练串通 (findings)
 
-状态：稳定
-适用版本：当前 main
+状态：历史阶段快照 / 阶段 4 已完成
+适用版本：阶段 4 训练探针落地时点；不作为当前完整能力说明
 入口命令：`.venv/bin/python scripts/krea2/probe_train.py`
 相关代码：`library/models/krea2_raw/family.py`、`scripts/krea2/probe_train.py`
+
+> “已知限制 / 后续”保留阶段 4 当时状态；正式 trainer dispatch 和
+> `cache_batch_outputs` 后续均已接通。当前边界见
+> [`../multi_model_support.md`](../multi_model_support.md)。
 
 ## 目标
 
@@ -103,14 +107,17 @@ grad_norm 范围 [0.0005, 0.0112], 全非零: True
 显存 32.62GB 紧贴 PG199 32GB 上限 — block swap / offload 在阶段 5 推理 + 阶段 6
 大分辨率训练时可能需要 (256×256 训练勉强够, 512×512 训练必爆).
 
-## 已知限制 / 后续
+## 阶段 4 截止时的已知限制 / 后续（历史快照）
 
-- **未串通 train.py**: forward_for_loss 仅在探针验证; 正式串通 train.py /
-  noise_target.py / model_loading.py 是阶段 6 配置收口的事 (反上帝守则).
-- **flux_shift x2 不匹配**: 训练 `flux_shift` 分支 x2=4096 (noise.py:25) vs 推理
-  6400 — 阶段 5 推理串通时需对齐 mu shift 端点 (256,0.5)/(6400,1.15).
-- **256×256 显存紧**: 32.62GB 紧贴 PG199 32GB; 大分辨率训练 (512×512) 必爆,
-  需 block swap 或 low_vram preset (阶段 6).
-- **未测 cache_batch_outputs**: Krea2TextEncoderOutputsCachingStrategy 仍留
-  NotImplementedError; 阶段 6 多样本训练时补 multi-variant + per-sample 拆分.
-- **未测 checkpoint 保存/加载**: 阶段 6 配置收口补 LoRA checkpoint 保存/加载热测.
+- **阶段 4 当时未串通 train.py**：`forward_for_loss` 仅在探针验证；正式串通
+  `train.py` / `noise_target.py` / `model_loading.py` 是阶段 6 配置收口工作。当前已由
+  `library/training/batch_step.py`、`model_loading.py` 等 family dispatch 接通。
+- **阶段 4 当时存在 flux_shift x2 不匹配**：训练与推理端点随后在 Krea-2 专用
+  family/sampling 链路中对齐；本条保留原始排查记录。
+- **阶段 4 当时 256×256 显存紧**：后续 block swap、NF4 与梯度检查点改变了可用配置；
+  本条数值只适用于阶段 4 的 PG199 探针。
+- **阶段 4 当时未测 `cache_batch_outputs`**：当前
+  `Krea2TextEncoderOutputsCachingStrategy` 已支持 multi-variant + per-sample 写盘；
+  原条目是阶段性验证缺口。
+- **阶段 4 当时未测 checkpoint 保存/加载**：后续阶段 6 及续训 findings 已覆盖保存、
+  加载和 round-trip；不要把本条当作当前能力缺失。

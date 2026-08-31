@@ -1,9 +1,13 @@
 # Krea-2-Raw 迁移 阶段 5: 推理串通 (findings)
 
-状态：稳定
-适用版本：当前 main
+状态：历史阶段快照 / 阶段 5 已完成
+适用版本：阶段 5 推理探针落地时点；不作为当前完整能力说明
 入口命令：`.venv/bin/python scripts/krea2/probe_sample.py`
 相关代码：`library/models/krea2_raw/sampling.py`、`scripts/krea2/probe_sample.py`
+
+> “已知限制 / 后续”保留阶段 5 当时状态；独立 inference runner、LoRA attach 和
+> block swap 后续均已落地。当前边界见
+> [`../multi_model_support.md`](../multi_model_support.md)。
 
 ## 目标
 
@@ -107,16 +111,18 @@ CFG 起作用 (diff>0.01): True
 推理在 PG199 32GB 富余; 1024×1024 推理 (latent 128×128, img_seq_len=4096) 激活
 大很多, 需 block swap — 阶段 6 大分辨率推理时补.
 
-## 已知限制 / 后续
+## 阶段 5 截止时的已知限制 / 后续（历史快照）
 
-- **未串通 generation.py**: sampling.py 仅探针验证; 正式串通 inference.py /
-  generation.py 是阶段 6 配置收口 (反上帝守则).
+- **阶段 5 当时未串通通用 Anima `generation.py`**：`sampling.py` 仅探针验证；
+  后续由 `library/models/krea2_raw/inference_runner.py` 和 family runtime 接通独立
+  single/euler 路径，而不是把 Krea-2 逻辑硬塞进 Anima generation facade。
 - **256×256 出图质量**: base model 训练在 1024×1024, 256×256 是为 fit PG199 32GB
   的探针尺寸, 出图质量不作为阶段 5 验证点. 真实训练结果质量验证在阶段 6
   (训练过的 LoRA + 1024 推理对比).
-- **block swap 未实现**: `SingleStreamDiT` 无 anima 同款 block swap 接口
-  (`enable_block_swap`/`prepare_block_swap`/`_run_blocks`), 1024×1024 推理 + 16GB
-  训练需补 — 阶段 6.
-- **未挂 LoRA 推理**: 探针只测 base model 采样; 阶段 6 验证训练过的 LoRA 推理
-  (加载 checkpoint → attach → sample → 与 base 对比风格可控).
-- **tiled 采样未做**: 官方无 tiled, 大分辨率靠 block swap 不靠 tile; 阶段 6 决定.
+- **阶段 5 当时未实现 block swap**：`SingleStreamDiT` 尚无
+  `enable_block_swap`/`prepare_block_swap`/`_run_blocks`；后续阶段 6 已接入，当前入口
+  见 `library/models/krea2_raw/dit.py`。
+- **阶段 5 探针未挂 LoRA 推理**：当时只测 base model 采样；当前加载器已支持
+  checkpoint attach，但端到端风格对比仍应以专门测试/运行记录为准。
+- **tiled 采样未做**：官方无 tiled；当前大分辨率仍依靠 block swap/显存配置，不把
+  tile 当作已支持能力。

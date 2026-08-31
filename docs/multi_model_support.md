@@ -1,153 +1,116 @@
-# Multi-Model Support
+# 多模型支持现状
 
-Sketch of what it would take to add a second image-generation model (e.g. Z-Image-Base) alongside Anima in this repo. This is a repo-wide architectural note, not a method deep-dive — it lives at the top of `docs/` rather than under `docs/methods/`.
+状态：稳定架构说明
+适用版本：当前 `main` 工作树
+相关代码：`library/models/family_registry.py`、`library/training/`、`library/models/<family>/`
 
-Status: implemented architecture boundary. Krea-2 Raw is the first production second
-family. Z-Image plain-LoRA training v1 was added on 2026-08-24 using the official
-Diffusers components. `ModelFamilySpec` and complete-handler dispatch keep every family
-operation fail-closed; model implementations remain explicit per-family modules rather
-than dynamically loaded plugins. For the backend boundary and risk list, see
-[`findings/backend_multi_model_audit_20260810.md`](findings/backend_multi_model_audit_20260810.md).
+本文记录当前已经落地的多模型边界及仍然存在的 Anima 耦合。它不是新增模型的未来方案，
+也不把训练预览等同于通用推理能力。2026-08-10 的阶段性风险快照仍保留在
+[后端多模型审计](findings/backend_multi_model_audit_20260810.md)；其中部分问题已经由后续
+registry 和 fail-closed dispatch 解决，应以本文和实时源码为准。
 
-## Z-Image v1 boundary
+## 当前模型族
 
-The implementation lives in `library/models/z_image/` and deliberately starts with a
-narrow, verifiable surface:
+`library/models/family_registry.py::MODEL_FAMILY_REGISTRY` 是模型族名称、别名和能力边界的
+单一事实源。所有 family operation 必须为已注册模型族提供完整 handler；缺失 handler、未知
+family、未注册推理模式或 sampler 都应失败，不得静默回退 Anima。
 
-- official Diffusers `ZImageTransformer2DModel`, `Qwen3Model`, and `AutoencoderKL`
-  directory loading;
-- Qwen3 ChatML, penultimate hidden state, fixed 512-token cache plus boolean mask;
-- isolated `_z_image_te.safetensors` / `_z_image.npz` sidecars;
-- shared cached/live `(latent - 0.1159) * 0.3611` VAE normalization and the
-  official 1000-step shifted-uniform flow grid (`shift=6`, FP32 model time
-  `1-sigma`, negated transformer output);
-- BF16 SDPA, full gradient checkpointing, and attention-only plain LoRA on
-  `to_q/to_k/to_v/to_out.0` (136 targets in the official 34-block transformer).
+| 模型族 | 当前定位 | Adapter | 通用推理 | Attention |
+| --- | --- | --- | --- | --- |
+| `anima` | 默认生产模型族 | 完整方法面 | `single` / `batch` / `interactive`；`euler` / `er_sde` / `lcm` | registry 中声明的 Anima 后端 |
+| `krea2_raw` | 第二生产模型族 | plain LoRA only | `single` + `euler` | `torch` / `sdpa` / `flash` |
+| `z_image` | 训练与训练预览 v1 | plain LoRA only | 尚未注册；mode/sampler 集合为空 | `torch` / `sdpa` |
 
-Model loading validates the VAE latent geometry/affine factors, transformer input
-and caption widths, and Qwen3 hidden width before training. Unsupported weighted
-captions, layer ranges, alternate training losses/samplers/timestep ranges, and
-dataset-level caption dropout fail during compatibility or dataset setup instead of
-being silently ignored.
+WebUI 能选择三个模型族，但这不扩大 registry 的能力集合。尤其是 Z-Image 的训练 sample
+preview 只服务训练流程，不代表生图测试、独立 CLI 推理、batch 或 interactive 已可用。
 
-Unverified optimization axes fail closed in v1: NF4, block swap, `torch.compile`,
-selective/offloaded checkpointing, FlashAttention, advanced adapters, caption dropout,
-training preview, and inference. The starting config is
-`configs/methods/z_image_lora.toml`.
+## 当前路由
 
-## Current coupling
+### 训练
 
-The repo has surprisingly clean bones in some places and surprisingly tight Anima coupling in others. Map by area:
+- `train.py` 仍保留 `AnimaTrainer` 类名作为兼容 facade；统一训练编排位于
+  `library/training/`。
+- `library/training/model_loading.py` 按 `model_family` 分派 text encoder、VAE 和 DiT 加载。
+- `library/training/batch_step.py::_get_noise_pred_and_target` 使用完整 handler 表分派每个 batch；
+  Anima、Krea-2 和 Z-Image 各自拥有训练 forward/target 契约。
+- 非 Anima family 不通过 metadata fallback 猜测行为；配置、network metadata 和运行 family
+  发生冲突时应由 compatibility/registry 层拒绝。
 
-| Area | File(s) | Anima-specific? | Effort to decouple |
-|------|---------|-----------------|--------------------|
-| Attention dispatch | `networks/attention_dispatch.py` | No — generic `(B, H, L, D)` | none |
-| VAE loader | `library/models/qwen_vae.py` | No — generic loader | none |
-| Strategy base classes | `library/anima/text_strategies.py` | No — abstract base | small (move up) |
-| Anima strategy subclasses | `library/anima/strategy.py` | Thin wrapper around base | small |
-| Configs | `configs/base.toml` | Mostly generic; just paths | trivial |
-| LoRA target regex | `networks/lora_anima/network.py` | Hardcodes `blocks\.(\d+)\.` | small |
-| Cache filename suffixes | `library/io/cache.py` | `_anima.npz`, `_anima_te.safetensors` | small |
-| Weights loader | `library/anima/weights.py` | Fixed config dict + Anima-specific rename hooks | medium |
-| DiT class | `library/anima/models.py` | Monolithic Anima architecture (~2700 LOC) | medium-large |
-| Trainer forward path | `train.py::get_noise_pred_and_target` | Reaches into `unet.llm_adapter`, `_mod_guidance_*`, fused-projection assumptions, Anima's cross-attention LSE invariant | **large — biggest blocker** |
-| Adapter monkey-patches | `networks/methods/{ip_adapter,easycontrol,postfix}.py` | Target Anima's exact module names + cross-attention shape | large (per adapter) |
+### 缓存和模型实现
 
-## Proposed boundary
+- Anima 实现在 `library/anima/`，Krea-2 和 Z-Image 分别位于
+  `library/models/krea2_raw/`、`library/models/z_image/`。
+- text cache 通过 registry 隔离：Anima 使用 `_anima_te.safetensors`，Krea-2 使用
+  `_krea2_te.safetensors`，Z-Image 使用 `_z_image_te.safetensors`。
+- latent/cache schema 由各 family 的 strategy/latent 模块维护；不要通过改名让不同模型族
+  共享不兼容 sidecar。
+- 所有 family 继续遵守 lazy loading 顺序：text encoder 缓存并释放，VAE 缓存并释放，最后
+  加载 DiT、apply adapter 并进入训练。
 
-A `library/models/<family>/` namespace with a small protocol the trainer talks to.
+### 推理
 
-```
-library/models/
-├── base.py                 # ModelFamily protocol
-├── factory.py              # load_family(name) -> ModelFamily
-├── anima/
-│   ├── dit.py              # was library/anima/models.py
-│   ├── weights.py          # load_dit / load_text_encoder / load_vae
-│   ├── strategy.py         # tokenize + encode strategies
-│   └── lora_targets.py     # block regex, exclude list, scale rules
-└── zimage/
-    └── ... mirrors anima/
-```
+- Anima 推理主链位于 `library/inference/`。
+- Krea-2 通过 `library/models/krea2_raw/inference_runner.py` 走独立 single/euler 路径；
+  Anima-only extras 必须显式拒绝。
+- Z-Image 目前只有 `library/models/z_image/training_preview.py`。通用 image-test 和独立推理
+  没有注册 handler，请勿从 WebUI family 下拉框推断其已支持。
 
-Protocol roughly:
+## Z-Image v1 边界
 
-```python
-class ModelFamily(Protocol):
-    name: str
-    cache_suffix: str                # "_anima" vs "_zimage"
-    latent_channels: int
+Z-Image 使用官方 Diffusers transformer、Qwen3 text encoder 和 Flux VAE 组件。当前加载器支持
+Diffusers 目录及经过组件校验的单文件路径，并在训练前校验 latent geometry、affine factor、
+transformer input/caption width 和 Qwen3 hidden width。
 
-    def load_dit(self, args) -> nn.Module: ...
-    def load_text_encoder(self, args) -> nn.Module: ...
-    def load_vae(self, args) -> nn.Module: ...
+已经接通的契约：
 
-    def tokenize_strategy(self) -> TokenizeStrategy: ...
-    def text_encoding_strategy(self) -> TextEncodingStrategy: ...
+- Qwen3 ChatML、倒数第二层 hidden state、固定 512-token hidden/mask cache；
+- 独立 `_z_image_te.safetensors` 和 `_z_image.npz` sidecar；
+- `(latent - 0.1159) * 0.3611` 归一化和 shift `6` 的 1000-step flow grid；
+- BF16 SDPA、full gradient checkpointing、attention-only plain LoRA；
+- 训练 sample preview；
+- `library/models/z_image/block_swap.py` 对 30 个 main layers 的 block swap，refiner 与
+  input/output 模块常驻。
 
-    def lora_target_spec(self) -> LoRATargetSpec: ...   # block regex + excludes
-    def forward_for_loss(self, dit, latents, text_emb, t, **kw) -> Tensor: ...
-```
+`blocks_to_swap=0` 表示关闭；启用时实现要求
+`1 <= blocks_to_swap <= len(model.layers) - 2`，当前 30-layer 模型即 `1..28`。adapter 复用
+共享 `ModelOffloader`，并保留 checkpoint、training/inference switch、pause/resume 和 profile
+协议；不要把它当作 Krea-2 裸 DiT 的复制实现。
 
-`train.py` selects via a new `model_family = "anima"` key in `configs/base.toml` and never imports `library.anima.*` directly. `cache_latents.py` / `cache_text_embeddings.py` read `family.cache_suffix` so Anima and Z-Image caches coexist in `post_image_dataset/` without colliding. The LoRA factory in `networks/lora_anima/` reads `lora_target_spec()` instead of hard-coding `blocks\.(\d+)\.`.
+以下能力在 v1 明确不可用或由兼容层关闭：
 
-Most layers are already close to this shape: `attention_dispatch.py` is fully generic, the strategy base classes are clean, the VAE loader is generic, `configs/base.toml` is mostly model-agnostic. The work is renames and parameterization, not deep surgery — *for the parts above the trainer line*.
+- 通用推理/image-test、batch/interactive mode 和任意推理 sampler；
+- NF4、`torch.compile`、per-band dynamic-seq、selective/offloaded checkpointing 和 FlashAttention；
+- ReFT、HydraLoRA 等 method adapter；
+- weighted caption、layer range、alternate loss/timestep scheme；
+- 任意大于 0 的 dataset/subset caption dropout。
 
-## The main blocker
+起始配置为 `configs/methods/z_image_lora.toml`。不要把“理论上可移植”的 adapter 写成当前
+支持；能力扩展必须先更新 registry、compatibility、训练/推理 handler 和定向测试。
 
-**`train.py::get_noise_pred_and_target` and the wider trainer forward path** — not the DiT class itself.
+## 仍存在的耦合
 
-The DiT can be solved with a factory in an afternoon. The real pain is that `train.py` reaches *into* the Anima DiT for adapter-specific knobs:
+多模型主链已经穿过 trainer forward，但尚未变成动态插件系统，以下耦合仍是维护边界：
 
-- `unet.llm_adapter` direct access
-- `unet._mod_guidance_*` distillation hooks
-- Fused-projection assumptions (`qkv_proj`, `kv_proj`)
-- The postfix / IP-Adapter / EasyControl monkey-patches that target Anima's exact module names
-- The constant-token bucketing (4032/4200 token-count families) built into `library/datasets/`
+| 区域 | 当前事实 | 维护要求 |
+| --- | --- | --- |
+| family registry | 显式静态注册，handler 必须覆盖全部 family | 新 family 同步补全所有 operation handler 和 fail-closed 测试 |
+| 训练加载 | `model_loading.py` 已分派，但仍直接导入 Anima loader/compat | 不要把 Anima fallback 当成通用协议 |
+| 训练辅助 | `noise_target.py`、`train_session.py`、`trainer_network_mixin.py` 仍有 Anima import | 新 family 先走显式分支，不要伪装成 Anima tensor/layout |
+| Adapter | 多数高级方法绑定 Anima block 名称、cross-attention 和 monkey patch | 非 Anima 默认 plain LoRA only，逐方法验证后再开放 |
+| 推理 | Anima 与 Krea-2 有独立路径，Z-Image 尚无通用路径 | registry 集合为空时必须拒绝，不得借用 Anima sampler |
+| Compile/bucket | Anima 支持 dynamic-seq；Krea-2 使用固定 token family；Z-Image 未验证 compile | family compatibility 必须关闭不适用参数 |
 
-Plus every `configs/methods/*.toml` LoRA target list was hand-tuned against Anima block names.
+## 修改检查清单
 
-So the abstraction boundary has to extend past "load the model" into "how does an adapter attach + how does a training step run." Z-Image will likely have a different cross-attention shape (probably no LLMAdapter, different text-encoder fan-in), which means the `forward_for_loss` slot on the protocol is the load-bearing one — and getting it right means picking which adapters you want to support on Z-Image day one.
+新增或扩展模型族时至少同步检查：
 
-## Adapter portability
+1. `MODEL_FAMILY_REGISTRY` 的别名、cache、adapter、推理和 attention 能力。
+2. `library/training/model_loading.py`、`batch_step.py` 及 preprocessing strategy 的完整 handler。
+3. network target、metadata stamp、保存/加载和 resume round-trip。
+4. WebUI family 过滤、preflight 文案、训练预览和 image-test 的真实能力差异。
+5. compatibility matrix 是否对无效配置 fail closed，且没有“接受但忽略”。
+6. family-specific cache suffix、latent normalization、text mask 和 4D/5D latent 边界测试。
 
-Not all adapter families port equally. Rough triage:
-
-| Adapter | Portability to a new DiT | Why |
-|---------|--------------------------|-----|
-| LoRA / OrthoLoRA | High | Operates on any `nn.Linear`; only target list needs to change |
-| ReFT | High | Wraps block forwards; needs a block-naming pattern only |
-| HydraLoRA | High-medium | Same target story as LoRA + a router on the Linear's input |
-| T-LoRA | High | Timestep mask is model-agnostic |
-| Modulation guidance | Medium-low | Assumes AdaLN coefficients of a specific shape; needs `pooled_text_proj` slot |
-| Postfix / Prefix | Low | Hardcoded to Anima cross-attention shape and module names |
-| IP-Adapter | Low | Per-block `to_k_ip` / `to_v_ip` parallel projections + Anima cross-attn patch |
-| EasyControl | Low | Two-stream block forward + per-block cond LoRA + scalar gate, all bound to Anima block internals |
-
-Day-one Z-Image with **LoRA + ReFT + HydraLoRA** is realistic. Porting IP-Adapter / EasyControl / postfix is a per-adapter project against the new model's attention layout.
-
-## Effort estimate
-
-Realistic scope:
-
-- **3–5 days** for LoRA-only Z-Image (factory + config + cache suffixes + LoRA target spec + Z-Image DiT class + strategy subclass).
-- **~2 weeks** if all adapter families need to port across.
-
-The factory itself is half a day; the rest is the long tail of "where else did Anima leak."
-
-## Recommended next step before committing
-
-Read Z-Image-Base's actual block structure and decide:
-
-1. Does its self-attention / cross-attention layout look enough like Anima's that `attention_dispatch.py` runs unchanged?
-2. Does it use a separate text encoder + VAE pipeline we can cache the same way (different suffix, same flow)?
-3. Are its block names regular enough to fit a `lora_target_spec()`?
-
-If all three are yes, this is a ~week of work. If any are no, scope grows accordingly — most likely (3) is fine, (2) is fine, and (1) is the swing factor.
-
-## Out of scope for this doc
-
-- The actual `ModelFamily` interface design (this is a sketch; real signatures will fall out of the first port).
-- Backward compatibility for existing `_anima.npz` caches (a config-default keeps them working).
-- Whether to share or fork preprocessing scripts (`preprocess/cache_*.py`) — likely share, parameterized by family.
-- ComfyUI custom-node story for a second model — separate concern.
+相关回归入口包括 `tests/test_model_family_registry.py`、`tests/test_z_image_family.py`、
+`tests/test_z_image_block_swap.py`、`tests/test_krea2_*` 和 WebUI family/compatibility 测试；实际文件名
+以当前 `tests/` 为准。

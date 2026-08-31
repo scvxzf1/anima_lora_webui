@@ -1,9 +1,13 @@
 # Krea-2-Raw 迁移 阶段 3: LoRA 注入点 (findings)
 
-状态：稳定
-适用版本：当前 main
+状态：历史阶段快照 / 阶段 3 已完成
+适用版本：阶段 3 LoRA 注入落地时点；不作为当前完整能力说明
 入口命令：`.venv/bin/python scripts/krea2/probe_lora_targets.py` + `.venv/bin/python scripts/krea2/probe_lora_attach.py`
 相关代码：`library/models/krea2_raw/lora_targets.py`、`networks/lora_anima/config.py`、`networks/lora_anima/network.py`、`scripts/krea2/probe_lora_targets.py`、`scripts/krea2/probe_lora_attach.py`
+
+> “已知限制 / 后续”保留阶段 3 当时状态；block swap 已落地，attention 当前使用
+> Krea-2 专用 backend 而非 Anima 通用 dispatch。当前边界见
+> [`../multi_model_support.md`](../multi_model_support.md)。
 
 ## 目标
 
@@ -145,13 +149,15 @@ tests/test_method_network_lifecycle.py: 9 passed
 | attach 后 forward | 133ms (vs 基线 ~90ms, monkey-patch 开销) |
 | LoRA 初始 delta | 0 (up zero-init, 验证 hook 不破坏 forward) |
 
-## 已知限制 / 后续
+## 阶段 3 截止时的已知限制 / 后续（历史快照）
 
 - **未验证反向传播**: 阶段 4 训练串通做 (loss.backward + optimizer.step)。
 - **未验证 TE LoRA**: 首日不挂, 阶段 4 后再考虑 Qwen3-VL 注入。
 - **未验证采样**: 阶段 5 推理串通做。
-- **未集成 block swap**: 阶段 5 在 13B 上跑大分辨率时启用。
-- **未集成 attention_dispatch**: Krea-2 保留原 `sdpa_kernel(CUDNN_ATTENTION)`
-  + fallback, 不走 anima `networks/attention_dispatch.py` (避免 anima 风险面)。
+- **阶段 3 当时未集成 block swap**：后续已在
+  `library/models/krea2_raw/dit.py` 接入共享 offloader，当前不再是能力缺口。
+- **阶段 3 当时未集成 Anima `attention_dispatch`**：Krea-2 仍保留专用
+  `library/models/krea2_raw/attention_backend.py`，不直接复用 Anima 的通用 layout
+  dispatch；这是当前的架构边界，而不是遗漏。
 - **`_DEFAULT_EXCLUDE` 兜底**: anima 那条 `.*(_modulation|_norm|...).*` 对 Krea-2
   的 `mod.lin` (Parameter) 本不命中 (非 Linear), 共存无害。

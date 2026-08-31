@@ -1,11 +1,14 @@
 # Krea-2-Raw 迁移阶段 0 可行性确认
 
-状态：进行中
-适用版本：当前 main（docs/proposal/krea2_raw_migration.md 阶段 0 落地）
+状态：历史阶段快照 / 阶段 0 已完成
+适用版本：2026-08-08 阶段 0；不作为当前能力说明
 日期：2026-08-08
 入口命令：`python scripts/krea2/probe_vae.py`（R2 验证脚本）
 相关代码：`scripts/krea2/probe_vae.py`、`library/models/qwen_vae.py`、权重 `models/{diffusion_models,text_encoders,vae}/`
 相关提案：[`../proposal/krea2_raw_migration.md`](../proposal/krea2_raw_migration.md)、[`../proposal/krea2_raw_migration_notes.md`](../proposal/krea2_raw_migration_notes.md)
+
+> 本文保留阶段 0 当时的开放问题与下一步；当前能力以
+> [`../multi_model_support.md`](../multi_model_support.md) 和实时源码为准。
 
 > 阶段 0 的可行性确认实验记录。权重三件已就位（DiT 26.3GB + TE Qwen3-VL 8.9GB + VAE 253MB，源 `Comfy-Org/Krea-2` 单文件 bf16）。本文件记录 R1/R2/R4 的定论与基准。
 

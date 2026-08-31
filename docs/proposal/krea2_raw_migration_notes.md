@@ -1,11 +1,13 @@
 # Krea-2-Raw 迁移注意事项与风险登记册
 
-状态：提案 / 未实现（配套 [`krea2_raw_migration.md`](krea2_raw_migration.md) 的执行级踩雷手册）
-适用版本：当前 main（尚无代码落地）
+状态：历史风险登记册 / 核心迁移已落地 / 待归档
+适用版本：2026-08-08 迁移执行快照；正文的“待验证/未实现”不代表当前代码
 日期：2026-08-08
 
-> **一句话：** 这是执行迁移时逐条核对的清单，不是设计文档。每条风险标注触发条件 → 现象 → 缓解或"何时该暂停重估"。
-> 主提案见 [`krea2_raw_migration.md`](krea2_raw_migration.md)；架构边界见 [`../multi_model_support.md`](../multi_model_support.md)。
+> **一句话：** 这是迁移当时逐条核对的历史清单，不是当前能力说明。每条风险保留原始
+> 触发条件、现象和缓解过程；已经落地的结论以当前源码、
+> [`krea2_raw_migration.md`](krea2_raw_migration.md) 顶部状态和
+> [`../multi_model_support.md`](../multi_model_support.md) 为准。
 
 ---
 

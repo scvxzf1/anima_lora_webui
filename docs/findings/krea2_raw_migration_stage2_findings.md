@@ -1,11 +1,14 @@
 # Krea-2-Raw 迁移阶段 2：DiT 本体移植 + 加载器
 
-状态：完成
-适用版本：当前 main（library/models/krea2_raw/{dit.py,weights.py} 落地）
+状态：历史阶段快照 / 阶段 2 已完成
+适用版本：阶段 2 DiT/loader 落地时点；不作为当前完整能力说明
 日期：2026-08-08
 入口命令：`python scripts/krea2/probe_dit.py`（阶段 2 验证脚本）
 相关代码：`library/models/krea2_raw/dit.py`、`library/models/krea2_raw/weights.py`、`scripts/krea2/probe_dit.py`
 相关提案：[`../proposal/krea2_raw_migration.md`](../proposal/krea2_raw_migration.md)
+
+> “已知限制 / 后续”保留阶段 2 当时状态；compile、block swap、lazy loading 等后续
+> 已落地能力以 [`../multi_model_support.md`](../multi_model_support.md) 和实时源码为准。
 相关前置：[`krea2_raw_migration_stage0_findings.md`](krea2_raw_migration_stage0_findings.md)（R4/R8 定论）
 
 > 阶段 2 出口验证：SingleStreamDiT 忠实移植 mmdit.py + 单文件 strict 加载 + 单 latent forward shape 对齐。
@@ -87,12 +90,20 @@ SingleStreamDiT.forward(img, context, t, pos, mask) -> Tensor
 
 ---
 
-## 已知限制 / 后续
+## 阶段 2 截止时的已知限制 / 后续（历史快照）
 
-- **未接入 anima `attention_dispatch`**：Krea-2 用原版 `sdpa_kernel(CUDNN_ATTENTION)` + fallback。后续若要与 anima 共享 backend layout 转换（SDPA/flash/xformers），需在 `networks/attention_dispatch.py` 加 Krea-2 路径。首日不接入，避免改动 anima attention dispatch 风险面。
-- **未接入 `compile_blocks()`**：Krea-2 DiT 的 block forward 签名与 anima `Block._forward` 不同（single-stream vs dual-stream），anima 的 native-flatten + compile 机制不能直接套。阶段 4 训练串通时若需编译，单独实现 Krea-2 的 compile 路径。
-- **未接入 block swap / lazy loading**：阶段 5 推理串通时实现（Krea-2 12.8B 在 PG199 上单 forward 够，但训练 + LoRA + 优化器需要 swap）。
-- **context 仍是合成随机张量**：真实 Qwen3-VL 多层 hidden states 在阶段 1 文本链路完成后才能接入。
+- **阶段 2 当时未接入 Anima `attention_dispatch`**：Krea-2 使用原版
+  `sdpa_kernel(CUDNN_ATTENTION)` + fallback。当前仍由
+  `library/models/krea2_raw/attention_backend.py` 维护专用 backend（仅按需复用
+  provider 可用性检查），不等同于复用 Anima 的通用 layout dispatch。
+- **阶段 2 当时未接入 `compile_blocks()`**：Krea-2 DiT 的 block forward 签名与
+  Anima `Block._forward` 不同（single-stream vs dual-stream），不能直接套用 Anima
+  的 native-flatten + compile。后续已实现 Krea-2 自有 compile 路径，当前入口见
+  `library/models/krea2_raw/dit.py::compile_blocks`。
+- **阶段 2 当时未接入 block swap / lazy loading**：后续阶段 5/6 已补齐，当前入口见
+  `library/models/krea2_raw/dit.py` 的 offloader/block-swap 接口。
+- **context 当时仍是合成随机张量**：阶段 1 完成后已由真实 Qwen3-VL hidden states
+  和独立 text-cache 链路替代。
 
 ## 下一步
 

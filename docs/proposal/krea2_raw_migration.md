@@ -1,13 +1,14 @@
 # Anima → Krea-2-Raw 迁移提案
 
-> **2026-08-10 当前状态说明：** 训练、标准单提示词推理、Web 模型配置、NF4、
+> **2026-08-31 当前状态说明：** 训练、标准单提示词推理、Web 模型配置、NF4、
 > compile/Flash 和 checkpoint 主链已经落地；本文保留迁移阶段的原始计划与历史状态，
 > 其中“推理 dispatch 待续”等阶段性描述不再代表当前代码。当前兼容边界、风险和测试缺口
-> 以 [`../findings/backend_multi_model_audit_20260810.md`](../findings/backend_multi_model_audit_20260810.md)
-> 为准。
+> 以 [`../multi_model_support.md`](../multi_model_support.md) 和
+> [`../findings/backend_multi_model_audit_20260810.md`](../findings/backend_multi_model_audit_20260810.md)
+> 的后续加固记录为准。
 
-状态：推进中（阶段 0-5 完成；阶段 6 训练侧配置收口里程碑达成——`forward_for_loss`+`model_family` 串通 train.py、1024 grad-ckpt 实测通过、`ss_model_family` stamp 闭环+WebUI 表单闭合；推理侧 generation.py family dispatch 待续）
-适用版本：当前 main（阶段 0-6 训练侧已落地，提交 `0f8f934c`；推理侧 family dispatch 进行中）
+状态：历史迁移计划 / 核心阶段 0-6 已落地 / 待归档
+适用版本：正文是 2026-08-08 的迁移计划；当前能力以多模型说明和 registry 为准
 日期：2026-08-08
 入口命令：见各阶段 findings；探针入口 `.venv/bin/python scripts/krea2/probe_{train,sample,blockswap,checkpoint}.py`
 
@@ -22,7 +23,9 @@
 
 相关文档：
 
-- 多 base model 抽象边界 sketch：[`../multi_model_support.md`](../multi_model_support.md)（本提案是该 sketch 在 Krea-2-Raw 上的首个具体化；`ModelFamily` Protocol / `model_family` config key / cache suffix 隔离 / `forward_for_loss` 承重接口 均沿用其设计）
+- 当前多模型实现边界：[`../multi_model_support.md`](../multi_model_support.md)（本提案是
+  Krea-2-Raw 迁移的历史设计来源；最终实现采用静态 registry + 完整 handler dispatch，
+  没有照搬本文拟议的动态 `ModelFamily` Protocol）
 - 提案索引：[`README.md`](README.md)
 - Anima 架构基线：[`../structure/anima.md`](../structure/anima.md)
 
@@ -48,7 +51,8 @@
 2. **首日不支持编辑类 adapter。** IP-Adapter / EasyControl / postfix / DirectEdit / img2img / inversion 在 Krea-2 上首日均不做——Krea-2 官方 `autoencoder.py` 只暴露 `decode`，编辑链路工程量陡增，留待后续提案。
 3. **首日不支持 Turbo 蒸馏 / DCW / Spectrum / mod-guidance。** 这些是 Anima 特有 cross-attn / AdaLN 假设的产物，Krea-2 single-stream + light bias modulation 不直接对应，暂不做。
 4. **不引入 Qwen3-VL 的图像输入通道。** Qwen3-VL 虽是 VLM，但 Krea-2 把它当文本编码器用（产出文本 conditioning），不喂参考图。style reference / prompt expansion 等 Krea 产品功能不在本提案范围。
-5. **不写 ComfyUI custom node 的 Krea-2 vendor 副本。** 这是独立关切，见 [`../multi_model_support.md`](../multi_model_support.md) Out of scope。
+5. **不写 ComfyUI custom node 的 Krea-2 vendor 副本。** 这是独立关切，不随训练和推理
+   family dispatch 自动获得支持。
 6. **不重排 `DCW_ASPECT_BUCKETS`。** 该表绑已发布 fusion-head checkpoint，即使 Krea-2 用新 bucket 表也保持 anima 的 DCW 表冻结。
 
 ## 2. 现状锚点：架构对照
@@ -81,7 +85,9 @@
 
 ## 3. 设计：沿 `ModelFamily` 边界落地
 
-直接沿用 [`../multi_model_support.md`](../multi_model_support.md) 提出的边界，不另起设计。Krea-2-Raw 是该 sketch 的首个具体化实例。
+以下是 2026-08-08 的拟议边界。Krea-2-Raw 后来成为多模型实现的首个第二 family，但当前
+代码采用 `ModelFamilySpec` registry 和显式 handler 表；实际目录与协议以
+[`../multi_model_support.md`](../multi_model_support.md) 为准。
 
 ### 3.1 命名空间与目录
 
@@ -146,7 +152,8 @@ model_family = "anima"   # 默认；切到 "krea2_raw" 走 Krea-2 路径
 `library/io/cache.py:22-23` 当前 `_anima.npz` / `_anima_te.safetensors` 硬编码。迁移后读 `family.cache_suffix`：
 
 - Krea-2 用 `_krea2.npz` / `_krea2_te.safetensors`，与 anima 缓存在 `post_image_dataset/` 共存不冲突。
-- Anima 旧缓存保持原后缀，向后兼容（[`../multi_model_support.md`](../multi_model_support.md) Out of scope 的 config-default 保留）。
+- Anima 旧缓存保持原后缀，向后兼容；当前 cache 隔离契约见
+  [`../multi_model_support.md`](../multi_model_support.md)。
 
 ## 4. 迁移路径：按子系统分层
 
@@ -202,7 +209,7 @@ model_family = "anima"   # 默认；切到 "krea2_raw" 走 Krea-2 路径
 | **3 LoRA 注入** | `library/models/krea2_raw/lora_targets.py`，注入点按 single-stream 重做 | 单 block LoRA attach + forward 正常 | 阶段 2 ✅ 完成（[stage3 findings](../findings/krea2_raw_migration_stage3_findings.md)）|
 | **4 训练串通** | `family.forward_for_loss` + `noise_target.py` 改造 + 训练循环（含 grad-ckpt，落地见 [krea2_raw_gradient_checkpointing.md](krea2_raw_gradient_checkpointing.md)） | 单 prompt 过拟合 loss 下降；小数据集 sweep | 阶段 1+2+3 ✅ 完成（[stage4 findings](../findings/krea2_raw_migration_stage4_findings.md)）|
 | **5 推理串通** | `generation.py` + flow-matching sampler + mu shift | `python tasks.py test` 出图 | 阶段 2+3 ✅ 完成（[stage5 findings](../findings/krea2_raw_migration_stage5_findings.md)）|
-| **6 配置/WebUI/下载/命名收口** | `model_family` 键 + 下载命令 + sidecar 命名 + WebUI 表单 + 测试 + docs | `model_family="krea2_raw"` 全链路可用，anima 路径回归通过 | 阶段 4+5 推进中：**块交换 + 检查点探针出口完成**（[stage6 findings](../findings/krea2_raw_migration_stage6_findings.md)）；**训练侧配置收口里程碑达成**（`forward_for_loss`+`model_family` 串通 train.py、1024 grad-ckpt 实测通过 loss 0.465→0.198、`ss_model_family` stamp 闭环+WebUI `model_family` 表单闭合）；推理侧 generation.py family dispatch 待续 |
+| **6 配置/WebUI/下载/命名收口** | `model_family` 键 + 下载命令 + sidecar 命名 + WebUI 表单 + 测试 + docs | `model_family="krea2_raw"` 全链路可用，anima 路径回归通过 | ✅ 核心收口完成：块交换、检查点、`forward_for_loss`、1024 grad-ckpt、metadata/WebUI 与独立 inference runner 已落地；原始阶段快照见 [stage6 findings](../findings/krea2_raw_migration_stage6_findings.md) |
 
 ## 6. 验证计划
 
@@ -255,13 +262,16 @@ Krea-2 钉死 `transformers==4.57.1`、`torch>=2.9`、Python>=3.12。Anima 训�
 
 ## 9. 与其他提案的关系
 
-- **[`../multi_model_support.md`](../multi_model_support.md)**：直接前身。本提案是其 sketch 的首个具体化实例，沿用 `ModelFamily` Protocol / `model_family` config key / cache suffix 隔离 / `forward_for_loss` 承重接口设计。该文档的"推荐下一步"三问（attention dispatch / TE+VAE 缓存 / block 名规则）已在本提案阶段 0 回答：attention dispatch 不变（通用）；TE+VAE 同流程缓存（改 suffix）；block 名规则待阶段 0 dump key 后确认。
+- **[`../multi_model_support.md`](../multi_model_support.md)**：当前实现事实入口。本提案是历史
+  设计来源；`model_family`、cache 隔离和 family-specific forward 已落地，但最终形态是
+  `ModelFamilySpec` registry + 显式 handler，不是本文草拟的动态 Protocol/factory 目录树。
 - **[`convrot_w8a_optimization_roadmap.md`](convrot_w8a_optimization_roadmap.md)** / **[`convrot_w8a_training_plan.md`](convrot_w8a_training_plan.md)**：ConvRot 优化绑 Anima cross-attn / AdaLN 假设，Krea-2 首日不做 ConvRot，互不阻塞。
 - **[`turbo_anima_dmd_lora.md`](turbo_anima_dmd_lora.md)**：Turbo 蒸馏绑 Anima，Krea-2 首日不做，互不阻塞。Krea-2 自家有 Turbo 变体（`krea/Krea-2-Turbo`），官方工作流是"LoRA 在 Raw 上训练，直接在 Turbo 上推理"，但本提案首日只支持 Raw。
 
 ## 10. 不在本提案范围
 
-- `ModelFamily` Protocol 的最终签名（从 sketch 具体化时由首次 port 落地，本提案只画边界）。
+- `ModelFamily` Protocol 的最终签名；实际实现选择了静态 `ModelFamilySpec` registry 和
+  operation-specific handler，本提案中的 Protocol 仅保留为历史设计。
 - Anima `library/anima/` → `library/models/anima/` 的搬家型重构本身（可作独立前置子提案推进，不阻塞本提案设计）。
 - ComfyUI custom node 的 Krea-2 vendor 副本（独立关切）。
 - Krea-2 编辑 / img2img / inversion / IP-Adapter / EasyControl（官方无，工程量大，留待后续提案）。

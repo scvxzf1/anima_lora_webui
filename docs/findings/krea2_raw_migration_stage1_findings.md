@@ -1,9 +1,12 @@
 # Krea-2-Raw 迁移 阶段 1: 文本链路 (findings)
 
-状态：稳定
-适用版本：当前 main
+状态：历史阶段快照 / 阶段 1 已完成
+适用版本：阶段 1 文本链路落地时点；不作为当前完整能力说明
 入口命令：`.venv/bin/python scripts/krea2/probe_text.py`
 相关代码：`library/models/krea2_raw/strategy.py`、`library/models/krea2_raw/configs/qwen3vl_4b/`、`scripts/krea2/probe_text.py`
+
+> 本文的限制与下一步只代表阶段 1 截止状态；当前能力以
+> [`../multi_model_support.md`](../multi_model_support.md) 和实时源码为准。
 
 ## 目标
 

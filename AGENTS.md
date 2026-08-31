@@ -1,7 +1,7 @@
 # AGENTS.md
 
 本文件是给 AI Agent 长期维护本仓库用的根级工作协议。它覆盖整个
-`anima_lora` 仓库；子目录如果另有 `AGENTS.md` 或 `CLAUDE.md`，以离目标文件更近
+本仓库；子目录如果另有 `AGENTS.md` 或 `CLAUDE.md`，以离目标文件更近
 的说明为补充约束。根目录曾经通过 `@CLAUDE.md` 引用维护说明，但当前根级
 `CLAUDE.md` 可能不存在，因此不要依赖外部展开，优先以本文件和实时源码为准。
 
@@ -103,13 +103,27 @@
 ## 项目地图
 
 - `tasks.py`：所有稳定命令注册表。
-- `train.py`：`AnimaTrainer` 主训练入口。
+- `train.py`：统一训练入口；`AnimaTrainer` 类名作为兼容 facade 保留，实际按
+  `model_family` dispatch Anima、Krea-2 和 Z-Image。
 - `inference.py`：独立推理入口。
 - `anima_lora/`：可安装包门面，给嵌入式调用暴露精选 API。
 - `library/`：训练、推理、配置、数据、runtime、模型、captioning、vision 等核心逻辑。
 - `library/anima/`：Anima DiT、权重加载、token/text strategy 和模型配置。
-- `library/models/krea2_raw/`：Krea-2-Raw 第二模型族（迁移进行中，见 `docs/proposal/krea2_raw_migration.md`）。`dit.py` 是 single-stream MMDiT 裸移植 + 块交换接口（`enable_block_swap`/`move_to_device_except_swap_blocks`/`_run_blocks` 复用 anima `ModelOffloader`，对 SingleStreamBlock forward 透明，阶段 6 探针验证）+ 梯度检查点（`SingleStreamBlock._forward` 纯计算 + `forward` 用 `torch_checkpoint(use_reentrant=False)` 分发，DiT 级 `enable_gradient_checkpointing` 遍历 blocks，移植自 anima models.py:1691-1740/1942；1024×1024 训练 fit PG199 32GB 的正解，block swap 救不了激活瓶颈），`weights.py` 是单文件 strict 加载器（路径 B，非 diffusers；加 `nf4`/`nf4_path` 形参，`nf4` 走在线量化 `quantize_dit_to_nf4`，`nf4_path` 走磁盘预量化 `load_nf4_dit_into` 小卡免在线量化 26GB bf16），`quantize.py` 是 NF4 量化模块（`quantize_dit_to_nf4` 在线量化 + `save_nf4_dit`/`load_nf4_dit_into` 落盘/加载，走 bnb 0.49.2 官方 `QuantState.as_dict(packed=True)`+`from_prequantized` round-trip，落盘 6.61GB `models/diffusion_models/krea2_raw_nf4.safetensors`），`lora_targets.py` 是 Krea-2 LoRA 注入点 spec（family-aware target，复用 anima LoRA network），`strategy.py` 是 Qwen3-VL 文本链路（ChatML tokenize + 12 层 MFA + R1 mask 屏蔽 padding 契约，复用 anima text_strategies 基类；`load_outputs_npz` 返回 `[hiddens, mask, caption_dropout_rate]` 与 anima cache 末位 rate 约定对齐，避免 `split_cached_text_encoder_outputs` 误把 mask 拆成 rate），`family.py` 是训练侧承重接口 `forward_for_loss`（5D latent→DiT forward→5D velocity，flow-matching，训练+推理共用，阶段 4 探针验证 + 阶段 6 正式串通 train.py），`sampling.py` 是推理采样器（flow-matching Euler ODE + log-sigmoid mu shift + CFG，移植自 krea-ai/krea-2 sampling.py，非 anima sampling 公式，阶段 5 探针验证），`inference_runner.py` 是推理侧 family dispatch 承重模块（反上帝守则，所有 Krea-2 推理新逻辑集中此，generation.py/inference.py 只加薄 dispatch；`_reject_anima_only_extras` 拒 anima-only 旁路 + `load_krea2_dit_for_inference` strict 加载+LoRA attach + `prepare_krea2_text` Qwen3-VL encode 后释放 TE 保懒加载不变量 + `generate_krea2` randn 5D 初始 latent + forward_for_loss + sampling.sample，VAE decode/save 仍走 anima 路径）。阶段 6 配置收口里程碑：`forward_for_loss` + `model_family` 正式串通 train.py，1024×1024 grad-ckpt 真实训练实测通过（loss 0.465→0.198，显存 peak 27.9GB，checkpoint 92MB，见 `docs/findings/krea2_raw_migration_stage6_findings.md`）；`ss_model_family` metadata stamp 闭环（`LoRANetworkCfg.model_family` 字段 + `persistence` 仅非 anima 盖 `ss_model_family` 保 anima 字节不变 + `factory.create_network_from_weights` 读回；`bootstrap.build_net_kwargs` 显式注入 `resolve_model_family(args)` 走 env 兜底，不靠 `NETWORK_KWARG_ALLOWLIST`）+ WebUI 全局设置 `model_family` 表单（`settings_service.GLOBAL_FAMILY_KEYS` + `index.html` 模型卡片 02 加 `<select>`，anima 选项存空走 env 兜底链）已完成；推理侧 family dispatch 已闭合（`inference_runner.py` 独立路径 + `inference.py --model_family` dispatch + `image_test_service.py` argv 注入，CLI 28 步出图实测通过）。NF4×blockswap×完整检查点 三轴显存优化落地 + 5 格六维消融矩阵（`offloading.py`/`block_swap_masters.py` 加 `Params4bit` 分支 deepcopy master + 整体搬运；`compat_matrix.py` `nf4_block_swap_unverified` error 降级 `nf4_block_swap_host_ram` warning；`cli_args.py --nf4_prequantized_path` + `model_loading.py` 接线；`probe_nf4_ablation.py`+`run_nf4_ablation.sh` 5 格 PG199 1024×1024 30 步六维基准：NF4 省显存 72%（29.45→10.49GB）仅慢 3.6% cos=0.9972，块交换主战场 host RAM（18.18GB vs bf16 22.64GB pinned master 曾宕机）非 GPU，ckpt 续训 delta=0，三轴全开 10.45GB+18.18GB+无损续训=8-12GB 卡可用配置，见 `docs/proposal/krea2_nf4_blockswap.md` + `docs/findings/krea2_nf4_ablation_findings.md`）。自包含探针脚本在 `scripts/krea2/probe_{train,sample,blockswap,checkpoint}.py`，NF4 系列探针 `scripts/krea2/probe_nf4{,_lora,_train,_save,_blockswap,_blockswap_compat,_ablation,_ablation_1024}.py` + 调度 `run_nf4_ablation.sh` + 块交换稳态 `probe_blockswap_steady.py`，TE 缓存脚本 `scripts/krea2/preprocess_te_cache.py`。
-- Krea-2 3080 速度诊断：1024² NF4+swap20 约 12s/it 的主因是 3080 大矩阵吞吐，非 H2D 或降频；同机对照中 3080 BF16 Linear 比 PG199 慢 4.4-5.2×，NF4 Linear 慢 4.1-4.6×，attention 慢 2.83×。生产稳态不每步调 `prepare_block_swap_before_forward`；探针每步调会多计约 196ms。文本 padding 尾裁剪在两卡均无收益，不要重复投入。后续优先做选择性 grad-checkpoint 与 Krea-2 per-block compile 前置消融，见 `docs/findings/krea2_3080_speed_stage1.md`。
+- `library/models/family_registry.py`：模型族名称、别名、cache、adapter、推理和 attention
+  能力的单一事实源；operation handler 必须覆盖全部已注册 family。
+- `library/models/krea2_raw/`：Krea-2-Raw 第二生产模型族（迁移过程见
+  `docs/proposal/krea2_raw_migration.md`）。`dit.py` 提供 single-stream MMDiT、block swap、
+  checkpoint 和 fixed resident compile；`weights.py` / `quantize.py` 负责 strict BF16/NF4
+  加载；`strategy.py`、`family.py`、`sampling.py`、`inference_runner.py` 分别承载 Qwen3-VL
+  cache、训练 forward、Euler flow sampling 和独立推理 dispatch。当前只支持 plain LoRA、
+  single/euler 推理以及 `torch`/`sdpa`/显式 `flash` attention。完整迁移与消融证据进入
+  `docs/findings/`，不要继续把阶段日志堆进本项目地图。
+- `library/models/z_image/`：Z-Image 训练与训练预览 v1。使用官方 Diffusers transformer、
+  Flux VAE latent normalization、Qwen3 prompt/cache 和 plain LoRA；`family.py` 提供
+  flow-matching 训练契约，`strategy.py` 使用 `_z_image_te.safetensors`，`weights.py` 支持
+  Diffusers 目录和受校验的单文件组件，`block_swap.py` 把官方 `model.layers` 接到共享
+  `ModelOffloader`。通用 image-test/独立推理尚未注册。
+- Krea-2 RTX 3080 速度诊断（最终）：1024² NF4+swap20 约 12s/it 的主因是大矩阵吞吐，长窗口再叠加热降频；同机对照中 3080 BF16 Linear 比 PG199 慢 4.4-5.2×，NF4 Linear 慢 4.1-4.6×，attention 慢 2.83×。选择性 checkpoint、fixed resident compile、Flash varlen、NF4 和 block-swap 已完成消融；生产建议保留 NF4 + full checkpoint + fixed resident compile，并按显存选择 swap20-24，Flash 仅显式 opt-in。不要每步调 `prepare_block_swap_before_forward`（探针会多计约 196ms），也不要把 padding 尾裁剪当作优化方向。详见 `docs/findings/krea2_3080_speed_final.md` 和 `docs/findings/krea2_3080_speed_comparison_extended.md`。
 - Krea-2 选择性 checkpoint：PG199 32GB 可用 `gradient_checkpointing=false` + `selective_checkpoint="every_other"`，1024² NF4 实测 28.46GB / 2.90s，比 full checkpoint 快 13.9%。RTX 3080 swap20 放开单 block 仍 OOM，10GB 卡必须保持 full checkpoint。Krea 目前只支持 `off/every_other`，其他 Anima selective 模式显式拒绝，见 `docs/findings/krea2_3080_speed_stage2.md`。
 - Krea-2 compile：固定长度编译目标必须是 adapter apply/load 后的 block `_forward`，不要编译 checkpoint wrapper 或 swapped tail。PG199 NF4 full-ckpt 实测 3.370→2.726s（-19.1%）。RTX 3080 swap20 的冷态 12.140→11.744s 不能外推为持续收益；长窗口会漂到 12.65s，compile 的可靠价值是 peak 约 6.15GB 且避免 eager 首个 backward OOM。24 buckets 已验证只形成 4608/4864 两张 resident 图并默认开启 fixed compile，见阶段 3、5、9 findings。
 - Krea-2 PG199 叠加边界：compile + every-other（14/28 checkpoint）会 OOM；compile + 16/28 checkpoint 的 20 步稳态为 2.408s/it（-28.5%），但峰值 31.55GB 无余量，仅作 PG199 探针实验点，不进默认配置或通用 CLI。安全档仍是 full checkpoint + compile（2.726s/it / 11.06GB）。RTX 3080 不适用 selective 叠加，见 `docs/findings/krea2_3080_speed_stage4.md`。
@@ -195,6 +209,10 @@ configs/base.toml
   - `{stem}_{WxH}_anima.npz`：VAE latent cache。
   - `{stem}_anima_te.safetensors`：text encoder cache。
   - `{stem}_anima_pe.safetensors`：PE-Core vision feature cache。
+  - `{stem}_krea2_te.safetensors`：Krea-2 Qwen3-VL text cache；Krea-2 latent 仍复用共享
+    VAE/Anima latent cache 策略。
+  - `{stem}_{WxH}_z_image.npz`：Z-Image Flux VAE latent cache（分辨率 infix 由调用方加入）。
+  - `{stem}_z_image_te.safetensors`：Z-Image text encoder cache。
 
 ## 方法和能力入口
 
@@ -229,6 +247,14 @@ cross-attention softmax 的 attention sinks。
 
 - native shapes 是当前唯一模式；不要恢复旧的 pad-to-static 4096 路径。
 - `compile_blocks()` 会开启 native-shape flatten，让图按 token count 复用。
+- `compile_seq_bands` 是 Anima-only 实验开关，默认 `false`，且必须同时启用
+  `compile_dynamic_seq=true`；Krea-2 和 Z-Image 由 compatibility layer 自动关闭。
+- 初始 bands 来自当前 `bucket_resolutions`，缺省才回退 `CONSTANT_TOKEN_BUCKETS`。采样事件
+  发现新 prompt token count 时由 `ensure_training_compile_seq_range()` 加 singleton range
+  并重编译，不要宣称 canonical bucket 自动包含任意 sample 分辨率。
+- 64GB synthetic 多 band A/B 数值通过，但比 union 慢约 43--44% 且无显存收益，生产默认
+  继续使用 union dynamic-seq。证据见
+  `docs/findings/anima_perband_dynamic_seq_20260830.md`。
 - 改 bucket 表、token count、compile flatten、sample prompt 分辨率参与预算时，必须补
   shape/invariant 测试。
 - DCW aspect bucket 的顺序会影响已发布 fusion-head checkpoint，不要随意重排。
@@ -253,6 +279,8 @@ DiT -> attach network -> training loop
 `torch.compile` 必须 trace adapter monkey-patched forward，所以 `compile_blocks()` 必须在
 `network.apply_to` 和 `load_weights` 后执行。复用 `library/runtime/harness.py::build_anima`
 或 `compile_blocks_for_training()`，不要在 bench、scripts、preprocess 中手写易错顺序。
+distillation 的 `compile_dit_blocks_for_pool()` 仍使用一个 union range，不复用训练侧
+`compile_seq_bands`。
 
 ### DiT Latent Shape
 
@@ -261,6 +289,20 @@ DiT forward 使用 5D latent：`(B, C, T=1, H, W)`，单例时间轴是 dim 2。
 - VAE、cache、训练 inner loop、很多 spectral helper 使用 4D `(B, C, H, W)`。
 - 进入 DiT 前显式 `unsqueeze(2)`，离开 DiT 后显式 `squeeze(2)`。
 - 不要用裸 `squeeze()` 或 `squeeze(0)` 处理这个边界。
+
+### Model Family Dispatch 和 Z-Image
+
+- `MODEL_FAMILY_REGISTRY` 和 `dispatch_model_family()` 必须 fail closed；未知 family、缺失
+  handler、未注册推理 mode/sampler 不得回退 Anima。
+- Z-Image 当前只支持 plain LoRA、`torch`/`sdpa` attention、full checkpoint、训练和训练
+  preview；NF4、compile、Flash、selective/offloaded checkpoint 及通用推理均不支持。
+- Z-Image `blocks_to_swap=0` 表示关闭；启用时必须满足
+  `1 <= blocks_to_swap <= len(model.layers)-2`，当前 30 main layers 即 `1..28`。
+- Z-Image dataset/subset `caption_dropout_rate` 必须为 0；其 text cache 和 latent affine
+  不得借用 Anima/Krea sidecar 或 normalization。
+- 详细边界见 `docs/multi_model_support.md`，相关测试为
+  `tests/test_model_family_registry.py`、`tests/test_model_family_fail_closed.py`、
+  `tests/test_z_image_family.py` 和 `tests/test_z_image_block_swap.py`。
 
 ### LoRA Family 三轴路由
 
@@ -339,10 +381,11 @@ T-LoRA mask 是共享 buffer，每个 denoising step 更新一次。
 
 入口：
 
-- 后端路由：`web/routes/config.py`、`training.py`、`settings.py`、`preview.py`、`analysis.py`。
+- 后端路由：`web/routes/config.py`、`training.py`、`settings.py`、`preview.py`、`analysis.py`、
+  `tagging.py`。
 - 业务服务：`web/services/config_service.py`、`settings_service.py`、`training_service.py`、
   `preview_service.py`、`weight_analysis_service.py`。
-- 拆分业务：`web/services/config/` 和 `web/services/training/`。
+- 拆分业务：`web/services/config/`、`web/services/training/` 和 `web/services/tagging/`。
 - 前端 bootstrap：`web/static/app.js`。
 - 前端模块：`web/static/js/`。
 - DOM 锚点：`web/static/index.html`。
@@ -369,6 +412,9 @@ T-LoRA mask 是共享 buffer，每个 denoising step 更新一次。
 - sample prompts 默认 `configs/sample_prompts.txt`，按配置分叉到
   `configs/sample-prompts/<methods_subdir>/<config-stem>.txt`。保留注释、空行和用户格式。
 - 历史任务模式只保留 `collection` / `collections`，不要恢复旧 `config` / `flat` 模式。
+- Dragon tagging 工作台实现在 `web/static/js/dragon-ui/pages/tagging*.js`；`captioning.js`
+  只保留兼容导出。前端以 `/api/captioning` 为 canonical 路径，后端同时注册
+  `/api/tagging` alias；provider 凭据与调用必须留在服务端，审核草稿和写回任务不并入训练队列。
 
 常用 WebUI 验证入口见
 [前端健康度评分卡](docs/features/frontend-health-scorecard.md)和
@@ -420,6 +466,9 @@ T-LoRA mask 是共享 buffer，每个 denoising step 更新一次。
 - CLI 与编排实现分别位于 [`preprocess/`](preprocess/)、[`scripts/preprocess/`](scripts/preprocess/)
   和 [`library/preprocess/`](library/preprocess/)；修改前用 `rg` 定位当前调用链，不在总协议维护脚本清单。
 - 缓存路径和 sidecar 命名不要随意改；改后需要迁移说明或兼容读取。
+- caption source 支持 `.txt`、`.caption`、`captions.json` 和结构化 tag groups；variant cache 的
+  `caption_shuffle_variants` / `caption_tag_dropout_rate` 按环境变量、配置、默认值的优先级解析。
+  修改 caption 来源或 variant 参数后必须重建对应 text encoder cache。
 
 ## Daemon 和队列
 
