@@ -580,6 +580,10 @@ def _build_dataset_config_doc(
         subset.add("num_repeats", _positive_int(row.get("num_repeats"), 1))
         if _bool_value(row.get("is_reg"), False):
             subset.add("is_reg", True)
+            # Reg images keep prior preservation intact: point them at an empty
+            # mask_dir so external masks (matched by stem) never load, while the
+            # present mask_dir keeps the cache-completeness check exempted.
+            subset.add("mask_dir", "post_image_dataset/reg_masks")
         if not _bool_value(row.get("recursive"), True):
             subset.add("recursive", False)
         path_pattern = _normalize_path_pattern(row.get("path_pattern"))
