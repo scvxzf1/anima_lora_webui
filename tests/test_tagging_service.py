@@ -9,7 +9,7 @@ import toml
 from aiohttp import web
 from aiohttp.test_utils import TestServer
 
-from web.services.tagging import client, jobs, memory_log, prompt_presets, settings, storage
+from web.services.tagging import TaggingService, client, jobs, memory_log, prompt_presets, settings, storage
 
 
 def _patch_settings_paths(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -17,6 +17,171 @@ def _patch_settings_paths(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> No
     monkeypatch.setattr(settings, "SECRETS_FILE", tmp_path / ".anima-captioning-secrets.toml")
     for name in (*settings._ENV_BASE_URL, *settings._ENV_MODEL, *settings._ENV_KEY):
         monkeypatch.delenv(name, raising=False)
+
+
+def test_tagging_job_retention_prunes_oldest_terminal_jobs_but_keeps_active_jobs() -> None:
+    manager = jobs.TaggingJobManager(max_retained_jobs=2)
+    manager.jobs["running-oldest"] = {"state": "running"}
+    manager.jobs["completed-middle"] = {"state": "completed"}
+    manager.jobs["failed-newest"] = {"state": "failed"}
+
+    manager._prune()
+
+    assert list(manager.jobs) == ["running-oldest", "failed-newest"]
+    assert manager.set_job_retention(1) == 1
+    assert list(manager.jobs) == ["running-oldest"]
+
+    manager.jobs["queued-newest"] = {"state": "queued"}
+    manager._prune()
+    assert list(manager.jobs) == ["running-oldest", "queued-newest"]
+
+
+def test_tagging_job_rerun_reuses_source_job_and_resets_only_selected_item(monkeypatch) -> None:
+    manager = jobs.TaggingJobManager()
+    monkeypatch.setattr(
+        jobs,
+        "get_effective_settings",
+        lambda _profile_id: {
+            "provider": "openai_compatible",
+            "base_url": "https://vision.example.test/v1",
+            "model": "vision-test",
+            "system_prompt": "system prompt",
+            "_profile_id": "new-profile",
+            "_profile_name": "新接入",
+        },
+    )
+    manager.jobs["source-job"] = {
+        "id": "source-job",
+        "state": "completed",
+        "created_at": 1.0,
+        "started_at": 1.0,
+        "finished_at": 2.0,
+        "dataset_file": "configs/datasets/example.toml",
+        "dataset_index": 2,
+        "source": "training",
+        "profile_id": "old-profile",
+        "system_prompt": "system prompt",
+        "prompt": "user prompt",
+        "items": [
+            {
+                "id": "item-1",
+                "file": "nested/sample.png",
+                "url": "/api/images/sample.png",
+                "thumbnail_url": "/api/images/sample.png?thumbnail=1",
+                "caption": "caption on disk",
+                "proposed_caption": "old generated result",
+                "state": "ready",
+                "error": "",
+                "commit_error": "",
+                "attempts": 1,
+                "elapsed_ms": 10,
+                "_path": "/data/sample.png",
+            }
+        ],
+        "total": 1,
+        "completed": 1,
+        "failed": 0,
+        "canceled": 0,
+        "settings": {"provider": "openai_compatible", "model": "old-model"},
+        "_provider_settings": {"provider": "openai_compatible"},
+    }
+
+    async def fake_run_job(job):
+        for item in manager._run_items(job):
+            item["state"] = "ready"
+            item["proposed_caption"] = "new generated result"
+        manager._finish(job, manager._final_state(job))
+
+    monkeypatch.setattr(manager, "_run_job", fake_run_job)
+
+    async def run() -> None:
+        rerun = await manager.rerun("source-job", profile_id="new-profile", item_ids=["item-1"])
+        assert rerun["job"]["id"] == "source-job"
+        assert len(manager.jobs) == 1
+        item = rerun["job"]["items"][0]
+        assert item["id"] == "item-1"
+        assert item["state"] == "queued"
+        assert item["proposed_caption"] == ""
+        assert item["caption"] == "caption on disk"
+        assert manager.jobs["source-job"]["_run_item_ids"] == ["item-1"]
+        await manager._tasks["source-job"]
+        assert manager.snapshot("source-job")["job"]["items"][0]["proposed_caption"] == "new generated result"
+
+    asyncio.run(run())
+
+
+def test_tagging_job_rerun_accepts_a_deduplicated_image_subset_and_rejects_unknown_ids(monkeypatch) -> None:
+    manager = jobs.TaggingJobManager()
+    monkeypatch.setattr(
+        jobs,
+        "get_effective_settings",
+        lambda _profile_id: {
+            "provider": "openai_compatible",
+            "base_url": "https://vision.example.test/v1",
+            "model": "vision-test",
+            "system_prompt": "system",
+            "_profile_id": "profile-1",
+            "_profile_name": "接入 1",
+        },
+    )
+    manager.jobs["source-job"] = {
+        "id": "source-job",
+        "state": "completed",
+        "created_at": 1.0,
+        "started_at": 1.0,
+        "finished_at": 2.0,
+        "dataset_file": "configs/datasets/example.toml",
+        "dataset_index": 0,
+        "source": "source",
+        "profile_id": "profile-1",
+        "system_prompt": "system",
+        "prompt": "prompt",
+        "items": [
+            {"id": "item-1", "file": "one.png", "url": "/one", "thumbnail_url": "/one-thumb", "state": "ready", "proposed_caption": "one old", "_path": "/data/one.png"},
+            {"id": "item-2", "file": "two.png", "url": "/two", "thumbnail_url": "/two-thumb", "state": "ready", "proposed_caption": "two old", "_path": "/data/two.png"},
+            {"id": "item-3", "file": "three.png", "url": "/three", "thumbnail_url": "/three-thumb", "state": "ready", "proposed_caption": "three old", "_path": "/data/three.png"},
+        ],
+        "total": 3,
+        "completed": 3,
+        "failed": 0,
+        "canceled": 0,
+        "settings": {"provider": "openai_compatible", "model": "vision-test"},
+    }
+
+    async def fake_run_job(job):
+        for item in manager._run_items(job):
+            item["state"] = "ready"
+            item["proposed_caption"] = f"new {item['id']}"
+        manager._finish(job, manager._final_state(job))
+
+    monkeypatch.setattr(manager, "_run_job", fake_run_job)
+
+    async def run() -> None:
+        subset = await manager.rerun("source-job", item_ids=["item-3", "item-1", "item-3"])
+        assert subset["job"]["id"] == "source-job"
+        assert len(manager.jobs) == 1
+        assert manager.jobs["source-job"]["_run_item_ids"] == ["item-3", "item-1"]
+        assert [item["state"] for item in subset["job"]["items"]] == ["queued", "ready", "queued"]
+        await manager._tasks["source-job"]
+
+        whole = await manager.rerun("source-job", item_ids=[])
+        assert whole["job"]["id"] == "source-job"
+        assert manager.jobs["source-job"]["_run_item_ids"] == ["item-1", "item-2", "item-3"]
+        await manager._tasks["source-job"]
+
+        with pytest.raises(ValueError, match="找不到打标图片"):
+            await manager.rerun("source-job", item_ids=["item-1", "missing"])
+        assert len(manager.jobs) == 1
+
+    asyncio.run(run())
+
+
+def test_tagging_job_rerun_rejects_active_source_job() -> None:
+    manager = jobs.TaggingJobManager()
+    manager.jobs["running-job"] = {"id": "running-job", "state": "running"}
+
+    with pytest.raises(RuntimeError, match="任务仍在运行"):
+        asyncio.run(manager.rerun("running-job"))
 
 
 def test_tagging_settings_keep_api_key_out_of_public_payload(tmp_path, monkeypatch) -> None:
@@ -79,6 +244,25 @@ def test_prompt_preset_crud_uses_separate_captioning_file(tmp_path, monkeypatch)
 
     deleted = prompt_presets.delete_prompt_preset(preset_id)
     assert deleted["presets"] == []
+
+
+def test_tagging_service_exposes_animalorastudio_builtin_system_prompt_templates(
+    tmp_path, monkeypatch
+) -> None:
+    _patch_settings_paths(tmp_path, monkeypatch)
+    service = TaggingService()
+    listed = service.list_prompt_presets()
+    assert [item["id"] for item in listed["presets"][:6]] == [
+        "builtin-detailed",
+        "builtin-danbooru",
+        "builtin-character-action",
+        "builtin-anima-three-format",
+        "builtin-anima-style-overfit",
+        "builtin-anima-style-trigger-json",
+    ]
+    assert all(item["builtin"] is True for item in listed["presets"][:6])
+    assert all(item["user_prompt"] for item in listed["presets"][:6])
+    assert not prompt_presets._presets_file().exists()
 
 
 def test_tagging_memory_log_is_bounded_filterable_and_resizable() -> None:
