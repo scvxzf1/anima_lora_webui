@@ -38,14 +38,16 @@ def alpha_mask_required_for_cache(info: ImageInfo, subset: Any) -> bool:
     stage. In that mode the mask is authoritative outside the latent cache;
     requiring an ``alpha_mask`` NPZ key would reject valid dual-cache
     region/full curricula after preprocessing.
+
+    External-mask mode (``mask_dir`` set) never requires an ``alpha_mask`` NPZ
+    key: images with a mask file get it from the mask directory, and images
+    without one train as ordinary full-image samples.
     """
     if not bool(getattr(subset, "alpha_mask", False)):
         return False
-    external_mask = bool(getattr(subset, "mask_dir", None)) and bool(
-        getattr(info, "mask_path", None)
-        or getattr(info, "preloaded_alpha_mask", None) is not None
-    )
-    return not external_mask
+    if bool(getattr(subset, "mask_dir", None)):
+        return False
+    return True
 
 
 class DatasetCacheMixin:
