@@ -117,7 +117,7 @@ import {
     renderConfigForm,
     resetConfigFormDraft,
     syncConfigDraftFromForm,
-} from '../config-form/index.js?v=module-bootstrap-20260831-release-v1';
+} from '../config-form/index.js?v=module-bootstrap-20260902-lokr-backend-v4';
 
 const ctx = getAppContext();
 const appShellState = getAppShellState();

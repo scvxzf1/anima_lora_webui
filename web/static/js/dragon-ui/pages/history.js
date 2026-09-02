@@ -5,6 +5,7 @@ import { scanForReveal } from '../animations.js?v=dragon-ui-20260824v69';
 import { switchToClassicUI } from '../../shared/ui-mode.js?v=dragon-ui-20260814v45';
 import { createHistoryCollectionWorkspace, renderHistoryCollectionWorkbench } from './history-collections.js?v=dragon-ui-20260826v10';
 import { bindHistoryCollectionWorkbench } from './history-collections-controller.js?v=dragon-ui-20260826v6';
+import { restoreHistoryListState, saveHistoryListState } from './history-list-state.js?v=dragon-ui-20260902v1';
 import { createHistorySearchIndex, filterHistoryTasks } from './history-model.js?v=dragon-ui-20260828v3';
 import { activeHistoryStat, renderHistoryPage, renderHistoryStats, renderHistorySummary } from './history-list-view.js?v=dragon-ui-20260828v3';
 
@@ -15,12 +16,16 @@ export async function loadHistory() {
         safeApi('/api/training/history?limit=200&include_archived=1', '读取训练历史失败'),
         safeApi('/api/training/history/collections/settings', '读取历史分组失败'),
     ]);
+    const restored = restoreHistoryListState(
+        defaultHistoryFilters(),
+        createHistoryCollectionWorkspace(collectionSettings),
+    );
     const state = {
         tasks: Array.isArray(payload.tasks) ? payload.tasks : [],
         error: payload.ok === false ? (payload.error || '读取训练历史失败') : '',
-        filters: defaultHistoryFilters(),
+        filters: restored.filters,
         searchIndex: createHistorySearchIndex(Array.isArray(payload.tasks) ? payload.tasks : []),
-        workspace: createHistoryCollectionWorkspace(collectionSettings),
+        workspace: restored.workspace,
         requestSequence: 0,
     };
     const filtered = filterHistoryTasks(state.tasks, state.filters, state.searchIndex);
@@ -32,7 +37,11 @@ export async function loadHistory() {
             resultsHtml: renderHistoryCollectionWorkbench(state.tasks, state.filters, state.workspace, filtered),
         }),
         onMount: (root) => { cleanup = bindHistoryList(root, state); },
-        onUnmount: () => { state.requestSequence += 1; cleanup?.(); },
+        onUnmount: () => {
+            saveHistoryListState(state);
+            state.requestSequence += 1;
+            cleanup?.();
+        },
     };
 }
 

@@ -32,7 +32,7 @@ export async function createAnimaApp(ctx) {
     const imageTestFeatureBridge = imageTestFeatureModule.createImageTestFeatureBridge(runtime);
     runtime.features.imageTest = imageTestFeatureBridge;
     configureImageTestBridge(imageTestFeatureBridge.ensureImageTestFeature);
-    const appShellModule = await import('./chunks/02-ensure-history-detail-feature.js?v=module-bootstrap-20260831-release-v1');
+    const appShellModule = await import('./chunks/02-ensure-history-detail-feature.js?v=module-bootstrap-20260902-lokr-backend-v4');
     // Mid-range chunks only register side-effect bridges / helpers; load them as one batch.
     await Promise.all([
         import('./chunks/03-parse-network-arg-entry.js?v=module-bootstrap-20260831-release-v1'),
@@ -52,7 +52,7 @@ export async function createAnimaApp(ctx) {
         import('./chunks/15-append-sample-prompt-row.js?v=module-bootstrap-20260831-release-v1'),
         import('./chunks/16-load-output-run-config.js?v=module-bootstrap-20260831-release-v1'),
         import('./chunks/17-apply-selected-dataset-preset-to-current-config.js?v=module-bootstrap-20260831-release-v1'),
-        import('./chunks/18-delete-dataset-preset-group.js?v=module-bootstrap-20260831-release-v1'),
+        import('./chunks/18-delete-dataset-preset-group.js?v=module-bootstrap-20260902-lokr-backend-v4'),
         import('./chunks/19-current-sample-prompt-text.js?v=module-bootstrap-20260831-release-v1'),
         import('./chunks/20-can-drop-toml-file-to-group.js?v=module-bootstrap-20260831-release-v1'),
         import('./chunks/21-update-toml-selection-ui.js?v=module-bootstrap-20260831-release-v1'),

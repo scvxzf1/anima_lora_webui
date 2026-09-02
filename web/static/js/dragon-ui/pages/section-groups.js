@@ -4,7 +4,7 @@
  * Sub-pages without an entry here fall back to a flat field list.
  */
 
-import { FORM_CATEGORY_DEFS, FORM_SECTION_DEFS } from '../../config/catalog/form-layout.js?v=dragon-ui-20260830v2';
+import { FORM_CATEGORY_DEFS, FORM_SECTION_DEFS } from '../../config/catalog/form-layout.js?v=dragon-ui-20260902-lokr-backend-v4';
 
 const TRAINING_CATEGORY_SECTION_GROUPS = Object.fromEntries(FORM_CATEGORY_DEFS.map((category) => [
     category.id,
@@ -159,6 +159,12 @@ export const SECTION_GROUPS = {
             desc: '调整 LoKr 分组大小和投影分块字节数。',
             keys: ['lokr_factor_group_size', 'lokr_project_chunk_bytes'],
         },
+        {
+            eyebrow: 'LoKr',
+            title: '融合计算后端',
+            desc: '选择 LoKr 分组 Delta 的前向与反向计算后端；默认使用 CMP 170HX 已验证的 Triton 完整梯度路径。',
+            keys: ['lokr_grouped_delta_backend', 'lokr_grouped_delta_backward_backend'],
+        },
     ],
     'lokr': [
         {
@@ -172,6 +178,12 @@ export const SECTION_GROUPS = {
             title: '分组与投影显存',
             desc: '控制分组大小和投影分块字节数。',
             keys: ['lokr_factor_group_size', 'lokr_project_chunk_bytes'],
+        },
+        {
+            eyebrow: '后端',
+            title: '融合计算后端',
+            desc: '选择 LoKr 分组 Delta 的前向与反向计算后端；默认使用 CMP 170HX 已验证的 Triton 完整梯度路径。',
+            keys: ['lokr_grouped_delta_backend', 'lokr_grouped_delta_backward_backend'],
         },
     ],
     'train-sampling': [

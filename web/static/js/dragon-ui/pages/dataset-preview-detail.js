@@ -8,7 +8,10 @@ import { formatBytes } from '../../shared/format.js?v=dragon-ui-20260812v35';
 import { escapeHtml } from './dataset-editor-fields.js?v=dragon-ui-20260828v54';
 import { renderIcon } from '../icons.js?v=dragon-ui-20260812v35';
 
-export function createDatasetPreviewDetailController(dialog = document.getElementById('dataset-preview-dialog')) {
+export function createDatasetPreviewDetailController(
+    dialog = document.getElementById('dataset-preview-dialog'),
+    { resolveImage = null, editor = null } = {},
+) {
     const listView = dialog?.querySelector('.dataset-preview-dialog-body');
     const form = dialog?.querySelector('form');
     if (!dialog || !listView || !form) return createNoopController();
@@ -50,6 +53,7 @@ export function createDatasetPreviewDetailController(dialog = document.getElemen
                             </button>
                         </div>
                         <p class="dataset-preview-detail-caption-source" data-dataset-preview-detail-caption-source></p>
+                        <div class="dataset-preview-detail-editor" data-dataset-preview-detail-editor hidden></div>
                         <pre data-dataset-preview-detail-caption-text></pre>
                     </section>
                 </aside>
@@ -74,41 +78,80 @@ export function createDatasetPreviewDetailController(dialog = document.getElemen
         return detailView;
     };
 
-    const render = (image) => {
-        const view = ensureView();
-        const caption = image.caption && typeof image.caption === 'object' ? image.caption : {};
-        const imageElement = view.querySelector('[data-dataset-preview-detail-image]');
-        if (imageElement) {
-            imageElement.src = String(image.url || '');
-            imageElement.alt = String(image.name || '数据集图片');
-            if (image.width) imageElement.width = Number(image.width);
-            if (image.height) imageElement.height = Number(image.height);
-        }
+    const resolveCurrentImage = (image = activeImage) => {
+        if (!image || typeof resolveImage !== 'function') return image;
+        return resolveImage(image) || image;
+    };
 
-        const meta = view.querySelector('[data-dataset-preview-detail-meta]');
-        if (meta) {
-            meta.innerHTML = [
-                detailMetaRow('文件名', image.name || '-'),
-                detailMetaRow('完整路径', image.file || '-'),
-                detailMetaRow('尺寸', image.width && image.height ? `${image.width} × ${image.height}px` : '-'),
-                detailMetaRow('文件大小', image.size_bytes != null ? formatBytes(image.size_bytes) : '-'),
-                detailMetaRow('修改时间', image.mtime_text || '-'),
-            ].join('');
-        }
-
-        const source = view.querySelector('[data-dataset-preview-detail-caption-source]');
+    const syncCaptionMetadata = (image) => {
+        const current = resolveCurrentImage(image);
+        const caption = current?.caption && typeof current.caption === 'object' ? current.caption : {};
+        const source = detailView?.querySelector('[data-dataset-preview-detail-caption-source]');
         if (source) {
             source.textContent = caption.ok
                 ? [caption.format_label || caption.extension || '已识别标注', caption.file || ''].filter(Boolean).join(' · ')
                 : `未找到标注 · ${caption.source_label || '自动识别'}`;
         }
+        const copy = detailView?.querySelector('[data-dataset-preview-detail-copy]');
+        if (copy) copy.hidden = !caption.ok;
+        if (editor && detailView) editor.sync?.(detailView, current);
+        return current;
+    };
+
+    const render = (image) => {
+        const view = ensureView();
+        const current = resolveCurrentImage(image);
+        activeImage = current;
+        const caption = current.caption && typeof current.caption === 'object' ? current.caption : {};
+        const imageElement = view.querySelector('[data-dataset-preview-detail-image]');
+        if (imageElement) {
+            imageElement.src = String(current.url || '');
+            imageElement.alt = String(current.name || '数据集图片');
+            if (current.width) imageElement.width = Number(current.width);
+            if (current.height) imageElement.height = Number(current.height);
+        }
+
+        const meta = view.querySelector('[data-dataset-preview-detail-meta]');
+        if (meta) {
+            meta.innerHTML = [
+                detailMetaRow('文件名', current.name || '-'),
+                detailMetaRow('完整路径', current.file || '-'),
+                detailMetaRow('尺寸', current.width && current.height ? `${current.width} × ${current.height}px` : '-'),
+                detailMetaRow('文件大小', current.size_bytes != null ? formatBytes(current.size_bytes) : '-'),
+                detailMetaRow('修改时间', current.mtime_text || '-'),
+            ].join('');
+        }
+
+        const source = view.querySelector('[data-dataset-preview-detail-caption-source]');
+        if (source) source.textContent = '';
         const captionText = view.querySelector('[data-dataset-preview-detail-caption-text]');
-        if (captionText) captionText.textContent = caption.ok ? (caption.text || '(空标注)') : '未按当前标注来源找到 caption 文件';
+        const editorHost = view.querySelector('[data-dataset-preview-detail-editor]');
+        if (editor) {
+            const markup = editor.render?.(current) || '';
+            if (editorHost) {
+                editorHost.hidden = !markup;
+                editorHost.innerHTML = markup;
+            }
+            if (captionText) {
+                captionText.hidden = true;
+                captionText.textContent = '';
+            }
+        } else {
+            if (editorHost) {
+                editorHost.hidden = true;
+                editorHost.innerHTML = '';
+            }
+            if (captionText) {
+                captionText.hidden = false;
+                captionText.textContent = caption.ok ? (caption.text || '(空标注)') : '未按当前标注来源找到 caption 文件';
+            }
+        }
         const copy = view.querySelector('[data-dataset-preview-detail-copy]');
         if (copy) copy.hidden = !caption.ok;
 
         const position = view.querySelector('[data-dataset-preview-detail-position]');
-        if (position) position.textContent = String(image.name || '');
+        if (position) position.textContent = String(current.name || '');
+        syncCaptionMetadata(current);
     };
 
     const open = (image, trigger = null) => {
@@ -183,8 +226,21 @@ export function createDatasetPreviewDetailController(dialog = document.getElemen
 
     const isOpen = () => Boolean(detailView && !detailView.hidden);
 
+    const refresh = () => {
+        if (!isOpen() || !activeImage) return false;
+        render(activeImage);
+        return true;
+    };
+
+    const sync = () => {
+        if (!isOpen() || !activeImage) return false;
+        syncCaptionMetadata(activeImage);
+        return true;
+    };
+
     const copyCaption = async (button) => {
-        const text = activeImage?.caption?.ok ? String(activeImage.caption.text || '') : '';
+        const current = resolveCurrentImage();
+        const text = current?.caption?.ok ? String(current.caption.text || '') : '';
         const label = button.querySelector('span');
         const original = label?.textContent || '复制标注';
         button.disabled = true;
@@ -211,7 +267,7 @@ export function createDatasetPreviewDetailController(dialog = document.getElemen
         activeImage = null;
     };
 
-    return { open, restore, isOpen, handleCancel, dispose };
+    return { open, restore, refresh, sync, isOpen, handleCancel, dispose };
 }
 
 function detailMetaRow(label, value) {
@@ -226,6 +282,8 @@ function createNoopController() {
     return {
         open: () => false,
         restore: () => false,
+        refresh: () => false,
+        sync: () => false,
         isOpen: () => false,
         handleCancel: () => false,
         dispose: () => {},

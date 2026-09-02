@@ -5,35 +5,34 @@
  * Language: Chinese labels and descriptions, English config keys hidden by default.
  */
 
-import { FIELD_LABEL_ZH, FIELD_OPTIONS } from '../../config/catalog/labels-options.js?v=dragon-ui-20260830v2';
-import { FIELD_HELP_SUMMARY_ZH } from '../../config/catalog/field-help-summary.js?v=dragon-ui-20260830v2';
+import { FIELD_LABEL_ZH, FIELD_OPTIONS } from '../../config/catalog/labels-options.js?v=dragon-ui-20260902-lokr-backend-v4';
+import { FIELD_HELP_SUMMARY_ZH } from '../../config/catalog/field-help-summary.js?v=dragon-ui-20260902-lokr-backend-v4';
 import { configFieldPlaceholder } from '../../config/catalog/field-placeholders.js?v=dragon-ui-20260830v2';
 import {
     ALL_LORA_ADAPTER_SCOPED_FIELD_KEYS,
-    CHIMERA_UI_DEFAULT_FIELDS,
     CONFIG_FORM_INTERNAL_KEYS,
     CONFIG_FORM_MERGED_FIELDS,
     DATASET_BLUEPRINT_FIELDS,
     DEPRECATED_CONFIG_FORM_FIELDS,
     FORM_UI_DEFAULTS,
-    IP_ADAPTER_UI_DEFAULT_FIELDS,
     LOKR_SCOPED_FIELD_KEYS,
-    METHOD_SCOPED_CONFIG_FORM_FIELDS,
-    NETWORK_ARG_FIELD_MAP,
     RETIRED_CONFIG_FORM_FIELDS,
-    SPD_UI_DEFAULT_FIELDS,
     VERA_SCOPED_FIELD_KEYS,
-} from '../../config/catalog/defaults.js?v=dragon-ui-20260830v2';
-import { VARIANT_METHOD_FAMILY } from '../../config/catalog/form-layout.js?v=dragon-ui-20260830v2';
+} from '../../config/catalog/defaults.js?v=dragon-ui-20260902-lokr-backend-v4';
+import { VARIANT_METHOD_FAMILY } from '../../config/catalog/form-layout.js?v=dragon-ui-20260902-lokr-backend-v4';
 import { createApiClient } from '../../shared/api.js?v=dragon-ui-20260812v35';
+import {
+    alertDragonDialog,
+    confirmDragonDialog,
+} from '../../shared/dialog.js?v=module-bootstrap-20260901-dialog-v1';
 import { escapeHtml } from '../../shared/format.js?v=dragon-ui-20260812v35';
-import { SECTION_GROUPS } from './section-groups.js?v=dragon-ui-20260826v37';
+import { SECTION_GROUPS } from './section-groups.js?v=dragon-ui-20260902-lokr-backend-v4';
 import { findCategory, isConfigCategory } from '../category-map.js?v=dragon-ui-20260826v45';
 import { renderIcon } from '../icons.js?v=dragon-ui-20260812v35';
 import { scanForReveal } from '../animations.js?v=dragon-ui-20260824v69';
 import { dragonScrollBehavior } from '../motion.js?v=dragon-ui-20260824v1';
-import { keysForConfigSubItem } from './config-field-map.js?v=dragon-ui-20260826v37';
-import { configValueForControl, displayConfigValue, prepareConfigPatch, serializeConfigValue } from './config-values.js?v=dragon-ui-20260830v1';
+import { keysForConfigSubItem } from './config-field-map.js?v=dragon-ui-20260902-lokr-backend-v4';
+import { configValueForControl, displayConfigValue, prepareConfigPatch, serializeConfigValue } from './config-values.js?v=dragon-ui-20260902-lokr-backend-v4';
 import {
     createConfigDirtyBindings,
     renderConfigDirtyState,
@@ -49,13 +48,17 @@ import {
     scrollConfigCanvasTo,
     uniqueConfigEntries,
 } from './config-all-view.js?v=dragon-ui-20260825v15';
-import { buildConfigBlocks } from './config-block-metadata.js?v=dragon-ui-20260830v1';
+import { buildConfigBlocks } from './config-block-metadata.js?v=dragon-ui-20260902-lokr-availability-v2';
+import {
+    configFieldAvailability,
+    resolveConfigAdapterKind,
+} from './config-field-availability.js?v=dragon-ui-20260902-lokr-availability-v2';
 import {
     bindConfigFieldHelpDialog,
     configHelpSummary,
     renderConfigHelpButton,
     resolveConfigFieldHelp,
-} from './config-field-help.js?v=dragon-ui-20260826v5';
+} from './config-field-help.js?v=dragon-ui-20260902-lokr-availability-v1';
 import {
     bindConfigViewPreference,
     persistConfigBilingual,
@@ -72,9 +75,9 @@ import {
     BOOLEAN_CONFIG_DEFAULTS,
     isBooleanConfigField,
     normalizeBooleanConfigValue,
-} from './config-field-types.js?v=dragon-ui-20260830v1';
-import { bindTrainingControls, isEditableConfigFile, loadTrainingContext, mergedConfigUrl, renderTrainingControls, selectTrainingConfigFile, selectTrainingPreset, commitTrainingContext } from './training-controls.js?v=dragon-ui-20260824v114';
-import { bindTrainingPresetLibrary, renderTrainingPresetLibrary } from './training-preset-library.js?v=dragon-ui-20260825v115';
+} from './config-field-types.js?v=dragon-ui-20260902-lokr-backend-v4';
+import { bindTrainingControls, isEditableConfigFile, loadTrainingContext, mergedConfigUrl, renderTrainingControls, selectTrainingConfigFile, selectTrainingPreset, commitTrainingContext } from './training-controls.js?v=dragon-ui-20260901v115';
+import { bindTrainingPresetLibrary, renderTrainingPresetLibrary } from './training-preset-library.js?v=dragon-ui-20260901v116';
 import {
     bindLazyModelQuickPicker,
     MODEL_QUICK_PATH_KEYS,
@@ -87,13 +90,18 @@ import {
     renderDatasetPickerDialog,
     renderStepEstimatePanel,
 } from './config-training-data.js?v=dragon-ui-20260826v7';
+import {
+    bindSamplePromptsDialog,
+    renderSamplePromptsDialog,
+    renderSamplePromptsFieldControl,
+} from './sample-prompts-dialog.js?v=dragon-ui-20260902-sample-prompts-v4';
 
 const api = createApiClient();
 let fieldHelpCatalogPromise = null;
 
 function loadFieldHelpCatalog() {
     if (!fieldHelpCatalogPromise) {
-        fieldHelpCatalogPromise = import('../../config/catalog/field-help.js?v=dragon-ui-20260826v39')
+        fieldHelpCatalogPromise = import('../../config/catalog/field-help.js?v=dragon-ui-20260902-lokr-backend-v4')
             .then((module) => module.FIELD_HELP_ZH)
             .catch((error) => {
                 fieldHelpCatalogPromise = null;
@@ -103,15 +111,6 @@ function loadFieldHelpCatalog() {
     return fieldHelpCatalogPromise;
 }
 
-const CONVROT_FIELD_KEYS = new Set([
-    'convrot_group_size',
-    'convrot_scope',
-    'convrot_hadamard',
-    'convrot_min_in_features',
-    'convrot_largest_in_features_only',
-    'convrot_large_layer_mode',
-    'convrot_large_min_in_features',
-]);
 const HIDDEN_CONFIG_KEYS = new Set([
     'output_dir',
     'general',
@@ -141,25 +140,28 @@ function activeMethodFamily(trainingContext, values = {}) {
     const variant = String(trainingContext?.variant || '').trim().toLowerCase();
     if (trainingContext?.methodsSubdir === 'methods' && variant === 'spd') return 'spd';
     if (VARIANT_METHOD_FAMILY[variant]) return VARIANT_METHOD_FAMILY[variant];
-    if (values.use_ip_adapter || String(values.network_module || '').includes('ip_adapter')) return 'ip_adapter';
-    if (values.use_easycontrol || String(values.network_module || '').includes('easycontrol')) return 'easycontrol';
+    if (normalizeBooleanConfigValue('use_ip_adapter', values.use_ip_adapter)
+        || String(values.network_module || '').includes('ip_adapter')) return 'ip_adapter';
+    if (normalizeBooleanConfigValue('use_easycontrol', values.use_easycontrol)
+        || String(values.network_module || '').includes('easycontrol')) return 'easycontrol';
     if (String(values.network_module || '').includes('soft_tokens')) return 'soft_tokens';
-    if (values.use_chimera_hydra) return 'chimera';
+    if (normalizeBooleanConfigValue('use_chimera_hydra', values.use_chimera_hydra)) return 'chimera';
     return 'lora';
 }
 
 function activeAdapterKind(values = {}) {
-    if (values.use_glora) return 'glora';
-    if (values.use_vera) return 'vera';
-    if (values.use_lokr) return 'lokr';
-    if (values.use_loha) return 'loha';
-    return 'lora';
+    return resolveConfigAdapterKind(values);
+}
+
+function configAvailabilityContext(trainingContext, values = {}) {
+    return {
+        method: activeMethodFamily(trainingContext, values),
+        adapter: activeAdapterKind(values),
+        baseCompute: String(values.base_compute || 'bf16').trim().toLowerCase(),
+    };
 }
 
 function visibleConfigKeys(keys, trainingContext, values) {
-    const method = activeMethodFamily(trainingContext, values);
-    const adapter = activeAdapterKind(values);
-    const baseCompute = String(values.base_compute || 'bf16').trim().toLowerCase();
     return keys.filter((key) => {
         if (HIDDEN_CONFIG_KEYS.has(key)
             || CONFIG_FORM_INTERNAL_KEYS.has(key)
@@ -167,29 +169,11 @@ function visibleConfigKeys(keys, trainingContext, values) {
             || DATASET_BLUEPRINT_FIELDS.has(key)
             || DEPRECATED_CONFIG_FORM_FIELDS.has(key)
             || RETIRED_CONFIG_FORM_FIELDS.has(key)) return false;
-        if (!(key in values) && SPD_UI_DEFAULT_FIELDS.has(key) && method !== 'spd') return false;
-        if (!(key in values) && CHIMERA_UI_DEFAULT_FIELDS.has(key) && method !== 'chimera') return false;
-        if (!(key in values) && IP_ADAPTER_UI_DEFAULT_FIELDS.has(key) && method !== 'ip_adapter') return false;
-        if (CONVROT_FIELD_KEYS.has(key) && !['w8a16_convrot', 'w8a8_convrot'].includes(baseCompute)) return false;
-        const methodScope = METHOD_SCOPED_CONFIG_FORM_FIELDS.get(key);
-        if (methodScope && !methodScope.has(method)) return false;
-        const spec = NETWORK_ARG_FIELD_MAP.get(key);
-        if (spec) {
-            const familyMatches = {
-                lokr: adapter === 'lokr' || method === 'lokr',
-                vera: adapter === 'vera' || method === 'vera',
-                soft_tokens: method === 'soft_tokens',
-                ip_adapter: method === 'ip_adapter',
-                easycontrol: method === 'easycontrol',
-            };
-            if (!familyMatches[spec.family]) return false;
-        }
-        if (LOKR_SCOPED_FIELD_KEYS.has(key) && adapter !== 'lokr') return false;
-        if (VERA_SCOPED_FIELD_KEYS.has(key) && adapter !== 'vera') return false;
-        if (key === 'dora_wd' && adapter !== 'lora') return false;
         return !ALL_LORA_ADAPTER_SCOPED_FIELD_KEYS.has(key)
-            || (key === 'lora_adapter_kind' || (adapter === 'lokr' && LOKR_SCOPED_FIELD_KEYS.has(key))
-                || (adapter === 'vera' && VERA_SCOPED_FIELD_KEYS.has(key)) || (adapter === 'lora' && key === 'dora_wd'));
+            || key === 'lora_adapter_kind'
+            || LOKR_SCOPED_FIELD_KEYS.has(key)
+            || VERA_SCOPED_FIELD_KEYS.has(key)
+            || key === 'dora_wd';
     });
 }
 
@@ -208,11 +192,10 @@ function buildCategoryEntries(category, rawEntries, trainingContext, values) {
             ? { ...entry, keys: [...new Set([...entry.keys, ...unclassifiedConfigKeys(values, knownKeys)])] }
             : entry)
         : rawEntries;
-    const method = activeMethodFamily(trainingContext, values);
     return sourceEntries.map((entry) => ({
         ...entry,
         keys: visibleConfigKeys(entry.keys, trainingContext, values),
-    })).filter((entry) => entry.keys.length > 0 && (entry.sub.id !== 'spd' || method === 'spd'));
+    })).filter((entry) => entry.keys.length > 0);
 }
 
 export async function loadConfigPage(context) {
@@ -267,9 +250,6 @@ export async function loadConfigPage(context) {
         : { sub, keys: visibleConfigKeys(keysForConfigSubItem(sub), trainingContext, currentValues), entries: [], isAll: false };
     const activeSub = activeView.sub || sub;
     const keys = activeView.keys;
-    if (activeSub.id === 'spd' && activeMethodFamily(trainingContext, currentValues) !== 'spd') {
-        return '<div class="dragon-empty-state"><p>SPD 是 CLI 实验配置，当前训练配置不会使用这些参数</p></div>';
-    }
     if (!keys || keys.length === 0) {
         return '<div class="dragon-empty-state"><p>此分类暂无当前方法可生效的配置项</p></div>';
     }
@@ -277,18 +257,36 @@ export async function loadConfigPage(context) {
     const pageState = {
         dirty: false,
         beforeUnload: null,
+        leavePrompt: null,
         showChangedOnly: false,
         searchQuery: '',
         capsuleMode: preferredConfigCapsuleMode(),
         bilingual: preferredConfigBilingual(),
         activeTag: 'all',
         radarTag: null,
+        availabilityContext: configAvailabilityContext(trainingContext, currentValues),
     };
     resetConfigFormState(pageState, currentValues, isCategoryPage ? entries : [{ sub: activeSub, keys }]);
     if (isCategoryPage) {
-        wrapper.innerHTML = renderCategorySubPage(pageCategory, entries, activeView, pageState.draftValues, trainingContext, pageState.bilingual);
+        wrapper.innerHTML = renderCategorySubPage(
+            pageCategory,
+            entries,
+            activeView,
+            pageState.draftValues,
+            trainingContext,
+            pageState.bilingual,
+            pageState.availabilityContext,
+        );
     } else {
-        wrapper.innerHTML = renderSingleConfigPage(activeSub, keys, currentValues, trainingContext, pageState.draftValues, pageState.bilingual);
+        wrapper.innerHTML = renderSingleConfigPage(
+            activeSub,
+            keys,
+            currentValues,
+            trainingContext,
+            pageState.draftValues,
+            pageState.bilingual,
+            pageState.availabilityContext,
+        );
     }
 
     let routeUpdater = null;
@@ -358,10 +356,10 @@ export async function loadConfigPage(context) {
                     beforeContextChange,
                     onConfigFileChange: (file) => {
                         const nextContext = selectTrainingConfigFile(committed.context, file, { notify: false, persist: false });
-                        if (nextContext) transitionEditable({ context: nextContext });
+                        return nextContext ? transitionEditable({ context: nextContext }) : false;
                     },
                     onPresetChange: (preset) => {
-                        transitionEditable({ context: selectTrainingPreset(committed.context, preset, { notify: false, persist: false }) });
+                        return transitionEditable({ context: selectTrainingPreset(committed.context, preset, { notify: false, persist: false }) });
                     },
                 });
             };
@@ -400,9 +398,11 @@ export async function loadConfigPage(context) {
                     requestedContext = context;
                     commitTrainingContext(context);
                     currentValues = values;
+                    pageState.availabilityContext = configAvailabilityContext(context, values);
                     const currentPane = root.querySelector('[data-config-editable-pane]');
                     if (currentPane) currentPane.outerHTML = renderEditableConfigPane(pageCategory, entries, {
                         ...committed,
+                        availabilityContext: pageState.availabilityContext,
                         values: pageState.draftValues,
                         bilingual: pageState.bilingual,
                     });
@@ -415,7 +415,15 @@ export async function loadConfigPage(context) {
                     requestedContext = committed.context;
                     libraryController?.updateContext(committed.context);
                     root.querySelector('[data-config-editable-pane]')?.removeAttribute('aria-busy');
-                    window.alert(`切换训练配置失败：${error.message || error}`);
+                    await alertDragonDialog({
+                        eyebrow: '训练配置',
+                        title: '切换配置失败',
+                        message: error.message || String(error),
+                        description: '当前配置和未保存修改均已保留，请检查后重试。',
+                        tone: 'danger',
+                        icon: 'x',
+                        confirmText: '关闭',
+                    });
                     return false;
                 }
             };
@@ -465,7 +473,15 @@ function renderConfigLoadError(category, sub, error, trainingContext) {
     `;
 }
 
-function renderSingleConfigPage(sub, keys, currentValues, trainingContext, draftValues = null, bilingual = false) {
+function renderSingleConfigPage(
+    sub,
+    keys,
+    currentValues,
+    trainingContext,
+    draftValues = null,
+    bilingual = false,
+    availabilityContext = null,
+) {
     return `
         <div class="dragon-config-page" data-config-bilingual="${Boolean(bilingual)}">
             <div class="dragon-config-hero dragon-reveal">
@@ -475,14 +491,23 @@ function renderSingleConfigPage(sub, keys, currentValues, trainingContext, draft
             </div>
             ${renderTrainingControls(trainingContext)}
             <div class="dragon-reveal" data-stagger="1" id="dragon-config-fields">
-                ${renderFields(sub.id, keys, currentValues, { draftValues })}
+                ${renderFields(sub.id, keys, currentValues, { draftValues, availabilityContext })}
             </div>
             ${renderConfigActions()}
+            ${renderSamplePromptsDialog()}
         </div>
     `;
 }
 
-function renderCategorySubPage(category, entries, view, draftValues, trainingContext, bilingual = false) {
+function renderCategorySubPage(
+    category,
+    entries,
+    view,
+    draftValues,
+    trainingContext,
+    bilingual = false,
+    availabilityContext = null,
+) {
     const description = categoryDescription(category.id);
 
     return `
@@ -494,7 +519,13 @@ function renderCategorySubPage(category, entries, view, draftValues, trainingCon
                 ${description ? `<p>${description}</p>` : ''}
             </div>
             <div class="dragon-config-shell-layout">
-                ${renderEditableConfigPane(category, entries, { context: trainingContext, ...view, values: draftValues, bilingual })}
+                ${renderEditableConfigPane(category, entries, {
+                    context: trainingContext,
+                    availabilityContext,
+                    ...view,
+                    values: draftValues,
+                    bilingual,
+                })}
                 ${renderTrainingPresetLibrary(trainingContext)}
             </div>
         </div>
@@ -505,13 +536,36 @@ function renderEditableConfigPane(category, entries, state) {
     const workspaceEntries = state.isAll ? state.entries : entries;
     return `<div class="dragon-config-editable-pane" data-config-editable-pane>
         ${renderTrainingControls(state.context)}
-        ${renderEditableConfigWorkspace(category, workspaceEntries, state.sub, state.keys, state.values, state.bilingual)}
+        ${renderEditableConfigWorkspace(
+            category,
+            workspaceEntries,
+            state.sub,
+            state.keys,
+            state.values,
+            state.bilingual,
+            state.availabilityContext,
+        )}
+        ${renderSamplePromptsDialog()}
     </div>`;
 }
 
-function renderEditableConfigWorkspace(category, entries, sub, keys, currentValues, bilingual = false) {
+function renderEditableConfigWorkspace(
+    category,
+    entries,
+    sub,
+    keys,
+    currentValues,
+    bilingual = false,
+    availabilityContext = null,
+) {
     if (isAllConfigView(category, sub.id)) {
-        const { blocks, chapters } = buildConfigBlocks(entries, currentValues, FIELD_OPTIONS, FORM_UI_DEFAULTS);
+        const { blocks, chapters } = buildConfigBlocks(
+            entries,
+            currentValues,
+            FIELD_OPTIONS,
+            FORM_UI_DEFAULTS,
+            availabilityContext,
+        );
         return renderAllConfigWorkspace({
             blocks,
             chapters,
@@ -545,7 +599,10 @@ function renderEditableConfigWorkspace(category, entries, sub, keys, currentValu
             ${renderConfigFieldFilter(keys.length)}
             <div class="dragon-config-detail-fields dragon-reveal" data-stagger="1" id="dragon-config-fields">
                 ${sub.id === 'required' ? renderDatasetConfigField(currentValues.dataset_config || '') : ''}
-                ${renderFields(sub.id, keys, currentValues, { draftValues: currentValues })}
+        ${renderFields(sub.id, keys, currentValues, {
+            draftValues: currentValues,
+            availabilityContext,
+        })}
             </div>
             ${sub.id === 'common' ? renderStepEstimatePanel() : ''}
             ${renderConfigActions()}
@@ -755,7 +812,12 @@ function renderConfigActions({ allView = false } = {}) {
     `;
 }
 
-function renderFields(subId, keys, currentValues, { draftValues = null, forceOpen = false } = {}) {
+function renderFields(
+    subId,
+    keys,
+    currentValues,
+    { draftValues = null, forceOpen = false, availabilityContext = null } = {},
+) {
     const groups = subId ? SECTION_GROUPS[subId] : null;
 
     if (groups && groups.length > 0) {
@@ -763,7 +825,11 @@ function renderFields(subId, keys, currentValues, { draftValues = null, forceOpe
         const sectionsHtml = groups.map((section) => {
             const sectionKeys = section.keys.filter((k) => keys.includes(k));
             if (sectionKeys.length === 0) return '';
-            return renderConfigSection(section, sectionKeys, currentValues, { draftValues, forceOpen });
+            return renderConfigSection(section, sectionKeys, currentValues, {
+                draftValues,
+                forceOpen,
+                availabilityContext,
+            });
         }).join('');
         const remainingKeys = keys.filter((key) => !groupedKeys.has(key));
         if (!remainingKeys.length) return sectionsHtml;
@@ -773,20 +839,25 @@ function renderFields(subId, keys, currentValues, { draftValues = null, forceOpe
             desc: '当前配置文件中尚未归入共享目录的参数。',
             collapsible: true,
             open: false,
-        }, remainingKeys, currentValues, { draftValues, forceOpen })}`;
+        }, remainingKeys, currentValues, { draftValues, forceOpen, availabilityContext })}`;
     }
 
-    return renderSectionFields(keys, currentValues, draftValues);
+    return renderSectionFields(keys, currentValues, draftValues, availabilityContext);
 }
 
-function renderConfigSection(section, keys, currentValues, { draftValues = null, forceOpen = false } = {}) {
+function renderConfigSection(
+    section,
+    keys,
+    currentValues,
+    { draftValues = null, forceOpen = false, availabilityContext = null } = {},
+) {
     const header = `
         <div class="dragon-config-section-header">
             <span class="dragon-eyebrow">${escapeHtml(section.eyebrow || '')}</span>
             <h2 class="dragon-config-section-title">${escapeHtml(section.title || '')}</h2>
             <p class="dragon-config-section-desc">${escapeHtml(section.desc || '')}</p>
         </div>`;
-    const fields = renderSectionFields(keys, currentValues, draftValues);
+    const fields = renderSectionFields(keys, currentValues, draftValues, availabilityContext);
     if (!section.collapsible) {
         return `<div class="dragon-config-section">${header}${fields}</div>`;
     }
@@ -801,7 +872,7 @@ function renderConfigSection(section, keys, currentValues, { draftValues = null,
 }
 
 /* Render fields within a section, using 2-col grid for compact inputs */
-function renderSectionFields(keys, currentValues, draftValues = null) {
+function renderSectionFields(keys, currentValues, draftValues = null, availabilityContext = null) {
     const toggleKeys = keys.filter((k) => {
         const v = fieldDisplayValue(k, currentValues, draftValues);
         const options = FIELD_OPTIONS[k];
@@ -814,7 +885,7 @@ function renderSectionFields(keys, currentValues, draftValues = null) {
    /* Keep related switches together so long configuration sections remain scannable. */
     if (toggleKeys.length > 0) {
         const toggleHtml = toggleKeys.map((key) =>
-            renderField(key, fieldDisplayValue(key, currentValues, draftValues))
+            renderField(key, fieldDisplayValue(key, currentValues, draftValues), null, availabilityContext)
         ).join('');
         html += toggleKeys.length > 1
             ? `<div class="dragon-toggle-grid">${toggleHtml}</div>`
@@ -824,7 +895,7 @@ function renderSectionFields(keys, currentValues, draftValues = null) {
    /* Input/select fields: 2-column grid for compact layout */
    if (inputKeys.length > 0) {
        const gridHtml = inputKeys.map((key) =>
-           renderField(key, fieldDisplayValue(key, currentValues, draftValues))
+           renderField(key, fieldDisplayValue(key, currentValues, draftValues), null, availabilityContext)
        ).join('');
        if (inputKeys.length >= 2) {
            html += `<div class="dragon-field-grid-2">${gridHtml}</div>`;
@@ -852,10 +923,14 @@ function renderConfigSemanticMarkers(block) {
     return required + experimental;
 }
 
-function renderField(key, value, block = null) {
+function renderField(key, value, block = null, availabilityContext = null) {
     if (key === 'dataset_config') return renderDatasetConfigField(value, block);
     const label = FIELD_LABEL_ZH[key] || key;
     const options = FIELD_OPTIONS[key];
+    const availability = block?.availability
+        || (availabilityContext ? configFieldAvailability(key, availabilityContext) : null);
+    const unavailableReason = availability?.enabled === false ? availability.reason : '';
+    const unavailable = Boolean(unavailableReason);
     const booleanField = isBooleanConfigField(key, value, options);
     const controlValue = booleanField ? normalizeBooleanConfigValue(key, value) : value;
     const helpSummary = FIELD_HELP_SUMMARY_ZH[key]
@@ -866,11 +941,14 @@ function renderField(key, value, block = null) {
     const placeholder = configFieldPlaceholder(key, label);
     const fieldSize = block ? (block.span === 2 ? 'wide' : 'compact') : configFieldSize(key, controlValue, options);
     const blockClass = block ? ' dragon-config-block' : '';
+    const availabilityAttributes = ` data-config-availability="${unavailable ? 'unavailable' : 'available'}"${unavailable ? ` data-config-unavailable-reason="${escapeHtml(unavailableReason)}"` : ''}`;
     const blockAttributes = block
         ? ` data-field-span="${block.span}" data-config-tag="${escapeHtml(block.chapterId)}" data-config-tone="${escapeHtml(block.tone)}" data-control-kind="${escapeHtml(block.control)}" data-required="${block.required}" data-experimental="${block.experimental}" data-path-field="${block.pathField}" data-search-text="${escapeHtml(`${key} ${label} ${helpSummary} ${block.tagLabel} ${block.chapterLabel} ${value ?? ''}`.toLocaleLowerCase())}"`
         : '';
     const tagBadge = block ? `<span class="dragon-config-block-tag" data-tone="${escapeHtml(block.tone)}">${escapeHtml(block.tagLabel)}</span>` : '';
     const semanticMarkers = renderConfigSemanticMarkers(block);
+    const unavailableBadge = unavailable ? renderConfigUnavailableBadge() : '';
+    const helpButton = renderConfigHelpButton(key, label, unavailable ? { unavailableReason } : undefined);
     const pathTooltip = block?.pathField && typeof value === 'string' && value
         ? `<span class="dragon-config-path-tooltip" role="tooltip">${escapeHtml(value)}</span>`
         : '';
@@ -878,14 +956,21 @@ function renderField(key, value, block = null) {
         aria-label="撤销${escapeHtml(label)}的修改" title="撤销此项修改">${renderIcon('refresh')}</button>`;
 
     let control;
-    if (options && !booleanField) {
-        control = `<select class="dragon-select" id="${fieldId}" name="${name}" autocomplete="off" data-key="${key}">
+    if (key === 'sample_prompts') {
+        control = renderSamplePromptsFieldControl({
+            fieldId,
+            name,
+            value: configValueForControl(controlValue),
+            disabled: unavailable,
+        });
+    } else if (options && !booleanField) {
+        control = `<select class="dragon-select" id="${fieldId}" name="${name}" autocomplete="off" data-key="${key}"${unavailable ? ' disabled' : ''}>
             ${options.map((opt) => `<option value="${escapeHtml(opt)}" ${String(controlValue) === String(opt) ? 'selected' : ''}>${escapeHtml(opt)}</option>`).join('')}
         </select>`;
     } else if (booleanField) {
         const checked = normalizeBooleanConfigValue(key, controlValue);
         control = `<div class="dragon-toggle-row">
-            <div class="dragon-toggle" id="${fieldId}" data-key="${key}" data-checked="${checked}" role="switch" tabindex="0" aria-checked="${checked}" aria-label="${escapeHtml(label)}"></div>
+            <div class="dragon-toggle" id="${fieldId}" data-key="${key}" data-checked="${checked}" data-config-disabled="${unavailable}" role="switch" tabindex="${unavailable ? '-1' : '0'}" aria-disabled="${unavailable}" aria-checked="${checked}" aria-label="${escapeHtml(label)}"></div>
             <div>
                 <div class="dragon-toggle-label">
                     <span class="dragon-config-label-primary">${escapeHtml(label)}</span>
@@ -894,20 +979,19 @@ function renderField(key, value, block = null) {
                 ${helpSummary ? `<div class="dragon-toggle-desc">${escapeHtml(helpSummary)}</div>` : ''}
             </div>
         </div>`;
-        const helpButton = renderConfigHelpButton(key, label);
-        return `<div class="dragon-field${blockClass}" data-field-size="${fieldSize}" data-config-field-key="${escapeHtml(key)}" data-dirty="false"${blockAttributes}>
-            ${block ? `<div class="dragon-config-block-head"><span class="dragon-config-semantic-markers">${semanticMarkers}</span><span class="dragon-config-block-actions">${tagBadge}${helpButton}${resetButton}</span></div>` : `<div class="dragon-field-floating-actions">${helpButton}${resetButton}</div>`}
+        return `<div class="dragon-field${blockClass}" data-field-size="${fieldSize}" data-config-field-key="${escapeHtml(key)}" data-dirty="false"${availabilityAttributes}${blockAttributes}>
+            ${block ? `<div class="dragon-config-block-head"><span class="dragon-config-semantic-markers">${semanticMarkers}</span><span class="dragon-config-block-actions">${unavailableBadge}${tagBadge}${helpButton}${resetButton}</span></div>` : `<div class="dragon-field-floating-actions">${unavailableBadge}${helpButton}${resetButton}</div>`}
             ${control}</div>`;
     } else if (key.includes('prompt') || key === 'optimizer_args' || key === 'network_args') {
-        control = `<textarea class="dragon-textarea" id="${fieldId}" name="${name}" autocomplete="off" spellcheck="false" data-key="${key}" placeholder="${escapeHtml(placeholder)}">${escapeHtml(configValueForControl(value) || '')}</textarea>`;
+        control = `<textarea class="dragon-textarea" id="${fieldId}" name="${name}" autocomplete="off" spellcheck="false" data-key="${key}"${unavailable ? ' disabled' : ''} placeholder="${escapeHtml(placeholder)}">${escapeHtml(configValueForControl(value) || '')}</textarea>`;
     } else {
         const inputType = typeof controlValue === 'number' ? 'number' : 'text';
         const inputMode = inputType === 'number' ? ' inputmode="decimal"' : '';
-        control = `<input class="dragon-input" id="${fieldId}" name="${name}" type="${inputType}"${inputMode} autocomplete="off" spellcheck="false" data-key="${key}" value="${escapeHtml(controlValue ?? '')}" placeholder="${escapeHtml(placeholder)}">`;
+        control = `<input class="dragon-input" id="${fieldId}" name="${name}" type="${inputType}"${inputMode} autocomplete="off" spellcheck="false" data-key="${key}"${unavailable ? ' disabled' : ''} value="${escapeHtml(controlValue ?? '')}" placeholder="${escapeHtml(placeholder)}">`;
     }
 
     return `
-        <div class="dragon-field${blockClass}" data-field-size="${fieldSize}" data-config-field-key="${escapeHtml(key)}" data-dirty="false"${blockAttributes}>
+        <div class="dragon-field${blockClass}" data-field-size="${fieldSize}" data-config-field-key="${escapeHtml(key)}" data-dirty="false"${availabilityAttributes}${blockAttributes}>
             <div class="dragon-field-label">
                <label class="dragon-field-label-text" for="${fieldId}">
                    <span class="dragon-config-label-primary">${escapeHtml(label)}</span>
@@ -915,8 +999,9 @@ function renderField(key, value, block = null) {
                    ${semanticMarkers}
                </label>
                <span class="dragon-field-label-actions">
+                   ${unavailableBadge}
                    ${tagBadge}
-                   ${renderConfigHelpButton(key, label)}
+                   ${helpButton}
                    ${resetButton}
                </span>
             </div>
@@ -924,6 +1009,57 @@ function renderField(key, value, block = null) {
             ${pathTooltip}
         </div>
     `;
+}
+
+function renderConfigUnavailableBadge() {
+    return '<span class="dragon-config-unavailable-badge" title="当前条件下不可编辑">不可用</span>';
+}
+
+function syncConfigFieldAvailability(wrapper, state, trainingContext) {
+    if (!wrapper) return;
+    const values = {
+        ...(state?.baselineValues || {}),
+        ...(state?.draftValues || {}),
+    };
+    const availabilityContext = configAvailabilityContext(trainingContext, values);
+    if (state) state.availabilityContext = availabilityContext;
+    wrapper.querySelectorAll('[data-config-field-key]').forEach((field) => {
+        const key = field.dataset.configFieldKey || '';
+        if (!key) return;
+        const availability = configFieldAvailability(key, availabilityContext);
+        const unavailable = availability.enabled === false;
+        field.dataset.configAvailability = unavailable ? 'unavailable' : 'available';
+        if (unavailable) field.dataset.configUnavailableReason = availability.reason;
+        else delete field.dataset.configUnavailableReason;
+
+        const control = field.querySelector('[data-key]');
+        if (control?.classList.contains('dragon-toggle')) {
+            control.dataset.configDisabled = String(unavailable);
+            control.tabIndex = unavailable ? -1 : 0;
+            control.setAttribute('aria-disabled', String(unavailable));
+        } else if (control) {
+            control.disabled = unavailable;
+        }
+
+        const actions = field.querySelector('.dragon-field-label-actions, .dragon-config-block-actions, .dragon-field-floating-actions');
+        const badge = actions?.querySelector('.dragon-config-unavailable-badge');
+        if (unavailable && actions && !badge) actions.insertAdjacentHTML('afterbegin', renderConfigUnavailableBadge());
+        if (!unavailable) badge?.remove();
+
+        const helpButton = field.querySelector('.dragon-field-help-btn');
+        if (!helpButton) return;
+        if (unavailable) {
+            helpButton.dataset.helpUnavailableReason = availability.reason;
+            helpButton.classList.add('dragon-field-help-btn-unavailable');
+            helpButton.title = '查看不可用原因';
+            helpButton.setAttribute('aria-label', `查看${helpButton.dataset.helpLabel || key}不可用原因`);
+        } else {
+            delete helpButton.dataset.helpUnavailableReason;
+            helpButton.classList.remove('dragon-field-help-btn-unavailable');
+            helpButton.title = '查看说明';
+            helpButton.setAttribute('aria-label', `查看${helpButton.dataset.helpLabel || key}说明`);
+        }
+    });
 }
 
 function configFieldSize(key, value, options) {
@@ -965,6 +1101,7 @@ function captureDraftValue(input, state) {
 function collectDraftChanges(state) {
     const changed = {};
     for (const key of state.scopeKeys) {
+        if (state.availabilityContext && !configFieldAvailability(key, state.availabilityContext).enabled) continue;
         const original = displayConfigValue(key, state.baselineValues);
         const current = state.draftValues[key];
         if (JSON.stringify(current ?? '') !== JSON.stringify(original ?? '')) changed[key] = current;
@@ -994,10 +1131,13 @@ function syncConfigDirtyUI(wrapper, state, changedKey = null) {
 
 function wireConfigInteractions(wrapper, keys, trainingContext, state, { allView = false } = {}) {
     bindConfigFieldHelpDialog(wrapper, loadFieldHelpCatalog);
+    syncConfigFieldAvailability(wrapper, state, trainingContext);
     state.modelQuickCleanup?.();
     state.modelQuickCleanup = null;
     state.trainingDataCleanup?.();
     state.trainingDataCleanup = null;
+    state.samplePromptsCleanup?.();
+    state.samplePromptsCleanup = null;
     state.dirtyBindings = createConfigDirtyBindings(wrapper);
     const syncDirty = (changedKey = null) => syncConfigDirtyUI(wrapper, state, changedKey);
     state.beforeUnload = (event) => {
@@ -1009,6 +1149,7 @@ function wireConfigInteractions(wrapper, keys, trainingContext, state, { allView
 
     wrapper.querySelectorAll('.dragon-toggle').forEach((toggle) => {
         toggle.addEventListener('click', () => {
+            if (toggle.dataset.configDisabled === 'true') return;
             const checked = toggle.dataset.checked === 'true';
             toggle.dataset.checked = String(!checked);
             toggle.setAttribute('aria-checked', String(!checked));
@@ -1022,6 +1163,7 @@ function wireConfigInteractions(wrapper, keys, trainingContext, state, { allView
         });
         toggle.closest('.dragon-toggle-row')?.addEventListener('click', (event) => {
             if (event.target.closest('.dragon-toggle')) return;
+            if (toggle.dataset.configDisabled === 'true') return;
             toggle.click();
         });
     });
@@ -1031,6 +1173,7 @@ function wireConfigInteractions(wrapper, keys, trainingContext, state, { allView
             block.addEventListener('click', (event) => {
                 if (event.target.closest('input, select, textarea, button, a, label, [role="switch"]')) return;
                 const control = block.querySelector('input:not([type="hidden"]), select, textarea, [role="switch"]');
+                if (control?.disabled || control?.dataset.configDisabled === 'true') return;
                 control?.focus({ preventScroll: true });
             });
         });
@@ -1045,12 +1188,16 @@ function wireConfigInteractions(wrapper, keys, trainingContext, state, { allView
         const input = wrapper.querySelector(`[data-key="${key}"]`);
         if (!input) return;
         setConfigControlValue(input, displayConfigValue(key, state.baselineValues));
-        syncDirty(captureDraftValue(input, state));
+        const changedKey = captureDraftValue(input, state);
+        syncConfigFieldAvailability(wrapper, state, trainingContext);
+        syncDirty(changedKey);
         input.focus();
     }));
     wrapper.querySelectorAll('#dragon-config-fields input, #dragon-config-fields select, #dragon-config-fields textarea').forEach((field) => {
         const updateDraft = () => {
-            syncDirty(captureDraftValue(field, state));
+            const changedKey = captureDraftValue(field, state);
+            syncConfigFieldAvailability(wrapper, state, trainingContext);
+            syncDirty(changedKey);
         };
         field.addEventListener('input', updateDraft);
         field.addEventListener('change', updateDraft);
@@ -1105,12 +1252,23 @@ function wireConfigInteractions(wrapper, keys, trainingContext, state, { allView
     };
     saveBtn?.addEventListener('click', () => saveChanges());
 
-    resetBtn?.addEventListener('click', () => {
+    resetBtn?.addEventListener('click', async () => {
         const resetKeys = allView
             ? keys.filter((key) => Object.prototype.hasOwnProperty.call(FORM_UI_DEFAULTS, key)
                 || Object.prototype.hasOwnProperty.call(BOOLEAN_CONFIG_DEFAULTS, key))
             : keys;
-        if (allView && !window.confirm(`将把当前方法中有界面默认值的 ${resetKeys.length} 个参数恢复默认。修改仍需保存后才会生效，是否继续？`)) return;
+        if (allView) {
+            const confirmed = await confirmDragonDialog({
+                eyebrow: '恢复默认参数',
+                title: `恢复 ${resetKeys.length} 个参数？`,
+                message: `将把当前方法中有界面默认值的 ${resetKeys.length} 个参数恢复默认。`,
+                description: '恢复后仍需点击“保存配置”才会生效。',
+                tone: 'warning',
+                icon: 'refresh',
+                confirmText: '恢复默认',
+            });
+            if (!confirmed || !wrapper.isConnected || !resetBtn.isConnected) return;
+        }
         resetKeys.forEach((key) => {
             const defaultValue = Object.prototype.hasOwnProperty.call(FORM_UI_DEFAULTS, key)
                 ? FORM_UI_DEFAULTS[key]
@@ -1121,6 +1279,7 @@ function wireConfigInteractions(wrapper, keys, trainingContext, state, { allView
             setConfigControlValue(input, defaultValue);
             state.draftValues[key] = serializeConfigValue(input, state.draftValues[key]);
         });
+        syncConfigFieldAvailability(wrapper, state, trainingContext);
         syncDirty();
         showFeedback(feedbackEl, allView ? `已恢复 ${resetKeys.length} 个参数的默认值（需点击保存才会生效）` : '已恢复默认值（需点击保存才会生效）', 'info');
     });
@@ -1143,6 +1302,7 @@ function wireConfigInteractions(wrapper, keys, trainingContext, state, { allView
         trainingContext,
         getDraftValue: (key) => state.draftValues[key],
     });
+    state.samplePromptsCleanup = bindSamplePromptsDialog(wrapper, { trainingContext });
     syncConfigDirtyUI(wrapper, state);
     return () => saveChanges({ quiet: true });
 }
@@ -1163,9 +1323,19 @@ function setButtonLabel(button, text) {
     else if (button) button.textContent = text;
 }
 
-function confirmConfigDiscard(state, action) {
+async function confirmConfigDiscard(state, action) {
     if (!state.dirty) return true;
-    return window.confirm(`当前训练配置有未保存修改。${action}会丢弃这些修改，是否继续？`);
+    if (state.leavePrompt) return state.leavePrompt;
+    state.leavePrompt = confirmDragonDialog({
+        eyebrow: '未保存修改',
+        title: '确认继续？',
+        message: `当前训练配置有未保存修改。${action}会丢弃这些修改，是否继续？`,
+        description: '选择取消可返回当前编辑内容并继续保存。',
+        tone: 'warning',
+        icon: 'edit',
+        confirmText: '继续操作',
+    }).finally(() => { state.leavePrompt = null; });
+    return state.leavePrompt;
 }
 
 function cleanupConfigPage(state) {
@@ -1175,6 +1345,8 @@ function cleanupConfigPage(state) {
     state.modelQuickCleanup = null;
     state.trainingDataCleanup?.();
     state.trainingDataCleanup = null;
+    state.samplePromptsCleanup?.();
+    state.samplePromptsCleanup = null;
     state.beforeUnload = null;
     state.filterUpdate = null;
 }

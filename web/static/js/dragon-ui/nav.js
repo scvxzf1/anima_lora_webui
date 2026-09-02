@@ -15,7 +15,9 @@ let globalAbortController = null;
 const PRIMARY_NAV_ITEMS = [
     { id: 'training-config', label: '训练配置', hash: '#config/training-config' },
     { id: 'datasets', label: '数据集', hash: '#dataset-editor' },
-    { id: 'training-tasks', label: '训练任务', hash: '#page/live-training' },
+    { id: 'live-training', label: '当前监控', hash: '#page/live-training' },
+    { id: 'queue', label: '训练队列', hash: '#page/queue' },
+    { id: 'history', label: '训练历史', hash: '#history' },
     { id: 'model-config', label: '模型配置', hash: '#model-config' },
     { id: 'captioning', label: '打标', hash: '#page/captioning' },
 ];
@@ -250,26 +252,24 @@ function updateShortcutState() {
         if (active) button.setAttribute('aria-current', 'page');
         else button.removeAttribute('aria-current');
     });
-    const trainingTasksActive = hash.startsWith('#page/live-training')
-        || hash.startsWith('#live-training')
-        || hash.startsWith('#page/queue')
-        || hash.startsWith('#queue')
-        || hash.startsWith('#history');
-    const activePrimaryId = hash.startsWith('#dataset-editor')
-        ? 'datasets'
-        : (trainingTasksActive
-            ? 'training-tasks'
-            : (hash.startsWith('#model-config')
-                ? 'model-config'
-                : ((hash.startsWith('#page/captioning') || hash.startsWith('#page/tagging') || hash === '#captioning' || hash === '#tagging')
-                    ? 'captioning'
-                    : (hash.startsWith('#config/training-config') ? 'training-config' : ''))));
+    const activePrimaryId = primaryNavIdForHash(hash);
     document.querySelectorAll('[data-primary-nav]').forEach((link) => {
         const active = link.dataset.primaryNav === activePrimaryId;
         link.dataset.active = String(active);
         if (active) link.setAttribute('aria-current', 'page');
         else link.removeAttribute('aria-current');
     });
+}
+
+function primaryNavIdForHash(hash) {
+    if (hash.startsWith('#dataset-editor')) return 'datasets';
+    if (hash.startsWith('#page/live-training') || hash.startsWith('#live-training')) return 'live-training';
+    if (hash.startsWith('#page/queue') || hash.startsWith('#queue')) return 'queue';
+    if (hash.startsWith('#history')) return 'history';
+    if (hash.startsWith('#model-config')) return 'model-config';
+    if (hash.startsWith('#page/captioning') || hash.startsWith('#page/tagging') || hash === '#captioning' || hash === '#tagging') return 'captioning';
+    if (hash.startsWith('#config/training-config')) return 'training-config';
+    return '';
 }
 
 function toggleSettings() {

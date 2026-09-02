@@ -196,6 +196,7 @@ export const FIELD_HELP_SUMMARY_ZH = Object.freeze({
     "freq_router_init_std": "设置 ChimeraHydra 频率路由器初始权重的标准差。",
     "freq_router_layer_norm": "控制频率路由器在决策前是否对输入特征做 LayerNorm。",
     "lokr_grouped_delta_backend": "选择 LoKr 分组 Delta 权重的计算后端。",
+    "lokr_grouped_delta_backward_backend": "选择 LoKr 分组 Delta 的反向计算后端。",
     "rank_dropout": "设置训练时随机丢弃 LoRA/LoKr 秩分量的概率。",
     "cache_fingerprint_mode": "决定预处理缓存如何判定源文件已变更。",
     "force_rebuild_preprocess_cache": "强制忽略现有预处理缓存并全量重建。",

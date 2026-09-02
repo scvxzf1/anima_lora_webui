@@ -152,7 +152,12 @@ def test_dragon_dataset_editor_uses_desktop_internal_scroll_and_single_column_pa
     css = _read("css/dragon/06-dragon-pages.css")
 
     assert 'data-dataset-form' in page
-    assert page.index('class="dragon-dataset-editor-panel"') < page.index('class="dragon-dataset-savebar"') < page.index("${renderDatasetPresetLibrary(state)}")
+    render_page = page[page.index("function renderPage(state)"):page.index("function renderDatasetSavebar(state)")]
+    assert render_page.index('class="dragon-dataset-editor-panel"') < render_page.index("${renderDatasetSavebar(state)}") < render_page.index("${renderDatasetPresetLibrary(state)}")
+    assert 'data-workspace-action="save"' in page
+    assert "保存数据集预设" in page
+    assert 'panel.innerHTML = `${renderEditorPanel(state)}${renderDatasetSavebar(state)}`;' in page
+    assert "state.ui = createDatasetEditorBindings(root);" in page
     form_rule = css[css.index('.dragon-dataset-form {'):css.index('.dragon-dataset-section {')]
     assert 'max-height: none;' in form_rule
     assert 'min-height: 0;' in form_rule
@@ -262,7 +267,7 @@ def test_dragon_dataset_editor_bindings_and_stage_bridge_are_safe() -> None:
     stage_dialog = _read("js/features/config-form/stage-resolution-ui-dialog.js")
 
     assert "button.dataset.dragonDatasetBound === 'true'" in page
-    assert "stage-resolution-ui.js?v=module-bootstrap-20260831-release-v1" in page
+    assert "stage-resolution-ui.js?v=module-bootstrap-20260901-dialog-v1" in page
     for bridge in (
         "app-context-bridge.js?v=module-bootstrap-20260831-release-v1",
         "config-state-bridge.js?v=module-bootstrap-20260831-release-v1",
@@ -332,22 +337,22 @@ def test_dragon_dataset_layout_avoids_transformed_fixed_savebar() -> None:
     assert "right: calc(var(--dragon-dataset-page-gutter) + var(--dragon-dataset-library-width) + var(--dragon-dataset-workspace-gap));" in css
     assert ".dragon-dataset-savebar { right: var(--dragon-dataset-page-gutter); }" in css
     assert "#stage-resolution-dialog" in css
-    assert "#dataset-preview-dialog" in css
+    assert ".dataset-preview-dialog" in css
     assert ".dragon-dataset-group-action { width: 40px; height: 40px; }" in css
     assert "grid-template-columns: repeat(3, minmax(0, 1fr));" in css
 
 
 def test_dragon_dataset_release_token_is_consistent() -> None:
-    bootstrap_token = "dragon-ui-20260831v22"
-    entry_token = "dragon-ui-20260831v22"
-    style_token = "dragon-ui-20260828v155"
-    shell_token = "dragon-ui-20260828v74"
-    config_page_token = "dragon-ui-20260831v153"
+    bootstrap_token = "dragon-ui-20260902-training-nav-v3"
+    entry_token = "dragon-ui-20260902-training-nav-v3"
+    style_token = "dragon-ui-20260902-training-nav-v3"
+    shell_token = "dragon-ui-20260902-training-nav-v3"
+    config_page_token = "dragon-ui-20260901v154"
     page_token = "dragon-ui-20260825v118"
     fields_token = "dragon-ui-20260828v54"
-    config_style_token = "dragon-ui-20260825v120"
-    shared_style_token = "dragon-ui-20260831v74"
-    dataset_style_token = "dragon-ui-20260831v90"
+    config_style_token = "dragon-ui-20260902-lokr-availability-v1"
+    shared_style_token = "dragon-ui-20260902v78"
+    dataset_style_token = "dragon-ui-20260902v91"
     index_html = INDEX_HTML.read_text(encoding="utf-8")
     bootstrap = _read("js/ui-bootstrap.js")
     entry = _read("js/dragon-ui/index.js")
@@ -363,20 +368,20 @@ def test_dragon_dataset_release_token_is_consistent() -> None:
     assert f"dragon-ui/index.js?v={entry_token}" in bootstrap
     assert f"dragon-style.css?v={style_token}" in bootstrap
     assert f"router.js?v={shell_token}" in entry
-    assert "nav.js?v=dragon-ui-20260828v77" in entry
+    assert "nav.js?v=dragon-ui-20260902-training-nav-v3" in entry
     assert f"config-page.js?v={config_page_token}" in page_loaders
-    assert "route-styles.js?v=dragon-ui-20260831v14" in page_loaders
-    assert "dataset-editor.js?v=dragon-ui-20260831v134" in page_loaders
-    assert "dataset-preview-controller.js?v=dragon-ui-20260831v7" in page
-    assert "dataset-editor-preview.js?v=dragon-ui-20260831v52" in preview_controller
+    assert "route-styles.js?v=dragon-ui-20260902-training-nav-v3" in page_loaders
+    assert "dataset-editor.js?v=dragon-ui-20260902v138" in page_loaders
+    assert "dataset-preview-controller.js?v=dragon-ui-20260902v8" in page
+    assert "dataset-editor-preview.js?v=dragon-ui-20260902v53" in preview_controller
     assert "dataset-preview-window.js?v=dragon-ui-20260831v3" in preview
-    assert "dataset-preview-detail.js?v=dragon-ui-20260831v3" in preview_controller or "dataset-preview-detail.js?v=dragon-ui-20260831v3" in _read("js/dragon-ui/pages/dataset-editor-preview.js")
+    assert "dataset-preview-detail.js?v=dragon-ui-20260902v4" in preview_controller or "dataset-preview-detail.js?v=dragon-ui-20260902v4" in _read("js/dragon-ui/pages/dataset-editor-preview.js")
     assert f"dataset-editor-fields.js?v={fields_token}" in page
     assert "dataset-editor-presets.js?v=dragon-ui-20260824v71" in page
     assert f"06-dragon-pages.css?v={dataset_style_token}" in route_styles
     assert f"04-dragon-config.css?v={config_style_token}" in route_styles
     assert "04a-dragon-training-presets.css?v=dragon-ui-20260817v84" in route_styles
-    assert f"06a-dragon-shared-dialogs.css?v={shared_style_token}" in route_styles
+    assert "06a-dragon-shared-dialogs.css?v=dragon-ui-20260902v78" in route_styles
 
 
 def test_dragon_dataset_preset_library_exposes_current_and_group_exports():

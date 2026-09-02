@@ -3,6 +3,7 @@
  * Extracted from former chunk 12 / row-fields.
  */
 import { setDatasetPresetStatus } from '../anima-app/helpers/dataset-preset-actions-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { alertDragonDialog } from '../../shared/dialog.js?v=module-bootstrap-20260901-dialog-v1';
 import {
     datasetPreviewImageToPreviewImage,
     datasetPreviewValidationText,
@@ -209,6 +210,12 @@ export async function loadDatasetPreviewImages() {
                 button.classList.remove('btn-primary');
             }, 1000);
         } catch (e) {
-            alert('复制标注失败: ' + e.message);
+            await alertDragonDialog({
+                eyebrow: '数据集预览',
+                title: '复制标注失败',
+                message: e.message || '无法复制当前标注。',
+                tone: 'danger',
+                icon: 'x',
+            });
         }
     }

@@ -63,7 +63,7 @@ export const FORM_SECTION_DEFS = [
     {
         title: 'LoKr 专用优化',
         description: 'LoKr 16G / Kronecker adapter 的专用显存与吞吐调优；普通 LoRA 不需要手动调整。',
-        open: false,
+        open: true,
         className: 'config-group-lokr-optimization',
         keys: [
             'lokr_use_einsum',
@@ -72,6 +72,8 @@ export const FORM_SECTION_DEFS = [
             'lokr_allow_legacy_dim',
             'lokr_factor_group_size',
             'lokr_project_chunk_bytes',
+            'lokr_grouped_delta_backend',
+            'lokr_grouped_delta_backward_backend',
         ],
     },
     {
@@ -451,6 +453,10 @@ export const CONFIG_COMPACT_FIELD_GROUPS = {
         {
             className: 'config-field-grid-2col',
             keys: ['lokr_factor_group_size', 'lokr_project_chunk_bytes'],
+        },
+        {
+            className: 'config-field-grid-2col',
+            keys: ['lokr_grouped_delta_backend', 'lokr_grouped_delta_backward_backend'],
         },
     ],
     'config-group-data-resource': [

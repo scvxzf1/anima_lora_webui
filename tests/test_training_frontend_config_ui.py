@@ -1621,8 +1621,11 @@ def test_config_form_uses_navigation_search_and_progressive_disclosure() -> None
     assert "'peak_probe_level'," in optimization_section
     assert "'lr_warmup_steps'," in optimization_section
     lokr_section = _section(source, "title: 'LoKr 专用优化'", "title: '数据集设置'")
+    assert "open: true," in lokr_section
     assert "'lokr_factor_group_size'," in lokr_section
     assert "'lokr_project_chunk_bytes'," in lokr_section
+    assert "'lokr_grouped_delta_backend'," in lokr_section
+    assert "'lokr_grouped_delta_backward_backend'," in lokr_section
     assert "sections: ['常用训练设置', '步数与训练量', 'LoKr 专用优化']" in category_defs
     assert "sections: ['显存与速度优化', '数据加载与 VAE 资源', '实验性功能', '无数据集正则化']" in category_defs
     assert category_defs.index("数据加载与 VAE 资源") < category_defs.index("实验性功能")

@@ -30,6 +30,8 @@ const LOKR_NETWORK_ARG_KEYS = new Set([
     'lokr_allow_legacy_dim',
     'lokr_factor_group_size',
     'lokr_project_chunk_bytes',
+    'lokr_grouped_delta_backend',
+    'lokr_grouped_delta_backward_backend',
 ]);
 
 function currentConfigState() {

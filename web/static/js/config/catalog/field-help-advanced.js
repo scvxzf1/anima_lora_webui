@@ -113,11 +113,19 @@ export const FIELD_HELP_ADVANCED_ZH = {
     ),
     lokr_grouped_delta_backend: advancedHelp(
         '选择 LoKr 分组 Delta 权重的计算后端。',
-        '使用当前 LoKr 配方给出的值；仅在确认训练端支持的后端之间切换。',
+        '当前默认使用 Triton；可切回 eager 进行兼容性诊断或对照。',
         '可在等价 LoKr 数学形式下选择更适合当前硬件的实现。',
         '不同后端的速度、峰值显存和编译兼容性可能不同。',
-        '未支持的值可导致训练前检查或启动失败。',
-        '保持导入配置的默认后端；切换后先运行短步数显存和数值检查。'
+        '不兼容的设备、dtype、shape 或布局会回退 eager；未知值会在启动前被拒绝。',
+        'CMP 170HX 使用默认 Triton；其他硬件首次训练先运行短步数显存和数值检查。'
+    ),
+    lokr_grouped_delta_backward_backend: advancedHelp(
+        '选择 LoKr 分组 Delta 的反向计算后端。',
+        '默认使用 triton_grad_w1_w2_grad_x；其他选项用于分阶段加速或 eager 对照。',
+        '在兼容的 CUDA 输入和完整 w2 配置下，可减少反向分解与归约开销。',
+        'Triton 后端可能增加首次编译时间、临时显存和调试成本。',
+        'triton_grad_w1_w2_grad_x 只覆盖 full w2、scalar gate、连续 CUDA tensor 等窄契约；不满足时会回退 eager，但 Triton 已选中后的编译异常仍可能直接抛出。',
+        'CMP 170HX 使用默认完整梯度路径；其他硬件若出现编译问题，先切回 eager 再诊断。'
     ),
     rank_dropout: advancedHelp(
         '设置训练时随机丢弃 LoRA/LoKr 秩分量的概率。',

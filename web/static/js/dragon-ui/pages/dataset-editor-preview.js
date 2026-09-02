@@ -1,7 +1,7 @@
 /* Image and caption preview for the Dragon dataset workspace. */
 
 import { escapeAttribute, escapeHtml } from './dataset-editor-fields.js?v=dragon-ui-20260828v54';
-import { createDatasetPreviewDetailController } from './dataset-preview-detail.js?v=dragon-ui-20260831v3';
+import { createDatasetPreviewDetailController } from './dataset-preview-detail.js?v=dragon-ui-20260902v4';
 import {
     alignDatasetPreviewOffset,
     createDatasetPreviewWindow,

@@ -2,7 +2,7 @@
  * Config form draft/render helpers.
  * Moved out of anima-app mechanical chunks.
  */
-import { applyLoraAdapterDraft, applyOptimizerCompatibilityPatch } from './form-fields.js?v=module-bootstrap-20260831-release-v1';
+import { applyLoraAdapterDraft, applyOptimizerCompatibilityPatch } from './form-fields.js?v=module-bootstrap-20260902-lokr-backend-v4';
 import {
     CHIMERA_UI_DEFAULT_FIELDS,
     CONFIG_FORM_INTERNAL_KEYS,
@@ -20,7 +20,7 @@ import {
     SOFT_TOKENS_UI_DEFAULT_FIELDS,
     SPD_UI_DEFAULT_FIELDS,
     VERA_SCOPED_FIELD_KEYS,
-} from '../../config/catalog.js?v=module-bootstrap-20260831-release-v1';
+} from '../../config/catalog.js?v=module-bootstrap-20260902-lokr-backend-v4';
 import {
     isTruthy,
     loraAdapterFlagsMatchConfig,
@@ -29,7 +29,7 @@ import {
     normalizePrecisionPreference,
     precisionPreferenceFromConfig,
 } from '../anima-app/helpers/config-values.js?v=module-bootstrap-20260831-release-v1';
-import { readLiveLoraAdapterKind } from './form-fields-adapters.js?v=module-bootstrap-20260831-release-v1';
+import { readLiveLoraAdapterKind } from './form-fields-adapters.js?v=module-bootstrap-20260902-lokr-backend-v4';
 import {
     configureConfigFormBridge,
     networkArgFieldValueFromConfig,
@@ -322,7 +322,10 @@ function currentConfigState() { return configState.currentConfig || {}; }
         if (!specs.length) return;
         const argMap = parseNetworkArgMap(config?.network_args);
         for (const spec of specs) {
-            const rawValue = argMap.has(spec.arg) ? argMap.get(spec.arg) : spec.default;
+            const fallback = Object.prototype.hasOwnProperty.call(config || {}, spec.key)
+                ? config[spec.key]
+                : spec.default;
+            const rawValue = argMap.has(spec.arg) ? argMap.get(spec.arg) : fallback;
             fieldsByKey[spec.key] = coerceNetworkArgValue(rawValue, spec);
         }
     }

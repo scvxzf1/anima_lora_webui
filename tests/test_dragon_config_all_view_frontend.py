@@ -40,7 +40,8 @@ def test_all_config_view_builds_flat_block_metadata() -> None:
     page = _read("js/dragon-ui/pages/config-page.js")
     metadata = _read("js/dragon-ui/pages/config-block-metadata.js")
 
-    assert "buildConfigBlocks(entries, currentValues, FIELD_OPTIONS, FORM_UI_DEFAULTS)" in page
+    assert "buildConfigBlocks(" in page
+    assert "availabilityContext," in page
     assert "chapter.blocks.map(renderBlock).join('')" in _read("js/dragon-ui/pages/config-all-view.js")
     assert "spanForField" in metadata
     assert "tagId: tag.id" in metadata
@@ -63,6 +64,78 @@ def test_all_config_view_uses_current_method_scope_and_preserves_drafts() -> Non
     assert "values: pageState.draftValues" in page
     assert "typeof originalValue === 'boolean'" in values
     assert "typeof originalValue === 'number' || input.type === 'number'" in values
+
+
+def test_lokr_fused_backends_are_scoped_selectors_and_round_trip_network_args() -> None:
+    if not shutil.which("node"):
+        pytest.skip("node is required for LoKr config catalog checks")
+    defaults = _read("js/config/catalog/defaults.js")
+    layout = _read("js/config/catalog/form-layout.js")
+    labels = _read("js/config/catalog/labels-options.js")
+    field_map = _read("js/dragon-ui/pages/config-field-map.js")
+    groups = _read("js/dragon-ui/pages/section-groups.js")
+    advanced_help = _read("js/config/catalog/field-help-advanced.js")
+
+    expected_defaults = {
+        "lokr_grouped_delta_backend": "triton",
+        "lokr_grouped_delta_backward_backend": "triton_grad_w1_w2_grad_x",
+    }
+    for key, expected_default in expected_defaults.items():
+        assert f"'{key}'," in defaults
+        assert f"key: '{key}', arg: '{key}', default: '{expected_default}', valueType: 'string'" in defaults
+        assert key in layout
+        assert key in field_map
+        assert key in groups
+        assert f"{key}: advancedHelp(" in advanced_help
+    assert "lokr_grouped_delta_backend: ['eager', 'triton']" in labels
+    for option in (
+        "triton_grad_x",
+        "triton_grad_w2_partial",
+        "triton_grad_w2_grad_x",
+        "triton_grad_w1_w2_grad_x",
+    ):
+        assert f"'{option}'," in labels
+
+    values_uri = (STATIC / "js/dragon-ui/pages/config-values.js").resolve().as_uri()
+    script = f"""
+const mod = await import({json.dumps(values_uri + '?lokr-backend-round-trip')});
+const original = {{
+  lokr_grouped_delta_backend: 'triton',
+  lokr_grouped_delta_backward_backend: 'triton_grad_x',
+  network_args: [
+    'lokr_factor_group_size=8',
+    'lokr_grouped_delta_backend=eager',
+    'unrelated_flag=keep',
+  ],
+}};
+const displayed = {{
+  forward: mod.displayConfigValue('lokr_grouped_delta_backend', original),
+  backward: mod.displayConfigValue('lokr_grouped_delta_backward_backend', original),
+}};
+const patch = mod.prepareConfigPatch({{
+  lokr_grouped_delta_backend: 'triton',
+  lokr_grouped_delta_backward_backend: 'triton_grad_w1_w2_grad_x',
+}}, original);
+console.log(JSON.stringify({{ displayed, patch }}));
+"""
+    result = subprocess.run(
+        ["node", "--input-type=module", "--eval", script],
+        cwd=STATIC.parents[1],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=20,
+    )
+    payload = json.loads(result.stdout)
+    assert payload["displayed"] == {"forward": "eager", "backward": "triton_grad_x"}
+    assert payload["patch"] == {
+        "network_args": [
+            "lokr_factor_group_size=8",
+            "lokr_grouped_delta_backend=triton",
+            "unrelated_flag=keep",
+            "lokr_grouped_delta_backward_backend=triton_grad_w1_w2_grad_x",
+        ]
+    }
 
 
 def test_all_config_view_has_global_search_navigation_and_change_summary() -> None:
@@ -89,7 +162,8 @@ def test_all_config_restore_is_explicit_and_skips_unknown_defaults() -> None:
 
     assert "Object.prototype.hasOwnProperty.call(FORM_UI_DEFAULTS, key)" in page
     assert "有界面默认值的 ${resetKeys.length} 个参数" in page
-    assert "window.confirm" in page
+    assert "const confirmed = await confirmDragonDialog" in page
+    assert "恢复后仍需点击“保存配置”才会生效。" in page
     assert "恢复全部默认" in page
 
 
@@ -420,7 +494,8 @@ def test_grouped_config_renders_complete_structured_field_help() -> None:
     assert "const help = resolveConfigFieldHelp(key, label, helpCatalog)" in help_view
     assert "await resolveHelpCatalog(helpCatalogSource)" in help_view
     assert "当前字段尚无专项说明" in help_view
-    assert "renderConfigHelpButton(key, label)" in page
+    assert "renderConfigHelpButton(key, label," in page
+    assert "unavailableReason" in page
     assert 'aria-haspopup="dialog"' in help_view
     assert '<dialog class="dragon-config-help-dialog"' in help_view
     assert 'class="dragon-icon-button"' in help_view
@@ -433,6 +508,72 @@ def test_grouped_config_renders_complete_structured_field_help() -> None:
     assert '.dragon-config-help-dialog-body' in css
     assert 'grid-template-columns: repeat(2, minmax(0, 1fr))' in css
     assert 'data-help-open="true"' not in css
+
+
+def test_inapplicable_config_fields_stay_visible_disabled_and_explain_why() -> None:
+    page = _read("js/dragon-ui/pages/config-page.js")
+    help_view = _read("js/dragon-ui/pages/config-field-help.js")
+    css = _read("css/dragon/04-dragon-config.css")
+
+    assert "configFieldAvailability(key, availabilityContext)" in page
+    assert 'data-config-availability="${unavailable ? \'unavailable\' : \'available\'}"' in page
+    assert 'data-config-disabled="${unavailable}"' in page
+    assert 'tabindex="${unavailable ? \'-1\' : \'0\'}"' in page
+    assert 'aria-disabled="${unavailable}"' in page
+    assert "${unavailable ? ' disabled' : ''}" in page
+    assert "if (toggle.dataset.configDisabled === 'true') return" in page
+    assert "control?.disabled || control?.dataset.configDisabled === 'true'" in page
+    assert "delete helpButton.dataset.helpUnavailableReason" in page
+    assert "!configFieldAvailability(key, state.availabilityContext).enabled" in page
+    assert "...(state?.baselineValues || {})" in page
+    assert "...(state?.draftValues || {})" in page
+
+    assert "data-help-unavailable-reason" in help_view
+    assert "当前不可用" in help_view
+    assert "查看不可用原因" in help_view
+    assert '[data-config-availability="unavailable"]' in css
+    assert '.dragon-field-help-btn-unavailable' in css
+
+
+def test_config_field_availability_tracks_adapter_and_compute_conditions() -> None:
+    if not shutil.which("node"):
+        pytest.skip("node is required for config availability checks")
+    module_uri = (STATIC / "js/dragon-ui/pages/config-field-availability.js").resolve().as_uri()
+    script = f"""
+const mod = await import({json.dumps(module_uri + '?availability-state-test')});
+const check = (key, context) => mod.configFieldAvailability(key, context);
+console.log(JSON.stringify({{
+  adapterFromDraft: mod.resolveConfigAdapterKind({{ lora_adapter_kind: 'lokr' }}),
+  draftOverridesFlags: mod.resolveConfigAdapterKind({{ lora_adapter_kind: 'lora', use_lokr: true }}),
+  adapterFromLegacyFlag: mod.resolveConfigAdapterKind({{ use_lokr: 'true' }}),
+  falseStringIsFalse: mod.resolveConfigAdapterKind({{ use_lokr: 'false' }}),
+  lokrDisabled: check('lokr_grouped_delta_backend', {{ method: 'lora', adapter: 'lora', baseCompute: 'bf16' }}),
+  lokrEnabled: check('lokr_grouped_delta_backend', {{ method: 'lora', adapter: 'lokr', baseCompute: 'bf16' }}),
+  convrotDisabled: check('convrot_group_size', {{ method: 'lora', adapter: 'lora', baseCompute: 'bf16' }}),
+  convrotEnabled: check('convrot_group_size', {{ method: 'lora', adapter: 'lora', baseCompute: 'w8a16_convrot' }}),
+}}));
+"""
+    result = subprocess.run(
+        ["node", "--input-type=module", "--eval", script],
+        cwd=STATIC.parents[1],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=20,
+    )
+    payload = json.loads(result.stdout)
+
+    assert payload["adapterFromDraft"] == "lokr"
+    assert payload["draftOverridesFlags"] == "lora"
+    assert payload["adapterFromLegacyFlag"] == "lokr"
+    assert payload["falseStringIsFalse"] == "lora"
+    assert payload["lokrDisabled"]["enabled"] is False
+    assert payload["lokrDisabled"]["code"] == "adapter-family"
+    assert "LoKr" in payload["lokrDisabled"]["reason"]
+    assert payload["lokrEnabled"] == {"enabled": True, "reason": "", "code": None}
+    assert payload["convrotDisabled"]["enabled"] is False
+    assert payload["convrotDisabled"]["code"] == "convrot-base-compute"
+    assert payload["convrotEnabled"] == {"enabled": True, "reason": "", "code": None}
 
 
 def test_config_help_summary_matches_full_catalog() -> None:
@@ -503,6 +644,7 @@ def test_advanced_config_fields_visible_in_flat_view_have_help_coverage() -> Non
         "freq_router_init_std",
         "freq_router_layer_norm",
         "lokr_grouped_delta_backend",
+        "lokr_grouped_delta_backward_backend",
         "rank_dropout",
     )
     for key in shipped_advanced_keys:
@@ -526,6 +668,7 @@ def test_advanced_config_fields_visible_in_flat_view_have_help_coverage() -> Non
     for key in ("model_family", "activation_memory_budget", "train_adaln", "cpu_offload_checkpointing"):
         assert f"{key}: '" in labels
     assert "lokr_grouped_delta_backend: 'LoKr 分组 Delta 后端'" in labels
+    assert "lokr_grouped_delta_backward_backend: 'LoKr 分组 Delta 反向后端'" in labels
     assert "rank_dropout: '秩 Dropout'" in labels
 
 

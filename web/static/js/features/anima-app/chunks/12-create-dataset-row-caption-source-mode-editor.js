@@ -13,4 +13,4 @@ export {
 export {
     loadDatasetPreviewImages,
     openDatasetPreview,
-} from '../../dataset-editor/preview.js?v=module-bootstrap-20260831-release-v1';
+} from '../../dataset-editor/preview.js?v=module-bootstrap-20260901-dialog-v1';

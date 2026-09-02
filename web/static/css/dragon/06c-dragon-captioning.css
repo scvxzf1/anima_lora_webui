@@ -369,16 +369,15 @@ body[data-dragon-ui] #dragon-root .dragon-caption-page :is(
     border-top: 1px solid var(--dragon-border-light);
 }
 
-.dragon-tagging-job-summary > summary {
+.dragon-tagging-job-summary-head {
     display: grid;
-    grid-template-columns: minmax(180px, 1fr) minmax(160px, 1.4fr) 18px;
+    grid-template-columns: minmax(180px, 1fr) minmax(160px, 1.4fr) auto;
     align-items: center;
     gap: var(--dragon-sp-3);
     min-height: 72px;
-    cursor: pointer;
 }
 
-.dragon-tagging-job-summary > summary > span:first-child {
+.dragon-tagging-job-summary-head > span:first-child {
     display: grid;
     min-width: 0;
     gap: 2px;
@@ -590,6 +589,16 @@ body[data-dragon-ui] #dragon-root .dragon-caption-page .dragon-tagging-preset-li
     color: var(--dragon-text-tertiary);
 }
 
+.dragon-tagging-preset-badge {
+    display: inline-block;
+    margin-left: 6px;
+    padding: 1px 5px;
+    border: 1px solid var(--dragon-border-light);
+    color: var(--dragon-text-tertiary);
+    font-size: var(--dragon-fs-caption);
+    font-weight: 600;
+}
+
 .dragon-tagging-library-empty {
     padding: var(--dragon-sp-5) var(--dragon-sp-3);
     color: var(--dragon-text-secondary);
@@ -601,6 +610,15 @@ body[data-dragon-ui] #dragon-root .dragon-caption-page .dragon-tagging-preset-li
     align-content: start;
     gap: var(--dragon-sp-4);
     padding: var(--dragon-sp-5);
+}
+
+.dragon-tagging-preset-note {
+    margin: 0;
+    padding: var(--dragon-sp-2) var(--dragon-sp-3);
+    border-left: 3px solid var(--dragon-accent);
+    background: var(--dragon-bg-secondary);
+    color: var(--dragon-text-secondary);
+    font-size: var(--dragon-fs-caption);
 }
 
 .dragon-tagging-preset-editor > header,
@@ -625,6 +643,134 @@ body[data-dragon-ui] #dragon-root .dragon-caption-page .dragon-tagging-preset-li
 .dragon-tagging-dirty-state {
     color: var(--dragon-warning);
     font-size: var(--dragon-fs-caption);
+}
+
+.dragon-tagging-provider-layout {
+    min-height: min(760px, calc(100dvh - 190px));
+}
+
+.dragon-tagging-provider-editor {
+    max-width: 980px;
+}
+
+.dragon-tagging-provider-section {
+    display: grid;
+    gap: var(--dragon-sp-3);
+    padding-top: var(--dragon-sp-2);
+    border-top: 1px solid var(--dragon-border-light);
+}
+
+.dragon-tagging-provider-section-head {
+    display: grid;
+    gap: 4px;
+}
+
+.dragon-tagging-provider-section-head p {
+    margin: 0;
+    color: var(--dragon-text-secondary);
+    line-height: 1.5;
+}
+
+.dragon-tagging-provider-section-head .dragon-eyebrow {
+    color: var(--dragon-text-tertiary);
+}
+
+.dragon-tagging-provider-checks,
+.dragon-tagging-local-actions {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--dragon-sp-3);
+}
+
+.dragon-tagging-provider-status {
+    display: grid;
+    grid-template-columns: 10px minmax(0, auto) minmax(0, 1fr);
+    align-items: center;
+    gap: var(--dragon-sp-2);
+    padding: 10px 12px;
+    border: 1px solid var(--dragon-border-light);
+    color: var(--dragon-text-secondary);
+}
+
+.dragon-tagging-provider-status i {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--dragon-warning);
+}
+
+.dragon-tagging-provider-status[data-state="ready"] i {
+    background: var(--dragon-success);
+}
+
+.dragon-tagging-provider-status strong {
+    color: var(--dragon-text-primary);
+}
+
+.dragon-tagging-provider-status span {
+    min-width: 0;
+    color: var(--dragon-text-tertiary);
+    font-size: var(--dragon-fs-caption);
+}
+
+.dragon-tagging-local-actions > span {
+    color: var(--dragon-text-tertiary);
+    font-size: var(--dragon-fs-caption);
+}
+
+.dragon-tagging-asset-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 14px;
+    color: var(--dragon-text-tertiary);
+    font-size: var(--dragon-fs-caption);
+}
+
+.dragon-tagging-asset-meta span:not(:first-child)::before {
+    content: "·";
+    margin-right: 14px;
+    color: var(--dragon-border);
+}
+
+.dragon-tagging-download-progress {
+    display: grid;
+    gap: 7px;
+    padding: 10px 12px;
+    border: 1px solid var(--dragon-border-light);
+    background: var(--dragon-bg-secondary);
+}
+
+.dragon-tagging-download-progress > div {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--dragon-sp-2);
+    min-width: 0;
+}
+
+.dragon-tagging-download-progress strong,
+.dragon-tagging-download-progress span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.dragon-tagging-download-progress span {
+    color: var(--dragon-text-tertiary);
+    font-size: var(--dragon-fs-caption);
+}
+
+.dragon-tagging-download-progress progress {
+    width: 100%;
+    height: 6px;
+    accent-color: var(--dragon-accent);
+}
+
+.dragon-tagging-profile-current {
+    color: var(--dragon-success);
+    font-size: var(--dragon-fs-caption);
+    white-space: nowrap;
 }
 
 .dragon-tagging-job-select {
@@ -658,17 +804,28 @@ body[data-dragon-ui] #dragon-root .dragon-caption-page .dragon-tagging-preset-li
 
 .dragon-tagging-review-item {
     min-width: 0;
-    border: 1px solid var(--dragon-border-light);
+    border: 3px solid transparent;
     content-visibility: auto;
     contain-intrinsic-size: 220px 160px;
+    transition: border-color 160ms ease;
 }
 
-.dragon-tagging-review-item[data-state="failed"] {
-    border-left: 3px solid var(--dragon-danger);
+.dragon-tagging-review-item[data-state="queued"] {
+    border-color: var(--dragon-accent);
 }
 
+.dragon-tagging-review-item[data-state="running"] {
+    border-color: var(--dragon-error);
+}
+
+.dragon-tagging-review-item[data-state="ready"],
 .dragon-tagging-review-item[data-state="committed"] {
-    border-left: 3px solid var(--dragon-success);
+    border-color: transparent;
+}
+
+.dragon-tagging-results-page .dragon-status-badge[data-state="queued"] {
+    background: var(--dragon-accent-light);
+    color: var(--dragon-accent);
 }
 
 .dragon-tagging-review-item > summary {
@@ -784,6 +941,407 @@ body[data-dragon-ui] #dragon-root .dragon-caption-page .dragon-tagging-preset-li
     overflow-wrap: anywhere;
 }
 
+.dragon-tagging-results-header {
+    align-items: stretch;
+}
+
+.dragon-tagging-results-header-controls {
+    display: grid;
+    width: min(920px, 64vw);
+    grid-template-columns: minmax(320px, 1.35fr) minmax(260px, .85fr);
+    align-items: end;
+    gap: var(--dragon-sp-3);
+}
+
+.dragon-tagging-results-dataset {
+    display: grid;
+    min-width: 0;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 3px var(--dragon-sp-2);
+    padding-left: var(--dragon-sp-3);
+    border-left: 1px solid var(--dragon-border-light);
+}
+
+.dragon-tagging-results-dataset > span,
+.dragon-tagging-results-dataset > strong,
+.dragon-tagging-results-dataset > code {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.dragon-tagging-results-dataset > span,
+.dragon-tagging-results-dataset > strong,
+.dragon-tagging-results-dataset > code {
+    grid-column: 1;
+}
+
+.dragon-tagging-results-dataset > code {
+    color: var(--dragon-text-tertiary);
+    font-size: var(--dragon-fs-tiny);
+}
+
+.dragon-tagging-results-dataset > button {
+    grid-column: 2;
+    grid-row: 1 / span 3;
+    align-self: center;
+}
+
+.dragon-tagging-results-toolbar {
+    display: grid;
+    gap: 8px;
+}
+
+.dragon-tagging-results-toolbar-row {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--dragon-sp-3);
+}
+
+.dragon-tagging-results-toolbar-primary {
+    min-height: 38px;
+}
+
+.dragon-tagging-results-state,
+.dragon-tagging-results-primary-actions,
+.dragon-tagging-results-batch-actions,
+.dragon-tagging-rerun-controls,
+.dragon-tagging-review-body > footer,
+.dragon-tagging-review-body > footer > div {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: var(--dragon-sp-2);
+}
+
+.dragon-tagging-results-state small {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--dragon-text-tertiary);
+    font-size: var(--dragon-fs-caption);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.dragon-tagging-rerun-controls .dragon-select {
+    width: min(260px, 24vw);
+}
+
+.dragon-segmented {
+    display: inline-grid;
+    flex: 0 0 auto;
+    grid-template-columns: repeat(2, minmax(82px, 1fr));
+    overflow: hidden;
+    border: 1px solid var(--dragon-border-light);
+    background: var(--dragon-bg-secondary);
+}
+
+.dragon-segmented button {
+    display: inline-flex;
+    min-height: 34px;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 0 12px;
+    border: 0;
+    border-right: 1px solid var(--dragon-border-light);
+    background: transparent;
+    color: var(--dragon-text-secondary);
+    cursor: pointer;
+}
+
+.dragon-segmented button:last-child {
+    border-right: 0;
+}
+
+.dragon-segmented button[data-active="true"] {
+    background: var(--dragon-bg-primary);
+    color: var(--dragon-text-primary);
+    box-shadow: inset 0 -2px 0 var(--dragon-accent);
+}
+
+.dragon-segmented svg {
+    width: 16px;
+    height: 16px;
+}
+
+.dragon-tagging-review-list {
+    grid-template-columns: repeat(auto-fill, minmax(min(360px, 100%), 1fr));
+    align-items: start;
+    gap: var(--dragon-sp-3);
+}
+
+.dragon-tagging-review-item {
+    display: grid;
+    overflow: hidden;
+    border-radius: 5px;
+    background: var(--dragon-bg-primary);
+    contain-intrinsic-size: 640px 720px;
+}
+
+.dragon-tagging-review-media {
+    position: relative;
+    display: grid;
+    width: 100%;
+    aspect-ratio: 4 / 3;
+    place-items: center;
+    overflow: hidden;
+    background: #202226;
+}
+
+.dragon-tagging-review-image {
+    display: block;
+    width: 100%;
+    height: 100%;
+    padding: 0;
+    overflow: hidden;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    cursor: zoom-in;
+}
+
+.dragon-tagging-review-image > img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    transition: transform 160ms ease;
+}
+
+.dragon-tagging-review-image:hover > img {
+    transform: scale(1.015);
+}
+
+.dragon-tagging-review-image:focus-visible {
+    outline: 2px solid var(--dragon-accent);
+    outline-offset: -3px;
+}
+
+.dragon-tagging-review-media > svg {
+    width: 44px;
+    height: 44px;
+    color: var(--dragon-text-tertiary);
+}
+
+.dragon-tagging-review-select,
+.dragon-tagging-review-media > .dragon-status-badge {
+    position: absolute;
+    z-index: 2;
+    top: 10px;
+}
+
+.dragon-tagging-review-select {
+    left: 10px;
+    display: grid;
+    width: 30px;
+    height: 30px;
+    place-items: center;
+    border: 1px solid color-mix(in srgb, var(--dragon-border-light) 72%, transparent);
+    background: color-mix(in srgb, var(--dragon-bg-primary) 90%, transparent);
+}
+
+.dragon-tagging-review-select input {
+    width: 17px;
+    height: 17px;
+    margin: 0;
+    accent-color: var(--dragon-accent);
+}
+
+.dragon-tagging-review-media > .dragon-status-badge {
+    right: 10px;
+    background: color-mix(in srgb, var(--dragon-bg-primary) 92%, transparent);
+}
+
+.dragon-tagging-results-page .dragon-status-badge[data-result-item-status] {
+    display: none;
+}
+
+.dragon-tagging-review-body {
+    display: grid;
+    min-width: 0;
+    align-content: start;
+    gap: var(--dragon-sp-3);
+    padding: var(--dragon-sp-3);
+}
+
+.dragon-tagging-review-body > header {
+    display: grid;
+    min-width: 0;
+    gap: 3px;
+}
+
+.dragon-tagging-review-body > header strong,
+.dragon-tagging-review-body > header small {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.dragon-tagging-review-body > header small {
+    color: var(--dragon-text-tertiary);
+    font-family: var(--dragon-font-mono);
+    font-size: var(--dragon-fs-tiny);
+}
+
+.dragon-tagging-chip-editor {
+    display: grid;
+    min-width: 0;
+    gap: var(--dragon-sp-2);
+}
+
+.dragon-tagging-chip-list {
+    display: flex;
+    min-height: 92px;
+    max-height: 220px;
+    align-content: flex-start;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 6px;
+    overflow: auto;
+    padding: 8px;
+    border: 1px solid var(--dragon-border-light);
+    background: var(--dragon-bg-secondary);
+}
+
+.dragon-tagging-chip {
+    display: inline-flex;
+    max-width: 100%;
+    min-height: 30px;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 6px;
+    border: 1px solid var(--dragon-border-medium);
+    border-radius: 999px;
+    background: var(--dragon-bg-primary);
+    color: var(--dragon-text-primary);
+    font-size: var(--dragon-fs-caption);
+}
+
+.dragon-tagging-chip[data-dragging="true"] {
+    opacity: .45;
+}
+
+.dragon-tagging-chip[data-drop-target="true"] {
+    outline: 2px solid var(--dragon-accent);
+    outline-offset: 2px;
+}
+
+.dragon-tagging-chip-grip,
+.dragon-tagging-chip-remove {
+    display: grid;
+    flex: 0 0 auto;
+    width: 18px;
+    height: 18px;
+    place-items: center;
+    border: 0;
+    padding: 0;
+    background: transparent;
+    color: var(--dragon-text-tertiary);
+}
+
+.dragon-tagging-chip-grip {
+    cursor: grab;
+}
+
+.dragon-tagging-chip-remove {
+    cursor: pointer;
+}
+
+.dragon-tagging-chip-grip svg,
+.dragon-tagging-chip-remove svg {
+    width: 14px;
+    height: 14px;
+}
+
+.dragon-tagging-chip-text {
+    min-width: 10px;
+    max-width: 100%;
+    outline: 0;
+    overflow-wrap: anywhere;
+}
+
+.dragon-tagging-chip-text:focus {
+    text-decoration: underline;
+    text-decoration-color: var(--dragon-accent);
+    text-underline-offset: 3px;
+}
+
+.dragon-tagging-chip-empty,
+.dragon-tagging-editor-saving {
+    color: var(--dragon-text-tertiary);
+    font-size: var(--dragon-fs-caption);
+}
+
+.dragon-tagging-chip-add {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 36px;
+    gap: 6px;
+}
+
+.dragon-tagging-raw-editor textarea {
+    min-height: 190px;
+    resize: vertical;
+}
+
+.dragon-tagging-result-preview-editor {
+    display: grid;
+    min-width: 0;
+    gap: var(--dragon-sp-3);
+}
+
+.dragon-tagging-result-preview-mode-row {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--dragon-sp-2);
+}
+
+.dragon-tagging-result-preview-mode-row > span {
+    color: var(--dragon-text-secondary);
+    font-size: var(--dragon-fs-caption);
+    font-weight: 600;
+}
+
+.dragon-tagging-result-preview-actions {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--dragon-sp-2);
+    border-top: 1px solid var(--dragon-border-light);
+    padding-top: var(--dragon-sp-2);
+    color: var(--dragon-text-tertiary);
+    font-size: var(--dragon-fs-caption);
+}
+
+.dragon-tagging-result-preview-actions > div {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: var(--dragon-sp-2);
+    margin-left: auto;
+}
+
+.dragon-tagging-review-body > footer {
+    justify-content: space-between;
+    border-top: 1px solid var(--dragon-border-light);
+    padding-top: var(--dragon-sp-2);
+    color: var(--dragon-text-secondary);
+    font-size: var(--dragon-fs-caption);
+}
+
+.dragon-tagging-review-body > footer > span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 .dragon-tagging-tool-empty {
     min-height: 420px;
 }
@@ -882,6 +1440,23 @@ body[data-dragon-ui] #dragon-root .dragon-caption-page .dragon-tagging-preset-li
     font-size: var(--dragon-fs-caption);
 }
 
+@media (max-width: 1200px) {
+    .dragon-tagging-results-header-controls {
+        width: 100%;
+    }
+
+    .dragon-tagging-results-toolbar-row {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .dragon-tagging-results-primary-actions,
+    .dragon-tagging-results-batch-actions {
+        width: 100%;
+        flex-wrap: wrap;
+    }
+}
+
 @media (max-width: 1068px) {
     .dragon-caption-page {
         width: min(100%, calc(100vw - 32px));
@@ -956,14 +1531,22 @@ body[data-dragon-ui] #dragon-root .dragon-caption-page .dragon-tagging-preset-li
         contain-intrinsic-size: 170px 140px;
     }
 
-    .dragon-tagging-preset-row,
-    .dragon-tagging-job-summary > summary {
+    .dragon-tagging-preset-row {
         grid-template-columns: minmax(0, 1fr) 38px;
     }
 
-    .dragon-tagging-job-summary > summary .dragon-tagging-progress {
-        grid-column: 1 / -1;
-        grid-row: 2;
+    .dragon-tagging-job-summary-head {
+        grid-template-columns: 1fr;
+        padding-block: var(--dragon-sp-2);
+    }
+
+    .dragon-tagging-job-summary-head .dragon-tagging-progress,
+    .dragon-tagging-job-summary-head .dragon-tagging-job-actions {
+        grid-column: 1;
+    }
+
+    .dragon-tagging-job-summary-head .dragon-tagging-job-actions {
+        flex-wrap: wrap;
     }
 
     .dragon-tagging-preset-editor > footer {
@@ -972,6 +1555,52 @@ body[data-dragon-ui] #dragon-root .dragon-caption-page .dragon-tagging-preset-li
 
     .dragon-tagging-job-select {
         width: 100%;
+    }
+
+    .dragon-tagging-results-header-controls {
+        grid-template-columns: 1fr;
+    }
+
+    .dragon-tagging-results-dataset {
+        padding-left: 0;
+        border-left: 0;
+    }
+
+    .dragon-tagging-results-toolbar {
+        top: var(--dragon-nav-height);
+    }
+
+    .dragon-tagging-results-state,
+    .dragon-tagging-results-primary-actions,
+    .dragon-tagging-results-batch-actions,
+    .dragon-tagging-rerun-controls,
+    .dragon-tagging-review-body > footer {
+        width: 100%;
+        align-items: stretch;
+        flex-wrap: wrap;
+    }
+
+    .dragon-tagging-results-state {
+        align-items: center;
+    }
+
+    .dragon-tagging-rerun-controls label,
+    .dragon-tagging-rerun-controls .dragon-select {
+        min-width: 0;
+        width: 100%;
+    }
+
+    .dragon-tagging-rerun-controls label {
+        flex: 1 1 200px;
+    }
+
+    .dragon-tagging-review-list {
+        grid-template-columns: 1fr;
+        padding: var(--dragon-sp-2);
+    }
+
+    .dragon-tagging-review-body > footer > span {
+        flex: 1 1 100%;
     }
 
     .dragon-tagging-review-item > summary {

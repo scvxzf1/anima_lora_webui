@@ -23,7 +23,7 @@ import {
     createNoDatasetRegularizationQuickPresetsButton,
     createResourceQuickPresetPanel,
     createResourceQuickPresetsButton,
-} from './stage-resolution.js?v=module-bootstrap-20260831-release-v1';
+} from './stage-resolution.js?v=module-bootstrap-20260901-dialog-v1';
 import { appendFieldRows } from './field-rows.js?v=module-bootstrap-20260831-release-v1';
 import { createConfigDatasetPicker } from './dataset-picker.js?v=module-bootstrap-20260831-release-v1';
 import { debounce } from '../../shared/debounce.js?v=module-bootstrap-20260831-release-v1';

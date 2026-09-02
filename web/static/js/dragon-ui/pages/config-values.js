@@ -1,7 +1,7 @@
-import { FORM_UI_DEFAULTS, NETWORK_ARG_FIELD_MAP } from '../../config/catalog/defaults.js?v=dragon-ui-20260830v2';
+import { FORM_UI_DEFAULTS, NETWORK_ARG_FIELD_MAP } from '../../config/catalog/defaults.js?v=dragon-ui-20260902-lokr-backend-v4';
 import { coerceNetworkArgValue, formatNetworkArg, parseNetworkArgEntry } from '../../features/anima-app/helpers/network-args.js?v=dragon-ui-20260812v35';
 import { loraAdapterFlagsForKind, loraAdapterKindFromConfig, precisionPreferenceFromConfig, precisionPreferencePatch } from '../../features/anima-app/helpers/config-values.js?v=dragon-ui-20260812v35';
-import { isBooleanConfigField, normalizeBooleanConfigValue } from './config-field-types.js?v=dragon-ui-20260830v1';
+import { isBooleanConfigField, normalizeBooleanConfigValue } from './config-field-types.js?v=dragon-ui-20260902-lokr-backend-v4';
 
 function networkArgMap(config) {
     const entries = Array.isArray(config?.network_args) ? config.network_args : [];
@@ -14,7 +14,10 @@ export function displayConfigValue(key, config) {
     const spec = NETWORK_ARG_FIELD_MAP.get(key);
     if (spec) {
         const args = networkArgMap(config);
-        return coerceNetworkArgValue(args.has(spec.arg) ? args.get(spec.arg) : spec.default, spec);
+        const fallback = Object.prototype.hasOwnProperty.call(config || {}, spec.key)
+            ? config[spec.key]
+            : spec.default;
+        return coerceNetworkArgValue(args.has(spec.arg) ? args.get(spec.arg) : fallback, spec);
     }
     if (isBooleanConfigField(key, config?.[key])) {
         return normalizeBooleanConfigValue(key, config?.[key]);

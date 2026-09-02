@@ -2,6 +2,10 @@
 
 import { createApiClient } from '../../shared/api.js?v=dragon-ui-20260812v35';
 import {
+    confirmDragonDialog,
+    promptDragonDialog,
+} from '../../shared/dialog.js?v=module-bootstrap-20260901-dialog-v1';
+import {
     clearActiveOrderedDropTarget,
     clearOrderedDropTargetIf,
     clearOrderedDropTargets,
@@ -46,8 +50,8 @@ import {
     saveDatasetPreset,
     saveDatasetPresetAs,
 } from './dataset-editor-presets.js?v=dragon-ui-20260824v71';
-import { createDatasetPreviewController } from './dataset-preview-controller.js?v=dragon-ui-20260831v7';
-import { loadTrainingContext, mergedConfigUrl } from './training-controls.js?v=dragon-ui-20260824v114';
+import { createDatasetPreviewController } from './dataset-preview-controller.js?v=dragon-ui-20260902v8';
+import { loadTrainingContext, mergedConfigUrl } from './training-controls.js?v=dragon-ui-20260901v115';
 import { writeTaggingPrefill } from './tagging-context.js?v=dragon-ui-20260831v2';
 
 const api = createApiClient();
@@ -94,6 +98,7 @@ export async function loadDatasetEditor() {
         libraryError: library.error || '',
         previewIndex: 0,
         beforeUnload: null,
+        leavePrompt: null,
         stageDialogBound: false,
         stageDialogHandler: null,
         stageScheduleHandler: null,
@@ -134,18 +139,24 @@ function renderPage(state) {
             <div class="dragon-dataset-workspace" data-stagger="2">
                 <div class="dragon-dataset-editor-panel">
                     ${renderEditorPanel(state)}
-                    <div class="dragon-dataset-savebar" data-dataset-savebar>
-                        <div><strong data-savebar-title>${state.selectedFile ? escapeHtml(shortName(state.selectedFile)) : '未命名数据集预设'}</strong><span data-savebar-status>${state.readonly ? '系统预设只读，请复制后编辑。' : '修改会保留在当前页面，保存后写入 TOML。'}</span></div>
-                        <div class="dragon-dataset-savebar-actions">
-                            <button class="dragon-btn dragon-btn-secondary" type="button" data-workspace-action="reload">重新加载</button>
-                            <button class="dragon-btn dragon-btn-secondary" type="button" data-workspace-action="save-as">${state.readonly ? '复制后编辑' : '另存为'}</button>
-                            <button class="dragon-btn dragon-btn-primary" type="button" data-workspace-action="save" title="将当前草稿持久化到数据集 TOML" ${state.readonly || state.fatalError ? 'disabled' : ''}>${renderIcon('save', 'dragon-btn-icon')}<span>保存数据集预设</span></button>
-                        </div>
-                        <span class="dragon-config-feedback" data-dataset-feedback role="status" aria-live="polite"></span>
-                    </div>
+                    ${renderDatasetSavebar(state)}
                 </div>
                 ${renderDatasetPresetLibrary(state)}
             </div>
+        </div>
+    `;
+}
+
+function renderDatasetSavebar(state) {
+    return `
+        <div class="dragon-dataset-savebar" data-dataset-savebar>
+            <div><strong data-savebar-title>${state.selectedFile ? escapeHtml(shortName(state.selectedFile)) : '未命名数据集预设'}</strong><span data-savebar-status>${state.readonly ? '系统预设只读，请复制后编辑。' : '修改会保留在当前页面，保存后写入 TOML。'}</span></div>
+            <div class="dragon-dataset-savebar-actions">
+                <button class="dragon-btn dragon-btn-secondary" type="button" data-workspace-action="reload">重新加载</button>
+                <button class="dragon-btn dragon-btn-secondary" type="button" data-workspace-action="save-as">${state.readonly ? '复制后编辑' : '另存为'}</button>
+                <button class="dragon-btn dragon-btn-primary" type="button" data-workspace-action="save" title="将当前草稿持久化到数据集 TOML" ${state.readonly || state.fatalError ? 'disabled' : ''}>${renderIcon('save', 'dragon-btn-icon')}<span>保存数据集预设</span></button>
+            </div>
+            <span class="dragon-config-feedback" data-dataset-feedback role="status" aria-live="polite"></span>
         </div>
     `;
 }
@@ -239,7 +250,7 @@ function bindPresetListActions(root, state) {
         if (!item || performance.now() < state.presetSuppressClickUntil) return;
         selectPreset(root, state, item.dataset.presetFile);
     };
-    list.addEventListener('click', (event) => {
+    list.addEventListener('click', async (event) => {
         if (event.target.closest('.dragon-dataset-preset-drag-handle')) return;
         const button = event.target.closest('[data-preset-group-action]');
         if (!button) return activate(event.target.closest('.dragon-dataset-preset-item[data-preset-file]'));
@@ -540,7 +551,7 @@ function bindRowActions(root, state) {
 
 async function selectPreset(root, state, file) {
     if (file === state.selectedFile) return;
-    if (!confirmDiscard(state, '切换预设')) return;
+    if (!(await confirmDiscard(state, '切换预设'))) return;
     await loadPresetIntoState(root, state, file);
 }
 
@@ -572,8 +583,8 @@ function hydratePreset(state, payload) {
     syncLegacyDatasetState(state);
 }
 
-function startNewPreset(root, state) {
-    if (!confirmDiscard(state, '新建预设')) return;
+async function startNewPreset(root, state) {
+    if (!(await confirmDiscard(state, '新建预设'))) return;
     state.selectedFile = '';
     state.defaults = {};
     state.rows = [createEmptyDatasetRow()];
@@ -607,7 +618,14 @@ async function reloadPresetLibrary(root, state) {
 }
 
 async function createPresetGroup(root, state) {
-    const label = window.prompt('请输入新的数据集预设分组名称：', '');
+    const label = await promptDragonDialog({
+        eyebrow: '数据集预设',
+        title: '新建预设分组',
+        message: '请输入新的数据集预设分组名称。',
+        label: '分组名称',
+        icon: 'folder',
+        confirmText: '创建分组',
+    });
     if (label === null) return;
     if (!String(label).trim()) return showFeedback(root, '分组名称不能为空', 'error');
     setLoading(root, state, true, '正在创建分组…');
@@ -620,7 +638,15 @@ async function createPresetGroup(root, state) {
 
 async function renamePresetGroup(root, state, group) {
     if (!group?.id || !group.renamable) return;
-    const label = window.prompt('请输入新的数据集预设分组名称：', group.label || group.id);
+    const label = await promptDragonDialog({
+        eyebrow: '数据集预设',
+        title: '重命名分组',
+        message: '请输入新的数据集预设分组名称。',
+        label: '分组名称',
+        value: group.label || group.id,
+        icon: 'edit',
+        confirmText: '保存名称',
+    });
     if (label === null) return;
     if (!String(label).trim()) return showFeedback(root, '分组名称不能为空', 'error');
     setLoading(root, state, true, '正在重命名分组…');
@@ -637,7 +663,16 @@ async function removePresetGroup(root, state, group) {
     const detail = count
         ? `只删除分组，不删除其中 ${count} 个 TOML；这些预设会回到其他可见数据集分组。`
         : '只删除这个空分组，不会删除任何 TOML。';
-    if (!window.confirm(`确认删除分组“${group.label || group.id}”吗？\n${detail}`)) return;
+    const confirmed = await confirmDragonDialog({
+        eyebrow: '数据集预设分组',
+        title: `删除“${group.label || group.id}”？`,
+        message: detail,
+        description: '此操作只会删除分组，TOML 预设和其中的数据不会被删除。',
+        tone: 'danger',
+        icon: 'trash',
+        confirmText: '删除分组',
+    });
+    if (!confirmed) return;
     setLoading(root, state, true, '正在删除分组…');
     try {
         const result = await deleteDatasetPresetGroup(api, group.id);
@@ -690,7 +725,15 @@ async function saveCurrentPreset(root, state) {
 
 async function saveAsCurrentPreset(root, state, suggestedName = '') {
     if (!prepareForSave(root, state)) return false;
-    const name = window.prompt('请输入新的数据集预设名称（保存到 configs/datasets/）：', suggestedName || `${shortName(state.selectedFile || 'dataset').replace(/\.toml$/i, '')}${state.readonly ? '_copy' : ''}`);
+    const name = await promptDragonDialog({
+        eyebrow: '数据集预设',
+        title: state.readonly ? '复制后编辑' : '另存为数据集预设',
+        message: '请输入新的数据集预设名称（保存到 configs/datasets/）。',
+        label: '预设名称',
+        value: suggestedName || `${shortName(state.selectedFile || 'dataset').replace(/\.toml$/i, '')}${state.readonly ? '_copy' : ''}`,
+        icon: 'save',
+        confirmText: '保存预设',
+    });
     if (name === null) return false;
     if (!String(name).trim()) return showFeedback(root, '预设名称不能为空', 'error');
     setLoading(root, state, true, '正在另存…');
@@ -719,7 +762,7 @@ async function applyCurrentPreset(root, state) {
 }
 
 async function reloadCurrentPreset(root, state) {
-    if (!confirmDiscard(state, '重新加载')) return;
+    if (!(await confirmDiscard(state, '重新加载'))) return;
     if (state.selectedFile) {
         state.dirty = false;
         return loadPresetIntoState(root, state, state.selectedFile);
@@ -732,7 +775,16 @@ async function reloadCurrentPreset(root, state) {
 async function removeCurrentPreset(root, state) {
     if (!state.selectedFile || state.readonly) return;
     if (state.selectedFile === state.datasetConfig) return showFeedback(root, '当前训练配置正在使用这个预设，请先应用其他数据集预设再删除', 'error');
-    if (!window.confirm(`确认删除 ${shortName(state.selectedFile)} 吗？\n只会删除 TOML 预设，不会删除图片或缓存目录。`)) return;
+    const confirmed = await confirmDragonDialog({
+        eyebrow: '数据集预设',
+        title: `删除“${shortName(state.selectedFile)}”？`,
+        message: '只会删除 TOML 预设，不会删除图片或缓存目录。',
+        description: '删除后不会影响原始图片、预处理图片或 LoRA 缓存。',
+        tone: 'danger',
+        icon: 'trash',
+        confirmText: '删除预设',
+    });
+    if (!confirmed) return;
     setLoading(root, state, true, '正在删除预设…');
     try {
         await deleteDatasetPreset(api, state.selectedFile);
@@ -754,7 +806,15 @@ async function renameCurrentPreset(root, state) {
     if (!state.selectedFile || state.readonly) return;
     syncStateFromForm(root, state);
     const oldFile = state.selectedFile;
-    const name = window.prompt('输入新的预设名称：', shortName(oldFile).replace(/\.toml$/i, ''));
+    const name = await promptDragonDialog({
+        eyebrow: '数据集预设',
+        title: '重命名预设',
+        message: '输入新的预设名称。',
+        label: '预设名称',
+        value: shortName(oldFile).replace(/\.toml$/i, ''),
+        icon: 'edit',
+        confirmText: '保存名称',
+    });
     if (name === null || !String(name).trim()) return;
     const target = datasetPresetPathFromName(name);
     if (target === oldFile) return;
@@ -798,8 +858,16 @@ async function exportCurrentPreset(root, state) {
 async function importPresetFile(root, state, event) {
     const file = event.target.files?.[0];
     if (!file) return;
-    if (!confirmDiscard(state, '导入预设')) { event.target.value = ''; return; }
-    const name = window.prompt('请输入导入后的预设名称：', file.name.replace(/\.toml$/i, ''));
+    if (!(await confirmDiscard(state, '导入预设'))) { event.target.value = ''; return; }
+    const name = await promptDragonDialog({
+        eyebrow: '数据集预设',
+        title: '导入预设',
+        message: '请输入导入后的预设名称。',
+        label: '预设名称',
+        value: file.name.replace(/\.toml$/i, ''),
+        icon: 'upload',
+        confirmText: '导入预设',
+    });
     if (name === null) { event.target.value = ''; return; }
     setLoading(root, state, true, '正在导入预设…');
     try {
@@ -865,7 +933,7 @@ async function openStageSchedule(root, state) {
         configureConfigStateBridge(state.legacyConfigState);
         syncLegacyDatasetState(state);
         bindStageDialogSync(root, state);
-        const { openStageResolutionDialog } = await import('../../features/config-form/stage-resolution-ui.js?v=module-bootstrap-20260831-release-v1');
+        const { openStageResolutionDialog } = await import('../../features/config-form/stage-resolution-ui.js?v=module-bootstrap-20260901-dialog-v1');
         openStageResolutionDialog();
     } catch (error) { showFeedback(root, `分阶段调度加载失败：${error.message}`, 'error'); }
 }
@@ -1037,9 +1105,10 @@ function refreshRows(root, state) {
 function refreshEditor(root, state) {
     const panel = root.querySelector('.dragon-dataset-editor-panel');
     if (!panel) return;
-    panel.innerHTML = renderEditorPanel(state);
+    panel.innerHTML = `${renderEditorPanel(state)}${renderDatasetSavebar(state)}`;
     bindForm(root, state);
     bindWorkspace(root, state);
+    state.ui = createDatasetEditorBindings(root);
     const title = root.querySelector('[data-savebar-title]');
     if (title) title.textContent = state.selectedFile ? shortName(state.selectedFile) : '未命名数据集预设';
     updateContextUi(root, state);
@@ -1052,17 +1121,28 @@ function refreshPresetList(root, state) {
     bindPresetButtons(root, state);
 }
 
-function confirmDiscard(state, action) {
-    return !state.dirty || window.confirm(`当前数据集有未保存修改。${action}会丢弃这些修改，是否继续？`);
+async function confirmDiscard(state, action) {
+    if (!state.dirty) return true;
+    if (state.leavePrompt) return state.leavePrompt;
+    state.leavePrompt = confirmDragonDialog({
+        eyebrow: '未保存修改',
+        title: '确认继续？',
+        message: `当前数据集有未保存修改。${action}会丢弃这些修改，是否继续？`,
+        description: '选择取消可返回当前编辑内容并继续保存。',
+        tone: 'warning',
+        icon: 'edit',
+        confirmText: '继续操作',
+    }).finally(() => { state.leavePrompt = null; });
+    return state.leavePrompt;
 }
 
-function openTaggingWorkspace(root, state) {
+async function openTaggingWorkspace(root, state) {
     const datasetFile = state.selectedFile || state.datasetConfig;
     if (!datasetFile) {
         showFeedback(root, '请先选择或保存一个数据集预设', 'error');
         return;
     }
-    if (!shouldLeaveEditor(state)) return;
+    if (!(await shouldLeaveEditor(state))) return;
     writeTaggingPrefill({
         dataset_file: datasetFile,
         dataset_index: state.previewIndex,
@@ -1071,8 +1151,8 @@ function openTaggingWorkspace(root, state) {
     window.location.hash = '#page/captioning';
 }
 
-function shouldLeaveEditor(state) {
-    const allowed = confirmDiscard(state, '离开页面');
+async function shouldLeaveEditor(state) {
+    const allowed = await confirmDiscard(state, '离开页面');
     if (allowed) {
         state.dirty = false;
         clearLegacyStageDraftMarkers(state);

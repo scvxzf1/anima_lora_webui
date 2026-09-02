@@ -500,6 +500,22 @@ body[data-dragon-ui]:has(.dragon-config-all-workspace) .dragon-page-wrapper {
     background: var(--dragon-config-card-bg);
 }
 
+.dragon-config-block[data-config-availability="unavailable"] {
+    border-style: dashed;
+    border-color: color-mix(in srgb, var(--dragon-text-tertiary) 34%, var(--dragon-border));
+    background: color-mix(in srgb, var(--dragon-text-tertiary) 3%, var(--dragon-config-card-bg));
+}
+
+.dragon-config-block[data-config-availability="unavailable"]::before {
+    background: var(--dragon-text-quaternary);
+    opacity: .75;
+}
+
+.dragon-config-block[data-config-availability="unavailable"] .dragon-field-help-btn {
+    opacity: .9;
+    pointer-events: auto;
+}
+
 .dragon-config-block[data-preflight-error="true"] {
     border-color: color-mix(in srgb, var(--dragon-error) 52%, var(--dragon-border));
 }

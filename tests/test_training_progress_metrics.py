@@ -168,6 +168,54 @@ def test_training_service_rate_uses_recent_step_median(monkeypatch):
     assert svc._compute_rate(6, 100) == "8.00s/step"
     assert svc._compute_rate(7, 100) == "8.00s/step"
 
+
+def test_structured_resume_progress_is_not_overwritten_by_local_tqdm():
+    svc = TrainingService(web.Application())
+
+    async def feed_progress():
+        await svc._handle_progress_jsonl_event({
+            "ev": "run_start",
+            "ts": 0.0,
+            "total_steps": 4400,
+        })
+        await svc._handle_progress_jsonl_event({
+            "ev": "step",
+            "ts": 1.0,
+            "global_step": 249,
+            "epoch": 0,
+            "loss": 0.5,
+        })
+        await svc._handle_output_record(
+            "steps:   0%| | 1/4151 [00:01<1:16:47, 1.11s/it, avr_loss=0.4]"
+        )
+
+    asyncio.run(feed_progress())
+
+    snapshot = svc.get_status_snapshot()
+    assert snapshot["latest_progress"]["current"] == 249
+    assert snapshot["latest_progress"]["total"] == 4400
+    assert snapshot["latest_metric"]["step"] == 249
+    assert any(
+        item["kind"] == "progress" and "1/4151" in item["line"]
+        for item in svc.get_log_records()
+    )
+
+
+def test_tqdm_progress_remains_fallback_without_structured_run_start():
+    svc = TrainingService(web.Application())
+
+    asyncio.run(
+        svc._handle_output_record(
+            "steps:   1%| | 1/100 [00:01<01:39, 1.00s/it, avr_loss=0.4]"
+        )
+    )
+
+    snapshot = svc.get_status_snapshot()
+    assert snapshot["latest_progress"]["current"] == 1
+    assert snapshot["latest_progress"]["total"] == 100
+    assert snapshot["latest_metric"]["step"] == 1
+
+
 def test_progress_parser_handles_structured_step_and_val_events():
     step_metric = progress_parser.metric_from_progress_jsonl_event(
         {
@@ -362,4 +410,3 @@ def test_progress_sink_emits_stage_fields(tmp_path):
     assert step_event["ev"] == "step"
     assert step_event["stage_index"] == 0
     assert step_event["stage_name"] == "low"
-
