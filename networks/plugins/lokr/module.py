@@ -286,8 +286,7 @@ class LoKrModule(BaseLoRAModule):
                         * self.scale
                     )
                     if (
-                        self.lokr_grouped_delta_backend
-                        != DEFAULT_LOKR_GROUPED_DELTA_BACKEND
+                        self.lokr_grouped_delta_backend == "triton"
                         and self._can_use_fused_grouped_delta(
                             x_r, org_forwarded, gate_scale
                         )
