@@ -12,6 +12,7 @@ from typing import Any, Mapping
 
 from library.models.family_registry import get_model_family_spec
 from library.models.krea2_raw.pipeline_parallel import (
+    Krea2PipelineParallelConfig,
     validate_krea2_pipeline_config,
 )
 
@@ -151,7 +152,11 @@ def _nested_caption_dropout_enabled(config: Mapping[str, Any] | object) -> bool:
     return False
 
 
-def check_training_compat(config: Mapping[str, Any] | object) -> TrainingCompatResult:
+def check_training_compat(
+    config: Mapping[str, Any] | object,
+    *,
+    world_size: int | None = None,
+) -> TrainingCompatResult:
     """Validate optimization-flag combinations used by training and Web preflight."""
 
     out = _CompatBuilder()
@@ -184,14 +189,27 @@ def check_training_compat(config: Mapping[str, Any] | object) -> TrainingCompatR
         return out.build()
     krea2_family = family_spec.name == "krea2_raw"
     z_image_family = family_spec.name == "z_image"
-    pipeline_parallel = _bool_value(_get(config, "pipeline_parallel"), False)
+    pipeline_parallel_error: ValueError | None = None
+    try:
+        pipeline_parallel = Krea2PipelineParallelConfig.from_config(config).enabled
+    except ValueError as exc:
+        pipeline_parallel = False
+        pipeline_parallel_error = exc
     compile_dynamic_seq = _bool_value(_get(config, "compile_dynamic_seq"), False)
     compile_seq_bands = _bool_value(_get(config, "compile_seq_bands"), False)
     v100_flash_stability = (
         str(_get(config, "v100_flash_stability", "off") or "off").strip().lower()
     )
 
-    if pipeline_parallel and not krea2_family:
+    if pipeline_parallel_error is not None:
+        out.error(
+            "krea2_pipeline_parallel_config"
+            if krea2_family
+            else "pipeline_parallel_config",
+            "pipeline_parallel",
+            str(pipeline_parallel_error),
+        )
+    elif pipeline_parallel and not krea2_family:
         out.error(
             "pipeline_parallel_krea2_only",
             "pipeline_parallel",
@@ -266,9 +284,9 @@ def check_training_compat(config: Mapping[str, Any] | object) -> TrainingCompatR
             )
 
     if krea2_family:
-        if pipeline_parallel:
+        if pipeline_parallel and pipeline_parallel_error is None:
             try:
-                validate_krea2_pipeline_config(config, world_size=None)
+                validate_krea2_pipeline_config(config, world_size=world_size)
             except ValueError as exc:
                 out.error(
                     "krea2_pipeline_parallel_config",

@@ -117,7 +117,7 @@ import {
     renderConfigForm,
     resetConfigFormDraft,
     syncConfigDraftFromForm,
-} from '../config-form/index.js?v=module-bootstrap-20260902-krea2-pp-v1';
+} from '../config-form/index.js?v=module-bootstrap-20260903-pp-audit-v2';
 
 const ctx = getAppContext();
 const appShellState = getAppShellState();

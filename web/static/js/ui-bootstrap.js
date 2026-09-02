@@ -1,4 +1,4 @@
-const CLASSIC_ENTRY = '/static/app.js?v=module-bootstrap-20260902-krea2-pp-v1';
+const CLASSIC_ENTRY = '/static/app.js?v=module-bootstrap-20260903-pp-audit-v2';
 const CLASSIC_STYLESHEET = '/static/style.css?v=frontend-chain-20260809-model-config1';
 const UI_MODE_ENTRY = '/static/js/shared/ui-mode.js?v=dragon-ui-20260816v48';
 const DRAGON_ENTRY = '/static/js/dragon-ui/index.js?v=dragon-ui-20260902-krea2-pp-v1';

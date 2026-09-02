@@ -11,7 +11,7 @@ import {
     samplePromptsContentNeedsTextMode,
     serializeSamplePromptsEditor,
 } from '../sample-prompts/model.js?v=module-bootstrap-20260831-release-v1';
-import { handleFormFieldChange } from './form-fields-ui.js?v=module-bootstrap-20260902-krea2-pp-v1';
+import { handleFormFieldChange } from './form-fields-ui.js?v=module-bootstrap-20260903-pp-audit-v2';
 
 function createSamplePromptsPathInput(value) {
     const input = document.createElement('input');

@@ -37,6 +37,39 @@ def test_queue_resume_clones_runtime_when_enqueued(tmp_path, monkeypatch):
     assert item["extra_args"] == ["--resume", str(state_dir), "--skip_until_initial_step"]
     assert item["resume_info"]["checkpoint"] == str(state_dir)
 
+
+def test_queue_resume_rejects_pipeline_world_size_mismatch(tmp_path, monkeypatch):
+    history_dir, task_id, state_dir = _write_resume_history(tmp_path)
+    snapshot_path = history_dir / task_id / "config.snapshot.toml"
+    snapshot_path.write_text(
+        snapshot_path.read_text(encoding="utf-8")
+        + '\nmodel_family = "krea2_raw"\n'
+        + "pipeline_parallel = true\n"
+        + "pipeline_parallel_stages = 2\n"
+        + "pipeline_parallel_microbatches = 4\n"
+        + 'pipeline_parallel_schedule = "1f1b"\n'
+        + 'pipeline_parallel_split = "balanced"\n'
+        + "network_train_unet_only = true\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(training_service, "HISTORY_DIR", history_dir)
+    output_root = _patch_resume_runtime_output_root(monkeypatch, tmp_path)
+    _patch_queue_storage(monkeypatch, tmp_path)
+    svc = TrainingService(web.Application())
+    svc._schedule_queue_dispatch = lambda: None
+
+    with pytest.raises(ValueError, match="distributed world size"):
+        asyncio.run(
+            svc.enqueue_resume_from_history_task(
+                task_id,
+                str(state_dir),
+                gpu_whitelist=[0, 1, 2],
+            )
+        )
+
+    assert svc._queue_items() == []
+    assert not output_root.exists()
+
 def test_queue_resume_duration_step_override_appends_steps(tmp_path, monkeypatch):
     history_dir, task_id, state_dir = _write_resume_history(tmp_path)
     monkeypatch.setattr(training_service, "HISTORY_DIR", history_dir)
@@ -199,5 +232,3 @@ def test_queue_resume_without_stage_schedule_skips_stage_diagnosis(tmp_path, mon
     assert "stage_before" not in resume_info or resume_info.get("stage_before") is None
     assert "stage_after" not in resume_info or resume_info.get("stage_after") is None
     assert not resume_info.get("warning")
-
-

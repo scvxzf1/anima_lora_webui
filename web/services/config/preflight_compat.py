@@ -158,8 +158,13 @@ def _compat_web_message(item) -> str:
         return f"blocks_to_swap 不兼容 Inductor CUDAGraph mode；训练启动时会改用 {target}。"
     return messages.get(item.code, item.message)
 
-def _check_checkpointing_config(cfg: dict[str, Any], add) -> None:
-    compat = check_training_compat(cfg)
+def _check_checkpointing_config(
+    cfg: dict[str, Any],
+    add,
+    *,
+    world_size: int | None = None,
+) -> None:
+    compat = check_training_compat(cfg, world_size=world_size)
     for item in compat.errors:
         add("error", item.key, _compat_web_message(item))
 

@@ -32,7 +32,7 @@ export async function createAnimaApp(ctx) {
     const imageTestFeatureBridge = imageTestFeatureModule.createImageTestFeatureBridge(runtime);
     runtime.features.imageTest = imageTestFeatureBridge;
     configureImageTestBridge(imageTestFeatureBridge.ensureImageTestFeature);
-    const appShellModule = await import('./chunks/02-ensure-history-detail-feature.js?v=module-bootstrap-20260902-krea2-pp-v1');
+    const appShellModule = await import('./chunks/02-ensure-history-detail-feature.js?v=module-bootstrap-20260903-pp-audit-v2');
     // Mid-range chunks only register side-effect bridges / helpers; load them as one batch.
     await Promise.all([
         import('./chunks/03-parse-network-arg-entry.js?v=module-bootstrap-20260831-release-v1'),

@@ -71,6 +71,27 @@ def test_pipeline_config_normalizes_mapping_and_namespace_values() -> None:
     assert namespace.microbatches == 2
 
 
+@pytest.mark.parametrize(
+    ("overrides", "message"),
+    [
+        ({"pipeline_parallel": "invalid"}, "pipeline_parallel must be a boolean"),
+        (
+            {"pipeline_parallel_stages": "invalid"},
+            "pipeline_parallel_stages must be an integer",
+        ),
+        (
+            {"pipeline_parallel_microbatches": ""},
+            "pipeline_parallel_microbatches must be an integer",
+        ),
+    ],
+)
+def test_pipeline_config_rejects_malformed_mapping_values(
+    overrides: dict[str, object], message: str
+) -> None:
+    with pytest.raises(ValueError, match=message):
+        Krea2PipelineParallelConfig.from_config(_valid_config(**overrides))
+
+
 @pytest.mark.parametrize("family", ["krea2", "krea2_raw"])
 def test_pipeline_validator_accepts_krea_aliases_and_two_rank_topology(
     family: str,
@@ -92,6 +113,7 @@ def test_pipeline_validator_accepts_krea_aliases_and_two_rank_topology(
         ({"pipeline_parallel_microbatches": 0}, 2, "between 1 and 1024"),
         ({"pipeline_parallel_microbatches": 1025}, 2, "between 1 and 1024"),
         ({"pipeline_parallel_schedule": "gpipe"}, 2, "schedule must be one of"),
+        ({"pipeline_parallel_schedule": ""}, 2, "schedule must be one of"),
         ({"pipeline_parallel_split": "manual"}, 2, "split must be one of"),
         ({}, 1, "must equal the distributed world size"),
     ],
@@ -120,6 +142,29 @@ def test_pipeline_validator_rejects_invalid_topology(
 def test_pipeline_validator_rejects_unsupported_combinations(override) -> None:
     with pytest.raises(ValueError, match="currently cannot be combined"):
         validate_krea2_pipeline_config(_valid_config(**override), world_size=2)
+
+
+@pytest.mark.parametrize(
+    ("override", "message"),
+    [
+        ({"blocks_to_swap": "invalid"}, "blocks_to_swap must be an integer"),
+        ({"torch_compile": "invalid"}, "torch_compile must be a boolean"),
+    ],
+)
+def test_pipeline_validator_rejects_malformed_compatibility_values(
+    override: dict[str, object], message: str
+) -> None:
+    with pytest.raises(ValueError, match=message):
+        validate_krea2_pipeline_config(_valid_config(**override), world_size=2)
+
+
+def test_pipeline_validator_checks_expected_block_count() -> None:
+    with pytest.raises(ValueError, match="exceeds Krea-2 block count 1"):
+        validate_krea2_pipeline_config(
+            _valid_config(),
+            world_size=2,
+            num_blocks=1,
+        )
 
 
 def test_disabled_pipeline_skips_topology_constraints() -> None:
@@ -195,6 +240,9 @@ def test_block_stage_preserves_order_inputs_and_parameter_identity() -> None:
 
     assert plan.ranges == ((0, 1), (1, 4))
     assert output.item() == pytest.approx(10.0)
+    assert stage.stage_index == 1
+    assert stage.block_range == (1, 4)
+    assert stage.global_block_indices == (1, 2, 3)
     assert stage.blocks[0] is model.blocks[1]
     assert stage.blocks[0].delta is model.blocks[1].delta
     assert list(stage.state_dict()) == [
@@ -202,6 +250,11 @@ def test_block_stage_preserves_order_inputs_and_parameter_identity() -> None:
         "blocks.1.delta",
         "blocks.2.delta",
     ]
+    assert stage.state_dict_key_map() == {
+        "blocks.0.delta": "blocks.1.delta",
+        "blocks.1.delta": "blocks.2.delta",
+        "blocks.2.delta": "blocks.3.delta",
+    }
     assert all(block.calls == [(tvec, freqs, mask)] for block in model.blocks[1:])
     assert model.blocks[0].calls == []
 
@@ -255,6 +308,25 @@ def test_compat_matrix_keeps_valid_pipeline_fail_closed() -> None:
 
 def test_compat_matrix_reports_invalid_config_before_runtime_gate() -> None:
     result = check_training_compat(_valid_config(attn_mode="torch", torch_compile=True))
+
+    assert "krea2_pipeline_parallel_config" in _codes(result.errors)
+    assert "pipeline_parallel_runtime_unavailable" not in _codes(result.errors)
+
+
+def test_compat_matrix_rejects_malformed_pipeline_toggle() -> None:
+    result = check_training_compat(
+        _valid_config(attn_mode="torch", pipeline_parallel="invalid")
+    )
+
+    assert "krea2_pipeline_parallel_config" in _codes(result.errors)
+    assert "pipeline_parallel_runtime_unavailable" not in _codes(result.errors)
+
+
+def test_compat_matrix_checks_pipeline_world_size_before_runtime_gate() -> None:
+    result = check_training_compat(
+        _valid_config(attn_mode="torch"),
+        world_size=1,
+    )
 
     assert "krea2_pipeline_parallel_config" in _codes(result.errors)
     assert "pipeline_parallel_runtime_unavailable" not in _codes(result.errors)

@@ -4,7 +4,8 @@
 import { updateChoiceGuide } from './choice-guide-ui.js?v=module-bootstrap-20260831-release-v1';
 import { updateStepEstimatePanel } from './step-estimate.js?v=module-bootstrap-20260831-release-v1';
 import { valuesEqual } from '../anima-app/helpers/form-values.js?v=module-bootstrap-20260831-release-v1';
-import { collectLiveCompatIssues, formatLiveCompatStatus } from './live-compat.js?v=module-bootstrap-20260831-release-v1';
+import { collectLiveCompatIssues, formatLiveCompatStatus } from './live-compat.js?v=module-bootstrap-20260903-pp-audit-v2';
+import { isKrea2ModelFamily, normalizeModelFamily } from './model-family.js?v=module-bootstrap-20260903-pp-audit-v2';
 import { setTomlStatus } from '../anima-app/helpers/toml-action-state-bridge.js?v=module-bootstrap-20260831-release-v1';
 import { buildFieldPresentation, fieldSourceBadgeLabel } from './field-presentation.js?v=module-bootstrap-20260831-release-v1';
 import {
@@ -65,9 +66,9 @@ function currentConfigState() {
     return configState.currentConfig || {};
 }
 
-// NF4 (Krea-2 QLoRA) 是 krea2_raw 专属: anima loader 不接 nf4, 选了会被
+// NF4 (Krea-2 QLoRA) 是 Krea-2 family 专属: anima loader 不接 nf4, 选了会被
 // 静默忽略却盖 ss_base_compute=nf4 元数据, 误导. 故 base_compute 的 nf4 选项
-// 只在 model_family=krea2_raw 时露出. 当前值即使被过滤也兜底加回, 防 select
+// 只在 model_family=krea2_raw/krea2 时露出. 当前值即使被过滤也兜底加回, 防 select
 // 显示空 (如 config 残留 nf4 又切回 anima 时仍可见当前值, 由 live-compat/
 // preflight 提示用户改回 bf16).
 function currentModelFamily() {
@@ -75,8 +76,7 @@ function currentModelFamily() {
     const value = drafts?.has('model_family')
         ? drafts.get('model_family')
         : currentConfigState()?.model_family;
-    const family = String(value ?? '').trim().toLowerCase();
-    return family;
+    return normalizeModelFamily(value);
 }
 
 const PIPELINE_PARALLEL_FIELDS = new Set([
@@ -86,8 +86,6 @@ const PIPELINE_PARALLEL_FIELDS = new Set([
     'pipeline_parallel_schedule',
     'pipeline_parallel_split',
 ]);
-const KREA2_MODEL_FAMILIES = new Set(['krea2', 'krea2_raw']);
-
 function currentPipelineParallelEnabled() {
     const drafts = configState.configFormState?.draftValues;
     const value = drafts?.has('pipeline_parallel')
@@ -99,7 +97,7 @@ function currentPipelineParallelEnabled() {
 function filterFieldOptionsForFamily(key, options, currentValue) {
     if (!Array.isArray(options)) return options;
     const family = currentModelFamily();
-    const isKrea2 = family === 'krea2_raw';
+    const isKrea2 = isKrea2ModelFamily(family);
     if (key === 'base_compute') {
         const filtered = isKrea2 ? options.slice() : options.filter((opt) => opt !== 'nf4');
         if (currentValue != null && !filtered.includes(currentValue)) filtered.push(currentValue);
@@ -107,7 +105,7 @@ function filterFieldOptionsForFamily(key, options, currentValue) {
     }
     if (!isKrea2) return options;
     const supportedByKey = {
-        attn_mode: new Set(['torch', 'flash']),
+        attn_mode: new Set(['torch', 'flash', 'sdpa']),
         compile_inductor_mode: new Set(['default']),
         selective_checkpoint: new Set(['off', 'every_other']),
         v100_flash_stability: new Set(['off']),
@@ -119,7 +117,8 @@ function filterFieldOptionsForFamily(key, options, currentValue) {
 
 function applyFamilyFieldConstraints(input, key) {
     const family = currentModelFamily();
-    if (PIPELINE_PARALLEL_FIELDS.has(key) && !KREA2_MODEL_FAMILIES.has(family)) {
+    const isKrea2 = isKrea2ModelFamily(family);
+    if (PIPELINE_PARALLEL_FIELDS.has(key) && !isKrea2) {
         input.disabled = true;
         input.title = '流水线并行当前仅支持 Krea-2 Raw（含 krea2 别名）';
         if (key === 'pipeline_parallel') input.checked = false;
@@ -139,9 +138,9 @@ function applyFamilyFieldConstraints(input, key) {
         input.disabled = true;
         input.title = '分带动态序列编译仅适用于 Anima native-flatten 路径';
     }
-    if (family !== 'krea2_raw') return input;
+    if (!isKrea2) return input;
     const supportedSelectValues = {
-        attn_mode: new Set(['torch', 'flash']),
+        attn_mode: new Set(['torch', 'flash', 'sdpa']),
         selective_checkpoint: new Set(['off', 'every_other']),
     };
     const supported = supportedSelectValues[key];

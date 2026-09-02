@@ -1,8 +1,8 @@
 """Experimental Krea-2 pipeline-parallel planning primitives.
 
 The regular trainer still uses Accelerate data parallelism.  This module keeps
-the PP contract explicit while the 1F1B schedule is integrated into the train
-loop: it validates the topology, computes deterministic contiguous block
+the future PP contract explicit before the 1F1B schedule is integrated into the
+train loop: it validates the topology, computes deterministic contiguous block
 ownership, and exposes a small stage wrapper for standalone probes.
 """
 
@@ -26,19 +26,35 @@ def _get(config: Mapping[str, Any] | object, key: str, default: Any = None) -> A
     return getattr(config, key, default)
 
 
-def _bool(value: Any, default: bool = False) -> bool:
+def _bool(value: Any, default: bool, *, field: str) -> bool:
     if isinstance(value, bool):
         return value
     if value is None:
         return default
-    return str(value).strip().lower() in {"1", "true", "yes", "on"}
+    if isinstance(value, int) and value in {0, 1}:
+        return bool(value)
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"1", "true", "yes", "on"}:
+            return True
+        if normalized in {"0", "false", "no", "off"}:
+            return False
+    raise ValueError(f"{field} must be a boolean, got {value!r}")
 
 
-def _int(value: Any, default: int) -> int:
-    try:
-        return int(value)
-    except (TypeError, ValueError):
+def _int(value: Any, default: int, *, field: str) -> int:
+    if value is None:
         return default
+    if isinstance(value, bool):
+        raise ValueError(f"{field} must be an integer, got {value!r}")
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str) and value.strip():
+        try:
+            return int(value.strip(), 10)
+        except ValueError as exc:
+            raise ValueError(f"{field} must be an integer, got {value!r}") from exc
+    raise ValueError(f"{field} must be an integer, got {value!r}")
 
 
 @dataclass(frozen=True)
@@ -55,16 +71,26 @@ class Krea2PipelineParallelConfig:
     def from_config(
         cls, config: Mapping[str, Any] | object
     ) -> "Krea2PipelineParallelConfig":
+        schedule = _get(config, "pipeline_parallel_schedule", "1f1b")
+        split = _get(config, "pipeline_parallel_split", "balanced")
         return cls(
-            enabled=_bool(_get(config, "pipeline_parallel", False)),
-            stages=_int(_get(config, "pipeline_parallel_stages", 2), 2),
-            microbatches=_int(_get(config, "pipeline_parallel_microbatches", 4), 4),
-            schedule=str(_get(config, "pipeline_parallel_schedule", "1f1b") or "1f1b")
-            .strip()
-            .lower(),
-            split=str(_get(config, "pipeline_parallel_split", "balanced") or "balanced")
-            .strip()
-            .lower(),
+            enabled=_bool(
+                _get(config, "pipeline_parallel", False),
+                False,
+                field="pipeline_parallel",
+            ),
+            stages=_int(
+                _get(config, "pipeline_parallel_stages", 2),
+                2,
+                field="pipeline_parallel_stages",
+            ),
+            microbatches=_int(
+                _get(config, "pipeline_parallel_microbatches", 4),
+                4,
+                field="pipeline_parallel_microbatches",
+            ),
+            schedule=str("1f1b" if schedule is None else schedule).strip().lower(),
+            split=str("balanced" if split is None else split).strip().lower(),
         )
 
 
@@ -103,6 +129,7 @@ def validate_krea2_pipeline_config(
     normalized = Krea2PipelineParallelConfig.from_config(config)
     if not normalized.enabled:
         return normalized
+    block_count = _int(num_blocks, 28, field="num_blocks")
 
     family = str(_get(config, "model_family", "") or "").strip().lower()
     if family not in {"krea2", "krea2_raw"}:
@@ -114,9 +141,9 @@ def validate_krea2_pipeline_config(
         raise ValueError(
             "pipeline_parallel_stages must be 2 in the current dual-GPU implementation"
         )
-    if normalized.stages > num_blocks:
+    if normalized.stages > block_count:
         raise ValueError(
-            f"pipeline_parallel_stages={normalized.stages} exceeds Krea-2 block count {num_blocks}"
+            f"pipeline_parallel_stages={normalized.stages} exceeds Krea-2 block count {block_count}"
         )
     if (
         normalized.microbatches < 1
@@ -136,27 +163,53 @@ def validate_krea2_pipeline_config(
             "pipeline_parallel_split must be one of: "
             + ", ".join(PIPELINE_PARALLEL_SPLITS)
         )
-    if world_size is not None and int(world_size) != normalized.stages:
+    parsed_world_size = (
+        None if world_size is None else _int(world_size, 1, field="world_size")
+    )
+    if parsed_world_size is not None and parsed_world_size != normalized.stages:
         raise ValueError(
             "pipeline_parallel_stages must equal the distributed world size: "
-            f"stages={normalized.stages}, world_size={world_size}"
+            f"stages={normalized.stages}, world_size={parsed_world_size}"
         )
 
     unsupported = []
-    if _int(_get(config, "blocks_to_swap", 0), 0) > 0:
+    if (
+        _int(
+            _get(config, "blocks_to_swap", 0),
+            0,
+            field="blocks_to_swap",
+        )
+        > 0
+    ):
         unsupported.append("blocks_to_swap")
-    if _bool(_get(config, "torch_compile", False)):
+    if _bool(
+        _get(config, "torch_compile", False),
+        False,
+        field="torch_compile",
+    ):
         unsupported.append("torch_compile")
     if (
         str(_get(config, "selective_checkpoint", "off") or "off").strip().lower()
         != "off"
     ):
         unsupported.append("selective_checkpoint")
-    if _bool(_get(config, "cpu_offload_checkpointing", False)):
+    if _bool(
+        _get(config, "cpu_offload_checkpointing", False),
+        False,
+        field="cpu_offload_checkpointing",
+    ):
         unsupported.append("cpu_offload_checkpointing")
-    if _bool(_get(config, "unsloth_offload_checkpointing", False)):
+    if _bool(
+        _get(config, "unsloth_offload_checkpointing", False),
+        False,
+        field="unsloth_offload_checkpointing",
+    ):
         unsupported.append("unsloth_offload_checkpointing")
-    if not _bool(_get(config, "network_train_unet_only", True), True):
+    if not _bool(
+        _get(config, "network_train_unet_only", True),
+        True,
+        field="network_train_unet_only",
+    ):
         unsupported.append("network_train_unet_only=false")
     if unsupported:
         raise ValueError(
@@ -199,14 +252,64 @@ def make_krea2_pipeline_plan(
 class Krea2BlockStage(nn.Module):
     """Run one contiguous range of Krea-2 blocks.
 
-    The wrapper intentionally exposes only the block-level contract.  The
-    caller owns text fusion, timestep projection, positional encoding, and the
-    final output layer, which keeps this class usable in CPU/Gloo stage probes.
+    This probe wrapper registers the same block objects that remain registered
+    on the source model; it does not transfer parameter ownership.  Calling
+    ``to()`` on it therefore also moves those source-model blocks and must not
+    be used as rank placement.  ``block_range`` and ``state_dict_key_map`` keep
+    global ownership/key metadata explicit until a real stage-local model
+    builder exists.
+
+    The caller still owns text fusion, timestep projection, positional
+    encoding, and the final output layer.
     """
 
-    def __init__(self, blocks: list[nn.Module] | tuple[nn.Module, ...]):
+    def __init__(
+        self,
+        blocks: list[nn.Module] | tuple[nn.Module, ...],
+        *,
+        stage_index: int = 0,
+        block_range: tuple[int, int] | None = None,
+    ):
         super().__init__()
-        self.blocks = nn.ModuleList(blocks)
+        block_items = tuple(blocks)
+        start, end = block_range or (0, len(block_items))
+        if start < 0 or end < start or end - start != len(block_items):
+            raise ValueError(
+                "block_range must be a non-negative half-open range matching "
+                f"the borrowed block count, got range=({start}, {end}), "
+                f"blocks={len(block_items)}"
+            )
+        self.stage_index = stage_index
+        self.block_range = (start, end)
+        self.blocks = nn.ModuleList(block_items)
+
+    @property
+    def global_block_indices(self) -> tuple[int, ...]:
+        return tuple(range(*self.block_range))
+
+    def global_state_dict_key(self, local_key: str) -> str:
+        """Map a wrapper-local ``blocks.N`` key back to the source-model key."""
+
+        parts = local_key.split(".", 2)
+        if len(parts) < 2 or parts[0] != "blocks":
+            raise ValueError(
+                f"stage state key must start with 'blocks.N', got {local_key!r}"
+            )
+        try:
+            local_index = int(parts[1])
+        except ValueError as exc:
+            raise ValueError(
+                f"stage state key has invalid block index: {local_key!r}"
+            ) from exc
+        if not 0 <= local_index < len(self.blocks):
+            raise ValueError(
+                f"stage state key block index is out of range: {local_key!r}"
+            )
+        suffix = f".{parts[2]}" if len(parts) == 3 else ""
+        return f"blocks.{self.block_range[0] + local_index}{suffix}"
+
+    def state_dict_key_map(self) -> dict[str, str]:
+        return {key: self.global_state_dict_key(key) for key in self.state_dict()}
 
     def forward(
         self,
@@ -226,14 +329,18 @@ def build_krea2_block_stage(
     stage_index: int,
     stages: int,
 ) -> tuple[Krea2PipelinePlan, Krea2BlockStage]:
-    """Extract a stage wrapper from a Krea-2 model's ``blocks`` list."""
+    """Build a borrowing probe wrapper for one planned global block range."""
 
     blocks = getattr(model, "blocks", None)
     if blocks is None:
         raise TypeError("Krea-2 pipeline model must expose a blocks ModuleList")
     plan = make_krea2_pipeline_plan(stages=stages, num_blocks=len(blocks))
     start, end = plan.range_for_stage(stage_index)
-    return plan, Krea2BlockStage(tuple(blocks[start:end]))
+    return plan, Krea2BlockStage(
+        tuple(blocks[start:end]),
+        stage_index=stage_index,
+        block_range=(start, end),
+    )
 
 
 __all__ = [

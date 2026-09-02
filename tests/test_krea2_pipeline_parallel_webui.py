@@ -27,12 +27,13 @@ def _read(path: str) -> str:
     return (STATIC / path).read_text(encoding="utf-8")
 
 
-def _preflight() -> dict:
+def _preflight(*, world_size: int | None = None) -> dict:
     return config_service.preflight_training_config(
         "lora",
         "default",
         "imported",
         config_file="configs/imported/selected.toml",
+        world_size=world_size,
     )
 
 
@@ -99,20 +100,55 @@ console.log(JSON.stringify({{
 def test_classic_form_rerenders_when_pipeline_switch_changes() -> None:
     form_fields = _read("js/features/config-form/form-fields-ui.js")
 
-    assert "const KREA2_MODEL_FAMILIES = new Set(['krea2', 'krea2_raw'])" in form_fields
+    assert "const isKrea2 = isKrea2ModelFamily(family)" in form_fields
     assert "|| event?.target?.dataset?.key === 'pipeline_parallel'" in form_fields
     assert "!currentPipelineParallelEnabled()" in form_fields
 
 
+def test_classic_krea_aliases_share_family_and_live_compat_behavior() -> None:
+    if not shutil.which("node"):
+        pytest.skip("node is required for model-family checks")
+    family_uri = (STATIC / "js/features/config-form/model-family.js").resolve().as_uri()
+    compat_uri = (STATIC / "js/features/config-form/live-compat.js").resolve().as_uri()
+    script = f"""
+const family = await import({json.dumps(family_uri + "?krea2-alias-test")});
+const compat = await import({json.dumps(compat_uri + "?krea2-alias-test")});
+const config = {{ compile_inductor_mode: 'reduce-overhead' }};
+console.log(JSON.stringify({{
+  alias: family.isKrea2ModelFamily(' KREA2 '),
+  canonical: family.isKrea2ModelFamily('krea2_raw'),
+  anima: family.isKrea2ModelFamily('anima'),
+  aliasCodes: compat.collectLiveCompatIssues({{ ...config, model_family: 'krea2' }}).map((item) => item.code),
+  canonicalCodes: compat.collectLiveCompatIssues({{ ...config, model_family: 'krea2_raw' }}).map((item) => item.code),
+}}));
+"""
+    result = subprocess.run(
+        ["node", "--input-type=module", "--eval", script],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=20,
+    )
+    payload = json.loads(result.stdout)
+
+    assert payload["alias"] is True
+    assert payload["canonical"] is True
+    assert payload["anima"] is False
+    assert payload["aliasCodes"] == payload["canonicalCodes"]
+    assert "krea2_compile_inductor_mode" in payload["aliasCodes"]
+
+
 def test_pipeline_frontend_cache_chain_reaches_both_ui_modes() -> None:
-    module_token = "module-bootstrap-20260902-krea2-pp-v1"
+    module_token = "module-bootstrap-20260903-pp-audit-v2"
+    catalog_token = "module-bootstrap-20260902-krea2-pp-v1"
     dragon_token = "dragon-ui-20260902-krea2-pp-v1"
 
-    assert f"ui-bootstrap.js?v={dragon_token}" in _read("index.html")
+    assert "ui-bootstrap.js?v=" in _read("index.html")
     bootstrap = _read("js/ui-bootstrap.js")
     assert f"app.js?v={module_token}" in bootstrap
-    assert f"dragon-ui/index.js?v={dragon_token}" in bootstrap
-    assert f"config/catalog.js?v={module_token}" in _read("app.js")
+    assert "dragon-ui/index.js?v=" in bootstrap
+    assert f"config/catalog.js?v={catalog_token}" in _read("app.js")
     assert f"anima-app/index.js?v={module_token}" in _read("app.js")
     assert f"02-ensure-history-detail-feature.js?v={module_token}" in _read(
         "js/features/anima-app/index.js"
@@ -125,6 +161,12 @@ def test_pipeline_frontend_cache_chain_reaches_both_ui_modes() -> None:
     )
     assert f"form-fields-ui.js?v={module_token}" in _read(
         "js/features/config-form/form-fields.js"
+    )
+    assert f"model-family.js?v={module_token}" in _read(
+        "js/features/config-form/form-fields-ui.js"
+    )
+    assert f"live-compat.js?v={module_token}" in _read(
+        "js/features/config-form/form-fields-ui.js"
     )
     assert f"page-loaders.js?v={dragon_token}" in _read("js/dragon-ui/index.js")
     assert f"config-page.js?v={dragon_token}" in _read("js/dragon-ui/page-loaders.js")
@@ -176,6 +218,33 @@ def test_preflight_keeps_valid_krea_pipeline_launch_blocked(
     assert result["ok"] is False
     assert any("主训练 loop 的 1F1B 调度尚未接入" in message for message in messages)
     assert not any("流水线配置无效" in message for message in messages)
+
+
+@pytest.mark.parametrize("world_size", [1, 3])
+def test_preflight_rejects_pipeline_when_selected_gpu_count_is_not_two(
+    tmp_path: Path, monkeypatch, world_size: int
+) -> None:
+    _write_selected_checkpoint_preflight_config(
+        tmp_path,
+        monkeypatch,
+        [
+            'model_family = "krea2_raw"',
+            "pipeline_parallel = true",
+            "pipeline_parallel_stages = 2",
+            "torch_compile = false",
+            "blocks_to_swap = 0",
+            'selective_checkpoint = "off"',
+        ],
+    )
+
+    result = _preflight(world_size=world_size)
+    messages = _messages(result, "pipeline_parallel")
+
+    assert result["ok"] is False
+    assert any("流水线配置无效" in message for message in messages)
+    assert not any(
+        "主训练 loop 的 1F1B 调度尚未接入" in message for message in messages
+    )
 
 
 def test_preflight_reports_invalid_pipeline_config_before_runtime_gate(

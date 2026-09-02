@@ -22,6 +22,9 @@ from web.services.training.history_runtime import (
     _select_resume_checkpoint,
 )
 from web.services.training.resume import _resume_state_integrity_unavailable_reason
+from web.services.training.resume_pipeline_gate import (
+    ensure_resume_pipeline_compatible,
+)
 
 def _attach_resume_stage_diagnosis(
     resume_info: dict[str, Any],
@@ -50,6 +53,8 @@ async def resume_from_history_task(
         checkpoint,
         duration_overrides=duration_overrides,
     )
+    snapshot_config_file = _display_project_path(str(snapshot_path))
+    ensure_resume_pipeline_compatible(snapshot_config_file, gpu_whitelist)
     runtime = _clone_resume_runtime(
         task,
         snapshot_path,
@@ -61,7 +66,7 @@ async def resume_from_history_task(
         resume_info["target_total_steps"] = runtime["resume_duration"].get("target_total_steps")
         resume_info["remaining_steps"] = runtime["resume_duration"].get("append_steps")
         _attach_resume_stage_diagnosis(resume_info, runtime)
-    config_file = str(runtime.get("runtime_config_file") or _display_project_path(str(snapshot_path)))
+    config_file = str(runtime.get("runtime_config_file") or snapshot_config_file)
     source_config_file = str(runtime.get("history_source_config_file") or task.get("history_source_config_file") or "")
 
     await self.start(

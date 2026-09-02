@@ -84,10 +84,11 @@ def test_http_training_queue_contract():
 
 
 def test_http_preflight_contract(monkeypatch):
-    monkeypatch.setattr(
-        training_routes,
-        "preflight_training_config",
-        lambda *args, **kwargs: {
+    captured = {}
+
+    def fake_preflight(*args, **kwargs):
+        captured.update(kwargs)
+        return {
             "ok": True,
             "variant": "lora",
             "preset": "default",
@@ -96,7 +97,12 @@ def test_http_preflight_contract(monkeypatch):
             "checks": [],
             "errors": [],
             "warnings": [],
-        },
+        }
+
+    monkeypatch.setattr(
+        training_routes,
+        "preflight_training_config",
+        fake_preflight,
     )
     response = asyncio.run(
         training_routes.handle_preflight(
@@ -105,6 +111,7 @@ def test_http_preflight_contract(monkeypatch):
                     "variant": "lora",
                     "preset": "default",
                     "methods_subdir": "gui-methods",
+                    "gpu_whitelist": [0, 1],
                 }
             )  # type: ignore[arg-type]
         )
@@ -114,6 +121,7 @@ def test_http_preflight_contract(monkeypatch):
     assert payload["ok"] is True
     assert "checks" in payload
     assert "summary" in payload
+    assert captured["world_size"] == 2
 
 
 def test_http_global_settings_contract(monkeypatch):

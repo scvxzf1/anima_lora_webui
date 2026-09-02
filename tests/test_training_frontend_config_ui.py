@@ -3690,8 +3690,8 @@ def test_base_compute_nf4_option_scoped_to_krea2_family() -> None:
     # 家族感知过滤函数存在, 且在 select 渲染处替换裸 fieldOptions 直传.
     assert "function filterFieldOptionsForFamily(key, options, currentValue)" in factory
     assert "filterFieldOptionsForFamily(key, fieldOptions, value)" in factory
-    # 只在 krea2_raw 时保留 nf4; anima 过滤掉.
-    assert "family === 'krea2_raw'" in factory
+    # krea2 与 krea2_raw 别名都保留 nf4; anima 过滤掉.
+    assert "const isKrea2 = isKrea2ModelFamily(family)" in factory
     assert "opt !== 'nf4'" in factory
     # 当前值兜底: 即使被过滤也加回, 防 select 显示空 (config 残留 nf4 又切 anima).
     assert "!filtered.includes(currentValue)" in factory
