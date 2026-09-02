@@ -97,13 +97,18 @@ def _compat_web_message(item) -> str:
             "流水线并行当前仅支持 Krea-2 Raw"
             "（model_family=krea2_raw 或别名 krea2）。"
         ),
+        "pipeline_parallel_config": (
+            "流水线配置无效；当前需要两阶段、1F1B、balanced，"
+            "只训练 DiT，并关闭 block swap、torch.compile、选择性 checkpoint "
+            "与 CPU/Unsloth activation offload。"
+        ),
         "krea2_pipeline_parallel_config": (
             "Krea-2 流水线配置无效；当前需要两阶段、1F1B、balanced，"
             "只训练 DiT，并关闭 block swap、torch.compile、选择性 checkpoint "
             "与 CPU/Unsloth activation offload。"
         ),
         "pipeline_parallel_runtime_unavailable": (
-            "Krea-2 流水线分层规划已接入，但主训练 loop 的 1F1B 调度尚未接入；"
+            "当前模型族的流水线分层规划已接入，但主训练 loop 的 1F1B 调度尚未接入；"
             "当前会阻止启动，不会静默回退到 DDP。"
         ),
         "negative_blocks_to_swap": "blocks_to_swap 不能小于 0。",

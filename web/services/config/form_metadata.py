@@ -207,8 +207,8 @@ FIELD_HELP: dict[str, dict[str, str]] = {
         "ko": "GPU와 CPU 간 스왑할 DiT 블록 수. 0: 전부 GPU. 높을수록 더 많이 CPU로 오프로드.",
     },
     "pipeline_parallel": {
-        "en": "Enable the experimental two-GPU Krea-2 pipeline-parallel path. It remains launch-blocked until the 1F1B trainer schedule is connected.",
-        "ko": "실험적인 2-GPU Krea-2 파이프라인 병렬 경로를 활성화합니다. 현재는 1F1B 학습 스케줄 연결 전까지 시작이 차단됩니다.",
+        "en": "Enable the experimental two-GPU pipeline planner for the selected model family. Launch remains blocked until the 1F1B trainer schedule is connected.",
+        "ko": "선택한 모델 패밀리의 실험적 2-GPU 파이프라인 계획을 활성화합니다. 1F1B 학습 스케줄 연결 전까지 시작은 차단됩니다.",
     },
     "pipeline_parallel_stages": {
         "en": "Pipeline stage count. The current topology requires exactly two stages and two worker processes.",
@@ -223,8 +223,8 @@ FIELD_HELP: dict[str, dict[str, str]] = {
         "ko": "파이프라인 실행 스케줄입니다. 첫 구현 목표는 1F1B만 허용합니다.",
     },
     "pipeline_parallel_split": {
-        "en": "Krea-2 block partition policy. Balanced currently plans 13 main blocks on stage 0 and 15 on stage 1.",
-        "ko": "Krea-2 블록 분할 정책입니다. balanced는 스테이지 0에 13개, 스테이지 1에 15개 메인 블록을 배치합니다.",
+        "en": "Model-family block partition policy. Balanced uses contiguous ranges; Krea-2 keeps its initial 13/15 heuristic while Anima and Z-Image start evenly split.",
+        "ko": "모델 패밀리 블록 분할 정책입니다. balanced는 연속 범위를 사용하며 Krea-2는 13/15, Anima와 Z-Image는 균등 분할로 시작합니다.",
     },
     "torch_compile": {
         "en": "Enable torch.compile for the forward pass. Faster training after initial compilation. Best with static_token_count=true.",

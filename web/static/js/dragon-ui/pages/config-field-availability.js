@@ -8,6 +8,10 @@ import {
     VERA_SCOPED_FIELD_KEYS,
 } from '../../config/catalog/defaults.js?v=dragon-ui-20260902-lokr-backend-v4';
 import { normalizeBooleanConfigValue } from './config-field-types.js?v=dragon-ui-20260902-lokr-backend-v4';
+import {
+    modelFamilySupportsPipelineParallel,
+    normalizeModelFamily,
+} from '../../features/config-form/model-family.js?v=module-bootstrap-20260903-pp-multimodel-v1';
 
 const CONVROT_FIELD_KEYS = new Set([
     'convrot_group_size',
@@ -26,7 +30,6 @@ const PIPELINE_PARALLEL_FIELD_KEYS = new Set([
     'pipeline_parallel_schedule',
     'pipeline_parallel_split',
 ]);
-const KREA2_MODEL_FAMILIES = new Set(['krea2', 'krea2_raw']);
 
 const FAMILY_LABELS = Object.freeze({
     lokr: 'LoKr',
@@ -74,21 +77,21 @@ export function configFieldAvailability(key, context = {}) {
     const method = String(context.method || 'lora').trim().toLowerCase();
     const adapter = String(context.adapter || 'lora').trim().toLowerCase();
     const baseCompute = String(context.baseCompute || 'bf16').trim().toLowerCase();
-    const modelFamily = String(context.modelFamily || 'anima').trim().toLowerCase();
+    const modelFamily = normalizeModelFamily(context.modelFamily || 'anima');
     const pipelineParallel = normalizeBooleanConfigValue(
         'pipeline_parallel',
         context.pipelineParallel,
     );
 
-    if (PIPELINE_PARALLEL_FIELD_KEYS.has(key) && !KREA2_MODEL_FAMILIES.has(modelFamily)) {
+    if (PIPELINE_PARALLEL_FIELD_KEYS.has(key) && !modelFamilySupportsPipelineParallel(modelFamily)) {
         return unavailable(
-            `流水线并行当前仅适用于 Krea-2 Raw（含 krea2 别名），当前模型家族为 ${modelFamily}。`,
+            `流水线并行尚未为当前模型族 ${modelFamily} 声明分层能力。`,
             'pipeline-parallel-model-family',
         );
     }
     if (key !== 'pipeline_parallel' && PIPELINE_PARALLEL_FIELD_KEYS.has(key) && !pipelineParallel) {
         return unavailable(
-            '请先开启 Krea-2 流水线并行。',
+            '请先开启流水线并行。',
             'pipeline-parallel-disabled',
         );
     }

@@ -75,6 +75,8 @@ const check = (key, context) => mod.configFieldAvailability(key, context);
 console.log(JSON.stringify({{
   animaToggle: check('pipeline_parallel', {{ modelFamily: 'anima', pipelineParallel: false }}),
   kreaAliasToggle: check('pipeline_parallel', {{ modelFamily: 'krea2', pipelineParallel: false }}),
+  zImageToggle: check('pipeline_parallel', {{ modelFamily: 'zimage', pipelineParallel: false }}),
+  unknownToggle: check('pipeline_parallel', {{ modelFamily: 'unknown', pipelineParallel: false }}),
   disabledChild: check('pipeline_parallel_microbatches', {{ modelFamily: 'krea2_raw', pipelineParallel: false }}),
   enabledChild: check('pipeline_parallel_microbatches', {{ modelFamily: 'krea2_raw', pipelineParallel: true }}),
 }}));
@@ -89,9 +91,11 @@ console.log(JSON.stringify({{
     )
     payload = json.loads(result.stdout)
 
-    assert payload["animaToggle"]["enabled"] is False
-    assert payload["animaToggle"]["code"] == "pipeline-parallel-model-family"
+    assert payload["animaToggle"] == {"enabled": True, "reason": "", "code": None}
     assert payload["kreaAliasToggle"] == {"enabled": True, "reason": "", "code": None}
+    assert payload["zImageToggle"] == {"enabled": True, "reason": "", "code": None}
+    assert payload["unknownToggle"]["enabled"] is False
+    assert payload["unknownToggle"]["code"] == "pipeline-parallel-model-family"
     assert payload["disabledChild"]["enabled"] is False
     assert payload["disabledChild"]["code"] == "pipeline-parallel-disabled"
     assert payload["enabledChild"] == {"enabled": True, "reason": "", "code": None}
@@ -139,10 +143,82 @@ console.log(JSON.stringify({{
     assert "krea2_compile_inductor_mode" in payload["aliasCodes"]
 
 
+def test_frontends_consume_shared_model_family_capability_catalog() -> None:
+    if not shutil.which("node"):
+        pytest.skip("node is required for model-family capability checks")
+    family_uri = (STATIC / "js/features/config-form/model-family.js").resolve().as_uri()
+    availability_uri = (
+        STATIC / "js/dragon-ui/pages/config-field-availability.js"
+    ).resolve().as_uri()
+    shared_token = "module-bootstrap-20260903-pp-multimodel-v1"
+    script = f"""
+const family = await import({json.dumps(family_uri + "?v=" + shared_token)});
+const availability = await import({json.dumps(availability_uri + "?capability-test")});
+let requested = '';
+await family.loadModelFamilyCapabilities(async (path) => {{
+  requested = path;
+  return {{ ok: true, items: [
+    {{ name: 'anima', aliases: ['anima'], pipeline_parallel: null }},
+    {{ name: 'z_image', aliases: ['zimage', 'z_image'], pipeline_parallel: {{ configurable: true, runtime_available: false }} }},
+  ] }};
+}});
+console.log(JSON.stringify({{
+  requested,
+  anima: availability.configFieldAvailability('pipeline_parallel', {{ modelFamily: 'anima' }}),
+  zImage: availability.configFieldAvailability('pipeline_parallel', {{ modelFamily: 'zimage' }}),
+  runtime: family.modelFamilyPipelineCapability('zimage').runtime_available,
+}}));
+"""
+    result = subprocess.run(
+        ["node", "--input-type=module", "--eval", script],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=20,
+    )
+    payload = json.loads(result.stdout)
+
+    assert payload["requested"] == "/api/config/model-families"
+    assert payload["anima"]["code"] == "pipeline-parallel-model-family"
+    assert payload["zImage"] == {"enabled": True, "reason": "", "code": None}
+    assert payload["runtime"] is False
+
+
+def test_model_family_capability_request_failure_keeps_static_fallback() -> None:
+    if not shutil.which("node"):
+        pytest.skip("node is required for model-family capability checks")
+    family_uri = (STATIC / "js/features/config-form/model-family.js").resolve().as_uri()
+    script = f"""
+const family = await import({json.dumps(family_uri + "?fallback-test")});
+const loaded = await family.loadModelFamilyCapabilities(() => {{
+  throw new Error('offline');
+}});
+console.log(JSON.stringify({{
+  count: loaded.length,
+  anima: family.modelFamilySupportsPipelineParallel('anima'),
+  krea2: family.modelFamilySupportsPipelineParallel('krea2'),
+  zImage: family.modelFamilySupportsPipelineParallel('zimage'),
+}}));
+"""
+    result = subprocess.run(
+        ["node", "--input-type=module", "--eval", script],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=20,
+    )
+    payload = json.loads(result.stdout)
+
+    assert payload == {"count": 3, "anima": True, "krea2": True, "zImage": True}
+
+
 def test_pipeline_frontend_cache_chain_reaches_both_ui_modes() -> None:
-    module_token = "module-bootstrap-20260903-pp-audit-v2"
-    catalog_token = "module-bootstrap-20260902-krea2-pp-v1"
-    dragon_token = "dragon-ui-20260902-krea2-pp-v1"
+    module_token = "module-bootstrap-20260903-pp-multimodel-v1"
+    catalog_token = module_token
+    dragon_page_token = "dragon-ui-20260903-pp-multimodel-v1"
+    dragon_availability_token = dragon_page_token
 
     assert "ui-bootstrap.js?v=" in _read("index.html")
     bootstrap = _read("js/ui-bootstrap.js")
@@ -168,14 +244,20 @@ def test_pipeline_frontend_cache_chain_reaches_both_ui_modes() -> None:
     assert f"live-compat.js?v={module_token}" in _read(
         "js/features/config-form/form-fields-ui.js"
     )
-    assert f"page-loaders.js?v={dragon_token}" in _read("js/dragon-ui/index.js")
-    assert f"config-page.js?v={dragon_token}" in _read("js/dragon-ui/page-loaders.js")
-    assert f"config-field-availability.js?v={dragon_token}" in _read(
+    assert "loadModelFamilyCapabilities(api)" in _read(
+        "js/features/app-shell/startup.js"
+    )
+    assert "loadModelFamilyCapabilities(api)" in _read(
+        "js/dragon-ui/pages/config-page.js"
+    )
+    assert f"page-loaders.js?v={dragon_page_token}" in _read("js/dragon-ui/index.js")
+    assert f"config-page.js?v={dragon_page_token}" in _read("js/dragon-ui/page-loaders.js")
+    assert f"config-field-availability.js?v={dragon_availability_token}" in _read(
         "js/dragon-ui/pages/config-page.js"
     )
 
 
-def test_preflight_rejects_pipeline_for_non_krea_family(
+def test_preflight_plans_anima_but_keeps_launch_blocked(
     tmp_path: Path, monkeypatch
 ) -> None:
     _write_selected_checkpoint_preflight_config(
@@ -187,10 +269,9 @@ def test_preflight_rejects_pipeline_for_non_krea_family(
     result = _preflight()
 
     assert result["ok"] is False
-    assert any(
-        "仅支持 Krea-2 Raw" in message
-        for message in _messages(result, "pipeline_parallel")
-    )
+    messages = _messages(result, "pipeline_parallel")
+    assert any("主训练 loop 的 1F1B 调度尚未接入" in message for message in messages)
+    assert not any("流水线配置无效" in message for message in messages)
 
 
 def test_preflight_keeps_valid_krea_pipeline_launch_blocked(

@@ -2,7 +2,7 @@
  * Config form draft/render helpers.
  * Moved out of anima-app mechanical chunks.
  */
-import { applyLoraAdapterDraft, applyOptimizerCompatibilityPatch } from './form-fields.js?v=module-bootstrap-20260903-pp-audit-v2';
+import { applyLoraAdapterDraft, applyOptimizerCompatibilityPatch } from './form-fields.js?v=module-bootstrap-20260903-pp-multimodel-v1';
 import {
     CHIMERA_UI_DEFAULT_FIELDS,
     CONFIG_FORM_INTERNAL_KEYS,

@@ -5,8 +5,8 @@
  * Language: Chinese labels and descriptions, English config keys hidden by default.
  */
 
-import { FIELD_LABEL_ZH, FIELD_OPTIONS } from '../../config/catalog/labels-options.js?v=dragon-ui-20260902-krea2-pp-v1';
-import { FIELD_HELP_SUMMARY_ZH } from '../../config/catalog/field-help-summary.js?v=dragon-ui-20260902-krea2-pp-v1';
+import { FIELD_LABEL_ZH, FIELD_OPTIONS } from '../../config/catalog/labels-options.js?v=module-bootstrap-20260903-pp-multimodel-v1';
+import { FIELD_HELP_SUMMARY_ZH } from '../../config/catalog/field-help-summary.js?v=module-bootstrap-20260903-pp-multimodel-v1';
 import { configFieldPlaceholder } from '../../config/catalog/field-placeholders.js?v=dragon-ui-20260830v2';
 import {
     ALL_LORA_ADAPTER_SCOPED_FIELD_KEYS,
@@ -48,11 +48,12 @@ import {
     scrollConfigCanvasTo,
     uniqueConfigEntries,
 } from './config-all-view.js?v=dragon-ui-20260825v15';
-import { buildConfigBlocks } from './config-block-metadata.js?v=dragon-ui-20260902-krea2-pp-v1';
+import { buildConfigBlocks } from './config-block-metadata.js?v=dragon-ui-20260903-pp-multimodel-v1';
 import {
     configFieldAvailability,
     resolveConfigAdapterKind,
-} from './config-field-availability.js?v=dragon-ui-20260902-krea2-pp-v1';
+} from './config-field-availability.js?v=dragon-ui-20260903-pp-multimodel-v1';
+import { loadModelFamilyCapabilities } from '../../features/config-form/model-family.js?v=module-bootstrap-20260903-pp-multimodel-v1';
 import {
     bindConfigFieldHelpDialog,
     configHelpSummary,
@@ -101,7 +102,7 @@ let fieldHelpCatalogPromise = null;
 
 function loadFieldHelpCatalog() {
     if (!fieldHelpCatalogPromise) {
-        fieldHelpCatalogPromise = import('../../config/catalog/field-help.js?v=dragon-ui-20260902-krea2-pp-v1')
+        fieldHelpCatalogPromise = import('../../config/catalog/field-help.js?v=module-bootstrap-20260903-pp-multimodel-v1')
             .then((module) => module.FIELD_HELP_ZH)
             .catch((error) => {
                 fieldHelpCatalogPromise = null;
@@ -217,7 +218,10 @@ export async function loadConfigPage(context) {
 
     if (!sub) return '<div class="dragon-empty-state"><p>未找到配置项</p></div>';
 
-   const trainingContext = await loadTrainingContext();
+   const [trainingContext] = await Promise.all([
+       loadTrainingContext(),
+       loadModelFamilyCapabilities(api),
+   ]);
    let currentValues = {};
    let configError = '';
    try {

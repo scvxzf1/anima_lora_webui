@@ -3,7 +3,7 @@
  * Mirrors a small subset of library/training/compat_matrix.py codes for UX only.
  * Does NOT replace server preflight.
  */
-import { isKrea2ModelFamily, normalizeModelFamily } from './model-family.js?v=module-bootstrap-20260903-pp-audit-v2';
+import { isKrea2ModelFamily, normalizeModelFamily } from './model-family.js?v=module-bootstrap-20260903-pp-multimodel-v1';
 
 /**
  * @typedef {Object} LiveCompatIssue

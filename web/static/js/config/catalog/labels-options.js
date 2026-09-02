@@ -21,7 +21,7 @@ export const FIELD_LABEL_ZH = {
     block_swap_transfer_dtype: '块交换传输精度',
     base_compute: '底模计算路径',
     blocks_to_swap: 'CPU/GPU 交换块数',
-    pipeline_parallel: '启用 Krea-2 流水线并行',
+    pipeline_parallel: '启用模型流水线并行',
     pipeline_parallel_stages: '流水线阶段数',
     pipeline_parallel_microbatches: '流水线微批数',
     pipeline_parallel_schedule: '流水线调度',

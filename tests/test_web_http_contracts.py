@@ -416,6 +416,19 @@ def test_http_config_presets_envelope(monkeypatch):
     assert "default" in payload["items"]
 
 
+def test_http_config_model_families_exposes_pipeline_capabilities():
+    response = asyncio.run(config_routes.handle_model_families(_FakeRequest()))  # type: ignore[arg-type]
+    assert response.status == 200
+    payload = _json_payload(response)
+    items = {item["name"]: item for item in payload["items"]}
+
+    assert payload["ok"] is True
+    assert set(items) == {"anima", "krea2_raw", "z_image"}
+    assert items["anima"]["pipeline_parallel"]["known_num_blocks"] == [28, 40]
+    assert items["krea2_raw"]["pipeline_parallel"]["runtime_available"] is False
+    assert items["z_image"]["pipeline_parallel"]["block_container"] == "layers"
+
+
 def test_http_config_merged_envelope(monkeypatch):
     monkeypatch.setattr(
         config_routes,

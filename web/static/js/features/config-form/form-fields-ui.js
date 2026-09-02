@@ -4,8 +4,12 @@
 import { updateChoiceGuide } from './choice-guide-ui.js?v=module-bootstrap-20260831-release-v1';
 import { updateStepEstimatePanel } from './step-estimate.js?v=module-bootstrap-20260831-release-v1';
 import { valuesEqual } from '../anima-app/helpers/form-values.js?v=module-bootstrap-20260831-release-v1';
-import { collectLiveCompatIssues, formatLiveCompatStatus } from './live-compat.js?v=module-bootstrap-20260903-pp-audit-v2';
-import { isKrea2ModelFamily, normalizeModelFamily } from './model-family.js?v=module-bootstrap-20260903-pp-audit-v2';
+import { collectLiveCompatIssues, formatLiveCompatStatus } from './live-compat.js?v=module-bootstrap-20260903-pp-multimodel-v1';
+import {
+    isKrea2ModelFamily,
+    modelFamilySupportsPipelineParallel,
+    normalizeModelFamily,
+} from './model-family.js?v=module-bootstrap-20260903-pp-multimodel-v1';
 import { setTomlStatus } from '../anima-app/helpers/toml-action-state-bridge.js?v=module-bootstrap-20260831-release-v1';
 import { buildFieldPresentation, fieldSourceBadgeLabel } from './field-presentation.js?v=module-bootstrap-20260831-release-v1';
 import {
@@ -32,7 +36,7 @@ import {
     FIELD_OPTIONS,
     FORM_UI_DEFAULTS,
     help,
-} from '../../config/catalog.js?v=module-bootstrap-20260902-krea2-pp-v1';
+} from '../../config/catalog.js?v=module-bootstrap-20260903-pp-multimodel-v1';
 import { LOSS_WEIGHTING_DEPENDENT_FIELDS } from '../anima-app/helpers/app-constants.js?v=module-bootstrap-20260831-release-v1';
 import {
     applyLossWeightingFieldInputState,
@@ -57,7 +61,7 @@ import {
     createSamplePromptTextModeButton,
     createSamplePromptsEditor,
     createSamplePromptsPathInput,
-} from './form-fields-sample.js?v=module-bootstrap-20260831-release-v1';
+} from './form-fields-sample.js?v=module-bootstrap-20260903-pp-multimodel-v1';
 
 let updateNoDatasetRegularizationModePanelCallback = () => {};
 const configState = getConfigState();
@@ -118,9 +122,9 @@ function filterFieldOptionsForFamily(key, options, currentValue) {
 function applyFamilyFieldConstraints(input, key) {
     const family = currentModelFamily();
     const isKrea2 = isKrea2ModelFamily(family);
-    if (PIPELINE_PARALLEL_FIELDS.has(key) && !isKrea2) {
+    if (PIPELINE_PARALLEL_FIELDS.has(key) && !modelFamilySupportsPipelineParallel(family)) {
         input.disabled = true;
-        input.title = '流水线并行当前仅支持 Krea-2 Raw（含 krea2 别名）';
+        input.title = `流水线并行尚未为当前模型族 ${family} 声明分层能力`;
         if (key === 'pipeline_parallel') input.checked = false;
         return input;
     }
@@ -130,7 +134,7 @@ function applyFamilyFieldConstraints(input, key) {
         && !currentPipelineParallelEnabled()
     ) {
         input.disabled = true;
-        input.title = '请先开启 Krea-2 流水线并行';
+        input.title = '请先开启流水线并行';
         return input;
     }
     if (key === 'compile_seq_bands' && family && family !== 'anima') {

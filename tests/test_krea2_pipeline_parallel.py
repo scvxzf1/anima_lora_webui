@@ -302,14 +302,14 @@ def test_pipeline_fields_are_in_runtime_config_schema() -> None:
 def test_compat_matrix_keeps_valid_pipeline_fail_closed() -> None:
     result = check_training_compat(_valid_config(attn_mode="torch"))
 
-    assert "krea2_pipeline_parallel_config" not in _codes(result.errors)
+    assert "pipeline_parallel_config" not in _codes(result.errors)
     assert "pipeline_parallel_runtime_unavailable" in _codes(result.errors)
 
 
 def test_compat_matrix_reports_invalid_config_before_runtime_gate() -> None:
     result = check_training_compat(_valid_config(attn_mode="torch", torch_compile=True))
 
-    assert "krea2_pipeline_parallel_config" in _codes(result.errors)
+    assert "pipeline_parallel_config" in _codes(result.errors)
     assert "pipeline_parallel_runtime_unavailable" not in _codes(result.errors)
 
 
@@ -318,7 +318,7 @@ def test_compat_matrix_rejects_malformed_pipeline_toggle() -> None:
         _valid_config(attn_mode="torch", pipeline_parallel="invalid")
     )
 
-    assert "krea2_pipeline_parallel_config" in _codes(result.errors)
+    assert "pipeline_parallel_config" in _codes(result.errors)
     assert "pipeline_parallel_runtime_unavailable" not in _codes(result.errors)
 
 
@@ -328,14 +328,15 @@ def test_compat_matrix_checks_pipeline_world_size_before_runtime_gate() -> None:
         world_size=1,
     )
 
-    assert "krea2_pipeline_parallel_config" in _codes(result.errors)
+    assert "pipeline_parallel_config" in _codes(result.errors)
     assert "pipeline_parallel_runtime_unavailable" not in _codes(result.errors)
 
 
-def test_compat_matrix_rejects_pipeline_for_other_families() -> None:
+def test_compat_matrix_plans_anima_but_keeps_runtime_fail_closed() -> None:
     result = check_training_compat(_valid_config(model_family="anima"))
 
-    assert "pipeline_parallel_krea2_only" in _codes(result.errors)
+    assert "pipeline_parallel_config" not in _codes(result.errors)
+    assert "pipeline_parallel_runtime_unavailable" in _codes(result.errors)
 
 
 def test_cli_refuses_to_fall_back_to_data_parallel(monkeypatch) -> None:
@@ -373,3 +374,41 @@ def test_cli_refuses_to_fall_back_to_data_parallel(monkeypatch) -> None:
         )
 
     assert trainer_created is False
+
+
+def test_cli_normalizes_string_false_without_entering_pipeline_gate(monkeypatch) -> None:
+    args = Namespace(
+        **_valid_config(pipeline_parallel="false", attn_mode="torch")
+    )
+
+    class _Parser:
+        def parse_args(self, _argv):
+            return args
+
+    trained = False
+
+    class _Trainer:
+        def train(self, trained_args):
+            nonlocal trained
+            trained = True
+            assert trained_args is args
+
+    monkeypatch.setattr(
+        cli_entry._config_schema, "populate_schema", lambda *_args, **_kwargs: None
+    )
+    monkeypatch.setattr(
+        cli_entry, "verify_command_line_training_args", lambda _args: None
+    )
+    monkeypatch.setattr(
+        cli_entry, "read_config_from_file", lambda parsed, _parser: parsed
+    )
+
+    cli_entry.run_training_cli(
+        setup_parser=_Parser,
+        trainer_factory=_Trainer,
+        install_stop_signal_handlers=lambda: None,
+        install_crash_reporter=lambda _argv: None,
+        argv=["train.py"],
+    )
+
+    assert trained is True

@@ -924,9 +924,9 @@ def add_dit_training_arguments(parser: argparse.ArgumentParser):
         action=argparse.BooleanOptionalAction,
         default=False,
         help=(
-            "[EXPERIMENTAL] Enable Krea-2 pipeline parallelism. The current "
-            "release validates the topology and refuses to fall back to DDP "
-            "until the 1F1B trainer schedule is enabled."
+            "[EXPERIMENTAL] Enable model-family pipeline parallelism. The "
+            "current release validates the topology and refuses to fall back "
+            "to DDP until the 1F1B trainer schedule is enabled."
         ),
     )
     parser.add_argument(
@@ -957,7 +957,7 @@ def add_dit_training_arguments(parser: argparse.ArgumentParser):
         type=str,
         default="balanced",
         choices=["balanced"],
-        help="How Krea-2 blocks are split across pipeline stages.",
+        help="How model-family transformer blocks are split across pipeline stages.",
     )
     parser.add_argument(
         "--block_swap_profile_jsonl",

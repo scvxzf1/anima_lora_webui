@@ -24,6 +24,17 @@ family、未注册推理模式或 sampler 都应失败，不得静默回退 Anim
 WebUI 能选择三个模型族，但这不扩大 registry 的能力集合。尤其是 Z-Image 的训练 sample
 preview 只服务训练流程，不代表生图测试、独立 CLI 推理、batch 或 interactive 已可用。
 
+## Pipeline Parallel 规划能力
+
+三个已注册模型族都声明了双卡 PP 拓扑，并通过公共
+`library/models/pipeline_parallel.py` 完成配置归一化、互斥校验和连续 block 范围规划。
+Anima 使用 `blocks` 并均分 28/40 block；Krea-2 使用 `blocks` 并保留 28 block
+的 13/15 启发式；Z-Image 只分配 `layers` 中的 30 个 main layers，不混入 refiner。
+
+这些是 planner/probe 能力，不是生产 runtime。当前三族的 registry capability 都显式标记
+`runtime_available=false`；CLI、WebUI、续训和队列均在合法规划后 fail closed，不会回退到
+普通 DDP。完整设计和当前边界见 [双卡 Pipeline Parallel 阶段 1](proposal/krea2_pipeline_parallel.md)。
+
 ## 当前路由
 
 ### 训练

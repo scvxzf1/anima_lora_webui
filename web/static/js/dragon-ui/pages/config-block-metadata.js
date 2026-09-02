@@ -1,6 +1,6 @@
 import { SECTION_GROUPS } from './section-groups.js?v=dragon-ui-20260902-krea2-pp-v1';
 import { isBooleanConfigField } from './config-field-types.js?v=dragon-ui-20260902-lokr-backend-v4';
-import { configFieldAvailability } from './config-field-availability.js?v=dragon-ui-20260902-krea2-pp-v1';
+import { configFieldAvailability } from './config-field-availability.js?v=dragon-ui-20260903-pp-multimodel-v1';
 
 const TAG_META = Object.freeze({
     '基础模型路径': { id: 'models', label: '模型', tone: 'required' },

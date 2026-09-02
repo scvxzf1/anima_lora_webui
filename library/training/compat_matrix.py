@@ -10,10 +10,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Mapping
 
-from library.models.family_registry import get_model_family_spec
-from library.models.krea2_raw.pipeline_parallel import (
-    Krea2PipelineParallelConfig,
-    validate_krea2_pipeline_config,
+from library.models.family_registry import (
+    get_model_family_spec,
+    normalize_registered_family,
+)
+from library.models.pipeline_parallel import (
+    PipelineParallelConfig,
+    validate_pipeline_parallel_config,
 )
 
 
@@ -180,10 +183,12 @@ def check_training_compat(
     compile_inductor_mode = _get(config, "compile_inductor_mode", None)
     model_family = str(_get(config, "model_family", "") or "anima").strip().lower()
     try:
-        family_spec = get_model_family_spec(
+        canonical_family = normalize_registered_family(
             model_family,
             source="training compatibility model_family",
+            allow_aliases=True,
         )
+        family_spec = get_model_family_spec(canonical_family)
     except ValueError as exc:
         out.error("invalid_model_family", "model_family", str(exc))
         return out.build()
@@ -191,7 +196,7 @@ def check_training_compat(
     z_image_family = family_spec.name == "z_image"
     pipeline_parallel_error: ValueError | None = None
     try:
-        pipeline_parallel = Krea2PipelineParallelConfig.from_config(config).enabled
+        pipeline_parallel = PipelineParallelConfig.from_config(config).enabled
     except ValueError as exc:
         pipeline_parallel = False
         pipeline_parallel_error = exc
@@ -203,19 +208,31 @@ def check_training_compat(
 
     if pipeline_parallel_error is not None:
         out.error(
-            "krea2_pipeline_parallel_config"
-            if krea2_family
-            else "pipeline_parallel_config",
+            "pipeline_parallel_config",
             "pipeline_parallel",
             str(pipeline_parallel_error),
         )
-    elif pipeline_parallel and not krea2_family:
-        out.error(
-            "pipeline_parallel_krea2_only",
-            "pipeline_parallel",
-            "pipeline_parallel is currently supported only for model_family="
-            "krea2_raw (alias: krea2).",
-        )
+    elif pipeline_parallel:
+        try:
+            validate_pipeline_parallel_config(config, world_size=world_size)
+        except ValueError as exc:
+            out.error(
+                "pipeline_parallel_config",
+                "pipeline_parallel",
+                str(exc),
+            )
+        else:
+            # Planning support is not a runtime implementation. Keep every
+            # family fail-closed until stage-local placement, 1F1B, optimizer
+            # ownership, and checkpoint recovery are wired into the trainer.
+            out.error(
+                "pipeline_parallel_runtime_unavailable",
+                "pipeline_parallel",
+                f"{family_spec.display_name} pipeline_parallel has a validated "
+                "stage planner, but the 1F1B schedule is not wired into the "
+                "main trainer; disable pipeline_parallel or use the standalone "
+                "PP probe.",
+            )
 
     # Krea-2 gets a family-specific message/mutation below. Avoid emitting a
     # duplicate generic mutation when its fixed-padded gate is the real cause.
@@ -284,26 +301,6 @@ def check_training_compat(
             )
 
     if krea2_family:
-        if pipeline_parallel and pipeline_parallel_error is None:
-            try:
-                validate_krea2_pipeline_config(config, world_size=world_size)
-            except ValueError as exc:
-                out.error(
-                    "krea2_pipeline_parallel_config",
-                    "pipeline_parallel",
-                    str(exc),
-                )
-            else:
-                # Keep the experimental switch fail-closed until the main
-                # trainer owns a real 1F1B schedule.  In particular, do not
-                # let Accelerate silently turn this into ordinary DDP.
-                out.error(
-                    "pipeline_parallel_runtime_unavailable",
-                    "pipeline_parallel",
-                    "Krea-2 pipeline_parallel has a validated stage planner, "
-                    "but the 1F1B schedule is not wired into the main trainer; "
-                    "disable pipeline_parallel or use the standalone PP probe.",
-                )
         krea2_attn_mode = str(_get(config, "attn_mode", "") or "").strip().lower()
         if krea2_attn_mode not in KREA2_ATTN_MODES:
             out.error(

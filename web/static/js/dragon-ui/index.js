@@ -11,7 +11,7 @@ import { destroyAnimations, initScrollAnimations, initParallax } from './animati
 import { destroyDragonMotion, initDragonMotion } from './motion.js?v=dragon-ui-20260824v1';
 import { applyDragonConfigChromeSettings } from './config-chrome.js?v=dragon-ui-20260825v1';
 import { trackHistoryDetailEntry } from './history-return-navigation.js?v=dragon-ui-20260825v1';
-import { createDragonPageLoaders } from './page-loaders.js?v=dragon-ui-20260902-krea2-pp-v1';
+import { createDragonPageLoaders } from './page-loaders.js?v=dragon-ui-20260903-pp-multimodel-v1';
 import { clearDragonRouteStyles } from './route-styles.js?v=dragon-ui-20260902-training-nav-v3';
 import { createApiClient } from '../shared/api.js?v=dragon-ui-20260812v35';
 import { loadAndApplyDragonUIScale } from './ui-scale.js?v=dragon-ui-20260814v43';

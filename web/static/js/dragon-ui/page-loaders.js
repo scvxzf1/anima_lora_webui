@@ -42,7 +42,7 @@ export function createDragonPageLoaders() {
     );
     return {
         dashboard: styledPage('dashboard', lazyPage(() => import('./pages/dashboard.js?v=dragon-ui-20260826v45'), 'loadDashboard')),
-        config: styledPage('config', lazyPage(() => import('./pages/config-page.js?v=dragon-ui-20260902-krea2-pp-v1'), 'loadConfigPage')),
+        config: styledPage('config', lazyPage(() => import('./pages/config-page.js?v=dragon-ui-20260903-pp-multimodel-v1'), 'loadConfigPage')),
         'live-training': styledPage('live', lazyPage(() => import('./pages/live-training.js?v=dragon-ui-20260826v54'), 'loadLiveTraining')),
         history: styledPage(
             (context = {}) => context.taskId ? 'history-detail' : 'history-list',

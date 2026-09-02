@@ -9,7 +9,7 @@ from typing import Any
 import toml
 
 from library.env import anima_home
-from library.models.krea2_raw.pipeline_parallel import Krea2PipelineParallelConfig
+from library.models.pipeline_parallel import PipelineParallelConfig
 from library.runtime.launch import resolve_training_world_size_for_gpu_selection
 from library.training.compat_matrix import check_training_compat
 from web.services.training.gpu import normalize_gpu_whitelist
@@ -31,7 +31,7 @@ def ensure_resume_pipeline_compatible(
         ) from exc
 
     try:
-        pipeline_config = Krea2PipelineParallelConfig.from_config(config)
+        pipeline_config = PipelineParallelConfig.from_config(config)
     except ValueError as exc:
         raise ValueError(f"续训流水线预检测失败: {exc}") from exc
     if not pipeline_config.enabled:
