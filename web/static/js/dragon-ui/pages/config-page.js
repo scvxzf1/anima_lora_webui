@@ -5,8 +5,8 @@
  * Language: Chinese labels and descriptions, English config keys hidden by default.
  */
 
-import { FIELD_LABEL_ZH, FIELD_OPTIONS } from '../../config/catalog/labels-options.js?v=dragon-ui-20260902-lokr-backend-v4';
-import { FIELD_HELP_SUMMARY_ZH } from '../../config/catalog/field-help-summary.js?v=dragon-ui-20260902-lokr-backend-v4';
+import { FIELD_LABEL_ZH, FIELD_OPTIONS } from '../../config/catalog/labels-options.js?v=dragon-ui-20260902-krea2-pp-v1';
+import { FIELD_HELP_SUMMARY_ZH } from '../../config/catalog/field-help-summary.js?v=dragon-ui-20260902-krea2-pp-v1';
 import { configFieldPlaceholder } from '../../config/catalog/field-placeholders.js?v=dragon-ui-20260830v2';
 import {
     ALL_LORA_ADAPTER_SCOPED_FIELD_KEYS,
@@ -18,20 +18,20 @@ import {
     LOKR_SCOPED_FIELD_KEYS,
     RETIRED_CONFIG_FORM_FIELDS,
     VERA_SCOPED_FIELD_KEYS,
-} from '../../config/catalog/defaults.js?v=dragon-ui-20260902-lokr-backend-v4';
-import { VARIANT_METHOD_FAMILY } from '../../config/catalog/form-layout.js?v=dragon-ui-20260902-lokr-backend-v4';
+} from '../../config/catalog/defaults.js?v=dragon-ui-20260902-krea2-pp-v1';
+import { VARIANT_METHOD_FAMILY } from '../../config/catalog/form-layout.js?v=dragon-ui-20260902-krea2-pp-v1';
 import { createApiClient } from '../../shared/api.js?v=dragon-ui-20260812v35';
 import {
     alertDragonDialog,
     confirmDragonDialog,
 } from '../../shared/dialog.js?v=module-bootstrap-20260901-dialog-v1';
 import { escapeHtml } from '../../shared/format.js?v=dragon-ui-20260812v35';
-import { SECTION_GROUPS } from './section-groups.js?v=dragon-ui-20260902-lokr-backend-v4';
+import { SECTION_GROUPS } from './section-groups.js?v=dragon-ui-20260902-krea2-pp-v1';
 import { findCategory, isConfigCategory } from '../category-map.js?v=dragon-ui-20260826v45';
 import { renderIcon } from '../icons.js?v=dragon-ui-20260812v35';
 import { scanForReveal } from '../animations.js?v=dragon-ui-20260824v69';
 import { dragonScrollBehavior } from '../motion.js?v=dragon-ui-20260824v1';
-import { keysForConfigSubItem } from './config-field-map.js?v=dragon-ui-20260902-lokr-backend-v4';
+import { keysForConfigSubItem } from './config-field-map.js?v=dragon-ui-20260902-krea2-pp-v1';
 import { configValueForControl, displayConfigValue, prepareConfigPatch, serializeConfigValue } from './config-values.js?v=dragon-ui-20260902-lokr-backend-v4';
 import {
     createConfigDirtyBindings,
@@ -48,11 +48,11 @@ import {
     scrollConfigCanvasTo,
     uniqueConfigEntries,
 } from './config-all-view.js?v=dragon-ui-20260825v15';
-import { buildConfigBlocks } from './config-block-metadata.js?v=dragon-ui-20260902-lokr-availability-v2';
+import { buildConfigBlocks } from './config-block-metadata.js?v=dragon-ui-20260902-krea2-pp-v1';
 import {
     configFieldAvailability,
     resolveConfigAdapterKind,
-} from './config-field-availability.js?v=dragon-ui-20260902-lokr-availability-v2';
+} from './config-field-availability.js?v=dragon-ui-20260902-krea2-pp-v1';
 import {
     bindConfigFieldHelpDialog,
     configHelpSummary,
@@ -101,7 +101,7 @@ let fieldHelpCatalogPromise = null;
 
 function loadFieldHelpCatalog() {
     if (!fieldHelpCatalogPromise) {
-        fieldHelpCatalogPromise = import('../../config/catalog/field-help.js?v=dragon-ui-20260902-lokr-backend-v4')
+        fieldHelpCatalogPromise = import('../../config/catalog/field-help.js?v=dragon-ui-20260902-krea2-pp-v1')
             .then((module) => module.FIELD_HELP_ZH)
             .catch((error) => {
                 fieldHelpCatalogPromise = null;
@@ -158,6 +158,8 @@ function configAvailabilityContext(trainingContext, values = {}) {
         method: activeMethodFamily(trainingContext, values),
         adapter: activeAdapterKind(values),
         baseCompute: String(values.base_compute || 'bf16').trim().toLowerCase(),
+        modelFamily: String(values.model_family || 'anima').trim().toLowerCase(),
+        pipelineParallel: normalizeBooleanConfigValue('pipeline_parallel', values.pipeline_parallel),
     };
 }
 

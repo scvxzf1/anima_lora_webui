@@ -12,10 +12,10 @@ export {
 export {
     setSamplePromptsEditorContent,
     markSamplePromptsEditorTouched,
-} from './form-fields-sample.js?v=module-bootstrap-20260831-release-v1';
+} from './form-fields-sample.js?v=module-bootstrap-20260902-krea2-pp-v1';
 
 export {
     configureNoDatasetRegularizationModePanelUpdater,
     createFieldRow,
     handleFormFieldChange,
-} from './form-fields-ui.js?v=module-bootstrap-20260831-release-v1';
+} from './form-fields-ui.js?v=module-bootstrap-20260902-krea2-pp-v1';

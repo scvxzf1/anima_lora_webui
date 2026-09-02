@@ -2,7 +2,7 @@
  * Config form draft/render helpers.
  * Moved out of anima-app mechanical chunks.
  */
-import { applyLoraAdapterDraft, applyOptimizerCompatibilityPatch } from './form-fields.js?v=module-bootstrap-20260902-lokr-backend-v4';
+import { applyLoraAdapterDraft, applyOptimizerCompatibilityPatch } from './form-fields.js?v=module-bootstrap-20260902-krea2-pp-v1';
 import {
     CHIMERA_UI_DEFAULT_FIELDS,
     CONFIG_FORM_INTERNAL_KEYS,
@@ -20,7 +20,7 @@ import {
     SOFT_TOKENS_UI_DEFAULT_FIELDS,
     SPD_UI_DEFAULT_FIELDS,
     VERA_SCOPED_FIELD_KEYS,
-} from '../../config/catalog.js?v=module-bootstrap-20260902-lokr-backend-v4';
+} from '../../config/catalog.js?v=module-bootstrap-20260902-krea2-pp-v1';
 import {
     isTruthy,
     loraAdapterFlagsMatchConfig,

@@ -35,7 +35,7 @@ import { requestContinueLoraInspection } from '../training-source/continue-lora.
 import {
     GLOBAL_UI_HISTORY_DETAIL_OVERRIDE_FIELDS,
     GLOBAL_UI_TOP_LEVEL_OVERRIDE_FIELDS,
-} from '../../config/catalog.js?v=module-bootstrap-20260831-release-v1';
+} from '../../config/catalog.js?v=module-bootstrap-20260902-krea2-pp-v1';
 import { GPU_WHITELIST_STORAGE_KEY, LANGUAGE_STORAGE_KEY, THEME_STORAGE_KEY } from '../anima-app/helpers/app-constants.js?v=module-bootstrap-20260831-release-v1';
 import { datasetPresetSummaryByFile } from '../anima-app/helpers/dataset-presets.js?v=module-bootstrap-20260831-release-v1';
 import { isDatasetTabActive } from '../anima-app/helpers/dataset-render-bridge.js?v=module-bootstrap-20260831-release-v1';
@@ -117,7 +117,7 @@ import {
     renderConfigForm,
     resetConfigFormDraft,
     syncConfigDraftFromForm,
-} from '../config-form/index.js?v=module-bootstrap-20260902-lokr-backend-v4';
+} from '../config-form/index.js?v=module-bootstrap-20260902-krea2-pp-v1';
 
 const ctx = getAppContext();
 const appShellState = getAppShellState();

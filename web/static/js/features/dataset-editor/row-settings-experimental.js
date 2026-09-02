@@ -7,7 +7,7 @@ import {
     createDatasetInlineHelpButton,
     datasetLocalHelpSpec,
 } from './inline-help.js?v=module-bootstrap-20260831-release-v1';
-import { help } from '../../config/catalog.js?v=module-bootstrap-20260831-release-v1';
+import { help } from '../../config/catalog.js?v=module-bootstrap-20260902-krea2-pp-v1';
 import { createHelpContent } from '../anima-app/helpers/config-field-ui-bridge.js?v=module-bootstrap-20260831-release-v1';
 import { datasetConfigLabel, datasetConfigValue } from '../anima-app/helpers/dataset-config-fields.js?v=module-bootstrap-20260831-release-v1';
 import { getDatasetState } from '../anima-app/helpers/dataset-state-bridge.js?v=module-bootstrap-20260831-release-v1';

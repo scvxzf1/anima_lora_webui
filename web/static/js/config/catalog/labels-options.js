@@ -21,6 +21,11 @@ export const FIELD_LABEL_ZH = {
     block_swap_transfer_dtype: '块交换传输精度',
     base_compute: '底模计算路径',
     blocks_to_swap: 'CPU/GPU 交换块数',
+    pipeline_parallel: '启用 Krea-2 流水线并行',
+    pipeline_parallel_stages: '流水线阶段数',
+    pipeline_parallel_microbatches: '流水线微批数',
+    pipeline_parallel_schedule: '流水线调度',
+    pipeline_parallel_split: '流水线分层策略',
     convrot_group_size: 'ConvRot 组大小',
     convrot_scope: 'ConvRot 作用范围',
     convrot_hadamard: 'ConvRot Hadamard',
@@ -244,6 +249,10 @@ export const FIELD_LABEL_ZH = {
 };
 
 export const FIELD_OPTIONS = {
+    pipeline_parallel_stages: [2],
+    pipeline_parallel_microbatches: [1, 2, 4, 8, 16],
+    pipeline_parallel_schedule: ['1f1b'],
+    pipeline_parallel_split: ['balanced'],
     attn_mode: ['torch', 'mem_efficient', 'xformers', 'flash', 'sageattn', 'flex', 'sdpa'],
     v100_flash_stability: ['off', 'hybrid', 'safe'],
     compile_block_scope: ['resident', 'all'],

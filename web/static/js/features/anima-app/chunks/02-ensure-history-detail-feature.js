@@ -2,5 +2,5 @@
  * Compatibility barrel for app-shell startup + config form helpers.
  * Domain truth lives in feature modules; importing this file still configures bridges.
  */
-export * from '../../app-shell/startup.js?v=module-bootstrap-20260902-lokr-backend-v4';
-export * from '../../config-form/index.js?v=module-bootstrap-20260902-lokr-backend-v4';
+export * from '../../app-shell/startup.js?v=module-bootstrap-20260902-krea2-pp-v1';
+export * from '../../config-form/index.js?v=module-bootstrap-20260902-krea2-pp-v1';

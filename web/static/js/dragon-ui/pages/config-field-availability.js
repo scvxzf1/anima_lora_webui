@@ -19,6 +19,15 @@ const CONVROT_FIELD_KEYS = new Set([
     'convrot_large_min_in_features',
 ]);
 
+const PIPELINE_PARALLEL_FIELD_KEYS = new Set([
+    'pipeline_parallel',
+    'pipeline_parallel_stages',
+    'pipeline_parallel_microbatches',
+    'pipeline_parallel_schedule',
+    'pipeline_parallel_split',
+]);
+const KREA2_MODEL_FAMILIES = new Set(['krea2', 'krea2_raw']);
+
 const FAMILY_LABELS = Object.freeze({
     lokr: 'LoKr',
     vera: 'VeRA',
@@ -65,6 +74,24 @@ export function configFieldAvailability(key, context = {}) {
     const method = String(context.method || 'lora').trim().toLowerCase();
     const adapter = String(context.adapter || 'lora').trim().toLowerCase();
     const baseCompute = String(context.baseCompute || 'bf16').trim().toLowerCase();
+    const modelFamily = String(context.modelFamily || 'anima').trim().toLowerCase();
+    const pipelineParallel = normalizeBooleanConfigValue(
+        'pipeline_parallel',
+        context.pipelineParallel,
+    );
+
+    if (PIPELINE_PARALLEL_FIELD_KEYS.has(key) && !KREA2_MODEL_FAMILIES.has(modelFamily)) {
+        return unavailable(
+            `流水线并行当前仅适用于 Krea-2 Raw（含 krea2 别名），当前模型家族为 ${modelFamily}。`,
+            'pipeline-parallel-model-family',
+        );
+    }
+    if (key !== 'pipeline_parallel' && PIPELINE_PARALLEL_FIELD_KEYS.has(key) && !pipelineParallel) {
+        return unavailable(
+            '请先开启 Krea-2 流水线并行。',
+            'pipeline-parallel-disabled',
+        );
+    }
 
     if (CONVROT_FIELD_KEYS.has(key) && !['w8a16_convrot', 'w8a8_convrot'].includes(baseCompute)) {
         return unavailable(

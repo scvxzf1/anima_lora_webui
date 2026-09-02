@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import sys
 from typing import Callable
 
@@ -38,6 +39,22 @@ def run_training_cli(
     args = parser.parse_args(argv[1:] if argv is not None else None)
     verify_command_line_training_args(args)
     args = read_config_from_file(args, parser)
+
+    if getattr(args, "pipeline_parallel", False):
+        from library.models.krea2_raw.pipeline_parallel import (
+            validate_krea2_pipeline_config,
+        )
+
+        try:
+            world_size = int(os.environ.get("WORLD_SIZE", "1"))
+        except ValueError as exc:
+            raise ValueError("WORLD_SIZE must be an integer for pipeline_parallel") from exc
+        validate_krea2_pipeline_config(args, world_size=world_size)
+        raise RuntimeError(
+            "Krea-2 pipeline_parallel stage planning is available, but the "
+            "1F1B schedule is not wired into the main trainer yet. Refusing "
+            "to fall back to ordinary Accelerate data parallelism."
+        )
 
     if args.attn_mode == "sdpa":
         args.attn_mode = "torch"  # backward compatibility

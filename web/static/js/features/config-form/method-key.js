@@ -2,7 +2,7 @@
  * Active method inference for config form scoping.
  * Extracted from anima-app chunk 13.
  */
-import { VARIANT_METHOD_FAMILY } from '../../config/catalog.js?v=module-bootstrap-20260831-release-v1';
+import { VARIANT_METHOD_FAMILY } from '../../config/catalog.js?v=module-bootstrap-20260902-krea2-pp-v1';
 import { isTruthy } from '../anima-app/helpers/config-values.js?v=module-bootstrap-20260831-release-v1';
 import { getConfigState } from '../anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260831-release-v1';
 import { getTrainingState } from '../anima-app/helpers/training-state-bridge.js?v=module-bootstrap-20260831-release-v1';

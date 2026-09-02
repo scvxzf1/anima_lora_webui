@@ -343,11 +343,11 @@ def test_dragon_dataset_layout_avoids_transformed_fixed_savebar() -> None:
 
 
 def test_dragon_dataset_release_token_is_consistent() -> None:
-    bootstrap_token = "dragon-ui-20260902-training-nav-v3"
-    entry_token = "dragon-ui-20260902-training-nav-v3"
+    bootstrap_token = "dragon-ui-20260902-krea2-pp-v1"
+    entry_token = "dragon-ui-20260902-krea2-pp-v1"
     style_token = "dragon-ui-20260902-training-nav-v3"
     shell_token = "dragon-ui-20260902-training-nav-v3"
-    config_page_token = "dragon-ui-20260901v154"
+    config_page_token = "dragon-ui-20260902-krea2-pp-v1"
     page_token = "dragon-ui-20260825v118"
     fields_token = "dragon-ui-20260828v54"
     config_style_token = "dragon-ui-20260902-lokr-availability-v1"

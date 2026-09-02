@@ -11,7 +11,7 @@ import {
     datasetLocalHelpSpec,
 } from './inline-help.js?v=module-bootstrap-20260831-release-v1';
 import { createDatasetEditorDragHandle } from './item-drag.js?v=module-bootstrap-20260831-release-v1';
-import { CAPTION_SOURCE_MODE_OPTIONS, help } from '../../config/catalog.js?v=module-bootstrap-20260831-release-v1';
+import { CAPTION_SOURCE_MODE_OPTIONS, help } from '../../config/catalog.js?v=module-bootstrap-20260902-krea2-pp-v1';
 import { normalizeCaptionSourceMode } from '../anima-app/helpers/caption-source.js?v=module-bootstrap-20260831-release-v1';
 import { createHelpContent } from '../anima-app/helpers/config-field-ui-bridge.js?v=module-bootstrap-20260831-release-v1';
 import { datasetConfigLabel, datasetConfigValue } from '../anima-app/helpers/dataset-config-fields.js?v=module-bootstrap-20260831-release-v1';

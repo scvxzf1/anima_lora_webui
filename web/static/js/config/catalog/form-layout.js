@@ -107,6 +107,11 @@ export const FORM_SECTION_DEFS = [
         open: true,
         className: 'config-group-resource',
         keys: [
+            'pipeline_parallel',
+            'pipeline_parallel_stages',
+            'pipeline_parallel_microbatches',
+            'pipeline_parallel_schedule',
+            'pipeline_parallel_split',
             'blocks_to_swap',
             'block_swap_transfer_dtype',
             'block_swap_restore_mode',
@@ -395,6 +400,14 @@ export const CONFIG_COMPACT_FIELD_GROUPS = {
         },
     ],
     'config-group-resource': [
+        {
+            className: 'config-field-grid-3col config-field-grid-inline-flags',
+            keys: ['pipeline_parallel', 'pipeline_parallel_stages', 'pipeline_parallel_microbatches'],
+        },
+        {
+            className: 'config-field-grid-2col',
+            keys: ['pipeline_parallel_schedule', 'pipeline_parallel_split'],
+        },
         {
             className: 'config-field-grid-5col',
             keys: ['blocks_to_swap', 'block_swap_transfer_dtype', 'block_swap_restore_mode', 'selective_checkpoint', 'selective_checkpoint_blocks'],

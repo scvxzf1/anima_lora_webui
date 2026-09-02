@@ -4,7 +4,7 @@
  * Sub-pages without an entry here fall back to a flat field list.
  */
 
-import { FORM_CATEGORY_DEFS, FORM_SECTION_DEFS } from '../../config/catalog/form-layout.js?v=dragon-ui-20260902-lokr-backend-v4';
+import { FORM_CATEGORY_DEFS, FORM_SECTION_DEFS } from '../../config/catalog/form-layout.js?v=dragon-ui-20260902-krea2-pp-v1';
 
 const TRAINING_CATEGORY_SECTION_GROUPS = Object.fromEntries(FORM_CATEGORY_DEFS.map((category) => [
     category.id,

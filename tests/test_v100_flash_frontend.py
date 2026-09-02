@@ -24,5 +24,5 @@ def test_v100_flash_fields_are_exposed_in_frontend_catalog() -> None:
     assert "'compile_dynamic_seq', 'compile_seq_bands', 'debug_finite_checks'" in form_layout
     assert "v100_flash_stability: help(" in help_training
     assert "debug_finite_checks: help(" in help_training
-    assert "./catalog/field-help.js?v=module-bootstrap-20260831-release-v1" in catalog
-    assert "./field-help-training.js?v=module-bootstrap-20260831-release-v1" in field_help
+    assert "./catalog/field-help.js?v=module-bootstrap-20260902-krea2-pp-v1" in catalog
+    assert "./field-help-training.js?v=module-bootstrap-20260902-krea2-pp-v1" in field_help

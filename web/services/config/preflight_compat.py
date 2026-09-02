@@ -93,6 +93,19 @@ def _compat_web_message(item) -> str:
             "v100_flash_stability 是 Anima 专用诊断项，Krea-2 下必须为 off。"
         ),
         "krea2_plain_lora_only": "Krea-2 当前仅支持 plain LoRA，不能组合高级 adapter 或路由。",
+        "pipeline_parallel_krea2_only": (
+            "流水线并行当前仅支持 Krea-2 Raw"
+            "（model_family=krea2_raw 或别名 krea2）。"
+        ),
+        "krea2_pipeline_parallel_config": (
+            "Krea-2 流水线配置无效；当前需要两阶段、1F1B、balanced，"
+            "只训练 DiT，并关闭 block swap、torch.compile、选择性 checkpoint "
+            "与 CPU/Unsloth activation offload。"
+        ),
+        "pipeline_parallel_runtime_unavailable": (
+            "Krea-2 流水线分层规划已接入，但主训练 loop 的 1F1B 调度尚未接入；"
+            "当前会阻止启动，不会静默回退到 DDP。"
+        ),
         "negative_blocks_to_swap": "blocks_to_swap 不能小于 0。",
         "selective_full_gradient_checkpointing": (
             "selective_checkpoint 是 DiT 选择性检查点模式，不能同时开启完整 "

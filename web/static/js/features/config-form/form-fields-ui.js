@@ -31,7 +31,7 @@ import {
     FIELD_OPTIONS,
     FORM_UI_DEFAULTS,
     help,
-} from '../../config/catalog.js?v=module-bootstrap-20260831-release-v1';
+} from '../../config/catalog.js?v=module-bootstrap-20260902-krea2-pp-v1';
 import { LOSS_WEIGHTING_DEPENDENT_FIELDS } from '../anima-app/helpers/app-constants.js?v=module-bootstrap-20260831-release-v1';
 import {
     applyLossWeightingFieldInputState,
@@ -79,6 +79,23 @@ function currentModelFamily() {
     return family;
 }
 
+const PIPELINE_PARALLEL_FIELDS = new Set([
+    'pipeline_parallel',
+    'pipeline_parallel_stages',
+    'pipeline_parallel_microbatches',
+    'pipeline_parallel_schedule',
+    'pipeline_parallel_split',
+]);
+const KREA2_MODEL_FAMILIES = new Set(['krea2', 'krea2_raw']);
+
+function currentPipelineParallelEnabled() {
+    const drafts = configState.configFormState?.draftValues;
+    const value = drafts?.has('pipeline_parallel')
+        ? drafts.get('pipeline_parallel')
+        : currentConfigState()?.pipeline_parallel;
+    return isTruthy(value);
+}
+
 function filterFieldOptionsForFamily(key, options, currentValue) {
     if (!Array.isArray(options)) return options;
     const family = currentModelFamily();
@@ -102,6 +119,21 @@ function filterFieldOptionsForFamily(key, options, currentValue) {
 
 function applyFamilyFieldConstraints(input, key) {
     const family = currentModelFamily();
+    if (PIPELINE_PARALLEL_FIELDS.has(key) && !KREA2_MODEL_FAMILIES.has(family)) {
+        input.disabled = true;
+        input.title = '流水线并行当前仅支持 Krea-2 Raw（含 krea2 别名）';
+        if (key === 'pipeline_parallel') input.checked = false;
+        return input;
+    }
+    if (
+        key !== 'pipeline_parallel'
+        && PIPELINE_PARALLEL_FIELDS.has(key)
+        && !currentPipelineParallelEnabled()
+    ) {
+        input.disabled = true;
+        input.title = '请先开启 Krea-2 流水线并行';
+        return input;
+    }
     if (key === 'compile_seq_bands' && family && family !== 'anima') {
         input.checked = false;
         input.disabled = true;
@@ -299,6 +331,7 @@ export function handleFormFieldChange(event) {
         event?.target?.dataset?.key === 'lora_adapter_kind'
         || event?.target?.dataset?.key === 'base_compute'
         || event?.target?.dataset?.key === 'model_family'
+        || event?.target?.dataset?.key === 'pipeline_parallel'
     ) {
         try {
             renderConfigForm(liveConfigFromForm());

@@ -5,7 +5,7 @@ import {
     FORM_UI_DEFAULTS,
     LOKR_SCOPED_FIELD_KEYS,
     VERA_SCOPED_FIELD_KEYS,
-} from '../../config/catalog.js?v=module-bootstrap-20260831-release-v1';
+} from '../../config/catalog.js?v=module-bootstrap-20260902-krea2-pp-v1';
 import { valuesEqual } from '../anima-app/helpers/form-values.js?v=module-bootstrap-20260831-release-v1';
 import {
     loraAdapterFlagsForKind,

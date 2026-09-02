@@ -11,7 +11,7 @@ import {
     FORM_CATEGORY_DEFS,
     FORM_CATEGORY_SECTION_MAP,
     STICKY_CONFIG_CATEGORY_IDS,
-} from '../../config/catalog.js?v=module-bootstrap-20260831-release-v1';
+} from '../../config/catalog.js?v=module-bootstrap-20260902-krea2-pp-v1';
 import { reloadCurrentConfig, renderConfigForm, syncConfigDraftFromForm } from '../anima-app/helpers/app-shell-startup-bridge.js?v=module-bootstrap-20260831-release-v1';
 import { getConfigState } from '../anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260831-release-v1';
 import { formatFieldName } from '../anima-app/helpers/config-field-display.js?v=module-bootstrap-20260831-release-v1';

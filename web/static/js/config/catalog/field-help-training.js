@@ -343,6 +343,46 @@ export const FIELD_HELP_TRAINING_ZH = {    learning_rate: help(
         ["设太高会慢到不实用，也可能受 CPU 内存和硬盘交换影响。"],
         "显存够用保持 0；OOM 时先用 low_vram 或 lora-8gb 预设。"
     ),
+    pipeline_parallel: help(
+        "让两张 GPU 各自常驻 Krea-2 的一部分层。",
+        "当前配置面和 13/15 主块分段规划已接入；1F1B 主训练调度尚未接入，开启后预检会明确阻止启动。",
+        ["单个 Krea-2 任务可以利用两张卡的显存容量。"],
+        ["需要两个进程和固定的阶段通信；有流水线气泡。"],
+        ["只支持 Krea-2 plain LoRA；暂不能与 block swap、torch.compile 或 selective checkpoint 叠加。"],
+        "当前保持 false。该开关用于审阅配置和后续硬件原型，不是已可生产训练的承诺。"
+    ),
+    pipeline_parallel_stages: help(
+        "设置流水线阶段数。",
+        "第一阶段实现只支持 2，并且必须与分布式 world size 一致。",
+        ["两卡拓扑可以保持分层和 checkpoint 语义简单。"],
+        ["无法用一张卡运行或使用第三张 stage 卡。"],
+        ["选卡数不是 2 时训练会 fail closed。"],
+        "保持 2。"
+    ),
+    pipeline_parallel_microbatches: help(
+        "设置一次 pipeline step 包含的微批数。",
+        "单个 microbatch 保持 BS=1；总有效 batch 约等于本值，除非另外叠加梯度累积。",
+        ["4-8 个 microbatch 可以显著减少两级 pipeline 气泡。"],
+        ["值越大，每次 optimizer update 等待越久。"],
+        ["必须使用 1F1B；1/2/16 保留为气泡和长步时对照档。"],
+        "两张 10GB 卡的首轮硬件验证从 4 开始，再对照 8。"
+    ),
+    pipeline_parallel_schedule: help(
+        "选择流水线调度方式。",
+        "1F1B 交替执行前向和反向，限制同时在途激活数。",
+        ["相比 fill-drain GPipe 更适合 10GB 卡的显存预算。"],
+        ["调度和 checkpoint/resume 必须经过真实双卡验证。"],
+        ["当前只接受 1f1b。"],
+        "保持 1f1b。"
+    ),
+    pipeline_parallel_split: help(
+        "选择 Krea-2 主块如何分配到两张卡。",
+        "balanced 的初始规划是 stage 0 持有输入/text fusion 和 13 个主块，stage 1 持有 15 个主块和输出层。",
+        ["为 stage 0 的 text fusion 额外计算预留了一个主块的平衡空间。"],
+        ["真实两卡耗时可能要改成 12/16 或 14/14。"],
+        ["这是可复现的初始策略，不是已实测的最佳分割。"],
+        "保持 balanced，后续由 per-stage profile 决定是否扩展选项。"
+    ),
     block_swap_transfer_dtype: help(
         "块交换 frozen base 权重在 CPU 侧保存和传输时使用的精度。",
         "这里不是显卡训练精度开关。bf16 表示当前默认传输路径；即使显卡本身不支持 bf16 训练，也可以继续使用这个默认值。fp8_e4m3 会压缩 PCIe 传输，再在 GPU 上还原为执行精度。",

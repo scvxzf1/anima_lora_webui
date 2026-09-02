@@ -1,7 +1,7 @@
 /**
  * Adapter-specific config form enablement and cleanup state.
  */
-import { FORM_UI_DEFAULTS } from '../../config/catalog.js?v=module-bootstrap-20260831-release-v1';
+import { FORM_UI_DEFAULTS } from '../../config/catalog.js?v=module-bootstrap-20260902-krea2-pp-v1';
 import { LOSS_WEIGHTING_DEPENDENT_FIELDS } from '../anima-app/helpers/app-constants.js?v=module-bootstrap-20260831-release-v1';
 import { getConfigState } from '../anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260831-release-v1';
 import {
