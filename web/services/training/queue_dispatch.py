@@ -8,6 +8,7 @@ from typing import Any
 
 from web.services.training.common import _format_ts
 from web.services.training.resume import (
+    _resume_scheduler_state_required,
     _resume_state_integrity,
     _resume_state_integrity_unavailable_reason,
 )
@@ -247,7 +248,14 @@ def _ensure_queue_resume_checkpoint_exists(item: dict[str, Any]) -> None:
     path = _resolve_display_path(checkpoint)
     if path is None or not _path_exists(path / "train_state.json"):
         raise FileNotFoundError("续训检查点状态已不存在，请重新选择包含 train_state.json 的状态目录")
-    reason = _resume_state_integrity_unavailable_reason(_resume_state_integrity(path))
+    config_file = str(item.get("runtime_config_file") or item.get("source_config_file") or "")
+    config = _load_config_file_config(config_file) if config_file else {}
+    reason = _resume_state_integrity_unavailable_reason(
+        _resume_state_integrity(
+            path,
+            scheduler_required=_resume_scheduler_state_required(config),
+        )
+    )
     if reason:
         raise FileNotFoundError(reason)
 

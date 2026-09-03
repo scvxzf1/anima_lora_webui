@@ -23,6 +23,7 @@ IsWebRuntimeDir = Callable[[Path], bool]
 def _list_resume_checkpoints(
     task: dict[str, Any],
     *,
+    scheduler_required: bool = True,
     resolve_display_path: ResolveDisplayPath,
     display_project_path: DisplayProjectPath,
     path_exists: PathExists,
@@ -65,7 +66,10 @@ def _list_resume_checkpoints(
             path_exists=path_exists,
             display_project_path=display_project_path,
         )
-        integrity = _resume_state_integrity(child)
+        integrity = _resume_state_integrity(
+            child,
+            scheduler_required=scheduler_required,
+        )
         items.append({
             "id": display_project_path(str(child)),
             "path": display_project_path(str(child)),
@@ -194,7 +198,46 @@ def _is_transient_resume_state_dir(name: str) -> bool:
     return name.endswith((".tmp", ".backup"))
 
 
-def _resume_state_integrity(state_dir: Path) -> dict[str, Any]:
+def _optimizer_arg_bool(
+    optimizer_args: Any,
+    name: str,
+    *,
+    default: bool,
+) -> bool:
+    if not isinstance(optimizer_args, (list, tuple)):
+        return default
+    for item in optimizer_args:
+        key, separator, raw_value = str(item).partition("=")
+        if not separator or key.strip().lower() != name.lower():
+            continue
+        value = raw_value.strip().strip("'\"").lower()
+        if value in {"false", "0", "no", "off", "none"}:
+            return False
+        if value in {"true", "1", "yes", "on"}:
+            return True
+    return default
+
+
+def _resume_scheduler_state_required(config: dict[str, Any] | None) -> bool:
+    config = config if isinstance(config, dict) else {}
+    optimizer_type = str(config.get("optimizer_type") or "AdamW").strip().lower()
+    if optimizer_type == "automagic":
+        return False
+    if optimizer_type == "prodigyplusschedulefree":
+        schedule_free = _optimizer_arg_bool(
+            config.get("optimizer_args"),
+            "use_schedulefree",
+            default=True,
+        )
+        return not schedule_free
+    return not optimizer_type.endswith("schedulefree")
+
+
+def _resume_state_integrity(
+    state_dir: Path,
+    *,
+    scheduler_required: bool = True,
+) -> dict[str, Any]:
     """Check the minimum Accelerate files needed for a real full resume."""
     checks = {
         "train_state": (state_dir / "train_state.json").exists(),
@@ -207,17 +250,14 @@ def _resume_state_integrity(state_dir: Path) -> dict[str, Any]:
         "train_state": "train_state.json",
         "model": "model.safetensors",
         "optimizer": "optimizer.bin",
-        # scheduler.bin is NOT required to resume: for self-managed-LR
-        # optimizers (ProdigyPlusScheduleFree / schedule-free) the trainer uses
-        # a dummy scheduler and never writes scheduler.bin (SavedState omits
-        # it). The resume point is re-derived from train_state.json's step, so
-        # a missing scheduler.bin must not block an otherwise complete state.
-        # "scheduler": "scheduler.bin",
     }
+    if scheduler_required:
+        labels["scheduler"] = "scheduler.bin"
     missing = [label for key, label in labels.items() if not checks.get(key)]
     return {
         "ok": not missing,
         "missing": missing,
+        "scheduler_required": scheduler_required,
         **checks,
     }
 
