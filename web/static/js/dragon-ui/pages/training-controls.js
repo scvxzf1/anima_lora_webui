@@ -183,28 +183,33 @@ export function bindTrainingControls(root, context, {
     onConfigFileChange,
     onPresetChange,
 } = {}) {
-    root.querySelector('[data-training-context="file"]')?.addEventListener('change', (event) => {
-        if (beforeContextChange && beforeContextChange() === false) {
-            event.target.value = context.configFile;
-            return;
-        }
-        const file = context.files.find((item) => item.path === event.target.value);
+    root.querySelector('[data-training-context="file"]')?.addEventListener('change', async (event) => {
+        const select = event.currentTarget;
+        const requestedFile = select.value;
+        select.value = context.configFile;
+        const file = context.files.find((item) => item.path === requestedFile);
         if (!file) return;
+        if (beforeContextChange && await beforeContextChange() === false) return;
+        if (!root.isConnected || !select.isConnected) return;
         if (onConfigFileChange) {
-            event.target.value = context.configFile;
-            onConfigFileChange(file);
-        } else selectTrainingConfigFile(context, file);
-    });
-    root.querySelector('[data-training-context="preset"]')?.addEventListener('change', (event) => {
-        if (beforeContextChange && beforeContextChange() === false) {
-            event.target.value = context.preset;
-            return;
+            await onConfigFileChange(file);
+        } else {
+            select.value = requestedFile;
+            selectTrainingConfigFile(context, file);
         }
+    });
+    root.querySelector('[data-training-context="preset"]')?.addEventListener('change', async (event) => {
+        const select = event.currentTarget;
+        const requestedPreset = select.value;
+        select.value = context.preset;
+        if (beforeContextChange && await beforeContextChange() === false) return;
+        if (!root.isConnected || !select.isConnected) return;
         if (onPresetChange) {
-            const preset = event.target.value;
-            event.target.value = context.preset;
-            onPresetChange(preset);
-        } else selectTrainingPreset(context, event.target.value);
+            await onPresetChange(requestedPreset);
+        } else {
+            select.value = requestedPreset;
+            selectTrainingPreset(context, requestedPreset);
+        }
     });
     bindGpuSelection(root, context);
     root.querySelectorAll('[data-training-action]').forEach((button) => {

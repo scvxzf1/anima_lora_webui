@@ -24,7 +24,7 @@ export function renderTaggingSourceBody(state, { jobBusy = false } = {}) {
             <label class="dragon-field"><span>读取目录</span><select class="dragon-select" data-tagging-source ${jobBusy ? 'disabled' : ''}><option value="source" ${state.source === 'source' ? 'selected' : ''}>原始图目录</option><option value="training" ${state.source === 'training' ? 'selected' : ''}>训练图目录</option></select></label>
         </div>
         <div class="dragon-tagging-source-toolbar">
-            <span class="dragon-tagging-directory" title="${escapeAttribute(state.directory || '')}">${escapeHtml(state.directory || '未选择图片目录')}</span>
+            <span class="dragon-tagging-directory" data-tagging-directory title="${escapeAttribute(state.directory || '')}">${escapeHtml(state.directory || '未选择图片目录')}</span>
             <div>
                 <button class="dragon-icon-button" type="button" data-tagging-refresh aria-label="刷新图片" title="刷新图片" ${state.loadingImages ? 'disabled' : ''}>${renderIcon('refresh')}</button>
                 <button class="dragon-btn dragon-btn-secondary dragon-btn-sm" type="button" data-tagging-select-all ${total && !jobBusy && !state.selectingAll ? '' : 'disabled'}>${state.selectingAll ? '<span class="dragon-spinner" aria-hidden="true"></span>' : renderIcon('check', 'dragon-btn-icon')}<span>全选</span></button>
@@ -41,9 +41,13 @@ export function syncTaggingSource(root, state, { jobBusy = isJobBusy(state) } = 
     if (!body) return false;
     const currentGrid = body.querySelector?.('[data-tagging-image-grid]');
     const scrollTop = Number(currentGrid?.scrollTop || state.gridScrollTop || 0);
-    body.innerHTML = renderTaggingSourceBody(state, { jobBusy });
-    const nextGrid = body.querySelector?.('[data-tagging-image-grid]');
-    if (nextGrid) nextGrid.scrollTop = scrollTop;
+    // Keep the controls and image grid mounted while a refresh is in flight.
+    // Only replace the grid once the response has arrived; this preserves
+    // focus, pointer state, and the user's scroll position.
+    if (!state.loadingImages && currentGrid) {
+        currentGrid.innerHTML = renderImageGrid(state);
+        currentGrid.scrollTop = scrollTop;
+    }
     syncTaggingSourceState(root, state);
     return true;
 }
@@ -62,6 +66,23 @@ export function appendTaggingImageCards(root, state, images) {
 }
 
 export function syncTaggingSourceState(root, state) {
+    const jobBusy = isJobBusy(state);
+    const dataset = root?.querySelector?.('[data-tagging-dataset]');
+    if (dataset) dataset.disabled = Boolean(state.loadingPreset || jobBusy);
+    const index = root?.querySelector?.('[data-tagging-index]');
+    if (index) index.disabled = !state.rows.length || jobBusy;
+    const source = root?.querySelector?.('[data-tagging-source]');
+    if (source) source.disabled = jobBusy;
+    if (dataset && state.datasetFile) dataset.value = state.datasetFile;
+    if (index && state.rows.length) index.value = String(state.datasetIndex);
+    if (source) source.value = state.source;
+    const directory = root?.querySelector?.('[data-tagging-directory]');
+    if (directory) {
+        directory.textContent = state.directory || '未选择图片目录';
+        directory.title = state.directory || '';
+    }
+    const refresh = root?.querySelector?.('[data-tagging-refresh]');
+    if (refresh) refresh.disabled = Boolean(state.loadingImages);
     root?.querySelectorAll?.('[data-tagging-image]').forEach((input) => {
         const selected = state.selectedFiles.has(input.dataset.file || '');
         input.checked = selected;
@@ -77,15 +98,30 @@ export function syncTaggingSourceState(root, state) {
     const imageLoadStatus = root?.querySelector?.('[data-tagging-image-load-status]');
     if (imageLoadStatus) imageLoadStatus.textContent = imageLoadStatusText(state);
     const clear = root?.querySelector?.('[data-tagging-clear]');
-    if (clear) clear.disabled = !state.selectedFiles.size || isJobBusy(state);
+    if (clear) clear.disabled = !state.selectedFiles.size || jobBusy;
+    const selectAll = root?.querySelector?.('[data-tagging-select-all]');
+    if (selectAll) {
+        const loading = String(Boolean(state.selectingAll));
+        if (selectAll.dataset.loading !== loading) {
+            selectAll.dataset.loading = loading;
+            selectAll.innerHTML = state.selectingAll
+                ? '<span class="dragon-spinner" aria-hidden="true"></span><span>全选</span>'
+                : `${renderIcon('check', 'dragon-btn-icon')}<span>全选</span>`;
+        }
+        selectAll.disabled = !Number(state.total || state.images.length) || jobBusy || state.selectingAll;
+    }
     updateLoadSentinel(root, state);
 }
 
 export function updateLoadSentinel(root, state) {
     const sentinel = root?.querySelector?.('[data-tagging-load-sentinel]');
     if (!sentinel) return;
-    sentinel.dataset.loading = String(Boolean(state.loadingMore));
-    sentinel.hidden = !state.hasMore;
+    const loading = String(Boolean(state.loadingMore));
+    const hidden = !state.hasMore;
+    if (sentinel.hidden !== hidden) sentinel.hidden = hidden;
+    if (sentinel.dataset.loading === loading && sentinel.dataset.rendered === 'true') return;
+    sentinel.dataset.loading = loading;
+    sentinel.dataset.rendered = 'true';
     sentinel.innerHTML = state.loadingMore
         ? '<span class="dragon-spinner" aria-hidden="true"></span><span>正在加载…</span>'
         : `<button class="dragon-btn dragon-btn-ghost dragon-btn-sm" type="button" data-tagging-load-more>${renderIcon('chevronDown', 'dragon-btn-icon')}<span>加载更多</span></button>`;

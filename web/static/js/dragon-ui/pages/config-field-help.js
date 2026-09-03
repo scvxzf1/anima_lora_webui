@@ -29,10 +29,15 @@ export function resolveConfigFieldHelp(key, label, helpCatalog) {
     };
 }
 
-export function renderConfigHelpButton(key, label) {
-    return `<button class="dragon-field-help-btn" type="button" data-help-key="${escapeHtml(key)}"
+export function renderConfigHelpButton(key, label, { unavailableReason = '' } = {}) {
+    const unavailable = Boolean(unavailableReason);
+    const buttonClass = unavailable ? 'dragon-field-help-btn dragon-field-help-btn-unavailable' : 'dragon-field-help-btn';
+    const title = unavailable ? '查看不可用原因' : '查看说明';
+    const ariaLabel = unavailable ? `查看${label}不可用原因` : `查看${label}说明`;
+    return `<button class="${buttonClass}" type="button" data-help-key="${escapeHtml(key)}"
+        ${unavailable ? `data-help-unavailable-reason="${escapeHtml(unavailableReason)}"` : ''}
         data-help-label="${escapeHtml(label)}" aria-haspopup="dialog" aria-controls="dragon-config-help-dialog"
-        aria-label="查看${escapeHtml(label)}说明" title="查看说明">?</button>`;
+        aria-label="${escapeHtml(ariaLabel)}" title="${escapeHtml(title)}">?</button>`;
 }
 
 export function bindConfigFieldHelpDialog(root, helpCatalogSource) {
@@ -48,7 +53,10 @@ export function bindConfigFieldHelpDialog(root, helpCatalogSource) {
             const help = resolveConfigFieldHelp(key, label, helpCatalog);
             dialog.querySelector('[data-config-help-title]').textContent = label;
             dialog.querySelector('[data-config-help-key]').textContent = key;
-            dialog.querySelector('[data-config-help-body]').innerHTML = renderConfigHelpBody(help);
+            dialog.querySelector('[data-config-help-body]').innerHTML = renderConfigHelpBody(
+                help,
+                button.dataset.helpUnavailableReason || '',
+            );
             if (!dialog.open) dialog.showModal();
         });
     });
@@ -100,14 +108,17 @@ function renderConfigHelpDialog() {
     </dialog>`;
 }
 
-function renderConfigHelpBody(help) {
+function renderConfigHelpBody(help, unavailableReason = '') {
     const summary = configHelpSummary(help);
     const details = DETAIL_SECTIONS
         .map(([heading, property, tone]) => renderHelpSection(heading, help?.[property], tone))
         .filter(Boolean)
         .join('');
     const summarySection = summary ? renderHelpSection('作用', summary, 'summary') : '';
-    return `${summarySection}${details}`;
+    const unavailableSection = unavailableReason
+        ? renderHelpSection('当前不可用', unavailableReason, 'unavailable')
+        : '';
+    return `${unavailableSection}${summarySection}${details}`;
 }
 
 function renderHelpSection(heading, value, tone) {

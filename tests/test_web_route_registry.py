@@ -30,6 +30,7 @@ REQUIRED_ROUTES: set[tuple[str, str]] = {
     ("GET", "/api/methods"),
     ("GET", "/api/methods/{method}/variants"),
     ("GET", "/api/presets"),
+    ("GET", "/api/config/model-families"),
     ("GET", "/api/config/merged"),
     ("GET", "/api/config/steps"),
     ("GET", "/api/config/raw"),

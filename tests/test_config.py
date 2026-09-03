@@ -247,6 +247,7 @@ def test_schema_has_known_keys(populated_parser):
         "lokr_factor_group_size",  # LoKr grouped projection tuning
         "lokr_project_chunk_bytes",  # LoKr projection row-chunk threshold
         "lokr_grouped_delta_backend",  # LoKr grouped-delta backend selector
+        "lokr_grouped_delta_backward_backend",  # LoKr backward backend selector
         "lokr_use_einsum",  # LoKr decomposed einsum runtime path toggle
         "lokr_decompose_w2",  # LoKr w2 decomposition compatibility override
         "lokr_full_factor",  # LoKr full Kronecker factors with normal scale

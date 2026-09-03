@@ -4,7 +4,7 @@
 import {
     GLOBAL_UI_OVERRIDE_FIELDS,
     help,
-} from '../../config/catalog.js?v=module-bootstrap-20260831-release-v1';
+} from '../../config/catalog.js?v=module-bootstrap-20260902-krea2-pp-v1';
 import {
     ensureEnvironmentCheckFeature,
     ensureQueueFeature,
@@ -75,7 +75,7 @@ import { resetLogOutputLines, stopTraining, updateLogStatusText } from '../anima
 import { getTrainingState } from '../anima-app/helpers/training-state-bridge.js?v=module-bootstrap-20260831-release-v1';
 import { setCurrentTrainingSourceFromVariant } from '../training-source/source-state.js?v=module-bootstrap-20260831-release-v1';
 import { confirmBeforeConfigSelectionChange, rememberSelectionSnapshot, updateChoiceGuide } from '../config-form/choice-guide-ui.js?v=module-bootstrap-20260831-release-v1';
-import { loadDatasetPreviewImages } from '../dataset-editor/preview.js?v=module-bootstrap-20260831-release-v1';
+import { loadDatasetPreviewImages } from '../dataset-editor/preview.js?v=module-bootstrap-20260901-dialog-v1';
 import { loadDatasetPresets } from '../dataset-editor/load.js?v=module-bootstrap-20260831-release-v1';
 import { renderLiveChartPanel } from '../live-training/dashboard-ui.js?v=module-bootstrap-20260831-release-v1';
 import { selectConfigCategory, updateConfigStickyPlacement } from '../config-form/group-entry.js?v=module-bootstrap-20260831-release-v1';
@@ -94,7 +94,7 @@ import { loadTrainingHistoryList, renderHistoryManager } from '../anima-app/help
 import { installBeginnerTooltips } from './beginner-tooltips.js?v=module-bootstrap-20260831-release-v1';
 import { SETUP_EVENT_DOM_CONTRACT } from './event-listeners-contract.js?v=module-bootstrap-20260831-release-v1';
 import { debounce } from '../../shared/debounce.js?v=module-bootstrap-20260831-release-v1';
-import { bindBrowseDialogBackdropClose } from '../../shared/dialog.js?v=module-bootstrap-20260831-release-v1';
+import { bindBrowseDialogBackdropClose } from '../../shared/dialog.js?v=module-bootstrap-20260901-dialog-v1';
 import { bindModelConfigEvents, bindModelConfigPickerEvents } from '../model-configs/index.js?v=module-bootstrap-20260831-release-v1';
 
 const ctx = getAppContext();

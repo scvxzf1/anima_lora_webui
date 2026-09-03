@@ -10,7 +10,6 @@
 import { findSubItem, isConfigCategory } from './category-map.js?v=dragon-ui-20260826v45';
 import { scanForReveal } from './animations.js?v=dragon-ui-20260824v69';
 import { dragonScrollBehavior, isDragonMotionEnabled } from './motion.js?v=dragon-ui-20260824v1';
-import { renderTrainingWorkspaceNav } from './training-workspace-nav.js?v=dragon-ui-20260828v1';
 
 let mountElement = null;
 let currentPage = null;
@@ -62,8 +61,10 @@ export async function navigate(route) {
 }
 
 export function canLeaveCurrentPage() {
-    if (typeof currentPage?.beforeLeave !== 'function') return true;
-    return currentPage.beforeLeave() !== false;
+    if (typeof currentPage?.beforeLeave !== 'function') return Promise.resolve(true);
+    return Promise.resolve()
+        .then(() => currentPage.beforeLeave())
+        .then((allowed) => allowed !== false);
 }
 
 export function isCurrentPage(pageType) {
@@ -118,12 +119,6 @@ function focusMountedConfigCategory(categoryId, subId) {
 }
 
 async function renderPage(pageType, context) {
-    const loader = pageLoaders[pageType];
-    if (!loader) {
-        mountElement.innerHTML = `${renderTrainingWorkspaceNav(pageType)}<div class="dragon-empty-state"><p>页面暂未实现</p></div>`;
-        return;
-    }
-
     const sequence = ++navigationSequence;
     mountedRouteUpdateSequence += 1;
     // End the previous page lifecycle before waiting for the leave animation or
@@ -137,6 +132,15 @@ async function renderPage(pageType, context) {
             onUnmount: null,
             onRouteUpdate: null,
         };
+    }
+
+    const loader = pageLoaders[pageType];
+    if (!loader) {
+        if (sequence !== navigationSequence) return;
+        mountElement.innerHTML = '<div class="dragon-empty-state"><p>页面暂未实现</p></div>';
+        mountElement.removeAttribute('aria-busy');
+        currentPage = { pageType, context, beforeLeave: null, onUnmount: null, onRouteUpdate: null };
+        return false;
     }
 
     // Fade out current content
@@ -166,7 +170,7 @@ async function renderPage(pageType, context) {
         content?.onUnmount?.();
         return;
     }
-    mountElement.innerHTML = renderTrainingWorkspaceNav(pageType);
+    mountElement.replaceChildren();
     mountElement.removeAttribute('aria-busy');
     if (content) {
         const wrapper = document.createElement('div');
@@ -194,6 +198,7 @@ async function renderPage(pageType, context) {
         currentPage = { pageType, context, beforeLeave, onUnmount, onRouteUpdate };
 
         requestAnimationFrame(() => {
+            if (sequence !== navigationSequence || !wrapper.isConnected) return;
             wrapper.classList.remove('dragon-page-enter');
             scanForReveal();
             if (onMount) onMount();
@@ -205,7 +210,6 @@ function renderLoadingState(pageType) {
     if (!mountElement) return;
     mountElement.setAttribute('aria-busy', 'true');
     mountElement.innerHTML = `
-        ${renderTrainingWorkspaceNav(pageType)}
         <div class="dragon-route-loading" role="status" aria-live="polite">
             <span class="dragon-spinner" aria-hidden="true"></span>
             <div><strong>正在打开${pageLabel(pageType)}…</strong><span>正在读取最新内容</span></div>
@@ -217,7 +221,7 @@ function renderLoadError(pageType, error) {
     if (!mountElement) return;
     mountElement.removeAttribute('aria-busy');
     const message = escapeHtml(error?.message || '页面数据读取失败');
-    mountElement.innerHTML = `${renderTrainingWorkspaceNav(pageType)}<div class="dragon-empty-state" role="alert"><p>${message}</p><p>请确认 WebUI 服务仍在运行，然后刷新重试。</p></div>`;
+    mountElement.innerHTML = `<div class="dragon-empty-state" role="alert"><p>${message}</p><p>请确认 WebUI 服务仍在运行，然后刷新重试。</p></div>`;
 }
 
 function pageLabel(pageType) {
@@ -229,6 +233,7 @@ function pageLabel(pageType) {
         'global-settings': '全局设置', 'preview-workspace': '预览工作区',
         captioning: '外部 API 打标', tagging: '外部 API 打标',
         'captioning-prompts': '提示词预设',
+        'captioning-providers': '接入预设',
         'captioning-results': '最终打标结果',
         'captioning-logs': '打标日志',
     };

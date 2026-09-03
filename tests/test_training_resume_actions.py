@@ -102,6 +102,81 @@ def test_resume_from_history_allows_remaining_steps_and_clones_runtime(tmp_path,
     assert "dim_from_weights" not in runtime_cfg
 
 
+def test_resume_from_history_rejects_pipeline_world_size_mismatch(
+    tmp_path, monkeypatch
+):
+    history_dir, task_id, state_dir = _write_resume_history(tmp_path)
+    snapshot_path = history_dir / task_id / "config.snapshot.toml"
+    snapshot_path.write_text(
+        snapshot_path.read_text(encoding="utf-8")
+        + '\nmodel_family = "krea2_raw"\n'
+        + "pipeline_parallel = true\n"
+        + "pipeline_parallel_stages = 2\n"
+        + "pipeline_parallel_microbatches = 4\n"
+        + 'pipeline_parallel_schedule = "1f1b"\n'
+        + 'pipeline_parallel_split = "balanced"\n'
+        + "network_train_unet_only = true\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(training_service, "HISTORY_DIR", history_dir)
+    output_root = _patch_resume_runtime_output_root(monkeypatch, tmp_path)
+    svc = TrainingService(web.Application())
+    started = False
+
+    async def fake_start(*_args, **_kwargs):
+        nonlocal started
+        started = True
+
+    svc.start = fake_start
+
+    with pytest.raises(ValueError, match="distributed world size"):
+        asyncio.run(
+            svc.resume_from_history_task(
+                task_id,
+                str(state_dir),
+                gpu_whitelist=[0],
+            )
+        )
+
+    assert started is False
+    assert not output_root.exists()
+
+
+def test_resume_from_history_rejects_pipeline_with_unknown_model_family(
+    tmp_path, monkeypatch
+):
+    history_dir, task_id, state_dir = _write_resume_history(tmp_path)
+    snapshot_path = history_dir / task_id / "config.snapshot.toml"
+    snapshot_path.write_text(
+        snapshot_path.read_text(encoding="utf-8")
+        + '\nmodel_family = "unknown-family"\n'
+        + "pipeline_parallel = true\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(training_service, "HISTORY_DIR", history_dir)
+    output_root = _patch_resume_runtime_output_root(monkeypatch, tmp_path)
+    svc = TrainingService(web.Application())
+    started = False
+
+    async def fake_start(*_args, **_kwargs):
+        nonlocal started
+        started = True
+
+    svc.start = fake_start
+
+    with pytest.raises(ValueError, match="model_family must be one of"):
+        asyncio.run(
+            svc.resume_from_history_task(
+                task_id,
+                str(state_dir),
+                gpu_whitelist=[0, 1],
+            )
+        )
+
+    assert started is False
+    assert not output_root.exists()
+
+
 def test_resume_from_history_duration_epoch_override_appends_steps(tmp_path, monkeypatch):
     history_dir, task_id, state_dir = _write_resume_history(tmp_path)
     resized_dir = tmp_path / "post_image_dataset" / "resized"

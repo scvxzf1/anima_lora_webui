@@ -7,7 +7,7 @@ export function createDatasetPreviewController(api, state) {
 
     const load = async () => {
         if (!modulePromise) {
-            modulePromise = import('./dataset-editor-preview.js?v=dragon-ui-20260831v52').catch((error) => {
+            modulePromise = import('./dataset-editor-preview.js?v=dragon-ui-20260902v53').catch((error) => {
                 modulePromise = null;
                 throw error;
             });

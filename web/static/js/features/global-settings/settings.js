@@ -7,7 +7,7 @@ import {
     GLOBAL_SETTING_INPUTS,
     GLOBAL_UI_OVERRIDE_FIELDS,
     help,
-} from '../../config/catalog.js?v=module-bootstrap-20260831-release-v1';
+} from '../../config/catalog.js?v=module-bootstrap-20260902-krea2-pp-v1';
 import { loadOutputRuns } from '../anima-app/helpers/toml-manager-bridge.js?v=module-bootstrap-20260831-release-v1';
 import { updateChoiceGuide } from '../config-form/choice-guide-ui.js?v=module-bootstrap-20260831-release-v1';
 import { getUiScaleController } from '../anima-app/helpers/app-shell-startup-bridge.js?v=module-bootstrap-20260831-release-v1';

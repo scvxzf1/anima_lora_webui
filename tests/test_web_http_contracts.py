@@ -84,10 +84,11 @@ def test_http_training_queue_contract():
 
 
 def test_http_preflight_contract(monkeypatch):
-    monkeypatch.setattr(
-        training_routes,
-        "preflight_training_config",
-        lambda *args, **kwargs: {
+    captured = {}
+
+    def fake_preflight(*args, **kwargs):
+        captured.update(kwargs)
+        return {
             "ok": True,
             "variant": "lora",
             "preset": "default",
@@ -96,7 +97,12 @@ def test_http_preflight_contract(monkeypatch):
             "checks": [],
             "errors": [],
             "warnings": [],
-        },
+        }
+
+    monkeypatch.setattr(
+        training_routes,
+        "preflight_training_config",
+        fake_preflight,
     )
     response = asyncio.run(
         training_routes.handle_preflight(
@@ -105,6 +111,7 @@ def test_http_preflight_contract(monkeypatch):
                     "variant": "lora",
                     "preset": "default",
                     "methods_subdir": "gui-methods",
+                    "gpu_whitelist": [0, 1],
                 }
             )  # type: ignore[arg-type]
         )
@@ -114,6 +121,7 @@ def test_http_preflight_contract(monkeypatch):
     assert payload["ok"] is True
     assert "checks" in payload
     assert "summary" in payload
+    assert captured["world_size"] == 2
 
 
 def test_http_global_settings_contract(monkeypatch):
@@ -406,6 +414,19 @@ def test_http_config_presets_envelope(monkeypatch):
     payload = _json_payload(response)
     assert payload.get("ok") is True
     assert "default" in payload["items"]
+
+
+def test_http_config_model_families_exposes_pipeline_capabilities():
+    response = asyncio.run(config_routes.handle_model_families(_FakeRequest()))  # type: ignore[arg-type]
+    assert response.status == 200
+    payload = _json_payload(response)
+    items = {item["name"]: item for item in payload["items"]}
+
+    assert payload["ok"] is True
+    assert set(items) == {"anima", "krea2_raw", "z_image"}
+    assert items["anima"]["pipeline_parallel"]["known_num_blocks"] == [28, 40]
+    assert items["krea2_raw"]["pipeline_parallel"]["runtime_available"] is False
+    assert items["z_image"]["pipeline_parallel"]["block_container"] == "layers"
 
 
 def test_http_config_merged_envelope(monkeypatch):

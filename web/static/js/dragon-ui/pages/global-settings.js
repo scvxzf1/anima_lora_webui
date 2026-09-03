@@ -14,6 +14,7 @@ const SETTING_GROUPS = [
             ['configs_root', '配置根目录', 'text', 'configs', '包含方法、数据集、历史与队列配置。更改后页面会自动刷新。'],
             ['history_root', '训练历史目录', 'text', '留空时跟随配置根目录', '留空时使用“配置根目录/web-training-history”。'],
             ['queue_root', '训练队列目录', 'text', '留空时跟随配置根目录', '留空时使用“配置根目录/web-training-queue”。'],
+            ['tagging_max_retained_jobs', '打标任务保留上限', 'integer', '40', '超过上限时自动清理最旧的已结束任务；不会删除图片或已写回的 TXT。'],
         ],
     },
     {
@@ -206,12 +207,15 @@ function renderField([key, label, type, placeholder, help], values, effectivePat
         return `<label class="dragon-setting-toggle"><input class="visually-hidden" type="checkbox" name="${key}" data-global-key="${key}" ${value ? 'checked' : ''}><span class="dragon-toggle" data-checked="${Boolean(value)}" aria-hidden="true"></span><span><strong>${label}</strong><small>${help}</small></span></label>`;
     }
     if (type === 'scale') return renderScaleField(key, label, value, values.ui_scale);
-    const minMax = type === 'number' ? ' min="25" max="400" step="5" inputmode="numeric"' : '';
+    const inputType = ['number', 'integer'].includes(type) ? 'number' : type;
+    const minMax = type === 'number'
+        ? ' min="25" max="400" step="5" inputmode="numeric"'
+        : type === 'integer' ? ' min="1" max="500" step="1" inputmode="numeric"' : '';
     const suffix = type === 'number' ? '<span class="dragon-input-suffix">%</span>' : '';
     const effective = ['history_root', 'queue_root'].includes(key) && effectivePaths[key]
         ? `<small class="dragon-setting-effective">当前实际目录：<span class="dragon-text-mono">${escapeHtml(effectivePaths[key])}</span></small>`
         : '';
-    return `<label class="dragon-field dragon-setting-field"><span class="dragon-field-label-text">${label}</span><span class="dragon-setting-input-wrap"><input class="dragon-input" type="${type}" name="${key}" autocomplete="off" spellcheck="false" data-global-key="${key}" value="${escapeAttribute(value)}" placeholder="${escapeAttribute(placeholder)}"${minMax}>${suffix}</span>${help ? `<small class="dragon-setting-help">${help}</small>` : ''}${effective}<small class="dragon-field-error" data-global-error="${key}" aria-live="polite"></small></label>`;
+    return `<label class="dragon-field dragon-setting-field"><span class="dragon-field-label-text">${label}</span><span class="dragon-setting-input-wrap"><input class="dragon-input" type="${inputType}" name="${key}" autocomplete="off" spellcheck="false" data-global-key="${key}" value="${escapeAttribute(value)}" placeholder="${escapeAttribute(placeholder)}"${minMax}>${suffix}</span>${help ? `<small class="dragon-setting-help">${help}</small>` : ''}${effective}<small class="dragon-field-error" data-global-error="${key}" aria-live="polite"></small></label>`;
 }
 
 function renderScaleField(key, label, value, globalScale) {
@@ -389,6 +393,10 @@ async function saveSettings(root, state) {
 }
 
 function validateSettings(values) {
+    const retained = Number(values.tagging_max_retained_jobs);
+    if (!Number.isInteger(retained) || retained < 1 || retained > 500) {
+        return { key: 'tagging_max_retained_jobs', message: '打标任务保留上限必须是 1–500 的整数' };
+    }
     for (const [key, value] of Object.entries(values)) {
         if (!key.startsWith('ui_scale') || value === '') continue;
         const numeric = Number(value);

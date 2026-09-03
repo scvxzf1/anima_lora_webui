@@ -1,42 +1,46 @@
 /* Dragon tagging workbench controller. Provider calls stay server-side. */
 
 import { createApiClient } from '../../shared/api.js?v=dragon-ui-20260812v35';
-import { loadTrainingContext } from './training-controls.js?v=dragon-ui-20260824v114';
+import { loadTrainingContext } from './training-controls.js?v=dragon-ui-20260901v115';
 import {
     mountTaggingView,
     renderTaggingView,
     syncTaggingSelectionView,
-} from './tagging-view.js?v=dragon-ui-20260831v7';
+    syncTaggingJobView,
+} from './tagging-view.js?v=dragon-ui-20260902v15';
 import {
     appendTaggingImageCards,
     syncTaggingSource,
     updateLoadSentinel,
-} from './tagging-source-view.js?v=dragon-ui-20260831v6';
+} from './tagging-source-view.js?v=dragon-ui-20260901v9';
 import {
     TAGGING_IMAGE_PAGE_SIZE,
     TAGGING_JOB_ITEM_LIMIT,
     cancelTaggingJob,
     createTaggingJob,
+    activateProviderProfile,
     loadImages,
     loadPreset,
     loadPromptPresets,
+    loadProviderProfiles,
     loadTaggingJob,
     loadTaggingJobs,
     loadTaggingSettings,
     saveTaggingSettings,
     testTaggingProvider,
-} from './tagging-api.js?v=dragon-ui-20260831v3';
+} from './tagging-api.js?v=dragon-ui-20260901v6';
 import { consumeTaggingPrefill } from './tagging-context.js?v=dragon-ui-20260831v2';
+import { createVisibilityPoller } from '../visibility-poller.js?v=dragon-ui-20260826v2';
 import {
     openTaggingTool,
     readTaggingWorkspaceState,
     restoreTaggingWorkspacePosition,
     saveTaggingWorkspaceState,
-} from './tagging-workspace-state.js?v=dragon-ui-20260831v3';
+} from './tagging-workspace-state.js?v=dragon-ui-20260831v4';
 
 const api = createApiClient();
 const DEFAULT_USER_PROMPT = '用训练 caption 描述主体、服装、姿态、镜头和背景，不要添加无法确认的内容。';
-const POLL_INTERVAL_MS = 1500;
+const POLL_INTERVAL_MS = 2000;
 
 export async function loadTagging(routeContext = {}) {
     const saved = readTaggingWorkspaceState();
@@ -60,6 +64,8 @@ function createState(routeContext, saved) {
         settings: null,
         presets: [],
         promptPresets: [],
+        providerProfiles: [],
+        activeProfileId: saved.providerProfileId || '',
         currentPresetId: saved.currentPresetId || '',
         rows: Array.isArray(saved.rows) ? saved.rows : [],
         datasetFile: saved.datasetFile || '',
@@ -86,10 +92,13 @@ function createState(routeContext, saved) {
         notice: '',
         submitting: false,
         testingProvider: false,
+        switchingProfile: false,
         requestSequence: 0,
         loadMoreRequestId: 0,
         jobRequestId: 0,
         pollTimer: null,
+        jobPoller: null,
+        jobSignature: jobSignature(saved.job),
         root: null,
         cleanupView: null,
         reconnectImageObserver: null,
@@ -105,6 +114,7 @@ async function loadInitialData(state, prefill, saved) {
         api('/api/config/dataset-presets'),
         loadTaggingJobs(api),
         loadPromptPresets(api),
+        loadProviderProfiles(api),
     ]);
     const trainingContext = valueFrom(results[0], {});
     state.settings = publicSettings(valueFrom(results[1], {}));
@@ -113,6 +123,9 @@ async function loadInitialData(state, prefill, saved) {
     state.presets = Array.isArray(library.presets) ? library.presets : [];
     state.jobs = valueFrom(results[3], {}).jobs || [];
     state.promptPresets = valueFrom(results[4], {}).presets || [];
+    const profileLibrary = valueFrom(results[5], {});
+    state.providerProfiles = Array.isArray(profileLibrary.profiles) ? profileLibrary.profiles : [];
+    state.activeProfileId = profileLibrary.active_profile_id || state.settings.profile_id || state.activeProfileId;
     const failed = results.find((result) => result.status === 'rejected');
     if (failed) state.error = failed.reason?.message || '读取打标工作台数据失败';
 
@@ -242,7 +255,7 @@ async function loadMoreImages(state) {
     } catch (error) {
         if (state.active && sequence === state.requestSequence) {
             state.error = error.message || '加载更多图片失败';
-            rerender(state);
+            syncTaggingSelectionView(state.root, state);
         }
         return false;
     } finally {
@@ -259,7 +272,7 @@ function mountPage(root, state) {
         selectDataset: (file) => selectDataset(state, file),
         selectIndex: (index) => selectIndex(state, index),
         selectSource: (source) => selectSource(state, source),
-        refreshImages: () => refreshImages(state),
+        refreshImages: () => refreshImages(state, { preserveDom: true }),
         loadMoreImages: () => loadMoreImages(state),
         selectAll: () => selectAll(state),
         clearSelection: () => clearSelection(state),
@@ -268,6 +281,7 @@ function mountPage(root, state) {
         cancelJob: () => cancelJob(state),
         refreshJob: () => refreshJob(state),
         applyPromptPreset: (presetId) => applyPromptPreset(state, presetId),
+        selectProviderProfile: (profileId) => selectProviderProfile(state, profileId),
         updatePromptDraft: (key, value) => updatePromptDraft(state, key, value),
         setSourceExpanded: (open) => setSourceExpanded(state, open),
         openTool: (page) => openTaggingTool(state, page),
@@ -275,6 +289,18 @@ function mountPage(root, state) {
         testProvider: (mode) => testProvider(state, mode),
     });
     restoreTaggingWorkspacePosition(root);
+    state.jobPoller = createVisibilityPoller({
+        delay: POLL_INTERVAL_MS,
+        poll: async () => {
+            const jobId = state.job?.id;
+            if (!state.active || !jobId || !isJobBusy(state)) {
+                state.jobPoller?.stop();
+                return;
+            }
+            await hydrateJob(state, jobId);
+            if (!isJobBusy(state)) state.jobPoller?.stop();
+        },
+    });
     if (state.job && ['queued', 'running'].includes(state.job.state)) schedulePoll(state);
 }
 
@@ -285,6 +311,7 @@ function disposePage(state) {
     state.requestSequence += 1;
     state.loadMoreRequestId += 1;
     clearPoll(state);
+    state.jobPoller = null;
     state.cleanupView?.();
     state.cleanupView = null;
     state.root = null;
@@ -306,7 +333,7 @@ async function selectIndex(state, index) {
     clearCurrentJob(state);
     state.datasetIndex = next;
     state.selectedFiles.clear();
-    await refreshImages(state);
+    await refreshImages(state, { preserveDom: true });
 }
 
 async function selectSource(state, source) {
@@ -315,14 +342,14 @@ async function selectSource(state, source) {
     clearCurrentJob(state);
     state.source = next;
     state.selectedFiles.clear();
-    await refreshImages(state);
+    await refreshImages(state, { preserveDom: true });
 }
 
 async function selectAll(state) {
     if (state.selectingAll || isJobBusy(state)) return;
     const sequence = state.requestSequence;
     state.selectingAll = true;
-    rerender(state);
+    syncTaggingSelectionView(state.root, state);
     try {
         await ensureImagesLoaded(state);
         const target = Math.min(Number(state.total || 0), TAGGING_JOB_ITEM_LIMIT);
@@ -331,11 +358,14 @@ async function selectAll(state) {
         state.selectedFiles = selectedFiles;
         state.notice = state.total > TAGGING_JOB_ITEM_LIMIT ? `已选择前 ${TAGGING_JOB_ITEM_LIMIT} 张，达到单次任务上限。` : '';
     } catch (error) {
-        if (isCurrent(state, sequence)) state.error = error.message || '全选图片失败';
+        if (isCurrent(state, sequence)) {
+            state.error = error.message || '全选图片失败';
+            syncTaggingSelectionView(state.root, state);
+        }
     } finally {
         if (isCurrent(state, sequence)) {
             state.selectingAll = false;
-            rerender(state);
+            syncTaggingSelectionView(state.root, state);
             saveTaggingWorkspaceState(state);
         }
     }
@@ -385,7 +415,9 @@ function toggleImage(state, file, checked) {
 async function submitJob(state, prompts = {}) {
     state.systemPrompt = String(prompts.systemPrompt ?? state.systemPrompt).trim();
     state.userPrompt = String(prompts.userPrompt ?? state.userPrompt).trim();
-    if (isJobBusy(state) || !state.datasetFile || !state.selectedFiles.size || !state.systemPrompt || !state.userPrompt) return;
+    const profile = (state.providerProfiles || []).find((item) => item.id === state.activeProfileId);
+    const promptsRequired = profile?.kind !== 'local';
+    if (isJobBusy(state) || !state.datasetFile || !state.selectedFiles.size || (promptsRequired && (!state.systemPrompt || !state.userPrompt))) return;
     const imageByFile = new Map(state.images.map((image) => [image.file, image]));
     const items = [...state.selectedFiles].map((file) => {
         const image = imageByFile.get(file);
@@ -402,6 +434,7 @@ async function submitJob(state, prompts = {}) {
             source: state.source,
             system_prompt: state.systemPrompt,
             user_prompt: state.userPrompt,
+            profile_id: state.activeProfileId,
             items,
         });
         if (!state.active) return;
@@ -428,31 +461,36 @@ async function hydrateJob(state, jobId) {
     try {
         const payload = await loadTaggingJob(api, jobId);
         if (!state.active || requestId !== state.jobRequestId) return;
-        state.job = payload.job || null;
+        const nextJob = payload.job || null;
+        const changed = state.jobSignature !== jobSignature(nextJob);
+        state.job = nextJob;
         state.jobId = state.job?.id || '';
-        rerender(state);
-        saveTaggingWorkspaceState(state);
+        state.jobSignature = jobSignature(state.job);
+        if (changed) {
+            syncTaggingJobView(state.root, state);
+            saveTaggingWorkspaceState(state);
+        }
         if (state.job && ['queued', 'running'].includes(state.job.state)) schedulePoll(state);
         else clearPoll(state);
     } catch (error) {
         if (state.active && requestId === state.jobRequestId) {
-            state.error = error.message || '读取打标任务失败';
-            rerender(state);
+            const message = error.message || '读取打标任务失败';
+            if (state.error !== message) {
+                state.error = message;
+                syncTaggingJobView(state.root, state);
+            }
         }
     }
 }
 
 function schedulePoll(state) {
-    clearPoll(state);
-    if (!state.active || !state.job?.id || !['queued', 'running'].includes(state.job.state)) return;
-    state.pollTimer = window.setTimeout(async () => {
-        state.pollTimer = null;
-        await hydrateJob(state, state.job.id);
-    }, POLL_INTERVAL_MS);
+    if (!state.active || !state.job?.id || !['queued', 'running'].includes(state.job.state)) return clearPoll(state);
+    if (!state.jobPoller) return;
+    state.jobPoller.start();
 }
 
 function clearPoll(state) {
-    if (state.pollTimer != null) window.clearTimeout(state.pollTimer);
+    state.jobPoller?.stop();
     state.pollTimer = null;
 }
 
@@ -461,6 +499,7 @@ async function cancelJob(state) {
     try {
         const payload = await cancelTaggingJob(api, state.job.id);
         state.job = payload.job || state.job;
+        state.jobSignature = jobSignature(state.job);
         if (['queued', 'running'].includes(state.job?.state)) schedulePoll(state);
         else clearPoll(state);
         rerender(state);
@@ -477,6 +516,32 @@ function applyPromptPreset(state, presetId) {
     if (preset) {
         state.systemPrompt = preset.system_prompt || state.systemPrompt;
         state.userPrompt = preset.user_prompt || state.userPrompt;
+    }
+    rerender(state);
+    saveTaggingWorkspaceState(state);
+}
+
+async function selectProviderProfile(state, profileId) {
+    const profile = state.providerProfiles.find((item) => item.id === profileId);
+    if (!profile || profile.id === state.activeProfileId || isJobBusy(state)) return;
+    if (!profile.available) {
+        state.error = profile.kind === 'local' ? '这个本地模型尚未安装或启用。' : '这个接入预设尚未配置完成。';
+        rerender(state);
+        return;
+    }
+    state.switchingProfile = true;
+    syncTaggingSelectionView(state.root, state);
+    try {
+        const payload = await activateProviderProfile(api, profile.id);
+        state.providerProfiles = payload.profiles || state.providerProfiles;
+        state.activeProfileId = payload.active_profile_id || profile.id;
+        state.settings = publicSettings(await loadTaggingSettings(api));
+        state.notice = `已切换到 ${profile.name}。`;
+        state.error = '';
+    } catch (error) {
+        state.error = error.message || '切换接入预设失败';
+    } finally {
+        state.switchingProfile = false;
     }
     rerender(state);
     saveTaggingWorkspaceState(state);
@@ -544,6 +609,7 @@ function clearCurrentJob(state) {
     state.jobRequestId += 1;
     state.job = null;
     state.jobId = '';
+    state.jobSignature = '';
     state.notice = '';
 }
 
@@ -563,6 +629,7 @@ function resetImagesWithError(state, message) {
 
 function rerender(state) {
     if (!state.active || !state.root) return;
+    state.jobSignature = jobSignature(state.job);
     renderTaggingView(state.root, state);
 }
 
@@ -571,6 +638,7 @@ function syncSourceOrRerender(state, preserveDom) {
         rerender(state);
         return false;
     }
+    syncTaggingSelectionView(state.root, state);
     state.reconnectImageObserver?.();
     return true;
 }
@@ -584,7 +652,8 @@ function renderTaggingViewHtml(state) {
 function latestMatchingJob(state) {
     return state.jobs.find((job) => job.dataset_file === state.datasetFile
         && Number(job.dataset_index || 0) === state.datasetIndex
-        && (job.source || 'source') === state.source);
+        && (job.source || 'source') === state.source
+        && (!job.profile_id || job.profile_id === state.activeProfileId));
 }
 
 function cachedDatasetMatches(saved, state) {
@@ -625,6 +694,11 @@ function isCurrent(state, sequence) {
 
 function isJobBusy(state) {
     return state.submitting || ['queued', 'running'].includes(state.job?.state);
+}
+
+function jobSignature(job) {
+    if (!job) return '';
+    return [job.id || '', job.state || '', job.total || 0, job.completed || 0, job.failed || 0, job.canceled || 0, job.error || ''].join('|');
 }
 
 function clampIndex(value, length) {

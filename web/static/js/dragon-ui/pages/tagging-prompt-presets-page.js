@@ -8,12 +8,12 @@ import {
     loadPromptPresets,
     loadTaggingSettings,
     updatePromptPreset,
-} from './tagging-api.js?v=dragon-ui-20260831v3';
+} from './tagging-api.js?v=dragon-ui-20260901v6';
 import {
     readTaggingWorkspaceState,
     returnToTaggingWorkspace,
     updateTaggingPromptDraft,
-} from './tagging-workspace-state.js?v=dragon-ui-20260831v3';
+} from './tagging-workspace-state.js?v=dragon-ui-20260831v4';
 
 const api = createApiClient();
 
@@ -80,25 +80,27 @@ function renderPage(state) {
                 <div data-prompt-preset-list>${state.presets.length ? state.presets.map((preset) => renderPresetItem(preset, state.selectedId)).join('') : '<div class="dragon-tagging-library-empty">暂无预设</div>'}</div>
             </aside>
             <form class="dragon-tagging-preset-editor" data-prompt-form>
-                <header><div><span class="dragon-eyebrow">${state.selectedId ? 'EDIT' : 'NEW'}</span><h2>${state.selectedId ? '编辑预设' : '新建预设'}</h2></div>${state.dirty ? '<span class="dragon-tagging-dirty-state">未保存</span>' : ''}</header>
-                <label class="dragon-field"><span>预设名称</span><input class="dragon-input" type="text" name="name" maxlength="80" value="${escapeAttribute(state.draft.name)}" required></label>
-                <label class="dragon-field"><span>系统提示词</span><textarea class="dragon-textarea" name="system_prompt" rows="8" maxlength="10000" required>${escapeHtml(state.draft.system_prompt)}</textarea></label>
-                <label class="dragon-field"><span>用户提示词</span><textarea class="dragon-textarea" name="user_prompt" rows="8" maxlength="10000" required>${escapeHtml(state.draft.user_prompt)}</textarea></label>
-                <footer><button class="dragon-btn dragon-btn-danger" type="button" data-prompt-delete ${state.selectedId && !state.saving ? '' : 'disabled'}>${renderIcon('trash', 'dragon-btn-icon')}<span>删除</span></button><span></span><button class="dragon-btn dragon-btn-secondary" type="button" data-prompt-apply ${validDraft(state.draft) ? '' : 'disabled'}>${renderIcon('check', 'dragon-btn-icon')}<span>应用并返回</span></button><button class="dragon-btn dragon-btn-primary" type="submit" ${state.saving || !validDraft(state.draft) ? 'disabled' : ''}>${renderIcon('save', 'dragon-btn-icon')}<span>${state.saving ? '保存中…' : '保存预设'}</span></button></footer>
+                <header><div><span class="dragon-eyebrow">${state.selectedId ? (state.draft.builtin ? 'BUILT-IN' : 'EDIT') : 'NEW'}</span><h2>${state.selectedId ? '编辑预设' : '新建预设'}</h2></div>${state.draft.builtin ? '<button class="dragon-btn dragon-btn-secondary dragon-btn-sm" type="button" data-prompt-clone>复制为新预设</button>' : ''}${state.dirty ? '<span class="dragon-tagging-dirty-state">未保存</span>' : ''}</header>
+                ${state.draft.builtin ? '<p class="dragon-tagging-preset-note">这是内置模板，不能直接修改或删除。复制后可保存为自己的预设。</p>' : ''}
+                <label class="dragon-field"><span>预设名称</span><input class="dragon-input" type="text" name="name" maxlength="80" value="${escapeAttribute(state.draft.name)}" ${state.draft.builtin ? 'disabled' : ''} required></label>
+                <label class="dragon-field"><span>系统提示词</span><textarea class="dragon-textarea" name="system_prompt" rows="8" maxlength="10000" ${state.draft.builtin ? 'disabled' : ''} required>${escapeHtml(state.draft.system_prompt)}</textarea></label>
+                <label class="dragon-field"><span>用户提示词</span><textarea class="dragon-textarea" name="user_prompt" rows="8" maxlength="10000" ${state.draft.builtin ? 'disabled' : ''} required>${escapeHtml(state.draft.user_prompt)}</textarea></label>
+                <footer><button class="dragon-btn dragon-btn-danger" type="button" data-prompt-delete ${state.selectedId && !state.draft.builtin && !state.saving ? '' : 'disabled'}>${renderIcon('trash', 'dragon-btn-icon')}<span>删除</span></button><span></span><button class="dragon-btn dragon-btn-secondary" type="button" data-prompt-apply ${validDraft(state.draft) ? '' : 'disabled'}>${renderIcon('check', 'dragon-btn-icon')}<span>应用并返回</span></button><button class="dragon-btn dragon-btn-primary" type="submit" ${state.saving || state.draft.builtin || !validDraft(state.draft) ? 'disabled' : ''}>${renderIcon('save', 'dragon-btn-icon')}<span>${state.saving ? '保存中…' : '保存预设'}</span></button></footer>
             </form>
         </div>
     </div>`;
 }
 
 function renderPresetItem(preset, selectedId) {
-    return `<button type="button" data-prompt-select="${escapeAttribute(preset.id)}" data-active="${preset.id === selectedId}"><span><strong>${escapeHtml(preset.name)}</strong><small>${escapeHtml(excerpt(preset.user_prompt))}</small></span>${renderIcon('chevronDown')}</button>`;
+    return `<button type="button" data-prompt-select="${escapeAttribute(preset.id)}" data-active="${preset.id === selectedId}"><span><strong>${escapeHtml(preset.name)}${preset.builtin ? ' <small class="dragon-tagging-preset-badge">内置</small>' : ''}</strong><small>${escapeHtml(excerpt(preset.user_prompt))}</small></span>${renderIcon('chevronDown')}</button>`;
 }
 
 function handleClick(state, event) {
-    const target = event.target.closest?.('[data-prompt-back], [data-prompt-new], [data-prompt-select], [data-prompt-delete], [data-prompt-apply]');
+    const target = event.target.closest?.('[data-prompt-back], [data-prompt-new], [data-prompt-select], [data-prompt-delete], [data-prompt-apply], [data-prompt-clone]');
     if (!target) return;
     if (target.matches('[data-prompt-back]')) return leavePage(state);
     if (target.matches('[data-prompt-new]')) return startNew(state);
+    if (target.matches('[data-prompt-clone]')) return clonePreset(state);
     if (target.matches('[data-prompt-select]')) return selectPreset(state, target.dataset.promptSelect);
     if (target.matches('[data-prompt-delete]')) return run(() => removePreset(state));
     if (target.matches('[data-prompt-apply]')) return applyPreset(state);
@@ -145,6 +147,23 @@ function startNew(state) {
         user_prompt: workspace.userPrompt || '',
     };
     state.dirty = false;
+    rerender(state, { preserveListScroll: true, focusName: true });
+}
+
+function clonePreset(state) {
+    const source = state.presets.find((item) => item.id === state.selectedId);
+    if (!source) return startNew(state);
+    state.operationId += 1;
+    state.draftVersion += 1;
+    state.saving = false;
+    state.selectedId = '';
+    state.draft = {
+        name: `${source.name}（副本）`.slice(0, 80),
+        system_prompt: source.system_prompt || '',
+        user_prompt: source.user_prompt || '',
+        builtin: false,
+    };
+    state.dirty = true;
     rerender(state, { preserveListScroll: true, focusName: true });
 }
 
@@ -233,7 +252,7 @@ function syncDirtyUi(state) {
     const remove = state.root?.querySelector('[data-prompt-delete]');
     if (save) save.disabled = state.saving || !valid;
     if (apply) apply.disabled = !valid;
-    if (remove) remove.disabled = !state.selectedId || state.saving;
+    if (remove) remove.disabled = !state.selectedId || state.draft.builtin || state.saving;
 }
 
 function rerender(state, { preserveListScroll = false, focusName = false } = {}) {
@@ -254,6 +273,7 @@ function presetDraft(preset) {
         name: String(preset?.name || ''),
         system_prompt: String(preset?.system_prompt || ''),
         user_prompt: String(preset?.user_prompt || ''),
+        builtin: preset?.builtin === true,
     };
 }
 

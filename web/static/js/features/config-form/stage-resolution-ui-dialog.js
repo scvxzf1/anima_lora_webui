@@ -7,6 +7,7 @@
  */
 import { getConfigState } from '../anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260831-release-v1';
 import { getDatasetState } from '../anima-app/helpers/dataset-state-bridge.js?v=module-bootstrap-20260831-release-v1';
+import { promptDragonDialog } from '../../shared/dialog.js?v=module-bootstrap-20260901-dialog-v1';
 import { setTomlStatus } from '../anima-app/helpers/toml-action-state-bridge.js?v=module-bootstrap-20260831-release-v1';
 import { datasetPresetApi } from '../anima-app/helpers/runtime-bridge.js?v=module-bootstrap-20260831-release-v1';
 import {
@@ -211,10 +212,15 @@ async function saveStageScheduleViaSaveAs(payload, lockedFile) {
     const datasetState = getDatasetState();
     const activeDataset = activeStageScheduleDatasetState(datasetState);
     const suggested = suggestSaveAsNameFromLocked(lockedFile || '数据集.toml');
-    const inputName = window.prompt(
-        '当前数据集配置不可直接写入。\n请输入新的数据集配置名称（保存到 configs/datasets/）：',
-        suggested,
-    );
+    const inputName = await promptDragonDialog({
+        eyebrow: '分阶段调度',
+        title: '复制为可编辑数据集配置',
+        message: '当前数据集配置不可直接写入。请输入新的数据集配置名称（保存到 configs/datasets/）。',
+        label: '数据集配置名称',
+        value: suggested,
+        icon: 'save',
+        confirmText: '另存配置',
+    });
     if (inputName === null) {
         return { ok: false, cancelled: true, error: '已取消另存' };
     }
@@ -617,8 +623,13 @@ export function openStageResolutionDialog() {
         hydrateStageScheduleFromConfig(configState.currentConfig || {});
     }
     renderStageResolutionDialog();
-    if (dialog.showModal && !dialog.open) dialog.showModal();
-    else if (!dialog.open) dialog.setAttribute('open', 'open');
+    dialog.hidden = false;
+    dialog.removeAttribute('aria-hidden');
+    if (typeof dialog.showModal === 'function' && !dialog.open) dialog.showModal();
+    else if (!dialog.open) {
+        dialog.setAttribute('open', '');
+        dialog.setAttribute('aria-hidden', 'false');
+    }
     requestAnimationFrame(drawStageResolutionChart);
     if (stageScheduleDraftDirty()) {
         setStageScheduleDialogFeedback('draft');

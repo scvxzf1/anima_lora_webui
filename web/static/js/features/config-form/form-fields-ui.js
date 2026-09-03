@@ -4,7 +4,12 @@
 import { updateChoiceGuide } from './choice-guide-ui.js?v=module-bootstrap-20260831-release-v1';
 import { updateStepEstimatePanel } from './step-estimate.js?v=module-bootstrap-20260831-release-v1';
 import { valuesEqual } from '../anima-app/helpers/form-values.js?v=module-bootstrap-20260831-release-v1';
-import { collectLiveCompatIssues, formatLiveCompatStatus } from './live-compat.js?v=module-bootstrap-20260831-release-v1';
+import { collectLiveCompatIssues, formatLiveCompatStatus } from './live-compat.js?v=module-bootstrap-20260903-pp-multimodel-v1';
+import {
+    isKrea2ModelFamily,
+    modelFamilySupportsPipelineParallel,
+    normalizeModelFamily,
+} from './model-family.js?v=module-bootstrap-20260903-pp-multimodel-v1';
 import { setTomlStatus } from '../anima-app/helpers/toml-action-state-bridge.js?v=module-bootstrap-20260831-release-v1';
 import { buildFieldPresentation, fieldSourceBadgeLabel } from './field-presentation.js?v=module-bootstrap-20260831-release-v1';
 import {
@@ -31,7 +36,7 @@ import {
     FIELD_OPTIONS,
     FORM_UI_DEFAULTS,
     help,
-} from '../../config/catalog.js?v=module-bootstrap-20260831-release-v1';
+} from '../../config/catalog.js?v=module-bootstrap-20260903-pp-multimodel-v1';
 import { LOSS_WEIGHTING_DEPENDENT_FIELDS } from '../anima-app/helpers/app-constants.js?v=module-bootstrap-20260831-release-v1';
 import {
     applyLossWeightingFieldInputState,
@@ -56,7 +61,7 @@ import {
     createSamplePromptTextModeButton,
     createSamplePromptsEditor,
     createSamplePromptsPathInput,
-} from './form-fields-sample.js?v=module-bootstrap-20260831-release-v1';
+} from './form-fields-sample.js?v=module-bootstrap-20260903-pp-multimodel-v1';
 
 let updateNoDatasetRegularizationModePanelCallback = () => {};
 const configState = getConfigState();
@@ -65,9 +70,9 @@ function currentConfigState() {
     return configState.currentConfig || {};
 }
 
-// NF4 (Krea-2 QLoRA) 是 krea2_raw 专属: anima loader 不接 nf4, 选了会被
+// NF4 (Krea-2 QLoRA) 是 Krea-2 family 专属: anima loader 不接 nf4, 选了会被
 // 静默忽略却盖 ss_base_compute=nf4 元数据, 误导. 故 base_compute 的 nf4 选项
-// 只在 model_family=krea2_raw 时露出. 当前值即使被过滤也兜底加回, 防 select
+// 只在 model_family=krea2_raw/krea2 时露出. 当前值即使被过滤也兜底加回, 防 select
 // 显示空 (如 config 残留 nf4 又切回 anima 时仍可见当前值, 由 live-compat/
 // preflight 提示用户改回 bf16).
 function currentModelFamily() {
@@ -75,14 +80,28 @@ function currentModelFamily() {
     const value = drafts?.has('model_family')
         ? drafts.get('model_family')
         : currentConfigState()?.model_family;
-    const family = String(value ?? '').trim().toLowerCase();
-    return family;
+    return normalizeModelFamily(value);
+}
+
+const PIPELINE_PARALLEL_FIELDS = new Set([
+    'pipeline_parallel',
+    'pipeline_parallel_stages',
+    'pipeline_parallel_microbatches',
+    'pipeline_parallel_schedule',
+    'pipeline_parallel_split',
+]);
+function currentPipelineParallelEnabled() {
+    const drafts = configState.configFormState?.draftValues;
+    const value = drafts?.has('pipeline_parallel')
+        ? drafts.get('pipeline_parallel')
+        : currentConfigState()?.pipeline_parallel;
+    return isTruthy(value);
 }
 
 function filterFieldOptionsForFamily(key, options, currentValue) {
     if (!Array.isArray(options)) return options;
     const family = currentModelFamily();
-    const isKrea2 = family === 'krea2_raw';
+    const isKrea2 = isKrea2ModelFamily(family);
     if (key === 'base_compute') {
         const filtered = isKrea2 ? options.slice() : options.filter((opt) => opt !== 'nf4');
         if (currentValue != null && !filtered.includes(currentValue)) filtered.push(currentValue);
@@ -90,7 +109,7 @@ function filterFieldOptionsForFamily(key, options, currentValue) {
     }
     if (!isKrea2) return options;
     const supportedByKey = {
-        attn_mode: new Set(['torch', 'flash']),
+        attn_mode: new Set(['torch', 'flash', 'sdpa']),
         compile_inductor_mode: new Set(['default']),
         selective_checkpoint: new Set(['off', 'every_other']),
         v100_flash_stability: new Set(['off']),
@@ -102,14 +121,30 @@ function filterFieldOptionsForFamily(key, options, currentValue) {
 
 function applyFamilyFieldConstraints(input, key) {
     const family = currentModelFamily();
+    const isKrea2 = isKrea2ModelFamily(family);
+    if (PIPELINE_PARALLEL_FIELDS.has(key) && !modelFamilySupportsPipelineParallel(family)) {
+        input.disabled = true;
+        input.title = `流水线并行尚未为当前模型族 ${family} 声明分层能力`;
+        if (key === 'pipeline_parallel') input.checked = false;
+        return input;
+    }
+    if (
+        key !== 'pipeline_parallel'
+        && PIPELINE_PARALLEL_FIELDS.has(key)
+        && !currentPipelineParallelEnabled()
+    ) {
+        input.disabled = true;
+        input.title = '请先开启流水线并行';
+        return input;
+    }
     if (key === 'compile_seq_bands' && family && family !== 'anima') {
         input.checked = false;
         input.disabled = true;
         input.title = '分带动态序列编译仅适用于 Anima native-flatten 路径';
     }
-    if (family !== 'krea2_raw') return input;
+    if (!isKrea2) return input;
     const supportedSelectValues = {
-        attn_mode: new Set(['torch', 'flash']),
+        attn_mode: new Set(['torch', 'flash', 'sdpa']),
         selective_checkpoint: new Set(['off', 'every_other']),
     };
     const supported = supportedSelectValues[key];
@@ -299,6 +334,7 @@ export function handleFormFieldChange(event) {
         event?.target?.dataset?.key === 'lora_adapter_kind'
         || event?.target?.dataset?.key === 'base_compute'
         || event?.target?.dataset?.key === 'model_family'
+        || event?.target?.dataset?.key === 'pipeline_parallel'
     ) {
         try {
             renderConfigForm(liveConfigFromForm());

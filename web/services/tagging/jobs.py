@@ -8,15 +8,17 @@ import uuid
 from collections import OrderedDict
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from .client import OpenAICompatibleClient, TaggingApiError
+from .local_worker_client import LocalTaggingWorkerClient, LocalWorkerError
 from .memory_log import DEFAULT_LOG_RETENTION_LINES, TaggingMemoryLog
+from .profiles import get_effective_settings
 from .settings import load_settings
 from .storage import CaptionWriteConflict, resolve_tagging_image, write_caption
 
 MAX_ITEMS_PER_JOB = 500
-MAX_RETAINED_JOBS = 40
+DEFAULT_MAX_RETAINED_JOBS = 40
 SHUTDOWN_TIMEOUT_SECONDS = 2.0
 
 
@@ -28,12 +30,22 @@ class TaggingJobManager:
     the browser polls the sanitized snapshots returned by this class.
     """
 
-    def __init__(self, *, log_retention_lines: int = DEFAULT_LOG_RETENTION_LINES):
+    def __init__(
+        self,
+        *,
+        log_retention_lines: int = DEFAULT_LOG_RETENTION_LINES,
+        max_retained_jobs: int = DEFAULT_MAX_RETAINED_JOBS,
+        local_worker_factory: Callable[..., LocalTaggingWorkerClient] | None = None,
+    ):
         self.jobs: OrderedDict[str, dict[str, Any]] = OrderedDict()
         self._tasks: dict[str, asyncio.Task] = {}
         self._cancel_events: dict[str, asyncio.Event] = {}
         self._commit_locks: dict[str, asyncio.Lock] = {}
+        self._rerun_locks: dict[str, asyncio.Lock] = {}
+        self._local_workers: dict[str, LocalTaggingWorkerClient] = {}
+        self._local_worker_factory = local_worker_factory or LocalTaggingWorkerClient
         self.logs = TaggingMemoryLog(log_retention_lines)
+        self.max_retained_jobs = _normalize_job_retention(max_retained_jobs)
 
     async def create(self, payload: dict[str, Any]) -> dict[str, Any]:
         dataset_file = str(payload.get("dataset_file") or payload.get("file") or "").strip()
@@ -44,12 +56,16 @@ class TaggingJobManager:
         except (TypeError, ValueError) as exc:
             raise ValueError("数据集序号无效") from exc
         source = "source" if str(payload.get("source") or "source").lower() == "source" else "training"
+        profile_id = str(payload.get("profile_id") or "").strip()
+        provider_settings = get_effective_settings(profile_id) if profile_id else load_settings()
+        provider = str(provider_settings.get("provider") or "openai_compatible").strip().lower()
         prompt = str(payload.get("user_prompt") or payload.get("prompt") or "").strip()
-        if not prompt:
-            raise ValueError("请输入打标提示词")
-        provider_settings = load_settings()
         system_prompt = str(payload.get("system_prompt") or provider_settings.get("system_prompt") or "").strip()
-        if not system_prompt:
+        # Local taggers do not consume prompts.  Keep the fields in the job
+        # snapshot for compatibility, but do not force users to fill them.
+        if provider == "openai_compatible" and not prompt:
+            raise ValueError("请输入打标提示词")
+        if provider == "openai_compatible" and not system_prompt:
             raise ValueError("请输入系统提示词")
         if len(system_prompt) > 10_000 or len(prompt) > 10_000:
             raise ValueError("单条提示词最多支持 10000 个字符")
@@ -109,6 +125,8 @@ class TaggingJobManager:
             "dataset_file": dataset_file,
             "dataset_index": dataset_index,
             "source": source,
+            "profile_id": provider_settings.get("_profile_id", "legacy-openai"),
+            "profile_name": provider_settings.get("_profile_name", "默认外部 API"),
             "prompt": prompt[:10000],
             "system_prompt": system_prompt[:10000],
             "total": len(items),
@@ -123,9 +141,109 @@ class TaggingJobManager:
         self.jobs[job_id] = job
         self._cancel_events[job_id] = asyncio.Event()
         self._commit_locks[job_id] = asyncio.Lock()
+        self._rerun_locks[job_id] = asyncio.Lock()
         self._prune()
         self._log(job, f"任务已加入队列，共 {len(items)} 张图片", event="job_queued")
         self._tasks[job_id] = asyncio.create_task(self._run(job), name=f"tagging:{job_id}")
+        return self.snapshot(job_id)
+
+    async def rerun(
+        self,
+        job_id: str,
+        *,
+        profile_id: str = "",
+        item_ids: list[str] | None = None,
+    ) -> dict[str, Any]:
+        lock = self._rerun_locks.setdefault(str(job_id), asyncio.Lock())
+        async with lock:
+            return await self._rerun_in_place(job_id, profile_id=profile_id, item_ids=item_ids)
+
+    async def _rerun_in_place(
+        self,
+        job_id: str,
+        *,
+        profile_id: str = "",
+        item_ids: list[str] | None = None,
+    ) -> dict[str, Any]:
+        source_job = self._get(job_id)
+        if source_job["state"] in {"queued", "running"}:
+            raise RuntimeError("任务仍在运行，结束后才能重新打标")
+        # A terminal state is recorded before the owning coroutine reaches its
+        # cleanup block.  Let that short tail finish before replacing the task
+        # reference so the previous run cannot race the in-place rerun.
+        previous_task = self._tasks.get(job_id)
+        if previous_task is not None and not previous_task.done():
+            await asyncio.gather(previous_task, return_exceptions=True)
+            source_job = self._get(job_id)
+            if source_job["state"] in {"queued", "running"}:
+                raise RuntimeError("任务仍在运行，结束后才能重新打标")
+        selected_profile = str(profile_id or source_job.get("profile_id") or "").strip()
+        provider_settings = get_effective_settings(selected_profile) if selected_profile else dict(source_job.get("_provider_settings") or load_settings())
+        provider = str(provider_settings.get("provider") or "openai_compatible").strip().lower()
+        prompt = str(source_job.get("prompt") or "").strip()
+        system_prompt = str(source_job.get("system_prompt") or provider_settings.get("system_prompt") or "").strip()
+        if provider == "openai_compatible" and not prompt:
+            raise ValueError("请输入打标提示词")
+        if provider == "openai_compatible" and not system_prompt:
+            raise ValueError("请输入系统提示词")
+        if len(system_prompt) > 10_000 or len(prompt) > 10_000:
+            raise ValueError("单条提示词最多支持 10000 个字符")
+        provider_settings = {**provider_settings, "system_prompt": system_prompt}
+        source_items = list(source_job.get("items") or [])
+        requested_ids = [str(item_id).strip() for item_id in (item_ids or []) if str(item_id).strip()]
+        if requested_ids:
+            source_by_id = {
+                str(item.get("id") or ""): item
+                for item in source_items
+                if str(item.get("id") or "").strip()
+            }
+            unknown = [item_id for item_id in requested_ids if item_id not in source_by_id]
+            if unknown:
+                raise ValueError(f"找不到打标图片：{unknown[0]}")
+            selected = []
+            seen: set[str] = set()
+            for item_id in requested_ids:
+                if item_id in seen:
+                    continue
+                seen.add(item_id)
+                selected.append(source_by_id[item_id])
+        else:
+            selected = source_items
+        if not selected:
+            raise ValueError("没有可重新打标的图片")
+        for item in selected:
+            if not item.get("_path"):
+                resolved = await asyncio.to_thread(
+                    resolve_tagging_image,
+                    source_job["dataset_file"],
+                    source_job["dataset_index"],
+                    item["file"],
+                    source=source_job["source"],
+                )
+                item["_path"] = resolved["path"]
+            item["state"] = "queued"
+            item["proposed_caption"] = ""
+            item["error"] = ""
+            item["commit_error"] = ""
+            item["attempts"] = 0
+            item["elapsed_ms"] = None
+
+        job_id = str(source_job["id"])
+        source_job["state"] = "queued"
+        source_job["started_at"] = None
+        source_job["finished_at"] = None
+        source_job["error"] = ""
+        source_job["profile_id"] = provider_settings.get("_profile_id", selected_profile or "legacy-openai")
+        source_job["profile_name"] = provider_settings.get("_profile_name", "默认外部 API")
+        source_job["prompt"] = prompt[:10_000]
+        source_job["system_prompt"] = system_prompt[:10_000]
+        source_job["settings"] = _public_job_settings(provider_settings)
+        source_job["_provider_settings"] = provider_settings
+        source_job["_run_item_ids"] = [str(item.get("id") or "") for item in selected]
+        self._cancel_events[job_id] = asyncio.Event()
+        self._refresh_counts(source_job)
+        self._log(source_job, f"已在当前任务中重新加入 {len(selected)} 张图片", event="job_rerun")
+        self._tasks[job_id] = asyncio.create_task(self._run(source_job), name=f"tagging:{job_id}")
         return self.snapshot(job_id)
 
     def list(self) -> list[dict[str, Any]]:
@@ -143,6 +261,11 @@ class TaggingJobManager:
 
     def set_log_retention(self, value: Any) -> int:
         return self.logs.set_retention(value)
+
+    def set_job_retention(self, value: Any) -> int:
+        self.max_retained_jobs = _normalize_job_retention(value)
+        self._prune()
+        return self.max_retained_jobs
 
     async def cancel(self, job_id: str) -> dict[str, Any]:
         job = self._get(job_id)
@@ -274,6 +397,9 @@ class TaggingJobManager:
     async def shutdown(self) -> None:
         for event in self._cancel_events.values():
             event.set()
+        workers = list(self._local_workers.values())
+        if workers:
+            await asyncio.gather(*(worker.stop() for worker in workers), return_exceptions=True)
         tasks = list(self._tasks.values())
         if tasks:
             done, pending = await asyncio.wait(tasks, timeout=SHUTDOWN_TIMEOUT_SECONDS)
@@ -284,17 +410,22 @@ class TaggingJobManager:
             # unhandled Task exception by asyncio.
             await asyncio.gather(*(tuple(done) + tuple(pending)), return_exceptions=True)
         self._tasks.clear()
+        self._local_workers.clear()
 
     async def _run(self, job: dict[str, Any]) -> None:
         job_id = job["id"]
         try:
             await self._run_job(job)
         finally:
-            self._tasks.pop(job_id, None)
+            # Do not remove a newer in-place rerun task that reused this ID.
+            current_task = self._tasks.get(job_id)
+            if current_task is asyncio.current_task():
+                self._tasks.pop(job_id, None)
 
     async def _run_job(self, job: dict[str, Any]) -> None:
         job_id = job["id"]
         cancel_event = self._cancel_events[job_id]
+        run_items = self._run_items(job)
         if cancel_event.is_set():
             self._mark_canceled(job)
             return
@@ -302,15 +433,19 @@ class TaggingJobManager:
         job["started_at"] = time.time()
         self._log(job, "任务开始", event="job_started")
         settings = dict(job.get("_provider_settings") or load_settings())
+        provider = str(settings.get("provider") or "openai_compatible").strip().lower()
+        if provider in {"wd14", "cltagger"}:
+            await self._run_local_job(job, settings, cancel_event, run_items)
+            return
         try:
             client = OpenAICompatibleClient(settings)
         except (ValueError, OSError) as exc:
             job["error"] = str(exc)
             self._log(job, f"外部 API 初始化失败：{exc}", level="error", event="provider_failed")
-            for item in job["items"]:
+            for item in run_items:
                 item["state"] = "failed"
                 item["error"] = str(exc)
-            self._finish(job, "failed")
+            self._finish(job, self._final_state(job))
             return
 
         semaphore = asyncio.Semaphore(int(settings.get("concurrency", 2) or 2))
@@ -355,9 +490,9 @@ class TaggingJobManager:
                     )
 
         try:
-            await asyncio.gather(*(run_item(item) for item in job["items"]))
+            await asyncio.gather(*(run_item(item) for item in run_items))
         except asyncio.CancelledError:
-            for item in job["items"]:
+            for item in run_items:
                 if item["state"] in {"queued", "running"}:
                     item["state"] = "canceled"
             job["error"] = "任务已停止"
@@ -366,20 +501,172 @@ class TaggingJobManager:
         if cancel_event.is_set():
             self._mark_canceled(job)
         else:
-            states = [item["state"] for item in job["items"]]
-            if all(state == "ready" for state in states):
-                final_state = "completed"
-            elif any(state == "ready" for state in states):
-                final_state = "partial"
-            else:
-                final_state = "failed"
-            self._finish(job, final_state)
+            self._finish(job, self._final_state(job))
+
+    async def _run_local_job(
+        self,
+        job: dict[str, Any],
+        settings: dict[str, Any],
+        cancel_event: asyncio.Event,
+        run_items: list[dict[str, Any]] | None = None,
+    ) -> None:
+        """Run one local provider in a disposable subprocess."""
+
+        provider = str(settings.get("provider") or "").strip().lower()
+        job_id = str(job.get("id") or "")
+        run_items = run_items if run_items is not None else self._run_items(job)
+        try:
+            worker = self._local_worker_factory(
+                provider=provider,
+                settings=settings,
+                job_id=job_id,
+            )
+        except Exception as exc:  # noqa: BLE001 - injected factories may vary
+            self._fail_local_job(job, provider, exc, phase="initialization", run_items=run_items)
+            return
+        if cancel_event.is_set():
+            self._mark_local_canceled(job)
+            return
+
+        paths = [Path(item["_path"]) for item in run_items]
+        for item in run_items:
+            item["state"] = "running"
+            item["attempts"] = 1
+        started = time.perf_counter()
+        self._local_workers[job_id] = worker
+        try:
+            results = await worker.run(paths)
+        except asyncio.CancelledError:
+            self._mark_local_canceled(job)
+            raise
+        except LocalWorkerError as exc:
+            if cancel_event.is_set():
+                self._mark_local_canceled(job)
+                return
+            phase = "initialization" if exc.phase in {"initialization", "protocol"} else "inference"
+            self._fail_local_job(job, provider, exc, phase=phase, run_items=run_items)
+            return
+        except Exception as exc:  # noqa: BLE001 - normalize inference failures
+            if cancel_event.is_set():
+                self._mark_local_canceled(job)
+                return
+            self._fail_local_job(job, provider, exc, phase="inference", run_items=run_items)
+            return
+        finally:
+            self._local_workers.pop(job_id, None)
+        runtime_warning = str(getattr(worker, "runtime_warning", "") or "").strip()
+        if runtime_warning:
+            job["settings"]["runtime_warning"] = runtime_warning[:500]
+            self._log(job, runtime_warning[:500], level="warning", event="provider_warning")
+        elapsed_ms = max(0, round((time.perf_counter() - started) * 1000))
+
+        result_by_path: dict[str, dict[str, Any]] = {}
+        for result in results:
+            image = result.get("image") if isinstance(result, dict) else None
+            if image is not None:
+                result_by_path[_path_key(image)] = result
+        for index, item in enumerate(run_items):
+            if cancel_event.is_set():
+                item["state"] = "canceled"
+                continue
+            item["state"] = "running"
+            item["attempts"] = 1
+            result = result_by_path.get(_path_key(item["_path"]))
+            if result is None and index < len(results):
+                # Positional fallback is only safe for providers that omit
+                # the image field entirely.  Never reuse an explicitly tagged
+                # result for a different file when a path cannot be resolved.
+                candidate = results[index]
+                if isinstance(candidate, dict) and not candidate.get("image"):
+                    result = candidate
+            if not result:
+                item["state"] = "failed"
+                item["error"] = "本地模型没有返回结果"
+                self._log(job, f"处理失败：{item['name']} - {item['error']}", level="error", event="item_failed", item=item)
+                continue
+            error = str(result.get("error") or "").strip()
+            if error:
+                item["state"] = "failed"
+                item["error"] = error[:500]
+                self._log(job, f"处理失败：{item['name']} - {item['error']}", level="error", event="item_failed", item=item)
+                continue
+            caption = str(result.get("caption") or "").strip()
+            tags = result.get("tags")
+            if not caption and isinstance(tags, list):
+                caption = ", ".join(str(tag).strip() for tag in tags if str(tag).strip())
+            item["elapsed_ms"] = elapsed_ms
+            if not caption:
+                item["state"] = "empty"
+                item["error"] = "模型未返回标签"
+                self._log(job, f"未生成标签：{item['name']}", level="warning", event="item_empty", item=item)
+                continue
+            item["state"] = "ready"
+            item["proposed_caption"] = caption[:100_000]
+            item["error"] = ""
+            self._log(job, f"处理完成：{item['name']}（{elapsed_ms} ms）", level="success", event="item_succeeded", item=item)
+
+        if cancel_event.is_set():
+            self._mark_canceled(job)
+            return
+        self._finish(job, self._final_state(job))
+
+    def _mark_local_canceled(self, job: dict[str, Any]) -> None:
+        job["error"] = "任务已停止"
+        self._mark_canceled(job)
+
+    def _fail_local_job(
+        self,
+        job: dict[str, Any],
+        provider: str,
+        exc: BaseException,
+        *,
+        phase: str,
+        run_items: list[dict[str, Any]] | None = None,
+    ) -> None:
+        message = str(exc).strip() or (
+            "本地模型初始化失败" if phase == "initialization" else "本地模型推理失败"
+        )
+        job["error"] = message[:500]
+        initializing = phase == "initialization"
+        label = "初始化失败" if initializing else "推理失败"
+        event = "provider_failed" if initializing else "inference_failed"
+        self._log(
+            job,
+            f"{provider} {label}：{job['error']}",
+            level="error",
+            event=event,
+        )
+        targets = run_items if run_items is not None else self._run_items(job)
+        for item in targets:
+            if item["state"] != "canceled":
+                item["state"] = "failed"
+                item["error"] = job["error"]
+        self._finish(job, self._final_state(job))
+
+    def _run_items(self, job: dict[str, Any]) -> list[dict[str, Any]]:
+        item_ids = job.get("_run_item_ids")
+        if not isinstance(item_ids, list) or not item_ids:
+            return list(job.get("items") or [])
+        wanted = {str(item_id) for item_id in item_ids if str(item_id).strip()}
+        if not wanted:
+            return list(job.get("items") or [])
+        return [item for item in job.get("items") or [] if str(item.get("id") or "") in wanted]
+
+    def _final_state(self, job: dict[str, Any]) -> str:
+        states = [str(item.get("state") or "") for item in job.get("items") or []]
+        successful = {"ready", "committed"}
+        if states and all(state in successful for state in states):
+            return "completed"
+        if any(state in successful for state in states):
+            return "partial"
+        return "failed"
 
     def _finish(self, job: dict[str, Any], state: str) -> None:
         job["state"] = state
         job["finished_at"] = time.time()
         self._refresh_counts(job)
         self._log_finished(job, state)
+        self._prune()
 
     def _refresh_counts(self, job: dict[str, Any]) -> None:
         job["completed"] = sum(item["state"] in {"ready", "committed"} for item in job["items"])
@@ -417,6 +704,8 @@ class TaggingJobManager:
             "dataset_file": job["dataset_file"],
             "dataset_index": job["dataset_index"],
             "source": job["source"],
+            "profile_id": job.get("profile_id", "legacy-openai"),
+            "profile_name": job.get("profile_name", "默认外部 API"),
             "total": job["total"],
             "completed": job["completed"],
             "failed": job["failed"],
@@ -435,13 +724,22 @@ class TaggingJobManager:
         return result
 
     def _prune(self) -> None:
-        while len(self.jobs) > MAX_RETAINED_JOBS:
-            job_id, job = next(iter(self.jobs.items()))
-            if job["state"] in {"queued", "running"}:
+        while len(self.jobs) > self.max_retained_jobs:
+            candidate = next(
+                (
+                    (job_id, job)
+                    for job_id, job in self.jobs.items()
+                    if job["state"] not in {"queued", "running"}
+                ),
+                None,
+            )
+            if candidate is None:
                 break
+            job_id, _job = candidate
             self.jobs.pop(job_id, None)
             self._cancel_events.pop(job_id, None)
             self._commit_locks.pop(job_id, None)
+            self._rerun_locks.pop(job_id, None)
 
     def _log(
         self,
@@ -462,12 +760,56 @@ class TaggingJobManager:
 
 
 def _public_job_settings(settings: dict[str, Any]) -> dict[str, Any]:
-    return {
+    result = {
         "provider": settings.get("provider", "openai_compatible"),
+        "profile_id": settings.get("_profile_id", "legacy-openai"),
+        "profile_name": settings.get("_profile_name", "默认外部 API"),
         "base_url": settings.get("base_url", ""),
         "model": settings.get("model", ""),
         "concurrency": settings.get("concurrency", 1),
     }
+    if result["provider"] in {"wd14", "cltagger"}:
+        result.update(
+            {
+                "asset_id": settings.get("asset_id", ""),
+                "device": settings.get("device", "auto"),
+                "gpu_index": settings.get("gpu_index"),
+                "batch_size": settings.get("batch_size", 1),
+                "general_threshold": settings.get("general_threshold", 0.35),
+                "character_threshold": settings.get("character_threshold", 0.85),
+                "blacklist": list(settings.get("blacklist") or []) if isinstance(settings.get("blacklist"), list) else [],
+            }
+        )
+        if result["provider"] == "cltagger":
+            result.update(
+                {
+                    key: bool(settings.get(key, default))
+                    for key, default in {
+                        "add_copyright_tag": True,
+                        "add_artist_tag": False,
+                        "add_meta_tag": False,
+                        "add_model_tag": False,
+                        "add_rating_tag": False,
+                        "add_quality_tag": False,
+                    }.items()
+                }
+            )
+    return result
+
+
+def _normalize_job_retention(value: Any) -> int:
+    try:
+        count = int(value)
+    except (TypeError, ValueError):
+        count = DEFAULT_MAX_RETAINED_JOBS
+    return max(1, min(500, count))
+
+
+def _path_key(value: Any) -> str:
+    try:
+        return str(Path(value).resolve())
+    except (OSError, TypeError, ValueError):
+        return str(value or "")
 
 
 def _format_timestamp(value: Any) -> str:

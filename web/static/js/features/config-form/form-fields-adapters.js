@@ -5,7 +5,7 @@ import {
     FORM_UI_DEFAULTS,
     LOKR_SCOPED_FIELD_KEYS,
     VERA_SCOPED_FIELD_KEYS,
-} from '../../config/catalog.js?v=module-bootstrap-20260831-release-v1';
+} from '../../config/catalog.js?v=module-bootstrap-20260902-krea2-pp-v1';
 import { valuesEqual } from '../anima-app/helpers/form-values.js?v=module-bootstrap-20260831-release-v1';
 import {
     loraAdapterFlagsForKind,
@@ -30,6 +30,8 @@ const LOKR_NETWORK_ARG_KEYS = new Set([
     'lokr_allow_legacy_dim',
     'lokr_factor_group_size',
     'lokr_project_chunk_bytes',
+    'lokr_grouped_delta_backend',
+    'lokr_grouped_delta_backward_backend',
 ]);
 
 function currentConfigState() {

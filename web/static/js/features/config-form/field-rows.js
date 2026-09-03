@@ -4,7 +4,7 @@
  */
 import {
     CONFIG_COMPACT_FIELD_GROUPS,
-} from '../../config/catalog.js?v=module-bootstrap-20260831-release-v1';
+} from '../../config/catalog.js?v=module-bootstrap-20260902-krea2-pp-v1';
 import { createFieldRow } from './form-fields.js?v=module-bootstrap-20260831-release-v1';
 
 export function appendFieldRows(content, fields, groupClass) {

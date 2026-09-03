@@ -35,7 +35,7 @@ import { requestContinueLoraInspection } from '../training-source/continue-lora.
 import {
     GLOBAL_UI_HISTORY_DETAIL_OVERRIDE_FIELDS,
     GLOBAL_UI_TOP_LEVEL_OVERRIDE_FIELDS,
-} from '../../config/catalog.js?v=module-bootstrap-20260831-release-v1';
+} from '../../config/catalog.js?v=module-bootstrap-20260902-krea2-pp-v1';
 import { GPU_WHITELIST_STORAGE_KEY, LANGUAGE_STORAGE_KEY, THEME_STORAGE_KEY } from '../anima-app/helpers/app-constants.js?v=module-bootstrap-20260831-release-v1';
 import { datasetPresetSummaryByFile } from '../anima-app/helpers/dataset-presets.js?v=module-bootstrap-20260831-release-v1';
 import { isDatasetTabActive } from '../anima-app/helpers/dataset-render-bridge.js?v=module-bootstrap-20260831-release-v1';
@@ -117,7 +117,8 @@ import {
     renderConfigForm,
     resetConfigFormDraft,
     syncConfigDraftFromForm,
-} from '../config-form/index.js?v=module-bootstrap-20260831-release-v1';
+} from '../config-form/index.js?v=module-bootstrap-20260903-pp-multimodel-v1';
+import { loadModelFamilyCapabilities } from '../config-form/model-family.js?v=module-bootstrap-20260903-pp-multimodel-v1';
 
 const ctx = getAppContext();
 const appShellState = getAppShellState();
@@ -346,12 +347,14 @@ function setPreviewEmpty(message) {
             return;
         }
         try {
-            const [methodsPayload, presetsPayload, help] = await Promise.all([
+            const [methodsPayload, presetsPayload, help, modelFamilyCapabilities] = await Promise.all([
                 api('/api/methods'),
                 api('/api/presets'),
                 api('/api/config/field-help'),
+                loadModelFamilyCapabilities(api),
             ]);
             configState.fieldHelp = help;
+            configState.modelFamilyCapabilities = modelFamilyCapabilities;
             populateSelect('method-select', asItemList(methodsPayload), 'lora');
             populateSelect('preset-select', asItemList(presetsPayload), 'default');
             await gpuPicker.loadGpuOptions();

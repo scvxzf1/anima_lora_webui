@@ -164,6 +164,7 @@
 
 .dragon-nav-primary-link {
     position: relative;
+    box-sizing: border-box;
     min-width: 76px;
     justify-content: center;
     font-weight: var(--dragon-fw-regular);
@@ -194,8 +195,17 @@
     transform: scaleX(1);
 }
 
-@media (max-width: 1068px) {
-    .dragon-nav-categories { gap: 18px; }
+@media (max-width: 1068px) and (min-width: 834px) {
+    .dragon-nav-list {
+        grid-template-columns: minmax(112px, 1fr) auto minmax(112px, 1fr);
+    }
+
+    .dragon-nav-categories { gap: 8px; }
+
+    .dragon-nav-category-btn.dragon-nav-primary-link {
+        min-width: 60px;
+        padding-inline: 7px;
+    }
 }
 
 .dragon-nav-brand-wrap {

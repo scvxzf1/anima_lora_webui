@@ -5,7 +5,7 @@
  * Keep those fields typed here so an omitted value never degrades into a
  * free-form text input.
  */
-import { FORM_UI_DEFAULTS } from '../../config/catalog/defaults.js?v=dragon-ui-20260830v2';
+import { FORM_UI_DEFAULTS } from '../../config/catalog/defaults.js?v=dragon-ui-20260902-lokr-backend-v4';
 
 const BOOLEAN_METHOD_DEFAULTS = Object.freeze({
     // Network flags omitted by plain/imported method files.

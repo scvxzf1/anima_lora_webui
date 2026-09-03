@@ -33,6 +33,7 @@ from web.services.config.metadata import (
     PREPROCESS_DATASET_SETTING_ORDER,
     RUNTIME_PREPROCESS_ATTR_KEY,
     TRIGGER_CLONE_ATTR_KEY,
+    WEBUI_DATASET_DEFAULTS_ATTR_KEY,
 )
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -127,8 +128,19 @@ def _single_dataset_config_from_cfg(cfg: dict[str, Any]) -> dict[str, Any]:
         ],
     }
 
-def _dataset_defaults_from_config(data: dict[str, Any]) -> dict[str, Any]:
-    return {
+def _webui_dataset_defaults_from_config(data: dict[str, Any]) -> dict[str, Any]:
+    general = data.get("general") if isinstance(data, dict) else None
+    attrs = general.get("custom_attributes") if isinstance(general, dict) else None
+    raw = attrs.get(WEBUI_DATASET_DEFAULTS_ATTR_KEY) if isinstance(attrs, dict) else None
+    return dict(raw) if isinstance(raw, dict) else {}
+
+
+def _dataset_defaults_from_config(
+    data: dict[str, Any],
+    *,
+    include_webui_defaults: bool = True,
+) -> dict[str, Any]:
+    defaults = {
         "resolution": _positive_int(_first_dataset_value(data, "resolution"), 1024),
         "batch_size": _positive_int(_first_dataset_value(data, "batch_size"), 1),
         "prior_loss_weight": _nonnegative_float(_first_dataset_value(data, "prior_loss_weight", 1.0), 1.0),
@@ -152,12 +164,18 @@ def _dataset_defaults_from_config(data: dict[str, Any]) -> dict[str, Any]:
             _bool_value(_first_dataset_value(data, "prefer_json_caption"), False),
         ),
     }
+    if not include_webui_defaults:
+        return defaults
+    stored_defaults = _webui_dataset_defaults_from_config(data)
+    if not stored_defaults:
+        return defaults
+    return _normalize_dataset_defaults({**defaults, **stored_defaults})
 
 def _dataset_defaults_from_dataset(dataset: dict[str, Any], data: dict[str, Any] | None = None) -> dict[str, Any]:
     source: dict[str, Any] = {"datasets": [dataset]}
     if isinstance(data, dict) and isinstance(data.get("general"), dict):
         source["general"] = data["general"]
-    return _dataset_defaults_from_config(source)
+    return _dataset_defaults_from_config(source, include_webui_defaults=False)
 
 def _dataset_summary_from_rows(rows: list[dict[str, Any]], defaults: dict[str, Any] | None = None) -> dict[str, Any]:
     clean_rows = _normalize_dataset_rows(rows)
@@ -529,6 +547,13 @@ def _build_dataset_config_doc(
     general = tomlkit.table()
     general.add("caption_extension", str(cfg.get("caption_extension") or ".txt"))
     general.add("keep_tokens", _nonnegative_int(cfg.get("keep_tokens"), 3))
+    # UI defaults are distinct from the effective settings stored on each dataset row.
+    custom_attributes = tomlkit.table()
+    stored_defaults = tomlkit.table()
+    for key, value in _normalize_dataset_defaults(cfg).items():
+        stored_defaults.add(key, value)
+    custom_attributes.add(WEBUI_DATASET_DEFAULTS_ATTR_KEY, stored_defaults)
+    general.add("custom_attributes", custom_attributes)
     doc.add("general", general)
 
     # Stage schedule is owned by the dataset config (WebUI 分阶段调度).

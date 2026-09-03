@@ -41,7 +41,7 @@ def test_dragon_dataset_preview_uses_bounded_server_pagination() -> None:
     assert "dialog.setAttribute('open', 'open')" in preview
     assert "await copyText(text)" in preview
     assert "renderIcon('copy', 'dragon-btn-icon')" in preview
-    assert "dataset-editor-preview.js?v=dragon-ui-20260831v52" in controller
+    assert "dataset-editor-preview.js?v=dragon-ui-20260902v53" in controller
     assert "dataset-preview-window.js?v=dragon-ui-20260831v3" in preview
 
 
@@ -307,7 +307,7 @@ def test_dragon_dataset_preview_pager_has_stable_responsive_styles() -> None:
     assert "inset: 0;" in image_rule
     assert "min-height: 0;" in image_rule
     assert "flex-direction: row;" in css
-    assert "06a-dragon-shared-dialogs.css?v=dragon-ui-20260831v74" in route_styles
+    assert "06a-dragon-shared-dialogs.css?v=dragon-ui-20260902v78" in route_styles
     assert "width: min(80vw, 1600px);" in pages_css
     assert "height: min(80vh, 960px);" in pages_css
     assert "grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr));" in css

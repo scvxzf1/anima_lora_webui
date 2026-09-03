@@ -14,6 +14,7 @@
 | [dcgen_anima_f32c32.md](dcgen_anima_f32c32.md) | POC / 阶段 1-2 | DC-Gen Anima f32c32 latent space、双缓存和 patch 对齐探针记录 |
 | [krea2_raw_gradient_checkpointing.md](krea2_raw_gradient_checkpointing.md) | 已实现 / 设计背景 | Krea-2-Raw 梯度检查点落地方案（阶段 4 子设计；已移植 Anima block 级 `use_reentrant=False` 机制并完成 1024² 训练验证） |
 | [krea2_nf4_blockswap.md](krea2_nf4_blockswap.md) | 提案 / 已完成 | NF4 × block swap 落地方案（方向 A deepcopy 已落地 + 落盘/小卡链路 + compat_matrix 放开 + train.py 接线 + 5 格消融矩阵六维基准，见 [krea2_nf4_ablation_findings.md](../findings/krea2_nf4_ablation_findings.md)；方向 B slab+手动重建作为速度进阶存储） |
+| [krea2_pipeline_parallel.md](krea2_pipeline_parallel.md) | 实验 / 阶段 1 | Anima、Krea-2、Z-Image 双卡 PP 配置、family stage adapter 与 fail-closed 规划；1F1B 主训练 runtime 尚未接线 |
 | [adapter-aware-checkpoint.md](adapter-aware-checkpoint.md) | 半活跃 | Adapter-aware activation checkpoint 可行性探索 |
 | [turbo_anima_dmd_lora.md](turbo_anima_dmd_lora.md) | 半活跃 | Turbo Anima / DMD LoRA 蒸馏提案 |
 | [prior_preservation_from_synth_pool.md](prior_preservation_from_synth_pool.md) | 半活跃 | synth pool prior preservation 提案 |

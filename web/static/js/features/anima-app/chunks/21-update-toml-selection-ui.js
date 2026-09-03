@@ -6,7 +6,7 @@ import {
     CONFIG_FORM_INTERNAL_KEYS,
     FORM_UI_DEFAULTS,
     NETWORK_ARG_FIELD_MAP,
-} from '../../../config/catalog.js?v=module-bootstrap-20260831-release-v1';
+} from '../../../config/catalog.js?v=module-bootstrap-20260902-krea2-pp-v1';
 import { captionSourceModeLabel } from '../helpers/caption-source.js?v=module-bootstrap-20260831-release-v1';
 import { collectChangedFormValues, configDraftValueChanged, isActiveNetworkArgFieldKey, networkArgFieldValueFromConfig, originalConfigFieldValue, readFieldInputValue } from '../helpers/config-form-bridge.js?v=module-bootstrap-20260831-release-v1';
 import {

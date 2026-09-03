@@ -33,7 +33,7 @@ export {
     renderStageResolutionDialog,
     resolveStageScheduleTargetFile,
     listStageScheduleTargetCandidates,
-} from './stage-resolution-ui.js?v=module-bootstrap-20260831-release-v1';
+} from './stage-resolution-ui.js?v=module-bootstrap-20260901-dialog-v1';
 
 // Compatibility exports used by old chunk imports / quick-preset panel co-location.
 export {

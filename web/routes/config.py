@@ -7,6 +7,7 @@ from urllib.parse import quote
 
 from aiohttp import web
 
+from library.models.family_registry import model_family_capability_catalog
 from web.services.config.dataset_preview_thumbnail import render_dataset_preview_thumbnail
 from web.services.config_service import (
     apply_dataset_preset_to_training_config,
@@ -63,6 +64,7 @@ def setup_config_routes(app: web.Application) -> None:
     app.router.add_get("/api/methods", handle_methods)
     app.router.add_get("/api/methods/{method}/variants", handle_variants)
     app.router.add_get("/api/presets", handle_presets)
+    app.router.add_get("/api/config/model-families", handle_model_families)
     app.router.add_get("/api/config/merged", handle_merged)
     app.router.add_get("/api/config/steps", handle_steps)
     app.router.add_get("/api/config/data-dirs/suggest", handle_data_dirs_suggest)
@@ -122,6 +124,12 @@ async def handle_variants(request: web.Request) -> web.Response:
 async def handle_presets(request: web.Request) -> web.Response:
     items = list(list_presets() or [])
     return web.json_response({"ok": True, "items": items})
+
+
+async def handle_model_families(request: web.Request) -> web.Response:
+    return web.json_response(
+        {"ok": True, "items": list(model_family_capability_catalog())}
+    )
 
 
 async def handle_merged(request: web.Request) -> web.Response:

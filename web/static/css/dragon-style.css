@@ -1,5 +1,5 @@
 /* Dragon trainer shell CSS. Page styles are loaded by route-styles.js. */
-@import url("./dragon/00-dragon-tokens.css?v=dragon-ui-20260828v45");
+@import url("./dragon/00-dragon-tokens.css?v=dragon-ui-20260902-training-nav-v3");
 @import url("./dragon/01-dragon-base.css?v=dragon-ui-20260828v46");
-@import url("./dragon/02-dragon-nav.css?v=dragon-ui-20260817v70");
-@import url("./dragon/02a-dragon-controls.css?v=dragon-ui-20260831v5");
+@import url("./dragon/02-dragon-nav.css?v=dragon-ui-20260902-training-nav-v3");
+@import url("./dragon/02a-dragon-controls.css?v=dragon-ui-20260902-training-nav-v3");

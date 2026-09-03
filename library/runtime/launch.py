@@ -63,6 +63,19 @@ def configure_accelerate_for_gpu_selection(
         env[ACCELERATE_NUM_PROCESSES_ENV] = str(len(gpu_selection))
 
 
+def resolve_training_world_size_for_gpu_selection(
+    gpu_selection: Sequence[int],
+    env: Mapping[str, str] | None = None,
+) -> int:
+    """Resolve the worker count produced by the WebUI launch policy."""
+
+    values = dict(os.environ if env is None else env)
+    configure_accelerate_for_gpu_selection(values, gpu_selection)
+    if not _env_flag_enabled(values.get(ACCELERATE_LAUNCH_ENV)):
+        return 1
+    return int(resolve_accelerate_num_processes(values))
+
+
 def accelerate_training_command_prefix(
     python_exe: str,
     train_script: str | Path,

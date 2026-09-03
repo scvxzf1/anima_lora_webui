@@ -71,6 +71,15 @@ dev = [
     "pytest-xdist>=3.6",
     "pytest-timeout>=2.3",
 ]
+# Local WD14/CLTagger inference is deliberately opt-in.  Installing either
+# extra provides only the ONNX Runtime Python package; model weights remain a
+# separate, explicit download from the fixed manifest in the WebUI.
+onnx-cpu = [
+    "onnxruntime>=1.20.0,<2.0",
+]
+onnx-cuda = [
+    "onnxruntime-gpu>=1.20.0,<2.0",
+]
 
 [tool.uv]
 index-strategy = "unsafe-best-match"

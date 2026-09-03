@@ -32,6 +32,10 @@ async def handle_global_settings_put(request: web.Request) -> web.Response:
     data = await request.json()
     try:
         payload = save_global_settings(data)
+        tagging_service = request.app.get("tagging_service")
+        set_job_retention = getattr(tagging_service, "set_job_retention", None)
+        if callable(set_job_retention):
+            set_job_retention(payload.get("tagging_max_retained_jobs"))
         if "configs_root" in data:
             config_service.set_configs_root(settings_service.SETTINGS_FILE.parent)
             training_service.reload_runtime_storage_state(request.app.get("training_service"))

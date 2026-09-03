@@ -207,6 +207,11 @@ async def _handle_output_record(self, text: str):
 
     m = TQDM_RE.search(text)
     if m:
+        # Structured progress uses the resumed global step, while tqdm starts
+        # this process at zero. Keep tqdm only as a log once JSONL is active.
+        if self._progress_total_steps is not None:
+            self._remember_log("progress", text, ts=now)
+            return
         cur = int(m.group("cur"))
         tot = int(m.group("tot"))
         label = m.group("label").strip() or "Training"

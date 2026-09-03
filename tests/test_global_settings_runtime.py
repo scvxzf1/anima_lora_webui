@@ -229,6 +229,47 @@ def test_settings_route_returns_400_for_invalid_payload(monkeypatch):
     assert body == {"ok": False, "error": "输出文件夹不能为空"}
 
 
+def test_tagging_job_retention_is_persisted_clamped_and_applied_to_runtime(tmp_path, monkeypatch):
+    settings_file = tmp_path / "configs" / "web-ui-settings.toml"
+    settings_file.parent.mkdir(parents=True, exist_ok=True)
+    settings_file.write_text('[global]\noutput_root = "output/runs"\n', encoding="utf-8")
+    monkeypatch.setattr(settings_service, "ROOT", tmp_path)
+    monkeypatch.setattr(settings_service, "SETTINGS_FILE", settings_file)
+
+    saved = settings_service.save_global_settings({"tagging_max_retained_jobs": 12})
+    assert saved["tagging_max_retained_jobs"] == 12
+    assert toml.loads(settings_file.read_text(encoding="utf-8"))["global"]["tagging_max_retained_jobs"] == 12
+
+    class TaggingStub:
+        retained = None
+
+        def set_job_retention(self, value):
+            self.retained = value
+
+    service = TaggingStub()
+    monkeypatch.setattr(
+        settings_routes,
+        "save_global_settings",
+        lambda _data: {"ok": True, "tagging_max_retained_jobs": 500},
+    )
+    response = asyncio.run(
+        settings_routes.handle_global_settings_put(
+            _JsonRequest({"tagging_max_retained_jobs": 999}, app={"tagging_service": service})
+        )
+    )
+    assert response.status == 200
+    assert service.retained == 500
+
+
+def test_dragon_global_settings_exposes_tagging_job_retention_control() -> None:
+    source = (ROOT / "web" / "static" / "js" / "dragon-ui" / "pages" / "global-settings.js").read_text(
+        encoding="utf-8"
+    )
+    assert "tagging_max_retained_jobs" in source
+    assert "打标任务保留上限" in source
+    assert "retained < 1 || retained > 500" in source
+
+
 def test_save_global_settings_persists_history_and_queue_roots(tmp_path, monkeypatch):
     settings_file = tmp_path / "configs" / "web-ui-settings.toml"
     settings_file.parent.mkdir(parents=True, exist_ok=True)

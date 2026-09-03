@@ -329,6 +329,7 @@ def main() -> None:
             "triton_grad_x",
             "triton_grad_w2_partial",
             "triton_grad_w2_grad_x",
+            "triton_grad_w1_w2_grad_x",
         ),
         default=DEFAULT_BACKWARD_BACKEND,
     )

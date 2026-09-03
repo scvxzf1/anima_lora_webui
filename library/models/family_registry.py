@@ -27,6 +27,24 @@ class TextCacheSpec:
 
 
 @dataclass(frozen=True)
+class PipelineParallelFamilySpec:
+    """Static topology contract for pipeline planning and WebUI discovery."""
+
+    block_container: str
+    default_num_blocks: int
+    known_num_blocks: frozenset[int]
+    supported_stages: frozenset[int]
+    supported_schedules: frozenset[str]
+    supported_splits: frozenset[str]
+    stage_zero_block_offset: int = 0
+    runtime_backend: str | None = None
+
+    @property
+    def runtime_available(self) -> bool:
+        return self.runtime_backend is not None
+
+
+@dataclass(frozen=True)
 class ModelFamilySpec:
     name: str
     display_name: str
@@ -43,6 +61,7 @@ class ModelFamilySpec:
     image_test_flow_shift_default: float
     automatic_flow_shift: bool
     supports_anima_selective_lora: bool
+    pipeline_parallel: PipelineParallelFamilySpec | None
 
 
 MODEL_FAMILY_REGISTRY: dict[str, ModelFamilySpec] = {
@@ -67,6 +86,14 @@ MODEL_FAMILY_REGISTRY: dict[str, ModelFamilySpec] = {
         image_test_flow_shift_default=1.0,
         automatic_flow_shift=False,
         supports_anima_selective_lora=True,
+        pipeline_parallel=PipelineParallelFamilySpec(
+            block_container="blocks",
+            default_num_blocks=28,
+            known_num_blocks=frozenset({28, 40}),
+            supported_stages=frozenset({2}),
+            supported_schedules=frozenset({"1f1b"}),
+            supported_splits=frozenset({"balanced"}),
+        ),
     ),
     "krea2_raw": ModelFamilySpec(
         name="krea2_raw",
@@ -88,6 +115,15 @@ MODEL_FAMILY_REGISTRY: dict[str, ModelFamilySpec] = {
         image_test_flow_shift_default=3.0,
         automatic_flow_shift=True,
         supports_anima_selective_lora=False,
+        pipeline_parallel=PipelineParallelFamilySpec(
+            block_container="blocks",
+            default_num_blocks=28,
+            known_num_blocks=frozenset({28}),
+            supported_stages=frozenset({2}),
+            supported_schedules=frozenset({"1f1b"}),
+            supported_splits=frozenset({"balanced"}),
+            stage_zero_block_offset=-1,
+        ),
     ),
     "z_image": ModelFamilySpec(
         name="z_image",
@@ -109,6 +145,14 @@ MODEL_FAMILY_REGISTRY: dict[str, ModelFamilySpec] = {
         image_test_flow_shift_default=6.0,
         automatic_flow_shift=False,
         supports_anima_selective_lora=False,
+        pipeline_parallel=PipelineParallelFamilySpec(
+            block_container="layers",
+            default_num_blocks=30,
+            known_num_blocks=frozenset({30}),
+            supported_stages=frozenset({2}),
+            supported_schedules=frozenset({"1f1b"}),
+            supported_splits=frozenset({"balanced"}),
+        ),
     ),
 }
 
@@ -141,6 +185,36 @@ def normalize_registered_family(
 def get_model_family_spec(value, *, source: str = "model_family") -> ModelFamilySpec:
     family = normalize_registered_family(value, source=source)
     return MODEL_FAMILY_REGISTRY[family]
+
+
+def model_family_capability_catalog() -> tuple[dict[str, object], ...]:
+    """Return the JSON-safe public capability catalog used by both WebUIs."""
+
+    items: list[dict[str, object]] = []
+    for spec in MODEL_FAMILY_REGISTRY.values():
+        pipeline = spec.pipeline_parallel
+        pipeline_payload: dict[str, object] | None = None
+        if pipeline is not None:
+            pipeline_payload = {
+                "configurable": True,
+                "runtime_available": pipeline.runtime_available,
+                "runtime_backend": pipeline.runtime_backend,
+                "block_container": pipeline.block_container,
+                "default_num_blocks": pipeline.default_num_blocks,
+                "known_num_blocks": sorted(pipeline.known_num_blocks),
+                "stages": sorted(pipeline.supported_stages),
+                "schedules": sorted(pipeline.supported_schedules),
+                "splits": sorted(pipeline.supported_splits),
+            }
+        items.append(
+            {
+                "name": spec.name,
+                "display_name": spec.display_name,
+                "aliases": sorted(spec.aliases),
+                "pipeline_parallel": pipeline_payload,
+            }
+        )
+    return tuple(items)
 
 
 def dispatch_model_family(
