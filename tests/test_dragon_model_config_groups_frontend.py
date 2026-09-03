@@ -13,13 +13,13 @@ def _read(relative: str) -> str:
     return (STATIC_DIR / relative).read_text(encoding="utf-8")
 
 
-def test_dragon_model_config_is_primary_route_after_training_tasks() -> None:
+def test_dragon_model_config_is_primary_route_after_training_history() -> None:
     nav = _read("js/dragon-ui/nav.js")
     catalog = nav[nav.index("const PRIMARY_NAV_ITEMS = ["):nav.index("];", nav.index("const PRIMARY_NAV_ITEMS = ["))]
 
-    training_tasks = "{ id: 'training-tasks', label: '训练任务', hash: '#page/live-training' }"
+    training_history = "{ id: 'history', label: '训练历史', hash: '#history' }"
     model = "{ id: 'model-config', label: '模型配置', hash: '#model-config' }"
-    assert catalog.index(training_tasks) < catalog.index(model)
+    assert catalog.index(training_history) < catalog.index(model)
     assert "hash.startsWith('#model-config')" in nav
     assert "PRIMARY_NAV_ITEMS.map(renderPrimaryNavItem)" in nav
     assert "PRIMARY_NAV_ITEMS.map((item) =>" in nav

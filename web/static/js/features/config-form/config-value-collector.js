@@ -8,7 +8,7 @@ import {
     NETWORK_ARG_FIELD_MAP,
     OPTIONAL_EMPTY_FIELDS,
     OPTIONAL_EMPTY_NUMBER_FIELDS,
-} from '../../config/catalog.js?v=module-bootstrap-20260831-release-v1';
+} from '../../config/catalog.js?v=module-bootstrap-20260902-lokr-backend-v4';
 import {
     coerceNetworkArgValue,
     formatNetworkArg,
@@ -46,7 +46,7 @@ import { serializeSamplePromptsEditor } from '../sample-prompts/model.js?v=modul
 import {
     applyLoraAdapterPatch,
     applyOptimizerCompatibilityPatch,
-} from './form-fields-adapters.js?v=module-bootstrap-20260831-release-v1';
+} from './form-fields-adapters.js?v=module-bootstrap-20260902-lokr-backend-v4';
 
 const configState = getConfigState();
 
@@ -165,7 +165,10 @@ export function networkArgInputChanged(input) {
 
 export function networkArgFieldValueFromConfig(spec, config = currentConfigState()) {
     const argMap = parseNetworkArgMap(config?.network_args);
-    return coerceNetworkArgValue(argMap.has(spec.arg) ? argMap.get(spec.arg) : spec.default, spec);
+    const fallback = Object.prototype.hasOwnProperty.call(config || {}, spec.key)
+        ? config[spec.key]
+        : spec.default;
+    return coerceNetworkArgValue(argMap.has(spec.arg) ? argMap.get(spec.arg) : fallback, spec);
 }
 
 export function collectNetworkArgsFromForm(baseConfig = currentConfigState(), options = {}) {

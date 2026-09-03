@@ -914,6 +914,47 @@ body[data-dragon-ui] .dragon-training-dialog-actions {
     color: white;
 }
 
+.dragon-field[data-config-availability="unavailable"] {
+    color: var(--dragon-text-tertiary);
+}
+
+.dragon-field[data-config-availability="unavailable"] .dragon-field-label-text,
+.dragon-field[data-config-availability="unavailable"] .dragon-config-label-primary {
+    color: var(--dragon-text-tertiary);
+}
+
+.dragon-field[data-config-availability="unavailable"] :is(.dragon-input, .dragon-select, .dragon-textarea) {
+    color: var(--dragon-text-quaternary);
+    cursor: not-allowed;
+}
+
+.dragon-field[data-config-availability="unavailable"] .dragon-toggle-row {
+    cursor: not-allowed;
+    opacity: .56;
+}
+
+.dragon-config-unavailable-badge {
+    display: inline-flex;
+    min-height: 18px;
+    align-items: center;
+    padding: 2px 6px;
+    border: 1px solid color-mix(in srgb, var(--dragon-text-tertiary) 32%, var(--dragon-border));
+    border-radius: var(--dragon-radius-pill);
+    color: var(--dragon-text-tertiary);
+    font-size: 10px;
+    font-weight: var(--dragon-fw-semibold);
+    line-height: 1;
+    white-space: nowrap;
+}
+
+.dragon-field-help-btn-unavailable {
+    border: 1px solid color-mix(in srgb, var(--dragon-text-tertiary) 38%, transparent);
+    background: color-mix(in srgb, var(--dragon-text-tertiary) 10%, var(--dragon-tile-bg));
+    color: var(--dragon-text-secondary);
+    opacity: .9;
+    pointer-events: auto;
+}
+
 body[data-dragon-ui] .dragon-config-help-dialog {
     position: fixed;
     inset: 0;
@@ -1004,7 +1045,8 @@ body[data-dragon-ui] #dragon-root .dragon-config-help-dialog-header {
 .dragon-config-field-help-section[data-help-tone="summary"],
 .dragon-config-field-help-section[data-help-tone="setup"],
 .dragon-config-field-help-section[data-help-tone="recommend"],
-.dragon-config-field-help-section[data-help-tone="note"] { grid-column: 1 / -1; }
+.dragon-config-field-help-section[data-help-tone="note"],
+.dragon-config-field-help-section[data-help-tone="unavailable"] { grid-column: 1 / -1; }
 .dragon-config-field-help-section:last-child { margin-bottom: 0; }
 .dragon-config-field-help-heading {
     font-weight: var(--dragon-fw-semibold);
@@ -1020,6 +1062,12 @@ body[data-dragon-ui] #dragon-root .dragon-config-help-dialog-header {
     border-left: 3px solid var(--dragon-accent);
     border-radius: 0 var(--dragon-radius-sm) var(--dragon-radius-sm) 0;
     background: var(--dragon-accent-light);
+}
+.dragon-config-field-help-section[data-help-tone="unavailable"] {
+    padding: 9px 11px;
+    border-left: 3px solid var(--dragon-text-tertiary);
+    border-radius: 0 var(--dragon-radius-sm) var(--dragon-radius-sm) 0;
+    background: color-mix(in srgb, var(--dragon-text-tertiary) 9%, transparent);
 }
 .dragon-config-field-help-section[data-help-tone="risk"] .dragon-config-field-help-heading { color: var(--dragon-warning); }
 

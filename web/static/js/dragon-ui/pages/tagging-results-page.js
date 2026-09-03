@@ -2,17 +2,18 @@
 
 import { createApiClient } from '../../shared/api.js?v=dragon-ui-20260812v35';
 import { renderIcon } from '../icons.js?v=dragon-ui-20260812v35';
+import { createVisibilityPoller } from '../visibility-poller.js?v=dragon-ui-20260826v2';
 import {
     commitTaggingJob,
     loadTaggingJob,
     loadTaggingJobs,
     updateTaggingItem,
-} from './tagging-api.js?v=dragon-ui-20260831v3';
+} from './tagging-api.js?v=dragon-ui-20260901v6';
 import {
     readTaggingWorkspaceState,
     returnToTaggingWorkspace,
     updateTaggingPromptDraft,
-} from './tagging-workspace-state.js?v=dragon-ui-20260831v3';
+} from './tagging-workspace-state.js?v=dragon-ui-20260831v4';
 
 const api = createApiClient();
 const RESULT_BATCH_SIZE = 24;
@@ -40,6 +41,9 @@ export async function loadTaggingResultsPage() {
         cleanup: null,
         stopObserver: null,
         pollTimer: null,
+        jobPoller: null,
+        jobSignature: jobSignature(job),
+        forceJobRender: false,
         requestId: 0,
         jobEpoch: 0,
     };
@@ -61,6 +65,18 @@ function mountPage(root, state) {
     root.addEventListener('toggle', (event) => handleToggle(state, event), { ...options, capture: true });
     state.cleanup = () => controller.abort();
     reconnectObserver(state);
+    state.jobPoller = createVisibilityPoller({
+        delay: POLL_INTERVAL_MS,
+        poll: async () => {
+            const jobId = state.job?.id;
+            if (!state.active || !jobId || !isBusy(state.job)) {
+                state.jobPoller?.stop();
+                return;
+            }
+            await hydrateJob(state, jobId, state.jobEpoch);
+            if (!isBusy(state.job)) state.jobPoller?.stop();
+        },
+    });
     if (isBusy(state.job)) schedulePoll(state);
 }
 
@@ -69,6 +85,7 @@ function disposePage(state) {
     state.jobEpoch += 1;
     state.requestId += 1;
     clearPoll(state);
+    state.jobPoller = null;
     state.stopObserver?.();
     state.cleanup?.();
 }
@@ -81,7 +98,7 @@ function renderPage(state) {
             <div><button class="dragon-icon-button" type="button" data-results-back aria-label="返回打标工作台" title="返回">${renderIcon('chevronDown')}</button><span><span class="dragon-eyebrow">FINAL CAPTIONS</span><h1>最终打标结果</h1></span></div>
             <label class="dragon-field dragon-tagging-job-select"><span>任务</span><select class="dragon-select" data-results-job>${jobOptions(state)}</select></label>
         </header>
-        ${feedback(state)}
+        <div data-results-feedback>${feedback(state)}</div>
         ${job ? renderResultsWorkspace(state, items) : renderEmptyResults()}
     </div>`;
 }
@@ -92,7 +109,7 @@ function renderResultsWorkspace(state, items) {
     const candidates = committableItems(items);
     return `<section class="dragon-tagging-results-shell">
         <header class="dragon-tagging-results-toolbar">
-            <div><span class="dragon-status-badge" data-state="${busy ? 'running' : job.state === 'failed' ? 'error' : 'active'}"><i aria-hidden="true"></i><b>${escapeHtml(jobStateLabel(job.state))}</b></span><span>${Number(job.completed || 0)}/${Number(job.total || items.length)} 完成</span></div>
+            <div><span class="dragon-status-badge" data-results-job-status data-state="${job.state === 'running' ? 'running' : job.state === 'queued' ? 'queued' : job.state === 'failed' ? 'error' : 'active'}"><i aria-hidden="true"></i><b>${escapeHtml(jobStateLabel(job.state))}</b></span><span data-results-progress>${Number(job.completed || 0)}/${Number(job.total || items.length)} 完成</span></div>
             <div><button class="dragon-btn dragon-btn-ghost dragon-btn-sm" type="button" data-results-select-all ${candidates.length && !busy ? '' : 'disabled'}>${renderIcon('check', 'dragon-btn-icon')}<span>全选候选</span></button><button class="dragon-btn dragon-btn-ghost dragon-btn-sm" type="button" data-results-clear ${state.selectedItemIds.size ? '' : 'disabled'}><span>清空</span></button><button class="dragon-btn dragon-btn-secondary dragon-btn-sm" type="button" data-results-commit-selected ${state.selectedItemIds.size && !busy && !state.committing ? '' : 'disabled'}>${renderIcon('save', 'dragon-btn-icon')}<span>写回已选 <b data-results-selected-count>${state.selectedItemIds.size}</b></span></button><button class="dragon-btn dragon-btn-primary dragon-btn-sm" type="button" data-results-commit-all ${candidates.length && !busy && !state.committing ? '' : 'disabled'}><span>全部写回 TXT</span></button></div>
         </header>
         <div class="dragon-tagging-review-list" data-results-list>${renderResultRows(state, 0, state.visibleCount)}${renderResultSentinel(state)}</div>
@@ -109,12 +126,13 @@ function renderResultRow(state, item, busy) {
     const expanded = state.expandedItemIds.has(item.id);
     const text = String(item.proposed_caption || '');
     const status = itemStateLabel(item.state);
+    const hideStatus = ['ready', 'queued'].includes(item.state);
     return `<details class="dragon-tagging-review-item" data-result-item="${escapeAttribute(item.id)}" data-state="${escapeAttribute(item.state || '')}" ${expanded ? 'open' : ''}>
         <summary>
             <input type="checkbox" data-result-select data-item-id="${escapeAttribute(item.id)}" ${selected ? 'checked' : ''} ${text.trim() && !busy ? '' : 'disabled'} aria-label="选择 ${escapeAttribute(item.name || item.file || '结果')}">
             <span class="dragon-tagging-review-thumb">${item.url ? `<img src="${escapeAttribute(item.thumbnail_url || item.url)}" alt="${escapeAttribute(item.name || '图片')}" width="240" height="135" loading="lazy" decoding="async">` : renderIcon('panels')}</span>
-            <span class="dragon-tagging-review-summary"><strong title="${escapeAttribute(item.file || '')}">${escapeHtml(item.name || item.file || '-')}</strong><small>${escapeHtml(excerpt(text) || item.error || '暂无候选标注')}</small></span>
-            <span class="dragon-status-badge" data-state="${statusTone(item.state)}"><i aria-hidden="true"></i><b>${escapeHtml(status)}</b></span>
+            <span class="dragon-tagging-review-summary"><strong title="${escapeAttribute(item.file || '')}">${escapeHtml(item.name || item.file || '-')}</strong><small data-result-summary>${escapeHtml(excerpt(text) || item.error || '暂无候选标注')}</small></span>
+            <span class="dragon-status-badge" data-result-item-status data-state="${statusTone(item.state)}" ${hideStatus ? 'hidden' : ''}><i aria-hidden="true"></i><b>${hideStatus ? '' : escapeHtml(status)}</b></span>
             ${renderIcon('chevronDown')}
         </summary>
         ${expanded ? renderResultDetail(state, item, busy) : ''}
@@ -128,9 +146,8 @@ function renderResultDetail(state, item, busy) {
             <div class="dragon-tagging-review-editor">
                 <label class="dragon-field"><span>最终标注</span><textarea class="dragon-textarea" rows="9" data-result-caption data-item-id="${escapeAttribute(item.id)}" ${busy ? 'disabled' : ''}>${escapeHtml(text)}</textarea></label>
                 ${item.caption ? `<details class="dragon-tagging-original-caption"><summary>原始标注</summary><p>${escapeHtml(item.caption)}</p></details>` : ''}
-                ${item.error ? `<p class="dragon-tagging-result-error" role="alert">${escapeHtml(item.error)}</p>` : ''}
-                ${item.commit_error ? `<p class="dragon-tagging-result-error" role="alert">写回失败：${escapeHtml(item.commit_error)}</p>` : ''}
-                <footer><span>${item.caption_file ? `已写入 ${escapeHtml(item.caption_file)}` : '目标：图片同名 .txt'}</span><button class="dragon-btn dragon-btn-secondary dragon-btn-sm" type="button" data-result-save data-item-id="${escapeAttribute(item.id)}" ${busy || state.savingItemIds.has(item.id) ? 'disabled' : ''}>${renderIcon('save', 'dragon-btn-icon')}<span>${state.savingItemIds.has(item.id) ? '保存中…' : '保存修改'}</span></button></footer>
+                <div data-result-item-feedback>${renderItemFeedback(item)}</div>
+                <footer><span data-result-target>${item.caption_file ? `已写入 ${escapeHtml(item.caption_file)}` : '目标：图片同名 .txt'}</span><button class="dragon-btn dragon-btn-secondary dragon-btn-sm" type="button" data-result-save data-item-id="${escapeAttribute(item.id)}" ${busy || state.savingItemIds.has(item.id) ? 'disabled' : ''}>${renderIcon('save', 'dragon-btn-icon')}<span data-result-save-label>${state.savingItemIds.has(item.id) ? '保存中…' : '保存修改'}</span></button></footer>
             </div>
         </div>`;
 }
@@ -197,6 +214,7 @@ async function selectJob(state, jobId) {
     state.expandedItemIds.clear();
     state.dirtyItemIds.clear();
     state.visibleCount = RESULT_BATCH_SIZE;
+    state.forceJobRender = true;
     await hydrateJob(state, jobId, epoch);
     if (state.active && state.jobEpoch === epoch) updateTaggingPromptDraft({ jobId });
 }
@@ -221,7 +239,7 @@ async function saveItem(state, itemId) {
     } finally {
         if (isCurrentJob(state, jobId, epoch, requestId)) {
             state.savingItemIds.delete(itemId);
-            rerender(state);
+            syncResultsOrRerender(state);
         }
     }
 }
@@ -237,7 +255,7 @@ async function commitResults(state, all) {
     const itemIds = all ? [] : [...state.selectedItemIds];
     if (!all && !itemIds.length) return;
     state.committing = true;
-    rerender(state);
+    syncResultsOrRerender(state);
     try {
         const payload = await commitTaggingJob(api, jobId, { all, itemIds });
         if (!isCurrentJob(state, jobId, epoch, requestId)) return;
@@ -249,7 +267,7 @@ async function commitResults(state, all) {
     } finally {
         if (isCurrentJob(state, jobId, epoch, requestId)) {
             state.committing = false;
-            rerender(state);
+            syncResultsOrRerender(state);
         }
     }
 }
@@ -270,7 +288,7 @@ async function saveDirtyItems(state, jobId, epoch, requestId) {
     } catch (error) {
         if (isCurrentJob(state, jobId, epoch, requestId)) {
             state.error = error.message || '保存结果失败';
-            rerender(state);
+            syncResultsOrRerender(state);
         }
         return false;
     }
@@ -281,15 +299,27 @@ async function hydrateJob(state, jobId, epoch = state.jobEpoch) {
     try {
         const payload = await loadTaggingJob(api, jobId);
         if (!isCurrentRequest(state, epoch, requestId)) return;
-        state.job = payload.job || null;
+        const previousJobId = state.job?.id || '';
+        const nextJob = payload.job || null;
+        const changed = state.jobSignature !== jobSignature(nextJob);
+        const forceRender = state.forceJobRender;
+        state.forceJobRender = false;
+        state.job = nextJob;
         state.visibleCount = Math.min(Math.max(state.visibleCount, RESULT_BATCH_SIZE), state.job?.items?.length || 0);
-        rerender(state);
+        state.jobSignature = jobSignature(state.job);
+        if (changed || forceRender) {
+            const sameJob = Boolean(previousJobId && previousJobId === state.job?.id);
+            if (forceRender || !sameJob || !syncResultsJobView(state)) rerender(state);
+        }
         if (isBusy(state.job)) schedulePoll(state);
         else clearPoll(state);
     } catch (error) {
         if (isCurrentRequest(state, epoch, requestId)) {
-            state.error = error.message || '读取打标结果失败';
-            rerender(state);
+            const message = error.message || '读取打标结果失败';
+            if (state.error !== message) {
+                state.error = message;
+                syncFeedback(state);
+            }
         }
     }
 }
@@ -328,6 +358,76 @@ function syncSelection(state) {
     if (commit) commit.disabled = !state.selectedItemIds.size || isBusy(state.job) || state.committing;
     const clear = state.root?.querySelector('[data-results-clear]');
     if (clear) clear.disabled = !state.selectedItemIds.size;
+    const job = state.job;
+    const busy = isBusy(job);
+    const candidates = committableItems(job?.items || []);
+    const selectAll = state.root?.querySelector('[data-results-select-all]');
+    if (selectAll) selectAll.disabled = !candidates.length || busy;
+    const commitAll = state.root?.querySelector('[data-results-commit-all]');
+    if (commitAll) commitAll.disabled = !candidates.length || busy || state.committing;
+}
+
+function syncResultsJobView(state) {
+    const root = state.root;
+    const job = state.job;
+    if (!root || !job?.id || !root.querySelector('[data-results-job-status]')) return false;
+    const busy = isBusy(job);
+    const status = root.querySelector('[data-results-job-status]');
+    status.dataset.state = busy ? 'running' : job.state === 'failed' ? 'error' : 'active';
+    const statusLabel = status.querySelector('b');
+    if (statusLabel) statusLabel.textContent = jobStateLabel(job.state);
+    const progress = root.querySelector('[data-results-progress]');
+    if (progress) progress.textContent = `${Number(job.completed || 0)}/${Number(job.total || job.items?.length || 0)} 完成`;
+    const itemsById = new Map((job.items || []).map((item) => [item.id, item]));
+    root.querySelectorAll('[data-result-item]').forEach((row) => {
+        const item = itemsById.get(row.dataset.resultItem);
+        if (!item) return;
+        const text = String(item.proposed_caption || '');
+        row.dataset.state = item.state || '';
+        const summary = row.querySelector('[data-result-summary]');
+        if (summary) summary.textContent = excerpt(text) || item.error || '暂无候选标注';
+        const itemStatus = row.querySelector('[data-result-item-status]');
+        if (itemStatus) {
+            const hideStatus = ['ready', 'queued'].includes(item.state);
+            itemStatus.hidden = hideStatus;
+            itemStatus.dataset.state = statusTone(item.state);
+            const label = itemStatus.querySelector('b');
+            if (label) label.textContent = hideStatus ? '' : itemStateLabel(item.state);
+        }
+        const checkbox = row.querySelector('[data-result-select]');
+        if (checkbox) {
+            checkbox.checked = state.selectedItemIds.has(item.id);
+            checkbox.disabled = !text.trim() || busy;
+        }
+        const textarea = row.querySelector('[data-result-caption]');
+        if (textarea) {
+            textarea.disabled = busy;
+            if (!state.dirtyItemIds.has(item.id) && globalThis.document?.activeElement !== textarea) textarea.value = text;
+        }
+        const save = row.querySelector('[data-result-save]');
+        if (save) {
+            save.disabled = busy || state.savingItemIds.has(item.id);
+            const saveLabel = save.querySelector('[data-result-save-label]');
+            if (saveLabel) saveLabel.textContent = state.savingItemIds.has(item.id) ? '保存中…' : '保存修改';
+        }
+        const target = row.querySelector('[data-result-target]');
+        if (target) target.textContent = item.caption_file ? `已写入 ${item.caption_file}` : '目标：图片同名 .txt';
+        const itemFeedback = row.querySelector('[data-result-item-feedback]');
+        if (itemFeedback) itemFeedback.innerHTML = renderItemFeedback(item);
+    });
+    syncSelection(state);
+    updateResultSentinel(state);
+    syncFeedback(state);
+    return true;
+}
+
+function syncFeedback(state) {
+    const host = state.root?.querySelector('[data-results-feedback]');
+    if (host) host.innerHTML = feedback(state);
+}
+
+function syncResultsOrRerender(state) {
+    if (!syncResultsJobView(state)) rerender(state);
 }
 
 function reconnectObserver(state) {
@@ -350,16 +450,13 @@ function rerender(state) {
 }
 
 function schedulePoll(state) {
-    clearPoll(state);
-    if (!state.active || !state.job?.id || !isBusy(state.job)) return;
-    state.pollTimer = globalThis.setTimeout(async () => {
-        state.pollTimer = null;
-        await hydrateJob(state, state.job.id, state.jobEpoch);
-    }, POLL_INTERVAL_MS);
+    if (!state.active || !state.job?.id || !isBusy(state.job)) return clearPoll(state);
+    if (!state.jobPoller) return;
+    state.jobPoller.start();
 }
 
 function clearPoll(state) {
-    if (state.pollTimer != null) globalThis.clearTimeout(state.pollTimer);
+    state.jobPoller?.stop();
     state.pollTimer = null;
 }
 
@@ -370,6 +467,10 @@ function jobOptions(state) {
 
 function feedback(state) {
     return `${state.error ? `<div class="dragon-config-feedback dragon-config-feedback-visible" data-tone="error" role="alert">${escapeHtml(state.error)}</div>` : ''}${state.notice ? `<div class="dragon-config-feedback dragon-config-feedback-visible" data-tone="success" role="status">${escapeHtml(state.notice)}</div>` : ''}`;
+}
+
+function renderItemFeedback(item) {
+    return `${item.error ? `<p class="dragon-tagging-result-error" role="alert">${escapeHtml(item.error)}</p>` : ''}${item.commit_error ? `<p class="dragon-tagging-result-error" role="alert">写回失败：${escapeHtml(item.commit_error)}</p>` : ''}`;
 }
 
 function committableItems(items) {
@@ -383,6 +484,19 @@ function isBusy(job) {
     return ['queued', 'running'].includes(job?.state);
 }
 
+function jobSignature(job) {
+    if (!job) return '';
+    const items = (job.items || []).map((item) => [
+        item.id || item.file || '',
+        item.state || '',
+        String(item.proposed_caption || '').length,
+        String(item.caption || '').length,
+        String(item.error || '').length,
+        String(item.commit_error || '').length,
+    ].join(':')).join('|');
+    return [job.id || '', job.state || '', job.total || 0, job.completed || 0, job.failed || 0, job.canceled || 0, job.error || '', items].join('|');
+}
+
 function isCurrentJob(state, jobId, epoch, requestId) {
     return isCurrentRequest(state, epoch, requestId) && state.job?.id === jobId;
 }
@@ -392,6 +506,7 @@ function isCurrentRequest(state, epoch, requestId) {
 }
 
 function statusTone(value) {
+    if (value === 'queued') return 'queued';
     if (['ready', 'committed'].includes(value)) return 'active';
     if (value === 'failed') return 'error';
     if (value === 'running') return 'running';
@@ -399,11 +514,11 @@ function statusTone(value) {
 }
 
 function itemStateLabel(value) {
-    return { queued: '排队中', running: '调用中', ready: '待审阅', committed: '已写回', failed: '失败', canceled: '已停止', empty: '内容为空' }[value] || value || '未知';
+    return { queued: '', running: '调用中', ready: '待审阅', committed: '已写回', failed: '失败', canceled: '已停止', empty: '内容为空' }[value] || value || '未知';
 }
 
 function jobStateLabel(value) {
-    return { queued: '排队中', running: '处理中', completed: '全部完成', partial: '部分完成', failed: '失败', canceled: '已停止' }[value] || value || '未知';
+    return { queued: '待处理', running: '处理中', completed: '全部完成', partial: '部分完成', failed: '失败', canceled: '已停止' }[value] || value || '未知';
 }
 
 function excerpt(value) {

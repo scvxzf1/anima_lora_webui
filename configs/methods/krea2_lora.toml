@@ -61,6 +61,15 @@ gradient_checkpointing = true
 unsloth_offload_checkpointing = false
 selective_checkpoint = "off"
 
+# 双卡 Pipeline Parallel 实验配置。默认关闭；启用前还需关闭 torch_compile
+# 和 block swap。当前主训练 loop 尚未接入 1F1B，预检会明确拒绝启动，避免
+# 误回退为普通 Accelerate 数据并行。
+pipeline_parallel = false
+pipeline_parallel_stages = 2
+pipeline_parallel_microbatches = 4
+pipeline_parallel_schedule = "1f1b"
+pipeline_parallel_split = "balanced"
+
 # Block swap 关掉: 28 块 CPU master (22.64 GiB) + DiT bf16 CPU 副本叠加会
 # 压爆系统内存 (62GB, swap 满载被 OOM kill). grad-ckpt 省激活才是 1024 训练
 # 的正解 (阶段6 findings: block swap 只搬权重救不了激活瓶颈).

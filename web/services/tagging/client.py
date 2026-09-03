@@ -70,7 +70,11 @@ class OpenAICompatibleClient:
     def __init__(self, settings: dict[str, Any]):
         self.settings = settings
         self.base_url = validate_endpoint(settings).rstrip("/")
-        self.api_key = get_api_key()
+        # A job may be bound to a non-active profile.  Preserve the legacy
+        # zero-argument call when no profile id is present so embedded callers
+        # that replace ``get_api_key`` continue to work unchanged.
+        profile_id = settings.get("_profile_id")
+        self.api_key = get_api_key(profile_id) if profile_id else get_api_key()
 
     async def describe_image(self, image_path: Path, prompt: str) -> dict[str, Any]:
         path = Path(image_path)

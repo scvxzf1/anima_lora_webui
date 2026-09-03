@@ -3,10 +3,14 @@
  */
 
 import { createApiClient } from '../../shared/api.js?v=dragon-ui-20260812v35';
+import {
+    confirmDragonDialog,
+    promptDragonDialog,
+} from '../../shared/dialog.js?v=module-bootstrap-20260901-dialog-v1';
 import { escapeHtml } from '../../shared/format.js?v=dragon-ui-20260812v35';
 import { renderIcon } from '../icons.js?v=dragon-ui-20260812v35';
 import { DRAGON_VIEWPORT_QUERIES, matchesDragonViewport } from '../responsive.js?v=dragon-ui-20260824v1';
-import { loadTrainingContext, selectTrainingConfigFile } from './training-controls.js?v=dragon-ui-20260824v114';
+import { loadTrainingContext, selectTrainingConfigFile } from './training-controls.js?v=dragon-ui-20260901v115';
 
 const api = createApiClient();
 const HIDDEN_TRAINING_GROUP_IDS = new Set(['gui_methods', 'presets']);
@@ -30,11 +34,12 @@ export function bindTrainingPresetLibrary(root, context, {
 } = {}) {
     const library = root.querySelector('[data-training-preset-library]');
     if (!library) return null;
-    const state = { context, groups: context.groups || [], draggedFile: '', dirty: false, onConfigFileChange, onSaveChanges };
+    const state = { context, groups: context.groups || [], draggedFile: '', dirty: false, destroyed: false, onConfigFileChange, onSaveChanges };
     const viewportLayout = bindTrainingPresetViewport(library);
     bindLibraryEvents(library, state, beforeContextChange);
     return {
         updateContext(nextContext) {
+            if (state.destroyed || !library.isConnected) return;
             state.context = {
                 ...nextContext,
                 groups: state.groups,
@@ -51,7 +56,10 @@ export function bindTrainingPresetLibrary(root, context, {
             state.dirty = Boolean(dirty);
             syncSaveUpdatesButton(library, state);
         },
-        destroy: () => viewportLayout.destroy(),
+        destroy: () => {
+            state.destroyed = true;
+            viewportLayout.destroy();
+        },
     };
 }
 
@@ -158,18 +166,22 @@ function bindLibraryEvents(library, state, beforeContextChange) {
     library.querySelector('[data-training-preset-action="save-updates"]')?.addEventListener('click', () => saveCurrentUpdates(library, state));
     library.querySelector('[data-training-preset-action="new-group"]')?.addEventListener('click', () => createGroup(library, state, beforeContextChange));
     const importInput = library.querySelector('[data-training-preset-import-file]');
+    // Keep the file picker inside the trusted click event.  Dirty-state
+    // confirmation runs after a file is selected, so browsers do not discard
+    // the picker request when the Dragon dialog yields to an async Promise.
     library.querySelector('[data-training-preset-action="import"]')?.addEventListener('click', () => {
-        if (beforeContextChange && beforeContextChange() === false) return;
+        if (!library.isConnected) return;
         importInput?.click();
     });
     importInput?.addEventListener('change', () => importTrainingConfig(library, state, importInput, beforeContextChange));
     library.querySelector('[data-training-preset-action="save-as"]')?.addEventListener('click', () => saveCurrentConfigAs(library, state, beforeContextChange));
     library.querySelector('[data-training-preset-action="export"]')?.addEventListener('click', () => exportCurrentConfig(library, state));
-    library.querySelectorAll('[data-training-preset-select]').forEach((button) => button.addEventListener('click', () => {
+    library.querySelectorAll('[data-training-preset-select]').forEach((button) => button.addEventListener('click', async () => {
         const file = state.context.files.find((item) => item.path === button.dataset.trainingPresetSelect);
         if (!file || file.path === state.context.configFile) return;
-        if (beforeContextChange && beforeContextChange() === false) return;
-        activateConfigFile(state, file.path);
+        if (beforeContextChange && await beforeContextChange() === false) return;
+        if (!library.isConnected || !button.isConnected) return;
+        await activateConfigFile(state, file.path);
     }));
     library.querySelectorAll('[data-training-group-action]').forEach((button) => button.addEventListener('click', () => {
         const group = state.groups.find((item) => item.id === button.dataset.groupId);
@@ -312,9 +324,18 @@ async function importTrainingConfig(library, state, input, beforeContextChange) 
     if (!source) return;
     try {
         if (!/\.toml$/i.test(source.name)) throw new Error('只能导入 TOML 配置文件');
-        const target = promptImportedConfigPath('导入配置名称', source.name);
-        if (!target) return;
+        if (beforeContextChange && await beforeContextChange() === false) return;
+        if (!library.isConnected) return;
+        const target = await promptImportedConfigPath({
+            title: '导入训练配置',
+            message: '请输入导入后的配置名称，文件将保存到 configs/imported/。',
+            defaultFilename: source.name,
+            icon: 'upload',
+            confirmText: '导入配置',
+        });
+        if (!library.isConnected || !target) return;
         const content = await source.text();
+        if (!library.isConnected) return;
         await saveNewTrainingConfig(library, state, target, content, beforeContextChange, '配置已导入');
     } catch (error) {
         setFeedback(library, error.message || '导入训练配置失败', true);
@@ -324,10 +345,17 @@ async function importTrainingConfig(library, state, input, beforeContextChange) 
 async function saveCurrentConfigAs(library, state, beforeContextChange) {
     const source = state.context.configFile;
     if (!source) return;
-    if (beforeContextChange && beforeContextChange() === false) return;
+    if (beforeContextChange && await beforeContextChange() === false) return;
+    if (!library.isConnected) return;
     try {
-        const target = promptImportedConfigPath('另存为配置名称', defaultCopyFilename(source));
-        if (!target) return;
+        const target = await promptImportedConfigPath({
+            title: '另存为训练配置',
+            message: '请输入新配置的文件名称，文件将保存到 configs/imported/。',
+            defaultFilename: defaultCopyFilename(source),
+            icon: 'save',
+            confirmText: '保存副本',
+        });
+        if (!library.isConnected || !target) return;
         setFeedback(library, '正在读取当前配置…');
         const payload = await api(`/api/config/raw?file=${encodeURIComponent(source)}`);
         if (payload.ok === false) throw new Error(payload.error || '读取训练配置失败');
@@ -338,32 +366,46 @@ async function saveCurrentConfigAs(library, state, beforeContextChange) {
 }
 
 async function saveNewTrainingConfig(library, state, file, content, beforeContextChange, successMessage) {
+    if (!library.isConnected || state.destroyed) return false;
     setFeedback(library, '正在保存新配置…');
     const payload = await api('/api/config/raw/save-as', {
         method: 'POST',
         body: JSON.stringify({ file, content }),
     });
     if (payload.ok === false) throw new Error(payload.error || '保存训练配置失败');
-    await refreshLibrary(library, state, beforeContextChange);
-    if (!activateConfigFile(state, file)) throw new Error('新配置已保存，但没有出现在预设库中，请刷新后重试');
+    const refreshed = await refreshLibrary(library, state, beforeContextChange);
+    if (!refreshed || !library.isConnected || state.destroyed) return false;
+    if (!await activateConfigFile(state, file)) throw new Error('新配置已保存，但没有出现在预设库中，请刷新后重试');
+    if (!library.isConnected || state.destroyed) return false;
     setFeedback(library, payload.message || successMessage);
+    return true;
 }
 
-function activateConfigFile(state, path) {
+async function activateConfigFile(state, path) {
     const file = (state.context.files || []).find((item) => item.path === path);
     if (!file) return false;
     const nextContext = selectTrainingConfigFile(state.context, file, { notify: false, persist: false });
     if (!nextContext) return false;
-    if (state.onConfigFileChange) state.onConfigFileChange(file, nextContext);
-    else {
+    if (state.onConfigFileChange) {
+        const result = await state.onConfigFileChange(file, nextContext);
+        return result !== false;
+    } else {
         state.context = nextContext;
         window.dispatchEvent(new CustomEvent('dragon-refresh-route'));
     }
     return true;
 }
 
-function promptImportedConfigPath(label, defaultFilename) {
-    const answer = window.prompt(label, defaultFilename);
+async function promptImportedConfigPath({ title, message, defaultFilename, icon, confirmText }) {
+    const answer = await promptDragonDialog({
+        eyebrow: '训练配置',
+        title,
+        message,
+        label: '配置名称',
+        value: defaultFilename,
+        icon,
+        confirmText,
+    });
     if (answer === null) return '';
     return `configs/imported/${normalizeImportedFilename(answer)}`;
 }
@@ -394,19 +436,43 @@ function downloadTextFile(content, filename) {
 }
 
 async function createGroup(library, state, beforeContextChange) {
-    const label = window.prompt('请输入新的训练配置分组名称');
-    if (!label?.trim()) return;
+    const label = await promptDragonDialog({
+        eyebrow: '训练配置预设',
+        title: '新建配置分组',
+        message: '请输入新的训练配置分组名称。',
+        label: '分组名称',
+        icon: 'folder',
+        confirmText: '创建分组',
+    });
+    if (!library.isConnected || !label?.trim()) return;
     await mutateGroup(library, state, '/api/config/file-groups', { method: 'POST', body: JSON.stringify({ label: label.trim(), kind: 'training' }) }, beforeContextChange);
 }
 
 async function renameGroup(library, state, group, beforeContextChange) {
-    const label = window.prompt('请输入新的分组名称', group.label || group.id);
-    if (!label?.trim() || label.trim() === group.label) return;
+    const label = await promptDragonDialog({
+        eyebrow: '训练配置预设',
+        title: '重命名配置分组',
+        message: '请输入新的训练配置分组名称。',
+        label: '分组名称',
+        value: group.label || group.id,
+        icon: 'edit',
+        confirmText: '保存名称',
+    });
+    if (!library.isConnected || !label?.trim() || label.trim() === group.label) return;
     await mutateGroup(library, state, `/api/config/file-groups/${encodeURIComponent(group.id)}`, { method: 'PATCH', body: JSON.stringify({ label: label.trim() }) }, beforeContextChange);
 }
 
 async function deleteGroup(library, state, group, beforeContextChange) {
-    if (!window.confirm(`确认删除分组“${group.label || group.id}”吗？配置文件不会被删除。`)) return;
+    const confirmed = await confirmDragonDialog({
+        eyebrow: '训练配置预设',
+        title: `删除“${group.label || group.id}”？`,
+        message: '确认删除这个配置分组吗？',
+        description: '配置文件和其中的参数不会被删除。',
+        tone: 'danger',
+        icon: 'trash',
+        confirmText: '删除分组',
+    });
+    if (!confirmed || !library.isConnected) return;
     await mutateGroup(library, state, `/api/config/file-groups/${encodeURIComponent(group.id)}`, { method: 'DELETE' }, beforeContextChange);
 }
 
@@ -422,6 +488,7 @@ async function mutateGroup(library, state, url, options, beforeContextChange) {
 
 async function refreshLibrary(library, state, beforeContextChange, message = '') {
     const inventory = await loadTrainingContext({ refresh: true, includeGpus: false });
+    if (!library.isConnected || state.destroyed) return false;
     state.groups = inventory.groups || [];
     state.context = {
         ...inventory,
@@ -436,6 +503,7 @@ async function refreshLibrary(library, state, beforeContextChange, message = '')
     bindLibraryEvents(library, state, beforeContextChange);
     if (message) setFeedback(library, message);
     clearDropPreview(library, state);
+    return true;
 }
 
 function canMoveFromGroup(file, group) {

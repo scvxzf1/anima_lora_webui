@@ -2,25 +2,251 @@
  * Keep these scoped: classic mode loads the original component styles.
  */
 
-body[data-dragon-ui] :is(#dataset-preview-dialog, #stage-resolution-dialog) {
+/* Shared action dialogs replace browser prompt/confirm/alert chrome while
+ * retaining one compact surface for every dataset-editor decision. */
+body[data-dragon-ui] .dragon-dialog-host {
+    width: min(520px, calc(100% - 32px));
+    max-height: min(720px, calc(100vh - 48px));
+    max-height: min(720px, calc(100dvh - 48px));
+    margin: auto;
+    padding: 0;
+    overflow: hidden;
+    border: 0;
+    background: transparent;
+    color: var(--dragon-text-primary);
+    z-index: var(--dragon-z-modal);
+}
+
+/* The Dragon stylesheet is loaded independently from the classic reset, so
+ * do not rely on the classic global [hidden] rule for dynamic dialog parts. */
+body[data-dragon-ui] .dragon-dialog-host [hidden] {
+    display: none !important;
+}
+
+body[data-dragon-ui] .dragon-dialog-host::backdrop {
+    background: color-mix(in srgb, var(--dragon-text-primary) 38%, transparent);
+    backdrop-filter: blur(8px) saturate(0.82);
+}
+
+body[data-dragon-ui] .dragon-dialog-host[data-fallback-open] {
+    position: fixed;
+    inset: 0;
+    display: grid;
+    width: 100%;
+    height: 100%;
+    max-width: none;
+    max-height: none;
+    place-items: center;
+    border: 0;
+    border-radius: 0;
+    background: color-mix(in srgb, var(--dragon-text-primary) 38%, transparent);
+}
+
+body[data-dragon-ui] .dragon-dialog-shell {
+    display: grid;
+    width: min(520px, calc(100vw - 32px));
+    max-height: min(720px, calc(100vh - 48px));
+    max-height: min(720px, calc(100dvh - 48px));
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    overflow: hidden;
+    border: 1px solid color-mix(in srgb, var(--dragon-border) 82%, transparent);
+    border-radius: var(--dragon-radius-lg);
+    background: var(--dragon-bg-elevated);
+    box-shadow: var(--dragon-shadow-lg);
+}
+
+body[data-dragon-ui] .dragon-dialog-host[open] .dragon-dialog-shell {
+    animation: dragon-dialog-enter var(--dragon-dur-med) var(--dragon-ease-out) both;
+}
+
+@keyframes dragon-dialog-enter {
+    from { opacity: 0; transform: translateY(8px) scale(0.985); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+body[data-dragon-ui] .dragon-dialog-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--dragon-sp-4);
+    padding: 20px var(--dragon-sp-5) 18px;
+    border-bottom: 1px solid var(--dragon-divider);
+}
+
+body[data-dragon-ui] .dragon-dialog-heading {
+    display: flex;
+    min-width: 0;
+    align-items: flex-start;
+    gap: var(--dragon-sp-3);
+}
+
+body[data-dragon-ui] .dragon-dialog-symbol {
+    display: grid;
+    width: 38px;
+    height: 38px;
+    flex: 0 0 38px;
+    place-items: center;
+    border: 1px solid var(--dragon-border-light);
+    border-radius: 50%;
+    background: var(--dragon-accent-light);
+    color: var(--dragon-accent);
+}
+
+body[data-dragon-ui] .dragon-dialog-symbol-icon { width: 19px; height: 19px; }
+
+body[data-dragon-ui] .dragon-dialog-host[data-tone="warning"] .dragon-dialog-symbol {
+    border-color: color-mix(in srgb, var(--dragon-warning) 35%, var(--dragon-border-light));
+    background: color-mix(in srgb, var(--dragon-warning) 12%, transparent);
+    color: var(--dragon-warning);
+}
+
+body[data-dragon-ui] .dragon-dialog-host[data-tone="danger"] .dragon-dialog-symbol {
+    border-color: color-mix(in srgb, var(--dragon-error) 35%, var(--dragon-border-light));
+    background: color-mix(in srgb, var(--dragon-error) 12%, transparent);
+    color: var(--dragon-error);
+}
+
+body[data-dragon-ui] .dragon-dialog-heading > div { min-width: 0; }
+body[data-dragon-ui] .dragon-dialog-heading h2 {
+    margin: 4px 0 0;
+    color: var(--dragon-text-primary);
+    font-size: var(--dragon-fs-subhead);
+    line-height: 1.25;
+    overflow-wrap: anywhere;
+}
+
+body[data-dragon-ui] .dragon-dialog-close {
+    display: grid;
+    width: 32px;
+    height: 32px;
+    flex: 0 0 32px;
+    place-items: center;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--dragon-text-tertiary);
+    cursor: pointer;
+}
+
+body[data-dragon-ui] .dragon-dialog-close:hover {
+    border-color: var(--dragon-border-light);
+    background: var(--dragon-tile-bg-hover);
+    color: var(--dragon-text-primary);
+}
+
+body[data-dragon-ui] .dragon-dialog-close:focus-visible,
+body[data-dragon-ui] .dragon-dialog-host button:focus-visible,
+body[data-dragon-ui] .dragon-dialog-host input:focus-visible {
+    outline: 2px solid var(--dragon-border-focus);
+    outline-offset: 2px;
+}
+
+body[data-dragon-ui] .dragon-dialog-close-icon { width: 17px; height: 17px; }
+
+body[data-dragon-ui] .dragon-dialog-body {
+    min-height: 0;
+    padding: var(--dragon-sp-5);
+    overflow: auto;
+}
+
+body[data-dragon-ui] .dragon-dialog-message,
+body[data-dragon-ui] .dragon-dialog-description {
+    margin: 0;
+    color: var(--dragon-text-secondary);
+    font-size: var(--dragon-fs-body);
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+    white-space: pre-line;
+}
+
+body[data-dragon-ui] .dragon-dialog-description {
+    margin-top: var(--dragon-sp-2);
+    color: var(--dragon-text-tertiary);
+    font-size: var(--dragon-fs-caption);
+}
+
+body[data-dragon-ui] .dragon-dialog-field {
+    display: grid;
+    gap: var(--dragon-sp-2);
+    margin-top: var(--dragon-sp-4);
+}
+
+body[data-dragon-ui] .dragon-dialog-field label {
+    color: var(--dragon-text-secondary);
+    font-size: var(--dragon-fs-caption);
+    font-weight: var(--dragon-fw-medium);
+}
+
+body[data-dragon-ui] .dragon-dialog-field input {
+    box-sizing: border-box;
+    width: 100%;
+    min-height: 40px;
+    padding: 8px 12px;
+    border: 1px solid var(--dragon-border);
+    border-radius: var(--dragon-radius-sm);
+    background: var(--dragon-input-bg);
+    color: var(--dragon-text-primary);
+    font: inherit;
+}
+
+body[data-dragon-ui] .dragon-dialog-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: var(--dragon-sp-2);
+    padding: var(--dragon-sp-3) var(--dragon-sp-5) var(--dragon-sp-4);
+    border-top: 1px solid var(--dragon-divider);
+    background: color-mix(in srgb, var(--dragon-bg-secondary) 70%, var(--dragon-bg-elevated));
+}
+
+body[data-dragon-ui] .dragon-dialog-actions .dragon-btn {
+    min-height: 34px;
+    justify-content: center;
+    padding: 7px var(--dragon-sp-4);
+    font-size: var(--dragon-fs-caption);
+}
+
+body[data-dragon-ui] .dragon-dialog-host[data-tone="danger"] [data-dragon-dialog-confirm] {
+    background: var(--dragon-error);
+}
+
+body[data-dragon-ui] .dragon-dialog-host[data-tone="danger"] [data-dragon-dialog-confirm]:hover {
+    background: color-mix(in srgb, var(--dragon-error) 84%, var(--dragon-text-primary));
+}
+
+@media (max-width: 520px) {
+    body[data-dragon-ui] .dragon-dialog-host { width: calc(100% - 24px); max-height: calc(100dvh - 24px); }
+    body[data-dragon-ui] .dragon-dialog-shell { width: calc(100vw - 24px); max-height: calc(100dvh - 24px); }
+    body[data-dragon-ui] .dragon-dialog-header,
+    body[data-dragon-ui] .dragon-dialog-body { padding-right: var(--dragon-sp-4); padding-left: var(--dragon-sp-4); }
+    body[data-dragon-ui] .dragon-dialog-actions { padding-right: var(--dragon-sp-4); padding-left: var(--dragon-sp-4); }
+    body[data-dragon-ui] .dragon-dialog-actions .dragon-btn { flex: 1 1 140px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    body[data-dragon-ui] .dragon-dialog-host[open] .dragon-dialog-shell { animation: none; }
+}
+
+body[data-dragon-ui] :is(.dataset-preview-dialog, #stage-resolution-dialog) {
     position: fixed;
     inset: 0;
     margin: auto;
     padding: 0;
 }
 
-body[data-dragon-ui] :is(#dataset-preview-dialog, #stage-resolution-dialog) form {
+body[data-dragon-ui] :is(.dataset-preview-dialog, #stage-resolution-dialog) form {
     display: flex;
     max-height: inherit;
     flex-direction: column;
 }
 
-body[data-dragon-ui] #dataset-preview-dialog form {
+body[data-dragon-ui] .dataset-preview-dialog form {
     height: 100%;
     min-height: 0;
 }
 
-body[data-dragon-ui] :is(#dataset-preview-dialog, #stage-resolution-dialog) .preview-dialog-header {
+body[data-dragon-ui] :is(.dataset-preview-dialog, #stage-resolution-dialog) .preview-dialog-header {
     display: flex;
     align-items: flex-start;
     justify-content: space-between;
@@ -29,13 +255,13 @@ body[data-dragon-ui] :is(#dataset-preview-dialog, #stage-resolution-dialog) .pre
     border-bottom: 1px solid var(--dragon-divider);
 }
 
-body[data-dragon-ui] :is(#dataset-preview-dialog, #stage-resolution-dialog) .preview-dialog-header h2 {
+body[data-dragon-ui] :is(.dataset-preview-dialog, #stage-resolution-dialog) .preview-dialog-header h2 {
     margin: 0 0 var(--dragon-sp-1);
     color: var(--dragon-text-primary);
     font-size: var(--dragon-fs-subhead);
 }
 
-body[data-dragon-ui] :is(#dataset-preview-dialog, #stage-resolution-dialog) .preview-dialog-header p {
+body[data-dragon-ui] :is(.dataset-preview-dialog, #stage-resolution-dialog) .preview-dialog-header p {
     margin: 0;
     color: var(--dragon-text-tertiary);
     font-size: var(--dragon-fs-caption);
@@ -43,7 +269,7 @@ body[data-dragon-ui] :is(#dataset-preview-dialog, #stage-resolution-dialog) .pre
     overflow-wrap: anywhere;
 }
 
-body[data-dragon-ui] :is(#dataset-preview-dialog, #stage-resolution-dialog) .btn {
+body[data-dragon-ui] :is(.dataset-preview-dialog, #stage-resolution-dialog) .btn {
     display: inline-flex;
     min-height: 34px;
     align-items: center;
@@ -61,22 +287,22 @@ body[data-dragon-ui] :is(#dataset-preview-dialog, #stage-resolution-dialog) .btn
     cursor: pointer;
 }
 
-body[data-dragon-ui] :is(#dataset-preview-dialog, #stage-resolution-dialog) .btn:hover {
+body[data-dragon-ui] :is(.dataset-preview-dialog, #stage-resolution-dialog) .btn:hover {
     border-color: var(--dragon-accent);
     background: var(--dragon-tile-bg-hover);
 }
 
-body[data-dragon-ui] :is(#dataset-preview-dialog, #stage-resolution-dialog) .btn:disabled {
+body[data-dragon-ui] :is(.dataset-preview-dialog, #stage-resolution-dialog) .btn:disabled {
     opacity: 0.55;
     cursor: not-allowed;
 }
 
-body[data-dragon-ui] :is(#dataset-preview-dialog, #stage-resolution-dialog) .btn-small {
+body[data-dragon-ui] :is(.dataset-preview-dialog, #stage-resolution-dialog) .btn-small {
     min-height: 32px;
     padding: 5px 12px;
 }
 
-body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-dialog-actions {
+body[data-dragon-ui] .dataset-preview-dialog .dataset-preview-dialog-actions {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
@@ -84,7 +310,7 @@ body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-dialog-actions {
     gap: var(--dragon-sp-2);
 }
 
-body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-dialog-body {
+body[data-dragon-ui] .dataset-preview-dialog .dataset-preview-dialog-body {
     display: grid;
     grid-template-columns: minmax(260px, 320px) minmax(0, 1fr);
     gap: var(--dragon-sp-4);
@@ -93,11 +319,11 @@ body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-dialog-body {
     padding: var(--dragon-sp-4);
 }
 
-body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-dialog-body[hidden] {
+body[data-dragon-ui] .dataset-preview-dialog .dataset-preview-dialog-body[hidden] {
     display: none !important;
 }
 
-body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-info {
+body[data-dragon-ui] .dataset-preview-dialog .dataset-preview-info {
     position: sticky;
     top: 0;
     align-self: start;
@@ -108,24 +334,24 @@ body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-info {
     background: var(--dragon-bg-secondary);
 }
 
-body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-info h3 {
+body[data-dragon-ui] .dataset-preview-dialog .dataset-preview-info h3 {
     margin: 0 0 var(--dragon-sp-3);
     color: var(--dragon-text-primary);
     font-size: var(--dragon-fs-callout-medium);
 }
 
-body[data-dragon-ui] #dataset-preview-dialog .preview-dialog-details {
+body[data-dragon-ui] .dataset-preview-dialog .preview-dialog-details {
     color: var(--dragon-text-secondary);
     font-size: var(--dragon-fs-caption);
     overflow-wrap: anywhere;
 }
 
-body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-results {
+body[data-dragon-ui] .dataset-preview-dialog .dataset-preview-results {
     position: relative;
     min-width: 0;
 }
 
-body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-pagination {
+body[data-dragon-ui] .dataset-preview-dialog .dataset-preview-pagination {
     position: sticky;
     top: 0;
     z-index: 3;
@@ -142,16 +368,16 @@ body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-pagination {
     background: var(--dragon-bg-secondary);
 }
 
-body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-pagination[hidden] {
+body[data-dragon-ui] .dataset-preview-dialog .dataset-preview-pagination[hidden] {
     display: none;
 }
 
-body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-page-button {
+body[data-dragon-ui] .dataset-preview-dialog .dataset-preview-page-button {
     width: 32px;
     height: 32px;
 }
 
-body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-page-jump {
+body[data-dragon-ui] .dataset-preview-dialog .dataset-preview-page-jump {
     display: flex;
     max-height: none;
     min-width: 0;
@@ -165,7 +391,7 @@ body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-page-jump {
     white-space: nowrap;
 }
 
-body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-page-input {
+body[data-dragon-ui] .dataset-preview-dialog .dataset-preview-page-input {
     box-sizing: border-box;
     width: 56px;
     min-width: 0;
@@ -180,13 +406,13 @@ body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-page-input {
     text-align: center;
 }
 
-body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-page-input:focus-visible {
+body[data-dragon-ui] .dataset-preview-dialog .dataset-preview-page-input:focus-visible {
     border-color: var(--dragon-accent);
     outline: 2px solid var(--dragon-border-focus);
     outline-offset: 1px;
 }
 
-body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-page-status {
+body[data-dragon-ui] .dataset-preview-dialog .dataset-preview-page-status {
     grid-column: 1 / -1;
     min-width: 0;
     color: var(--dragon-text-secondary);
@@ -195,15 +421,15 @@ body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-page-status {
     text-align: center;
 }
 
-body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-page-icon.previous {
+body[data-dragon-ui] .dataset-preview-dialog .dataset-preview-page-icon.previous {
     transform: rotate(-90deg);
 }
 
-body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-page-icon.next {
+body[data-dragon-ui] .dataset-preview-dialog .dataset-preview-page-icon.next {
     transform: rotate(90deg);
 }
 
-body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-load-more {
+body[data-dragon-ui] .dataset-preview-dialog .dataset-preview-load-more {
     position: relative;
     display: grid;
     min-height: 68px;
@@ -218,24 +444,24 @@ body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-load-more {
     text-align: center;
 }
 
-body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-load-before {
+body[data-dragon-ui] .dataset-preview-dialog .dataset-preview-load-before {
     margin-top: 0;
     margin-bottom: var(--dragon-sp-3);
 }
 
-body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-load-more[hidden] {
+body[data-dragon-ui] .dataset-preview-dialog .dataset-preview-load-more[hidden] {
     display: none;
 }
 
-body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-load-more.has-error {
+body[data-dragon-ui] .dataset-preview-dialog .dataset-preview-load-more.has-error {
     border-color: var(--dragon-error);
 }
 
-body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-load-more.has-error .dataset-preview-load-more-status {
+body[data-dragon-ui] .dataset-preview-dialog .dataset-preview-load-more.has-error .dataset-preview-load-more-status {
     color: var(--dragon-error);
 }
 
-body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-sentinel {
+body[data-dragon-ui] .dataset-preview-dialog .dataset-preview-sentinel {
     position: absolute;
     top: -1px;
     left: 50%;
@@ -243,7 +469,7 @@ body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-sentinel {
     height: 1px;
 }
 
-body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-empty {
+body[data-dragon-ui] .dataset-preview-dialog .dataset-preview-empty {
     padding: var(--dragon-sp-5);
     border: 1px dashed var(--dragon-border);
     border-radius: var(--dragon-radius-md);
@@ -252,13 +478,13 @@ body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-empty {
     text-align: center;
 }
 
-body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-grid {
+body[data-dragon-ui] .dataset-preview-dialog .dataset-preview-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr));
     gap: var(--dragon-sp-3);
 }
 
-body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-card {
+body[data-dragon-ui] .dataset-preview-dialog .dataset-preview-card {
     display: grid;
     min-width: 0;
     overflow: hidden;
@@ -269,11 +495,11 @@ body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-card {
     contain-intrinsic-size: 380px;
 }
 
-body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-card-error {
+body[data-dragon-ui] .dataset-preview-dialog .dataset-preview-card-error {
     border-color: var(--dragon-error);
 }
 
-body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-image-btn {
+body[data-dragon-ui] .dataset-preview-dialog .dataset-preview-image-btn {
     position: relative;
     display: grid;
     width: 100%;
@@ -289,13 +515,13 @@ body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-image-btn {
     cursor: pointer;
 }
 
-body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-image-btn:focus-visible {
+body[data-dragon-ui] .dataset-preview-dialog .dataset-preview-image-btn:focus-visible {
     z-index: 1;
     outline: 2px solid var(--dragon-accent);
     outline-offset: -2px;
 }
 
-body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-image-btn img {
+body[data-dragon-ui] .dataset-preview-dialog .dataset-preview-image-btn img {
     position: absolute;
     inset: 0;
     display: block;
@@ -306,29 +532,29 @@ body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-image-btn img {
     object-fit: contain;
 }
 
-body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-card-body {
+body[data-dragon-ui] .dataset-preview-dialog .dataset-preview-card-body {
     display: grid;
     gap: var(--dragon-sp-2);
     min-width: 0;
     padding: var(--dragon-sp-3);
 }
 
-body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-card-body :is(strong, span) {
+body[data-dragon-ui] .dataset-preview-dialog .dataset-preview-card-body :is(strong, span) {
     min-width: 0;
     overflow-wrap: anywhere;
 }
 
-body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-card-body strong {
+body[data-dragon-ui] .dataset-preview-dialog .dataset-preview-card-body strong {
     color: var(--dragon-text-primary);
     font-size: var(--dragon-fs-caption);
 }
 
-body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-card-body span {
+body[data-dragon-ui] .dataset-preview-dialog .dataset-preview-card-body span {
     color: var(--dragon-text-tertiary);
     font-size: var(--dragon-fs-tiny);
 }
 
-body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-caption {
+body[data-dragon-ui] .dataset-preview-dialog .dataset-preview-caption {
     display: grid;
     gap: var(--dragon-sp-2);
     min-width: 0;
@@ -336,18 +562,18 @@ body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-caption {
     border-top: 1px solid var(--dragon-border-light);
 }
 
-body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-caption > div {
+body[data-dragon-ui] .dataset-preview-dialog .dataset-preview-caption > div {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: var(--dragon-sp-2);
 }
 
-body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-caption.missing span {
+body[data-dragon-ui] .dataset-preview-dialog .dataset-preview-caption.missing span {
     color: var(--dragon-warning);
 }
 
-body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-caption pre {
+body[data-dragon-ui] .dataset-preview-dialog .dataset-preview-caption pre {
     max-height: 120px;
     margin: 0;
     padding: var(--dragon-sp-2);
@@ -364,7 +590,7 @@ body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-caption pre {
 /* The detail view shares the dialog shell with the grid.  The grid remains
  * mounted while it is hidden, which keeps lazy-loaded pages and scroll state.
  */
-body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-detail-view {
+body[data-dragon-ui] .dataset-preview-dialog .dataset-preview-detail-view {
     display: flex;
     min-height: 0;
     flex: 1 1 auto;
@@ -374,11 +600,11 @@ body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-detail-view {
     background: var(--dragon-bg-primary);
 }
 
-body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-detail-view[hidden] {
+body[data-dragon-ui] .dataset-preview-dialog .dataset-preview-detail-view[hidden] {
     display: none;
 }
 
-body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-detail-toolbar {
+body[data-dragon-ui] .dataset-preview-dialog .dataset-preview-detail-toolbar {
     display: flex;
     min-width: 0;
     align-items: center;
@@ -386,7 +612,7 @@ body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-detail-toolbar {
     gap: var(--dragon-sp-3);
 }
 
-body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-detail-position {
+body[data-dragon-ui] .dataset-preview-dialog .dataset-preview-detail-position {
     min-width: 0;
     overflow: hidden;
     color: var(--dragon-text-tertiary);
@@ -395,11 +621,11 @@ body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-detail-position {
     white-space: nowrap;
 }
 
-body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-detail-back-icon {
+body[data-dragon-ui] .dataset-preview-dialog .dataset-preview-detail-back-icon {
     transform: rotate(-90deg);
 }
 
-body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-detail-content {
+body[data-dragon-ui] .dataset-preview-dialog .dataset-preview-detail-content {
     display: grid;
     min-height: 0;
     flex: 1 1 auto;
@@ -408,7 +634,7 @@ body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-detail-content {
     overflow: hidden;
 }
 
-body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-detail-image-wrap {
+body[data-dragon-ui] .dataset-preview-dialog .dataset-preview-detail-image-wrap {
     position: relative;
     display: grid;
     min-width: 0;
@@ -420,7 +646,7 @@ body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-detail-image-wrap 
     background: var(--dragon-bg-tertiary);
 }
 
-body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-detail-image-wrap img {
+body[data-dragon-ui] .dataset-preview-dialog .dataset-preview-detail-image-wrap img {
     position: absolute;
     inset: 0;
     display: block;
@@ -431,7 +657,7 @@ body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-detail-image-wrap 
     object-fit: contain;
 }
 
-body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-detail-info {
+body[data-dragon-ui] .dataset-preview-dialog .dataset-preview-detail-info {
     display: flex;
     min-width: 0;
     min-height: 0;
@@ -440,7 +666,7 @@ body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-detail-info {
     overflow: auto;
 }
 
-body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-detail-section {
+body[data-dragon-ui] .dataset-preview-dialog .dataset-preview-detail-section {
     min-width: 0;
     padding: var(--dragon-sp-4);
     border: 1px solid var(--dragon-border-light);
@@ -448,20 +674,20 @@ body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-detail-section {
     background: var(--dragon-bg-secondary);
 }
 
-body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-detail-section h3 {
+body[data-dragon-ui] .dataset-preview-dialog .dataset-preview-detail-section h3 {
     margin: 0 0 var(--dragon-sp-3);
     color: var(--dragon-text-primary);
     font-size: var(--dragon-fs-callout-medium);
 }
 
-body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-detail-meta,
-body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-detail-section dl {
+body[data-dragon-ui] .dataset-preview-dialog .dataset-preview-detail-meta,
+body[data-dragon-ui] .dataset-preview-dialog .dataset-preview-detail-section dl {
     display: grid;
     gap: var(--dragon-sp-2);
     margin: 0;
 }
 
-body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-detail-section dl > div {
+body[data-dragon-ui] .dataset-preview-dialog .dataset-preview-detail-section dl > div {
     display: grid;
     grid-template-columns: minmax(76px, 0.35fr) minmax(0, 1fr);
     gap: var(--dragon-sp-3);
@@ -469,12 +695,12 @@ body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-detail-section dl 
     align-items: start;
 }
 
-body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-detail-section dt {
+body[data-dragon-ui] .dataset-preview-dialog .dataset-preview-detail-section dt {
     color: var(--dragon-text-tertiary);
     font-size: var(--dragon-fs-tiny);
 }
 
-body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-detail-section dd {
+body[data-dragon-ui] .dataset-preview-dialog .dataset-preview-detail-section dd {
     min-width: 0;
     margin: 0;
     color: var(--dragon-text-secondary);
@@ -483,7 +709,7 @@ body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-detail-section dd 
     overflow-wrap: anywhere;
 }
 
-body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-detail-section-head {
+body[data-dragon-ui] .dataset-preview-dialog .dataset-preview-detail-section-head {
     display: flex;
     min-width: 0;
     align-items: flex-start;
@@ -491,18 +717,18 @@ body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-detail-section-hea
     gap: var(--dragon-sp-2);
 }
 
-body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-detail-section-head h3 {
+body[data-dragon-ui] .dataset-preview-dialog .dataset-preview-detail-section-head h3 {
     min-width: 0;
 }
 
-body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-detail-caption-source {
+body[data-dragon-ui] .dataset-preview-dialog .dataset-preview-detail-caption-source {
     margin: 0 0 var(--dragon-sp-2);
     color: var(--dragon-text-tertiary);
     font-size: var(--dragon-fs-tiny);
     overflow-wrap: anywhere;
 }
 
-body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-detail-caption pre {
+body[data-dragon-ui] .dataset-preview-dialog .dataset-preview-detail-caption pre {
     max-height: min(360px, 42vh);
     margin: 0;
     padding: var(--dragon-sp-3);
@@ -516,6 +742,11 @@ body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-detail-caption pre
     line-height: 1.55;
     white-space: pre-wrap;
     overflow-wrap: anywhere;
+}
+
+body[data-dragon-ui] .dataset-preview-dialog [data-dataset-preview-detail-caption-text][hidden],
+body[data-dragon-ui] .dataset-preview-dialog .dataset-preview-detail-editor[hidden] {
+    display: none !important;
 }
 
 body[data-dragon-ui] #stage-resolution-dialog .stage-resolution-dialog-body {
@@ -757,55 +988,55 @@ body[data-dragon-ui] #stage-resolution-dialog .stage-resolution-target-candidate
 }
 
 @media (max-width: 720px) {
-    body[data-dragon-ui] :is(#dataset-preview-dialog, #stage-resolution-dialog) .preview-dialog-header {
+    body[data-dragon-ui] :is(.dataset-preview-dialog, #stage-resolution-dialog) .preview-dialog-header {
         flex-direction: column;
     }
 
-    body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-dialog-actions {
+    body[data-dragon-ui] .dataset-preview-dialog .dataset-preview-dialog-actions {
         justify-content: flex-start;
     }
 
-    body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-dialog-body,
+    body[data-dragon-ui] .dataset-preview-dialog .dataset-preview-dialog-body,
     body[data-dragon-ui] #stage-resolution-dialog .stage-resolution-summary,
     body[data-dragon-ui] #stage-resolution-dialog .stage-resolution-field {
         grid-template-columns: 1fr;
     }
 
-    body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-info {
+    body[data-dragon-ui] .dataset-preview-dialog .dataset-preview-info {
         position: static;
     }
 
-    body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-grid {
+    body[data-dragon-ui] .dataset-preview-dialog .dataset-preview-grid {
         grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr));
     }
 
-    body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-pagination {
+    body[data-dragon-ui] .dataset-preview-dialog .dataset-preview-pagination {
         grid-template-columns: 32px minmax(0, 1fr) 32px;
     }
 
-    body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-page-jump {
+    body[data-dragon-ui] .dataset-preview-dialog .dataset-preview-page-jump {
         gap: var(--dragon-sp-1);
     }
 
-    body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-page-input {
+    body[data-dragon-ui] .dataset-preview-dialog .dataset-preview-page-input {
         width: 50px;
     }
 
-    body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-detail-content {
+    body[data-dragon-ui] .dataset-preview-dialog .dataset-preview-detail-content {
         grid-template-columns: 1fr;
         grid-template-rows: minmax(220px, 1fr) minmax(180px, 1fr);
         overflow: auto;
     }
 
-    body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-detail-image-wrap {
+    body[data-dragon-ui] .dataset-preview-dialog .dataset-preview-detail-image-wrap {
         min-height: 220px;
     }
 
-    body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-detail-info {
+    body[data-dragon-ui] .dataset-preview-dialog .dataset-preview-detail-info {
         overflow: visible;
     }
 
-    body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-detail-section-head {
+    body[data-dragon-ui] .dataset-preview-dialog .dataset-preview-detail-section-head {
         align-items: center;
     }
 

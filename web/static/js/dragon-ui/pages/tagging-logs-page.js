@@ -2,14 +2,15 @@
 
 import { createApiClient } from '../../shared/api.js?v=dragon-ui-20260812v35';
 import { renderIcon } from '../icons.js?v=dragon-ui-20260812v35';
+import { createVisibilityPoller } from '../visibility-poller.js?v=dragon-ui-20260826v2';
 import {
     clearTaggingLogs,
     loadTaggingJobs,
     loadTaggingLogs,
     loadTaggingSettings,
     saveTaggingSettings,
-} from './tagging-api.js?v=dragon-ui-20260831v3';
-import { returnToTaggingWorkspace } from './tagging-workspace-state.js?v=dragon-ui-20260831v3';
+} from './tagging-api.js?v=dragon-ui-20260901v6';
+import { returnToTaggingWorkspace } from './tagging-workspace-state.js?v=dragon-ui-20260831v4';
 
 const api = createApiClient();
 const POLL_INTERVAL_MS = 1500;
@@ -38,6 +39,7 @@ export async function loadTaggingLogsPage() {
         root: null,
         cleanup: null,
         pollTimer: null,
+        logPoller: null,
         requestId: 0,
     };
     return {
@@ -55,6 +57,10 @@ function mountPage(root, state) {
     root.addEventListener('change', (event) => handleChange(state, event), options);
     root.addEventListener('submit', (event) => handleSubmit(state, event), options);
     state.cleanup = () => controller.abort();
+    state.logPoller = createVisibilityPoller({
+        delay: POLL_INTERVAL_MS,
+        poll: () => pollLogs(state),
+    });
     scrollLogToBottom(state);
     schedulePoll(state);
 }
@@ -63,6 +69,7 @@ function disposePage(state) {
     state.active = false;
     state.requestId += 1;
     clearPoll(state);
+    state.logPoller = null;
     state.cleanup?.();
 }
 
@@ -72,12 +79,12 @@ function renderPage(state) {
             <div><button class="dragon-icon-button" type="button" data-logs-back aria-label="返回打标工作台" title="返回">${renderIcon('chevronDown')}</button><span><span class="dragon-eyebrow">MEMORY LOG</span><h1>打标日志</h1></span></div>
             <span class="dragon-tagging-memory-badge">${renderIcon('memory')}<b data-logs-buffered>${state.buffered}</b> / <b data-logs-retention>${state.retentionLines}</b></span>
         </header>
-        ${feedback(state)}
+        <div data-logs-feedback>${feedback(state)}</div>
         <section class="dragon-tagging-log-shell">
             <form class="dragon-tagging-log-toolbar" data-logs-settings-form>
                 <label class="dragon-field"><span>任务</span><select class="dragon-select" name="job_id" data-logs-job-filter><option value="">全部任务</option>${jobOptions(state)}</select></label>
                 <label class="dragon-field"><span>内存保留行数</span><input class="dragon-input" type="number" name="log_retention_lines" min="50" max="5000" step="50" value="${state.retentionLines}"></label>
-                <button class="dragon-btn dragon-btn-secondary" type="submit" ${state.saving ? 'disabled' : ''}>${renderIcon('save', 'dragon-btn-icon')}<span>${state.saving ? '保存中…' : '保存'}</span></button>
+                <button class="dragon-btn dragon-btn-secondary" type="submit" data-logs-save ${state.saving ? 'disabled' : ''}>${renderIcon('save', 'dragon-btn-icon')}<span data-logs-save-label>${state.saving ? '保存中…' : '保存'}</span></button>
                 <button class="dragon-btn dragon-btn-danger" type="button" data-logs-clear ${state.lines.length ? '' : 'disabled'}>${renderIcon('trash', 'dragon-btn-icon')}<span>清空日志</span></button>
             </form>
             <div class="dragon-tagging-log-window" data-logs-window tabindex="0" role="log" aria-live="off">${renderLogLines(state)}</div>
@@ -119,7 +126,7 @@ function handleSubmit(state, event) {
 async function saveRetention(state, value) {
     if (state.saving) return;
     state.saving = true;
-    rerender(state, { keepBottom: true });
+    syncLogControls(state);
     try {
         const settings = await saveTaggingSettings(api, { log_retention_lines: value });
         state.settings = settings.settings || settings;
@@ -131,7 +138,8 @@ async function saveRetention(state, value) {
         state.error = error.message || '保存日志设置失败';
     } finally {
         state.saving = false;
-        rerender(state, { keepBottom: true });
+        syncLogControls(state);
+        syncFeedback(state);
     }
 }
 
@@ -147,7 +155,9 @@ async function clearLogs(state) {
     } catch (error) {
         state.error = error.message || '清空日志失败';
     }
-    rerender(state);
+    renderLogWindow(state);
+    syncLogControls(state);
+    syncFeedback(state);
 }
 
 async function reloadLogs(state) {
@@ -163,11 +173,13 @@ async function reloadLogs(state) {
         state.lastSequence = Number(payload.last_sequence || 0);
         state.buffered = Number(payload.buffered || 0);
         state.retentionLines = Number(payload.retention_lines || state.retentionLines);
-        rerender(state, { keepBottom: true });
+        renderLogWindow(state, { keepBottom: true });
+        syncLogControls(state);
+        syncFeedback(state);
     } catch (error) {
         if (state.active && requestId === state.requestId) {
             state.error = error.message || '读取日志失败';
-            rerender(state);
+            syncFeedback(state);
         }
     }
 }
@@ -187,28 +199,28 @@ async function pollLogs(state) {
         if (payload.lines?.length) {
             state.lines.push(...payload.lines);
             state.lines = state.lines.slice(-state.retentionLines);
-            renderLogWindow(state, { keepBottom: true });
+            appendLogLines(state, payload.lines);
         } else {
             syncCounters(state);
         }
     } catch (error) {
-        if (state.active) state.error = error.message || '刷新日志失败';
-    } finally {
-        schedulePoll(state);
+        if (state.active) {
+            const message = error.message || '刷新日志失败';
+            if (state.error !== message) {
+                state.error = message;
+                syncFeedback(state);
+            }
+        }
     }
 }
 
 function schedulePoll(state) {
-    clearPoll(state);
-    if (!state.active) return;
-    state.pollTimer = globalThis.setTimeout(() => {
-        state.pollTimer = null;
-        pollLogs(state);
-    }, POLL_INTERVAL_MS);
+    if (!state.active || !state.logPoller) return;
+    state.logPoller.start();
 }
 
 function clearPoll(state) {
-    if (state.pollTimer != null) globalThis.clearTimeout(state.pollTimer);
+    state.logPoller?.stop();
     state.pollTimer = null;
 }
 
@@ -217,6 +229,33 @@ function renderLogWindow(state, { keepBottom = false } = {}) {
     if (!windowNode) return;
     const wasNearBottom = keepBottom || windowNode.scrollHeight - windowNode.scrollTop - windowNode.clientHeight < 80;
     windowNode.innerHTML = renderLogLines(state);
+    syncCounters(state);
+    if (wasNearBottom) scrollLogToBottom(state);
+}
+
+function appendLogLines(state, lines) {
+    const windowNode = state.root?.querySelector('[data-logs-window]');
+    const list = windowNode?.querySelector('ol');
+    if (!windowNode || !list) return renderLogWindow(state);
+    const wasNearBottom = windowNode.scrollHeight - windowNode.scrollTop - windowNode.clientHeight < 80;
+    list.insertAdjacentHTML('beforeend', lines.map(renderLogLine).join(''));
+    let removedHeight = 0;
+    while (list.children.length > LOG_DOM_WINDOW) {
+        const first = list.firstElementChild;
+        if (!first) break;
+        removedHeight += Number(first.offsetHeight || 0);
+        first.remove();
+    }
+    if (!wasNearBottom && removedHeight) windowNode.scrollTop = Math.max(0, windowNode.scrollTop - removedHeight);
+    const hidden = Math.max(0, state.lines.length - list.children.length);
+    let marker = windowNode.querySelector('.dragon-tagging-log-truncated');
+    if (hidden > 0) {
+        if (!marker) {
+            windowNode.insertAdjacentHTML('afterbegin', '<div class="dragon-tagging-log-truncated"></div>');
+            marker = windowNode.querySelector('.dragon-tagging-log-truncated');
+        }
+        if (marker) marker.textContent = `较早 ${hidden} 行仍保留在内存中`;
+    } else marker?.remove();
     syncCounters(state);
     if (wasNearBottom) scrollLogToBottom(state);
 }
@@ -236,6 +275,26 @@ function syncCounters(state) {
     const retention = state.root?.querySelector('[data-logs-retention]');
     if (buffered) buffered.textContent = String(state.buffered);
     if (retention) retention.textContent = String(state.retentionLines);
+}
+
+function syncLogControls(state) {
+    const form = state.root?.querySelector('[data-logs-settings-form]');
+    if (!form) return;
+    const input = form.elements.log_retention_lines;
+    if (input && globalThis.document?.activeElement !== input) input.value = String(state.retentionLines);
+    const save = form.querySelector('[data-logs-save]');
+    if (save) {
+        save.disabled = state.saving;
+        const label = save.querySelector('[data-logs-save-label]');
+        if (label) label.textContent = state.saving ? '保存中…' : '保存';
+    }
+    const clear = form.querySelector('[data-logs-clear]');
+    if (clear) clear.disabled = !state.lines.length;
+}
+
+function syncFeedback(state) {
+    const host = state.root?.querySelector('[data-logs-feedback]');
+    if (host) host.innerHTML = feedback(state);
 }
 
 function scrollLogToBottom(state) {

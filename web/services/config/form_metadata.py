@@ -206,6 +206,26 @@ FIELD_HELP: dict[str, dict[str, str]] = {
         "en": "Number of DiT blocks to swap between GPU and CPU. 0: all on GPU. Higher values = more CPU offloading for low VRAM.",
         "ko": "GPU와 CPU 간 스왑할 DiT 블록 수. 0: 전부 GPU. 높을수록 더 많이 CPU로 오프로드.",
     },
+    "pipeline_parallel": {
+        "en": "Enable the experimental two-GPU pipeline planner for the selected model family. Launch remains blocked until the 1F1B trainer schedule is connected.",
+        "ko": "선택한 모델 패밀리의 실험적 2-GPU 파이프라인 계획을 활성화합니다. 1F1B 학습 스케줄 연결 전까지 시작은 차단됩니다.",
+    },
+    "pipeline_parallel_stages": {
+        "en": "Pipeline stage count. The current topology requires exactly two stages and two worker processes.",
+        "ko": "파이프라인 스테이지 수입니다. 현재 토폴로지는 정확히 2개 스테이지와 2개 워커 프로세스가 필요합니다.",
+    },
+    "pipeline_parallel_microbatches": {
+        "en": "Microbatches per pipeline step. Four to eight reduces the two-stage bubble while each microbatch remains batch size one.",
+        "ko": "파이프라인 스텝당 마이크로배치 수입니다. 각 마이크로배치가 배치 1일 때 4~8개가 2단계 버블을 줄입니다.",
+    },
+    "pipeline_parallel_schedule": {
+        "en": "Pipeline execution schedule. The first production target accepts only 1F1B.",
+        "ko": "파이프라인 실행 스케줄입니다. 첫 구현 목표는 1F1B만 허용합니다.",
+    },
+    "pipeline_parallel_split": {
+        "en": "Model-family block partition policy. Balanced uses contiguous ranges; Krea-2 keeps its initial 13/15 heuristic while Anima and Z-Image start evenly split.",
+        "ko": "모델 패밀리 블록 분할 정책입니다. balanced는 연속 범위를 사용하며 Krea-2는 13/15, Anima와 Z-Image는 균등 분할로 시작합니다.",
+    },
     "torch_compile": {
         "en": "Enable torch.compile for the forward pass. Faster training after initial compilation. Best with static_token_count=true.",
         "ko": "torch.compile 활성화. 초기 컴파일 후 학습 속도 향상. static_token_count=true와 함께 사용 권장.",
@@ -386,6 +406,11 @@ FORM_GROUPS = {
         "gradient_checkpointing",
         "unsloth_offload_checkpointing",
         "blocks_to_swap",
+        "pipeline_parallel",
+        "pipeline_parallel_stages",
+        "pipeline_parallel_microbatches",
+        "pipeline_parallel_schedule",
+        "pipeline_parallel_split",
         "base_compute",
         "convrot_group_size",
         "convrot_scope",

@@ -33,7 +33,7 @@ import {
     prepareFormPatchValues,
     readFieldInputValue,
     shouldSkipUiDefaultField,
-} from '../../config-form/config-value-collector.js?v=module-bootstrap-20260831-release-v1';
+} from '../../config-form/config-value-collector.js?v=module-bootstrap-20260902-lokr-backend-v4';
 import {
     applyLossWeightingFieldInputState,
     currentLossWeightingScheme,

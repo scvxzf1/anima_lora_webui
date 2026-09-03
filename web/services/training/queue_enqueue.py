@@ -15,6 +15,9 @@ from web.services.training.service_state import (
 from web.services.training.common import _format_ts, _int_or_none
 from web.services.training.gpu import normalize_gpu_whitelist as _normalize_gpu_whitelist
 from web.services.training.launch_support import _normalize_continue_lora_info
+from web.services.training.resume_pipeline_gate import (
+    ensure_resume_pipeline_compatible,
+)
 from web.services.training.service_state import _new_queue_item_id
 
 
@@ -230,8 +233,10 @@ async def enqueue_resume_from_history_task(
         checkpoint,
         duration_overrides=duration_overrides,
     )
+    snapshot_config_file = _display_project_path(str(snapshot_path))
+    ensure_resume_pipeline_compatible(snapshot_config_file, gpu_whitelist)
     runtime = _clone_frozen_runtime_config(
-        _display_project_path(str(snapshot_path)),
+        snapshot_config_file,
         source_config_file=str(task.get("history_source_config_file") or ""),
         reset_data_dirs=False,
         resume_step=_int_or_none(selected.get("step")),
@@ -244,6 +249,10 @@ async def enqueue_resume_from_history_task(
         for key in ("stage_before", "stage_after", "warning"):
             if key in runtime["resume_duration"] and runtime["resume_duration"].get(key) is not None:
                 resume_info[key] = runtime["resume_duration"][key]
+    config_file = str(
+        runtime.get("runtime_config_file")
+        or snapshot_config_file
+    )
     now = time.time()
     item = {
         "id": _new_queue_item_id(
@@ -257,7 +266,7 @@ async def enqueue_resume_from_history_task(
         "variant": str(task.get("variant") or ""),
         "preset": str(task.get("preset") or "default"),
         "methods_subdir": str(task.get("methods_subdir") or "gui-methods"),
-        "runtime_config_file": str(runtime.get("runtime_config_file") or _display_project_path(str(snapshot_path))),
+        "runtime_config_file": config_file,
         "source_config_file": str(runtime.get("history_source_config_file") or task.get("history_source_config_file") or ""),
         "extra_args": ["--resume", selected["path"], "--skip_until_initial_step"],
         "gpu_whitelist": _normalize_gpu_whitelist(gpu_whitelist),

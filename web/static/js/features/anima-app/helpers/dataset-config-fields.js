@@ -1,4 +1,4 @@
-import { FIELD_LABEL_ZH } from '../../../config/catalog.js?v=module-bootstrap-20260831-release-v1';
+import { FIELD_LABEL_ZH } from '../../../config/catalog.js?v=module-bootstrap-20260902-krea2-pp-v1';
 
 export function datasetConfigLabel(key) {
     const labels = {

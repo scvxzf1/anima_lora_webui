@@ -154,6 +154,7 @@ def test_lokr_module_kwargs_forward_grouped_delta_backend():
                 "lokr_factor_group_size": 2,
                 "lokr_project_chunk_bytes": 2048,
                 "lokr_grouped_delta_backend": "triton",
+                "lokr_grouped_delta_backward_backend": "triton_grad_w1_w2_grad_x",
                 "lokr_use_einsum": "false",
                 "lokr_decompose_w2": "true",
                 "lokr_full_factor": "false",
@@ -170,6 +171,10 @@ def test_lokr_module_kwargs_forward_grouped_delta_backend():
     assert kwargs["lokr_factor_group_size"] == 2
     assert kwargs["lokr_project_chunk_bytes"] == 2048
     assert kwargs["lokr_grouped_delta_backend"] == "triton"
+    assert (
+        kwargs["lokr_grouped_delta_backward_backend"]
+        == "triton_grad_w1_w2_grad_x"
+    )
     assert kwargs["lokr_use_einsum"] is False
     assert kwargs["lokr_decompose_w2"] is True
     assert kwargs["lokr_full_factor"] is False
@@ -185,8 +190,11 @@ def test_lokr_module_kwargs_default_keeps_full_w2():
         module_class=LoKrModule,
     )
     kwargs = NETWORK_REGISTRY["lokr"].module_kwargs(ctx)
-    assert kwargs["lokr_grouped_delta_backend"] == "eager"
-    assert kwargs["lokr_grouped_delta_backward_backend"] == "eager"
+    assert kwargs["lokr_grouped_delta_backend"] == "triton"
+    assert (
+        kwargs["lokr_grouped_delta_backward_backend"]
+        == "triton_grad_w1_w2_grad_x"
+    )
     assert kwargs["lokr_use_einsum"] is True
     assert kwargs["lokr_decompose_w2"] is False
     assert kwargs["lokr_full_factor"] is False
@@ -1181,4 +1189,3 @@ def test_lokr_legacy_dim_sentinel_allowed_with_flag():
         }
     )
     assert spec.name == "lokr"
-

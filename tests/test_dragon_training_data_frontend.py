@@ -123,5 +123,5 @@ def test_training_data_styles_are_responsive_and_cache_reachable() -> None:
     assert "@container config-all-detail (max-width: 900px)" in css
     assert "@media (max-width: 734px)" in css
     assert "@media (max-width: 430px)" in css
-    assert "dragon-style.css?v=dragon-ui-20260828v155" in index
-    assert "config-page.js?v=dragon-ui-20260831v153" in page_loaders
+    assert "dragon-style.css?v=dragon-ui-20260902-training-nav-v3" in index
+    assert "config-page.js?v=dragon-ui-20260902-krea2-pp-v1" in page_loaders

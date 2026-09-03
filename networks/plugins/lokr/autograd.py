@@ -6,6 +6,11 @@ from contextlib import nullcontext
 
 import torch
 
+from .triton_backward import (
+    lokr_grad_w1_triton_available,
+    reduce_lokr_grad_w1_triton,
+)
+
 try:
     import triton
     import triton.language as tl
@@ -18,8 +23,8 @@ else:
 
 
 DEFAULT_LOKR_PROJECT_CHUNK_BYTES = 4 * 1024 * 1024
-DEFAULT_LOKR_GROUPED_DELTA_BACKEND = "eager"
-DEFAULT_LOKR_GROUPED_DELTA_BACKWARD_BACKEND = "eager"
+DEFAULT_LOKR_GROUPED_DELTA_BACKEND = "triton"
+DEFAULT_LOKR_GROUPED_DELTA_BACKWARD_BACKEND = "triton_grad_w1_w2_grad_x"
 _LOKR_PROJECT_CHUNK_BYTES = DEFAULT_LOKR_PROJECT_CHUNK_BYTES
 _LOKR_GROUPED_DELTA_BACKENDS = frozenset({"eager", "triton"})
 _LOKR_GROUPED_DELTA_BACKWARD_BACKENDS = frozenset(
@@ -28,6 +33,7 @@ _LOKR_GROUPED_DELTA_BACKWARD_BACKENDS = frozenset(
         "triton_grad_x",
         "triton_grad_w2_partial",
         "triton_grad_w2_grad_x",
+        "triton_grad_w1_w2_grad_x",
     }
 )
 _MIN_TRITON_CC = (7, 5)
@@ -452,6 +458,30 @@ def _can_use_lokr_grouped_delta_backward_triton_grad_w2_grad_x(
     )
 
 
+def _can_use_lokr_grouped_delta_backward_triton_grad_w1_w2_grad_x(
+    grad_out,
+    x,
+    w1,
+    w2,
+    gate_scale,
+    factor,
+    in_dim,
+    out_dim,
+) -> bool:
+    return lokr_grad_w1_triton_available() and (
+        _can_use_lokr_grouped_delta_backward_triton_common(
+            grad_out,
+            x,
+            w1,
+            w2,
+            gate_scale,
+            factor,
+            in_dim,
+            out_dim,
+        )
+    )
+
+
 def _lokr_add_grouped_delta_forward_eager(
     base,
     x,
@@ -735,8 +765,23 @@ def _lokr_add_grouped_delta_backward(
             out_dim,
         )
     )
+    use_triton_grad_w1_w2_grad_x = (
+        normalized_backward_backend == "triton_grad_w1_w2_grad_x"
+        and _can_use_lokr_grouped_delta_backward_triton_grad_w1_w2_grad_x(
+            grad_out,
+            x,
+            w1,
+            w2,
+            gate_scale,
+            factor,
+            in_dim,
+            out_dim,
+        )
+    )
     use_triton_grad_w2_mixed = (
-        use_triton_grad_w2_partial or use_triton_grad_w2_grad_x
+        use_triton_grad_w2_partial
+        or use_triton_grad_w2_grad_x
+        or use_triton_grad_w1_w2_grad_x
     )
     grad_x = None
     if not use_triton_grad_x:
@@ -746,6 +791,7 @@ def _lokr_add_grouped_delta_backward(
     w2_t = w2_float.transpose(0, 1)
     chunk_rows = _projection_chunk_rows(in_dim, out_dim, chunk_bytes)
     mixed_buffer = None
+    grad_w1_partial_buffer = None
     if use_triton_grad_w2_mixed:
         mixed_buffer = torch.empty(
             (chunk_rows, factor * out_dim),
@@ -791,6 +837,33 @@ def _lokr_add_grouped_delta_backward(
                                 x.dtype,
                             )
                         )
+                elif use_triton_grad_w1_w2_grad_x:
+                    with _lokr_record_function("grad_x_writeback"):
+                        grad_x[row_start:row_end].add_(
+                            _reduce_lokr_grad_x_from_mixed(
+                                mixed,
+                                w2_float,
+                                factor,
+                                in_dim,
+                                out_dim,
+                                x.dtype,
+                            )
+                        )
+            if use_triton_grad_w1_w2_grad_x:
+                with _lokr_record_function("grad_w1_reduce"):
+                    grad_w1_contribution, grad_w1_partial_buffer = (
+                        reduce_lokr_grad_w1_triton(
+                            grad,
+                            x_chunk,
+                            w2_float,
+                            factor,
+                            in_dim,
+                            out_dim,
+                            partial_buffer=grad_w1_partial_buffer,
+                        )
+                    )
+                    grad_w1[out_slice, :].add_(grad_w1_contribution)
+                continue
             for in_factor in range(factor):
                 x_slice = x_chunk[:, in_factor, :].float()
                 with _lokr_record_function("recompute_projected"):
@@ -809,7 +882,11 @@ def _lokr_add_grouped_delta_backward(
                         grad_projected = torch.einsum("g,ngo->no", coeffs, grad)
                         grad_w2.add_(grad_projected.transpose(0, 1).matmul(x_slice))
 
-                if grad_x is not None and not use_triton_grad_w2_grad_x:
+                if (
+                    grad_x is not None
+                    and not use_triton_grad_w2_grad_x
+                    and not use_triton_grad_w1_w2_grad_x
+                ):
                     with _lokr_record_function("grad_x_writeback"):
                         if grad_projected is None:
                             grad_projected = torch.einsum("g,ngo->no", coeffs, grad)
@@ -1319,9 +1396,9 @@ def lokr_add_grouped_delta_(
     contraction row-chunk by row-chunk and writes directly into the frozen
     Linear output, while backward recomputes the projection from saved inputs.
     ``backend="triton"`` switches the forward path to an experimental fused
-    CUDA kernel when the input layout and device allow it; backward remains the
-    same eager recompute formula unless ``backward_backend`` requests one of
-    the experimental Triton-only backward partial paths.
+    CUDA kernel when the input layout and device allow it. ``backward_backend``
+    can opt into the experimental Triton-assisted gradient paths; unsupported
+    devices, dtypes, shapes, or layouts retain the eager recompute formula.
     """
     normalized_backend = normalize_lokr_grouped_delta_backend(backend)
     normalized_backward_backend = normalize_lokr_grouped_delta_backward_backend(

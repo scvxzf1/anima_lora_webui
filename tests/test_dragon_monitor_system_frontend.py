@@ -404,6 +404,11 @@ def test_config_and_preview_protect_unsaved_or_unread_state():
     assert "beforeLeave: () => confirmConfigDiscard" in config
     assert "beforeunload" in config
     assert "beforeContextChange" in controls
+    assert "async function confirmConfigDiscard" in config
+    assert "if (state.leavePrompt) return state.leavePrompt" in config
+    file_change = controls[controls.index('root.querySelector(\'[data-training-context="file"]\')'):controls.index('root.querySelector(\'[data-training-context="preset"]\')')]
+    assert file_change.index("select.value = context.configFile;") < file_change.index("await beforeContextChange()")
+    assert "!root.isConnected || !select.isConnected" in file_change
     assert "beforeLeave: () => confirmPreviewDiscard" in preview
     assert "已恢复默认路径；点击“保存路径设置”后生效。" in preview
     restore_body = preview[preview.index("function restoreDefaults"):preview.index("function syncPreviewDirty")]
@@ -456,10 +461,10 @@ def test_primary_navigation_exposes_centered_workspace_routes_without_duplicate_
     assert "const PRIMARY_NAV_ITEMS = [" in nav
     assert "{ id: 'training-config', label: '训练配置', hash: '#config/training-config' }" in nav
     assert "{ id: 'datasets', label: '数据集', hash: '#dataset-editor' }" in nav
-    assert "{ id: 'training-tasks', label: '训练任务', hash: '#page/live-training' }" in nav
+    assert "{ id: 'live-training', label: '当前监控', hash: '#page/live-training' }" in nav
+    assert "{ id: 'queue', label: '训练队列', hash: '#page/queue' }" in nav
+    assert "{ id: 'history', label: '训练历史', hash: '#history' }" in nav
     assert "{ id: 'model-config', label: '模型配置', hash: '#model-config' }" in nav
-    assert "{ id: 'history', label: '训练历史', hash: '#history' }" not in nav
-    assert "{ id: 'queue', label: '训练队列', hash: '#page/queue' }" not in nav
     assert "PRIMARY_NAV_ITEMS.map(renderPrimaryNavItem)" in nav
     assert 'data-primary-nav="${item.id}"' in nav
     shortcut_catalog = nav[nav.index("const NAV_SHORTCUTS = ["):nav.index("];", nav.index("const NAV_SHORTCUTS = ["))]
@@ -469,10 +474,10 @@ def test_primary_navigation_exposes_centered_workspace_routes_without_duplicate_
     assert "id: 'configs'" not in shortcut_catalog
     assert "icon: 'folder'" not in shortcut_catalog
     assert "document.querySelectorAll('.dragon-nav-mobile-link[data-sub-id]')" in nav
-    assert "const activePrimaryId" in nav
-    assert "trainingTasksActive" in nav
-    for route in ("#page/live-training", "#live-training", "#page/queue", "#queue", "#history"):
-        assert route in nav
+    assert "const activePrimaryId = primaryNavIdForHash(hash)" in nav
+    assert "return 'live-training'" in nav
+    assert "return 'queue'" in nav
+    assert "return 'history'" in nav
     assert "'global-settings': hash.startsWith('#global-settings')" in nav
     assert ".dragon-nav-primary-link[data-active=\"true\"]" in css
     assert ".dragon-nav-primary-link[data-active=\"true\"]::after" in css
@@ -480,30 +485,29 @@ def test_primary_navigation_exposes_centered_workspace_routes_without_duplicate_
     assert ".dragon-nav-mobile-shortcut[data-active=\"true\"]" in css
 
 
-def test_training_task_pages_share_segmented_navigation_and_keep_deep_links():
+def test_training_task_pages_use_primary_navigation_without_a_secondary_bar():
     router = _read("js/dragon-ui/router.js")
-    workspace_nav = _read("js/dragon-ui/training-workspace-nav.js")
+    nav = _read("js/dragon-ui/nav.js")
     controls_css = _read("css/dragon/02a-dragon-controls.css")
+    tokens_css = _read("css/dragon/00-dragon-tokens.css")
     live_css = _read("css/dragon/07a-dragon-live-workbench.css")
 
-    assert "renderTrainingWorkspaceNav(pageType)" in router
-    assert "mountElement.innerHTML = renderTrainingWorkspaceNav(pageType)" in router
+    assert "renderTrainingWorkspaceNav" not in router
+    assert "training-workspace-nav.js" not in router
+    assert not (ROOT / "js/dragon-ui/training-workspace-nav.js").exists()
+    assert ".dragon-training-workspace-" not in controls_css
+    assert "--dragon-training-workspace-height" not in tokens_css
+    assert "var(--dragon-training-workspace-height)" not in live_css
+    assert "mountElement.replaceChildren()" in router
     assert "const currentWrapper = mountElement.querySelector('.dragon-page-wrapper')" in router
     assert "currentWrapper.classList.add('dragon-page-leave')" in router
     assert "mountElement.firstElementChild.classList.add('dragon-page-leave')" not in router
-    for page, label, route in (
+    for item_id, label, route in (
         ("live-training", "当前监控", "#page/live-training"),
         ("queue", "训练队列", "#page/queue"),
         ("history", "训练历史", "#history"),
     ):
-        assert f"page: '{page}', label: '{label}', hash: '{route}'" in workspace_nav
-    assert 'aria-label="训练任务视图"' in workspace_nav
-    assert 'aria-current="page"' in workspace_nav
-    assert ".dragon-training-workspace-tabs" in controls_css
-    assert "grid-template-columns: repeat(3, minmax(0, 1fr));" in controls_css
-    assert "position: sticky;" in controls_css
-    assert "grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);" in controls_css
-    assert "var(--dragon-training-workspace-height)" in live_css
+        assert f"id: '{item_id}', label: '{label}', hash: '{route}'" in nav
 
 
 def test_static_file_entry_explains_that_webui_service_is_required():
@@ -607,19 +611,23 @@ def test_training_config_navigation_is_merged_into_five_workflow_groups():
 
 def test_training_config_matches_classic_scope_and_keeps_unclassified_fields():
     page = _read("js/dragon-ui/pages/config-page.js")
+    availability = _read("js/dragon-ui/pages/config-field-availability.js")
     for shared_filter in (
         "CONFIG_FORM_INTERNAL_KEYS",
         "CONFIG_FORM_MERGED_FIELDS",
         "DATASET_BLUEPRINT_FIELDS",
         "DEPRECATED_CONFIG_FORM_FIELDS",
         "RETIRED_CONFIG_FORM_FIELDS",
+    ):
+        assert shared_filter in page
+    for conditional_filter in (
         "SPD_UI_DEFAULT_FIELDS",
         "CHIMERA_UI_DEFAULT_FIELDS",
         "IP_ADAPTER_UI_DEFAULT_FIELDS",
     ):
-        assert shared_filter in page
-    assert "CONVROT_FIELD_KEYS.has(key)" in page
-    assert "['w8a16_convrot', 'w8a8_convrot'].includes(baseCompute)" in page
+        assert conditional_filter in availability
+    assert "CONVROT_FIELD_KEYS.has(key)" in availability
+    assert "['w8a16_convrot', 'w8a8_convrot'].includes(baseCompute)" in availability
     assert "function unclassifiedConfigKeys(values, knownKeys)" in page
     assert "entry.sub.id === 'advanced'" in page
     assert "unclassifiedConfigKeys(values, knownKeys)" in page
@@ -628,7 +636,8 @@ def test_training_config_matches_classic_scope_and_keeps_unclassified_fields():
 def test_training_config_long_sections_are_collapsible_and_fluid():
     page = _read("js/dragon-ui/pages/config-page.js")
     css = _read("css/dragon/04-dragon-config.css")
-    assert "function renderConfigSection(section, keys, currentValues," in page
+    assert "function renderConfigSection(" in page
+    assert "{ draftValues = null, forceOpen = false, availabilityContext = null } = {}," in page
     assert '<details class="dragon-config-section dragon-config-section-collapsible"' in page
     assert 'class="dragon-config-section-count">${keys.length} 项' in page
     assert ".dragon-config-section-summary::after" in css
@@ -722,7 +731,8 @@ def test_training_config_preset_library_supports_cross_group_and_in_group_drag_d
     assert "matchesDragonViewport(DRAGON_VIEWPORT_QUERIES.trainingPresetSidebar)" in library
     assert "window.addEventListener('resize', schedule" in library
     assert "window.addEventListener('scroll', schedule" in library
-    assert "destroy: () => viewportLayout.destroy()" in library
+    assert "state.destroyed = true" in library
+    assert "viewportLayout.destroy()" in library
     assert "libraryController?.destroy?.()" in page
 
 
@@ -850,8 +860,8 @@ def test_training_context_transition_does_not_publish_mixed_render_state():
     assert response_at < state_at < commit_at < render_at
     assert "persist: false" in page
     assert "if (persist) storeContext(nextContext)" in controls
-    assert "event.target.value = context.configFile" in controls
-    assert "event.target.value = context.preset" in controls
+    assert "select.value = context.configFile" in controls
+    assert "select.value = context.preset" in controls
     callback_branch = library[library.index("if (state.onConfigFileChange)"):library.index("library.querySelectorAll('[data-training-group-action]')")]
     assert "state.context = nextContext" not in callback_branch.split("else {", 1)[0]
     assert "configFile: state.context.configFile" in library
@@ -902,7 +912,7 @@ def test_config_transition_cancels_stale_route_and_preserves_dirty_state_on_fail
     assert "const stored = readStoredContext();" in controls[controls.index("await Promise.all"):]
 
 
-def test_training_config_defaults_to_editable_file_and_hides_spd_ghost_fields():
+def test_training_config_defaults_to_editable_file_and_keeps_spd_fields_explainable():
     controls = _read("js/dragon-ui/pages/training-controls.js")
     page = _read("js/dragon-ui/pages/config-page.js")
 
@@ -917,11 +927,11 @@ def test_training_config_defaults_to_editable_file_and_hides_spd_ghost_fields():
     assert "（只读）" in controls
     assert "if (!isEditableConfigFile(trainingContext))" in page
     assert "当前训练配置为系统只读，无法保存修改" in page
-    # SPD fields are CLI-only ghosts for every selectable Web config; the SPD
-    # sub-page must be suppressed unless the current method family is spd.
-    assert "const method = activeMethodFamily(trainingContext, values);" in page
-    assert "(entry.sub.id !== 'spd' || method === 'spd')" in page
-    assert "SPD 是 CLI 实验配置，当前训练配置不会使用这些参数" in page
+    # SPD remains CLI-only, but its fields stay visible and availability rules
+    # explain why they cannot be edited from a non-SPD training configuration.
+    assert "(entry.sub.id !== 'spd' || method === 'spd')" not in page
+    assert "activeSub.id === 'spd'" not in page
+    assert "configFieldAvailability(key, availabilityContext)" in page
 
 
 def test_training_queue_action_stays_on_config_page_and_uses_dragon_dialog_surface():

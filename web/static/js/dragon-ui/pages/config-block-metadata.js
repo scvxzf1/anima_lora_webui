@@ -1,5 +1,6 @@
-import { SECTION_GROUPS } from './section-groups.js?v=dragon-ui-20260826v37';
-import { isBooleanConfigField } from './config-field-types.js?v=dragon-ui-20260830v1';
+import { SECTION_GROUPS } from './section-groups.js?v=dragon-ui-20260902-krea2-pp-v1';
+import { isBooleanConfigField } from './config-field-types.js?v=dragon-ui-20260902-lokr-backend-v4';
+import { configFieldAvailability } from './config-field-availability.js?v=dragon-ui-20260903-pp-multimodel-v1';
 
 const TAG_META = Object.freeze({
     '基础模型路径': { id: 'models', label: '模型', tone: 'required' },
@@ -74,7 +75,7 @@ function isPathField(key, value) {
         || (typeof value === 'string' && /[\\/]/.test(value));
 }
 
-export function buildConfigBlocks(entries, values, optionsByKey, defaults) {
+export function buildConfigBlocks(entries, values, optionsByKey, defaults, availabilityContext = null) {
     const rawBlocks = entries.flatMap((entry) => entry.keys.map((key) => {
         const section = sectionForField(entry, key);
         const tag = TAG_META[section?.title] || fallbackTag(entry);
@@ -96,6 +97,7 @@ export function buildConfigBlocks(entries, values, optionsByKey, defaults) {
             tone: experimental ? 'experimental' : (REQUIRED_KEYS.has(key) ? 'required' : 'neutral'),
             control: controlKind(value, optionsByKey[key], key),
             defaultValue: Object.prototype.hasOwnProperty.call(defaults, key) ? defaults[key] : undefined,
+            availability: availabilityContext ? configFieldAvailability(key, availabilityContext) : null,
         };
         return metadata;
     }));

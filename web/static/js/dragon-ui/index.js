@@ -4,15 +4,15 @@
  */
 
 import { initTheme } from './theme.js?v=dragon-ui-20260814v45';
-import { destroyNav, initNav } from './nav.js?v=dragon-ui-20260828v77';
-import { canLeaveCurrentPage, destroyRouter, initRouter, isCurrentPage, navigate, refreshCurrentRoute } from './router.js?v=dragon-ui-20260828v74';
+import { destroyNav, initNav } from './nav.js?v=dragon-ui-20260902-training-nav-v3';
+import { canLeaveCurrentPage, destroyRouter, initRouter, isCurrentPage, navigate, refreshCurrentRoute } from './router.js?v=dragon-ui-20260902-training-nav-v3';
 import { isConfigCategory } from './category-map.js?v=dragon-ui-20260826v45';
 import { destroyAnimations, initScrollAnimations, initParallax } from './animations.js?v=dragon-ui-20260824v69';
 import { destroyDragonMotion, initDragonMotion } from './motion.js?v=dragon-ui-20260824v1';
 import { applyDragonConfigChromeSettings } from './config-chrome.js?v=dragon-ui-20260825v1';
 import { trackHistoryDetailEntry } from './history-return-navigation.js?v=dragon-ui-20260825v1';
-import { createDragonPageLoaders } from './page-loaders.js?v=dragon-ui-20260831v22';
-import { clearDragonRouteStyles } from './route-styles.js?v=dragon-ui-20260831v14';
+import { createDragonPageLoaders } from './page-loaders.js?v=dragon-ui-20260903-pp-multimodel-v1';
+import { clearDragonRouteStyles } from './route-styles.js?v=dragon-ui-20260902-training-nav-v3';
 import { createApiClient } from '../shared/api.js?v=dragon-ui-20260812v35';
 import { loadAndApplyDragonUIScale } from './ui-scale.js?v=dragon-ui-20260814v43';
 
@@ -37,7 +37,7 @@ export async function initDragonUI() {
 
         initRouter(mount, loaders);
         initNav(async (route) => {
-            if (!canLeaveCurrentPage()) return false;
+            if (!(await requestLeaveApproval())) return false;
             if (route.type === 'external') return true;
             return navigate(route);
         });
@@ -52,22 +52,33 @@ export async function initDragonUI() {
         cleanupCallbacks.push(() => window.removeEventListener('dragon-motion-change', handleMotionChange));
 
         let acceptedHash = window.location.hash;
+        let hashChangeSequence = 0;
+        let leaveCheckPromise = null;
+        const requestLeaveApproval = () => {
+            if (!leaveCheckPromise) {
+                leaveCheckPromise = Promise.resolve(canLeaveCurrentPage()).finally(() => { leaveCheckPromise = null; });
+            }
+            return leaveCheckPromise;
+        };
         const handleWindowHashChange = async () => {
             const nextHash = window.location.hash;
+            const sequence = ++hashChangeSequence;
             const staysOnDatasetPage = isCurrentPage('dataset-editor') && nextHash.startsWith('#dataset-editor');
             const staysOnConfigCategory = configCategoryFromHash(acceptedHash) === configCategoryFromHash(nextHash)
                 && configCategoryFromHash(nextHash) !== null;
-            if (!staysOnDatasetPage && !staysOnConfigCategory && !canLeaveCurrentPage()) {
+            if (!staysOnDatasetPage && !staysOnConfigCategory && !(await requestLeaveApproval())) {
+                if (sequence !== hashChangeSequence) return;
                 history.replaceState(null, '', `${window.location.pathname}${window.location.search}${acceptedHash || ''}`);
                 window.dispatchEvent(new CustomEvent('dragon-route-restored'));
                 return;
             }
+            if (sequence !== hashChangeSequence) return;
             trackHistoryDetailEntry(acceptedHash, nextHash);
             acceptedHash = nextHash;
             await handleHashChange();
         };
-        const handleRouteRefresh = () => {
-            if (canLeaveCurrentPage()) refreshCurrentRoute();
+        const handleRouteRefresh = async () => {
+            if (await requestLeaveApproval()) refreshCurrentRoute();
         };
         window.addEventListener('hashchange', handleWindowHashChange);
         window.addEventListener('dragon-refresh-route', handleRouteRefresh);

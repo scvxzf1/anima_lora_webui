@@ -10,7 +10,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Mapping
 
-from library.models.family_registry import get_model_family_spec
+from library.models.family_registry import (
+    get_model_family_spec,
+    normalize_registered_family,
+)
+from library.models.pipeline_parallel import (
+    PipelineParallelConfig,
+    validate_pipeline_parallel_config,
+)
 
 
 VALID_SELECTIVE_CHECKPOINTS = {
@@ -148,7 +155,11 @@ def _nested_caption_dropout_enabled(config: Mapping[str, Any] | object) -> bool:
     return False
 
 
-def check_training_compat(config: Mapping[str, Any] | object) -> TrainingCompatResult:
+def check_training_compat(
+    config: Mapping[str, Any] | object,
+    *,
+    world_size: int | None = None,
+) -> TrainingCompatResult:
     """Validate optimization-flag combinations used by training and Web preflight."""
 
     out = _CompatBuilder()
@@ -172,20 +183,56 @@ def check_training_compat(config: Mapping[str, Any] | object) -> TrainingCompatR
     compile_inductor_mode = _get(config, "compile_inductor_mode", None)
     model_family = str(_get(config, "model_family", "") or "anima").strip().lower()
     try:
-        family_spec = get_model_family_spec(
+        canonical_family = normalize_registered_family(
             model_family,
             source="training compatibility model_family",
+            allow_aliases=True,
         )
+        family_spec = get_model_family_spec(canonical_family)
     except ValueError as exc:
         out.error("invalid_model_family", "model_family", str(exc))
         return out.build()
     krea2_family = family_spec.name == "krea2_raw"
     z_image_family = family_spec.name == "z_image"
+    pipeline_parallel_error: ValueError | None = None
+    try:
+        pipeline_parallel = PipelineParallelConfig.from_config(config).enabled
+    except ValueError as exc:
+        pipeline_parallel = False
+        pipeline_parallel_error = exc
     compile_dynamic_seq = _bool_value(_get(config, "compile_dynamic_seq"), False)
     compile_seq_bands = _bool_value(_get(config, "compile_seq_bands"), False)
     v100_flash_stability = (
         str(_get(config, "v100_flash_stability", "off") or "off").strip().lower()
     )
+
+    if pipeline_parallel_error is not None:
+        out.error(
+            "pipeline_parallel_config",
+            "pipeline_parallel",
+            str(pipeline_parallel_error),
+        )
+    elif pipeline_parallel:
+        try:
+            validate_pipeline_parallel_config(config, world_size=world_size)
+        except ValueError as exc:
+            out.error(
+                "pipeline_parallel_config",
+                "pipeline_parallel",
+                str(exc),
+            )
+        else:
+            # Planning support is not a runtime implementation. Keep every
+            # family fail-closed until stage-local placement, 1F1B, optimizer
+            # ownership, and checkpoint recovery are wired into the trainer.
+            out.error(
+                "pipeline_parallel_runtime_unavailable",
+                "pipeline_parallel",
+                f"{family_spec.display_name} pipeline_parallel has a validated "
+                "stage planner, but the 1F1B schedule is not wired into the "
+                "main trainer; disable pipeline_parallel or use the standalone "
+                "PP probe.",
+            )
 
     # Krea-2 gets a family-specific message/mutation below. Avoid emitting a
     # duplicate generic mutation when its fixed-padded gate is the real cause.

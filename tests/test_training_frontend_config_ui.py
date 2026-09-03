@@ -1621,8 +1621,11 @@ def test_config_form_uses_navigation_search_and_progressive_disclosure() -> None
     assert "'peak_probe_level'," in optimization_section
     assert "'lr_warmup_steps'," in optimization_section
     lokr_section = _section(source, "title: 'LoKr 专用优化'", "title: '数据集设置'")
+    assert "open: true," in lokr_section
     assert "'lokr_factor_group_size'," in lokr_section
     assert "'lokr_project_chunk_bytes'," in lokr_section
+    assert "'lokr_grouped_delta_backend'," in lokr_section
+    assert "'lokr_grouped_delta_backward_backend'," in lokr_section
     assert "sections: ['常用训练设置', '步数与训练量', 'LoKr 专用优化']" in category_defs
     assert "sections: ['显存与速度优化', '数据加载与 VAE 资源', '实验性功能', '无数据集正则化']" in category_defs
     assert category_defs.index("数据加载与 VAE 资源") < category_defs.index("实验性功能")
@@ -3687,8 +3690,8 @@ def test_base_compute_nf4_option_scoped_to_krea2_family() -> None:
     # 家族感知过滤函数存在, 且在 select 渲染处替换裸 fieldOptions 直传.
     assert "function filterFieldOptionsForFamily(key, options, currentValue)" in factory
     assert "filterFieldOptionsForFamily(key, fieldOptions, value)" in factory
-    # 只在 krea2_raw 时保留 nf4; anima 过滤掉.
-    assert "family === 'krea2_raw'" in factory
+    # krea2 与 krea2_raw 别名都保留 nf4; anima 过滤掉.
+    assert "const isKrea2 = isKrea2ModelFamily(family)" in factory
     assert "opt !== 'nf4'" in factory
     # 当前值兜底: 即使被过滤也加回, 防 select 显示空 (config 残留 nf4 又切 anima).
     assert "!filtered.includes(currentValue)" in factory

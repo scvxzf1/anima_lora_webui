@@ -11,7 +11,7 @@ import {
     FORM_SECTION_DEFS,
     NETWORK_ARG_FIELD_MAP,
     help,
-} from '../../config/catalog.js?v=module-bootstrap-20260831-release-v1';
+} from '../../config/catalog.js?v=module-bootstrap-20260902-krea2-pp-v1';
 import { normalizeLoraAdapterKind, normalizePrecisionPreference } from '../anima-app/helpers/config-values.js?v=module-bootstrap-20260831-release-v1';
 import { configureConfigFieldUiBridge } from '../anima-app/helpers/config-field-ui-bridge.js?v=module-bootstrap-20260831-release-v1';
 import { getConfigState } from '../anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260831-release-v1';

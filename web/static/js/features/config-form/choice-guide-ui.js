@@ -7,7 +7,7 @@ import {
     PRESET_GUIDE_ZH,
     VARIANT_GUIDE_ZH,
     choiceHelp,
-} from '../../config/catalog.js?v=module-bootstrap-20260831-release-v1';
+} from '../../config/catalog.js?v=module-bootstrap-20260902-krea2-pp-v1';
 import {
     isTruthy,
     precisionPreferenceFromConfig,

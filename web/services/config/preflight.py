@@ -169,6 +169,7 @@ def preflight_training_config(
     methods_subdir: str = "gui-methods",
     *,
     config_file: str | None = None,
+    world_size: int | None = None,
 ) -> dict[str, Any]:
     cfg = _load_training_config_for_web_run(
         variant, preset, methods_subdir, config_file=config_file
@@ -321,7 +322,7 @@ def preflight_training_config(
 
     if "output_name" in cfg and _is_blank_output_name(cfg.get("output_name")):
         add("error", "output_name", "输出名称未填写")
-    _check_checkpointing_config(cfg, add)
+    _check_checkpointing_config(cfg, add, world_size=world_size)
     _check_no_dataset_regularization_config(cfg, add)
     _check_output_dir_history_reuse(cfg, add)
     if str(cfg.get("model_family") or "anima").strip().lower() == "z_image":

@@ -47,20 +47,36 @@ _ENV_KEY = ("ANIMA_CAPTIONING_API_KEY", "ANIMA_TAGGING_API_KEY", "TAGGING_API_KE
 
 
 def get_public_settings() -> dict[str, Any]:
-    """Return normalized provider settings without exposing the API key."""
+    """Return active profile settings without exposing secrets or internals."""
 
     settings = load_settings()
-    key = get_api_key()
+    profile_id = str(settings.get("_profile_id") or "legacy-openai")
+    public_settings = {key: value for key, value in settings.items() if not key.startswith("_")}
+    key = get_api_key(profile_id)
     return {
         "ok": True,
-        **settings,
+        **public_settings,
+        "profile_id": profile_id,
+        "profile_name": str(settings.get("_profile_name") or "默认外部 API"),
         "api_key_configured": bool(key),
         "api_key_hint": "已配置 API Key" if key else "未配置 API Key",
     }
 
 
 def load_settings() -> dict[str, Any]:
-    """Load and normalize the ignored provider settings file."""
+    """Load the active profile, falling back to the legacy flat schema."""
+
+    # Import lazily to keep the legacy settings module usable while the profile
+    # store itself imports the normalization helpers below.
+    from .profiles import get_effective_settings, profile_store_exists
+
+    if profile_store_exists():
+        return get_effective_settings()
+    return _load_legacy_settings()
+
+
+def _load_legacy_settings() -> dict[str, Any]:
+    """Load and normalize the original single-provider settings file."""
 
     raw = _read_toml(SETTINGS_FILE)
     section = raw.get("tagging") if isinstance(raw.get("tagging"), dict) else raw
@@ -82,8 +98,16 @@ def save_settings(data: dict[str, Any] | None) -> dict[str, Any]:
     deployment configuration cannot be mutated by the browser.
     """
 
+    from .profiles import profile_store_exists, save_active_compat
+
+    if profile_store_exists():
+        return save_active_compat(data)
+    return _save_legacy_settings(data)
+
+
+def _save_legacy_settings(data: dict[str, Any] | None) -> dict[str, Any]:
     payload = data if isinstance(data, dict) else {}
-    current = load_settings()
+    current = _load_legacy_settings()
     next_values = {**current}
     for key in DEFAULT_SETTINGS:
         if key in payload:
@@ -100,8 +124,20 @@ def save_settings(data: dict[str, Any] | None) -> dict[str, Any]:
     return get_public_settings()
 
 
-def get_api_key() -> str:
-    """Return the deployment key, preferring environment over local secrets."""
+def get_api_key(profile_id: str | None = None) -> str:
+    """Return the active profile key, preferring deployment configuration."""
+
+    from .profiles import get_profile_api_key, profile_store_exists
+
+    if profile_store_exists():
+        return get_profile_api_key(profile_id)
+    if profile_id and profile_id != "legacy-openai":
+        return ""
+    return _get_legacy_api_key()
+
+
+def _get_legacy_api_key() -> str:
+    """Return the original single-provider key."""
 
     env_key = _first_env(_ENV_KEY)
     if env_key:

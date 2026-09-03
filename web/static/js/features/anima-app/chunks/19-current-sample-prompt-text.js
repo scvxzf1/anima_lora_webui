@@ -6,7 +6,7 @@ import {
     BLANK_PRESET_TEMPLATE_FILE,
     BLANK_PRESET_TEMPLATE_LABEL,
     FORM_UI_DEFAULTS,
-} from '../../../config/catalog.js?v=module-bootstrap-20260831-release-v1';
+} from '../../../config/catalog.js?v=module-bootstrap-20260902-krea2-pp-v1';
 import { DEFAULT_SAMPLE_PROMPTS_PATH } from '../helpers/app-constants.js?v=module-bootstrap-20260831-release-v1';
 import { collectChangedFormValues, prepareFormPatchValues } from '../helpers/config-form-bridge.js?v=module-bootstrap-20260831-release-v1';
 import { applySelectedDatasetPresetToCurrentConfig } from '../helpers/dataset-preset-actions-bridge.js?v=module-bootstrap-20260831-release-v1';

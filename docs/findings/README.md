@@ -56,6 +56,8 @@
 
 | 文档 | 说明 |
 | --- | --- |
+| [lycoris_4_fused_kernel_audit_20260902.md](lycoris_4_fused_kernel_audit_20260902.md) | LyCORIS 4.0.0 Triton/TileLang fused kernel 发布、性能、精度与 release 宣传审计，以及对本项目 LoKr/LoHa 的借鉴优先级 |
+| [lokr_fused_backward_stage1_20260902.md](lokr_fused_backward_stage1_20260902.md) | 基于 LyCORIS 审计方向独立实现 LoKr `grad_w1` Triton reduction；RTX 3080 组件验证与 CMP 170HX 3-seed x 50-step 端到端热测、Nsight、resume/compile/swap gate |
 | [convrot_longrun_bf16_w8a8_w8a16_20260727.md](convrot_longrun_bf16_w8a8_w8a16_20260727.md) | RTX 3080 上 BF16/W8A8/W8A16 三组 1710-step 长训审计（速度、显存、loss、样图及最终保存回归修复） |
 | [loha_hot_test_20260725.md](loha_hot_test_20260725.md) | LoHa 在 RTX 3080 10GB 上的 12-step 热测与检查点验证 |
 | [training_profiling_hot_test_20260629.md](training_profiling_hot_test_20260629.md) | 训练 profiling 热测记录 |

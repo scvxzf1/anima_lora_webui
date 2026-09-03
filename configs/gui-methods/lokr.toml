@@ -32,9 +32,12 @@ lokr_full_factor = true
 lokr_factor_group_size = 8
 # Row-chunk byte threshold for custom LoKr projection. Default 4MiB.
 lokr_project_chunk_bytes = 4194304
-# Experimental fused grouped-delta forward. Keep eager as the default training
-# path; set to "triton" only for explicit hot tests.
-lokr_grouped_delta_backend = "eager"
+# Fused grouped-delta defaults validated on CMP 170HX. Unsupported devices,
+# dtypes, shapes, and layouts fall back to the eager grouped implementation.
+lokr_grouped_delta_backend = "triton"
+# The full-gradient path passed training/resume/compile/block-swap gates. A
+# Triton compilation failure after capability selection still surfaces.
+lokr_grouped_delta_backward_backend = "triton_grad_w1_w2_grad_x"
 
 output_name = "anima_lokr"
 

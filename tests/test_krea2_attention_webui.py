@@ -49,7 +49,7 @@ def test_training_form_filters_and_locks_krea2_attention_options() -> None:
     form = _text("web/static/js/features/config-form/form-fields-ui.js")
     live = _text("web/static/js/features/config-form/live-compat.js")
 
-    assert "attn_mode: new Set(['torch', 'flash'])" in form
+    assert "attn_mode: new Set(['torch', 'flash', 'sdpa'])" in form
     assert "selective_checkpoint: new Set(['off', 'every_other'])" in form
     assert "key === 'compile_dynamic_seq'" in form
     assert "key === 'compile_seq_bands'" in form

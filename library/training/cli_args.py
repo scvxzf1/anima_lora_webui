@@ -920,6 +920,46 @@ def add_dit_training_arguments(parser: argparse.ArgumentParser):
         help="[EXPERIMENTAL] Sets the number of blocks to swap during the forward and backward passes.",
     )
     parser.add_argument(
+        "--pipeline_parallel",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "[EXPERIMENTAL] Enable model-family pipeline parallelism. The "
+            "current release validates the topology and refuses to fall back "
+            "to DDP until the 1F1B trainer schedule is enabled."
+        ),
+    )
+    parser.add_argument(
+        "--pipeline_parallel_stages",
+        type=int,
+        default=2,
+        choices=[2],
+        help="Number of pipeline stages; must equal the distributed world size when enabled.",
+    )
+    parser.add_argument(
+        "--pipeline_parallel_microbatches",
+        type=int,
+        default=4,
+        help=(
+            "Number of microbatches per pipeline step. Use 4-8 to reduce the "
+            "two-stage pipeline bubble; each microbatch remains batch size one."
+        ),
+    )
+    parser.add_argument(
+        "--pipeline_parallel_schedule",
+        type=str,
+        default="1f1b",
+        choices=["1f1b"],
+        help="Pipeline schedule. Only the 1F1B contract is accepted in the experimental path.",
+    )
+    parser.add_argument(
+        "--pipeline_parallel_split",
+        type=str,
+        default="balanced",
+        choices=["balanced"],
+        help="How model-family transformer blocks are split across pipeline stages.",
+    )
+    parser.add_argument(
         "--block_swap_profile_jsonl",
         type=str,
         default=None,

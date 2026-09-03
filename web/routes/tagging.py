@@ -14,6 +14,23 @@ def setup_tagging_routes(app: web.Application) -> None:
     """Register the canonical ``captioning`` API and a short ``tagging`` alias."""
 
     for prefix in _PREFIXES:
+        app.router.add_get(f"{prefix}/provider-types", handle_provider_types_get)
+        app.router.add_get(f"{prefix}/profiles", handle_profiles_get)
+        app.router.add_post(f"{prefix}/profiles", handle_profile_create)
+        app.router.add_put(f"{prefix}/profiles/{{profile_id}}", handle_profile_update)
+        app.router.add_delete(f"{prefix}/profiles/{{profile_id}}", handle_profile_delete)
+        app.router.add_post(f"{prefix}/profiles/{{profile_id}}/activate", handle_profile_activate)
+        app.router.add_get(f"{prefix}/model-assets", handle_model_assets_get)
+        app.router.add_get(f"{prefix}/model-assets/{{asset_id}}", handle_model_asset_get)
+        app.router.add_post(f"{prefix}/model-assets/{{asset_id}}/download", handle_model_asset_download)
+        app.router.add_get(f"{prefix}/downloads", handle_model_downloads_get)
+        app.router.add_get(f"{prefix}/downloads/{{download_id}}", handle_model_download_get)
+        app.router.add_post(f"{prefix}/downloads/{{download_id}}/cancel", handle_model_download_cancel)
+        app.router.add_get(f"{prefix}/tag-dictionary", handle_tag_dictionary_get)
+        app.router.add_post(f"{prefix}/tag-dictionary/download", handle_tag_dictionary_download)
+        app.router.add_get(f"{prefix}/tag-dictionary/downloads/{{download_id}}", handle_tag_dictionary_download_get)
+        app.router.add_post(f"{prefix}/tag-dictionary/downloads/{{download_id}}/cancel", handle_tag_dictionary_download_cancel)
+        app.router.add_post(f"{prefix}/translate-tags", handle_translate_tags)
         app.router.add_get(f"{prefix}/settings", handle_settings_get)
         app.router.add_put(f"{prefix}/settings", handle_settings_put)
         app.router.add_post(f"{prefix}/test", handle_provider_test)
@@ -26,6 +43,7 @@ def setup_tagging_routes(app: web.Application) -> None:
         app.router.add_get(f"{prefix}/jobs", handle_jobs_get)
         app.router.add_post(f"{prefix}/jobs", handle_job_create)
         app.router.add_get(f"{prefix}/jobs/{{job_id}}", handle_job_get)
+        app.router.add_post(f"{prefix}/jobs/{{job_id}}/rerun", handle_job_rerun)
         app.router.add_post(f"{prefix}/jobs/{{job_id}}/cancel", handle_job_cancel)
         app.router.add_patch(f"{prefix}/jobs/{{job_id}}/items/{{item_id}}", handle_item_update)
         app.router.add_post(f"{prefix}/jobs/{{job_id}}/commit", handle_job_commit)
@@ -34,6 +52,192 @@ def setup_tagging_routes(app: web.Application) -> None:
 def _service(request: web.Request) -> TaggingService | None:
     service = request.app.get("tagging_service")
     return service if isinstance(service, TaggingService) else service
+
+
+async def handle_provider_types_get(request: web.Request) -> web.Response:
+    service = _service(request)
+    if service is None:
+        return _unavailable()
+    return web.json_response(service.list_provider_types())
+
+
+async def handle_profiles_get(request: web.Request) -> web.Response:
+    service = _service(request)
+    if service is None:
+        return _unavailable()
+    return web.json_response(service.list_profiles())
+
+
+async def handle_profile_create(request: web.Request) -> web.Response:
+    service = _service(request)
+    if service is None:
+        return _unavailable()
+    try:
+        return web.json_response(service.create_profile(await _json_object(request)), status=201)
+    except ValueError as exc:
+        return web.json_response({"ok": False, "error": str(exc)}, status=400)
+
+
+async def handle_profile_update(request: web.Request) -> web.Response:
+    service = _service(request)
+    if service is None:
+        return _unavailable()
+    try:
+        return web.json_response(
+            service.update_profile(request.match_info["profile_id"], await _json_object(request))
+        )
+    except KeyError as exc:
+        return web.json_response({"ok": False, "error": str(exc)}, status=404)
+    except ValueError as exc:
+        return web.json_response({"ok": False, "error": str(exc)}, status=400)
+
+
+async def handle_profile_delete(request: web.Request) -> web.Response:
+    service = _service(request)
+    if service is None:
+        return _unavailable()
+    try:
+        return web.json_response(service.delete_profile(request.match_info["profile_id"]))
+    except KeyError as exc:
+        return web.json_response({"ok": False, "error": str(exc)}, status=404)
+    except ValueError as exc:
+        return web.json_response({"ok": False, "error": str(exc)}, status=400)
+
+
+async def handle_profile_activate(request: web.Request) -> web.Response:
+    service = _service(request)
+    if service is None:
+        return _unavailable()
+    try:
+        return web.json_response(service.activate_profile(request.match_info["profile_id"]))
+    except KeyError as exc:
+        return web.json_response({"ok": False, "error": str(exc)}, status=404)
+    except ValueError as exc:
+        return web.json_response({"ok": False, "error": str(exc)}, status=409)
+
+
+async def handle_model_assets_get(request: web.Request) -> web.Response:
+    service = _service(request)
+    if service is None:
+        return _unavailable()
+    try:
+        return web.json_response(await service.list_model_assets())
+    except (OSError, ValueError) as exc:
+        return web.json_response({"ok": False, "error": str(exc)}, status=400)
+
+
+async def handle_model_asset_get(request: web.Request) -> web.Response:
+    service = _service(request)
+    if service is None:
+        return _unavailable()
+    try:
+        return web.json_response(await service.get_model_asset(request.match_info["asset_id"]))
+    except KeyError as exc:
+        return web.json_response({"ok": False, "error": str(exc)}, status=404)
+    except (OSError, ValueError) as exc:
+        return web.json_response({"ok": False, "error": str(exc)}, status=400)
+
+
+async def handle_model_asset_download(request: web.Request) -> web.Response:
+    service = _service(request)
+    if service is None:
+        return _unavailable()
+    try:
+        result = await service.start_model_download(request.match_info["asset_id"])
+        return web.json_response(result, status=202)
+    except KeyError as exc:
+        return web.json_response({"ok": False, "error": str(exc)}, status=404)
+    except ValueError as exc:
+        return web.json_response({"ok": False, "error": str(exc)}, status=400)
+    except RuntimeError as exc:
+        return web.json_response({"ok": False, "error": str(exc)}, status=409)
+
+
+async def handle_model_downloads_get(request: web.Request) -> web.Response:
+    service = _service(request)
+    if service is None:
+        return _unavailable()
+    return web.json_response(service.list_model_downloads())
+
+
+async def handle_model_download_get(request: web.Request) -> web.Response:
+    service = _service(request)
+    if service is None:
+        return _unavailable()
+    try:
+        return web.json_response(service.get_model_download(request.match_info["download_id"]))
+    except KeyError as exc:
+        return web.json_response({"ok": False, "error": str(exc)}, status=404)
+
+
+async def handle_model_download_cancel(request: web.Request) -> web.Response:
+    service = _service(request)
+    if service is None:
+        return _unavailable()
+    try:
+        return web.json_response(
+            await service.cancel_model_download(request.match_info["download_id"])
+        )
+    except KeyError as exc:
+        return web.json_response({"ok": False, "error": str(exc)}, status=404)
+    except RuntimeError as exc:
+        return web.json_response({"ok": False, "error": str(exc)}, status=409)
+
+
+async def handle_tag_dictionary_get(request: web.Request) -> web.Response:
+    service = _service(request)
+    if service is None:
+        return _unavailable()
+    return web.json_response(service.get_tag_dictionary_status())
+
+
+async def handle_tag_dictionary_download(request: web.Request) -> web.Response:
+    service = _service(request)
+    if service is None:
+        return _unavailable()
+    try:
+        return web.json_response(await service.start_tag_dictionary_download(), status=202)
+    except (OSError, ValueError) as exc:
+        return web.json_response({"ok": False, "error": str(exc)}, status=400)
+    except RuntimeError as exc:
+        return web.json_response({"ok": False, "error": str(exc)}, status=409)
+
+
+async def handle_tag_dictionary_download_get(request: web.Request) -> web.Response:
+    service = _service(request)
+    if service is None:
+        return _unavailable()
+    try:
+        return web.json_response(service.get_tag_dictionary_download(request.match_info["download_id"]))
+    except KeyError as exc:
+        return web.json_response({"ok": False, "error": str(exc)}, status=404)
+
+
+async def handle_tag_dictionary_download_cancel(request: web.Request) -> web.Response:
+    service = _service(request)
+    if service is None:
+        return _unavailable()
+    try:
+        return web.json_response(await service.cancel_tag_dictionary_download(request.match_info["download_id"]))
+    except KeyError as exc:
+        return web.json_response({"ok": False, "error": str(exc)}, status=404)
+
+
+async def handle_translate_tags(request: web.Request) -> web.Response:
+    service = _service(request)
+    if service is None:
+        return _unavailable()
+    try:
+        data = await _json_object(request)
+        tags = data.get("tags")
+        if not isinstance(tags, list):
+            raise ValueError("tags 必须是数组")
+        return web.json_response(await service.translate_tags(tags, str(data.get("target_language") or "")))
+    except ValueError as exc:
+        return web.json_response({"ok": False, "error": str(exc)}, status=400)
+    except RuntimeError as exc:
+        return web.json_response({"ok": False, "error": str(exc)}, status=409)
+
 
 
 async def handle_settings_get(request: web.Request) -> web.Response:
@@ -63,9 +267,13 @@ async def handle_provider_test(request: web.Request) -> web.Response:
         mode = str(data.get("mode") or request.query.get("mode") or "ping").lower()
         if mode not in {"ping", "actual"}:
             raise ValueError("测试模式只能是 ping 或 actual")
-        return web.json_response(await service.test_provider(mode))
+        profile_id = str(data.get("profile_id") or request.query.get("profile_id") or "").strip()
+        result = await service.test_provider(mode, profile_id=profile_id) if profile_id else await service.test_provider(mode)
+        return web.json_response(result)
     except TaggingApiError as exc:
         return web.json_response({"ok": False, "error": str(exc)}, status=502)
+    except KeyError as exc:
+        return web.json_response({"ok": False, "error": str(exc)}, status=404)
     except ValueError as exc:
         return web.json_response({"ok": False, "error": str(exc)}, status=400)
 
@@ -109,6 +317,8 @@ async def handle_prompt_preset_delete(request: web.Request) -> web.Response:
         return web.json_response(service.delete_prompt_preset(request.match_info["preset_id"]))
     except KeyError as exc:
         return web.json_response({"ok": False, "error": str(exc)}, status=404)
+    except ValueError as exc:
+        return web.json_response({"ok": False, "error": str(exc)}, status=400)
 
 
 async def handle_logs_get(request: web.Request) -> web.Response:
@@ -145,7 +355,7 @@ async def handle_job_create(request: web.Request) -> web.Response:
     try:
         payload = await _json_object(request)
         return web.json_response(await service.create_job(payload), status=202)
-    except (ValueError, OSError) as exc:
+    except (KeyError, ValueError, OSError) as exc:
         return web.json_response({"ok": False, "error": str(exc)}, status=400)
     except RuntimeError as exc:
         return web.json_response({"ok": False, "error": str(exc)}, status=409)
@@ -159,6 +369,35 @@ async def handle_job_get(request: web.Request) -> web.Response:
         return web.json_response(service.get_job(request.match_info["job_id"]))
     except KeyError as exc:
         return web.json_response({"ok": False, "error": str(exc)}, status=404)
+
+
+async def handle_job_rerun(request: web.Request) -> web.Response:
+    service = _service(request)
+    if service is None:
+        return _unavailable()
+    try:
+        data = await _json_object(request)
+        profile_id = str(data.get("profile_id") or "").strip()
+        item_ids = data.get("item_ids")
+        if item_ids is not None and not isinstance(item_ids, list):
+            raise ValueError("item_ids 必须是数组")
+        if item_ids:
+            result = await service.rerun_job(
+                request.match_info["job_id"],
+                profile_id,
+                item_ids=[str(item_id) for item_id in item_ids],
+            )
+        else:
+            # Keep the legacy two-argument call shape for embedded service
+            # stubs while an empty selection retains whole-task semantics.
+            result = await service.rerun_job(request.match_info["job_id"], profile_id)
+        return web.json_response(result, status=202)
+    except KeyError as exc:
+        return web.json_response({"ok": False, "error": str(exc)}, status=404)
+    except ValueError as exc:
+        return web.json_response({"ok": False, "error": str(exc)}, status=400)
+    except RuntimeError as exc:
+        return web.json_response({"ok": False, "error": str(exc)}, status=409)
 
 
 async def handle_job_cancel(request: web.Request) -> web.Response:

@@ -31,6 +31,7 @@ export function saveTaggingWorkspaceState(state, { capturePosition = false } = {
         systemPrompt: state.systemPrompt,
         userPrompt: state.userPrompt,
         currentPresetId: state.currentPresetId,
+        providerProfileId: state.activeProfileId || state.providerProfileId,
         sourceExpanded: state.sourceExpanded,
         job: state.job,
         jobId: state.job?.id || state.jobId,
@@ -83,6 +84,12 @@ export function updateTaggingPromptDraft(values = {}) {
     writeSession(WORKSPACE_KEY, serializeSnapshot(memorySnapshot));
 }
 
+export function updateTaggingProviderProfile(profileId) {
+    const current = readTaggingWorkspaceState();
+    memorySnapshot = normalizeSnapshot({ ...current, providerProfileId: profileId }, true);
+    writeSession(WORKSPACE_KEY, serializeSnapshot(memorySnapshot));
+}
+
 function normalizeSnapshot(value, includeMemory) {
     const source = value && typeof value === 'object' ? value : {};
     const selectedFiles = Array.isArray(source.selectedFiles)
@@ -100,6 +107,7 @@ function normalizeSnapshot(value, includeMemory) {
         systemPrompt: clean(source.systemPrompt, 10000),
         userPrompt: clean(source.userPrompt, 10000),
         currentPresetId: clean(source.currentPresetId, 64),
+        providerProfileId: clean(source.providerProfileId, 64),
         sourceExpanded: source.sourceExpanded === true,
         jobId: clean(source.jobId || source.job?.id, 64),
         scrollY: nonNegative(source.scrollY),

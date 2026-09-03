@@ -1,7 +1,7 @@
 import {
     FIELD_LABEL_ZH,
     FIELD_OPTIONS,
-} from '../../../config/catalog.js?v=module-bootstrap-20260831-release-v1';
+} from '../../../config/catalog.js?v=module-bootstrap-20260902-krea2-pp-v1';
 import { isTruthy } from './config-values.js?v=module-bootstrap-20260831-release-v1';
 
 export function compactList(items) {

@@ -6,8 +6,16 @@ from urllib.parse import quote
 
 from aiohttp import web
 
+from library.runtime.launch import resolve_training_world_size_for_gpu_selection
 from web.services.config_service import is_web_runtime_config, preflight_training_config
+from web.services.training.gpu import normalize_gpu_whitelist
 from web.services.training_service import inspect_continue_lora_weight
+
+
+def _preflight_world_size(gpu_whitelist) -> int:
+    return resolve_training_world_size_for_gpu_selection(
+        normalize_gpu_whitelist(gpu_whitelist)
+    )
 
 
 def setup_training_routes(app: web.Application) -> None:
@@ -64,7 +72,13 @@ async def handle_preflight(request: web.Request) -> web.Response:
     if _is_cli_only_spd(variant, methods_subdir):
         return web.json_response(_cli_only_spd_payload(variant, preset, methods_subdir), status=400)
     try:
-        result = preflight_training_config(variant, preset, methods_subdir, config_file=config_file)
+        result = preflight_training_config(
+            variant,
+            preset,
+            methods_subdir,
+            config_file=config_file,
+            world_size=_preflight_world_size(data.get("gpu_whitelist")),
+        )
         return web.json_response(result)
     except Exception as e:
         return web.json_response({
@@ -123,7 +137,13 @@ async def handle_start(request: web.Request) -> web.Response:
     if _is_cli_only_spd(variant, methods_subdir):
         return web.json_response({"ok": False, "error": _cli_only_spd_message()}, status=400)
     try:
-        preflight = preflight_training_config(variant, preset, methods_subdir, config_file=config_file)
+        preflight = preflight_training_config(
+            variant,
+            preset,
+            methods_subdir,
+            config_file=config_file,
+            world_size=_preflight_world_size(gpu_whitelist),
+        )
         if not preflight.get("ok", False):
             return web.json_response({
                 "ok": False,
@@ -219,7 +239,13 @@ async def handle_preprocess(request: web.Request) -> web.Response:
     if _is_cli_only_spd(variant, methods_subdir):
         return web.json_response({"ok": False, "error": _cli_only_spd_message()}, status=400)
     try:
-        preflight = preflight_training_config(variant, preset, methods_subdir, config_file=config_file)
+        preflight = preflight_training_config(
+            variant,
+            preset,
+            methods_subdir,
+            config_file=config_file,
+            world_size=_preflight_world_size(gpu_whitelist),
+        )
     except Exception as e:
         return web.json_response({"ok": False, "error": f"预处理预检测失败: {e}"}, status=400)
     if not _preflight_allows_preprocess(preflight):
@@ -389,7 +415,13 @@ async def _handle_queue_start_data(request: web.Request, data: dict) -> web.Resp
     if _is_cli_only_spd(variant, methods_subdir):
         return web.json_response({"ok": False, "error": _cli_only_spd_message()}, status=400)
     try:
-        preflight = preflight_training_config(variant, preset, methods_subdir, config_file=config_file)
+        preflight = preflight_training_config(
+            variant,
+            preset,
+            methods_subdir,
+            config_file=config_file,
+            world_size=_preflight_world_size(gpu_whitelist),
+        )
         needs_preprocess = not config_file or not is_web_runtime_config(config_file)
         if not preflight.get("ok", False):
             if not (needs_preprocess and confirm_preprocess and _preflight_allows_preprocess(preflight)):
@@ -468,7 +500,13 @@ async def _handle_queue_batch_start_data(request: web.Request, data: dict) -> we
                 "failed_item": raw,
             }, status=400)
         try:
-            preflight = preflight_training_config(variant, preset, methods_subdir, config_file=config_file)
+            preflight = preflight_training_config(
+                variant,
+                preset,
+                methods_subdir,
+                config_file=config_file,
+                world_size=_preflight_world_size(gpu_whitelist),
+            )
         except Exception as e:
             return web.json_response({
                 "ok": False,

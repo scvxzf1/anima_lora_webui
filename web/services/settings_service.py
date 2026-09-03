@@ -31,6 +31,7 @@ CONFIGS_DIR = DynamicPath(lambda: SETTINGS_FILE.parent)
 DEFAULT_OUTPUT_ROOT = "output/runs"
 DEFAULT_UI_SCALE = 100
 DEFAULT_UI_SCALE_OVERRIDE = ""
+DEFAULT_TAGGING_MAX_RETAINED_JOBS = 40
 GLOBAL_MODEL_PATH_KEYS = (
     "pretrained_model_name_or_path",
     "qwen3",
@@ -70,6 +71,9 @@ GLOBAL_IMAGE_TEST_KEYS = (
 )
 GLOBAL_IMAGE_TEST_PATH_KEYS = (
     "image_test_save_root",
+)
+GLOBAL_TAGGING_KEYS = (
+    "tagging_max_retained_jobs",
 )
 # Model family selector (Krea-2-Raw migration, stage 6). Whose value picks the
 # base model the LoRA is trained against. Empty → anima default (resolve_model_family
@@ -256,6 +260,11 @@ def save_global_settings(data: dict[str, Any]) -> dict[str, Any]:
             next_global[key] = _normalize_image_test_save_root(data.get(key))
         elif key not in next_global:
             next_global[key] = str(current.get(key, defaults.get(key, "")) or "")
+    for key in GLOBAL_TAGGING_KEYS:
+        if key in data:
+            next_global[key] = _normalize_tagging_job_retention(data.get(key))
+        elif key not in next_global:
+            next_global[key] = int(current.get(key, defaults.get(key, DEFAULT_TAGGING_MAX_RETAINED_JOBS)))
     # Model family (Krea-2-Raw migration). Stored as "" for anima (the default)
     # so the resolve_model_family() fallback chain (env / DEFAULT_MODEL_FAMILY)
     # still governs when the panel leaves it unset. A non-empty non-anima value
@@ -326,6 +335,14 @@ def _normalize_image_test_save_root(value: Any) -> str:
     if path.is_absolute():
         return path.resolve().as_posix()
     return path.as_posix().lstrip("/").rstrip("/")
+
+
+def _normalize_tagging_job_retention(value: Any) -> int:
+    try:
+        count = int(value)
+    except (TypeError, ValueError):
+        count = DEFAULT_TAGGING_MAX_RETAINED_JOBS
+    return max(1, min(500, count))
 
 
 def resolve_image_test_save_root(value: str | None = None) -> str:
@@ -399,6 +416,8 @@ def _load_settings(settings_file: Path | None = None) -> dict[str, Any]:
                 settings[key] = str(defaults.get(key, "") or "")
         else:
             settings[key] = str(defaults.get(key, "") or "")
+    for key in GLOBAL_TAGGING_KEYS:
+        settings[key] = _normalize_tagging_job_retention(section.get(key, defaults.get(key)))
     # Model family: stored as "" (anima default) when unset so the
     # resolve_model_family() fallback chain still governs at training time.
     # An explicit on-disk ``model_family = "anima"`` also reads back as "" so
@@ -455,6 +474,7 @@ def _default_global_settings(*, settings_file: Path | None = None) -> dict[str, 
         "dragon_config_tags_always_visible": False,
         "image_test_allow_home_search": False,
         "image_test_save_root": "",
+        "tagging_max_retained_jobs": DEFAULT_TAGGING_MAX_RETAINED_JOBS,
         "model_family": "",
         **{key: DEFAULT_UI_SCALE_OVERRIDE for key in GLOBAL_UI_OVERRIDE_KEYS},
         **_load_base_model_path_defaults(settings_file=settings_file),

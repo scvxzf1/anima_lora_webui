@@ -35,8 +35,8 @@ _LOKR_TRITON_TEST_DEVICE = _find_lokr_triton_test_device()
 @pytest.mark.parametrize(
     ("value", "expected"),
     [
-        (None, "eager"),
-        ("", "eager"),
+        (None, "triton"),
+        ("", "triton"),
         ("EAGER", "eager"),
         ("triton", "triton"),
     ],
@@ -53,8 +53,8 @@ def test_normalize_lokr_grouped_delta_backend_rejects_unknown_value():
 @pytest.mark.parametrize(
     ("value", "expected"),
     [
-        (None, "eager"),
-        ("", "eager"),
+        (None, "triton_grad_w1_w2_grad_x"),
+        ("", "triton_grad_w1_w2_grad_x"),
         ("EAGER", "eager"),
         ("triton_grad_x", "triton_grad_x"),
         ("triton_grad_w2_partial", "triton_grad_w2_partial"),
@@ -201,7 +201,7 @@ def test_lokr_decomposed_w2_einsum_forward_matches_kron_path():
     torch.testing.assert_close(grads[3], w2b_ref.grad)
 
 
-def test_lokr_default_training_uses_grouped_delta_fast_path(monkeypatch):
+def test_lokr_explicit_triton_training_uses_default_backward_backend(monkeypatch):
     torch.manual_seed(14)
     x = torch.randn(3, 6, requires_grad=True)
 
@@ -243,13 +243,13 @@ def test_lokr_default_training_uses_grouped_delta_fast_path(monkeypatch):
     y.sum().backward()
 
     assert lokr.lokr_use_einsum is True
-    assert calls == [(2, 3, 4, 2, "triton", "eager")]
+    assert calls == [(2, 3, 4, 2, "triton", "triton_grad_w1_w2_grad_x")]
     assert x.grad is not None
     assert lokr.lokr_w1.grad is not None
     assert lokr.lokr_w2.grad is not None
 
 
-def test_lokr_default_training_keeps_einsum_path(monkeypatch):
+def test_lokr_default_training_uses_grouped_delta_fast_path(monkeypatch):
     torch.manual_seed(15)
     x = torch.randn(3, 6, requires_grad=True)
 
@@ -266,21 +266,26 @@ def test_lokr_default_training_keeps_einsum_path(monkeypatch):
     lokr.train()
 
     calls = []
+    original = lokr_autograd.lokr_add_grouped_delta_
 
-    def _unexpected_grouped_delta(*_args, **_kwargs):
-        calls.append(True)
-        raise AssertionError("default LoKr training should not use grouped-delta")
+    def _tracking_project(*args, **kwargs):
+        calls.append((kwargs.get("backend"), kwargs.get("backward_backend")))
+        return original(*args, **kwargs)
 
     monkeypatch.setattr(
         "networks.plugins.lokr.module.lokr_add_grouped_delta_",
-        _unexpected_grouped_delta,
+        _tracking_project,
     )
 
     y = lokr.org_module_ref[0](x)
     y.sum().backward()
 
-    assert lokr.lokr_grouped_delta_backend == "eager"
-    assert calls == []
+    assert lokr.lokr_grouped_delta_backend == "triton"
+    assert (
+        lokr.lokr_grouped_delta_backward_backend
+        == "triton_grad_w1_w2_grad_x"
+    )
+    assert calls == [("triton", "triton_grad_w1_w2_grad_x")]
     assert x.grad is not None
     assert lokr.lokr_w1.grad is not None
     assert lokr.lokr_w2.grad is not None

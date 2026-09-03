@@ -3,6 +3,7 @@
  * Mirrors a small subset of library/training/compat_matrix.py codes for UX only.
  * Does NOT replace server preflight.
  */
+import { isKrea2ModelFamily, normalizeModelFamily } from './model-family.js?v=module-bootstrap-20260903-pp-multimodel-v1';
 
 /**
  * @typedef {Object} LiveCompatIssue
@@ -40,8 +41,8 @@ export function collectLiveCompatIssues(config = {}) {
     const selectiveEnabled = selective !== 'off' && selective !== '';
     const blockSwapEnabled = blocksToSwap > 0;
     const softTokens = /soft_tokens/i.test(networkModule);
-    const modelFamily = String(config.model_family ?? '').trim().toLowerCase();
-    const krea2Family = modelFamily === 'krea2_raw';
+    const modelFamily = normalizeModelFamily(config.model_family);
+    const krea2Family = isKrea2ModelFamily(modelFamily);
 
     if (krea2Family) {
         const attnMode = String(config.attn_mode ?? 'torch').trim().toLowerCase() || 'torch';

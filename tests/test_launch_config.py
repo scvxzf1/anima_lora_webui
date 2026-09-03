@@ -12,6 +12,7 @@ from library.runtime.launch import (
     configure_accelerate_for_gpu_selection,
     resolve_accelerate_mixed_precision,
     resolve_accelerate_num_processes,
+    resolve_training_world_size_for_gpu_selection,
 )
 
 
@@ -167,6 +168,32 @@ def test_multi_gpu_selection_preserves_explicit_launch_overrides():
         ACCELERATE_LAUNCH_ENV: "0",
         ACCELERATE_NUM_PROCESSES_ENV: "4",
     }
+
+
+@pytest.mark.parametrize(
+    ("gpu_selection", "world_size"),
+    [
+        ([], 1),
+        ([0], 1),
+        ([0, 1], 2),
+        ([0, 1, 2], 3),
+    ],
+)
+def test_gpu_selection_world_size_matches_webui_launch_policy(
+    gpu_selection: list[int], world_size: int
+) -> None:
+    assert (
+        resolve_training_world_size_for_gpu_selection(gpu_selection, {}) == world_size
+    )
+
+
+def test_gpu_selection_world_size_preserves_explicit_launch_override() -> None:
+    env = {
+        ACCELERATE_LAUNCH_ENV: "1",
+        ACCELERATE_NUM_PROCESSES_ENV: "4",
+    }
+
+    assert resolve_training_world_size_for_gpu_selection([0, 1], env) == 4
 
 
 @pytest.mark.parametrize("value", ["no", "fp16", "bf16"])

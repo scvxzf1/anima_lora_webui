@@ -12,6 +12,7 @@ from library.runtime.launch import (
     ACCELERATE_MIXED_PRECISION_ENV,
     accelerate_training_command_prefix,
     configure_accelerate_for_gpu_selection,
+    resolve_training_world_size_for_gpu_selection,
 )
 from web.services.training.common import _format_ts
 from web.services.training.launch_support import (
@@ -311,6 +312,9 @@ async def _start_pending_training(self, pending: dict[str, Any]) -> None:
             pending["preset"],
             pending["methods_subdir"],
             config_file=pending.get("config_file"),
+            world_size=resolve_training_world_size_for_gpu_selection(
+                pending.get("gpu_whitelist") or []
+            ),
         )
         if not preflight.get("ok", False):
             errors = preflight.get("summary", {}).get("errors", 0)

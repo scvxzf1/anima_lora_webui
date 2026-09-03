@@ -18,4 +18,4 @@ export {
     createStageScheduleInlineSummary,
     resolveStageScheduleTargetFile,
     listStageScheduleTargetCandidates,
-} from './stage-resolution-ui-dialog.js?v=module-bootstrap-20260831-release-v1';
+} from './stage-resolution-ui-dialog.js?v=module-bootstrap-20260901-dialog-v1';

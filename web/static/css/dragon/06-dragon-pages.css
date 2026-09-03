@@ -482,7 +482,7 @@ body[data-dragon-ui] #dragon-root .dragon-dataset-settings-group > header {
     padding: 0;
 }
 
-body[data-dragon-ui] #dataset-preview-dialog,
+body[data-dragon-ui] .dataset-preview-dialog,
 body[data-dragon-ui] #stage-resolution-dialog {
     --dragon-shared-dialog-header-reserve: 92px;
     width: min(1120px, calc(100% - var(--dragon-sp-6)));
@@ -497,7 +497,7 @@ body[data-dragon-ui] #stage-resolution-dialog {
     box-shadow: var(--dragon-shadow-lg);
 }
 
-body[data-dragon-ui] #dataset-preview-dialog {
+body[data-dragon-ui] .dataset-preview-dialog {
     width: min(80vw, 1600px);
     height: min(80vh, 960px);
     max-width: calc(100vw - 24px);
@@ -505,19 +505,19 @@ body[data-dragon-ui] #dataset-preview-dialog {
     box-sizing: border-box;
 }
 
-body[data-dragon-ui] #dataset-preview-dialog::backdrop,
+body[data-dragon-ui] .dataset-preview-dialog::backdrop,
 body[data-dragon-ui] #stage-resolution-dialog::backdrop {
     background: color-mix(in srgb, #000 42%, transparent);
     backdrop-filter: blur(10px);
 }
 
-body[data-dragon-ui] #dataset-preview-dialog .preview-dialog-header,
+body[data-dragon-ui] .dataset-preview-dialog .preview-dialog-header,
 body[data-dragon-ui] #stage-resolution-dialog .preview-dialog-header {
     border-bottom-color: var(--dragon-divider);
     background: var(--dragon-bg-translucent-strong);
 }
 
-body[data-dragon-ui] #dataset-preview-dialog .btn,
+body[data-dragon-ui] .dataset-preview-dialog .btn,
 body[data-dragon-ui] #stage-resolution-dialog .btn {
     border-color: var(--dragon-border-light);
     border-radius: var(--dragon-radius-pill);
@@ -525,14 +525,14 @@ body[data-dragon-ui] #stage-resolution-dialog .btn {
     color: var(--dragon-text-primary);
 }
 
-body[data-dragon-ui] #dataset-preview-dialog .btn-primary,
+body[data-dragon-ui] .dataset-preview-dialog .btn-primary,
 body[data-dragon-ui] #stage-resolution-dialog .btn-primary {
     border-color: transparent;
     background: var(--dragon-accent);
     color: #fff;
 }
 
-body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-dialog-body,
+body[data-dragon-ui] .dataset-preview-dialog .dataset-preview-dialog-body,
 body[data-dragon-ui] #stage-resolution-dialog .stage-resolution-dialog-body {
     max-height: calc(88vh - var(--dragon-shared-dialog-header-reserve));
     max-height: calc(88dvh - var(--dragon-shared-dialog-header-reserve));
@@ -540,7 +540,7 @@ body[data-dragon-ui] #stage-resolution-dialog .stage-resolution-dialog-body {
     background: var(--dragon-bg-primary);
 }
 
-body[data-dragon-ui] #dataset-preview-dialog .dataset-preview-dialog-body {
+body[data-dragon-ui] .dataset-preview-dialog .dataset-preview-dialog-body {
     flex: 1 1 auto;
     min-height: 0;
     max-height: none;
@@ -3769,7 +3769,7 @@ body[data-dragon-ui] #dragon-root .dragon-global-settings-group-header {
 
 @media (max-width: 734px) {
     /* Keep the 80% desktop target usable on narrow touch screens. */
-    body[data-dragon-ui] #dataset-preview-dialog {
+    body[data-dragon-ui] .dataset-preview-dialog {
         width: calc(100vw - 24px);
         height: min(80dvh, 960px);
         max-width: calc(100vw - 24px);

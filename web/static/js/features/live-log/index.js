@@ -5,7 +5,7 @@
 import { isLiveRunningState, parseMetricsFromProgressLine } from '../live-training/index.js?v=module-bootstrap-20260831-release-v1';
 import {
     MAX_LOG_LINES,
-} from '../../config/catalog.js?v=module-bootstrap-20260831-release-v1';
+} from '../../config/catalog.js?v=module-bootstrap-20260902-krea2-pp-v1';
 import {
     markTrainingActivity,
     updateMetrics,

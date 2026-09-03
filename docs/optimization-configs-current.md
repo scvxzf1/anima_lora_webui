@@ -123,7 +123,8 @@ configs/base.toml
 | `balance_loss_weight` / `balance_loss_warmup_ratio` | LoRA/Hydra/Chimera 配置 | 专家均衡 loss | LoRA `1e-7`/`0.4`；Chimera `1.0`/`0.1` | 防止专家坍缩 | loss 过强可能干扰主任务 | 是 |
 | `router_targets` | LoRA/Hydra/Chimera 配置 | 路由作用层正则 | 常见 `cross_attn.output_proj` 与 `mlp.layer[12]`；Hydra 8GB 仅 MLP | 控制 MoE 插入范围 | regex 错误会影响训练层覆盖 | 是 |
 | `use_lokr` / `lokr_factor` | `gui-methods/lokr.toml`、WebUI catalog | 启用 LoKr Kronecker adapter | `use_lokr=true`；`lokr_factor=8` | LyCORIS LoKr 格式、复杂风格 | 16GB 下峰值紧张；推理需 LoKr 支持 | 是 |
-| `lokr_grouped_delta_backend` | `gui-methods/lokr.toml`、LoKr plugin | LoKr delta forward 后端 | 默认 `eager`；显式热测可设 `triton` | 大 token/大矩阵 LoKr 实验加速 | 会切到 custom autograd；真实训练需单独热测 | 配置可写 |
+| `lokr_grouped_delta_backend` | `gui-methods/lokr.toml`、LoKr plugin | LoKr delta forward 后端 | 默认 `triton`；兼容/对照可设 `eager` | 大 token/大矩阵 LoKr 加速 | 不兼容设备/布局回退 eager；首次 Triton 编译有额外开销 | 是 |
+| `lokr_grouped_delta_backward_backend` | `gui-methods/lokr.toml`、LoKr plugin | LoKr grouped-delta backward 后端 | 默认 `triton_grad_w1_w2_grad_x`；可切换分阶段 Triton 或 `eager` | full `w2`、标量 gate、连续 CUDA tensor | full-gradient 组合已通过 RTX 3080 组件验证和 CMP 170HX 3-seed 端到端热测；长训质量和 Triton 编译异常降级仍是残余风险 | 是 |
 | `lokr_factor_group_size` | `gui-methods/lokr.toml`、LoKr plugin、WebUI catalog | LoKr grouped projection 分组 | 默认 `8`；候选 `1`、`2`、`4`、`8` | LoKr 速度/显存平衡 | 值越大越快但临时激活越大；OOM 时退到 `4/2/1` | 是 |
 | `lokr_project_chunk_bytes` | `gui-methods/lokr.toml`、WebUI catalog | LoKr row chunk 字节阈值 | 默认 `4194304`；候选 `1MiB` 到 `16MiB` | 细化 LoKr delta apply 峰值 | 小值更慢，大值更容易 OOM | 是 |
 | `use_loha` | `gui-methods/loha.toml`、WebUI catalog | 启用 LoHa | GUI `loha` 变体 `true` | 需要 LoHa/LyCORIS 格式 | 与 LoKr/GLoRA/VeRA 等互斥 | 是 |

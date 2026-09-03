@@ -1,4 +1,4 @@
-import { FORM_SECTION_DEFS } from '../../config/catalog/form-layout.js?v=dragon-ui-20260830v2';
+import { FORM_SECTION_DEFS } from '../../config/catalog/form-layout.js?v=dragon-ui-20260902-krea2-pp-v1';
 
 export const CONFIG_KEY_OVERRIDES = {
     'data-behavior': ['use_shuffled_caption_variants', 'masked_loss', 'caption_dropout_rate', 'path_pattern', 'drop_lowres_images', 'min_pixels'],
@@ -26,7 +26,8 @@ export const CONFIG_KEY_OVERRIDES = {
     'soft-tokens': ['n_layers', 'n_t_buckets', 'init_std', 'splice_position', 'contrastive_weight', 'contrastive_k', 'contrastive_every_n', 'contrastive_negative_mode', 'contrastive_objective', 'contrastive_jaccard_alpha', 'contrastive_tau', 'contrastive_warmup_ratio', 'softrank_softness', 'softrank_method', 'dual_bank'],
     spd: ['dit_path', 'data_dir', 'iterations', 'seed', 'channel_scaling_alpha'],
     'data-loading': ['max_data_loader_n_workers', 'dataloader_pin_memory', 'persistent_data_loader_workers'],
-    'adapter-basics': ['network_dim', 'network_alpha', 'lora_adapter_kind', 'dora_wd', 'lokr_factor', 'network_weights', 'dim_from_weights', 'vera_projection_prng_key', 'vera_d_initial', 'vera_save_projection', 'lokr_use_einsum', 'lokr_decompose_w2', 'lokr_full_factor', 'lokr_allow_legacy_dim', 'lokr_factor_group_size', 'lokr_project_chunk_bytes'],
+    'adapter-basics': ['network_dim', 'network_alpha', 'lora_adapter_kind', 'dora_wd', 'lokr_factor', 'network_weights', 'dim_from_weights', 'vera_projection_prng_key', 'vera_d_initial', 'vera_save_projection', 'lokr_use_einsum', 'lokr_decompose_w2', 'lokr_full_factor', 'lokr_allow_legacy_dim', 'lokr_factor_group_size', 'lokr_project_chunk_bytes', 'lokr_grouped_delta_backend', 'lokr_grouped_delta_backward_backend'],
+    lokr: ['lokr_factor', 'lokr_use_einsum', 'lokr_decompose_w2', 'lokr_full_factor', 'lokr_allow_legacy_dim', 'lokr_factor_group_size', 'lokr_project_chunk_bytes', 'lokr_grouped_delta_backend', 'lokr_grouped_delta_backward_backend'],
     'output-save': ['output_name', 'save_every_n_epochs', 'save_last_n_epochs', 'checkpointing_epochs', 'checkpointing_last_n_epochs', 'network_train_unet_only', 'save_model_as', 'save_precision', 'weight_decay', 'use_cmmd', 'ip_diagnostics_epochs', 'log_every_n_steps', 'logging_dir', 'log_with', 'sample_prompts', 'sample_every_n_epochs', 'sample_every_n_steps', 'sample_at_first', 'sample_sampler', 'seed'],
     'lora-basics': ['network_module', 'network_args', 'use_ortho', 'use_timestep_mask', 'min_rank', 'alpha_rank_scale', 'channel_scaling_alpha', 'layer_start'],
     'ip-adapter': ['use_ip_adapter', 'ip_image_drop_p', 'validation_baselines', 'ip_pair_mode', 'ip_pair_prob', 'ip_pair_min_level', 'ip_pair_caption_strip_p', 'encoder', 'encoder_dim', 'resampler_layers', 'resampler_heads', 'ip_scale', 'gate_lr', 'pe_lora_enabled', 'pe_lora_rank', 'pe_lora_alpha', 'pe_lora_layer_from'],

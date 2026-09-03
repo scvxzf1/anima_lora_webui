@@ -1,6 +1,6 @@
-# 外部 API 打标工作台
+# 打标工作台（外部 API 与本地 ONNX）
 
-状态：基座可用
+状态：外部 API 与本地 ONNX 打标均已接线；本地模型权重按需下载
 适用界面：Dragon UI
 
 ## 入口与联动
@@ -19,12 +19,126 @@ API Key。
 
 1. 选择数据集预设、图片组和原始图/训练图目录。
 2. 勾选当前页图片并填写打标提示词。
-3. 在右上角设置按钮中配置 OpenAI-compatible API 地址、模型、超时、重试和并发数。
+3. 在右上角设置按钮中选择接入预设；外部预设可配置 OpenAI-compatible API 地址、模型、超时、重试和并发数。
 4. 发送任务，等待逐张候选 caption 返回。
-5. 审阅并修改候选文本，再选择写回当前选中项或全部候选。
+5. 在工作台的两行任务摘要中查看状态，使用常驻的刷新或“打开最终结果”入口。
+6. 审阅并修改候选文本，再选择写回当前选中项或全部候选。
+
+任务运行期间工作台只同步进度、状态和必要的结果节点，不会周期性替换整个页面；结果与日志页也采用增量更新。
+浏览器标签页切到后台时会暂停轮询，回到前台后再恢复，避免隐藏页面持续占用请求和渲染资源。
 
 外部模型返回结果不会自动写盘。普通文本 caption 使用原子写入；已有 `.json`、`.jsonl` 或共享
 `captions.json` 的结构化标注会保守拒绝覆盖。
+
+## 最终结果与任务保留
+
+最终结果页的直接入口是 `#page/captioning-results`。页面使用与训练数据预设库一致的
+数据集选择器，可搜索、分组和预览首图；选中预设后只显示该 `dataset_file` 对应的
+保留任务。任务工具栏固定为两行：第一行显示任务状态、刷新和重新打标，第二行放查看模式和批量写回操作。
+
+结果按可用宽度自动分列为图片卡片，窄屏时回落为单列。每张卡片支持两种同步编辑模式：
+
+- **Tag**：把逗号分隔的标签显示为可编辑胶囊，可增加、删除和拖动排序。
+- **原文**：直接编辑完整 caption。
+
+点击卡片图片会打开与数据集编辑器一致的原图详情预览，同时显示文件路径，并提供与卡片相同的
+Tag/原文编辑、翻译和保存操作。卡片与预览共用同一份草稿，在任一位置或模式中的修改会立即反映到其他位置。“保存修改”只更新当前
+WebUI 任务中的候选文本；内容未改变或改回原值时该按钮保持禁用。只有显式点击写回按钮才会修改图片同名 `.txt`。切换数据集、任务或离开页面时，
+尚未保存的草稿会先要求用户确认。
+
+对已结束的任务可选择任一当前可用接入预设执行“重新打标”。该操作复用原任务的数据集上下文、
+图片和提示词，并保留原任务 ID 和任务列表位置；有勾选时只重置并处理勾选的单张或多张图片，
+没有勾选时处理整个原任务。未选中的条目和已写回信息保持不变，重新生成的候选结果不会自动覆盖 TXT。
+
+全局设置的“打标任务保留上限”对应 `tagging_max_retained_jobs`，默认为 `40`，有效范围为
+`1..500`。超过上限时只按创建顺序清理最旧的已结束任务；排队中或运行中的任务不会被清理，图片、已写回的 TXT、
+模型和下载缓存也不在该策略的删除范围内。任务仍只保存在当前 WebUI 进程中。
+
+## 本地中英标签翻译
+
+结果卡片的“中文 / EN”按钮用于在英文 Danbooru tag 与对应中文名称之间切换。这不是 Google
+Translate API：标注不会发送到 Google 或其他第三方。首次使用时，页面会先弹窗说明来源和大小，
+只有用户确认后才下载约 23 MB 的固定版本本地词典。仓库和默认安装均不包含该资源。
+
+词典固定为 ffdkj/Danbooru Tag Chinese-English Translation Table 的 commit
+`bc2953723a76e1841e9564297c6812723223ecb0`，下载大小和 SHA-256 均在服务端校验。默认发布到：
+
+```text
+$ANIMA_HOME/models/tag-dictionaries/danbooru-zh-en/
+```
+
+可用 `ANIMA_TAG_DICTIONARY_ROOT` 改变词典目录。相对路径锚定 `$ANIMA_HOME`，包含 `..` 的路径会被拒绝。
+
+## 本地 ONNX 打标与模型资产
+
+接入预设页（`#page/captioning-providers`）提供 WD14 和 CLTagger 的本地 ONNX 接入。仓库不包含任何
+模型权重；页面只显示一份版本固定的 manifest，并按资产 ID 显示本机状态。用户点击“下载模型”后，
+服务端才会从 manifest 指定的 HTTPS 仓库获取文件，下载到：
+
+```text
+$ANIMA_HOME/models/captioners/<provider>/<asset_id>/
+```
+
+下载器只接受 manifest 中的资产 ID，不接受浏览器传入的 URL 或目标路径。每个文件都会校验声明的
+大小和 SHA-256，先写入 `.part`/staging 文件，全部通过后再原子发布。取消、失败或 WebUI 关闭时会
+清理临时文件；已经通过校验的最终文件不会被自动删除。下载状态保存在当前进程内，页面通过轮询展示
+进度，重启后需要重新点击下载（已完整安装的文件会复用）。
+
+当前固定资产：
+
+- `wd14-eva02-large-v3`（SmilingWolf WD14 EVA02 Large v3）
+- `wd14-vit-v3`（SmilingWolf WD14 ViT Tagger v3）
+- `wd14-vit-large-v3`（SmilingWolf WD14 ViT Large Tagger v3）
+- `wd14-convnext-v2`（SmilingWolf WD v1.4 ConvNeXt Tagger v2）
+- `cltagger-v1-02`（cella110n CLTagger v1.02）
+- `cltagger-v2-01a`（cella110n CLTagger v2.01a SigLIP2）
+
+WD14 的四个资产共享 `selected_tags.csv` 标签格式，但模型容量和显存需求不同；可按设备选择。
+CLTagger v2 使用 gated 仓库，必须先在 Hugging Face 接受模型条款并登录，再下载同一目录下的
+`model.onnx`、`model.onnx.data` 和 `model_vocabulary.json` 三个文件。v2 的 `.data` 文件约 2.2 GB，
+页面会将授权失败显示为下载错误，不会把凭据写入 profile 或普通设置。
+
+可选地设置 `ANIMA_CAPTIONER_MODELS_ROOT` 将资产根目录迁移到其他磁盘；该设置仍由服务端规范化，
+不能通过页面修改。模型运行时和模型权重是两个独立步骤：前者由用户在 Python 环境中显式安装，后者
+由用户在接入预设页显式点击下载。默认安装和启动 WebUI 都不会安装 ONNX Runtime，也不会下载权重。
+
+本地接入的执行设备支持 `自动`、`CPU` 和 `CUDA`。选择 `CUDA` 后可从与训练配置相同的
+`GET /api/training/gpus` 设备列表中指定一张物理 GPU；服务端只在该任务的 Worker 子进程中设置
+`CUDA_VISIBLE_DEVICES=<gpu_index>`，ONNX Runtime 在子进程内使用逻辑设备 `0`，不会修改 WebUI
+主进程或其他并发任务的设备环境。旧预设可继续使用“默认可见 GPU”；显式指定 GPU 时采用严格模式，
+目标设备或 CUDA provider 不可用会直接失败，不会静默回退 CPU。
+
+每个本地任务使用一个短生命周期 Worker 子进程。正常完成、失败或取消后，Worker 会关闭 ONNX
+Session 并退出，CUDA Context 由操作系统回收；取消流程有超时强杀兜底，WebUI 正常关闭时也会停止
+全部活跃 Worker。切换页面只停止当前页面轮询，不会取消后台打标，因此任务仍在运行时不会释放模型；
+任务完成或用户明确取消后才释放。
+
+### 安装可选运行时
+
+在项目虚拟环境中二选一：
+
+```bash
+# CPU，适合无 CUDA 或希望使用最小运行时的环境
+uv sync --extra onnx-cpu
+
+# CUDA，需确认 onnxruntime-gpu 与本机驱动/CUDA 环境兼容
+uv sync --extra onnx-cuda
+```
+
+两个 extra 只安装 Python 运行时，不包含 WD14/CLTagger 权重。不要同时安装 CPU 和 CUDA 两个
+extra；若更换运行时，请在同一虚拟环境中卸载旧的 `onnxruntime`/`onnxruntime-gpu` 后再同步。
+安装完成后，回到接入预设页检查运行时状态，再单独点击对应资产的“下载模型”。
+
+资产 API（`/api/captioning`，同时保留 `/api/tagging` alias）：
+
+```text
+GET  /model-assets
+GET  /model-assets/<asset_id>
+POST /model-assets/<asset_id>/download
+GET  /downloads
+GET  /downloads/<download_id>
+POST /downloads/<download_id>/cancel
+```
 
 ## 外部 API 配置
 
@@ -71,6 +185,9 @@ canonical API 前缀为 `/api/captioning`，同时保留 `/api/tagging` alias。
 
 ```bash
 timeout 60 .venv/bin/python -m pytest \
+  tests/test_tagging_local_worker.py \
+  tests/test_tagging_profiles.py \
+  tests/test_tagging_providers.py \
   tests/test_tagging_service.py \
   tests/test_tagging_routes.py \
   tests/test_dragon_tagging_frontend.py -q
