@@ -207,7 +207,12 @@ def _resume_state_integrity(state_dir: Path) -> dict[str, Any]:
         "train_state": "train_state.json",
         "model": "model.safetensors",
         "optimizer": "optimizer.bin",
-        "scheduler": "scheduler.bin",
+        # scheduler.bin is NOT required to resume: for self-managed-LR
+        # optimizers (ProdigyPlusScheduleFree / schedule-free) the trainer uses
+        # a dummy scheduler and never writes scheduler.bin (SavedState omits
+        # it). The resume point is re-derived from train_state.json's step, so
+        # a missing scheduler.bin must not block an otherwise complete state.
+        # "scheduler": "scheduler.bin",
     }
     missing = [label for key, label in labels.items() if not checks.get(key)]
     return {
