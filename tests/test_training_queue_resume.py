@@ -157,6 +157,38 @@ def test_queue_resume_incomplete_state_marks_item_error(tmp_path, monkeypatch):
     assert svc._queue_paused is True
 
 
+def test_queue_resume_schedule_free_state_without_scheduler_starts(tmp_path, monkeypatch):
+    history_dir, task_id, state_dir = _write_resume_history(tmp_path)
+    snapshot_path = history_dir / task_id / "config.snapshot.toml"
+    snapshot_path.write_text(
+        snapshot_path.read_text(encoding="utf-8")
+        + '\noptimizer_type = "ProdigyPlusScheduleFree"\n',
+        encoding="utf-8",
+    )
+    (state_dir / "scheduler.bin").unlink()
+    monkeypatch.setattr(training_service, "HISTORY_DIR", history_dir)
+    _patch_resume_runtime_output_root(monkeypatch, tmp_path)
+    _patch_queue_storage(monkeypatch, tmp_path)
+
+    svc = TrainingService(web.Application())
+    svc._schedule_queue_dispatch = lambda: None
+    asyncio.run(svc.enqueue_resume_from_history_task(task_id, str(state_dir)))
+    item = svc._queue_items()[0]
+
+    called = False
+
+    async def fake_start_unlocked(*_args, **_kwargs):
+        nonlocal called
+        called = True
+
+    svc._start_unlocked = fake_start_unlocked
+    asyncio.run(svc._dispatch_queue())
+
+    assert called is True
+    assert item["state"] == "running"
+    assert svc._queue_paused is False
+
+
 def test_queue_resume_duration_override_reports_stage_shift(tmp_path, monkeypatch):
     """追加步数后按新总步重算阶段，并返回 before/after 诊断。"""
     history_dir, task_id, state_dir = _write_resume_history(tmp_path)

@@ -35,9 +35,14 @@ def _display_project_path_wrapped(*args, **kwargs):
 
 def _list_resume_checkpoints(task: dict[str, Any]) -> list[dict[str, Any]]:
     from web.services.training import resume as _resume
+    from web.services.training.runtime_common import _load_config_file_config
+
+    config_file = str(task.get("config_snapshot") or "").strip()
+    config = _load_config_file_config(config_file) if config_file else {}
 
     return _resume._list_resume_checkpoints(
         task,
+        scheduler_required=_resume._resume_scheduler_state_required(config),
         resolve_display_path=_resolve_display_path,
         display_project_path=_display_project_path,
         path_exists=_path_exists,

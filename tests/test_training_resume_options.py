@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from tests import training_resume_test_support as _training_resume_support
+from web.services.training.resume import _resume_scheduler_state_required
 
 globals().update(
     {
@@ -49,6 +50,62 @@ def test_resume_options_mark_incomplete_state_unavailable(tmp_path, monkeypatch)
     assert payload["diagnostic"]["missing_state_files"] == ["optimizer.bin"]
     with pytest.raises(ValueError, match="缺少 optimizer.bin"):
         asyncio.run(svc.resume_from_history_task(task_id, str(state_dir)))
+
+
+def test_resume_options_require_scheduler_for_standard_optimizer(tmp_path, monkeypatch):
+    history_dir, task_id, state_dir = _write_resume_history(tmp_path)
+    (state_dir / "scheduler.bin").unlink()
+    monkeypatch.setattr(training_service, "HISTORY_DIR", history_dir)
+
+    svc = TrainingService(web.Application())
+    payload = svc.get_resume_options(task_id)
+
+    checkpoint = payload["checkpoints"][0]
+    assert payload["default_checkpoint"] == ""
+    assert checkpoint["state_complete"] is False
+    assert checkpoint["missing_state_files"] == ["scheduler.bin"]
+    assert checkpoint["state_integrity"]["scheduler_required"] is True
+
+
+def test_resume_options_allow_schedule_free_state_without_scheduler(tmp_path, monkeypatch):
+    history_dir, task_id, state_dir = _write_resume_history(tmp_path)
+    snapshot_path = history_dir / task_id / "config.snapshot.toml"
+    snapshot_path.write_text(
+        snapshot_path.read_text(encoding="utf-8")
+        + '\noptimizer_type = "ProdigyPlusScheduleFree"\n',
+        encoding="utf-8",
+    )
+    (state_dir / "scheduler.bin").unlink()
+    monkeypatch.setattr(training_service, "HISTORY_DIR", history_dir)
+
+    svc = TrainingService(web.Application())
+    payload = svc.get_resume_options(task_id)
+
+    checkpoint = payload["checkpoints"][0]
+    assert payload["default_checkpoint"] == str(state_dir)
+    assert checkpoint["state_complete"] is True
+    assert checkpoint["state_integrity"]["scheduler"] is False
+    assert checkpoint["state_integrity"]["scheduler_required"] is False
+
+
+@pytest.mark.parametrize(
+    ("config", "required"),
+    [
+        ({"optimizer_type": "AdamW"}, True),
+        ({"optimizer_type": "Automagic"}, False),
+        ({"optimizer_type": "AdamWScheduleFree"}, False),
+        ({"optimizer_type": "ProdigyPlusScheduleFree"}, False),
+        (
+            {
+                "optimizer_type": "ProdigyPlusScheduleFree",
+                "optimizer_args": ["use_schedulefree=False"],
+            },
+            True,
+        ),
+    ],
+)
+def test_resume_scheduler_requirement_matches_optimizer_config(config, required):
+    assert _resume_scheduler_state_required(config) is required
 
 def test_resume_options_mark_completed_checkpoint_unavailable(tmp_path, monkeypatch):
     history_dir, task_id, state_dir = _write_resume_history(tmp_path)
@@ -184,4 +241,3 @@ def test_resume_options_diagnose_missing_train_state(tmp_path, monkeypatch):
     assert payload["diagnostic"]["state_dir_count"] == 1
     assert payload["diagnostic"]["train_state_count"] == 0
     assert "没有包含 train_state.json" in payload["diagnostic"]["reason"]
-
