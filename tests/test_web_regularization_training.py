@@ -67,6 +67,8 @@ def test_web_rows_register_cross_dataset_regularization_images(tmp_path):
     group, _ = generate_dataset_group_by_blueprint(blueprint.dataset_group)
 
     assert len(config["datasets"]) == 2
+    assert "mask_dir" not in config["datasets"][0]["subsets"][0]
+    assert config["datasets"][1]["subsets"][0]["mask_dir"] == "post_image_dataset/reg_masks"
     assert len(group.datasets[0].image_data) == 1
     assert len(group.datasets[1].image_data) == 1
     assert len(group.datasets[1]) == 3
