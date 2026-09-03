@@ -89,7 +89,7 @@
 不会做还不会抄吗？问题不大的啦：
 
 - [sorryhyun/anima_lora](https://github.com/sorryhyun/anima_lora#)：当前项目的主要基础，WebUI 前端和 Anima LoRA 训练管线都基于它继续扩展。
-  [WhitecrowAurora](https://github.com/WhitecrowAurora) ：本项目的大部分的算法优化来源，多出来的优化都是这么来的。
+  [https://github.com/WhitecrowAurora/lulynx-trainer](https://github.com/WhitecrowAurora/lulynx-trainer) ：本项目非常重要的优化来源
   [MonadForge](https://github.com/LingyeSoul/MonadForge)：lokr换血优化，提升450%速度，伟大的G8炉。
 - [Moeblack/AnimaLoraToolkit](https://github.com/Moeblack/AnimaLoraToolkit)：参考了 Anima LoRA 训练工具链、lokr支持，配置组织和使用体验。
 - [huggingface/peft](https://github.com/huggingface/peft)：loha兼容支持。
