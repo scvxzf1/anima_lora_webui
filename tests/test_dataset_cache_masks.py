@@ -15,6 +15,13 @@ def test_external_preloaded_mask_does_not_require_alpha_npz_key():
     assert alpha_mask_required_for_cache(info, subset) is False
 
 
+def test_external_mask_dir_without_matching_mask_does_not_require_alpha_npz_key():
+    info = SimpleNamespace(mask_path=None, preloaded_alpha_mask=None)
+    subset = SimpleNamespace(alpha_mask=True, mask_dir="/tmp/masks")
+
+    assert alpha_mask_required_for_cache(info, subset) is False
+
+
 def test_embedded_alpha_mask_still_requires_alpha_npz_key():
     info = SimpleNamespace(mask_path=None, preloaded_alpha_mask=None)
     subset = SimpleNamespace(alpha_mask=True, mask_dir=None)
