@@ -56,6 +56,7 @@
 
 | 文档 | 说明 |
 | --- | --- |
+| [anima_dual_gpu_parallel_probe_20260904.md](anima_dual_gpu_parallel_probe_20260904.md) | Anima 异构双卡 PP2、TP2、TP2 INT8 通信的 BS=1 性能、显存、数值与同参数图片对比 |
 | [lycoris_4_fused_kernel_audit_20260902.md](lycoris_4_fused_kernel_audit_20260902.md) | LyCORIS 4.0.0 Triton/TileLang fused kernel 发布、性能、精度与 release 宣传审计，以及对本项目 LoKr/LoHa 的借鉴优先级 |
 | [lokr_fused_backward_stage1_20260902.md](lokr_fused_backward_stage1_20260902.md) | 基于 LyCORIS 审计方向独立实现 LoKr `grad_w1` Triton reduction；RTX 3080 组件验证与 CMP 170HX 3-seed x 50-step 端到端热测、Nsight、resume/compile/swap gate |
 | [convrot_longrun_bf16_w8a8_w8a16_20260727.md](convrot_longrun_bf16_w8a8_w8a16_20260727.md) | RTX 3080 上 BF16/W8A8/W8A16 三组 1710-step 长训审计（速度、显存、loss、样图及最终保存回归修复） |
