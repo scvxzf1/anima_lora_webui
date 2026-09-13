@@ -30,6 +30,7 @@ from library.log import setup_logging
 from library.preprocess._dataset import walk_images
 from library.preprocess.captions import CaptionSource, read_caption_source
 from library.preprocess.text import generate_caption_variants
+from library.preprocess.adaptive_batch import batch_size_arg, iter_batches
 
 setup_logging()
 logger = logging.getLogger(__name__)
@@ -101,7 +102,7 @@ def _cache_items(
     *,
     data_dir: Path,
     cache_dir: Path,
-    batch_size: int,
+    batch_size: int | str,
     caption_shuffle_variants: int,
     caption_tag_dropout_rate: float,
     overwrite: bool,
@@ -112,9 +113,11 @@ def _cache_items(
 ) -> tuple[int, int]:
     written = 0
     skipped = 0
-    for start in range(0, len(items), batch_size):
+    batch_size = batch_size_arg(batch_size)
+    for batch in iter_batches(items, lambda: caching_strategy.preprocess_batch_size
+                             if batch_size == "auto" else batch_size):
         infos: list[_CacheInfo] = []
-        for image_path, source in items[start : start + batch_size]:
+        for image_path, source in batch:
             variants = _caption_variants(
                 source,
                 caption_shuffle_variants,
@@ -172,7 +175,8 @@ def main() -> None:
     parser.add_argument(
         "--qwen3", type=str, required=True, help="Qwen3-VL-4B safetensors path"
     )
-    parser.add_argument("--batch_size", type=int, default=1)
+    parser.add_argument("--batch_size", type=batch_size_arg, default="auto",
+                        help="Positive fixed batch size, or auto for upward probing with OOM backoff.")
     parser.add_argument(
         "--dtype",
         type=str,
@@ -194,8 +198,6 @@ def main() -> None:
     parser.add_argument("--recursive", action="store_true")
     args = parser.parse_args()
 
-    if args.batch_size < 1:
-        parser.error("--batch_size must be >= 1")
     if args.caption_shuffle_variants < 0:
         parser.error("--caption_shuffle_variants must be >= 0")
     if not 0.0 <= args.caption_tag_dropout_rate <= 1.0:

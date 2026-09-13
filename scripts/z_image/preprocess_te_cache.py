@@ -10,6 +10,7 @@ from pathlib import Path
 import torch
 
 from library.log import setup_logging
+from library.preprocess.adaptive_batch import batch_size_arg
 from scripts.krea2.preprocess_te_cache import _cache_items, _iter_caption_sources
 
 setup_logging()
@@ -21,7 +22,8 @@ def main() -> None:
     parser.add_argument("--dir", required=True)
     parser.add_argument("--cache_dir", required=True)
     parser.add_argument("--qwen3", required=True)
-    parser.add_argument("--batch_size", type=int, default=1)
+    parser.add_argument("--batch_size", type=batch_size_arg, default="auto",
+                        help="Positive fixed batch size, or auto for upward probing with OOM backoff.")
     parser.add_argument(
         "--dtype",
         choices=["bfloat16", "float16", "float32"],
@@ -42,8 +44,6 @@ def main() -> None:
     parser.add_argument("--recursive", action="store_true")
     args = parser.parse_args()
 
-    if args.batch_size < 1:
-        parser.error("--batch_size must be >= 1")
     if args.caption_shuffle_variants < 0:
         parser.error("--caption_shuffle_variants must be >= 0")
     if not 0.0 <= args.caption_tag_dropout_rate <= 1.0:

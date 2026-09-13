@@ -43,7 +43,8 @@ def add_io_args(
     include_recursive: bool = True,
     include_path_pattern: bool = True,
     include_batch_size: bool = False,
-    batch_size_default: int = 8,
+    batch_size_default: int | str = 8,
+    allow_auto_batch_size: bool = False,
     include_num_workers: bool = False,
     num_workers_default: int = 4,
 ) -> argparse.ArgumentParser:
@@ -102,11 +103,15 @@ def add_io_args(
             ),
         )
     if include_batch_size:
+        from library.preprocess.adaptive_batch import batch_size_arg
+
         parser.add_argument(
             "--batch_size",
-            type=int,
+            type=batch_size_arg if allow_auto_batch_size else int,
             default=batch_size_default,
-            help=f"Encoding batch size (default: {batch_size_default}).",
+            help=f"Encoding batch size (default: {batch_size_default})."
+            + (" 'auto' probes upward from 1 and backs off on CUDA OOM."
+               if allow_auto_batch_size else ""),
         )
     if include_num_workers:
         parser.add_argument(

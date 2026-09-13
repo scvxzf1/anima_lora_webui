@@ -26,6 +26,7 @@ from library.io.cache_names import latent_cache_suffix
 from library.datasets.image_utils import IMAGE_TRANSFORMS
 from library.preprocess._dataset import PreprocessStats, group_by_shape, walk_images
 from library.preprocess._progress import ProgressFn
+from library.preprocess.adaptive_batch import AutoBatcher, batch_size_arg, iter_batches
 
 
 def get_latents_npz_path(
@@ -183,6 +184,14 @@ def _save_batch(items: list[tuple[Path, np.ndarray, tuple[int, int]]]) -> None:
         np.savez(npz_path, **kwargs)
 
 
+def _encode_latent_batch(vae, images, encode_fn):
+    images = images.to(device=vae.device, dtype=vae.dtype)
+    with torch.no_grad():
+        if encode_fn is not None:
+            return encode_fn(vae, images).cpu()
+        return vae.encode_pixels_to_latents(images).cpu()
+
+
 def cache_latents(
     data_dir: Path,
     vae,
@@ -190,7 +199,7 @@ def cache_latents(
     cache_dir: Path | None = None,
     recursive: bool = False,
     path_pattern: str | None = None,
-    batch_size: int = 4,
+    batch_size: int | str = "auto",
     progress: ProgressFn | None = None,
     io_workers: int | None = None,
     overwrite: bool = False,
@@ -211,6 +220,7 @@ def cache_latents(
     CPU/IO, so they're farmed to thread pools that overlap the GPU — the GPU no
     longer idles between batches. ``io_workers`` sizes those pools (default
     ``min(8, cpu_count)``). Output is byte-identical to the serial path."""
+    batch_size = batch_size_arg(batch_size)
     image_files = walk_images(data_dir, recursive=recursive, pattern=path_pattern)
     reso_groups = group_by_shape(image_files)
     stats = PreprocessStats(seen=len(image_files))
@@ -218,15 +228,22 @@ def cache_latents(
     if progress is not None:
         progress(0, total=len(image_files))
 
-    batches: list[tuple[int, int, list[Path]]] = []
-    for (w, h), paths in reso_groups.items():
-        for s in range(0, len(paths), batch_size):
-            batches.append((w, h, paths[s : s + batch_size]))
+    tuners = {
+        (w, h): AutoBatcher(vae.device, label=f"vae/{w}x{h}",
+                           cleanup=getattr(vae, "clear_cache", None))
+        for w, h in reso_groups
+    } if batch_size == "auto" else {}
+
+    def batches():
+        for (w, h), paths in reso_groups.items():
+            tuner = tuners.get((w, h))
+            for group in iter_batches(paths, lambda: tuner.batch_size if tuner else batch_size):
+                yield w, h, group
 
     workers = io_workers or min(8, (os.cpu_count() or 4))
-    depth = max(2, workers // 2)  # decoded batches kept in flight (bounds host RAM)
+    depth = 1 if tuners else max(2, workers // 2)
     max_saves = max(2, workers)  # in-flight npz writes before backpressure
-    it = iter(batches)
+    it = iter(batches())
     decode_q: deque = deque()
     save_q: deque = deque()
     failed_all: list[tuple[Path, str]] = []
@@ -273,12 +290,13 @@ def cache_latents(
             if img_batch is None:
                 continue
 
-            img_batch = img_batch.to(device=vae.device, dtype=vae.dtype)
-            with torch.no_grad():
-                if encode_fn is not None:
-                    latents = encode_fn(vae, img_batch).cpu()
-                else:
-                    latents = vae.encode_pixels_to_latents(img_batch).cpu()
+            tuner = tuners.get(kept[0][1])
+            if tuner is not None:
+                latents = tuner.encode_all(
+                    img_batch, lambda images: _encode_latent_batch(vae, images, encode_fn)
+                )
+            else:
+                latents = _encode_latent_batch(vae, img_batch, encode_fn)
 
             items: list[tuple[Path, np.ndarray, tuple[int, int]]] = []
             for i, (p, size) in enumerate(kept):

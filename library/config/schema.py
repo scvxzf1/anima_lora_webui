@@ -331,17 +331,17 @@ def populate_schema(
         (
             "preprocess_memory_profile",
             "auto",
-            "Preprocess cache memory profile. auto keeps legacy VAE/text cache batch sizes; low_vram, balanced and speed tune them for WebUI preprocess.",
+            "Preprocess cache memory profile. auto probes VAE/text batches upward from 1 with CUDA OOM backoff; other profiles use fixed batch sizes.",
         ),
         (
             "preprocess_vae_cache_batch_size",
             "auto",
-            "Batch size forwarded to scripts/preprocess/cache_latents.py. auto keeps the legacy default.",
+            "VAE cache batch size. auto follows the profile; with profile=auto it searches per resolution from 1 and retries CUDA OOM at a smaller batch.",
         ),
         (
             "preprocess_text_cache_batch_size",
             "auto",
-            "Batch size forwarded to scripts/preprocess/cache_text_embeddings.py. auto keeps the legacy default.",
+            "Text cache batch size. auto follows the profile; with profile=auto it searches from 1 over flattened captions. Positive integers remain fixed.",
         ),
         (
             "preprocess_precision_preference",

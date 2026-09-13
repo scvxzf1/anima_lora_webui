@@ -19,6 +19,7 @@ from PIL.PngImagePlugin import PngInfo
 from library.datasets.buckets import BucketManager
 from library.preprocess._dataset import PreprocessStats, walk_images
 from library.preprocess._progress import ProgressFn
+from library.preprocess.bucket_geometry import select_resize_bucket
 
 CAPTION_EXTENSIONS = {".txt", ".caption"}
 
@@ -90,28 +91,10 @@ def process_image(
     img = src_img.convert("RGB")
     w, h = img.size
 
-    if enable_bucket:
-        bucket_reso, _, _ = bucket_mgr.select_bucket(w, h)
-        if bucket_no_upscale and (bucket_reso[0] > w or bucket_reso[1] > h):
-            candidates = [
-                reso
-                for reso in bucket_mgr.predefined_resos
-                if reso[0] <= w and reso[1] <= h
-            ]
-            if candidates:
-                aspect = w / h
-                bucket_reso = min(
-                    candidates,
-                    key=lambda reso: (abs((reso[0] / reso[1]) - aspect), -reso[0] * reso[1]),
-                )
-                bucket_mgr.add_if_new_reso(bucket_reso)
-            else:
-                down_w = max(min_size, (min(bucket_reso[0], w) // reso_steps) * reso_steps)
-                down_h = max(min_size, (min(bucket_reso[1], h) // reso_steps) * reso_steps)
-                bucket_reso = (down_w, down_h)
-                bucket_mgr.add_if_new_reso(bucket_reso)
-    else:
-        bucket_reso = max_reso
+    bucket_reso = select_resize_bucket(
+        bucket_mgr, w, h,
+        enable_bucket=enable_bucket, bucket_no_upscale=bucket_no_upscale,
+    )
     bw, bh = bucket_reso
 
     # Resize preserving aspect ratio so the image covers the bucket.

@@ -19,12 +19,6 @@ from ._common import PY, ROOT, _path, run
 RUNTIME_PREPROCESS_ATTR_KEY = "preprocess"
 CAPTION_SOURCE_MODES = {"auto", "txt", "json", "captions_json"}
 _CAPTION_INDEX_VOCAB = "models/captioners/anima-tagger-v2/vocab.json"
-_PREPROCESS_MEMORY_PROFILES = {
-    "auto": (2, 16),
-    "low_vram": (1, 4),
-    "balanced": (2, 8),
-    "speed": (4, 16),
-}
 _PREPROCESS_PRECISION_ALIASES = {
     "bf16": "bfloat16",
     "bfloat16": "bfloat16",
@@ -216,19 +210,11 @@ def _reuse_overwrite_args(row: dict, *, kind: str) -> list[str]:
     return []
 
 
-def _preprocess_cache_batch_sizes() -> tuple[int, int]:
+def _preprocess_cache_batch_sizes() -> tuple[int | str, int | str]:
     from ._common import _path_overrides  # local import: avoids unused circular
+    from library.preprocess.batch_config import resolve_cache_batch_sizes
 
-    overrides = _path_overrides()
-    profile = str(overrides.get("preprocess_memory_profile") or "auto").strip().lower()
-    profile = profile.replace("-", "_")
-    vae_batch, text_batch = _PREPROCESS_MEMORY_PROFILES.get(
-        profile,
-        _PREPROCESS_MEMORY_PROFILES["auto"],
-    )
-    explicit_vae = _positive_int(overrides.get("preprocess_vae_cache_batch_size"))
-    explicit_text = _positive_int(overrides.get("preprocess_text_cache_batch_size"))
-    return explicit_vae or vae_batch, explicit_text or text_batch
+    return resolve_cache_batch_sizes(_path_overrides())
 
 
 def _preprocess_precision_dtype() -> str:
@@ -380,6 +366,16 @@ def _dataset_rows(dataset_config: Any, overrides: dict[str, Any] | None = None) 
                 attrs = {}
             image_dir = _dataset_path_value(subset.get("image_dir") or fallback_image, overrides)
             cache_dir = _dataset_path_value(subset.get("cache_dir") or fallback_cache, overrides)
+            text_cache_dir = (
+                _dataset_path_value(subset.get("text_cache_dir"), overrides)
+                if str(subset.get("text_cache_dir") or "").strip()
+                else ""
+            )
+            cond_cache_dir = (
+                _dataset_path_value(subset.get("cond_cache_dir"), overrides)
+                if str(subset.get("cond_cache_dir") or "").strip()
+                else ""
+            )
             if attrs.get("source_dir"):
                 source_dir = _dataset_path_value(attrs.get("source_dir"), overrides)
             elif image_dir and _same_path_text(image_dir, fallback_image):
@@ -396,6 +392,8 @@ def _dataset_rows(dataset_config: Any, overrides: dict[str, Any] | None = None) 
                     "source_image_dir": source_dir,
                     "resized_image_dir": image_dir,
                     "lora_cache_dir": cache_dir,
+                    "text_cache_dir": text_cache_dir,
+                    "cond_cache_dir": cond_cache_dir,
                     "recursive": subset.get("recursive", dataset.get("recursive", True)),
                     "path_pattern": subset.get("path_pattern", dataset.get("path_pattern", "*")),
                 }
@@ -716,7 +714,7 @@ def _run_preprocess_te_krea2(
             # ``_run_preprocess_te_anima`` which also uses ``source_image_dir``.
             str(row.get("source_image_dir") or _path("source_image_dir", "image_dataset")),
             "--cache_dir",
-            str(row.get("lora_cache_dir") or _path("lora_cache_dir", "post_image_dataset/lora")),
+            _text_cache_dir_for_row(row),
             "--qwen3",
             _path("qwen3", "models/text_encoders/qwen3vl_4b_bf16.safetensors"),
             "--batch_size",
@@ -774,7 +772,7 @@ def _run_preprocess_te_z_image(
             "--dir",
             str(row.get("source_image_dir") or _path("source_image_dir", "image_dataset")),
             "--cache_dir",
-            str(row.get("lora_cache_dir") or _path("lora_cache_dir", "post_image_dataset/lora")),
+            _text_cache_dir_for_row(row),
             "--qwen3",
             _path("qwen3", "models/diffusion_models/Z-Image"),
             "--batch_size",
@@ -826,7 +824,7 @@ def _run_preprocess_te_anima(
             "--dir",
             str(row.get("source_image_dir") or _path("source_image_dir", "image_dataset")),
             "--cache_dir",
-            str(row.get("lora_cache_dir") or _path("lora_cache_dir", "post_image_dataset/lora")),
+            _text_cache_dir_for_row(row),
             "--qwen3",
             _path("qwen3", "models/text_encoders/qwen_3_06b_base.safetensors"),
             "--dit",
@@ -852,6 +850,16 @@ def _run_preprocess_te_anima(
             *_reuse_overwrite_args(row, kind="te"),
             *extra,
         ]
+    )
+
+
+def _text_cache_dir_for_row(row: dict[str, Any]) -> str:
+    explicit = str(row.get("text_cache_dir") or "").strip()
+    if explicit:
+        return explicit
+    return str(
+        row.get("lora_cache_dir")
+        or _path("lora_cache_dir", "post_image_dataset/lora")
     )
 
 
@@ -1072,7 +1080,13 @@ def cmd_preprocess_config(extra):
     for entry in subset_entries:
         sub = entry["subset"]
         image_dir = sub["image_dir"]
-        cache_dir = sub.get("cache_dir") or image_dir
+        latent_cache_dir = str(sub.get("cache_dir") or "").strip()
+        text_cache_dir = str(sub.get("text_cache_dir") or "").strip()
+        if not text_cache_dir:
+            # TE walks the caption-bearing source tree. When no dedicated
+            # cache root exists, redirect its sidecars to the training image
+            # tree, matching the loader's alongside-image lookup.
+            text_cache_dir = latent_cache_dir or str(image_dir)
         prefer_json = bool(entry["prefer_json"])
         json_args = ["--prefer_json_caption"] if prefer_json else []
         source_args = _caption_source_args(entry.get("caption_source_mode"), prefer_json)
@@ -1107,8 +1121,7 @@ def cmd_preprocess_config(extra):
                 "scripts.preprocess.cache_latents",
                 "--dir",
                 image_dir,
-                "--cache_dir",
-                cache_dir,
+                *(["--cache_dir", latent_cache_dir] if latent_cache_dir else []),
                 "--vae",
                 vae_path,
                 "--batch_size",
@@ -1129,7 +1142,7 @@ def cmd_preprocess_config(extra):
                 "--dir",
                 src_dir,
                 "--cache_dir",
-                cache_dir,
+                text_cache_dir,
                 "--qwen3",
                 qwen3_path,
                 "--dit",

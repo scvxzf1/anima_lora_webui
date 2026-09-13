@@ -21,6 +21,7 @@ from library.models.family_registry import get_model_family_spec
 from library.preprocess.captions import CaptionSource, read_caption_source
 from library.preprocess._dataset import PreprocessStats, walk_images
 from library.preprocess._progress import ProgressFn
+from library.preprocess.adaptive_batch import AutoBatcher, batch_size_arg, iter_batches
 from library.training.prior_preservation import build_diff_output_prior_caption
 
 logger = logging.getLogger(__name__)
@@ -148,7 +149,7 @@ def cache_text_embeddings(
     cache_dir: Path | None = None,
     recursive: bool = False,
     path_pattern: str | None = None,
-    batch_size: int = 16,
+    batch_size: int | str = "auto",
     caption_shuffle_variants: int = 0,
     caption_tag_dropout_rate: float = 0.0,
     prefer_json_caption: bool = False,
@@ -171,6 +172,8 @@ def cache_text_embeddings(
     (v0 pristine, v1..v{N-1} shuffled + optionally tag-dropped). Returns counts;
     pass ``progress`` for a per-image bar.
     """
+    batch_size = batch_size_arg(batch_size)
+    tuner = AutoBatcher(device, label="anima/text") if batch_size == "auto" else None
     candidates = walk_images(data_dir, recursive=recursive, pattern=path_pattern)
 
     entries: list[tuple[Path, CaptionSource]] = []
@@ -223,8 +226,14 @@ def cache_text_embeddings(
     if progress is not None:
         progress(0, total=len(entries))
 
-    for batch_start in range(0, len(entries), batch_size):
-        batch = entries[batch_start : batch_start + batch_size]
+    def encode(captions):
+        def forward(group):
+            return _encode_batch(group, tokenize_strategy, encoding_strategy,
+                                 text_encoder, llm_adapter, device, cache_dtype)
+
+        return tuner.encode_all(captions, forward) if tuner is not None else forward(captions)
+
+    for batch in iter_batches(entries, lambda: tuner.batch_size if tuner else batch_size):
 
         # Skip already-cached entries.
         to_encode: list[tuple[Path, CaptionSource, Path]] = []
@@ -249,15 +258,7 @@ def cache_text_embeddings(
         if not use_variant_cache:
             captions = [variants[0] for variants in variants_by_entry]
             prompt_embeds, attn_mask, t5_input_ids, t5_attn_mask, crossattn_emb = (
-                _encode_batch(
-                    captions,
-                    tokenize_strategy,
-                    encoding_strategy,
-                    text_encoder,
-                    llm_adapter,
-                    device,
-                    cache_dtype,
-                )
+                encode(captions)
             )
             prior_crossattn_emb = None
             if cache_prior_crossattn:
@@ -269,15 +270,7 @@ def cache_text_embeddings(
                     )
                     for caption in captions
                 ]
-                *_, prior_crossattn_emb = _encode_batch(
-                    prior_captions,
-                    tokenize_strategy,
-                    encoding_strategy,
-                    text_encoder,
-                    llm_adapter,
-                    device,
-                    cache_dtype,
-                )
+                *_, prior_crossattn_emb = encode(prior_captions)
 
             for i, (img_path, _, cache_path) in enumerate(to_encode):
                 save_dict = {
@@ -301,15 +294,7 @@ def cache_text_embeddings(
                 all_captions.extend(variants)
 
             prompt_embeds, attn_mask, t5_input_ids, t5_attn_mask, crossattn_emb = (
-                _encode_batch(
-                    all_captions,
-                    tokenize_strategy,
-                    encoding_strategy,
-                    text_encoder,
-                    llm_adapter,
-                    device,
-                    cache_dtype,
-                )
+                encode(all_captions)
             )
             prior_crossattn_emb = None
             if cache_prior_crossattn:
@@ -321,15 +306,7 @@ def cache_text_embeddings(
                     )
                     for caption in all_captions
                 ]
-                *_, prior_crossattn_emb = _encode_batch(
-                    prior_captions,
-                    tokenize_strategy,
-                    encoding_strategy,
-                    text_encoder,
-                    llm_adapter,
-                    device,
-                    cache_dtype,
-                )
+                *_, prior_crossattn_emb = encode(prior_captions)
 
             offset = 0
             for img_path, caption, cache_path in to_encode:

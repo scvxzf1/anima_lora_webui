@@ -26,7 +26,8 @@ def main() -> None:
         parser,
         cache_noun="latent caches",
         include_batch_size=True,
-        batch_size_default=2,
+        batch_size_default="auto",
+        allow_auto_batch_size=True,
     )
     parser.add_argument("--vae", type=str, required=True, help="Path to VAE weights")
     parser.add_argument(

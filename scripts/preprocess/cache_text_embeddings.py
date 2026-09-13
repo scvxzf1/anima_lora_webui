@@ -114,7 +114,8 @@ def main() -> None:
         parser,
         cache_noun="text-encoder caches",
         include_batch_size=True,
-        batch_size_default=16,
+        batch_size_default="auto",
+        allow_auto_batch_size=True,
     )
     parser.add_argument(
         "--qwen3", type=str, required=True, help="Path to Qwen3 text encoder"

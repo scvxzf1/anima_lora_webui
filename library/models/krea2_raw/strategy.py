@@ -196,7 +196,7 @@ class Krea2TextEncoderOutputsCachingStrategy(TextEncoderOutputsCachingStrategy):
     def __init__(
         self,
         cache_to_disk: bool = True,
-        batch_size: Optional[int] = None,
+        batch_size: int | str | None = None,
         skip_disk_cache_validity_check: bool = False,
         use_shuffled_caption_variants: bool = False,
     ) -> None:
@@ -206,6 +206,13 @@ class Krea2TextEncoderOutputsCachingStrategy(TextEncoderOutputsCachingStrategy):
             skip_disk_cache_validity_check=skip_disk_cache_validity_check,
         )
         self.use_shuffled_caption_variants = use_shuffled_caption_variants
+        self._preprocess_batcher = None
+
+    @property
+    def preprocess_batch_size(self) -> int:
+        if self.batch_size == "auto":
+            return self._preprocess_batcher.batch_size if self._preprocess_batcher else 1
+        return max(1, int(self.batch_size or 1))
 
     def get_outputs_npz_path(
         self,
@@ -434,6 +441,22 @@ class Krea2TextEncoderOutputsCachingStrategy(TextEncoderOutputsCachingStrategy):
         captions: List[str],
     ) -> tuple[torch.Tensor, torch.Tensor]:
         """Encode flattened variants without multiplying the configured batch size."""
+        if self.batch_size == "auto":
+            from library.preprocess.adaptive_batch import AutoBatcher
+
+            if self._preprocess_batcher is None:
+                self._preprocess_batcher = AutoBatcher(
+                    next(models[0].parameters()).device, label=f"{self.MODEL_FAMILY}/text",
+                )
+
+            def encode(group):
+                hiddens, mask = text_encoding_strategy.encode_tokens(
+                    tokenize_strategy, models, tokenize_strategy.tokenize(group),
+                )
+                return (hiddens.detach().to(dtype=KREA2_CACHE_DTYPE, device="cpu"),
+                        mask.detach().to(dtype=torch.bool, device="cpu"))
+
+            return self._preprocess_batcher.encode_all(captions, encode)
         batch_size = max(1, int(self.batch_size or len(captions) or 1))
         hidden_chunks: list[torch.Tensor] = []
         mask_chunks: list[torch.Tensor] = []
