@@ -457,6 +457,8 @@ def test_training_runbar_uses_equal_centered_columns_for_context_and_actions():
 def test_primary_navigation_exposes_centered_workspace_routes_without_duplicate_icons():
     nav = _read("js/dragon-ui/nav.js")
     css = _read("css/dragon/02-dragon-nav.css")
+    tokens = _read("css/dragon/00-dragon-tokens.css")
+    scale = _read("js/dragon-ui/ui-scale.js")
 
     assert "const PRIMARY_NAV_ITEMS = [" in nav
     assert "{ id: 'training-config', label: '训练配置', hash: '#config/training-config' }" in nav
@@ -483,6 +485,15 @@ def test_primary_navigation_exposes_centered_workspace_routes_without_duplicate_
     assert ".dragon-nav-primary-link[data-active=\"true\"]::after" in css
     assert ".dragon-nav-utility-button[data-active=\"true\"]" in css
     assert ".dragon-nav-mobile-shortcut[data-active=\"true\"]" in css
+    assert "--dragon-fs-nav: 14px;" in tokens
+    assert "--dragon-nav-height: 52px;" in tokens
+    assert "--dragon-nav-content-max: 1280px;" in tokens
+    assert "max-width: var(--dragon-nav-content-max);" in css
+    assert "--dragon-nav-height: var(--dragon-nav-height-scaled, 52px);" in css
+    assert "font-size: var(--dragon-nav-font-size-scaled, var(--dragon-fs-nav));" in css
+    assert "rootStyle.setProperty('--dragon-nav-height-scaled', `${NAV_HEIGHT_PX * baseZoom}px`);" in scale
+    assert "rootStyle.setProperty('--dragon-nav-font-size-scaled', `${NAV_FONT_SIZE_PX * baseZoom}px`);" in scale
+    assert "mount.style.setProperty('--dragon-nav-height', `${NAV_HEIGHT_PX * baseScale / pageScale}px`);" in scale
 
 
 def test_training_task_pages_use_primary_navigation_without_a_secondary_bar():
@@ -654,7 +665,8 @@ def test_training_config_recomputes_scoped_fields_and_supports_search():
     assert "entries = nextEntries" in page
     assert "const activeSub = activeView.sub || sub" in page
     assert "function renderConfigFieldFilter(total)" in page
-    assert "function bindConfigFieldFilter(root, state)" in page
+    assert "import { bindConfigFieldFilter }" in page
+    assert "export function bindConfigFieldFilter(root, state)" in _read("js/dragon-ui/pages/config-field-filter.js")
     assert "data-config-field-search" in page
     assert "bindConfigFieldFilter(root, pageState)" in page
     assert ".dragon-config-field-filter" in css
@@ -785,18 +797,26 @@ def test_training_preset_library_imports_and_saves_as_editable_config():
     css = _read("css/dragon/04a-dragon-training-presets.css")
 
     assert 'data-training-preset-action="import"' in library
+    assert 'data-training-preset-action="new"' in library
+    assert 'data-training-preset-action="rename"' in library
     assert 'data-training-preset-action="save-as"' in library
     assert 'data-training-preset-action="save-updates"' in library
     assert 'type="file" accept=".toml,text/plain,application/toml"' in library
     assert "importTrainingConfig(library, state" in library
+    assert "createBlankTrainingConfig(library, state" in library
+    assert "renameCurrentConfig(library, state" in library
     assert "saveCurrentConfigAs(library, state" in library
+    assert "loadBlankTrainingPreset(api, target)" in library
+    assert "promptDragonDialog" in library
     assert "'/api/config/raw/save-as'" in library
+    assert "'/api/config/raw/rename'" in library
     assert "JSON.stringify({ file, content })" in library
     assert "`configs/imported/${normalizeImportedFilename(answer)}`" in library
     assert "await refreshLibrary(library, state, beforeContextChange)" in library
     assert "activateConfigFile(state, file)" in library
     assert "selectTrainingConfigFile(state.context, file" in library
-    assert "grid-template-columns: repeat(2, minmax(0, 1fr));" in css
+    assert ".dragon-training-preset-toolbar-actions .dragon-training-preset-pill" in css
+    assert "border-radius: var(--dragon-radius-pill);" in css
     assert '[data-training-preset-action="save-updates"]' in css
     assert "onSaveChanges: () => saveCurrentChanges?.() ?? false" in page
     assert "await state.onSaveChanges()" in library

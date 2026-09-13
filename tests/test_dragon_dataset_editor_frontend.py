@@ -343,14 +343,14 @@ def test_dragon_dataset_layout_avoids_transformed_fixed_savebar() -> None:
 
 
 def test_dragon_dataset_release_token_is_consistent() -> None:
-    bootstrap_token = "dragon-ui-20260902-krea2-pp-v1"
-    entry_token = "dragon-ui-20260902-krea2-pp-v1"
-    style_token = "dragon-ui-20260902-training-nav-v3"
+    bootstrap_token = "auto-block-swap-20260908-v3"
+    entry_token = "auto-block-swap-20260908-v3"
+    style_token = "dragon-ui-20260903-nav-scale-v2"
     shell_token = "dragon-ui-20260902-training-nav-v3"
-    config_page_token = "dragon-ui-20260902-krea2-pp-v1"
+    config_page_token = "auto-block-swap-20260908-v3"
     page_token = "dragon-ui-20260825v118"
-    fields_token = "dragon-ui-20260828v54"
-    config_style_token = "dragon-ui-20260902-lokr-availability-v1"
+    fields_token = "dragon-ui-20260903-mask-semantics-v1"
+    config_style_token = "dragon-ui-20260903-beginner-help-v1"
     shared_style_token = "dragon-ui-20260902v78"
     dataset_style_token = "dragon-ui-20260902v91"
     index_html = INDEX_HTML.read_text(encoding="utf-8")
@@ -370,8 +370,8 @@ def test_dragon_dataset_release_token_is_consistent() -> None:
     assert f"router.js?v={shell_token}" in entry
     assert "nav.js?v=dragon-ui-20260902-training-nav-v3" in entry
     assert f"config-page.js?v={config_page_token}" in page_loaders
-    assert "route-styles.js?v=dragon-ui-20260902-training-nav-v3" in page_loaders
-    assert "dataset-editor.js?v=dragon-ui-20260902v138" in page_loaders
+    assert "route-styles.js?v=dragon-ui-20260906-dual-theme-v2" in page_loaders
+    assert "dataset-editor.js?v=dragon-ui-20260906-workspace-v1" in page_loaders
     assert "dataset-preview-controller.js?v=dragon-ui-20260902v8" in page
     assert "dataset-editor-preview.js?v=dragon-ui-20260902v53" in preview_controller
     assert "dataset-preview-window.js?v=dragon-ui-20260831v3" in preview
@@ -380,8 +380,19 @@ def test_dragon_dataset_release_token_is_consistent() -> None:
     assert "dataset-editor-presets.js?v=dragon-ui-20260824v71" in page
     assert f"06-dragon-pages.css?v={dataset_style_token}" in route_styles
     assert f"04-dragon-config.css?v={config_style_token}" in route_styles
-    assert "04a-dragon-training-presets.css?v=dragon-ui-20260817v84" in route_styles
+    assert "04a-dragon-training-presets.css?v=dragon-ui-20260906-preset-actions-v1" in route_styles
     assert "06a-dragon-shared-dialogs.css?v=dragon-ui-20260902v78" in route_styles
+
+
+def test_dragon_dataset_editor_exposes_explicit_mask_semantics_and_preserves_rows() -> None:
+    fields = _read("js/dragon-ui/pages/dataset-editor-fields.js")
+    page = _read("js/dragon-ui/pages/dataset-editor.js")
+
+    assert "mask_mode: 'none'" in fields
+    assert "['external', '外部遮罩目录']" in fields
+    assert "maskMode?.value === 'external'" in fields
+    assert "...previous" in fields
+    assert "collectDatasetRows(root, state.rows)" in page
 
 
 def test_dragon_dataset_preset_library_exposes_current_and_group_exports():

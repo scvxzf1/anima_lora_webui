@@ -1,6 +1,6 @@
 /* Field and row rendering helpers for the Dragon dataset workspace. */
 
-import { renderIcon } from '../icons.js?v=dragon-ui-20260812v35';
+import { renderIcon } from '../icons.js?v=dragon-ui-20260902v36';
 
 export const CAPTION_MODES = [
     ['auto', '自动识别'],
@@ -35,6 +35,8 @@ export function createEmptyDatasetRow(defaults = {}) {
         is_reg: false,
         recursive: true,
         path_pattern: '*',
+        mask_mode: 'none',
+        mask_dir: '',
         settings: { ...defaults },
         nl_tag_mix: { enabled: false, tag_ratio: 0.7 },
         trigger_clone: { enabled: false, prompt: '', num_repeats: 1 },
@@ -134,6 +136,10 @@ export function renderDatasetRow(row, index, defaults, options = {}) {
                         textField('trigger_clone.prompt', '触发词', clone.prompt || '', { placeholder: '例如：my_style', disabled: readonly }),
                         numberField('trigger_clone.num_repeats', '触发词复制次数', clone.num_repeats ?? 1, { min: 1, step: 1, disabled: readonly }),
                     ])}
+                    ${settingsGroup('遮罩语义', '', [
+                        selectField('mask_mode', '遮罩模式', row.mask_mode || 'auto', [['none', '不使用遮罩'], ['external', '外部遮罩目录'], ['embedded', '图像 Alpha'], ['auto', '兼容自动发现']], { disabled: readonly }),
+                        textField('mask_dir', '外部遮罩目录', row.mask_dir || '', { placeholder: '例如：post_image_dataset/masks', disabled: readonly }),
+                    ])}
                 </div>
             </details>
         </article>
@@ -222,12 +228,14 @@ export function collectDatasetFields(root, defaults = {}) {
     return { ...defaults, ...values };
 }
 
-export function collectDatasetRows(root, defaults) {
+export function collectDatasetRows(root, previousRows = []) {
     return [...root.querySelectorAll('[data-dataset-row]')].map((row) => {
         const values = collectDatasetFields(row);
+        const previous = previousRows[Number(row.dataset.index)] || {};
         const settings = {};
         DATASET_SETTING_KEYS.forEach((key) => { if (values[key] !== undefined) settings[key] = values[key]; });
         return {
+            ...previous,
             source_dir: String(values.source_dir || '').trim(),
             image_dir: String(values.image_dir || '').trim(),
             cache_dir: String(values.cache_dir || '').trim(),
@@ -235,7 +243,9 @@ export function collectDatasetRows(root, defaults) {
             is_reg: values.is_reg,
             recursive: values.recursive,
             path_pattern: values.path_pattern,
-            settings,
+            mask_mode: values.mask_mode || 'none',
+            mask_dir: String(values.mask_dir || '').trim(),
+            settings: { ...(previous.settings || {}), ...settings },
             nl_tag_mix: { enabled: values['nl_tag_mix.enabled'], tag_ratio: values['nl_tag_mix.tag_ratio'] },
             trigger_clone: {
                 enabled: values['trigger_clone.enabled'],
@@ -261,6 +271,11 @@ export function validateDatasetEditor(root, options = {}) {
         const clonePrompt = row.querySelector('[data-field="trigger_clone.prompt"]');
         if (cloneEnabled && !String(clonePrompt?.value || '').trim()) {
             errors.push({ field: clonePrompt, message: `数据集组 ${index + 1} 启用触发词复制后必须填写触发词` });
+        }
+        const maskMode = row.querySelector('[data-field="mask_mode"]');
+        const maskDir = row.querySelector('[data-field="mask_dir"]');
+        if (maskMode?.value === 'external' && !String(maskDir?.value || '').trim()) {
+            errors.push({ field: maskDir, message: `数据集组 ${index + 1} 使用外部遮罩时必须填写遮罩目录` });
         }
     });
     if (rows.length && rows.every((row) => row.querySelector('[data-field="is_reg"]')?.value === 'true')) {

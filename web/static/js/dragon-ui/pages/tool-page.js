@@ -1,6 +1,6 @@
 /* Shared page primitives for Dragon's monitoring and system workspaces. */
 
-import { renderIcon } from '../icons.js?v=dragon-ui-20260812v35';
+import { renderIcon } from '../icons.js?v=dragon-ui-20260902v36';
 
 export function renderToolHero({ eyebrow, title, description, badge = '', actions = '' }) {
     return `

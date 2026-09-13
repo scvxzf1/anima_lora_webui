@@ -1,7 +1,7 @@
 /* Dragon tagging workbench controller. Provider calls stay server-side. */
 
 import { createApiClient } from '../../shared/api.js?v=dragon-ui-20260812v35';
-import { loadTrainingContext } from './training-controls.js?v=dragon-ui-20260901v115';
+import { loadTrainingContext } from './training-controls.js?v=dragon-ui-20260906-workspace-v1';
 import {
     mountTaggingView,
     renderTaggingView,
@@ -28,7 +28,7 @@ import {
     loadTaggingSettings,
     saveTaggingSettings,
     testTaggingProvider,
-} from './tagging-api.js?v=dragon-ui-20260901v6';
+} from './tagging-api.js?v=dragon-ui-20260902v9';
 import { consumeTaggingPrefill } from './tagging-context.js?v=dragon-ui-20260831v2';
 import { createVisibilityPoller } from '../visibility-poller.js?v=dragon-ui-20260826v2';
 import {

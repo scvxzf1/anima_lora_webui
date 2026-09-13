@@ -4,7 +4,7 @@
  * Sub-pages without an entry here fall back to a flat field list.
  */
 
-import { FORM_CATEGORY_DEFS, FORM_SECTION_DEFS } from '../../config/catalog/form-layout.js?v=dragon-ui-20260902-krea2-pp-v1';
+import { FORM_CATEGORY_DEFS, FORM_SECTION_DEFS } from '../../config/catalog/form-layout.js?v=auto-block-swap-20260908-v3';
 
 const TRAINING_CATEGORY_SECTION_GROUPS = Object.fromEntries(FORM_CATEGORY_DEFS.map((category) => [
     category.id,
@@ -585,13 +585,13 @@ export const SECTION_GROUPS = {
             eyebrow: '核心',
             title: '块交换基础',
             desc: '设置交换块数和传输精度。',
-            keys: ['blocks_to_swap', 'block_swap_transfer_dtype', 'block_swap_restore_mode'],
+            keys: ['auto_block_swap', 'blocks_to_swap', 'block_swap_transfer_dtype', 'block_swap_restore_mode'],
         },
         {
             eyebrow: '高级',
             title: 'Profile 与评估',
             desc: '块交换 profile 和评估时的行为。',
-            keys: ['block_swap_profile_jsonl', 'disable_block_swap_for_eval'],
+            keys: ['auto_block_swap_max_trials', 'auto_block_swap_timeout', 'auto_block_swap_swap_io_limit_mb', 'block_swap_profile_jsonl', 'disable_block_swap_for_eval'],
         },
     ],
     'memory-probe': [

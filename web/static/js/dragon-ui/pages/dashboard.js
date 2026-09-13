@@ -3,7 +3,7 @@
 import { createApiClient } from '../../shared/api.js?v=dragon-ui-20260812v35';
 import { calculateTrainingEtaMetricInfo, formatLr } from '../../features/live-training/index.js?v=dragon-ui-20260812v35';
 import { connectWebSocket, disconnectWebSocket, onMessage } from '../ws.js?v=dragon-ui-20260812v35';
-import { renderIcon } from '../icons.js?v=dragon-ui-20260812v35';
+import { renderIcon } from '../icons.js?v=dragon-ui-20260902v36';
 import { createVisibilityPoller } from '../visibility-poller.js?v=dragon-ui-20260826v2';
 
 const api = createApiClient();

@@ -61,13 +61,28 @@ def test_sample_prompts_model_unifies_rows_preserves_extensions_and_validates() 
     if not shutil.which("node"):
         pytest.skip("node is required for sample prompt model checks")
     module_uri = (STATIC_DIR / "js/dragon-ui/pages/sample-prompts-dialog.js").resolve().as_uri()
+    model_uri = (STATIC_DIR / "js/features/sample-prompts/model.js").resolve().as_uri()
     script = f"""
 const mod = await import({json.dumps(module_uri + '?sample-prompts-model-test')});
+const model = await import({json.dumps(model_uri + '?sample-prompts-screenshot-test')});
 const rows = [
   {{ prompt: 'style one', width: '512', height: '512', steps: '20', cfg: '3', extra: '--custom keep' }},
   {{ prompt: 'style two', width: '768', height: '512', steps: '30', cfg: '5' }},
 ];
 const unified = mod.applyUniformSamplePromptValues(rows, {{ width: '1024', height: '', steps: '28', cfg: '4' }});
+const screenshotRow = {{
+  prompt: 'style preview',
+  negative_prompt: 'low quality',
+  width: '1024',
+  height: '768',
+  cfg: '4',
+  steps: '28',
+  seed: '42',
+  flow_shift: '3',
+  sample_sampler: 'euler',
+  extra: '',
+}};
+const screenshotLine = model.serializeSamplePromptRow(screenshotRow);
 console.log(JSON.stringify({{
   unified,
   mixedWidth: mod.commonSamplePromptValue(rows, 'width'),
@@ -79,6 +94,8 @@ console.log(JSON.stringify({{
   invalidFlowShift: mod.validateSamplePromptRows([{{ prompt: 'bad', flow_shift: '-1' }}]),
   scientificFlowShift: mod.validateSamplePromptRows([{{ prompt: 'bad', flow_shift: '1e-3' }}]),
   missingPrompt: mod.validateSamplePromptRows([{{ prompt: '', cfg: '4' }}]),
+  screenshotLine,
+  screenshotRoundTrip: model.parseSamplePromptLine(screenshotLine),
   legacyField: mod.renderSamplePromptsFieldControl({{
     fieldId: 'legacy-prompts', name: 'sample_prompts', value: 'configs/prompts.toml',
   }}),
@@ -100,6 +117,18 @@ console.log(JSON.stringify({{
     assert payload["invalidFlowShift"]["field"] == "flow_shift"
     assert payload["scientificFlowShift"]["field"] == "flow_shift"
     assert payload["missingPrompt"]["field"] == "prompt"
+    assert payload["screenshotRoundTrip"] == {
+        "prompt": "style preview",
+        "negative_prompt": "low quality",
+        "width": "1024",
+        "height": "768",
+        "cfg": "4",
+        "steps": "28",
+        "seed": "42",
+        "flow_shift": "3",
+        "sample_sampler": "euler",
+        "extra": "",
+    }
     assert 'data-key="sample_prompts"' in payload["legacyField"]
     assert "data-sample-prompts-open" not in payload["legacyField"]
 

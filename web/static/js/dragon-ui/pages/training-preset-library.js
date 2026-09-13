@@ -8,9 +8,14 @@ import {
     promptDragonDialog,
 } from '../../shared/dialog.js?v=module-bootstrap-20260901-dialog-v1';
 import { escapeHtml } from '../../shared/format.js?v=dragon-ui-20260812v35';
-import { renderIcon } from '../icons.js?v=dragon-ui-20260812v35';
+import {
+    BLANK_PRESET_TEMPLATE_LABEL,
+} from '../../config/catalog.js?v=auto-block-swap-20260908-v3';
+import { loadBlankTrainingPreset } from './training-preset-template.js?v=preset-actions-20260908-v1';
+import { renderIcon } from '../icons.js?v=dragon-ui-20260902v36';
+import { bindConfigLibraryNavigation } from './config-library-navigation.js?v=dragon-ui-20260906-workspace-v1';
 import { DRAGON_VIEWPORT_QUERIES, matchesDragonViewport } from '../responsive.js?v=dragon-ui-20260824v1';
-import { loadTrainingContext, selectTrainingConfigFile } from './training-controls.js?v=dragon-ui-20260901v115';
+import { loadTrainingContext, selectTrainingConfigFile } from './training-controls.js?v=dragon-ui-20260906-workspace-v1';
 
 const api = createApiClient();
 const HIDDEN_TRAINING_GROUP_IDS = new Set(['gui_methods', 'presets']);
@@ -104,7 +109,11 @@ function renderLibraryContent(context, dirty = false) {
         .find((file) => file.path === context.configFile);
     return `<div class="dragon-training-preset-head">
             <div><span class="dragon-eyebrow">预设库</span><h2>训练配置</h2></div>
-            <span>${files.length} 个配置</span>
+            <div class="dragon-training-preset-head-actions">
+                <span>${files.length} 个配置</span>
+                <button class="dragon-icon-button" type="button" data-config-preset-toggle
+                        aria-expanded="true" aria-label="收起预设库" title="收起预设库">${renderIcon('x')}</button>
+            </div>
         </div>
         <section class="dragon-training-current-preset" aria-label="当前训练配置">
             <span>当前文件</span>
@@ -114,17 +123,21 @@ function renderLibraryContent(context, dirty = false) {
         </section>
         <div class="dragon-training-preset-toolbar">
             <div class="dragon-training-preset-toolbar-actions">
-                <button class="dragon-btn dragon-btn-primary dragon-btn-sm" type="button" data-training-preset-action="save-updates" ${dirty && context.configFile && !selected?.readonly && !selected?.locked ? '' : 'disabled'}>${renderIcon('check', 'dragon-btn-icon')}<span>保存更新</span></button>
-                <button class="dragon-btn dragon-btn-secondary dragon-btn-sm" type="button" data-training-preset-action="new-group">${renderIcon('folder', 'dragon-btn-icon')}<span>新建分组</span></button>
-                <button class="dragon-btn dragon-btn-secondary dragon-btn-sm" type="button" data-training-preset-action="import">${renderIcon('upload', 'dragon-btn-icon')}<span>导入配置</span></button>
-                <button class="dragon-btn dragon-btn-secondary dragon-btn-sm" type="button" data-training-preset-action="save-as" ${context.configFile ? '' : 'disabled'}>${renderIcon('copy', 'dragon-btn-icon')}<span>另存为</span></button>
-                <button class="dragon-btn dragon-btn-secondary dragon-btn-sm" type="button" data-training-preset-action="export" ${context.configFile ? '' : 'disabled'}>${renderIcon('download', 'dragon-btn-icon')}<span>导出当前</span></button>
+                <button class="dragon-btn dragon-btn-primary dragon-btn-sm" type="button" data-training-preset-action="save-updates" title="保存更新" aria-label="保存更新" ${dirty && context.configFile && !selected?.readonly && !selected?.locked ? '' : 'disabled'}>${renderIcon('check', 'dragon-btn-icon')}<span>保存更新</span></button>
+                <button class="dragon-btn dragon-btn-secondary dragon-btn-sm dragon-training-preset-pill" type="button" data-training-preset-action="new" title="使用默认空白预设新建" aria-label="使用默认空白预设新建">${renderIcon('plus', 'dragon-btn-icon')}<span>新建</span></button>
+                <button class="dragon-btn dragon-btn-secondary dragon-btn-sm dragon-training-preset-pill" type="button" data-training-preset-action="import" title="导入配置" aria-label="导入配置">${renderIcon('upload', 'dragon-btn-icon')}<span>导入</span></button>
+                <button class="dragon-btn dragon-btn-secondary dragon-btn-sm dragon-training-preset-pill" type="button" data-training-preset-action="export" title="导出当前配置" aria-label="导出当前配置" ${context.configFile ? '' : 'disabled'}>${renderIcon('download', 'dragon-btn-icon')}<span>导出</span></button>
+                <button class="dragon-btn dragon-btn-secondary dragon-btn-sm dragon-training-preset-pill" type="button" data-training-preset-action="rename" title="重命名当前配置" aria-label="重命名当前配置" ${context.configFile && !selected?.readonly && !selected?.locked ? '' : 'disabled'}>${renderIcon('edit', 'dragon-btn-icon')}<span>重命名</span></button>
+                <button class="dragon-btn dragon-btn-secondary dragon-btn-sm dragon-training-preset-pill" type="button" data-training-preset-action="save-as" title="另存为新配置" aria-label="另存为新配置" ${context.configFile ? '' : 'disabled'}>${renderIcon('copy', 'dragon-btn-icon')}<span>另存为</span></button>
+                <button class="dragon-btn dragon-btn-secondary dragon-btn-sm dragon-training-preset-pill" type="button" data-training-preset-action="new-group" title="新建分组" aria-label="新建分组">${renderIcon('folder', 'dragon-btn-icon')}<span>新建分组</span></button>
             </div>
-            <button class="dragon-icon-button" type="button" data-training-preset-action="refresh" aria-label="刷新训练配置预设">${renderIcon('refresh')}</button>
+            <button class="dragon-icon-button" type="button" data-training-preset-action="refresh" aria-label="刷新训练配置预设" title="刷新训练配置预设">${renderIcon('refresh')}</button>
             <input type="file" accept=".toml,text/plain,application/toml" data-training-preset-import-file hidden>
         </div>
         <p class="dragon-training-preset-feedback" data-training-preset-feedback role="status" aria-live="polite"></p>
         <p class="dragon-training-preset-drop-status" data-training-preset-drop-status aria-live="polite"></p>
+        <label class="dragon-training-preset-search"><input type="search" class="dragon-input" data-training-preset-search aria-label="搜索训练配置" placeholder="搜索配置名称或路径" autocomplete="off"></label>
+        <p class="dragon-training-preset-no-results" data-training-preset-no-results hidden>没有匹配的配置</p>
         <div class="dragon-training-preset-groups" data-training-preset-groups>${renderGroups(groups, context.configFile)}</div>`;
 }
 
@@ -134,7 +147,7 @@ function renderGroups(groups, selectedFile) {
         const files = group.files || [];
         return `<section class="dragon-training-preset-group" data-training-preset-group="${escapeHtml(group.id || '')}" data-training-preset-drop-group="${escapeHtml(group.id || '')}">
             <header>
-                <div><strong>${escapeHtml(group.label || group.id || '配置分组')}</strong><span>${files.length}</span>${group.locked || group.system_locked ? '<em>只读</em>' : ''}</div>
+                <button type="button" class="dragon-training-group-toggle" data-training-group-toggle aria-expanded="true">${renderIcon('chevronDown')}<strong>${escapeHtml(group.label || group.id || '配置分组')}</strong><span>${files.length}</span>${group.locked || group.system_locked ? '<em>只读</em>' : ''}</button>
                 <div class="dragon-training-preset-group-actions">
                     ${(group.files || []).length ? `<a href="/api/config/file-groups/${encodeURIComponent(group.id)}/export?kind=training" download aria-label="导出分组 ${escapeHtml(group.label || group.id)}" title="导出分组 ZIP">${renderIcon('download')}</a>` : ''}
                     ${group.renamable ? `<button type="button" data-training-group-action="rename" data-group-id="${escapeHtml(group.id)}" aria-label="重命名 ${escapeHtml(group.label || group.id)}">${renderIcon('edit')}</button>` : ''}
@@ -162,8 +175,10 @@ function renderPresetRow(file, group, selectedFile) {
 }
 
 function bindLibraryEvents(library, state, beforeContextChange) {
+    bindConfigLibraryNavigation(library, state);
     library.querySelector('[data-training-preset-action="refresh"]')?.addEventListener('click', () => refreshLibrary(library, state, beforeContextChange));
     library.querySelector('[data-training-preset-action="save-updates"]')?.addEventListener('click', () => saveCurrentUpdates(library, state));
+    library.querySelector('[data-training-preset-action="new"]')?.addEventListener('click', () => createBlankTrainingConfig(library, state, beforeContextChange));
     library.querySelector('[data-training-preset-action="new-group"]')?.addEventListener('click', () => createGroup(library, state, beforeContextChange));
     const importInput = library.querySelector('[data-training-preset-import-file]');
     // Keep the file picker inside the trusted click event.  Dirty-state
@@ -174,6 +189,7 @@ function bindLibraryEvents(library, state, beforeContextChange) {
         importInput?.click();
     });
     importInput?.addEventListener('change', () => importTrainingConfig(library, state, importInput, beforeContextChange));
+    library.querySelector('[data-training-preset-action="rename"]')?.addEventListener('click', () => renameCurrentConfig(library, state, beforeContextChange));
     library.querySelector('[data-training-preset-action="save-as"]')?.addEventListener('click', () => saveCurrentConfigAs(library, state, beforeContextChange));
     library.querySelector('[data-training-preset-action="export"]')?.addEventListener('click', () => exportCurrentConfig(library, state));
     library.querySelectorAll('[data-training-preset-select]').forEach((button) => button.addEventListener('click', async () => {
@@ -318,6 +334,26 @@ async function exportCurrentConfig(library, state) {
     }
 }
 
+async function createBlankTrainingConfig(library, state, beforeContextChange) {
+    if (beforeContextChange && await beforeContextChange() === false) return;
+    if (!library.isConnected) return;
+    try {
+        const target = await promptImportedConfigPath({
+            title: '新建训练配置',
+            message: `将使用“${BLANK_PRESET_TEMPLATE_LABEL}”创建默认空白预设，并保存到 configs/imported/。`,
+            defaultFilename: '新建训练配置.toml',
+            icon: 'plus',
+            confirmText: '新建',
+        });
+        if (!library.isConnected || !target) return;
+        setFeedback(library, '正在读取默认空白预设…');
+        const content = await loadBlankTrainingPreset(api, target);
+        await saveNewTrainingConfig(library, state, target, content, beforeContextChange, '新配置已创建并切换');
+    } catch (error) {
+        setFeedback(library, error.message || '新建训练配置失败', true);
+    }
+}
+
 async function importTrainingConfig(library, state, input, beforeContextChange) {
     const source = input.files?.[0];
     input.value = '';
@@ -339,6 +375,40 @@ async function importTrainingConfig(library, state, input, beforeContextChange) 
         await saveNewTrainingConfig(library, state, target, content, beforeContextChange, '配置已导入');
     } catch (error) {
         setFeedback(library, error.message || '导入训练配置失败', true);
+    }
+}
+
+async function renameCurrentConfig(library, state, beforeContextChange) {
+    const source = state.context.configFile;
+    if (!source) return;
+    if (beforeContextChange && await beforeContextChange() === false) return;
+    if (!library.isConnected) return;
+    try {
+        const answer = await promptDragonDialog({
+            eyebrow: '训练配置',
+            title: '重命名训练配置',
+            message: '输入新的配置名称，文件会保留在当前目录和分组中。',
+            label: '配置名称',
+            value: source.split('/').pop() || '',
+            icon: 'edit',
+            confirmText: '保存名称',
+        });
+        if (!library.isConnected || answer === null) return;
+        const target = renamedConfigPath(source, answer);
+        if (target === source) return;
+        setFeedback(library, '正在重命名当前配置…');
+        const payload = await api('/api/config/raw/rename', {
+            method: 'POST',
+            body: JSON.stringify({ source, target }),
+        });
+        if (payload.ok === false) throw new Error(payload.error || '重命名训练配置失败');
+        const refreshed = await refreshLibrary(library, state, beforeContextChange);
+        if (!refreshed || !await activateConfigFile(state, target)) {
+            throw new Error('配置已重命名，但没有出现在预设库中，请刷新后重试');
+        }
+        setFeedback(library, payload.message || '配置已重命名并切换');
+    } catch (error) {
+        setFeedback(library, error.message || '重命名训练配置失败', true);
     }
 }
 
@@ -415,6 +485,12 @@ function normalizeImportedFilename(value) {
     const stem = basename.replace(/\.toml$/i, '').trim();
     if (!stem || stem === '.' || stem === '..') throw new Error('请输入有效的配置文件名称');
     return `${stem}.toml`;
+}
+
+function renamedConfigPath(source, value) {
+    const parent = String(source || '').split('/').slice(0, -1).join('/');
+    const filename = normalizeImportedFilename(value);
+    return parent ? `${parent}/${filename}` : filename;
 }
 
 function defaultCopyFilename(path) {

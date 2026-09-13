@@ -11,7 +11,7 @@ import {
     datasetLocalHelpSpec,
 } from './inline-help.js?v=module-bootstrap-20260831-release-v1';
 import { createDatasetEditorDragHandle } from './item-drag.js?v=module-bootstrap-20260831-release-v1';
-import { CAPTION_SOURCE_MODE_OPTIONS, help } from '../../config/catalog.js?v=module-bootstrap-20260902-krea2-pp-v1';
+import { CAPTION_SOURCE_MODE_OPTIONS, help } from '../../config/catalog.js?v=auto-block-swap-20260908-v3';
 import { normalizeCaptionSourceMode } from '../anima-app/helpers/caption-source.js?v=module-bootstrap-20260831-release-v1';
 import { createHelpContent } from '../anima-app/helpers/config-field-ui-bridge.js?v=module-bootstrap-20260831-release-v1';
 import { datasetConfigLabel, datasetConfigValue } from '../anima-app/helpers/dataset-config-fields.js?v=module-bootstrap-20260831-release-v1';
@@ -24,7 +24,7 @@ import {
 import { datasetPreviewValidationText } from '../anima-app/helpers/dataset-preview.js?v=module-bootstrap-20260831-release-v1';
 import { datasetEditorStateForActivePanel, isDatasetTabActive, refreshDatasetEditorItem, renderDatasetEditor } from '../anima-app/helpers/dataset-render-bridge.js?v=module-bootstrap-20260831-release-v1';
 import { createDatasetPathField, createDatasetRowCaptionSourceModeEditor, createDatasetRowSettingInput, updateDatasetEditorRow } from './row-fields.js?v=module-bootstrap-20260831-release-v1';
-import { openDatasetPreview } from './preview.js?v=module-bootstrap-20260831-release-v1';
+import { openDatasetPreview } from './preview.js?v=module-bootstrap-20260901-dialog-v1';
 import { escapeHtml } from '../config-form/field-input.js?v=module-bootstrap-20260831-release-v1';
 import {
     datasetExperimentalScopeIndices,

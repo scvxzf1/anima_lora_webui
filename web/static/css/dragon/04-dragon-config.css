@@ -1046,6 +1046,7 @@ body[data-dragon-ui] #dragon-root .dragon-config-help-dialog-header {
 .dragon-config-field-help-section[data-help-tone="setup"],
 .dragon-config-field-help-section[data-help-tone="recommend"],
 .dragon-config-field-help-section[data-help-tone="note"],
+.dragon-config-field-help-section[data-help-tone="context"],
 .dragon-config-field-help-section[data-help-tone="unavailable"] { grid-column: 1 / -1; }
 .dragon-config-field-help-section:last-child { margin-bottom: 0; }
 .dragon-config-field-help-heading {
@@ -1070,6 +1071,36 @@ body[data-dragon-ui] #dragon-root .dragon-config-help-dialog-header {
     background: color-mix(in srgb, var(--dragon-text-tertiary) 9%, transparent);
 }
 .dragon-config-field-help-section[data-help-tone="risk"] .dragon-config-field-help-heading { color: var(--dragon-warning); }
+
+.dragon-config-help-context {
+    padding: 12px 14px;
+    border: 1px solid var(--dragon-border);
+    border-radius: var(--dragon-radius-sm);
+    background: var(--dragon-bg-secondary);
+}
+.dragon-config-help-context-values {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 24px;
+}
+.dragon-config-help-context-value {
+    display: grid;
+    min-width: 110px;
+    gap: 1px;
+}
+.dragon-config-help-context-value small {
+    color: var(--dragon-text-tertiary);
+    font-size: var(--dragon-fs-caption);
+}
+.dragon-config-help-context-value strong {
+    color: var(--dragon-text-primary);
+    font-weight: var(--dragon-fw-semibold);
+    overflow-wrap: anywhere;
+}
+.dragon-config-help-context-hint {
+    margin-top: 9px !important;
+    color: var(--dragon-text-secondary);
+}
 
 .dragon-config-load-error {
     display: grid;

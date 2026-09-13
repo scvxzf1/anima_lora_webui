@@ -1,4 +1,4 @@
-import { renderIcon } from '../icons.js?v=dragon-ui-20260812v35';
+import { renderIcon } from '../icons.js?v=dragon-ui-20260902v36';
 
 export function splitCaptionTags(value) {
     return String(value || '').split(/[\n,]+/).map((tag) => tag.trim()).filter(Boolean);

@@ -4,7 +4,7 @@ const MODEL_FAMILY_FORM_DEFAULTS = Object.freeze({
     z_image: Object.freeze({
         mixed_precision: 'bf16',
         base_compute: 'bf16',
-        attn_mode: 'torch',
+        attn_mode: 'flash',
         xformers: false,
         torch_compile: false,
         blocks_to_swap: 0,

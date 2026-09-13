@@ -1,14 +1,14 @@
 /* Dedicated image-to-caption review and write-back page. */
 
 import { createApiClient } from '../../shared/api.js?v=dragon-ui-20260812v35';
-import { renderIcon } from '../icons.js?v=dragon-ui-20260812v35';
+import { renderIcon } from '../icons.js?v=dragon-ui-20260902v36';
 import { createVisibilityPoller } from '../visibility-poller.js?v=dragon-ui-20260826v2';
 import {
     commitTaggingJob,
     loadTaggingJob,
     loadTaggingJobs,
     updateTaggingItem,
-} from './tagging-api.js?v=dragon-ui-20260901v6';
+} from './tagging-api.js?v=dragon-ui-20260902v9';
 import {
     readTaggingWorkspaceState,
     returnToTaggingWorkspace,

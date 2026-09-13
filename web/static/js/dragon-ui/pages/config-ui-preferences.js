@@ -1,5 +1,6 @@
+import { normalizeConfigVisibilityLevel } from './config-field-tiers.js?v=auto-block-swap-20260908-v3';
+
 const STORAGE_KEY = 'anima_dragon_config_ui';
-const CONFIG_CAPSULE_MODES = new Set(['jump', 'filter']);
 
 function readPreferences() {
     try {
@@ -20,33 +21,20 @@ function writePreferences(patch) {
 
 export function preferredConfigSubId(requestedSubId, category) {
     if (requestedSubId || category?.id !== 'training-config') return requestedSubId;
-    return readPreferences().viewMode === 'all' ? 'all' : requestedSubId;
+    return 'all';
 }
 
 export function presetLibraryCollapsed(fallback = false) {
-    const stored = readPreferences().presetCollapsed;
+    const stored = readPreferences().workspaceVersion === 1 ? readPreferences().presetCollapsed : undefined;
     return typeof stored === 'boolean' ? stored : fallback;
 }
 
 export function persistPresetLibraryCollapsed(collapsed) {
-    writePreferences({ presetCollapsed: Boolean(collapsed) });
+    writePreferences({ presetCollapsed: Boolean(collapsed), workspaceVersion: 1 });
 }
 
 export function persistConfigViewMode(isAll) {
     writePreferences({ viewMode: isAll ? 'all' : 'grouped' });
-}
-
-function normalizeConfigCapsuleMode(mode, fallback = 'jump') {
-    const safeFallback = CONFIG_CAPSULE_MODES.has(fallback) ? fallback : 'jump';
-    return CONFIG_CAPSULE_MODES.has(mode) ? mode : safeFallback;
-}
-
-export function preferredConfigCapsuleMode(fallback = 'jump') {
-    return normalizeConfigCapsuleMode(readPreferences().capsuleMode, fallback);
-}
-
-export function persistConfigCapsuleMode(mode) {
-    writePreferences({ capsuleMode: normalizeConfigCapsuleMode(mode) });
 }
 
 export function preferredConfigBilingual(fallback = false) {
@@ -57,6 +45,24 @@ export function preferredConfigBilingual(fallback = false) {
 
 export function persistConfigBilingual(enabled) {
     writePreferences({ bilingual: Boolean(enabled) });
+}
+
+export function preferredConfigVisibilityLevel(fallback = 'all') {
+    const stored = readPreferences();
+    return normalizeConfigVisibilityLevel(stored.fieldScopeVersion === 1 ? stored.visibilityLevel : undefined, fallback);
+}
+
+export function persistConfigVisibilityLevel(level) {
+    writePreferences({ visibilityLevel: normalizeConfigVisibilityLevel(level), fieldScopeVersion: 1 });
+}
+
+export function preferredConfigHideUnavailable(fallback = false) {
+    const stored = readPreferences().hideUnavailable;
+    return typeof stored === 'boolean' ? stored : Boolean(fallback);
+}
+
+export function persistConfigHideUnavailable(enabled) {
+    writePreferences({ hideUnavailable: Boolean(enabled) });
 }
 
 export function bindConfigViewPreference(root) {

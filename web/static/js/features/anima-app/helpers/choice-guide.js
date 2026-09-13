@@ -1,4 +1,4 @@
-import { choiceHelp } from '../../../config/catalog.js?v=module-bootstrap-20260902-krea2-pp-v1';
+import { choiceHelp } from '../../../config/catalog.js?v=auto-block-swap-20260908-v3';
 
 export function choiceLine(label, text, extraClass = '') {
     const line = document.createElement('p');

@@ -1,7 +1,7 @@
 /* Structured global settings backed by /api/settings/global. */
 
 import { createApiClient } from '../../shared/api.js?v=dragon-ui-20260812v35';
-import { applyDragonUIScale, clampUIScale } from '../ui-scale.js?v=dragon-ui-20260814v43';
+import { applyDragonUIScale, clampUIScale } from '../ui-scale.js?v=dragon-ui-20260903-nav-scale-v2';
 import { applyDragonMotionSetting } from '../motion.js?v=dragon-ui-20260824v1';
 import { applyDragonConfigChromeSettings } from '../config-chrome.js?v=dragon-ui-20260825v1';
 

@@ -50,10 +50,10 @@ export const FIELD_HELP_METHOD_ZH = {
         "新手留空；热启动时配合 dim_from_weights 使用。"
     ),
     dim_from_weights: help(
-        "从热启动检查点读取 rank，而不是使用表单里的 network_dim。",
+        "从热启动检查点读取 rank/alpha，并覆盖表单里的 network_dim/network_alpha。",
         "只有填写 network_weights 时才开启。",
         ["避免 rank 不一致导致加载失败。"],
-        ["会忽略当前表单的 network_dim。"],
+        ["会同时忽略当前表单的 network_dim 和 network_alpha。"],
         ["误开时可能让你以为改了 dim，但实际沿用了旧检查点。"],
         "热启动推荐 true；从零训练保持 false。"
     ),

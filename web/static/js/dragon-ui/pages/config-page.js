@@ -5,8 +5,9 @@
  * Language: Chinese labels and descriptions, English config keys hidden by default.
  */
 
-import { FIELD_LABEL_ZH, FIELD_OPTIONS } from '../../config/catalog/labels-options.js?v=module-bootstrap-20260903-pp-multimodel-v1';
-import { FIELD_HELP_SUMMARY_ZH } from '../../config/catalog/field-help-summary.js?v=module-bootstrap-20260903-pp-multimodel-v1';
+import { FIELD_LABEL_ZH, FIELD_OPTIONS } from '../../config/catalog/labels-options.js?v=auto-block-swap-20260908-v3';
+import { RESOURCE_NUMBER_CONSTRAINTS, resourceOptionLabel } from '../../config/catalog/resource-controls.js?v=auto-block-swap-20260908-v3';
+import { FIELD_HELP_SUMMARY_ZH } from '../../config/catalog/field-help-summary.js?v=auto-block-swap-20260908-v3';
 import { configFieldPlaceholder } from '../../config/catalog/field-placeholders.js?v=dragon-ui-20260830v2';
 import {
     ALL_LORA_ADAPTER_SCOPED_FIELD_KEYS,
@@ -18,21 +19,27 @@ import {
     LOKR_SCOPED_FIELD_KEYS,
     RETIRED_CONFIG_FORM_FIELDS,
     VERA_SCOPED_FIELD_KEYS,
-} from '../../config/catalog/defaults.js?v=dragon-ui-20260902-krea2-pp-v1';
-import { VARIANT_METHOD_FAMILY } from '../../config/catalog/form-layout.js?v=dragon-ui-20260902-krea2-pp-v1';
+} from '../../config/catalog/defaults.js?v=auto-block-swap-20260908-v3';
+import { VARIANT_METHOD_FAMILY } from '../../config/catalog/form-layout.js?v=auto-block-swap-20260908-v3';
 import { createApiClient } from '../../shared/api.js?v=dragon-ui-20260812v35';
 import {
     alertDragonDialog,
     confirmDragonDialog,
 } from '../../shared/dialog.js?v=module-bootstrap-20260901-dialog-v1';
 import { escapeHtml } from '../../shared/format.js?v=dragon-ui-20260812v35';
-import { SECTION_GROUPS } from './section-groups.js?v=dragon-ui-20260902-krea2-pp-v1';
+import { SECTION_GROUPS } from './section-groups.js?v=auto-block-swap-20260908-v3';
 import { findCategory, isConfigCategory } from '../category-map.js?v=dragon-ui-20260826v45';
-import { renderIcon } from '../icons.js?v=dragon-ui-20260812v35';
+import { renderIcon } from '../icons.js?v=dragon-ui-20260902v36';
 import { scanForReveal } from '../animations.js?v=dragon-ui-20260824v69';
 import { dragonScrollBehavior } from '../motion.js?v=dragon-ui-20260824v1';
-import { keysForConfigSubItem } from './config-field-map.js?v=dragon-ui-20260902-krea2-pp-v1';
-import { configValueForControl, displayConfigValue, prepareConfigPatch, serializeConfigValue } from './config-values.js?v=dragon-ui-20260902-lokr-backend-v4';
+import { keysForConfigSubItem } from './config-field-map.js?v=auto-block-swap-20260908-v3';
+import {
+    collectConfigDraftChanges,
+    configValueForControl,
+    displayConfigValue,
+    prepareConfigPatch,
+    serializeConfigValue,
+} from './config-values.js?v=dragon-ui-20260904-config-disclosure-v10';
 import {
     createConfigDirtyBindings,
     renderConfigDirtyState,
@@ -41,44 +48,52 @@ import {
 } from './config-dirty-state.js?v=dragon-ui-20260826v1';
 import {
     bindAllConfigWorkspace,
+    bindConfigPresetLibrary,
     isAllConfigView,
     renderAllConfigWorkspace,
     renderConfigViewSwitch,
     resolveConfigView,
-    scrollConfigCanvasTo,
     uniqueConfigEntries,
-} from './config-all-view.js?v=dragon-ui-20260825v15';
-import { buildConfigBlocks } from './config-block-metadata.js?v=dragon-ui-20260903-pp-multimodel-v1';
+} from './config-all-view.js?v=auto-block-swap-20260908-v3';
+import { buildConfigBlocks } from './config-block-metadata.js?v=auto-block-swap-20260908-v3';
+import { configFieldDisclosure } from './config-field-disclosure-rules.js?v=auto-block-swap-20260908-v3';
 import {
     configFieldAvailability,
     resolveConfigAdapterKind,
-} from './config-field-availability.js?v=dragon-ui-20260903-pp-multimodel-v1';
-import { loadModelFamilyCapabilities } from '../../features/config-form/model-family.js?v=module-bootstrap-20260903-pp-multimodel-v1';
+} from './config-field-availability.js?v=auto-block-swap-20260908-v3';
+import {
+    loadModelFamilyCapabilities,
+    modelFamilySelectOptions,
+} from '../../features/config-form/model-family.js?v=auto-block-swap-20260908-v3';
 import {
     bindConfigFieldHelpDialog,
     configHelpSummary,
     renderConfigHelpButton,
     resolveConfigFieldHelp,
-} from './config-field-help.js?v=dragon-ui-20260902-lokr-availability-v1';
+} from './config-field-help.js?v=dragon-ui-20260906-dual-theme-v2';
+import { bindConfigFieldFilter } from './config-field-filter.js?v=dragon-ui-20260906-workspace-v1';
+import { bindConfigVisibilityControls } from './config-visibility-controls.js?v=dragon-ui-20260906-workspace-v1';
 import {
     bindConfigViewPreference,
     persistConfigBilingual,
-    persistConfigCapsuleMode,
     persistConfigViewMode,
     persistPresetLibraryCollapsed,
     preferredConfigBilingual,
-    preferredConfigCapsuleMode,
+    preferredConfigHideUnavailable,
+    preferredConfigVisibilityLevel,
     preferredConfigSubId,
     presetLibraryCollapsed,
-} from './config-ui-preferences.js?v=dragon-ui-20260831v3';
+    persistConfigHideUnavailable,
+    persistConfigVisibilityLevel,
+} from './config-ui-preferences.js?v=dragon-ui-20260906-workspace-v1';
 import {
     booleanDefaultForKey,
     BOOLEAN_CONFIG_DEFAULTS,
     isBooleanConfigField,
     normalizeBooleanConfigValue,
-} from './config-field-types.js?v=dragon-ui-20260902-lokr-backend-v4';
-import { bindTrainingControls, isEditableConfigFile, loadTrainingContext, mergedConfigUrl, renderTrainingControls, selectTrainingConfigFile, selectTrainingPreset, commitTrainingContext } from './training-controls.js?v=dragon-ui-20260901v115';
-import { bindTrainingPresetLibrary, renderTrainingPresetLibrary } from './training-preset-library.js?v=dragon-ui-20260901v116';
+} from './config-field-types.js?v=auto-block-swap-20260908-v3';
+import { bindTrainingControls, isEditableConfigFile, loadTrainingContext, mergedConfigUrl, renderTrainingControls, selectTrainingConfigFile, selectTrainingPreset, commitTrainingContext } from './training-controls.js?v=dragon-ui-20260906-workspace-v1';
+import { bindTrainingPresetLibrary, renderTrainingPresetLibrary } from './training-preset-library.js?v=dragon-ui-20260906-preset-actions-v1';
 import {
     bindLazyModelQuickPicker,
     MODEL_QUICK_PATH_KEYS,
@@ -90,7 +105,7 @@ import {
     renderDatasetConfigField,
     renderDatasetPickerDialog,
     renderStepEstimatePanel,
-} from './config-training-data.js?v=dragon-ui-20260826v7';
+} from './config-training-data.js?v=dragon-ui-20260906-dual-theme-v2';
 import {
     bindSamplePromptsDialog,
     renderSamplePromptsDialog,
@@ -102,7 +117,7 @@ let fieldHelpCatalogPromise = null;
 
 function loadFieldHelpCatalog() {
     if (!fieldHelpCatalogPromise) {
-        fieldHelpCatalogPromise = import('../../config/catalog/field-help.js?v=module-bootstrap-20260903-pp-multimodel-v1')
+        fieldHelpCatalogPromise = import('../../config/catalog/field-help.js?v=auto-block-swap-20260908-v3')
             .then((module) => module.FIELD_HELP_ZH)
             .catch((error) => {
                 fieldHelpCatalogPromise = null;
@@ -155,12 +170,19 @@ function activeAdapterKind(values = {}) {
 }
 
 function configAvailabilityContext(trainingContext, values = {}) {
+    const rawEpochs = values.max_train_epochs;
     return {
         method: activeMethodFamily(trainingContext, values),
         adapter: activeAdapterKind(values),
         baseCompute: String(values.base_compute || 'bf16').trim().toLowerCase(),
         modelFamily: String(values.model_family || 'anima').trim().toLowerCase(),
         pipelineParallel: normalizeBooleanConfigValue('pipeline_parallel', values.pipeline_parallel),
+        maxTrainEpochsConfigured: rawEpochs !== null
+            && rawEpochs !== undefined
+            && String(rawEpochs).trim() !== '',
+        dimFromWeights: normalizeBooleanConfigValue('dim_from_weights', values.dim_from_weights),
+        networkWeights: values.network_weights,
+        values: { ...values },
     };
 }
 
@@ -266,10 +288,11 @@ export async function loadConfigPage(context) {
         leavePrompt: null,
         showChangedOnly: false,
         searchQuery: '',
-        capsuleMode: preferredConfigCapsuleMode(),
         bilingual: preferredConfigBilingual(),
-        activeTag: 'all',
-        radarTag: null,
+        configVisibilityLevel: preferredConfigVisibilityLevel(),
+        hideUnavailable: preferredConfigHideUnavailable(),
+        showAllCandidates: false,
+        radarTag: 'input',
         availabilityContext: configAvailabilityContext(trainingContext, currentValues),
     };
     resetConfigFormState(pageState, currentValues, isCategoryPage ? entries : [{ sub: activeSub, keys }]);
@@ -282,6 +305,9 @@ export async function loadConfigPage(context) {
             trainingContext,
             pageState.bilingual,
             pageState.availabilityContext,
+            pageState.configVisibilityLevel,
+            pageState.hideUnavailable,
+            pageState.showAllCandidates,
         );
     } else {
         wrapper.innerHTML = renderSingleConfigPage(
@@ -313,6 +339,7 @@ export async function loadConfigPage(context) {
             let allConfigCleanup = null;
             let filterCleanup = null;
             let bilingualCleanup = null;
+            let visibilityCleanup = null;
             let viewPreferenceCleanup = null;
             let saveCurrentChanges = null;
             let transitionSequence = 0;
@@ -323,6 +350,7 @@ export async function loadConfigPage(context) {
                 allConfigCleanup?.();
                 filterCleanup?.();
                 bilingualCleanup?.();
+                visibilityCleanup?.();
                 viewPreferenceCleanup?.();
                 libraryController?.destroy?.();
                 cleanupConfigPage(pageState);
@@ -332,18 +360,26 @@ export async function loadConfigPage(context) {
                 allConfigCleanup?.();
                 filterCleanup?.();
                 bilingualCleanup?.();
+                visibilityCleanup?.();
                 viewPreferenceCleanup?.();
                 allConfigCleanup = null;
                 filterCleanup = null;
                 bilingualCleanup = null;
+                visibilityCleanup = null;
                 viewPreferenceCleanup = bindConfigViewPreference(root);
                 saveCurrentChanges = wireConfigInteractions(root, committed.keys, committed.context, pageState, { allView: committed.isAll });
                 filterCleanup = bindConfigFieldFilter(root, pageState);
+                visibilityCleanup = bindConfigVisibilityControls(root, {
+                    state: pageState,
+                    onVisibilityChange: (level) => persistConfigVisibilityLevel(level),
+                    onHideUnavailableChange: (enabled) => persistConfigHideUnavailable(enabled),
+                    onChange: () => pageState.filterUpdate?.(),
+                });
                 bilingualCleanup = bindConfigBilingualToggle(root, pageState);
                 if (committed.isAll) {
                     allConfigCleanup = bindAllConfigWorkspace(root, {
                         defaultPresetCollapsed: pageState.presetCollapsed
-                            ?? presetLibraryCollapsed(window.matchMedia?.('(max-width: 1440px)').matches ?? false),
+                            ?? presetLibraryCollapsed(window.matchMedia?.('(max-width: 734px)').matches ?? false),
                         onPresetCollapseChange: (collapsed) => {
                             pageState.presetCollapsed = collapsed;
                             persistPresetLibraryCollapsed(collapsed);
@@ -354,8 +390,14 @@ export async function loadConfigPage(context) {
                         },
                     });
                 } else {
-                    const shell = root.querySelector('.dragon-config-shell-layout');
-                    if (shell) shell.dataset.presetCollapsed = 'false';
+                    allConfigCleanup = bindConfigPresetLibrary(root, {
+                        defaultPresetCollapsed: pageState.presetCollapsed
+                            ?? presetLibraryCollapsed(window.matchMedia?.('(max-width: 734px)').matches ?? false),
+                        onPresetCollapseChange: (collapsed) => {
+                            pageState.presetCollapsed = collapsed;
+                            persistPresetLibraryCollapsed(collapsed);
+                        },
+                    });
                 }
                 bindTrainingControls(root, committed.context, {
                     saveChanges: saveCurrentChanges,
@@ -411,6 +453,9 @@ export async function loadConfigPage(context) {
                         availabilityContext: pageState.availabilityContext,
                         values: pageState.draftValues,
                         bilingual: pageState.bilingual,
+                        configVisibilityLevel: pageState.configVisibilityLevel,
+                        hideUnavailable: pageState.hideUnavailable,
+                        showAllCandidates: pageState.showAllCandidates,
                     });
                     bindEditablePane();
                     scanForReveal();
@@ -513,6 +558,9 @@ function renderCategorySubPage(
     trainingContext,
     bilingual = false,
     availabilityContext = null,
+    configVisibilityLevel = 'all',
+    hideUnavailable = false,
+    showAllCandidates = false,
 ) {
     const description = categoryDescription(category.id);
 
@@ -531,6 +579,9 @@ function renderCategorySubPage(
                     ...view,
                     values: draftValues,
                     bilingual,
+                    configVisibilityLevel,
+                    hideUnavailable,
+                    showAllCandidates,
                 })}
                 ${renderTrainingPresetLibrary(trainingContext)}
             </div>
@@ -550,6 +601,9 @@ function renderEditableConfigPane(category, entries, state) {
             state.values,
             state.bilingual,
             state.availabilityContext,
+            state.configVisibilityLevel,
+            state.hideUnavailable,
+            state.showAllCandidates,
         )}
         ${renderSamplePromptsDialog()}
     </div>`;
@@ -563,10 +617,17 @@ function renderEditableConfigWorkspace(
     currentValues,
     bilingual = false,
     availabilityContext = null,
+    configVisibilityLevel = 'all',
+    hideUnavailable = false,
+    showAllCandidates = false,
 ) {
     if (isAllConfigView(category, sub.id)) {
+        const blockEntries = [
+            { sub: { id: 'context', label: '训练上下文' }, keys: ['dataset_config'] },
+            ...entries,
+        ];
         const { blocks, chapters } = buildConfigBlocks(
-            entries,
+            blockEntries,
             currentValues,
             FIELD_OPTIONS,
             FORM_UI_DEFAULTS,
@@ -576,12 +637,17 @@ function renderEditableConfigWorkspace(
             blocks,
             chapters,
             bilingual,
-            renderBlock: (block) => renderField(block.key, fieldDisplayValue(block.key, currentValues, currentValues), block),
+            visibilityLevel: configVisibilityLevel,
+            hideUnavailable,
+            showAllCandidates,
+            renderBlock: (block) => renderField(
+                block.key,
+                fieldDisplayValue(block.key, currentValues, currentValues),
+                block,
+                availabilityContext,
+            ),
             renderActions: () => renderConfigActions({ allView: true }),
-            renderChapterLead: (chapter) => chapter.id === 'foundation'
-                ? renderDatasetConfigField(currentValues.dataset_config || '', { chapterId: 'foundation', tone: 'required', span: 2, required: true })
-                : '',
-            renderChapterFooter: (chapter) => chapter.id === 'training' ? renderStepEstimatePanel() : '',
+            renderClusterFooter: (chapter, cluster) => chapter.id === 'training' && cluster.id === 'volume' ? renderStepEstimatePanel() : '',
             renderModelPickerTrigger: renderModelQuickPickerTrigger,
             renderModelPickerDialog: renderModelQuickPickerDialog,
             renderDatasetDialog: renderDatasetPickerDialog,
@@ -600,7 +666,13 @@ function renderEditableConfigWorkspace(
                     <h2 id="dragon-config-detail-title">${sub.label}</h2>
                     <p>${sub.desc || ''}</p>
                 </div>
-                ${sub.id === 'required' ? renderModelQuickPickerTrigger() : ''}
+                <div class="dragon-config-detail-header-actions">
+                    ${sub.id === 'required' ? renderModelQuickPickerTrigger() : ''}
+                    ${category.id === 'training-config' ? `<button class="dragon-btn dragon-btn-secondary dragon-btn-sm" type="button"
+                            data-config-preset-toggle aria-expanded="true">
+                        ${renderIcon('panels', 'dragon-btn-icon')}<span>收起预设库</span>
+                    </button>` : ''}
+                </div>
             </header>
             ${renderConfigFieldFilter(keys.length)}
             <div class="dragon-config-detail-fields dragon-reveal" data-stagger="1" id="dragon-config-fields">
@@ -652,125 +724,6 @@ function bindConfigBilingualToggle(root, state) {
     toggle?.addEventListener('click', onClick);
     sync();
     return () => toggle?.removeEventListener('click', onClick);
-}
-
-function bindConfigFieldFilter(root, state) {
-    const input = root.querySelector('[data-config-field-search]');
-    const output = root.querySelector('[data-config-field-filter-count]');
-    const fieldsRoot = root.querySelector('#dragon-config-fields');
-    if (!input || !output || !fieldsRoot) return null;
-    const fields = [...fieldsRoot.querySelectorAll('.dragon-field')];
-    const fieldRecords = fields.map((field) => {
-        const key = field.querySelector('[data-key]')?.dataset.key || '';
-        return {
-            field,
-            key,
-            searchText: field.dataset.searchText || `${key} ${field.textContent || ''}`.toLocaleLowerCase(),
-        };
-    });
-    const blockFlow = fieldsRoot.classList.contains('dragon-config-block-grid');
-    const tagButtons = [...root.querySelectorAll('[data-config-tag-filter]')];
-    const modeButtons = [...root.querySelectorAll('[data-config-capsule-mode]')];
-    const details = [...fieldsRoot.querySelectorAll('details.dragon-config-section')];
-    const sectionRecords = [...fieldsRoot.querySelectorAll('.dragon-config-section')]
-        .map((section) => ({ section, fields: [...section.querySelectorAll('.dragon-field')] }));
-    const groupRecords = [...fieldsRoot.querySelectorAll('[data-config-filter-group]')]
-        .map((group) => ({ group, fields: [...group.querySelectorAll('.dragon-field')] }));
-    const openStates = new Map(details.map((detail) => [detail, detail.open]));
-    let previousQuery = '';
-    let searchTimer = null;
-    input.value = state?.searchQuery || '';
-    if (state && !state.activeTag) state.activeTag = 'all';
-    if (state && !state.capsuleMode) state.capsuleMode = 'jump';
-
-    const syncCapsuleUI = () => {
-        const active = state?.capsuleMode === 'filter'
-            ? (state.activeTag || 'all')
-            : (state?.radarTag || 'all');
-        tagButtons.forEach((button) => {
-            button.dataset.active = String(active === button.dataset.configTagFilter);
-        });
-        modeButtons.forEach((button) => {
-            const selected = (state?.capsuleMode || 'jump') === button.dataset.configCapsuleMode;
-            button.dataset.active = String(selected);
-            button.setAttribute('aria-pressed', String(selected));
-        });
-    };
-
-    const update = () => {
-        const query = String(input.value || '').trim().toLocaleLowerCase();
-        if (state) state.searchQuery = input.value;
-        const filterMode = state?.capsuleMode === 'filter';
-        const filterTag = filterMode ? (state.activeTag || 'all') : 'all';
-        let visible = 0;
-        fieldRecords.forEach(({ field, key, searchText }) => {
-            const matchesQuery = !query || searchText.includes(query);
-            const matchesChanged = !state?.showChangedOnly || state.dirtyKeys?.has(key);
-            const matchesTag = !blockFlow || filterTag === 'all' || field.dataset.configTag === filterTag;
-            const participates = matchesChanged && matchesTag;
-            const hideSearchMismatch = blockFlow && filterMode && !matchesQuery;
-            field.hidden = blockFlow ? (!participates || hideSearchMismatch) : !(participates && matchesQuery);
-            field.dataset.searchMuted = String(Boolean(blockFlow && !filterMode && query && !matchesQuery));
-            field.dataset.searchMatch = String(Boolean(blockFlow && query && matchesQuery));
-            if (participates && matchesQuery) visible += 1;
-        });
-        sectionRecords.forEach(({ section, fields: sectionFields }) => {
-            const hasVisibleField = sectionFields.some((field) => !field.hidden);
-            section.hidden = !hasVisibleField;
-            if (query && hasVisibleField && section.tagName === 'DETAILS') section.open = true;
-        });
-        groupRecords.forEach(({ group, fields: groupFields }) => {
-            group.hidden = !groupFields.some((field) => !field.hidden);
-        });
-        if (previousQuery && !query) details.forEach((detail) => { detail.open = openStates.get(detail); });
-        previousQuery = query;
-        syncCapsuleUI();
-        const filtered = query || state?.showChangedOnly || filterTag !== 'all';
-        output.textContent = filtered ? `匹配 ${visible} / ${fields.length} 项` : `${fields.length} 项`;
-    };
-
-    const scheduleSearchUpdate = () => {
-        if (state) state.searchQuery = input.value;
-        if (searchTimer) window.clearTimeout(searchTimer);
-        searchTimer = window.setTimeout(() => {
-            searchTimer = null;
-            update();
-        }, 100);
-    };
-    input.addEventListener('input', scheduleSearchUpdate);
-    tagButtons.forEach((button) => button.addEventListener('click', () => {
-        const tag = button.dataset.configTagFilter || 'all';
-        if (state?.capsuleMode === 'filter') {
-            state.activeTag = tag;
-            update();
-            return;
-        }
-        if (state) state.radarTag = tag;
-        syncCapsuleUI();
-        const target = tag === 'all'
-            ? fieldsRoot.querySelector('[data-config-section-divider]')
-            : fieldsRoot.querySelector(`[data-config-section="${tag}"]`);
-        scrollConfigCanvasTo(fieldsRoot, target, dragonScrollBehavior());
-    }));
-    modeButtons.forEach((button) => button.addEventListener('click', () => {
-        if (state) {
-            state.capsuleMode = button.dataset.configCapsuleMode || 'jump';
-            persistConfigCapsuleMode(state.capsuleMode);
-        }
-        update();
-    }));
-    if (state) {
-        state.filterUpdate = update;
-        state.radarUpdate = syncCapsuleUI;
-    }
-    update();
-    return () => {
-        input.removeEventListener('input', scheduleSearchUpdate);
-        if (searchTimer) window.clearTimeout(searchTimer);
-        searchTimer = null;
-        if (state?.filterUpdate === update) state.filterUpdate = null;
-        if (state?.radarUpdate === syncCapsuleUI) state.radarUpdate = null;
-    };
 }
 
 function renderConfigNavigation(category, entries, activeId) {
@@ -935,7 +888,11 @@ function renderField(key, value, block = null, availabilityContext = null) {
     const options = FIELD_OPTIONS[key];
     const availability = block?.availability
         || (availabilityContext ? configFieldAvailability(key, availabilityContext) : null);
-    const unavailableReason = availability?.enabled === false ? availability.reason : '';
+    const presentation = block?.presentation
+        || (availabilityContext ? configFieldDisclosure(key, availabilityContext) : null);
+    const unavailableReason = availability?.enabled === false
+        ? availability.reason
+        : (presentation?.visible === false ? presentation.reason : '');
     const unavailable = Boolean(unavailableReason);
     const booleanField = isBooleanConfigField(key, value, options);
     const controlValue = booleanField ? normalizeBooleanConfigValue(key, value) : value;
@@ -948,13 +905,28 @@ function renderField(key, value, block = null, availabilityContext = null) {
     const fieldSize = block ? (block.span === 2 ? 'wide' : 'compact') : configFieldSize(key, controlValue, options);
     const blockClass = block ? ' dragon-config-block' : '';
     const availabilityAttributes = ` data-config-availability="${unavailable ? 'unavailable' : 'available'}"${unavailable ? ` data-config-unavailable-reason="${escapeHtml(unavailableReason)}"` : ''}`;
+    const presentationAttributes = presentation
+        ? ` data-config-presentation-visible="${presentation?.visible !== false}"${presentation?.visible === false ? ` data-config-disclosure-reason="${escapeHtml(presentation.reason || '')}" hidden` : ''}`
+        : '';
     const blockAttributes = block
-        ? ` data-field-span="${block.span}" data-config-tag="${escapeHtml(block.chapterId)}" data-config-tone="${escapeHtml(block.tone)}" data-control-kind="${escapeHtml(block.control)}" data-required="${block.required}" data-experimental="${block.experimental}" data-path-field="${block.pathField}" data-search-text="${escapeHtml(`${key} ${label} ${helpSummary} ${block.tagLabel} ${block.chapterLabel} ${value ?? ''}`.toLocaleLowerCase())}"`
+        ? ` data-field-span="${block.span}" data-config-tag="${escapeHtml(block.chapterId)}" data-config-tone="${escapeHtml(block.tone)}" data-control-kind="${escapeHtml(block.control)}" data-required="${block.required}" data-experimental="${block.experimental}" data-config-advanced="${Boolean(block.advanced)}" data-config-visibility-level="${escapeHtml(block.visibilityLevel || 'advanced')}" data-path-field="${block.pathField}" data-search-text="${escapeHtml(`${key} ${label} ${helpSummary} ${block.tagLabel} ${block.chapterLabel} ${value ?? ''}`.toLocaleLowerCase())}"`
         : '';
     const tagBadge = block ? `<span class="dragon-config-block-tag" data-tone="${escapeHtml(block.tone)}">${escapeHtml(block.tagLabel)}</span>` : '';
     const semanticMarkers = renderConfigSemanticMarkers(block);
-    const unavailableBadge = unavailable ? renderConfigUnavailableBadge() : '';
-    const helpButton = renderConfigHelpButton(key, label, unavailable ? { unavailableReason } : undefined);
+    const disclosureBadge = presentation?.visible === false
+        ? renderConfigDisclosureBadge(presentation.reason)
+        : '';
+    const unavailableBadge = unavailable && presentation?.visible !== false
+        ? renderConfigUnavailableBadge()
+        : '';
+    const helpButton = renderConfigHelpButton(key, label, {
+        unavailableReason,
+        currentValue: controlValue,
+        defaultValue: Object.prototype.hasOwnProperty.call(FORM_UI_DEFAULTS, key)
+            ? FORM_UI_DEFAULTS[key]
+            : undefined,
+        modelFamily: availabilityContext?.modelFamily || '',
+    });
     const pathTooltip = block?.pathField && typeof value === 'string' && value
         ? `<span class="dragon-config-path-tooltip" role="tooltip">${escapeHtml(value)}</span>`
         : '';
@@ -971,7 +943,7 @@ function renderField(key, value, block = null, availabilityContext = null) {
         });
     } else if (options && !booleanField) {
         control = `<select class="dragon-select" id="${fieldId}" name="${name}" autocomplete="off" data-key="${key}"${unavailable ? ' disabled' : ''}>
-            ${options.map((opt) => `<option value="${escapeHtml(opt)}" ${String(controlValue) === String(opt) ? 'selected' : ''}>${escapeHtml(opt)}</option>`).join('')}
+            ${renderModelFamilySelectOptions(key, options, controlValue, availabilityContext?.modelFamily)}
         </select>`;
     } else if (booleanField) {
         const checked = normalizeBooleanConfigValue(key, controlValue);
@@ -985,19 +957,21 @@ function renderField(key, value, block = null, availabilityContext = null) {
                 ${helpSummary ? `<div class="dragon-toggle-desc">${escapeHtml(helpSummary)}</div>` : ''}
             </div>
         </div>`;
-        return `<div class="dragon-field${blockClass}" data-field-size="${fieldSize}" data-config-field-key="${escapeHtml(key)}" data-dirty="false"${availabilityAttributes}${blockAttributes}>
-            ${block ? `<div class="dragon-config-block-head"><span class="dragon-config-semantic-markers">${semanticMarkers}</span><span class="dragon-config-block-actions">${unavailableBadge}${tagBadge}${helpButton}${resetButton}</span></div>` : `<div class="dragon-field-floating-actions">${unavailableBadge}${helpButton}${resetButton}</div>`}
+        return `<div class="dragon-field${blockClass}" data-field-size="${fieldSize}" data-config-field-key="${escapeHtml(key)}" data-dirty="false"${availabilityAttributes}${blockAttributes}${presentationAttributes}>
+            ${block ? `<div class="dragon-config-block-head"><span class="dragon-config-semantic-markers">${semanticMarkers}</span><span class="dragon-config-block-actions">${disclosureBadge}${unavailableBadge}${tagBadge}${helpButton}${resetButton}</span></div>` : `<div class="dragon-field-floating-actions">${unavailableBadge}${helpButton}${resetButton}</div>`}
             ${control}</div>`;
     } else if (key.includes('prompt') || key === 'optimizer_args' || key === 'network_args') {
         control = `<textarea class="dragon-textarea" id="${fieldId}" name="${name}" autocomplete="off" spellcheck="false" data-key="${key}"${unavailable ? ' disabled' : ''} placeholder="${escapeHtml(placeholder)}">${escapeHtml(configValueForControl(value) || '')}</textarea>`;
     } else {
         const inputType = typeof controlValue === 'number' ? 'number' : 'text';
         const inputMode = inputType === 'number' ? ' inputmode="decimal"' : '';
-        control = `<input class="dragon-input" id="${fieldId}" name="${name}" type="${inputType}"${inputMode} autocomplete="off" spellcheck="false" data-key="${key}"${unavailable ? ' disabled' : ''} value="${escapeHtml(controlValue ?? '')}" placeholder="${escapeHtml(placeholder)}">`;
+        const bounds = Object.entries(RESOURCE_NUMBER_CONSTRAINTS[key] || {})
+            .map(([attr, value]) => ` ${attr}="${value}"`).join('');
+        control = `<input class="dragon-input" id="${fieldId}" name="${name}" type="${inputType}"${inputMode}${bounds} autocomplete="off" spellcheck="false" data-key="${key}"${unavailable ? ' disabled' : ''} value="${escapeHtml(controlValue ?? '')}" placeholder="${escapeHtml(placeholder)}">`;
     }
 
     return `
-        <div class="dragon-field${blockClass}" data-field-size="${fieldSize}" data-config-field-key="${escapeHtml(key)}" data-dirty="false"${availabilityAttributes}${blockAttributes}>
+        <div class="dragon-field${blockClass}" data-field-size="${fieldSize}" data-config-field-key="${escapeHtml(key)}" data-dirty="false"${availabilityAttributes}${blockAttributes}${presentationAttributes}>
             <div class="dragon-field-label">
                <label class="dragon-field-label-text" for="${fieldId}">
                    <span class="dragon-config-label-primary">${escapeHtml(label)}</span>
@@ -1005,6 +979,7 @@ function renderField(key, value, block = null, availabilityContext = null) {
                    ${semanticMarkers}
                </label>
                <span class="dragon-field-label-actions">
+                   ${disclosureBadge}
                    ${unavailableBadge}
                    ${tagBadge}
                    ${helpButton}
@@ -1017,8 +992,21 @@ function renderField(key, value, block = null, availabilityContext = null) {
     `;
 }
 
+function renderModelFamilySelectOptions(key, options, currentValue, modelFamily) {
+    return modelFamilySelectOptions(key, modelFamily, options, currentValue)
+        .map(({ value, supported }) => {
+            const label = resourceOptionLabel(key, value) ?? value;
+            return `<option value="${escapeHtml(value)}" ${String(currentValue) === String(value) ? 'selected' : ''}${supported ? '' : ' disabled data-family-unsupported="true"'}>${escapeHtml(supported ? label : `${label}（当前配置，不受支持）`)}</option>`;
+        })
+        .join('');
+}
+
 function renderConfigUnavailableBadge() {
     return '<span class="dragon-config-unavailable-badge" title="当前条件下不可编辑">不可用</span>';
+}
+
+function renderConfigDisclosureBadge(reason = '') {
+    return `<span class="dragon-config-unavailable-badge dragon-config-disclosure-badge" title="${escapeHtml(reason || '不属于当前训练上下文')}">非当前</span>`;
 }
 
 function syncConfigFieldAvailability(wrapper, state, trainingContext) {
@@ -1033,12 +1021,25 @@ function syncConfigFieldAvailability(wrapper, state, trainingContext) {
         const key = field.dataset.configFieldKey || '';
         if (!key) return;
         const availability = configFieldAvailability(key, availabilityContext);
-        const unavailable = availability.enabled === false;
+        const presentation = configFieldDisclosure(key, availabilityContext);
+        const unavailable = availability.enabled === false || presentation.visible === false;
+        const unavailableReason = availability.enabled === false ? availability.reason : presentation.reason;
         field.dataset.configAvailability = unavailable ? 'unavailable' : 'available';
-        if (unavailable) field.dataset.configUnavailableReason = availability.reason;
+        if (unavailable) field.dataset.configUnavailableReason = unavailableReason;
         else delete field.dataset.configUnavailableReason;
+        field.dataset.configPresentationVisible = String(presentation.visible !== false);
+        if (presentation.visible === false) field.dataset.configDisclosureReason = presentation.reason;
+        else delete field.dataset.configDisclosureReason;
 
         const control = field.querySelector('[data-key]');
+        if (control?.tagName === 'SELECT' && FIELD_OPTIONS[key]) {
+            control.innerHTML = renderModelFamilySelectOptions(
+                key,
+                FIELD_OPTIONS[key],
+                control.value,
+                availabilityContext.modelFamily,
+            );
+        }
         if (control?.classList.contains('dragon-toggle')) {
             control.dataset.configDisabled = String(unavailable);
             control.tabIndex = unavailable ? -1 : 0;
@@ -1048,14 +1049,25 @@ function syncConfigFieldAvailability(wrapper, state, trainingContext) {
         }
 
         const actions = field.querySelector('.dragon-field-label-actions, .dragon-config-block-actions, .dragon-field-floating-actions');
-        const badge = actions?.querySelector('.dragon-config-unavailable-badge');
-        if (unavailable && actions && !badge) actions.insertAdjacentHTML('afterbegin', renderConfigUnavailableBadge());
-        if (!unavailable) badge?.remove();
+        const badge = actions?.querySelector('.dragon-config-unavailable-badge:not(.dragon-config-disclosure-badge)');
+        const showUnavailableBadge = availability.enabled === false && presentation.visible !== false;
+        if (showUnavailableBadge && actions && !badge) actions.insertAdjacentHTML('afterbegin', renderConfigUnavailableBadge());
+        if (!showUnavailableBadge) badge?.remove();
+
+        const disclosureBadge = actions?.querySelector('.dragon-config-disclosure-badge');
+        if (presentation.visible === false && actions && !disclosureBadge) {
+            actions.insertAdjacentHTML('afterbegin', renderConfigDisclosureBadge(presentation.reason));
+        } else if (presentation.visible === false && disclosureBadge) {
+            disclosureBadge.title = presentation.reason || '不属于当前训练上下文';
+        } else {
+            disclosureBadge?.remove();
+        }
 
         const helpButton = field.querySelector('.dragon-field-help-btn');
         if (!helpButton) return;
+        helpButton.dataset.helpModelFamily = availabilityContext.modelFamily;
         if (unavailable) {
-            helpButton.dataset.helpUnavailableReason = availability.reason;
+            helpButton.dataset.helpUnavailableReason = unavailableReason;
             helpButton.classList.add('dragon-field-help-btn-unavailable');
             helpButton.title = '查看不可用原因';
             helpButton.setAttribute('aria-label', `查看${helpButton.dataset.helpLabel || key}不可用原因`);
@@ -1066,6 +1078,7 @@ function syncConfigFieldAvailability(wrapper, state, trainingContext) {
             helpButton.setAttribute('aria-label', `查看${helpButton.dataset.helpLabel || key}说明`);
         }
     });
+    state?.filterUpdate?.();
 }
 
 function configFieldSize(key, value, options) {
@@ -1093,8 +1106,8 @@ function resetConfigFormState(state, originalValues, entries) {
     state.dirtyBindings = null;
     state.dirty = false;
     state.showChangedOnly = false;
-    state.activeTag = 'all';
-    state.radarTag = null;
+    state.showAllCandidates = false;
+    state.radarTag = 'input';
 }
 
 function captureDraftValue(input, state) {
@@ -1102,17 +1115,6 @@ function captureDraftValue(input, state) {
     if (!key) return null;
     state.draftValues[key] = serializeConfigValue(input, state.draftValues[key]);
     return key;
-}
-
-function collectDraftChanges(state) {
-    const changed = {};
-    for (const key of state.scopeKeys) {
-        if (state.availabilityContext && !configFieldAvailability(key, state.availabilityContext).enabled) continue;
-        const original = displayConfigValue(key, state.baselineValues);
-        const current = state.draftValues[key];
-        if (JSON.stringify(current ?? '') !== JSON.stringify(original ?? '')) changed[key] = current;
-    }
-    return changed;
 }
 
 function syncConfigDirtyUI(wrapper, state, changedKey = null) {
@@ -1123,7 +1125,7 @@ function syncConfigDirtyUI(wrapper, state, changedKey = null) {
         updateConfigDirtyKey(state, changedKey, displayConfigValue(changedKey, state.baselineValues));
         state.dirty = state.dirtyKeys.size > 0;
     } else {
-        const rawChanges = collectDraftChanges(state);
+        const rawChanges = collectConfigDraftChanges(state);
         patch = prepareConfigPatch(rawChanges, state.baselineValues);
         replaceConfigDirtyKeys(state, Object.keys(rawChanges));
         state.dirty = Object.keys(patch).length > 0;
@@ -1159,7 +1161,9 @@ function wireConfigInteractions(wrapper, keys, trainingContext, state, { allView
             const checked = toggle.dataset.checked === 'true';
             toggle.dataset.checked = String(!checked);
             toggle.setAttribute('aria-checked', String(!checked));
-            syncDirty(captureDraftValue(toggle, state));
+            const changedKey = captureDraftValue(toggle, state);
+            syncConfigFieldAvailability(wrapper, state, trainingContext);
+            syncDirty(changedKey);
         });
         toggle.addEventListener('keydown', (e) => {
             if (e.key === 'Enter' || e.key === ' ') {

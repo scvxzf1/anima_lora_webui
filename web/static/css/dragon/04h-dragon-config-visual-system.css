@@ -1,0 +1,86 @@
+@import url('./config-workbench/structure.css?v=20260908-preset-actions-v1');
+@import url('./config-workbench/properties.css?v=20260906-dual-theme-v2');
+@import url('./config-workbench/dialogs.css?v=20260908-preset-actions-v1');
+
+/* One theme owner, including dialogs mounted outside the page. */
+html[data-ui-mode="dragon"]:has(.dragon-config-category-page) {
+  --cfg-canvas: #f4f5f7;
+  --cfg-surface: #ffffff;
+  --cfg-dock: #f7f8fa;
+  --cfg-control: #ffffff;
+  --cfg-hover: #eef1f5;
+  --cfg-line: #e0e3e8;
+  --cfg-control-line: #bac2ce;
+  --cfg-ink: #23262e;
+  --cfg-muted: #596170;
+  --cfg-faint: #6b7280;
+  --cfg-accent: #2563d6;
+  --cfg-accent-hover: #1b50b4;
+  --cfg-accent-ink: #ffffff;
+  --cfg-accent-soft: #eaf0fc;
+  --cfg-success: #177357;
+  --cfg-warning: #975908;
+  --cfg-warning-soft: #fff5e6;
+  --cfg-danger: #bd3543;
+  --cfg-danger-soft: #fff0f1;
+  --cfg-shadow: 0 16px 56px rgb(20 24 32 / 18%);
+  --cfg-backdrop: rgb(26 29 37 / 34%);
+  --cfg-radius: 6px;
+  --cfg-gutter: 28px;
+  --cfg-content-width: 1240px;
+  --dragon-bg-primary: var(--cfg-canvas);
+  --dragon-bg-secondary: var(--cfg-surface);
+  --dragon-bg-tertiary: var(--cfg-hover);
+  --dragon-bg-elevated: var(--cfg-surface);
+  --dragon-text-primary: var(--cfg-ink);
+  --dragon-text-secondary: var(--cfg-muted);
+  --dragon-text-tertiary: var(--cfg-faint);
+  --dragon-text-quaternary: var(--cfg-faint);
+  --dragon-border: var(--cfg-control-line);
+  --dragon-divider: var(--cfg-line);
+  --dragon-input-bg: var(--cfg-control);
+  --dragon-tile-bg: var(--cfg-dock);
+  --dragon-tile-bg-hover: var(--cfg-hover);
+  --dragon-accent: var(--cfg-accent);
+  --dragon-accent-hover: var(--cfg-accent-hover);
+  --dragon-accent-light: var(--cfg-accent-soft);
+  --dragon-success: var(--cfg-success);
+  --dragon-warning: var(--cfg-warning);
+  --dragon-error: var(--cfg-danger);
+}
+
+html[data-ui-mode="dragon"][data-theme="dark"]:has(.dragon-config-category-page) {
+  --cfg-canvas: #191a1e;
+  --cfg-surface: #202126;
+  --cfg-dock: #24252b;
+  --cfg-control: #292b32;
+  --cfg-hover: #303239;
+  --cfg-line: #383b44;
+  --cfg-control-line: #555b69;
+  --cfg-ink: #ebedf2;
+  --cfg-muted: #b8bdca;
+  --cfg-faint: #9ba2b1;
+  --cfg-accent: #87b0ff;
+  --cfg-accent-hover: #a3c2ff;
+  --cfg-accent-ink: #152746;
+  --cfg-accent-soft: #2b354a;
+  --cfg-success: #7acfb0;
+  --cfg-warning: #edbd75;
+  --cfg-warning-soft: #393024;
+  --cfg-danger: #ff9aa4;
+  --cfg-danger-soft: #3e2a30;
+  --cfg-shadow: 0 16px 56px rgb(0 0 0 / 45%);
+  --cfg-backdrop: rgb(0 0 0 / 56%);
+}
+
+/* Retire the local 04c palette without changing legacy field contracts. */
+body[data-dragon-ui] #dragon-root .dragon-config-category-page {
+  --config-surface: var(--cfg-surface);
+  --config-control: var(--cfg-control);
+  --config-line: var(--cfg-line);
+  --dragon-radius-sm: 6px;
+  --dragon-radius-md: 8px;
+  --dragon-radius-lg: 8px;
+  color: var(--cfg-ink);
+  letter-spacing: 0;
+}

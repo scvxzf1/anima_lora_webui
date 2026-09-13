@@ -8,7 +8,7 @@ import {
     samplePromptsContentNeedsTextMode,
     serializeSamplePromptRow,
 } from '../../features/sample-prompts/model.js?v=dragon-ui-20260902-sample-prompts-v2';
-import { renderIcon } from '../icons.js?v=dragon-ui-20260812v35';
+import { renderIcon } from '../icons.js?v=dragon-ui-20260902v36';
 
 const DIALOG_ID = 'dragon-sample-prompts-dialog';
 const UNIFORM_FIELDS = ['width', 'height', 'steps', 'cfg'];

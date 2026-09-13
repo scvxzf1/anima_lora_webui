@@ -40,13 +40,14 @@
 
     /* Font sizes — typography scale
      * tile-headline: 56px / promo-headline: 40px / tile-subhead: 28px
-     * promo-subhead: 21px / body: 17px / nav+caption: 12px */
+     * promo-subhead: 21px / body: 17px / nav: 14px / caption: 12px */
     --dragon-fs-hero: 56px;
     --dragon-fs-title: 40px;
     --dragon-fs-headline: 28px;
     --dragon-fs-subhead: 21px;
     --dragon-fs-callout: 17px;
     --dragon-fs-body: 17px;
+    --dragon-fs-nav: 14px;
     --dragon-fs-caption: 12px;
     --dragon-fs-tiny: 11px;
 
@@ -119,8 +120,9 @@
     --dragon-radius-pill: 980px;
 
     /* Layout — nav and header metrics */
-    --dragon-nav-height: 44px;
-    --dragon-nav-height-mobile: 48px;
+    --dragon-nav-height: 52px;
+    --dragon-nav-height-mobile: 52px;
+    --dragon-nav-content-max: 1280px;
     --dragon-content-max: 980px;
     --dragon-content-wide: 1024px;
     --dragon-content-pad: 22px;

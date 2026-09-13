@@ -3,6 +3,7 @@
  * Moved out of anima-app mechanical chunks.
  */
 import { formatCompactNumber } from '../history-detail/ui.js?v=module-bootstrap-20260831-release-v1';
+import { resourceOptionLabel } from '../../config/catalog/resource-controls.js?v=auto-block-swap-20260908-v3';
 import {
     EXTRA_FIELD_HELP_ZH,
     FIELD_HELP_ZH,
@@ -11,11 +12,11 @@ import {
     FORM_SECTION_DEFS,
     NETWORK_ARG_FIELD_MAP,
     help,
-} from '../../config/catalog.js?v=module-bootstrap-20260902-krea2-pp-v1';
+} from '../../config/catalog.js?v=auto-block-swap-20260908-v3';
 import { normalizeLoraAdapterKind, normalizePrecisionPreference } from '../anima-app/helpers/config-values.js?v=module-bootstrap-20260831-release-v1';
 import { configureConfigFieldUiBridge } from '../anima-app/helpers/config-field-ui-bridge.js?v=module-bootstrap-20260831-release-v1';
 import { getConfigState } from '../anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260831-release-v1';
-import { handleFormFieldChange, markSamplePromptsEditorTouched } from '../config-form/form-fields.js?v=module-bootstrap-20260831-release-v1';
+import { handleFormFieldChange, markSamplePromptsEditorTouched } from '../config-form/form-fields.js?v=module-bootstrap-20260903-flash-defaults-v1';
 
 const configState = getConfigState();
 
@@ -161,6 +162,8 @@ const configState = getConfigState();
             'sample_every_n_epochs',
             'sample_every_n_steps',
             'blocks_to_swap',
+            'auto_block_swap_max_trials',
+            'auto_block_swap_timeout',
             'save_every_n_epochs',
             'save_last_n_epochs',
             'checkpointing_epochs',
@@ -181,6 +184,8 @@ const configState = getConfigState();
             'sample_every_n_epochs',
             'sample_every_n_steps',
             'blocks_to_swap',
+            'auto_block_swap_max_trials',
+            'auto_block_swap_timeout',
             'save_every_n_epochs',
             'save_last_n_epochs',
             'checkpointing_epochs',
@@ -263,6 +268,8 @@ const configState = getConfigState();
     }
 
     export function optionLabel(key, value) {
+        const resourceLabel = resourceOptionLabel(key, value);
+        if (resourceLabel) return resourceLabel;
         if (key === 'lora_adapter_kind') {
             return {
                 lora: '普通 LoRA',

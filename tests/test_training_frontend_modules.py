@@ -313,9 +313,10 @@ def test_frontend_module_cache_tokens_match_entrypoint() -> None:
     match = re.search(r"const CLASSIC_ENTRY = '/static/app\.js\?v=([^']+)'", bootstrap)
     assert match, "missing versioned frontend module entrypoint"
     entry_token = match.group(1)
-    assert entry_token.startswith("module-bootstrap-")
+    assert entry_token
 
-    graph_tokens: set[str] = set()
+    module_tokens: dict[Path, set[str]] = {}
+    module_tokens[APP_JS_PATH] = {entry_token}
     for path in _frontend_module_graph():
         source = path.read_text(encoding="utf-8")
         for specifier in MODULE_IMPORT_RE.findall(source):
@@ -323,13 +324,11 @@ def test_frontend_module_cache_tokens_match_entrypoint() -> None:
             if child is None:
                 continue
             token = _module_cache_token(specifier)
-            if token:
-                graph_tokens.add(token)
+            assert token, f"missing module cache token: {path}: {specifier}"
+            module_tokens.setdefault(child, set()).add(token)
 
-    assert graph_tokens == {entry_token}, (
-        f"classic module graph cache tokens {sorted(graph_tokens)} "
-        f"do not match entrypoint {entry_token!r}"
-    )
+    duplicates = {str(path): sorted(tokens) for path, tokens in module_tokens.items() if len(tokens) > 1}
+    assert duplicates == {}, f"module URLs must preserve singleton identity: {duplicates}"
 
 
 def test_frontend_css_import_cache_tokens_match_entrypoint() -> None:

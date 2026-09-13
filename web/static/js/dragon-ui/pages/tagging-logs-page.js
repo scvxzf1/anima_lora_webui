@@ -1,7 +1,7 @@
 /* Dedicated bounded in-memory log viewer for tagging jobs. */
 
 import { createApiClient } from '../../shared/api.js?v=dragon-ui-20260812v35';
-import { renderIcon } from '../icons.js?v=dragon-ui-20260812v35';
+import { renderIcon } from '../icons.js?v=dragon-ui-20260902v36';
 import { createVisibilityPoller } from '../visibility-poller.js?v=dragon-ui-20260826v2';
 import {
     clearTaggingLogs,
@@ -9,7 +9,7 @@ import {
     loadTaggingLogs,
     loadTaggingSettings,
     saveTaggingSettings,
-} from './tagging-api.js?v=dragon-ui-20260901v6';
+} from './tagging-api.js?v=dragon-ui-20260902v9';
 import { returnToTaggingWorkspace } from './tagging-workspace-state.js?v=dragon-ui-20260831v4';
 
 const api = createApiClient();

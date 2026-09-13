@@ -1,6 +1,6 @@
 /* Presentational helpers for Dragon training history. */
 
-import { renderIcon } from '../icons.js?v=dragon-ui-20260812v35';
+import { renderIcon } from '../icons.js?v=dragon-ui-20260902v36';
 import { escapeHtml, formatBytes } from '../../shared/format.js?v=dragon-ui-20260812v35';
 import {
     normalizeHistoryDetailTab,

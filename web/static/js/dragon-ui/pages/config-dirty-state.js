@@ -37,7 +37,13 @@ export function renderConfigDirtyState(bindings, state, changedKey = null) {
         if (reset && reset.hidden === dirty) reset.hidden = !dirty;
     });
 
-    setText(bindings.count, state.dirty ? `已修改 ${state.dirtyKeys.size} 项` : '未修改');
+    const hiddenDirty = [...state.dirtyKeys].filter((key) => (
+        bindings.fields.get(key)?.field?.dataset?.configPresentationVisible === 'false'
+    )).length;
+    const dirtyLabel = hiddenDirty
+        ? `已修改 ${state.dirtyKeys.size} 项 · 隐藏 ${hiddenDirty} 项`
+        : `已修改 ${state.dirtyKeys.size} 项`;
+    setText(bindings.count, state.dirty ? dirtyLabel : '未修改');
     const changedOnly = bindings.changedOnly;
     if (changedOnly) {
         if (changedOnly.disabled === state.dirty) changedOnly.disabled = !state.dirty;

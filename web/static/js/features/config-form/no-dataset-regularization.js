@@ -17,7 +17,7 @@ import { setFieldInputValue } from './field-input.js?v=module-bootstrap-20260831
 import {
     configureNoDatasetRegularizationModePanelUpdater,
     handleFormFieldChange,
-} from './form-fields.js?v=module-bootstrap-20260831-release-v1';
+} from './form-fields.js?v=module-bootstrap-20260903-flash-defaults-v1';
 import { appendFieldRows } from './field-rows.js?v=module-bootstrap-20260831-release-v1';
 import {
     setTomlStatus,

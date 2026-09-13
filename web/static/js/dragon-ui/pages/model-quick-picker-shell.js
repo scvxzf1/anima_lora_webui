@@ -1,4 +1,4 @@
-import { renderIcon } from '../icons.js?v=dragon-ui-20260812v35';
+import { renderIcon } from '../icons.js?v=dragon-ui-20260902v36';
 
 export const MODEL_QUICK_PATH_KEYS = Object.freeze([
     'pretrained_model_name_or_path',

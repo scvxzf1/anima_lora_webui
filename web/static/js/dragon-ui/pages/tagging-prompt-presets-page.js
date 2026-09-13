@@ -1,14 +1,14 @@
 /* Dedicated prompt-preset manager for the tagging workflow. */
 
 import { createApiClient } from '../../shared/api.js?v=dragon-ui-20260812v35';
-import { renderIcon } from '../icons.js?v=dragon-ui-20260812v35';
+import { renderIcon } from '../icons.js?v=dragon-ui-20260902v36';
 import {
     createPromptPreset,
     deletePromptPreset,
     loadPromptPresets,
     loadTaggingSettings,
     updatePromptPreset,
-} from './tagging-api.js?v=dragon-ui-20260901v6';
+} from './tagging-api.js?v=dragon-ui-20260902v9';
 import {
     readTaggingWorkspaceState,
     returnToTaggingWorkspace,

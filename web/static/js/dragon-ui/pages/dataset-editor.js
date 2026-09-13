@@ -12,7 +12,7 @@ import {
     scheduleOrderedRowDropTarget,
     setOrderedDropTarget,
 } from '../ordered-drag-target.js?v=dragon-ui-20260816v1';
-import { renderIcon } from '../icons.js?v=dragon-ui-20260812v35';
+import { renderIcon } from '../icons.js?v=dragon-ui-20260902v36';
 import {
     collectDatasetFields,
     collectDatasetRows,
@@ -24,7 +24,7 @@ import {
     renderDatasetDefaults,
     renderDatasetRow,
     validateDatasetEditor,
-} from './dataset-editor-fields.js?v=dragon-ui-20260828v54';
+} from './dataset-editor-fields.js?v=dragon-ui-20260903-mask-semantics-v1';
 import {
     createDatasetEditorBindings,
     disableDatasetPreviews,
@@ -51,7 +51,7 @@ import {
     saveDatasetPresetAs,
 } from './dataset-editor-presets.js?v=dragon-ui-20260824v71';
 import { createDatasetPreviewController } from './dataset-preview-controller.js?v=dragon-ui-20260902v8';
-import { loadTrainingContext, mergedConfigUrl } from './training-controls.js?v=dragon-ui-20260901v115';
+import { loadTrainingContext, mergedConfigUrl } from './training-controls.js?v=dragon-ui-20260906-workspace-v1';
 import { writeTaggingPrefill } from './tagging-context.js?v=dragon-ui-20260831v2';
 
 const api = createApiClient();
@@ -1065,7 +1065,7 @@ function presetPayload(state, extra = {}) {
 
 function syncStateFromForm(root, state) {
     state.defaults = collectDatasetFields(root.querySelector('[data-dataset-defaults]'), state.defaults);
-    state.rows = collectDatasetRows(root);
+    state.rows = collectDatasetRows(root, state.rows);
     syncLegacyDatasetState(state);
 }
 

@@ -1,7 +1,7 @@
-import { FORM_UI_DEFAULTS, NETWORK_ARG_FIELD_MAP } from '../../config/catalog/defaults.js?v=dragon-ui-20260902-lokr-backend-v4';
+import { FORM_UI_DEFAULTS, NETWORK_ARG_FIELD_MAP } from '../../config/catalog/defaults.js?v=auto-block-swap-20260908-v3';
 import { coerceNetworkArgValue, formatNetworkArg, parseNetworkArgEntry } from '../../features/anima-app/helpers/network-args.js?v=dragon-ui-20260812v35';
 import { loraAdapterFlagsForKind, loraAdapterKindFromConfig, precisionPreferenceFromConfig, precisionPreferencePatch } from '../../features/anima-app/helpers/config-values.js?v=dragon-ui-20260812v35';
-import { isBooleanConfigField, normalizeBooleanConfigValue } from './config-field-types.js?v=dragon-ui-20260902-lokr-backend-v4';
+import { isBooleanConfigField, normalizeBooleanConfigValue } from './config-field-types.js?v=auto-block-swap-20260908-v3';
 
 function networkArgMap(config) {
     const entries = Array.isArray(config?.network_args) ? config.network_args : [];
@@ -52,6 +52,16 @@ export function prepareConfigPatch(changedValues, originalConfig) {
     }
     mergeNetworkArgs(patch, originalConfig);
     return patch;
+}
+
+export function collectConfigDraftChanges({ scopeKeys = [], baselineValues = {}, draftValues = {} } = {}) {
+    const changed = {};
+    scopeKeys.forEach((key) => {
+        const original = displayConfigValue(key, baselineValues);
+        const current = draftValues[key];
+        if (JSON.stringify(current ?? '') !== JSON.stringify(original ?? '')) changed[key] = current;
+    });
+    return changed;
 }
 
 function mergeNetworkArgs(patch, originalConfig) {

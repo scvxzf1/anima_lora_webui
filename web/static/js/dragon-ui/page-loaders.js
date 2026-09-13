@@ -1,4 +1,4 @@
-import { ensureDragonRouteStyles } from './route-styles.js?v=dragon-ui-20260902-training-nav-v3';
+import { ensureDragonRouteStyles } from './route-styles.js?v=dragon-ui-20260906-dual-theme-v2';
 
 function lazyPage(importer, exportName, contextArgs = (context) => [context]) {
     let loaderPromise = null;
@@ -37,12 +37,12 @@ export function createDragonPageLoaders() {
         (context = {}) => [context.taskId, context.sub],
     );
     const loadCaptioning = lazyPage(
-        () => import('./pages/captioning.js?v=dragon-ui-20260902v16'),
+        () => import('./pages/captioning.js?v=dragon-ui-20260906-workspace-v1'),
         'loadCaptioning',
     );
     return {
         dashboard: styledPage('dashboard', lazyPage(() => import('./pages/dashboard.js?v=dragon-ui-20260826v45'), 'loadDashboard')),
-        config: styledPage('config', lazyPage(() => import('./pages/config-page.js?v=dragon-ui-20260903-pp-multimodel-v1'), 'loadConfigPage')),
+        config: styledPage('config', lazyPage(() => import('./pages/config-page.js?v=auto-block-swap-20260908-v3'), 'loadConfigPage')),
         'live-training': styledPage('live', lazyPage(() => import('./pages/live-training.js?v=dragon-ui-20260826v54'), 'loadLiveTraining')),
         history: styledPage(
             (context = {}) => context.taskId ? 'history-detail' : 'history-list',
@@ -50,11 +50,11 @@ export function createDragonPageLoaders() {
         ),
         queue: styledPage('pages', lazyPage(() => import('./pages/queue.js?v=dragon-ui-20260825v2'), 'loadQueue')),
         'weight-analysis': styledPage('pages', lazyPage(() => import('./pages/weight-analysis.js?v=dragon-ui-20260814v43'), 'loadWeightAnalysis')),
-        'image-test': styledPage('pages', lazyPage(() => import('./pages/image-test.js?v=dragon-ui-20260824v114'), 'loadImageTest')),
+        'image-test': styledPage('pages', lazyPage(() => import('./pages/image-test.js?v=dragon-ui-20260906-workspace-v1'), 'loadImageTest')),
         environment: styledPage('pages', lazyPage(() => import('./pages/environment.js?v=dragon-ui-20260814v43'), 'loadEnvironment')),
-        'dataset-editor': styledPage('dataset', lazyPage(() => import('./pages/dataset-editor.js?v=dragon-ui-20260902v138'), 'loadDatasetEditor')),
+        'dataset-editor': styledPage('dataset', lazyPage(() => import('./pages/dataset-editor.js?v=dragon-ui-20260906-workspace-v1'), 'loadDatasetEditor')),
         'model-config': styledPage('pages', lazyPage(() => import('./pages/model-config.js?v=dragon-ui-20260824-zimage-v1'), 'loadModelConfig')),
-        'global-settings': styledPage('pages', lazyPage(() => import('./pages/global-settings.js?v=dragon-ui-20260902v47'), 'loadGlobalSettings')),
+        'global-settings': styledPage('pages', lazyPage(() => import('./pages/global-settings.js?v=dragon-ui-20260903-nav-scale-v2'), 'loadGlobalSettings')),
         'preview-workspace': styledPage('pages', lazyPage(() => import('./pages/preview-workspace.js?v=dragon-ui-20260814v43'), 'loadPreviewWorkspace')),
         captioning: styledPage('captioning', loadCaptioning),
         tagging: styledPage('captioning', loadCaptioning),

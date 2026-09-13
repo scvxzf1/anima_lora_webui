@@ -1,8 +1,8 @@
 /* Inference test page backed by ImageTestService. */
 
 import { createApiClient } from '../../shared/api.js?v=dragon-ui-20260812v35';
-import { mergedConfigUrl, loadTrainingContext } from './training-controls.js?v=dragon-ui-20260901v115';
-import { renderImageTestPage } from './image-test-view.js?v=dragon-ui-20260814v43';
+import { mergedConfigUrl, loadTrainingContext } from './training-controls.js?v=dragon-ui-20260906-workspace-v1';
+import { renderImageTestPage } from './image-test-view.js?v=dragon-ui-20260903-flash-defaults-v1';
 
 const api = createApiClient();
 let pollTimer = null;

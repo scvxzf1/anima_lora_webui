@@ -6,12 +6,14 @@ import {
     NETWORK_ARG_FIELD_MAP,
     SPD_UI_DEFAULT_FIELDS,
     VERA_SCOPED_FIELD_KEYS,
-} from '../../config/catalog/defaults.js?v=dragon-ui-20260902-lokr-backend-v4';
-import { normalizeBooleanConfigValue } from './config-field-types.js?v=dragon-ui-20260902-lokr-backend-v4';
+} from '../../config/catalog/defaults.js?v=auto-block-swap-20260908-v3';
+import { normalizeBooleanConfigValue } from './config-field-types.js?v=auto-block-swap-20260908-v3';
 import {
+    modelFamilyCapability,
+    modelFamilyPipelineCapability,
     modelFamilySupportsPipelineParallel,
     normalizeModelFamily,
-} from '../../features/config-form/model-family.js?v=module-bootstrap-20260903-pp-multimodel-v1';
+} from '../../features/config-form/model-family.js?v=auto-block-swap-20260908-v3';
 
 const CONVROT_FIELD_KEYS = new Set([
     'convrot_group_size',
@@ -31,6 +33,36 @@ const PIPELINE_PARALLEL_FIELD_KEYS = new Set([
     'pipeline_parallel_split',
 ]);
 
+const COMPILE_CHILD_KEYS = new Set([
+    'compile_block_scope',
+    'compile_inductor_mode',
+    'compile_dynamic_seq',
+    'compile_seq_bands',
+    'activation_memory_budget',
+    'use_custom_down_autograd',
+    'debug_finite_checks',
+]);
+
+const BLOCK_SWAP_CHILD_KEYS = new Set([
+    'block_swap_transfer_dtype',
+    'block_swap_restore_mode',
+    'disable_block_swap_for_eval',
+    'block_swap_profile_jsonl',
+]);
+
+const PROBE_PARENT_BY_KEY = new Map([
+    ['memory_probe_max_steps', 'memory_probe_jsonl'],
+    ['peak_probe_max_steps', 'peak_probe_jsonl'],
+    ['peak_probe_level', 'peak_probe_jsonl'],
+    ['gradient_flow_probe_every_n_steps', 'gradient_flow_probe_jsonl'],
+    ['gradient_flow_probe_dense_steps', 'gradient_flow_probe_jsonl'],
+]);
+
+const CACHE_PARENT_BY_KEY = new Map([
+    ['reuse_vae_latents', ['use_vae_cache', 'VAE 缓存', 'vae-cache-disabled']],
+    ['reuse_text_encoder_cache', ['use_text_cache', '文本缓存', 'text-cache-disabled']],
+]);
+
 const FAMILY_LABELS = Object.freeze({
     lokr: 'LoKr',
     vera: 'VeRA',
@@ -48,9 +80,32 @@ const METHOD_LABELS = Object.freeze({
 });
 
 const LORA_ADAPTER_KINDS = new Set(['lora', 'loha', 'lokr', 'glora', 'vera']);
+const LORA_ADAPTER_METHODS = new Set([
+    'lora', 'glora', 'loha', 'lokr', 'ortholora', 'tlora', 'hydralora', 'reft', 'chimera',
+]);
+const SHARED_METHOD_FIELD_KEYS = new Set(['seed', 'channel_scaling_alpha']);
+const FAMILY_CAPABILITY_FIELD_KEYS = new Set([
+    'network_module',
+    'lora_adapter_kind',
+    'attn_mode',
+]);
 
 function unavailable(reason, code) {
     return { enabled: false, reason, code };
+}
+
+function contextValue(context, key, fallback = undefined) {
+    if (Object.prototype.hasOwnProperty.call(context?.values || {}, key)) return context.values[key];
+    return fallback;
+}
+
+function toggleEnabled(context, key, fallback = false) {
+    return normalizeBooleanConfigValue(key, contextValue(context, key, fallback), fallback);
+}
+
+function choiceEnabled(value) {
+    if (value === true || value === 1) return true;
+    return !['', '0', 'false', 'none', 'off', 'disabled'].includes(String(value ?? '').trim().toLowerCase());
 }
 
 function familyEnabled(family, adapter, method) {
@@ -78,15 +133,24 @@ export function configFieldAvailability(key, context = {}) {
     const adapter = String(context.adapter || 'lora').trim().toLowerCase();
     const baseCompute = String(context.baseCompute || 'bf16').trim().toLowerCase();
     const modelFamily = normalizeModelFamily(context.modelFamily || 'anima');
-    const pipelineParallel = normalizeBooleanConfigValue(
-        'pipeline_parallel',
-        context.pipelineParallel,
-    );
+    const familyCapability = modelFamilyCapability(modelFamily);
+    const pipelineParallel = context.pipelineParallel === true
+        || toggleEnabled(context, 'pipeline_parallel');
 
-    if (PIPELINE_PARALLEL_FIELD_KEYS.has(key) && !modelFamilySupportsPipelineParallel(modelFamily)) {
+    const pipelineCapability = modelFamilyPipelineCapability(modelFamily);
+    if (PIPELINE_PARALLEL_FIELD_KEYS.has(key) && pipelineCapability?.configurable !== true) {
         return unavailable(
             `流水线并行尚未为当前模型族 ${modelFamily} 声明分层能力。`,
             'pipeline-parallel-model-family',
+        );
+    }
+    if (PIPELINE_PARALLEL_FIELD_KEYS.has(key) && !modelFamilySupportsPipelineParallel(modelFamily)) {
+        if (key === 'pipeline_parallel' && pipelineParallel) {
+            return { enabled: true, reason: '', code: null };
+        }
+        return unavailable(
+            `当前模型族 ${modelFamily} 只有流水线分层配置，主训练 runtime 尚未接入，不能启动该模式。`,
+            'pipeline-parallel-runtime-unavailable',
         );
     }
     if (key !== 'pipeline_parallel' && PIPELINE_PARALLEL_FIELD_KEYS.has(key) && !pipelineParallel) {
@@ -94,6 +158,86 @@ export function configFieldAvailability(key, context = {}) {
             '请先开启流水线并行。',
             'pipeline-parallel-disabled',
         );
+    }
+
+    if (!familyCapability && FAMILY_CAPABILITY_FIELD_KEYS.has(key)) {
+        return unavailable(
+            `未识别模型族 ${modelFamily}；请选择已注册模型族后再编辑该能力字段。`,
+            'model-family-unknown',
+        );
+    }
+
+    if (key === 'lora_adapter_kind') {
+        if (!LORA_ADAPTER_METHODS.has(method)) {
+            return unavailable(
+                `当前方法为 ${METHOD_LABELS[method] || method}，不使用 LoRA Adapter 变体。`,
+                'method-context',
+            );
+        }
+    }
+
+    if (key === 'max_train_steps' && context.maxTrainEpochsConfigured === true) {
+        return unavailable(
+            'max_train_epochs 已设置；训练端会按当前数据集重新计算并覆盖 max_train_steps。',
+            'epochs-override-steps',
+        );
+    }
+
+    if (
+        ['network_dim', 'network_alpha'].includes(key)
+        && context.dimFromWeights === true
+        && String(context.networkWeights || '').trim()
+    ) {
+        return unavailable(
+            '已开启从热启动权重读取维度；训练端会使用检查点中的 rank/alpha。',
+            'weights-override-dimensions',
+        );
+    }
+
+    if (COMPILE_CHILD_KEYS.has(key) && !toggleEnabled(context, 'torch_compile', true)) {
+        return unavailable('请先启用 torch.compile。', 'torch-compile-disabled');
+    }
+    if (key === 'compile_seq_bands' && !toggleEnabled(context, 'compile_dynamic_seq')) {
+        return unavailable('请先启用动态序列编译。', 'compile-dynamic-seq-disabled');
+    }
+
+    if (key === 'selective_checkpoint_blocks'
+        && !choiceEnabled(contextValue(context, 'selective_checkpoint', 'off'))) {
+        return unavailable('请先选择一种选择性重算模式。', 'selective-checkpoint-disabled');
+    }
+
+    if (key === 'blocks_to_swap' && toggleEnabled(context, 'auto_block_swap')) {
+        return unavailable('本次运行由 AUTO 校准；保留此手动值供关闭 AUTO 后使用。', 'auto-block-swap-enabled');
+    }
+    if (['auto_block_swap_mode', 'auto_block_swap_interval', 'auto_block_swap_max_trials', 'auto_block_swap_timeout', 'auto_block_swap_swap_io_limit_mb', 'auto_block_swap_vram_reserve_percent', 'auto_block_swap_preference'].includes(key)
+        && !toggleEnabled(context, 'auto_block_swap')) {
+        return unavailable('请先启用 AUTO 块交换。', 'auto-block-swap-disabled');
+    }
+    const dynamicSwap = contextValue(context, 'auto_block_swap_mode', 'startup') === 'dynamic';
+    if (key === 'auto_block_swap_interval' && !dynamicSwap) {
+        return unavailable('仅用于 dynamic 模式。', 'dynamic-swap-disabled');
+    }
+    if (key === 'auto_block_swap_max_trials' && dynamicSwap) {
+        return unavailable('dynamic 不运行启动候选搜索。', 'startup-swap-disabled');
+    }
+    if (['auto_block_swap_mode', 'auto_block_swap_interval'].includes(key)
+        && modelFamily !== 'krea2_raw' && !dynamicSwap) {
+        return unavailable('动态调整当前仅支持 Krea-2。', 'dynamic-swap-family');
+    }
+    if (BLOCK_SWAP_CHILD_KEYS.has(key)
+        && !toggleEnabled(context, 'auto_block_swap')
+        && !(Number(contextValue(context, 'blocks_to_swap', 0)) > 0)) {
+        return unavailable('请先设置大于 0 的 block swap 数量。', 'block-swap-disabled');
+    }
+
+    const probeParent = PROBE_PARENT_BY_KEY.get(key);
+    if (probeParent && !choiceEnabled(contextValue(context, probeParent, 'off'))) {
+        return unavailable(`请先启用 ${probeParent}。`, 'probe-disabled');
+    }
+
+    const cacheParent = CACHE_PARENT_BY_KEY.get(key);
+    if (cacheParent && !toggleEnabled(context, cacheParent[0])) {
+        return unavailable(`请先启用${cacheParent[1]}。`, cacheParent[2]);
     }
 
     if (CONVROT_FIELD_KEYS.has(key) && !['w8a16_convrot', 'w8a8_convrot'].includes(baseCompute)) {
@@ -109,11 +253,16 @@ export function configFieldAvailability(key, context = {}) {
         return unavailable(`该参数仅适用于 ${expected}，当前方法为 ${METHOD_LABELS[method] || method}。`, 'method-scope');
     }
 
-    if (SPD_UI_DEFAULT_FIELDS.has(key) && method !== 'spd') {
+    if (SPD_UI_DEFAULT_FIELDS.has(key) && !SHARED_METHOD_FIELD_KEYS.has(key) && method !== 'spd') {
         return unavailable(`该参数属于 SPD 实验，当前方法为 ${METHOD_LABELS[method] || method}。切换到 SPD 后可编辑。`, 'spd-method');
     }
 
-    if (CHIMERA_UI_DEFAULT_FIELDS.has(key) && key !== 'use_chimera_hydra' && method !== 'chimera') {
+    if (
+        CHIMERA_UI_DEFAULT_FIELDS.has(key)
+        && !SHARED_METHOD_FIELD_KEYS.has(key)
+        && key !== 'use_chimera_hydra'
+        && method !== 'chimera'
+    ) {
         return unavailable(`该参数属于 ChimeraHydra，当前方法为 ${METHOD_LABELS[method] || method}。切换方法后可编辑。`, 'chimera-method');
     }
 

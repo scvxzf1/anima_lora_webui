@@ -3,6 +3,8 @@
 const MIN_SCALE = 25;
 const MAX_SCALE = 400;
 const DEFAULT_SCALE = 100;
+const NAV_HEIGHT_PX = 52;
+const NAV_FONT_SIZE_PX = 14;
 
 const PAGE_SCALE_KEYS = Object.freeze({
     config: 'ui_scale_config',
@@ -35,11 +37,16 @@ export function resolvePageScale(settings = {}, pageType = '', baseScale = resol
 export function applyDragonUIScale(settings = {}, pageType = currentPageType()) {
     const baseScale = resolveBaseScale(settings);
     const pageScale = resolvePageScale(settings, pageType, baseScale);
-    document.documentElement.style.setProperty('--dragon-user-scale', String(baseScale / 100));
+    const baseZoom = baseScale / DEFAULT_SCALE;
+    const rootStyle = document.documentElement.style;
+    rootStyle.setProperty('--dragon-user-scale', String(baseZoom));
+    rootStyle.setProperty('--dragon-nav-height-scaled', `${NAV_HEIGHT_PX * baseZoom}px`);
+    rootStyle.setProperty('--dragon-nav-font-size-scaled', `${NAV_FONT_SIZE_PX * baseZoom}px`);
     const mount = document.getElementById('dragon-main');
     if (mount) {
         const zoom = pageScale / DEFAULT_SCALE;
         mount.dataset.uiScale = String(pageScale);
+        mount.style.setProperty('--dragon-nav-height', `${NAV_HEIGHT_PX * baseScale / pageScale}px`);
         if (Math.abs(zoom - 1) < 0.001) mount.style.removeProperty('zoom');
         else mount.style.setProperty('zoom', String(zoom));
     }

@@ -9,16 +9,16 @@ export const FIELD_HELP_TRAINING_ZH = {    learning_rate: help(
         "新手普通 LoRA 从 2e-5 开始；只有样张明显欠拟合或过拟合时，再小幅调整。"
     ),
     max_train_epochs: help(
-        "最大训练轮数，也就是数据集会被完整看多少遍。",
-        "一轮约等于把当前数据集完整训练一遍。小数据集可以先从 4-12 轮观察；大数据集通常不需要太多轮。",
+        "最大训练轮数；非空时训练端会重新计算并覆盖最大训练步数。",
+        "只要这里有值，训练端就会按当前数据集重新计算总步数，并覆盖 max_train_steps。一轮约等于把当前数据集完整训练一遍。",
         ["轮数越多，模型越有机会学会你的角色、风格或概念。"],
         ["训练时间会变长，也会生成更多保存点和样张。"],
-        ["轮数太高会过拟合，生成图越来越像训练图，泛化变差。"],
-        "新手先用变体默认；样张还学不会再增加，已经像训练图照搬就降低。"
+        ["0 或负数也会覆盖 max_train_steps，但不会形成有效训练预算；启动预检会要求修正。"],
+        "小数据集可先从 4-12 轮观察；样张还学不会再增加，已经像训练图照搬就降低。"
     ),
     max_train_steps: help(
-        "固定训练总步数，用 step 而不是轮数来控制训练多久。",
-        "默认 0 表示不启用。只有 max_train_epochs 为空时，正数 max_train_steps 才会作为训练总时长。",
+        "固定训练总步数，仅在最大训练轮数为空时生效。",
+        "WebUI 默认 0 表示不启用。只有 max_train_epochs 为空时，正数 max_train_steps 才会作为训练总时长。",
         ["适合做精确实验，比如只想跑 1000 step。"],
         ["比“训练几轮”更难直观理解，因为它会受图片数量、批大小和重复次数影响。"],
         ["max_train_epochs 为空且这里也是 0 时，训练时长没有配置，启动训练会要求补一个。"],
@@ -41,12 +41,12 @@ export const FIELD_HELP_TRAINING_ZH = {    learning_rate: help(
         "新手建议先设 1；训练稳定后可调到 2-5 省磁盘。"
     ),
     save_last_n_epochs: help(
-        "普通模型权重最多保留多少份。",
-        "默认 -1 表示不清理旧权重，保存所有按“模型保存间隔”生成的 .safetensors。设置为 2、3 等正数时，只保留最近 N 个轮次权重；最终权重仍会单独保存。",
+        "普通权重保留数；负数不清理，0 会按 1 处理。",
+        "任意负数表示不清理旧权重；正数只保留最近 N 个轮次权重。0 不表示关闭，训练端会按 1 份处理；最终权重仍会单独保存。",
         ["可以保留多个阶段的 LoRA 权重，方便回看效果或挑选不过拟合的版本。"],
         ["数值越大，磁盘占用越多；-1 会一直累积权重文件。"],
         ["只影响普通权重文件，不影响完整续训点；续训点数量由“续训点保留数量”控制。"],
-        "想省磁盘就填 2-5；想保留所有中间权重就保持 -1。"
+        "想省磁盘就填 2-5；想保留所有中间权重就保持 -1，不要用 0 表示关闭。"
     ),
     checkpointing_epochs: help(
         "每隔多少轮保存一次可恢复训练状态。",
@@ -57,7 +57,7 @@ export const FIELD_HELP_TRAINING_ZH = {    learning_rate: help(
         "新手建议设 1。想减少中断损失时，让它小于或等于 save_every_n_epochs。"
     ),
     checkpointing_last_n_epochs: help(
-        "自动续训点最多保留多少份。",
+        "续训点保留数；仅 -1 不清理，0 或更小非法值按 1 处理。",
         "默认 1 表示只保留最近 1 个完整续训点；设置为 2、3 等正数会保留最近 N 个续训点。设置为 -1 表示不清理旧续训点，配合保存间隔 1 时每轮都可恢复。",
         ["保留多个续训点后，历史任务里可以选择不同轮数的 checkpoint-state 继续训练。"],
         ["数值越大，optimizer、scheduler 和随机状态文件占用的磁盘越多。"],
@@ -240,11 +240,11 @@ export const FIELD_HELP_TRAINING_ZH = {    learning_rate: help(
         "保持 1.0。"
     ),
     sample_ratio: help(
-        "每轮使用的数据比例。",
-        "0.5 表示只采样一半数据；用于快速试跑。",
+        "全局数据采样比例；设置后覆盖所有 subset 的比例。",
+        "取值必须大于 0 且不超过 1。这里是全局覆盖：设置后会替换所有 subset 自己的 sample_ratio；留空才沿用各 subset 的值。",
         ["能更快验证配置和流程。"],
         ["有效数据减少，结果不能代表完整训练。"],
-        ["长期训练使用过低比例会欠拟合或偏向子集。"],
+        ["多 subset 配置中误设全局比例，会把每个 subset 都改成同一采样比例。"],
         "正式训练用 1.0 或不设置；试跑可用 half/quarter/tiny 预设。"
     ),
     sample_prompts: help(
@@ -289,11 +289,11 @@ export const FIELD_HELP_TRAINING_ZH = {    learning_rate: help(
     ),
     attn_mode: help(
         "注意力计算使用的后端实现。",
-        "Krea-2 仅提供 torch（cuDNN SDPA）和 flash（打包有效 token 的 FlashAttention varlen）；Anima 仍可使用 mem_efficient、xformers、sageattn 和 flex。",
+        "Anima、Krea-2 和 Z-Image 的生产默认配置均使用 flash。Krea-2 使用打包有效 token 的 FlashAttention varlen，Z-Image 映射到 Diffusers flash_varlen；三个模型都可显式选择 torch 或 sdpa 回退。Anima 还支持 mem_efficient、xformers、sageattn 和 flex。",
         ["选对后端能明显影响训练速度和显存占用。"],
-        ["Krea-2 flash 需要 FlashAttention 2；V100 fork 只支持 FP16，BF16 会在加载大模型前拒绝。"],
+        ["flash 需要可用的 FlashAttention 实现及受支持的精度；Z-Image 使用 BF16，V100 的 FP16 专用实现不能承载 BF16。"],
         ["高性能后端首次启动或编译可能更慢；缺少依赖时会明确报错。"],
-        "Krea-2 默认 torch 保持历史行为；已安装 FlashAttention 2 时可显式选 flash。"
+        "新配置默认 flash。加载已有配置时，显式设置的 torch 或 sdpa 不会被新的默认值自动替换；V100 稳定性专用配置仍以 torch 为准。"
     ),
     v100_flash_stability: help(
         "Tesla V100 使用 FlashAttention 时的诊断模式。",
@@ -335,13 +335,68 @@ export const FIELD_HELP_TRAINING_ZH = {    learning_rate: help(
         ["不能与 block swap、Unsloth offload 或选择性 checkpoint 组合；关闭 gradient_checkpointing 时开它基本无效。"],
         "默认关闭；标准梯度检查点仍 OOM，且不使用上述互斥功能时再尝试。"
     ),
+    auto_block_swap: help(
+        "根据实际资源自动选择块交换数量。",
+        "覆盖本次运行的手动交换块数，不修改配置中的整数；startup 启动校准后固定，dynamic 在完整 optimizer 更新之间调整。",
+        ["按实际模型块数、物理内存和训练显存峰值选择经过验证的候选。"],
+        ["启动校准或动态性能评估有额外成本；虚拟内存不计入容量，不保证持续加速。"],
+        ["实验版仅支持单卡普通 LoRA、完整磁盘缓存、数据加载 workers=0；不支持采样、验证集、续训和阶段调度。"],
+        "默认关闭。只有符合实验边界且接受启动校准开销时开启。"
+    ),
+    auto_block_swap_mode: help(
+        "startup 启动校准；dynamic 全程动态调整。",
+        "dynamic 当前仅支持 Krea-2，先盘点并从最大交换数开始，在安全余量内通过 A/B/A 窗口比较调整。",
+        ["显存受压时增加交换；压力解除后恢复探索。"],
+        ["新常驻块首次编译和权重迁移有额外成本。"],
+        ["不重试已经部分执行的训练 OOM；仍须满足 AUTO 实验限制。"],
+        "默认 startup；dynamic 为显式实验模式。"
+    ),
+    auto_block_swap_interval: help(
+        "每个动态性能窗口的有效 optimizer 更新数。",
+        "范围 4 到 256，默认 8；各负载额外排除两次预热更新。",
+        ["更大窗口降低计时噪声。"], ["窗口较大时响应性能变化更慢。"],
+        ["只影响性能探索频率，资源检查仍在每次更新边界执行。"], "默认 8。"
+    ),
+    auto_block_swap_max_trials: help(
+        "限制 AUTO 搜索的候选数量。",
+        "范围 1 到 16，默认 6；另有一次模型盘点和一次最终确认。",
+        ["控制启动校准成本。"], ["候选较少可能错过更快的交换数量。"],
+        ["只在 AUTO 块交换开启时有效。"], "默认 6。"
+    ),
+    auto_block_swap_vram_reserve_percent: help(
+        "按显卡总容量保留显存，不按当前空闲显存计算。",
+        "范围 0 到 90，默认 10；16 GiB 显卡设置 25 即保留 4 GiB，最低安全余量仍为 1 GiB。",
+        ["保留更多显存给峰值和其他程序。"], ["较大比例可能增加交换或使预算无法满足。"],
+        ["以预测训练峰值检查余量；不保证抵御外部进程突然占用。"], "默认 10%。"
+    ),
+    auto_block_swap_preference: help(
+        "balanced 均衡；vram 节省显存；ram 节省主机内存。",
+        "vram 倾向更多交换；ram 倾向更少交换并释放不参与交换的 CPU 副本，仅支持 Krea-2。",
+        ["在显存和物理内存安全预算内选择资源倾向。"], ["资源优先允许最多约 10% 步时取舍。"],
+        ["ram 无法消除模型加载峰值；交换涉及的首尾块仍需 CPU 副本，不使用磁盘 swap 扩容。"],
+        "默认 balanced；物理内存较小且显存有余量时选 ram。"
+    ),
+    auto_block_swap_timeout: help(
+        "限制每个 AUTO 校准进程的运行时间。",
+        "单位秒，包含模型加载、编译和各分辨率的训练更新；默认 1800。",
+        ["避免校准无限等待。"], ["超时会停止校准，不会当作显存不足继续猜测。"],
+        ["编译或分辨率较多时需要更长时间。"], "默认 1800 秒。"
+    ),
+    auto_block_swap_swap_io_limit_mb: help(
+        "允许 AUTO 使用系统 SWAP；达到该累计换页 IO 上限或物理 RAM 保留线时停止。0 表示不设 IO 上限。",
+        "单位 MiB，默认 1024；达到上限或物理可用内存保留线时停止。设为 0 表示不设换页 IO 上限，但仍不能把 SWAP 当作物理 RAM。",
+        ["内存较小的机器可以用硬盘换页完成块交换。"],
+        ["换页会显著降低速度并增加 SSD 写入；上限越大，训练卡顿和系统 OOM 风险越高。"],
+        ["这是 AUTO 资源保护参数，不会改变块交换数量或显存保留比例。"],
+        "默认 1024 MiB；只有明确接受换页性能代价时再提高。"
+    ),
     blocks_to_swap: help(
-        "把多少个 DiT 模块临时放到 CPU，以减少 GPU 显存占用。",
-        "0 表示尽量都放在 GPU。显存不足时可以增加，但每增加一些都会让训练更慢。",
-        ["能降低 GPU 显存峰值，让低显存机器也可能跑起来。"],
-        ["CPU/GPU 来回搬运会明显拖慢训练。"],
-        ["设太高会慢到不实用，也可能受 CPU 内存和硬盘交换影响。"],
-        "显存够用保持 0；OOM 时先用 low_vram 或 lora-8gb 预设。"
+        "显存不够时，把一部分模型暂时放到电脑内存里。",
+        "0 表示尽量都放在显卡上。数字越大，能省下的显存越多，但显卡和电脑内存之间搬运数据的时间也会变长。",
+        ["遇到显存不足（OOM）时，调大它可能让训练先跑起来。"],
+        ["训练会变慢；数字越大，通常越慢。"],
+        ["如果电脑内存也不够，系统可能会开始使用硬盘，速度会非常慢。"],
+        "能正常训练就先不改。遇到 OOM 时，优先换低显存预设，不要随意猜一个很大的数字。"
     ),
     pipeline_parallel: help(
         "为两张 GPU 规划所选模型族的分层范围。",
@@ -357,7 +412,7 @@ export const FIELD_HELP_TRAINING_ZH = {    learning_rate: help(
         ["两张卡可以分担模型占用的显存。"],
         ["一张卡无法使用这个模式，三张或更多卡也不能设成更多段。"],
         ["如果选中的显卡不是两张，训练前检查会直接阻止启动。"],
-        "保持 2 就好。"
+        "保持 2 就好。选中两张显卡并开启流水线并行后，它才会参与预检。"
     ),
     pipeline_parallel_microbatches: help(
         "决定两张显卡每轮交替处理几份小批量。",
@@ -393,17 +448,13 @@ export const FIELD_HELP_TRAINING_ZH = {    learning_rate: help(
         "保持 bf16；只有做 FP8 交换传输消融时再改为 fp8_e4m3。"
     ),
     base_compute: help(
-        "冻结 DiT 底模 Linear 的计算路径（实验）。",
-        "bf16 是默认高精度路径。w8a16_convrot / w8a8_convrot 对选定 scope（默认 mlp）做 group Regular Hadamard + int8 权重，用于省显存；不保证比 bf16 更快。与 block_swap_transfer_dtype=int8 互斥。nf4（仅 Krea-2）用 bnb 4-bit NormalFloat 量化冻结底模，13B→6.6GB，PG199 实测 peak 10.2GB / 3.6s/step（bf16 27.9GB / 3.47s），且已验证可与 block swap 组合。",
-        [
-            "W8A16+mlp+compile：peak ~4.1GB（bf16~4.95），step ~1.05×；scope=all ~3.4GB / ~1.08×。",
-            "同显存可抬 rank：W8A16@r32 仍 ~4.2GB，低于 bf16@r4。质量 opt-in regular@64。",
-            "同显存更大 batch 仅 scope=all：all@b2 ~4.4GB、all@r32@b2 ~4.6GB 仍低于 bf16@b1；mlp@b2 会越峰。",
-            "自包含 NF4 v2 可直接作为基础模型，不读取 25GB BF16 底模，也不做在线量化。",
-        ],
-        ["W8A8 默认质量路径更慢（~1.4×）；half/TF32 STE 会破 grad gate。", "NF4 仅 Krea-2 可用；anima 不显示该选项。"],
-        ["正式训练保持 bf16。开启后请先做短训对照，不要默认用于生产长训。"],
-        "默认 bf16；显存吃紧时再选 w8a16_convrot + compile，优先换更大 network_dim 或 all+更大 batch。Krea-2 想压显存可选 nf4（13B→6.6GB）。"
+        "决定底模保持原精度，还是压缩后再计算。",
+        "这是冻结 DiT 底模 Linear 的计算路径。bf16 是稳妥起点；w8a16_convrot 和 w8a8_convrot 使用压缩权重。nf4（仅 Krea-2）已验证可与 block swap 组合，但压缩不保证速度或质量收益。",
+        ["显存紧张时，压缩底模可能让训练跑起来，或留出空间给更大的 LoRA。"],
+        ["压缩不一定更快，部分选项反而会更慢。"],
+        ["不同模型家族支持的选项不同；不兼容的组合会被训练前检查拒绝。压缩也可能带来少量质量差异。"],
+        "新手先用 bf16。只有遇到显存不足时，再优先使用对应模型的低显存预设；不要同时改多个压缩选项。",
+        "这一项只改冻结的底模，不会把 LoRA 和优化器一起压缩。"
     ),
     convrot_group_size: help(
         "ConvRot 分组大小（RHT 的 group size）。",
@@ -542,26 +593,26 @@ export const FIELD_HELP_TRAINING_ZH = {    learning_rate: help(
         "默认 block；只有确认 LoKr/MLP 峰值时再临时提高粒度。"
     ),
     preprocess_memory_profile: help(
-        "预处理阶段的显存/速度预设。",
+        "预处理阶段的自动批大小或固定预设。",
         "只影响 WebUI/任务链触发的 VAE latent cache 和文本缓存批大小；不改变训练 batch size。",
         ["low_vram 会降低预处理峰值显存。"],
-        ["batch 越小，预处理越慢。"],
+        ["auto 从 1 开始探测，结合显存与吞吐上调；CUDA OOM 时减小批次重试。模型本身装不下时无法靠减批解决。"],
         ["手动填写 VAE 或文本缓存批大小时，会覆盖这个预设对应的值。"],
         "显存峰值卡在预处理时选 low_vram；正常机器保持 auto。"
     ),
     preprocess_vae_cache_batch_size: help(
         "VAE latent cache 的批大小。",
-        "auto 保持历史默认 4；填 1 会逐张过 VAE，通常能明显压低预处理峰值显存。",
+        "auto 跟随显存模式；显存模式也是 auto 时，各分辨率从 1 开始探测批大小，显存充足时上调，CUDA OOM 时退避。",
         ["直接针对 Caching latents 阶段的显存峰值。"],
-        ["值越小越慢，尤其是图片数量多时。"],
+        ["更大批次不一定更快；auto 会在吞吐收益不明显时收敛。正整数保持固定，不自动重试。"],
         ["这不是训练 batch size，不影响训练 step 的有效批量。"],
         "低显存优先填 1；显存够用保持 auto。"
     ),
     preprocess_text_cache_batch_size: help(
         "文本编码缓存的批大小。",
-        "auto 保持历史默认 16；降低它可以减少 Qwen3 文本缓存阶段的显存峰值。",
+        "auto 跟随显存模式；显存模式也是 auto 时，从 1 开始探测实际编码 caption 的批大小，变体展开后仍受控制，CUDA OOM 时退避。",
         ["文本缓存阶段 OOM 时可单独调低。"],
-        ["值越小，文本缓存越慢。"],
+        ["探测值只用于本次运行，不写回配置。正整数保持固定，不自动重试。"],
         ["不会改变 caption 内容或训练时的文本缓存读取方式。"],
         "只有文本缓存阶段显存高或 OOM 时再改；通常保持 auto。"
     ),
@@ -582,12 +633,12 @@ export const FIELD_HELP_TRAINING_ZH = {    learning_rate: help(
         "新手保持默认；如果报 torch.compile/inductor/triton 相关错误，再关闭排查。"
     ),
     compile_dynamic_seq: help(
-        "让 torch.compile 把不同图像桶的 token 长度合并到一张动态序列图。",
-        "只在 torch_compile=true 时有意义。开启后会将序列轴标记为有界动态尺寸，减少多种分辨率分别编译的图数。",
-        ["多桶训练可以减少重复编译和编译缓存数量。"],
-        ["动态 shape 图更复杂，首次编译和错误排查成本更高。"],
-        ["序列长度超出派生范围会直接报错；Krea-2 使用固定 token-family 图，预检会自动关闭此项。"],
-        "Anima/Z-Image 多分辨率编译可保持变体默认；Krea-2 保持 false。"
+        "让 Anima 的多种图片尺寸共用一套编译结果。",
+        "它只在已开启 torch.compile 时有用。Anima 同时训练多种宽高比时，开启它可以少编译几套重复结果。",
+        ["Anima 多尺寸训练时，可能减少重复编译和编译缓存。"],
+        ["第一次编译和报错排查会更复杂。"],
+        ["Krea-2 使用自己的固定编译方式，预检会关闭此项；Z-Image 目前不支持 torch.compile，也不应开启此项。"],
+        "只有 Anima 在开启 torch.compile 后才保持配方默认。Krea-2 和 Z-Image 都保持关闭。"
     ),
     compile_seq_bands: help(
         "把 Anima 的动态 token 长度拆成多个紧凑分带编译。",

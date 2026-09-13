@@ -1,6 +1,6 @@
 import { createApiClient } from '../../shared/api.js?v=dragon-ui-20260812v35';
 import { escapeHtml } from '../../shared/format.js?v=dragon-ui-20260812v35';
-import { renderIcon } from '../icons.js?v=dragon-ui-20260812v35';
+import { renderIcon } from '../icons.js?v=dragon-ui-20260902v36';
 
 const api = createApiClient();
 const ESTIMATE_KEYS = new Set([
@@ -14,8 +14,11 @@ const ESTIMATE_KEYS = new Set([
 export function renderDatasetConfigField(value, block = null) {
     const path = String(value || '');
     const blockClass = block ? ' dragon-config-block' : '';
+    const availability = block?.availability;
+    const unavailable = availability?.enabled === false;
+    const presentation = block?.presentation;
     const blockAttributes = block
-        ? ` data-field-span="${block.span}" data-config-tag="${escapeHtml(block.chapterId)}" data-config-tone="${escapeHtml(block.tone)}" data-control-kind="dataset" data-required="${block.required}" data-experimental="false" data-path-field="true"`
+        ? ` data-field-span="${block.span}" data-config-tag="${escapeHtml(block.chapterId)}" data-config-tone="${escapeHtml(block.tone)}" data-control-kind="dataset" data-required="${block.required}" data-experimental="false" data-config-advanced="false" data-config-visibility-level="${escapeHtml(block.visibilityLevel || 'newcomer')}" data-config-availability="${unavailable ? 'unavailable' : 'available'}"${unavailable ? ` data-config-unavailable-reason="${escapeHtml(availability.reason || '')}"` : ''} data-config-presentation-visible="${presentation?.visible !== false}"${presentation?.visible === false ? ` data-config-disclosure-reason="${escapeHtml(presentation.reason || '')}" hidden` : ''} data-path-field="true"`
         : '';
     return `
         <div class="dragon-config-dataset-card${blockClass}" data-config-field-key="dataset_config" data-config-tool="dataset"
@@ -102,7 +105,12 @@ export function calculateStepEstimate(payload = {}, live = {}) {
     const maxSteps = nonnegativeNumber(live.max_train_steps, payload.max_train_steps || 0);
     const weightedImages = Math.max(0, Number(payload.weighted_image_count || 0));
     const effectiveBatch = Math.max(1, batchSize * gradAccum);
-    const repeatedImages = Math.floor(weightedImages * sampleRatio);
+    const baselineRatio = positiveNumber(payload.sample_ratio, 1);
+    const baselineRepeated = Number(payload.repeated_image_count);
+    const ratioChanged = Math.abs(sampleRatio - baselineRatio) > Number.EPSILON;
+    const repeatedImages = !ratioChanged && Number.isFinite(baselineRepeated)
+        ? Math.max(0, baselineRepeated)
+        : repeatedImagesForGlobalRatio(payload, weightedImages, sampleRatio);
     const stepsPerEpoch = repeatedImages ? Math.ceil(repeatedImages / effectiveBatch) : 0;
     const durationMode = epochs !== null ? 'epochs' : (maxSteps > 0 ? 'steps' : 'unset');
     return {
@@ -119,6 +127,22 @@ export function calculateStepEstimate(payload = {}, live = {}) {
         durationMode,
         totalSteps: durationMode === 'epochs' ? stepsPerEpoch * epochs : maxSteps,
     };
+}
+
+function repeatedImagesForGlobalRatio(payload, weightedImages, ratio) {
+    const rows = Array.isArray(payload.datasets) ? payload.datasets : [];
+    if (!rows.length) return Math.floor(weightedImages * ratio);
+    const sample = (count) => {
+        const available = Math.max(0, Number(count || 0));
+        if (!available) return 0;
+        return ratio >= 1 ? available : Math.max(1, Math.floor(available * ratio));
+    };
+    return rows.reduce((total, row) => {
+        const primary = sample(row.training_pool_image_count) * Math.max(1, Number(row.num_repeats || 1));
+        const clone = sample(row.trigger_clone_training_pool_image_count)
+            * Math.max(0, Number(row.trigger_clone?.num_repeats || 0));
+        return total + primary + clone;
+    }, 0);
 }
 
 export function groupDatasetPresets(payload = {}, query = '') {
@@ -195,6 +219,7 @@ function bindDatasetCard(root, card, dialog, state, cleanup) {
         if (!state.highlightedFile) state.highlightedFile = state.library.presets[0]?.path || '';
         renderDatasetDialog(dialog, state);
         if (state.highlightedFile) await loadPresetPreview(dialog, state);
+        dialog.querySelector('[data-config-dataset-file][data-active="true"]')?.scrollIntoView({ block: 'nearest', behavior: 'instant' });
         if (!previewOnly) dialog.querySelector('[data-config-dataset-search]')?.focus({ preventScroll: true });
     };
     card.querySelector('[data-config-dataset-action="open"]')?.addEventListener('click', () => open(false));
@@ -465,7 +490,13 @@ function renderDatasetBreakdown(panel, datasets) {
     target.innerHTML = datasets.length ? datasets.map((row, index) => {
         const count = Number(row.train_image_count || 0);
         const repeats = Number(row.num_repeats || 1);
-        return `<div class="dragon-step-estimate-row"><strong>第 ${Number(row.index || index + 1)} 组</strong><span>${count} 张 x 重复 ${repeats} = ${count * repeats} 样本</span><code title="${escapeHtml(row.source_dir || row.image_dir || '')}">${escapeHtml(row.source_dir || row.image_dir || '-')}</code></div>`;
+        const sampled = Number(row.sampled_image_count ?? count);
+        const weighted = Number(row.sampled_weighted_image_count ?? (sampled * repeats));
+        const ratio = Number(row.sample_ratio ?? 1);
+        const samplingText = sampled !== count || ratio < 1
+            ? `；采样 ${sampled} 张 (${ratio})`
+            : '';
+        return `<div class="dragon-step-estimate-row"><strong>第 ${Number(row.index || index + 1)} 组</strong><span>${count} 张${samplingText} x 重复 ${repeats} = ${weighted} 样本</span><code title="${escapeHtml(row.source_dir || row.image_dir || '')}">${escapeHtml(row.source_dir || row.image_dir || '-')}</code></div>`;
     }).join('') : '<div class="dragon-step-estimate-row"><span>还没有可估算的数据集。</span></div>';
 }
 

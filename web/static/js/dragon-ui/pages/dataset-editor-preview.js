@@ -1,6 +1,6 @@
 /* Image and caption preview for the Dragon dataset workspace. */
 
-import { escapeAttribute, escapeHtml } from './dataset-editor-fields.js?v=dragon-ui-20260828v54';
+import { escapeAttribute, escapeHtml } from './dataset-editor-fields.js?v=dragon-ui-20260903-mask-semantics-v1';
 import { createDatasetPreviewDetailController } from './dataset-preview-detail.js?v=dragon-ui-20260902v4';
 import {
     alignDatasetPreviewOffset,
@@ -13,7 +13,7 @@ import {
     trimDatasetPreviewWindow,
     visibleDatasetPreviewOffset,
 } from './dataset-preview-window.js?v=dragon-ui-20260831v3';
-import { renderIcon } from '../icons.js?v=dragon-ui-20260812v35';
+import { renderIcon } from '../icons.js?v=dragon-ui-20260902v36';
 import { copyText } from '../../shared/dom.js?v=dragon-ui-20260812v35';
 
 export const DATASET_PREVIEW_PAGE_SIZE = 24;

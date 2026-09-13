@@ -1,7 +1,7 @@
 /* Image-to-caption review controller. Rendering and tag editing live in sibling modules. */
 
 import { createApiClient } from '../../shared/api.js?v=dragon-ui-20260812v35';
-import { confirmDragonDialog } from '../../shared/dialog.js?v=dragon-ui-20260901v2';
+import { confirmDragonDialog } from '../../shared/dialog.js?v=module-bootstrap-20260901-dialog-v1';
 import {
     mountDatasetPresetPicker,
     renderDatasetPresetPickerDialog,
@@ -18,7 +18,7 @@ import {
     startTagDictionaryDownload,
     translateCaptionTags,
     updateTaggingItem,
-} from './tagging-api.js?v=dragon-ui-20260902v8';
+} from './tagging-api.js?v=dragon-ui-20260902v9';
 import {
     appendCaptionTag,
     joinCaptionTags,

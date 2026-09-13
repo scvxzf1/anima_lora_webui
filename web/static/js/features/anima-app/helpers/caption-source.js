@@ -1,4 +1,4 @@
-import { CAPTION_SOURCE_MODE_OPTIONS } from '../../../config/catalog.js?v=module-bootstrap-20260902-krea2-pp-v1';
+import { CAPTION_SOURCE_MODE_OPTIONS } from '../../../config/catalog.js?v=auto-block-swap-20260908-v3';
 
 export function normalizeCaptionSourceMode(value, preferJson = false) {
     const raw = String(value || '').trim().toLowerCase().replace(/-/g, '_');

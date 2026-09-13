@@ -43,7 +43,7 @@ def test_dragon_actions_use_shared_dialog_instead_of_browser_prompts() -> None:
 
 
 def test_training_dialog_modules_share_one_context_cache_token() -> None:
-    token = "dragon-ui-20260901v115"
+    token = "dragon-ui-20260906-workspace-v1"
     config = _read("js/dragon-ui/pages/config-page.js")
     training_library = _read("js/dragon-ui/pages/training-preset-library.js")
 
@@ -55,7 +55,7 @@ def test_training_dialog_modules_share_one_context_cache_token() -> None:
         "js/dragon-ui/pages/tagging.js",
     ):
         assert f"training-controls.js?v={token}" in _read(relative)
-    assert "training-preset-library.js?v=dragon-ui-20260901v116" in config
+    assert "training-preset-library.js?v=dragon-ui-20260906-preset-actions-v1" in config
     assert "shared/dialog.js?v=module-bootstrap-20260901-dialog-v1" in config
     assert "shared/dialog.js?v=module-bootstrap-20260901-dialog-v1" in training_library
 

@@ -11,6 +11,75 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
+def test_dragon_ui_scale_updates_navigation_and_compensates_page_zoom() -> None:
+    if not shutil.which("node"):
+        pytest.skip("node is required for Dragon UI scale runtime checks")
+
+    script = r"""
+const mod = await import('./web/static/js/dragon-ui/ui-scale.js?dragon-scale-runtime-test');
+
+class FakeStyle {
+    constructor() { this.values = new Map(); }
+    setProperty(key, value) { this.values.set(key, value); }
+    removeProperty(key) { this.values.delete(key); }
+}
+
+const rootStyle = new FakeStyle();
+const main = { dataset: {}, style: new FakeStyle() };
+globalThis.document = {
+    documentElement: { style: rootStyle },
+    getElementById: (id) => id === 'dragon-main' ? main : null,
+};
+
+const inherited = mod.applyDragonUIScale({ ui_scale: 125 }, 'config');
+const inheritedState = {
+    result: inherited,
+    base: rootStyle.values.get('--dragon-user-scale'),
+    navHeight: rootStyle.values.get('--dragon-nav-height-scaled'),
+    navFontSize: rootStyle.values.get('--dragon-nav-font-size-scaled'),
+    mainNavHeight: main.style.values.get('--dragon-nav-height'),
+    mainZoom: main.style.values.get('zoom'),
+};
+
+const overridden = mod.applyDragonUIScale({ ui_scale: 125, ui_scale_config: 100 }, 'config');
+const overriddenState = {
+    result: overridden,
+    navHeight: rootStyle.values.get('--dragon-nav-height-scaled'),
+    navFontSize: rootStyle.values.get('--dragon-nav-font-size-scaled'),
+    mainNavHeight: main.style.values.get('--dragon-nav-height'),
+    mainZoom: main.style.values.get('zoom') || null,
+};
+
+console.log(JSON.stringify({ inheritedState, overriddenState }));
+"""
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", script],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        timeout=20,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr or result.stdout
+    payload = json.loads(result.stdout)
+    assert payload["inheritedState"] == {
+        "result": {"baseScale": 125, "pageScale": 125},
+        "base": "1.25",
+        "navHeight": "65px",
+        "navFontSize": "17.5px",
+        "mainNavHeight": "52px",
+        "mainZoom": "1.25",
+    }
+    assert payload["overriddenState"] == {
+        "result": {"baseScale": 125, "pageScale": 100},
+        "navHeight": "65px",
+        "navFontSize": "17.5px",
+        "mainNavHeight": "65px",
+        "mainZoom": None,
+    }
+
+
 def test_dragon_bootstrap_runtime_fallback_and_mode_priority() -> None:
     if not shutil.which("node"):
         pytest.skip("node is required for Dragon bootstrap runtime checks")

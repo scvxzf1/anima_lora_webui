@@ -112,6 +112,14 @@ export const FORM_SECTION_DEFS = [
             'pipeline_parallel_microbatches',
             'pipeline_parallel_schedule',
             'pipeline_parallel_split',
+            'auto_block_swap',
+            'auto_block_swap_mode',
+            'auto_block_swap_interval',
+            'auto_block_swap_vram_reserve_percent',
+            'auto_block_swap_preference',
+            'auto_block_swap_max_trials',
+            'auto_block_swap_timeout',
+            'auto_block_swap_swap_io_limit_mb',
             'blocks_to_swap',
             'block_swap_transfer_dtype',
             'block_swap_restore_mode',
@@ -410,7 +418,7 @@ export const CONFIG_COMPACT_FIELD_GROUPS = {
         },
         {
             className: 'config-field-grid-5col',
-            keys: ['blocks_to_swap', 'block_swap_transfer_dtype', 'block_swap_restore_mode', 'selective_checkpoint', 'selective_checkpoint_blocks'],
+            keys: ['auto_block_swap', 'blocks_to_swap', 'block_swap_transfer_dtype', 'block_swap_restore_mode', 'selective_checkpoint', 'selective_checkpoint_blocks'],
         },
         {
             className: 'config-field-grid-4col',

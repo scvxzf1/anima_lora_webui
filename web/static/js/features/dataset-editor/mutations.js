@@ -2,7 +2,7 @@
  * Dataset editor row mutations and experimental scope helpers.
  * Extracted from anima-app chunk 13.
  */
-import { DEFAULT_TRIGGER_CLONE } from '../../config/catalog.js?v=module-bootstrap-20260902-krea2-pp-v1';
+import { DEFAULT_TRIGGER_CLONE } from '../../config/catalog.js?v=auto-block-swap-20260908-v3';
 import {
     normalizeDatasetDefaults,
     normalizeDatasetEditorRows,

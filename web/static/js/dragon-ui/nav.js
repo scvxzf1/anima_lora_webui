@@ -1,6 +1,6 @@
 import { DRAGON_NAV_CATEGORIES } from './category-map.js?v=dragon-ui-20260826v45';
 import { getThemePreference, setThemePreference } from './theme.js?v=dragon-ui-20260814v45';
-import { renderIcon } from './icons.js?v=dragon-ui-20260812v35';
+import { renderIcon } from './icons.js?v=dragon-ui-20260902v36';
 import { switchToClassicUI } from '../shared/ui-mode.js?v=dragon-ui-20260814v45';
 import { dragonScrollBehavior } from './motion.js?v=dragon-ui-20260824v1';
 import { DRAGON_VIEWPORT_QUERIES, matchesDragonViewport } from './responsive.js?v=dragon-ui-20260824v1';

@@ -1,6 +1,6 @@
 /* View-model and compact renderers for the live training master-detail workspace. */
 
-import { renderIcon } from '../icons.js?v=dragon-ui-20260812v35';
+import { renderIcon } from '../icons.js?v=dragon-ui-20260902v36';
 import { isRunningState, stateText } from './live-training-state.js?v=dragon-ui-20260825v46';
 
 const ERROR_STATES = new Set(['error', 'failed', 'interrupted', 'unavailable']);

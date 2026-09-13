@@ -1,6 +1,6 @@
 /* Presentational helpers for Dragon's static weight analysis workspace. */
 
-import { renderIcon } from '../icons.js?v=dragon-ui-20260812v35';
+import { renderIcon } from '../icons.js?v=dragon-ui-20260902v36';
 import { renderStatusRegion, renderToolButton, renderToolHero } from './tool-page.js?v=dragon-ui-20260814v43';
 import { escapeHtml, formatBytes } from '../../shared/format.js?v=dragon-ui-20260812v35';
 

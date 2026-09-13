@@ -1,0 +1,164 @@
+body[data-dragon-ui] #dragon-root .dragon-config-category-page {
+  & .dragon-config-all-detail > .dragon-config-block-grid {
+    isolation: isolate;
+    padding: 26px var(--cfg-gutter) 36px;
+    scroll-padding-top: 24px;
+    background: var(--cfg-surface);
+  }
+  & .dragon-config-flow-section { max-width: var(--cfg-content-width); margin: 0 auto 40px; }
+  & .dragon-config-section-divider {
+    align-items: center;
+    margin-bottom: 4px;
+    padding: 0 0 16px;
+    border-bottom: 1px solid var(--cfg-line);
+  }
+  & .dragon-config-section-divider h3 { color: var(--cfg-ink); font-size: 19px; font-weight: 600; }
+  & .dragon-config-section-count { margin-left: 6px; color: var(--cfg-faint); font: 12px/1.5 var(--dragon-font-mono); }
+  & .dragon-config-cluster { margin: 0; padding: 20px 0; border: 0; border-bottom: 1px solid var(--cfg-line); }
+  & .dragon-config-cluster:last-child { border-bottom: 0; }
+  & .dragon-config-cluster-heading { margin-bottom: 12px; min-height: 26px; }
+  & .dragon-config-cluster-heading h4 { color: var(--cfg-ink); font-size: 14px; font-weight: 600; }
+  & .dragon-config-cluster-heading .dragon-btn { min-height: 28px; padding: 4px 8px; font-size: 12px; }
+  & .dragon-config-section-grid { gap: 10px 28px; align-items: stretch; }
+  & .dragon-config-block { padding: 6px 8px; align-self: stretch; border: 0; border-radius: 0; background: transparent; }
+  & .dragon-field-label { gap: 8px; margin-bottom: 7px; align-items: center; }
+  & :is(.dragon-field-label-text, .dragon-toggle-label) { color: var(--cfg-ink); font-size: 14px; font-weight: 500; line-height: 1.5; }
+  & .dragon-config-label-key {
+    color: var(--cfg-faint); font-size: 11px; line-height: 1.5;
+    white-space: normal; overflow-wrap: anywhere; font-weight: 400;
+  }
+  & :is(.dragon-input, .dragon-select, .dragon-textarea) {
+    box-sizing: border-box;
+    min-width: 0;
+    max-width: none;
+    min-height: 36px;
+    border: 1px solid var(--cfg-control-line);
+    border-radius: var(--cfg-radius);
+    background: var(--cfg-control);
+    color: var(--cfg-ink);
+    font-size: 14px;
+    box-shadow: none;
+  }
+  & :is(.dragon-input, .dragon-select, .dragon-textarea):hover { border-color: var(--cfg-faint); }
+  & :is(.dragon-input, .dragon-select, .dragon-textarea):focus-visible {
+    border-color: var(--cfg-accent);
+    outline: 2px solid color-mix(in srgb, var(--cfg-accent) 24%, transparent);
+    outline-offset: 1px;
+  }
+  & :is(.dragon-input, .dragon-textarea)::placeholder { color: var(--cfg-faint); }
+  & .dragon-config-block[data-path-field="true"] .dragon-input { font-size: 12px; }
+  & .dragon-config-block[data-control-kind="toggle"] { min-height: 58px; align-items: center; }
+  & .dragon-toggle-row { gap: 12px; justify-content: space-between; min-height: 40px; padding: 0; }
+  & .dragon-toggle-row > div:last-child { min-width: 0; order: 0; }
+  & .dragon-field:has(> .dragon-field-floating-actions) {
+    display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center;
+    & > .dragon-toggle-row { grid-column: 1; grid-row: 1; }
+    & > .dragon-field-floating-actions { position: static; grid-column: 2; grid-row: 1; }
+  }
+  & .dragon-toggle {
+    order: 1; flex: 0 0 38px; width: 38px; height: 22px;
+    background: var(--cfg-faint); border-radius: 12px;
+  }
+  & .dragon-toggle::after { width: 18px; height: 18px; top: 2px; left: 2px; }
+  & .dragon-toggle[data-checked="true"] { background: var(--cfg-accent); }
+  & .dragon-toggle[data-checked="true"]::after { transform: translateX(16px); }
+  & .dragon-toggle-desc { display: none; }
+  & .dragon-field-help-btn {
+    display: inline-grid; place-items: center; flex: 0 0 24px;
+    width: 24px; height: 24px; border: 0; border-radius: 4px;
+    background: transparent; color: var(--cfg-faint); opacity: 1; pointer-events: auto;
+  }
+  & .dragon-field-help-btn svg { width: 15px; height: 15px; }
+  & .dragon-field-help-btn:hover { background: var(--cfg-accent-soft); color: var(--cfg-accent); }
+  & .dragon-config-exp-badge {
+    padding: 0 4px; border: 0; border-radius: 3px;
+    background: var(--cfg-warning-soft); color: var(--cfg-warning); font: 500 10px/18px var(--dragon-font-mono);
+  }
+  & .dragon-config-unavailable-badge {
+    min-height: 18px; padding: 1px 5px; border: 0; border-radius: 3px;
+    background: var(--cfg-hover); color: var(--cfg-muted); font-size: 10px; font-weight: 400;
+  }
+  & .dragon-config-block[data-config-availability="unavailable"] { background: transparent; }
+  & .dragon-field[data-config-availability="unavailable"] :is(input, select, textarea) {
+    background: var(--cfg-canvas); border-color: var(--cfg-line); color: var(--cfg-muted); opacity: 1;
+  }
+  & .dragon-field[data-config-availability="unavailable"] .dragon-toggle-row { opacity: 1; }
+  & .dragon-field[data-config-availability="unavailable"] .dragon-toggle { opacity: .5; }
+  & :is(.dragon-field, .dragon-config-dataset-card)[data-dirty="true"] {
+    background: var(--cfg-warning-soft); box-shadow: inset 2px 0 var(--cfg-warning);
+  }
+  & :is(.dragon-field, .dragon-config-dataset-card)[data-dirty="true"]::before { display: none; }
+  & .dragon-field[data-preflight-error="true"] {
+    background: var(--cfg-danger-soft); outline: 1px solid var(--cfg-danger); outline-offset: 2px;
+  }
+  & .dragon-config-block[data-search-match="true"] .dragon-config-label-primary { color: var(--cfg-accent); }
+  & .dragon-config-path-tooltip { display: none; }
+  & .dragon-config-block[data-path-field="true"]:hover .dragon-config-path-tooltip { display: none; }
+  & .dragon-config-block[data-path-field="true"]:focus-within .dragon-config-path-tooltip {
+    display: block; border: 1px solid var(--cfg-line); background: var(--cfg-surface);
+    color: var(--cfg-muted); box-shadow: var(--cfg-shadow); border-radius: var(--cfg-radius);
+  }
+  & .dragon-config-dataset-card {
+    display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: auto auto auto;
+    height: auto; min-height: 0; padding: 6px 8px; gap: 8px 20px;
+    border: 0; border-radius: 0; background: transparent; box-shadow: none;
+  }
+  & .dragon-config-dataset-card-head { grid-column: 1; grid-row: 1; justify-content: flex-start; gap: 12px; align-items: center; }
+  & .dragon-config-dataset-card-head .dragon-eyebrow { display: none; }
+  & .dragon-config-dataset-title-line strong { font-size: 15px; font-weight: 600; }
+  & .dragon-config-dataset-path { grid-column: 1; grid-row: 2; font-size: 12px; }
+  & .dragon-config-dataset-meta { grid-column: 1 / -1; grid-row: 3; flex-wrap: wrap; gap: 8px 20px; font-size: 12px; }
+  & .dragon-config-dataset-actions { grid-column: 2; grid-row: 1 / 3; flex-wrap: wrap; gap: 6px; }
+  & .dragon-config-dataset-actions .dragon-btn-primary {
+    border-color: var(--cfg-control-line); background: var(--cfg-control); color: var(--cfg-ink);
+  }
+  & :is(.dragon-config-dataset-state, .dragon-step-estimate-status) {
+    padding: 0; min-height: 20px; background: transparent; font-size: 11px; font-weight: 500;
+  }
+  & .dragon-config-dataset-state::before { content: ''; width: 5px; height: 5px; margin-right: 5px; border-radius: 50%; background: currentColor; }
+  & .dragon-step-estimate { margin: 16px 8px 0; padding: 16px 0 0; border: 0; border-top: 1px solid var(--cfg-line); border-radius: 0; background: transparent; }
+  & .dragon-step-estimate-head { gap: 10px; align-items: center; margin-bottom: 14px; flex-wrap: wrap; }
+  & .dragon-step-estimate-head .dragon-eyebrow { display: none; }
+  & .dragon-step-estimate-head h3 { margin: 0; font-size: 13px; font-weight: 600; }
+  & .dragon-step-estimate-grid { border: 0; }
+  & .dragon-step-estimate-grid > div { padding: 6px 12px; gap: 8px; }
+  & .dragon-step-estimate-grid > div:first-child { padding-left: 0; }
+  & .dragon-step-estimate-grid span { white-space: normal; font-size: 11px; }
+  & .dragon-step-estimate-grid strong { font-size: 18px; font-weight: 500; }
+  & .dragon-step-estimate-grid [data-primary="true"] strong { font-size: 18px; color: var(--cfg-accent); }
+}
+
+html[data-dragon-config-help="contextual"] #dragon-root .dragon-config-category-page .dragon-field-help-btn { opacity: 0; }
+html[data-dragon-config-help="contextual"] #dragon-root .dragon-config-category-page .dragon-field:is(:hover, :focus-within) .dragon-field-help-btn { opacity: 1; }
+
+@container config-all-detail (min-width: 1150px) {
+  body[data-dragon-ui] #dragon-root .dragon-config-category-page {
+    & .dragon-config-cluster { display: grid; grid-template-columns: 152px minmax(0, 1fr); gap: 8px 28px; }
+    & .dragon-config-cluster-heading { display: block; margin: 5px 0 0; grid-column: 1; }
+    & .dragon-config-cluster-heading .dragon-btn { margin-top: 12px; }
+    & .dragon-config-cluster > :is(.dragon-config-section-grid, .dragon-step-estimate) { grid-column: 2; }
+  }
+}
+
+@container config-all-detail (max-width: 850px) {
+  body[data-dragon-ui] #dragon-root .dragon-config-category-page {
+    & .dragon-config-block[data-path-field="true"] { display: block; }
+    & .dragon-config-block[data-path-field="true"] .dragon-field-label { margin-bottom: 7px; }
+    & .dragon-config-dataset-card { display: grid; grid-template-columns: minmax(0, 1fr); }
+    & .dragon-config-dataset-actions { grid-column: 1; grid-row: 4; justify-content: flex-start; margin-top: 4px; }
+  }
+}
+
+@media (max-width: 734px) {
+  body[data-dragon-ui] #dragon-root .dragon-config-category-page {
+    & .dragon-config-all-detail > .dragon-config-block-grid { padding: 22px 16px 32px; }
+    & .dragon-config-section-grid { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+    & .dragon-config-section-divider h3 { font-size: 19px; }
+    & .dragon-config-block { padding-inline: 2px; }
+    & :is(.dragon-input, .dragon-select) { min-height: 40px; }
+    & .dragon-config-dataset-card { display: grid; grid-template-columns: minmax(0, 1fr); padding-inline: 2px; }
+    & .dragon-config-dataset-actions { grid-column: 1; grid-row: 4; justify-content: flex-start; }
+    & .dragon-step-estimate-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px 0; }
+  }
+  html[data-dragon-config-help="contextual"] #dragon-root .dragon-config-category-page .dragon-field-help-btn { opacity: 1; }
+}

@@ -3,7 +3,7 @@
  * Mirrors a small subset of library/training/compat_matrix.py codes for UX only.
  * Does NOT replace server preflight.
  */
-import { isKrea2ModelFamily, normalizeModelFamily } from './model-family.js?v=module-bootstrap-20260903-pp-multimodel-v1';
+import { isKrea2ModelFamily, normalizeModelFamily } from './model-family.js?v=auto-block-swap-20260908-v3';
 
 /**
  * @typedef {Object} LiveCompatIssue
@@ -45,7 +45,7 @@ export function collectLiveCompatIssues(config = {}) {
     const krea2Family = isKrea2ModelFamily(modelFamily);
 
     if (krea2Family) {
-        const attnMode = String(config.attn_mode ?? 'torch').trim().toLowerCase() || 'torch';
+        const attnMode = String(config.attn_mode ?? 'flash').trim().toLowerCase() || 'flash';
         if (!['torch', 'flash', 'sdpa'].includes(attnMode)) {
             issues.push({
                 code: 'krea2_invalid_attn_mode',

@@ -8,7 +8,7 @@ import {
     NETWORK_ARG_FIELD_MAP,
     OPTIONAL_EMPTY_FIELDS,
     OPTIONAL_EMPTY_NUMBER_FIELDS,
-} from '../../config/catalog.js?v=module-bootstrap-20260902-lokr-backend-v4';
+} from '../../config/catalog.js?v=auto-block-swap-20260908-v3';
 import {
     coerceNetworkArgValue,
     formatNetworkArg,

@@ -16,8 +16,8 @@ def test_training_config_mounts_dataset_workflow_and_step_estimate() -> None:
     feature = _read("js/dragon-ui/pages/config-training-data.js")
 
     assert "renderDatasetConfigField(value, block)" in page
-    assert "renderChapterLead: (chapter) => chapter.id === 'foundation'" in page
-    assert "chapter.id === 'training' ? renderStepEstimatePanel() : ''" in page
+    assert "{ sub: { id: 'context', label: '训练上下文' }, keys: ['dataset_config'] }" in page
+    assert "chapter.id === 'training' && cluster.id === 'volume' ? renderStepEstimatePanel() : ''" in page
     assert "sub.id === 'common' ? renderStepEstimatePanel() : ''" in page
     assert "sub.id === 'required' ? renderDatasetPickerDialog() : ''" in page
     assert "bindTrainingDataTools(wrapper" in page
@@ -25,10 +25,10 @@ def test_training_config_mounts_dataset_workflow_and_step_estimate() -> None:
     assert "wrapper.dispatchEvent(new CustomEvent('dragon-config-saved'))" in page
     assert "state.trainingDataCleanup?.()" in page
 
-    assert "renderChapterFooter = () => ''" in all_view
-    assert "renderChapterLead = () => ''" in all_view
+    assert "renderClusterFooter = () => ''" in all_view
+    assert "renderChapterLead = () => ''" not in all_view
     assert "renderDatasetDialog = () => ''" in all_view
-    assert "${renderChapterFooter(chapter)}" in all_view
+    assert "${renderClusterFooter(chapter, cluster)}" in all_view
     assert "${renderDatasetDialog()}" in all_view
 
     for marker in (
@@ -123,5 +123,5 @@ def test_training_data_styles_are_responsive_and_cache_reachable() -> None:
     assert "@container config-all-detail (max-width: 900px)" in css
     assert "@media (max-width: 734px)" in css
     assert "@media (max-width: 430px)" in css
-    assert "dragon-style.css?v=dragon-ui-20260902-training-nav-v3" in index
-    assert "config-page.js?v=dragon-ui-20260902-krea2-pp-v1" in page_loaders
+    assert "dragon-style.css?v=dragon-ui-20260903-nav-scale-v2" in index
+    assert "config-page.js?v=auto-block-swap-20260908-v3" in page_loaders

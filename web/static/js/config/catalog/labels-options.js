@@ -21,6 +21,14 @@ export const FIELD_LABEL_ZH = {
     block_swap_transfer_dtype: '块交换传输精度',
     base_compute: '底模计算路径',
     blocks_to_swap: 'CPU/GPU 交换块数',
+    auto_block_swap: 'AUTO 块交换（实验）',
+    auto_block_swap_mode: 'AUTO 调整模式',
+    auto_block_swap_interval: '动态评估窗口（更新数）',
+    auto_block_swap_vram_reserve_percent: '保留显存（总容量 %）',
+    auto_block_swap_preference: '显存 / 内存倾向',
+    auto_block_swap_max_trials: 'AUTO 最大候选数',
+    auto_block_swap_timeout: 'AUTO 单候选超时（秒）',
+    auto_block_swap_swap_io_limit_mb: 'AUTO 系统 SWAP 上限（MiB）',
     pipeline_parallel: '启用模型流水线并行',
     pipeline_parallel_stages: '流水线阶段数',
     pipeline_parallel_microbatches: '流水线微批数',
@@ -249,6 +257,8 @@ export const FIELD_LABEL_ZH = {
 };
 
 export const FIELD_OPTIONS = {
+    auto_block_swap_mode: ['startup', 'dynamic'],
+    auto_block_swap_preference: ['balanced', 'vram', 'ram'],
     pipeline_parallel_stages: [2],
     pipeline_parallel_microbatches: [1, 2, 4, 8, 16],
     pipeline_parallel_schedule: ['1f1b'],

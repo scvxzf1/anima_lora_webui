@@ -1,6 +1,6 @@
 /* Presentational helpers for the Dragon training queue workspace. */
 
-import { renderIcon } from '../icons.js?v=dragon-ui-20260812v35';
+import { renderIcon } from '../icons.js?v=dragon-ui-20260902v36';
 import { renderStatusRegion, renderToolHero } from './tool-page.js?v=dragon-ui-20260814v43';
 
 export const QUEUE_FILTERS = [

@@ -1,9 +1,13 @@
-/* Dragon trainer global navigation — fixed 44px header with full-width flyout.
- * 44px height, 12px links, rgba link colors, saturate(180%) blur(20px).
+/* Dragon trainer global navigation — fixed header with full-width flyout.
+ * 52px base height, 14px links, rgba link colors, saturate(180%) blur(20px).
  * Always-on scrim background on subpages.
  * Single space-between list (logo + categories + actions), full-width flyout.
  * Flyout uses a grouped column structure with section headers.
  */
+
+#dragon-nav {
+    --dragon-nav-height: var(--dragon-nav-height-scaled, 52px);
+}
 
 .dragon-nav {
     position: fixed;
@@ -68,7 +72,7 @@
     margin: 0 auto;
     box-sizing: border-box;
     width: 100%;
-    max-width: var(--dragon-content-wide);
+    max-width: var(--dragon-nav-content-max);
     height: 100%;
     padding: 0 var(--dragon-content-pad);
     overflow: visible;
@@ -122,13 +126,12 @@
     flex: 0 0 auto;
 }
 
-/* Base link style:
- * font-size 12px, weight 400, letter-spacing -0.01em, color rgba(0,0,0,.8) */
+/* Base link style */
 .dragon-nav-link {
     background: none;
     border: none;
     font-family: var(--dragon-font-stack);
-    font-size: var(--dragon-fs-caption);
+    font-size: var(--dragon-nav-font-size-scaled, var(--dragon-fs-nav));
     font-weight: var(--dragon-fw-regular);
     color: var(--dragon-nav-link);
     cursor: pointer;
@@ -227,7 +230,7 @@
     display: block;
     overflow: hidden;
     color: var(--dragon-nav-link);
-    font-size: var(--dragon-fs-caption);
+    font-size: var(--dragon-nav-font-size-scaled, var(--dragon-fs-nav));
     font-weight: var(--dragon-fw-semibold);
     line-height: var(--dragon-lh-nav);
     text-overflow: ellipsis;
@@ -325,7 +328,7 @@
 }
 
 .dragon-nav-utility-label {
-    font-size: var(--dragon-fs-caption);
+    font-size: var(--dragon-nav-font-size-scaled, var(--dragon-fs-nav));
     font-weight: var(--dragon-fw-regular);
     line-height: var(--dragon-lh-nav);
     letter-spacing: var(--dragon-ls-nav);

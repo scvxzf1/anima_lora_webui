@@ -76,6 +76,7 @@ console.log(JSON.stringify({{
   animaToggle: check('pipeline_parallel', {{ modelFamily: 'anima', pipelineParallel: false }}),
   kreaAliasToggle: check('pipeline_parallel', {{ modelFamily: 'krea2', pipelineParallel: false }}),
   zImageToggle: check('pipeline_parallel', {{ modelFamily: 'zimage', pipelineParallel: false }}),
+  repairToggle: check('pipeline_parallel', {{ modelFamily: 'krea2', pipelineParallel: true }}),
   unknownToggle: check('pipeline_parallel', {{ modelFamily: 'unknown', pipelineParallel: false }}),
   disabledChild: check('pipeline_parallel_microbatches', {{ modelFamily: 'krea2_raw', pipelineParallel: false }}),
   enabledChild: check('pipeline_parallel_microbatches', {{ modelFamily: 'krea2_raw', pipelineParallel: true }}),
@@ -91,14 +92,16 @@ console.log(JSON.stringify({{
     )
     payload = json.loads(result.stdout)
 
-    assert payload["animaToggle"] == {"enabled": True, "reason": "", "code": None}
-    assert payload["kreaAliasToggle"] == {"enabled": True, "reason": "", "code": None}
-    assert payload["zImageToggle"] == {"enabled": True, "reason": "", "code": None}
+    for key in ("animaToggle", "kreaAliasToggle", "zImageToggle"):
+        assert payload[key]["enabled"] is False
+        assert payload[key]["code"] == "pipeline-parallel-runtime-unavailable"
+    assert payload["repairToggle"] == {"enabled": True, "reason": "", "code": None}
     assert payload["unknownToggle"]["enabled"] is False
     assert payload["unknownToggle"]["code"] == "pipeline-parallel-model-family"
     assert payload["disabledChild"]["enabled"] is False
-    assert payload["disabledChild"]["code"] == "pipeline-parallel-disabled"
-    assert payload["enabledChild"] == {"enabled": True, "reason": "", "code": None}
+    assert payload["disabledChild"]["code"] == "pipeline-parallel-runtime-unavailable"
+    assert payload["enabledChild"]["enabled"] is False
+    assert payload["enabledChild"]["code"] == "pipeline-parallel-runtime-unavailable"
 
 
 def test_classic_form_rerenders_when_pipeline_switch_changes() -> None:
@@ -150,7 +153,7 @@ def test_frontends_consume_shared_model_family_capability_catalog() -> None:
     availability_uri = (
         STATIC / "js/dragon-ui/pages/config-field-availability.js"
     ).resolve().as_uri()
-    shared_token = "module-bootstrap-20260903-pp-multimodel-v1"
+    shared_token = "auto-block-swap-20260908-v3"
     script = f"""
 const family = await import({json.dumps(family_uri + "?v=" + shared_token)});
 const availability = await import({json.dumps(availability_uri + "?capability-test")});
@@ -181,7 +184,8 @@ console.log(JSON.stringify({{
 
     assert payload["requested"] == "/api/config/model-families"
     assert payload["anima"]["code"] == "pipeline-parallel-model-family"
-    assert payload["zImage"] == {"enabled": True, "reason": "", "code": None}
+    assert payload["zImage"]["enabled"] is False
+    assert payload["zImage"]["code"] == "pipeline-parallel-runtime-unavailable"
     assert payload["runtime"] is False
 
 
@@ -211,18 +215,18 @@ console.log(JSON.stringify({{
     )
     payload = json.loads(result.stdout)
 
-    assert payload == {"count": 3, "anima": True, "krea2": True, "zImage": True}
+    assert payload == {"count": 3, "anima": False, "krea2": False, "zImage": False}
 
 
 def test_pipeline_frontend_cache_chain_reaches_both_ui_modes() -> None:
-    module_token = "module-bootstrap-20260903-pp-multimodel-v1"
-    catalog_token = module_token
-    dragon_page_token = "dragon-ui-20260903-pp-multimodel-v1"
+    module_token = "module-bootstrap-20260903-flash-defaults-v1"
+    dragon_page_token = "auto-block-swap-20260908-v3"
+    catalog_token = dragon_page_token
     dragon_availability_token = dragon_page_token
 
     assert "ui-bootstrap.js?v=" in _read("index.html")
     bootstrap = _read("js/ui-bootstrap.js")
-    assert f"app.js?v={module_token}" in bootstrap
+    assert f"app.js?v={dragon_page_token}" in bootstrap
     assert "dragon-ui/index.js?v=" in bootstrap
     assert f"config/catalog.js?v={catalog_token}" in _read("app.js")
     assert f"anima-app/index.js?v={module_token}" in _read("app.js")
@@ -235,10 +239,10 @@ def test_pipeline_frontend_cache_chain_reaches_both_ui_modes() -> None:
     assert f"form-fields.js?v={module_token}" in _read(
         "js/features/config-form/index.js"
     )
-    assert f"form-fields-ui.js?v={module_token}" in _read(
+    assert f"form-fields-ui.js?v={dragon_page_token}" in _read(
         "js/features/config-form/form-fields.js"
     )
-    assert f"model-family.js?v={module_token}" in _read(
+    assert f"model-family.js?v={dragon_page_token}" in _read(
         "js/features/config-form/form-fields-ui.js"
     )
     assert f"live-compat.js?v={module_token}" in _read(

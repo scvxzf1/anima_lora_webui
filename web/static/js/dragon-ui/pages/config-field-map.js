@@ -1,4 +1,4 @@
-import { FORM_SECTION_DEFS } from '../../config/catalog/form-layout.js?v=dragon-ui-20260902-krea2-pp-v1';
+import { FORM_SECTION_DEFS } from '../../config/catalog/form-layout.js?v=auto-block-swap-20260908-v3';
 
 export const CONFIG_KEY_OVERRIDES = {
     'data-behavior': ['use_shuffled_caption_variants', 'masked_loss', 'caption_dropout_rate', 'path_pattern', 'drop_lowres_images', 'min_pixels'],
@@ -6,7 +6,7 @@ export const CONFIG_KEY_OVERRIDES = {
     optimizer: ['max_train_epochs', 'max_train_steps', 'train_batch_size', 'gradient_accumulation_steps', 'sample_ratio', 'optimizer_type', 'optimizer_args', 'lr_scheduler', 'lr_warmup_steps', 'learning_rate', 'timestep_sampling', 'discrete_flow_shift'],
     timestep: ['timestep_sampling', 'discrete_flow_shift'],
     logging: ['log_every_n_steps', 'logging_dir', 'log_with'],
-    'block-swap': ['blocks_to_swap', 'block_swap_transfer_dtype', 'block_swap_restore_mode', 'block_swap_profile_jsonl', 'disable_block_swap_for_eval'],
+    'block-swap': ['auto_block_swap', 'auto_block_swap_mode', 'auto_block_swap_interval', 'auto_block_swap_vram_reserve_percent', 'auto_block_swap_preference', 'auto_block_swap_max_trials', 'auto_block_swap_timeout', 'auto_block_swap_swap_io_limit_mb', 'blocks_to_swap', 'block_swap_transfer_dtype', 'block_swap_restore_mode', 'block_swap_profile_jsonl', 'disable_block_swap_for_eval'],
     'gradient-checkpoint': ['gradient_checkpointing', 'selective_checkpoint', 'selective_checkpoint_blocks', 'unsloth_offload_checkpointing'],
     compile: ['torch_compile', 'compile_block_scope', 'compile_inductor_mode', 'compile_dynamic_seq', 'use_custom_down_autograd', 'debug_finite_checks'],
     'attention-backend': ['attn_mode', 'v100_flash_stability'],

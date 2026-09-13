@@ -1,5 +1,5 @@
 import { createApiClient } from '../../shared/api.js?v=dragon-ui-20260812v35';
-import { renderIcon } from '../icons.js?v=dragon-ui-20260812v35';
+import { renderIcon } from '../icons.js?v=dragon-ui-20260902v36';
 
 const api = createApiClient();
 const STORAGE_KEY = 'anima_dragon_training_context';
@@ -291,6 +291,7 @@ function focusFirstPreflightError(root, payload) {
     const field = control?.closest('.dragon-field');
     field?.removeAttribute('hidden');
     field?.closest('[data-config-filter-group]')?.removeAttribute('hidden');
+    field?.closest('[data-config-cluster-group]')?.removeAttribute('hidden');
     const details = field?.closest('details');
     if (details) details.open = true;
     field?.setAttribute('data-preflight-error', 'true');

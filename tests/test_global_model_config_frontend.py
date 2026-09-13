@@ -60,7 +60,7 @@ def test_model_config_picker_replaces_global_path_confirmation() -> None:
     assert "modelFamilyFormDefaults(selected.model_family)" in resource
     assert "setFieldInputValue(key, value)" in resource
     for contract in (
-        "attn_mode: 'torch'",
+        "attn_mode: 'flash'",
         "torch_compile: false",
         "discrete_flow_shift: 6.0",
         "timestep_sampling: 'uniform'",

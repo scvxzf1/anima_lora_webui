@@ -1695,7 +1695,7 @@ def test_history_detail_config_files_are_tool_ready() -> None:
     assert "function historyProjectRoot(task = {})" in path_items
     assert "project_root_abs" in path_items
 
-    assert "const CLASSIC_ENTRY = '/static/app.js?v=module-bootstrap-" in ui_bootstrap
+    assert "const CLASSIC_ENTRY = '/static/app.js?v=" in ui_bootstrap
     for selector in (
         ".history-config-viewer",
         ".history-config-toolbar",

@@ -126,8 +126,8 @@ def test_tagging_source_toggle_release_chain_is_current() -> None:
     assert "tagging-source-view.js?v=dragon-ui-20260901v9" in view
     assert "tagging-source-view.js?v=dragon-ui-20260901v9" in controller
     assert "tagging-view.js?v=dragon-ui-20260902v15" in controller
-    assert "tagging.js?v=dragon-ui-20260902v16" in facade
-    assert "captioning.js?v=dragon-ui-20260902v16" in loaders
+    assert "tagging.js?v=dragon-ui-20260906-workspace-v1" in facade
+    assert "captioning.js?v=dragon-ui-20260906-workspace-v1" in loaders
 
 
 def test_prompt_results_and_logs_pages_expose_complete_management_contracts() -> None:

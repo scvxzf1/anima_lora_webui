@@ -1,8 +1,39 @@
 import {
     DATASET_SETTING_KEYS,
     DEFAULT_NL_TAG_MIX,
-} from '../../../config/catalog.js?v=module-bootstrap-20260902-krea2-pp-v1';
+} from '../../../config/catalog.js?v=auto-block-swap-20260908-v3';
 import { normalizeCaptionSourceMode } from './caption-source.js?v=module-bootstrap-20260831-release-v1';
+
+const DATASET_ROW_SEMANTIC_KEYS = Object.freeze([
+    'mask_mode',
+    'mask_dir',
+    'alpha_mask',
+    'flip_aug',
+    'text_cache_dir',
+    'cond_cache_dir',
+    'sample_ratio',
+    'preserved_dataset_fields',
+    'preserved_subset_fields',
+    'preserved_custom_attributes',
+    'preserved_general_fields',
+    'preserved_general_custom_attributes',
+]);
+
+function cloneConfigValue(value) {
+    if (Array.isArray(value)) return value.map(cloneConfigValue);
+    if (value && typeof value === 'object') {
+        return Object.fromEntries(
+            Object.entries(value).map(([key, item]) => [key, cloneConfigValue(item)]),
+        );
+    }
+    return value;
+}
+
+function datasetRowSemantics(row) {
+    return Object.fromEntries(DATASET_ROW_SEMANTIC_KEYS
+        .filter((key) => Object.prototype.hasOwnProperty.call(row, key))
+        .map((key) => [key, cloneConfigValue(row[key])]));
+}
 
 export function normalizeNlTagMix(raw) {
     const source = raw && typeof raw === 'object' ? raw : {};
@@ -36,6 +67,7 @@ export function normalizeDatasetEditorRows(rows) {
     return (rows || [])
         .filter((row) => row && typeof row === 'object')
         .map((row) => ({
+            ...datasetRowSemantics(row),
             source_dir: String(row.source_dir || row.source_image_dir || ''),
             image_dir: String(row.image_dir || row.resized_image_dir || ''),
             cache_dir: String(row.cache_dir || row.lora_cache_dir || ''),
@@ -51,6 +83,7 @@ export function normalizeDatasetEditorRows(rows) {
 
 export function datasetRowsForPayload(rows) {
     return normalizeDatasetEditorRows(rows).map((row) => ({
+        ...datasetRowSemantics(row),
         source_dir: row.source_dir,
         image_dir: row.image_dir,
         cache_dir: row.cache_dir,

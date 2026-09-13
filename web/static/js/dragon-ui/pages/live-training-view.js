@@ -1,6 +1,6 @@
 /* Presentational helpers for the dedicated live training workspace. */
 
-import { renderIcon } from '../icons.js?v=dragon-ui-20260812v35';
+import { renderIcon } from '../icons.js?v=dragon-ui-20260902v36';
 import { renderStatusRegion, renderToolButton } from './tool-page.js?v=dragon-ui-20260814v43';
 import { isRunningState, logRecordText, stateText, visualState } from './live-training-state.js?v=dragon-ui-20260825v46';
 import { highlightedLogHtml } from './log-highlighter.js?v=dragon-ui-20260825v1';

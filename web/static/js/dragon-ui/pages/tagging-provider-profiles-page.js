@@ -1,7 +1,7 @@
 /* Connection profile manager for external and future local taggers. */
 
 import { createApiClient } from '../../shared/api.js?v=dragon-ui-20260812v35';
-import { renderIcon } from '../icons.js?v=dragon-ui-20260812v35';
+import { renderIcon } from '../icons.js?v=dragon-ui-20260902v36';
 import {
     activateProviderProfile,
     createProviderProfile,

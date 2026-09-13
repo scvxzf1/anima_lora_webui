@@ -1720,7 +1720,7 @@ def test_config_form_uses_navigation_search_and_progressive_disclosure() -> None
     assert "lokr_factor_group_size: [1, 2, 4, 8]" in source
     assert "lokr_project_chunk_bytes: 'LoKr 张量切块阈值'" in source
     assert "lokr_project_chunk_bytes: [1048576, 2097152, 4194304, 8388608, 16777216]" in source
-    assert "keys: ['blocks_to_swap', 'block_swap_transfer_dtype', 'block_swap_restore_mode', 'selective_checkpoint', 'selective_checkpoint_blocks']" in resource_compact
+    assert "keys: ['auto_block_swap', 'blocks_to_swap', 'block_swap_transfer_dtype', 'block_swap_restore_mode', 'selective_checkpoint', 'selective_checkpoint_blocks']" in resource_compact
     assert "keys: ['base_compute', 'convrot_group_size', 'convrot_scope', 'convrot_hadamard']" in resource_compact
     assert "keys: ['block_swap_profile_jsonl', 'memory_probe_jsonl', 'memory_probe_max_steps']" in resource_compact
     assert "keys: ['peak_probe_jsonl', 'peak_probe_max_steps', 'peak_probe_level']" in resource_compact

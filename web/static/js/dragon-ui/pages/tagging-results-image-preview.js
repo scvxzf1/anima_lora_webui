@@ -1,5 +1,5 @@
 import { createDatasetPreviewDetailController } from './dataset-preview-detail.js?v=dragon-ui-20260902v4';
-import { renderIcon } from '../icons.js?v=dragon-ui-20260812v36';
+import { renderIcon } from '../icons.js?v=dragon-ui-20260902v36';
 import { renderCaptionEditor } from './tagging-results-editor.js?v=dragon-ui-20260902v1';
 
 export function renderTaggingResultImageDialog() {

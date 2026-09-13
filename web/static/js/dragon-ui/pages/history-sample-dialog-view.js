@@ -1,4 +1,4 @@
-import { renderIcon } from '../icons.js?v=dragon-ui-20260812v35';
+import { renderIcon } from '../icons.js?v=dragon-ui-20260902v36';
 
 export function renderHistorySampleDialog() {
     return `

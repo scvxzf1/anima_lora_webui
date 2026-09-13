@@ -217,11 +217,12 @@ def test_history_chart_hover_updates_are_frame_batched() -> None:
 
 
 def test_config_search_batches_dom_filter_updates() -> None:
-    config = _read("js/dragon-ui/pages/config-page.js")
+    config = _read("js/dragon-ui/pages/config-field-filter.js")
 
     assert "const fieldRecords = fields.map" in config
     assert "const sectionRecords =" in config
-    assert "const groupRecords =" in config
+    assert "const stageRecords =" in config
+    assert "const clusterRecords =" in config
     assert "window.setTimeout(() =>" in config
     assert "}, 100);" in config
     assert "input.removeEventListener('input', scheduleSearchUpdate)" in config
@@ -232,7 +233,8 @@ def test_config_dirty_updates_only_touch_the_changed_field() -> None:
     config = _read("js/dragon-ui/pages/config-page.js")
     dirty_state = _read("js/dragon-ui/pages/config-dirty-state.js")
 
-    assert "syncDirty(captureDraftValue(field, state))" in config
+    assert "const changedKey = captureDraftValue(field, state)" in config
+    assert "syncDirty(changedKey)" in config
     assert "updateConfigDirtyKey(state, changedKey" in config
     assert "if (!changedKey || state.showChangedOnly" in config
     assert "createConfigDirtyBindings(wrapper)" in config

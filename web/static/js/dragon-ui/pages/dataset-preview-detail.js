@@ -5,8 +5,8 @@
 
 import { copyText } from '../../shared/dom.js?v=dragon-ui-20260812v35';
 import { formatBytes } from '../../shared/format.js?v=dragon-ui-20260812v35';
-import { escapeHtml } from './dataset-editor-fields.js?v=dragon-ui-20260828v54';
-import { renderIcon } from '../icons.js?v=dragon-ui-20260812v35';
+import { escapeHtml } from './dataset-editor-fields.js?v=dragon-ui-20260903-mask-semantics-v1';
+import { renderIcon } from '../icons.js?v=dragon-ui-20260902v36';
 
 export function createDatasetPreviewDetailController(
     dialog = document.getElementById('dataset-preview-dialog'),

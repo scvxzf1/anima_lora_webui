@@ -1,8 +1,8 @@
-const CLASSIC_ENTRY = '/static/app.js?v=module-bootstrap-20260903-pp-multimodel-v1';
+const CLASSIC_ENTRY = '/static/app.js?v=auto-block-swap-20260908-v3';
 const CLASSIC_STYLESHEET = '/static/style.css?v=frontend-chain-20260809-model-config1';
 const UI_MODE_ENTRY = '/static/js/shared/ui-mode.js?v=dragon-ui-20260816v48';
-const DRAGON_ENTRY = '/static/js/dragon-ui/index.js?v=dragon-ui-20260903-pp-multimodel-v1';
-const DRAGON_STYLESHEET = '/static/css/dragon-style.css?v=dragon-ui-20260902-training-nav-v3';
+const DRAGON_ENTRY = '/static/js/dragon-ui/index.js?v=auto-block-swap-20260908-v3';
+const DRAGON_STYLESHEET = '/static/css/dragon-style.css?v=dragon-ui-20260903-nav-scale-v2';
 const STYLESHEET_TIMEOUT_MS = 10_000;
 
 let activeDragonCleanup = null;
@@ -86,7 +86,10 @@ function resetDragonShell() {
     dragonMain?.removeAttribute('aria-busy');
     dragonMain?.removeAttribute('data-ui-scale');
     dragonMain?.style.removeProperty('zoom');
+    dragonMain?.style.removeProperty('--dragon-nav-height');
     document.documentElement.style.removeProperty('--dragon-user-scale');
+    document.documentElement.style.removeProperty('--dragon-nav-height-scaled');
+    document.documentElement.style.removeProperty('--dragon-nav-font-size-scaled');
     document.documentElement.style.removeProperty('color-scheme');
     delete document.documentElement.dataset.dragonTheme;
     delete document.body.dataset.dragonMobileMenuOpen;

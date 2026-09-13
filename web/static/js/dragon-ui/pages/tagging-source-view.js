@@ -1,6 +1,6 @@
 /* Dataset selection panel with paged image rendering. */
 
-import { renderIcon } from '../icons.js?v=dragon-ui-20260812v35';
+import { renderIcon } from '../icons.js?v=dragon-ui-20260902v36';
 
 export function renderTaggingSource(state, { jobBusy = false } = {}) {
     return `<details class="dragon-tagging-source dragon-section" data-tagging-source-details ${state.sourceExpanded ? 'open' : ''}>

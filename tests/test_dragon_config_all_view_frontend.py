@@ -33,23 +33,26 @@ def test_all_config_view_deduplicates_fields_without_changing_source_order() -> 
     assert "if (seen.has(key)) return false" in view
     assert "seen.add(key)" in view
     assert "uniqueEntries.flatMap((entry) => entry.keys)" in view
-    assert "grid-auto-flow: row dense" in _read("css/dragon/04c-dragon-config-all.css")
+    assert "grid-auto-flow: row;" in _read("css/dragon/04g-dragon-config-fields.css")
 
 
 def test_all_config_view_builds_flat_block_metadata() -> None:
     page = _read("js/dragon-ui/pages/config-page.js")
     metadata = _read("js/dragon-ui/pages/config-block-metadata.js")
+    catalog = _read("js/dragon-ui/pages/config-field-catalog.js")
 
     assert "buildConfigBlocks(" in page
     assert "availabilityContext," in page
-    assert "chapter.blocks.map(renderBlock).join('')" in _read("js/dragon-ui/pages/config-all-view.js")
+    assert "cluster.blocks.map(renderBlock).join('')" in _read("js/dragon-ui/pages/config-all-view.js")
     assert "spanForField" in metadata
-    assert "tagId: tag.id" in metadata
-    assert "chapterId: chapter.id" in metadata
+    assert "tagId: cluster.id" in metadata
+    assert "chapterId: stage.id" in metadata
     assert "required: REQUIRED_KEYS.has(key)" in metadata
     assert "experimental," in metadata
     assert "defaultValue:" in metadata
     assert "SECTION_GROUPS" in metadata
+    assert "CONFIG_FIELD_CATALOG" in catalog
+    assert "sortConfigCatalogItems(rawBlocks)" in metadata
 
 
 def test_all_config_view_uses_current_method_scope_and_preserves_drafts() -> None:
@@ -144,7 +147,7 @@ def test_all_config_view_has_global_search_navigation_and_change_summary() -> No
 
     for contract in (
         'aria-label="搜索全部适用参数"',
-        'role="toolbar" aria-label="参数章节导航"',
+        'aria-label="配置阶段导航"',
         "data-config-tag-filter",
         "data-config-preset-toggle",
     ):
@@ -154,7 +157,7 @@ def test_all_config_view_has_global_search_navigation_and_change_summary() -> No
     assert "replaceConfigDirtyKeys(state, Object.keys(rawChanges))" in page
     assert "data-config-dirty-count" in page
     assert "data-config-changed-only" in page
-    assert "matchesChanged" in page
+    assert "matchesChanged" in _read("js/dragon-ui/pages/config-field-filter.js")
 
 
 def test_all_config_restore_is_explicit_and_skips_unknown_defaults() -> None:
@@ -169,22 +172,18 @@ def test_all_config_restore_is_explicit_and_skips_unknown_defaults() -> None:
 
 def test_all_config_layout_bounds_fields_and_collapses_preset_library() -> None:
     css = _read("css/dragon/04c-dragon-config-all.css")
-    route_styles = _read("js/dragon-ui/route-styles.js")
-
-    assert "04c-dragon-config-all.css" in route_styles
-    assert ".dragon-config-block-grid" in css
-    assert "grid-auto-flow: row dense" in css
-    assert "grid-auto-rows: 132px" in css
-    assert "repeat(2, minmax(0, 1fr))" in css
-    assert "repeat(3, minmax(0, 1fr))" in css
-    assert "repeat(4, minmax(0, 1fr))" in css
-    assert "repeat(5, minmax(0, 1fr))" in css
-    assert "repeat(6, minmax(0, 1fr))" in css
-    assert '[data-field-span="2"] { grid-column: span 2; }' in css
-    assert "ResizeObserver" not in _read("js/dragon-ui/pages/config-all-view.js")
-    assert "dragon-config-all-group" not in _read("js/dragon-ui/pages/config-all-view.js")
-    assert '[data-preset-collapsed="true"] > .dragon-training-preset-library' in css
+    fields = _read("css/dragon/04g-dragon-config-fields.css")
+    routes = _read("js/dragon-ui/route-styles.js")
+    assert "04c-dragon-config-all.css" in routes
+    assert "04g-dragon-config-fields.css" in routes
+    assert "grid-template-rows: auto minmax(0, 1fr) auto" in css
+    assert "grid-template-columns: minmax(0, 1fr) 272px" in css
+    assert '[data-preset-collapsed="true"]' in css
     assert "@media (max-width: 734px)" in css
+    assert "repeat(2, minmax(0, 1fr))" in fields
+    assert "grid-auto-flow: row;" in fields
+    assert "row dense" not in fields
+    assert "132px" not in fields
 
 
 def test_all_config_persists_view_and_sidebar_preferences() -> None:
@@ -198,21 +197,18 @@ def test_all_config_persists_view_and_sidebar_preferences() -> None:
     assert 'data-config-view-mode="all"' in view
     assert "anima_dragon_config_ui" in preferences
     assert "localStorage.setItem" in preferences
-    assert "preferredConfigCapsuleMode()" in page
-    assert "persistConfigCapsuleMode(state.capsuleMode)" in page
     assert "preferredConfigBilingual()" in page
     assert "persistConfigBilingual(state.bilingual)" in page
     assert "data-config-bilingual-toggle" in view
     assert "data-config-bilingual" in page
     assert "dragon-config-label-key" in page
     assert "dragon-config-label-key" in _read("js/dragon-ui/pages/config-training-data.js")
-    assert "const CONFIG_CAPSULE_MODES = new Set(['jump', 'filter'])" in preferences
-    assert "export function preferredConfigCapsuleMode" in preferences
-    assert "export function persistConfigCapsuleMode" in preferences
+    assert "preferredConfigCapsuleMode" not in preferences
+    assert "persistConfigCapsuleMode" not in preferences
+    assert "data-config-capsule-mode" not in view
     assert "export function preferredConfigBilingual" in preferences
     assert "export function persistConfigBilingual" in preferences
 
-    assert view.index("data-config-bilingual-toggle") < view.index("data-config-capsule-mode")
     config_css = _read("css/dragon/04-dragon-config.css")
     all_css = _read("css/dragon/04c-dragon-config-all.css")
     assert '.dragon-config-label-key {\n    display: none;' in config_css
@@ -220,52 +216,15 @@ def test_all_config_persists_view_and_sidebar_preferences() -> None:
     assert ".dragon-config-bilingual-toggle[data-active=\"true\"]" in all_css
 
 
-def test_config_capsule_mode_preference_round_trips_without_overwriting_siblings() -> None:
-    if not shutil.which("node"):
-        pytest.skip("node is required for config preference checks")
-    module_uri = (STATIC / "js/dragon-ui/pages/config-ui-preferences.js").resolve().as_uri()
-    script = f"""
-const storage = new Map([
-  ['anima_dragon_config_ui', JSON.stringify({{ viewMode: 'all', presetCollapsed: true, capsuleMode: 'unknown' }})],
-]);
-globalThis.localStorage = {{
-  getItem(key) {{ return storage.has(key) ? storage.get(key) : null; }},
-  setItem(key, value) {{ storage.set(key, String(value)); }},
-}};
-const mod = await import({json.dumps(module_uri + '?capsule-mode-test')});
-const invalidFallback = mod.preferredConfigCapsuleMode();
-const customFallback = mod.preferredConfigCapsuleMode('filter');
-mod.persistConfigCapsuleMode('filter');
-const afterFilter = JSON.parse(storage.get('anima_dragon_config_ui'));
-mod.persistConfigCapsuleMode('jump');
-const afterJump = JSON.parse(storage.get('anima_dragon_config_ui'));
-console.log(JSON.stringify({{
-  invalidFallback,
-  customFallback,
-  afterFilter,
-  afterJump,
-}}));
-"""
-    result = subprocess.run(
-        ["node", "--input-type=module", "--eval", script],
-        cwd=STATIC.parents[1],
-        check=True,
-        capture_output=True,
-        text=True,
-        timeout=20,
-    )
-    payload = json.loads(result.stdout)
+def test_removed_capsule_mode_has_no_ui_or_preference_state() -> None:
+    page = _read("js/dragon-ui/pages/config-page.js")
+    view = _read("js/dragon-ui/pages/config-all-view.js")
+    preferences = _read("js/dragon-ui/pages/config-ui-preferences.js")
 
-    assert payload["invalidFallback"] == "jump"
-    assert payload["customFallback"] == "filter"
-    assert payload["afterFilter"] == {
-        "viewMode": "all",
-        "presetCollapsed": True,
-        "capsuleMode": "filter",
-    }
-    assert payload["afterJump"]["capsuleMode"] == "jump"
-    assert payload["afterJump"]["viewMode"] == "all"
-    assert payload["afterJump"]["presetCollapsed"] is True
+    for source in (page, view, preferences):
+        assert "ConfigCapsuleMode" not in source
+        assert "config-capsule-mode" not in source
+        assert "capsuleMode" not in source
 
 
 def test_config_bilingual_preference_round_trips_without_overwriting_siblings() -> None:
@@ -337,145 +296,112 @@ def test_all_config_search_shortcut_and_preflight_field_focus_are_wired() -> Non
     assert "control?.setAttribute('aria-invalid', 'true')" in controls
 
 
-def test_flat_block_filters_dim_search_and_reflow_tags() -> None:
-    page = _read("js/dragon-ui/pages/config-page.js")
-    css = _read("css/dragon/04c-dragon-config-all.css")
-
-    assert "field.dataset.configTag === filterTag" in page
-    assert "field.dataset.searchMuted" in page
-    assert "state?.showChangedOnly" in page
-    assert "scrollConfigCanvasTo(fieldsRoot, target, dragonScrollBehavior())" in page
-    assert '[data-search-muted="true"]' in css
-    assert '[data-search-match="true"]' in css
+def test_filters_preserve_hidden_drafts_and_search_live_values() -> None:
+    source = _read("js/dragon-ui/pages/config-field-filter.js")
+    assert "field.hidden = !(participates && matchesQuery)" in source
+    assert "state?.showAllCandidates || state?.showChangedOnly" in source
+    assert "control?.value ?? control?.dataset.checked" in source
+    assert "scrollConfigCanvasTo(fieldsRoot, target, dragonScrollBehavior())" in source
 
 
-def test_search_only_hides_non_matches_in_filter_mode() -> None:
-    page = _read("js/dragon-ui/pages/config-page.js")
+def test_search_hides_empty_stages_without_a_second_chapter_filter() -> None:
+    source = _read("js/dragon-ui/pages/config-field-filter.js")
+    assert "const matchesQuery = !query || currentText.includes(query)" in source
+    assert "group.hidden = !hasVisibleField && Boolean(query || state?.showChangedOnly)" in source
+    assert "matchesTag" not in source
+    assert "filterMode" not in source
 
-    assert "const filterMode = state?.capsuleMode === 'filter'" in page
-    assert "const hideSearchMismatch = blockFlow && filterMode && !matchesQuery" in page
-    assert "field.hidden = blockFlow ? (!participates || hideSearchMismatch)" in page
-    assert "blockFlow && !filterMode && query && !matchesQuery" in page
 
-
-def test_section_dividers_split_dense_layout_without_cross_chapter_backfill() -> None:
+def test_sections_keep_related_fields_in_catalog_order() -> None:
     view = _read("js/dragon-ui/pages/config-all-view.js")
     metadata = _read("js/dragon-ui/pages/config-block-metadata.js")
-    css = _read("css/dragon/04c-dragon-config-all.css")
-
+    css = _read("css/dragon/04g-dragon-config-fields.css")
     assert "export function renderSectionDivider" in view
     assert 'id="section-${escapeHtml(chapter.id)}"' in view
     assert "data-config-section-divider" in view
-    assert "CHAPTER_META" in metadata
+    assert "CONFIG_STAGE_META" in metadata
     assert "chapters.flatMap((chapter) => chapter.blocks)" in metadata
-    assert ".dragon-config-section-grid" in css
-    assert "grid-auto-flow: row dense" in css
+    assert "chapter.clusters.map((cluster)" in view
+    assert "data-config-cluster-group" in view
+    assert "grid-auto-flow: row;" in css
     assert "grid-column: 1 / -1" in css
-    assert "min-height: 32px" in css
-    assert "scroll-margin-top: 12px" in css
 
 
-def test_capsules_support_jump_filter_and_intersection_scroll_spy() -> None:
-    page = _read("js/dragon-ui/pages/config-page.js")
-    view = _read("js/dragon-ui/pages/config-all-view.js")
-
-    assert 'data-config-capsule-mode="jump"' in view
-    assert 'data-config-capsule-mode="filter"' in view
-    assert "state?.capsuleMode === 'filter'" in page
-    assert "scrollConfigCanvasTo(fieldsRoot, target, dragonScrollBehavior())" in page
-    assert "export function scrollConfigCanvasTo" in view
-    assert "new IntersectionObserver" in view
-    assert "root: canvas" in view
-    assert "window.requestAnimationFrame(syncRadar)" in view
-    assert "if (active === activeRadar) return" in view
-    assert "if (!observer) canvas?.addEventListener('scroll', scheduleRadar" in view
-    assert "if (!observer) canvas?.removeEventListener('scroll', scheduleRadar" in view
-    assert "window.addEventListener('scroll', scheduleRadar" not in view
-    assert "observer?.disconnect()" in view
+def test_stage_navigation_scrolls_and_tracks_desktop_and_mobile() -> None:
+    source = _read("js/dragon-ui/pages/config-field-filter.js")
+    scroll = _read("js/dragon-ui/pages/config-workspace-scroll.js")
+    assert "button.setAttribute('aria-current', 'location')" in source
+    assert "scrollConfigCanvasTo(fieldsRoot, target, dragonScrollBehavior())" in source
+    assert "renderConfigDirtyState(state.dirtyBindings, state)" in source
+    assert "export function scrollConfigCanvasTo" in scroll
+    assert "window.requestAnimationFrame(syncRadar)" in scroll
+    assert "if (active === activeRadar) return" in scroll
+    for target in ("canvas", "window"):
+        assert f"{target}.addEventListener('scroll', scheduleRadar" in scroll
+        assert f"{target}.removeEventListener('scroll', scheduleRadar" in scroll
 
 
-def test_all_config_workbench_locks_viewport_and_owns_both_scroll_contexts() -> None:
+def test_workbench_has_desktop_inner_scroll_and_mobile_page_scroll() -> None:
     view = _read("js/dragon-ui/pages/config-all-view.js")
     css = _read("css/dragon/04c-dragon-config-all.css")
-
     assert 'class="dragon-config-all-footer"' in view
     assert "html:has(body[data-dragon-ui] .dragon-config-all-workspace)" in css
-    assert "body[data-dragon-ui]:has(.dragon-config-all-workspace)" in css
     assert ".dragon-config-all-detail > .dragon-config-block-grid" in css
     assert "overflow-y: auto" in css
-    assert "scroll-padding-top: 12px" in css
-    assert "contain: layout paint style" in css
-    assert ".dragon-training-preset-groups::-webkit-scrollbar" in css
-    assert "width: 6px" in css
-    assert ".dragon-config-all-detail .dragon-config-actions-sticky" in css
-    assert "position: static" in css
+    assert "scroll-padding-top: 16px" in css
+    assert "scrollbar-gutter: stable" in css
+    assert "position: sticky" in css
+    assert "overflow: visible" in css
 
 
-def test_all_config_skips_offscreen_block_rendering_without_clipping_path_help() -> None:
-    css = _read("css/dragon/04c-dragon-config-all.css")
-
-    assert "content-visibility: auto" in css
-    assert "contain-intrinsic-size: auto 132px" in css
+def test_variable_height_fields_do_not_clip_path_help() -> None:
+    css = _read("css/dragon/04g-dragon-config-fields.css")
+    assert "height: auto" in css
+    assert "contain-intrinsic-size" not in css
     assert '.dragon-config-block[data-path-field="true"]:hover' in css
-    assert "content-visibility: visible" in css
-    assert "backdrop-filter: blur(12px)" not in css
-    assert ".dragon-config-block:hover" in css
-    assert "box-shadow: 0 4px 12px" not in css
-    assert 'html[data-dragon-motion="disabled"] .dragon-config-block' in css
+    assert ".dragon-config-path-tooltip" in css
+    assert "overflow-wrap: anywhere" in css
 
 
-def test_all_config_keyboard_focus_stays_visible_inside_canvas() -> None:
-    view = _read("js/dragon-ui/pages/config-all-view.js")
+def test_keyboard_focus_stays_visible_in_the_active_scroll_container() -> None:
+    source = _read("js/dragon-ui/pages/config-workspace-scroll.js")
+    assert "canvas.addEventListener('focusin', keepFocusVisible)" in source
+    assert "canvas.removeEventListener('focusin', keepFocusVisible)" in source
+    assert "event.target?.closest?.('.dragon-config-block')" in source
+    assert "scrollConfigCanvasTo(canvas, block)" in source
 
-    assert "canvas?.addEventListener('focusin', keepFocusVisible)" in view
-    assert "target?.closest?.('.dragon-config-block')" in view
-    assert "canvas.scrollBy({ top: delta, behavior: 'smooth' })" in view
 
-
-def test_semantic_colors_and_path_tooltips_are_constrained() -> None:
+def test_semantic_states_do_not_decorate_every_field() -> None:
     page = _read("js/dragon-ui/pages/config-page.js")
-    metadata = _read("js/dragon-ui/pages/config-block-metadata.js")
-    css = _read("css/dragon/04c-dragon-config-all.css")
-
-    assert "REQUIRED_KEYS" in metadata
-    assert "EXPERIMENTAL_KEYS" in metadata
-    assert "dragon-config-required-dot" in page
-    assert "dragon-config-exp-badge" in page
-    assert "dragon-config-path-tooltip" in page
-    assert "width: 3px" in css
-    assert "transition: opacity var(--dragon-dur-fast) var(--dragon-ease) .5s" in css
+    css = _read("css/dragon/04g-dragon-config-fields.css")
+    for marker in ("dragon-config-required-dot", "dragon-config-exp-badge", "dragon-config-path-tooltip"):
+        assert marker in page
+        assert marker in css
+    assert '[data-dirty="true"]' in css
+    assert '[data-preflight-error="true"]' in css
     assert '.dragon-config-block[data-config-tone="experimental"]' not in css
 
 
-def test_section_accent_is_data_driven_and_inherited_by_each_block() -> None:
+def test_section_metadata_retains_safe_accents_without_decorative_corners() -> None:
     view = _read("js/dragon-ui/pages/config-all-view.js")
     metadata = _read("js/dragon-ui/pages/config-block-metadata.js")
-    css = _read("css/dragon/04c-dragon-config-all.css")
-
-    assert "accent: '#d99114'" in metadata
+    css = _read("css/dragon/04g-dragon-config-fields.css")
     assert "accent: chapter.accent" in metadata
-    assert 'style="--dragon-config-section-accent: ${sectionAccent(chapter.accent)}"' in view
     assert "function sectionAccent(value)" in view
     assert "/^#[0-9a-f]{6}$/i.test(accent)" in view
     assert ".dragon-config-block::after" in css
-    assert "top: 0" in css
-    assert "left: 0" in css
-    assert "border-top: 2px solid var(--dragon-config-section-accent" in css
-    assert "border-left: 2px solid var(--dragon-config-section-accent" in css
-    assert "width: 32px" in css
-    assert "height: 9px" in css
-    assert '.dragon-config-tag-filter[data-color="amber"]::before' not in css
+    assert "border-top: 3px" not in css
+    assert "border-left: 3px" not in css
 
 
-def test_flat_blocks_use_one_visual_surface_and_focus_from_empty_space() -> None:
+def test_form_rows_use_one_surface_and_focus_from_empty_space() -> None:
     page = _read("js/dragon-ui/pages/config-page.js")
-    css = _read("css/dragon/04c-dragon-config-all.css")
-
+    css = _read("css/dragon/04g-dragon-config-fields.css")
     assert "wrapper.querySelectorAll('.dragon-config-block')" in page
     assert "control?.focus({ preventScroll: true })" in page
-    assert ".dragon-config-block:focus-within" in css
-    assert ".dragon-config-block .dragon-input:focus-visible" in css
+    assert ":focus-visible" in css
     assert "font-family: var(--dragon-font-mono)" in css
+    assert "background: transparent" in css
 
 
 def test_grouped_config_renders_complete_structured_field_help() -> None:
@@ -484,7 +410,16 @@ def test_grouped_config_renders_complete_structured_field_help() -> None:
     css = _read("css/dragon/04-dragon-config.css")
     controls_css = _read("css/dragon/02a-dragon-controls.css")
 
-    for heading in ['怎么设置', '收益', '代价', '风险', '推荐', '补充']:
+    for heading in [
+        '你现在的设置',
+        '新手建议',
+        '它是做什么的',
+        '为什么通常这样设',
+        '改了可能有什么好处',
+        '同时会带来什么',
+        '可能遇到什么问题',
+        '补充说明',
+    ]:
         assert heading in help_view
     assert "normalizeHelpItems(value)" in help_view
     assert "bindConfigFieldHelpDialog(wrapper, loadFieldHelpCatalog)" in page
@@ -493,9 +428,19 @@ def test_grouped_config_renders_complete_structured_field_help() -> None:
     assert "import { FIELD_HELP_ZH }" not in page
     assert "const help = resolveConfigFieldHelp(key, label, helpCatalog)" in help_view
     assert "await resolveHelpCatalog(helpCatalogSource)" in help_view
-    assert "当前字段尚无专项说明" in help_view
+    assert "这一项暂时没有单独的新手说明" in help_view
     assert "renderConfigHelpButton(key, label," in page
     assert "unavailableReason" in page
+    assert "currentValue: controlValue" in page
+    assert "FORM_UI_DEFAULTS[key]" in page
+    assert "modelFamily: availabilityContext?.modelFamily" in page
+    assert "data-help-current-value" in help_view
+    assert "data-help-default-value" in help_view
+    assert "data-help-model-family" in help_view
+    assert "renderHelpContext({ ...context, unavailable: Boolean(unavailableReason) })" in help_view
+    assert "resolveLiveHelpValue(button)" in help_view
+    assert "control.dataset.checked" in help_view
+    assert "helpButton.dataset.helpModelFamily = availabilityContext.modelFamily" in page
     assert 'aria-haspopup="dialog"' in help_view
     assert '<dialog class="dragon-config-help-dialog"' in help_view
     assert 'class="dragon-icon-button"' in help_view
@@ -510,7 +455,7 @@ def test_grouped_config_renders_complete_structured_field_help() -> None:
     assert 'data-help-open="true"' not in css
 
 
-def test_inapplicable_config_fields_stay_visible_disabled_and_explain_why() -> None:
+def test_inapplicable_fields_keep_disabled_reasons_and_disclosure_preserves_drafts() -> None:
     page = _read("js/dragon-ui/pages/config-page.js")
     help_view = _read("js/dragon-ui/pages/config-field-help.js")
     css = _read("css/dragon/04-dragon-config.css")
@@ -524,12 +469,13 @@ def test_inapplicable_config_fields_stay_visible_disabled_and_explain_why() -> N
     assert "if (toggle.dataset.configDisabled === 'true') return" in page
     assert "control?.disabled || control?.dataset.configDisabled === 'true'" in page
     assert "delete helpButton.dataset.helpUnavailableReason" in page
-    assert "!configFieldAvailability(key, state.availabilityContext).enabled" in page
+    assert "configFieldDisclosure(key, availabilityContext)" in page
+    assert "collectConfigDraftChanges(state)" in page
     assert "...(state?.baselineValues || {})" in page
     assert "...(state?.draftValues || {})" in page
 
     assert "data-help-unavailable-reason" in help_view
-    assert "当前不可用" in help_view
+    assert "为什么现在不能改" in help_view
     assert "查看不可用原因" in help_view
     assert '[data-config-availability="unavailable"]' in css
     assert '.dragon-field-help-btn-unavailable' in css
@@ -672,50 +618,37 @@ def test_advanced_config_fields_visible_in_flat_view_have_help_coverage() -> Non
     assert "rank_dropout: '秩 Dropout'" in labels
 
 
-def test_flat_block_badges_help_and_toggle_color_are_quiet_by_default() -> None:
-    css = _read("css/dragon/04c-dragon-config-all.css")
-
-    assert ".dragon-config-block:hover .dragon-config-block-tag" in css
-    assert ".dragon-config-block:hover .dragon-field-help-btn" in css
-    assert '@media (hover: none), (pointer: coarse)' in css
+def test_form_help_is_available_without_hover_and_toggles_are_not_cards() -> None:
+    css = _read("css/dragon/04g-dragon-config-fields.css")
+    assert ".dragon-config-block .dragon-field-help-btn" in css
+    assert "pointer-events: auto" in css
+    assert "opacity: 0.8" in css
     assert '.dragon-config-block:has(.dragon-toggle[data-checked="true"])' not in css
 
 
-def test_flat_block_badges_and_help_support_global_always_visible_settings() -> None:
-    css = _read("css/dragon/04c-dragon-config-all.css")
+def test_global_chrome_preferences_remain_available_for_compatible_views() -> None:
     chrome = _read("js/dragon-ui/config-chrome.js")
     entry = _read("js/dragon-ui/index.js")
-
-    assert 'data-dragon-config-tags="always"' in css
-    assert 'data-dragon-config-help="always"' in css
     assert "dragon_config_help_always_visible" in chrome
     assert "dragon_config_tags_always_visible" in chrome
-    assert "'always' : 'contextual'" in chrome
     assert "applyDragonConfigChromeSettings(globalSettings || {})" in entry
 
 
-def test_flat_canvas_uses_gray_background_white_cards_and_strong_sections() -> None:
+def test_workbench_uses_neutral_surfaces_and_compact_headings() -> None:
     view = _read("js/dragon-ui/pages/config-all-view.js")
     css = _read("css/dragon/04c-dragon-config-all.css")
-
-    assert "--dragon-config-canvas-bg: #f4f4f6" in css
-    assert "--dragon-config-card-bg: #ffffff" in css
-    assert "border: 1px solid var(--dragon-config-card-border)" in css
-    assert "background: var(--dragon-config-card-bg)" in css
-    assert "border-color: var(--dragon-config-card-hover-border)" in css
-    assert "border-color: var(--dragon-border-focus)" in css
-    assert "font-size: 14px" in css
-    assert "font-weight: 700" in css
-    assert "margin-top: 24px" in css
-    assert '<span class="dragon-config-section-count">(${chapter.count})</span>' in view
+    fields = _read("css/dragon/04g-dragon-config-fields.css")
+    assert "--config-surface: #fafafa" in css
+    assert "--config-control: #fff" in css
+    assert '[data-theme="dark"]' in css
+    assert "font-size: 14px" in fields
+    assert "font-size: 18px" in fields
+    assert 'data-config-stage-count>(${visibleCount})</span>' in view
 
 
-def test_path_tooltip_is_hover_only_and_toggle_off_state_has_contrast() -> None:
-    css = _read("css/dragon/04c-dragon-config-all.css")
-
-    assert 'z-index: 50' in css
-    assert '.dragon-config-block[data-path-field="true"]:hover { z-index: 51; }' in css
-    assert '.dragon-config-block[data-path-field="true"]:hover .dragon-config-path-tooltip' in css
+def test_path_tooltip_is_hover_only_and_does_not_intercept_editing() -> None:
+    css = _read("css/dragon/04g-dragon-config-fields.css")
+    assert '.dragon-config-block[data-path-field="true"]:hover .dragon-config-path-tooltip' in css.replace("\n  ", " ")
     assert '.dragon-config-block[data-path-field="true"]:focus-within .dragon-config-path-tooltip' not in css
-    assert "--dragon-config-toggle-off: #d4d4d8" in css
-    assert "border: 1px solid var(--dragon-config-toggle-off-border)" in css
+    assert "pointer-events: none" in css
+    assert "overflow-wrap: anywhere" in css

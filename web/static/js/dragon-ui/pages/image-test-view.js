@@ -1,7 +1,7 @@
 /* Presentation helpers for Dragon's inference verification workspace. */
 
 import { escapeHtml, formatBytes } from '../../shared/format.js?v=dragon-ui-20260812v35';
-import { renderIcon } from '../icons.js?v=dragon-ui-20260812v35';
+import { renderIcon } from '../icons.js?v=dragon-ui-20260902v36';
 import { renderStatusRegion, renderToolHero } from './tool-page.js?v=dragon-ui-20260814v43';
 
 export function renderImageTestPage(state, images, options) {
@@ -72,7 +72,7 @@ export function renderImageTestPage(state, images, options) {
                             ${numberField('flow_shift', 'Flow Shift', latestRequest.flow_shift ?? cfg.flow_shift ?? cfg.discrete_flow_shift ?? 1, '0.1')}
                             ${numberField('seed', '随机种子', latestRequest.seed ?? '', '1')}
                             ${selectField('sampler', '采样器', normalizeChoice(latestRequest.sampler || cfg.sample_sampler, options.sampler, 'euler'), options.sampler)}
-                            ${selectField('attn_mode', '注意力后端', normalizeChoice(latestRequest.attn_mode || cfg.attn_mode, attnOptions, family === 'krea2_raw' ? 'torch' : 'flash'), attnOptions)}
+                            ${selectField('attn_mode', '注意力后端', normalizeChoice(latestRequest.attn_mode || cfg.attn_mode, attnOptions, 'flash'), attnOptions)}
                         </div>
                     </section>
 
