@@ -21,6 +21,8 @@ def set_multiplier(network, multiplier) -> None:
 def set_enabled(network, is_enabled) -> None:
     for lora in network.text_encoder_loras + network.unet_loras:
         lora.enabled = is_enabled
+    for reft in network.text_encoder_refts + network.unet_refts:
+        reft.enabled = is_enabled
 
 
 def set_step_index(network, step_index: int) -> None:
@@ -59,9 +61,7 @@ def apply_to(
         lora.apply_to()
         network.add_module(lora.lora_name, lora)
 
-    # ReFT wraps each selected DiT Block's forward, so the chain is:
-    #   Block.__call__ -> ReFT.forward -> original Block.forward
-    #   (inside which LoRA-wrapped Linears still fire normally).
+    # Blocks may opt into an inner ReFT target covered by checkpoint/compile.
     for reft in network.text_encoder_refts + network.unet_refts:
         reft.apply_to()
         network.add_module(reft.lora_name, reft)

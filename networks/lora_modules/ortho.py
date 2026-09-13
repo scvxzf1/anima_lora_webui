@@ -7,6 +7,7 @@ import torch
 
 from .base import BaseLoRAModule
 from .custom_autograd import lora_down_project
+from .weight_access import materialize_module_weight
 from .router_state import (
     _apply_sigma_band_mask,
     _clear_fei_feature_cache,
@@ -51,6 +52,10 @@ class OrthoLoRAModule(BaseLoRAModule):
         module_dropout=None,
         channel_scale=None,
     ):
+        if hasattr(org_module, "in_features"):
+            max_rank = min(org_module.in_features, org_module.out_features)
+            if not 1 <= lora_dim <= max_rank:
+                raise ValueError(f"OrthoLoRA rank must be in [1, {max_rank}], got {lora_dim}")
         super().__init__(
             lora_name,
             org_module,
@@ -64,8 +69,11 @@ class OrthoLoRAModule(BaseLoRAModule):
 
         # SVD-informed init. Randomized lowrank is ~10-100× faster than full
         # SVD at r ≪ min(m,n) and near-machine-precision on the kept slice.
-        init_device = "cuda" if torch.cuda.is_available() else "cpu"
-        W = org_module.weight.data.float().to(init_device)
+        W = materialize_module_weight(
+            org_module,
+            device=org_module.weight.device,
+            dtype=torch.float32,
+        )
         q = min(lora_dim + 6, min(W.shape))
         U, _S_vals, V = torch.svd_lowrank(W, q=q, niter=2)
         P_init = U[:, :lora_dim].clone().contiguous()  # (out, r)
@@ -110,7 +118,7 @@ class OrthoLoRAModule(BaseLoRAModule):
     def _cayley(S: torch.Tensor) -> torch.Tensor:
         """R = (I - A)(I + A)^{-1}, A = S - S^T.
 
-        Kept for save-time SVD distillation in :meth:`distill_save_state_dict`;
+        Kept for save-time factorization in :meth:`distill_save_state_dict`;
         forward uses a batched solve instead.
         """
         A = S - S.T
@@ -119,6 +127,9 @@ class OrthoLoRAModule(BaseLoRAModule):
 
     def forward(self, x):
         org_forwarded = self.org_forward(x)
+
+        if not self.enabled or self.multiplier == 0:
+            return org_forwarded
 
         if self._skip_module():
             return org_forwarded
@@ -129,9 +140,10 @@ class OrthoLoRAModule(BaseLoRAModule):
         # Cayley island stays fp32; we cast R only at the boundary into the
         # basis matmuls so orthogonality is preserved while downstream
         # activations stay bf16.
-        skew = torch.stack([self.S_q, self.S_p])
+        skew = torch.stack([self.S_q.float(), self.S_p.float()])
         A = skew - skew.transpose(-2, -1)
-        R = torch.linalg.solve(self._eye_r + A, self._eye_r - A)
+        eye = self._eye_r.to(device=A.device, dtype=A.dtype)
+        R = torch.linalg.solve(eye + A, eye - A)
         R_q = R[0].to(work)
         R_p = R[1].to(work)
         Q_eff = R_q @ self.Q_basis  # bf16
@@ -185,8 +197,8 @@ class OrthoLoRAModule(BaseLoRAModule):
         prefix so each module's keys are converted atomically.
 
         Sqrt-splits ``λ`` between the two factors so the on-disk product
-        ``ΔW = P_eff @ diag(λ) @ Q_eff`` is preserved bit-exactly under
-        the ``(lora_down, lora_up)`` factorization.
+        ``ΔW = P_eff @ diag(λ) @ Q_eff`` is preserved algebraically under
+        the ``(lora_down, lora_up)`` factorization, subject to dtype rounding.
         """
         prefixes = set()
         for key in state_dict.keys():
@@ -273,6 +285,10 @@ class OrthoHydraLoRAModule(BaseLoRAModule):
         centered_gate: bool = False,
         lambda_init: float = 0.0,
     ):
+        if hasattr(org_module, "in_features"):
+            max_rank = min(org_module.in_features, org_module.out_features)
+            if not 1 <= lora_dim <= max_rank:
+                raise ValueError(f"OrthoHydra rank must be in [1, {max_rank}], got {lora_dim}")
         super().__init__(
             lora_name,
             org_module,
@@ -294,8 +310,11 @@ class OrthoHydraLoRAModule(BaseLoRAModule):
 
         # SVD-informed init with disjoint per-expert P slices. Top E*r U columns
         # split into E slices of r — each slice orthonormal, mutually orthogonal.
-        init_device = "cuda" if torch.cuda.is_available() else "cpu"
-        W = org_module.weight.data.float().to(init_device)
+        W = materialize_module_weight(
+            org_module,
+            device=org_module.weight.device,
+            dtype=torch.float32,
+        )
         target_cols = num_experts * lora_dim
         max_cols = min(W.shape)
         disjoint = target_cols <= max_cols
@@ -469,7 +488,7 @@ class OrthoHydraLoRAModule(BaseLoRAModule):
     def forward(self, x):
         org_forwarded = self.org_forward(x)
 
-        if not self.enabled:
+        if not self.enabled or self.multiplier == 0:
             return org_forwarded
 
         if self._skip_module():
@@ -480,9 +499,12 @@ class OrthoHydraLoRAModule(BaseLoRAModule):
         # Stack S_q with S_p into one (E+1, r, r) solve — single LU+TRSM
         # launch covers shared Q rotation and all per-expert P rotations.
         # Cayley solve stays fp32; boundary cast feeds R into the basis matmuls.
-        skew = torch.cat([self.S_q.unsqueeze(0), self.S_p], dim=0)
+        skew = torch.cat(
+            [self.S_q.float().unsqueeze(0), self.S_p.float()], dim=0
+        )
         A = skew - skew.transpose(-2, -1)
-        R = torch.linalg.solve(self._eye_r + A, self._eye_r - A)
+        eye = self._eye_r.to(device=A.device, dtype=A.dtype)
+        R = torch.linalg.solve(eye + A, eye - A)
         R_q = R[0].to(work)
         R_p = R[1:].to(work)
         Q_eff = R_q @ self.Q_basis  # bf16

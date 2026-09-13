@@ -395,11 +395,11 @@ def create_reft_modules(
     reft_alpha_value = cfg.reft_alpha if cfg.reft_alpha is not None else cfg.alpha
     for idx in selected_indices:
         block = dit_blocks[idx]
-        block_embed_dim = getattr(block, "x_dim", None)
+        block_embed_dim = _resolve_reft_embed_dim(unet, block)
         if block_embed_dim is None:
             raise ValueError(
-                f"Block {idx} ({type(block).__name__}) has no `x_dim`; "
-                "cannot infer embed_dim for ReFT."
+                f"Block {idx} ({type(block).__name__}) has no ReFT embed dimension; "
+                "expected block.x_dim/block.features or unet.config.features."
             )
         reft_name = f"reft_unet_blocks_{idx}"
         reft = ReFTModule(
@@ -415,10 +415,29 @@ def create_reft_modules(
         reft.original_name = f"blocks.{idx}"
         unet_refts.append(reft)
     logger.info(
-        f"create ReFT for Anima DiT: {len(unet_refts)}/{num_blocks} "
+        f"create ReFT for DiT: {len(unet_refts)}/{num_blocks} "
         f"blocks (reft_dim={cfg.reft_dim}, layers={cfg.reft_layers!r})"
     )
     return [], unet_refts
+
+
+def _resolve_reft_embed_dim(unet, block) -> int | None:
+    """Resolve the residual width without assuming an Anima-only block API."""
+
+    for owner, attribute in (
+        (block, "x_dim"),
+        (block, "features"),
+        (getattr(unet, "config", None), "features"),
+    ):
+        value = getattr(owner, attribute, None)
+        if value is not None:
+            try:
+                value = int(value)
+            except (TypeError, ValueError):
+                continue
+            if value > 0:
+                return value
+    return None
 
 
 def create_global_router(
