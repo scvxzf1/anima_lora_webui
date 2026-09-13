@@ -15,7 +15,7 @@ KREA2_ATTENTION_MODES = frozenset({"torch", "flash"})
 
 
 def normalize_krea2_attention_mode(value: object) -> str:
-    mode = str(value or "torch").strip().lower().replace("-", "_")
+    mode = str(value or "flash").strip().lower().replace("-", "_")
     if mode in {"sdpa", "cudnn", "cudnn_sdpa"}:
         return "torch"
     if mode not in KREA2_ATTENTION_MODES:

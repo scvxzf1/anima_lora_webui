@@ -25,8 +25,13 @@ class _AttentionTarget:
         self.mode = mode
 
 
-@pytest.mark.parametrize("value", [None, "", "torch", "TORCH"])
-def test_normalize_krea2_attention_defaults_to_torch(value) -> None:
+@pytest.mark.parametrize("value", [None, "", "flash", "FLASH"])
+def test_normalize_krea2_attention_defaults_to_flash(value) -> None:
+    assert normalize_krea2_attention_mode(value) == "flash"
+
+
+@pytest.mark.parametrize("value", ["torch", "TORCH"])
+def test_normalize_krea2_attention_accepts_torch(value) -> None:
     assert normalize_krea2_attention_mode(value) == "torch"
 
 

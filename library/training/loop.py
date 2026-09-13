@@ -95,6 +95,18 @@ def _peak_probe_for_step(trainer, state) -> Any | None:
     return probe
 
 
+def _gradient_flow_probe_for_step(trainer, state) -> Any | None:
+    probe = getattr(trainer, "gradient_flow_probe", None)
+    if probe is None or not state.accelerator.sync_gradients:
+        return None
+    next_step = state.global_step + 1
+    if not probe.should_record_step(
+        next_step, max_train_steps=state.args.max_train_steps
+    ):
+        return None
+    return probe
+
+
 def _probe_exception_fields(exc: BaseException) -> dict[str, Any]:
     message = str(exc)
     return {
@@ -668,6 +680,9 @@ def _run_step(trainer, state: LoopState, batch) -> torch.Tensor:
     """The accumulate-scope body: on_step_start hooks, cudagraph mark, forward,
     backward gating, manual adapter sync, grad capture/clip, optimizer step +
     zero_grad. Returns the loss (detached or live)."""
+    from library.training.auto_block_swap.online import before_microstep, after_microstep
+
+    before_microstep(state, batch)
     args = state.args
     accelerator = state.accelerator
     network = state.network
@@ -778,6 +793,20 @@ def _run_step(trainer, state: LoopState, batch) -> torch.Tensor:
 
         if accelerator.sync_gradients:
             net_unwrapped = accelerator.unwrap_model(network)
+            gradient_flow_probe = _gradient_flow_probe_for_step(trainer, state)
+            if gradient_flow_probe is not None:
+                try:
+                    scaler = getattr(accelerator, "scaler", None)
+                    grad_scale = scaler.get_scale() if scaler is not None else 1.0
+                    gradient_flow_probe.capture_before_optimizer(
+                        state.global_step + 1,
+                        net_unwrapped,
+                        grad_scale=grad_scale,
+                    )
+                except Exception as exc:  # telemetry must not fail training
+                    logger.warning("gradient-flow probe capture failed: %s", exc)
+                    gradient_flow_probe.fail("before_optimizer", state.global_step + 1, exc)
+                    gradient_flow_probe = None
             # Snapshot Hydra up-weight grad norms before zero_grad wipes them.
             # The metric ``hydra_up_grad`` reads this stash later in the step.
             # Also runs pre-clip so absolute magnitudes aren't distorted by
@@ -804,9 +833,17 @@ def _run_step(trainer, state: LoopState, batch) -> torch.Tensor:
         _probe_step(memory_probe, state, "before_optimizer")
         try:
             state.optimizer.step()
+            if accelerator.sync_gradients and gradient_flow_probe is not None:
+                try:
+                    gradient_flow_probe.capture_after_optimizer(state.global_step + 1)
+                except Exception as exc:  # telemetry must not fail training
+                    logger.warning("gradient-flow probe update capture failed: %s", exc)
+                    gradient_flow_probe.fail("after_optimizer", state.global_step + 1, exc)
             _step_lr_scheduler(state, loss)
             state.optimizer.zero_grad(set_to_none=True)
         except Exception as exc:
+            if accelerator.sync_gradients and gradient_flow_probe is not None:
+                gradient_flow_probe.discard_pending()
             _probe_step(memory_probe, state, "optimizer_exception", **_probe_exception_fields(exc))
             raise
         _probe_step(memory_probe, state, "after_optimizer")
@@ -816,6 +853,7 @@ def _run_step(trainer, state: LoopState, batch) -> torch.Tensor:
     if peak_probe is not None:
         peak_probe.end_step(device=accelerator.device)
 
+    after_microstep(state, loss)
     return loss
 
 
@@ -969,6 +1007,10 @@ def _log_step(
     )
 
     current_loss = loss.detach().item()
+    if should_log_step:
+        from library.training.auto_block_swap.monitor import observe_training
+
+        observe_training(args, state.accelerator.device, state.global_step)
     state.loss_recorder.add(epoch=epoch, step=step, loss=current_loss)
     avr_loss: float = state.loss_recorder.moving_average
     memory_logs = _cuda_memory_logs(state.accelerator.device) if should_log_step else {}
@@ -978,6 +1020,9 @@ def _log_step(
         logs["recent_s_per_step"] = f"{recent_step_seconds:.2f}"
     logs["avr_loss"] = avr_loss
     logs.update(memory_logs)
+    from library.training.auto_block_swap.online import metrics as dynamic_swap_metrics
+
+    logs.update(dynamic_swap_metrics(state))
     logs.update(_current_stage_fields(state))
     logs.update(
         personalization_metrics(

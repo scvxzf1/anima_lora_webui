@@ -5,6 +5,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Mapping, TypeVar
 
+from library.models.latent_space import (
+    ANIMA_F8C16_P2,
+    Z_IMAGE_F8C16_P2,
+    LatentSpaceSpec,
+)
+
 
 T = TypeVar("T")
 
@@ -49,6 +55,7 @@ class ModelFamilySpec:
     name: str
     display_name: str
     aliases: frozenset[str]
+    latent_space: LatentSpaceSpec
     text_cache: TextCacheSpec
     supported_network_specs: frozenset[str] | None
     supports_method_adapters: bool
@@ -69,6 +76,7 @@ MODEL_FAMILY_REGISTRY: dict[str, ModelFamilySpec] = {
         name="anima",
         display_name="Anima",
         aliases=frozenset({"anima"}),
+        latent_space=ANIMA_F8C16_P2,
         text_cache=TextCacheSpec(
             suffix="_anima_te.safetensors",
             schema="anima_te_v1",
@@ -99,14 +107,15 @@ MODEL_FAMILY_REGISTRY: dict[str, ModelFamilySpec] = {
         name="krea2_raw",
         display_name="Krea-2",
         aliases=frozenset({"krea2", "krea2_raw"}),
+        latent_space=ANIMA_F8C16_P2,
         text_cache=TextCacheSpec(
             suffix="_krea2_te.safetensors",
             schema="krea2_te_v1",
             hidden_width=2560,
         ),
-        supported_network_specs=frozenset({"lora"}),
+        supported_network_specs=None,
         supports_method_adapters=False,
-        plain_lora_only=True,
+        plain_lora_only=False,
         supported_inference_modes=frozenset({"single"}),
         supported_inference_samplers=frozenset({"euler"}),
         supported_attention_modes=frozenset({"torch", "flash", "sdpa"}),
@@ -129,19 +138,20 @@ MODEL_FAMILY_REGISTRY: dict[str, ModelFamilySpec] = {
         name="z_image",
         display_name="Z-Image",
         aliases=frozenset({"zimage", "z_image"}),
+        latent_space=Z_IMAGE_F8C16_P2,
         text_cache=TextCacheSpec(
             suffix="_z_image_te.safetensors",
             schema="z_image_te_v1",
             hidden_width=2560,
         ),
-        supported_network_specs=frozenset({"lora"}),
+        supported_network_specs=None,
         supports_method_adapters=False,
-        plain_lora_only=True,
+        plain_lora_only=False,
         supported_inference_modes=frozenset(),
         supported_inference_samplers=frozenset(),
-        supported_attention_modes=frozenset({"torch", "sdpa"}),
+        supported_attention_modes=frozenset({"torch", "flash", "sdpa"}),
         sdpa_aliases_to_torch=True,
-        flash_runtime_dtypes=None,
+        flash_runtime_dtypes=frozenset({"bf16"}),
         image_test_flow_shift_default=6.0,
         automatic_flow_shift=False,
         supports_anima_selective_lora=False,
@@ -211,6 +221,17 @@ def model_family_capability_catalog() -> tuple[dict[str, object], ...]:
                 "name": spec.name,
                 "display_name": spec.display_name,
                 "aliases": sorted(spec.aliases),
+                "latent_cache_suffix": spec.latent_space.cache_suffix,
+                "text_cache_suffix": spec.text_cache.suffix,
+                "text_cache_schema": spec.text_cache.schema,
+                "supported_network_specs": (
+                    sorted(spec.supported_network_specs)
+                    if spec.supported_network_specs is not None
+                    else None
+                ),
+                "supports_method_adapters": spec.supports_method_adapters,
+                "plain_lora_only": spec.plain_lora_only,
+                "supported_attention_modes": sorted(spec.supported_attention_modes),
                 "pipeline_parallel": pipeline_payload,
             }
         )

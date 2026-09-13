@@ -72,7 +72,7 @@ def test_registered_family_cannot_fall_back_to_anima_loader(monkeypatch) -> None
 
 
 def test_registered_family_capabilities_are_enforced(monkeypatch) -> None:
-    _register_third_family(monkeypatch)
+    _register_third_family(monkeypatch, plain_lora_only=True)
     from library.training.adapter_resolver import resolve_adapters
     from library.training.compat_matrix import check_training_compat
 

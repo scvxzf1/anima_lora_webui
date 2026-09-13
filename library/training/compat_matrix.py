@@ -164,6 +164,11 @@ def check_training_compat(
 
     out = _CompatBuilder()
 
+    from library.training.auto_block_swap.config import configuration_errors
+
+    for message in configuration_errors(config, world_size=world_size or 1):
+        out.error("auto_block_swap_contract", "auto_block_swap", message)
+
     selective_checkpoint = (
         str(_get(config, "selective_checkpoint", "off") or "off").strip().lower()
     )
@@ -175,6 +180,8 @@ def check_training_compat(
         _get(config, "unsloth_offload_checkpointing"), False
     )
     blocks_to_swap = _int_value(_get(config, "blocks_to_swap"), 0)
+    if _bool_value(_get(config, "auto_block_swap"), False):
+        blocks_to_swap = 1  # Check enabled-swap contracts before calibration.
     torch_compile = _bool_value(_get(config, "torch_compile"), False)
     use_lokr = _bool_value(_get(config, "use_lokr"), False)
     network_module = str(_get(config, "network_module", "") or "")
@@ -382,14 +389,15 @@ def check_training_compat(
                 False,
                 message,
             )
-        attn_mode = str(_get(config, "attn_mode", "torch") or "torch").strip().lower()
-        if attn_mode not in {"torch", "sdpa"} or _bool_value(
+        attn_mode = str(_get(config, "attn_mode", "flash") or "flash").strip().lower()
+        if attn_mode not in {"torch", "flash", "sdpa"} or _bool_value(
             _get(config, "xformers"), False
         ):
             out.error(
                 "z_image_attention_mode",
                 "attn_mode",
-                "Z-Image v1 supports only attn_mode=torch (sdpa is an alias).",
+                "Z-Image supports attn_mode=torch or flash (sdpa is a torch "
+                "alias); xformers must be disabled.",
             )
         mixed_precision = (
             str(_get(config, "mixed_precision", "bf16") or "bf16").strip().lower()

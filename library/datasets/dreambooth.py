@@ -294,7 +294,7 @@ class DreamBoothDataset(BaseDataset):
                 cache_dir = getattr(subset, "text_cache_dir", None) or getattr(
                     subset, "cache_dir", None
                 )
-                te_suffix = "_anima_te.safetensors"
+                te_suffix = subset.text_cache_suffix
                 te_cached_keys: set[tuple[str, str]] = set()
                 if cache_dir and os.path.isdir(cache_dir):
                     cache_root = os.fspath(cache_dir)

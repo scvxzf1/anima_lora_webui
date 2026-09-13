@@ -257,11 +257,12 @@ _KNOWN_FAMILIES = KNOWN_MODEL_FAMILIES
 
 
 def normalize_model_family(value, *, source: str = "model_family", allow_empty: bool = False) -> str:
-    """Return a canonical model family or reject an unknown explicit value."""
+    """Return a canonical registered family, accepting its declared aliases."""
     return normalize_registered_family(
         value,
         source=source,
         allow_empty=allow_empty,
+        allow_aliases=True,
     )
 
 

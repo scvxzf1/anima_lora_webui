@@ -76,6 +76,7 @@ class AnimaTrainer(
         self.sample_prompts_snapshot = None
         self.memory_probe = None
         self.peak_probe = None
+        self.gradient_flow_probe = None
         self._padding_mask_cache = {}
         # Per-method extensions (EasyControl, IP-Adapter, …). Resolved
         # from args+network in train() right after _create_and_apply_network.

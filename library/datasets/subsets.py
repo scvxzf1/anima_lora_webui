@@ -10,8 +10,32 @@ import numpy as np
 import torch
 
 from library.config.normalize import to_plain_config
+from library.datasets.mask_mode import (
+    MASK_MODE_AUTO,
+    MASK_MODE_EXTERNAL,
+    normalize_mask_mode,
+    resolve_legacy_auto_mask_dir,
+)
 
 logger = logging.getLogger(__name__)
+
+
+def normalize_sample_ratio(value) -> float:
+    """Normalize the sampling fraction or fail before image enumeration."""
+
+    if isinstance(value, bool):
+        raise ValueError("sample_ratio must be a number with 0 < value <= 1")
+    try:
+        ratio = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(
+            "sample_ratio must be a number with 0 < value <= 1"
+        ) from exc
+    if not np.isfinite(ratio) or not 0.0 < ratio <= 1.0:
+        raise ValueError(
+            f"sample_ratio must satisfy 0 < value <= 1; got {value!r}"
+        )
+    return ratio
 
 
 def filter_paths_by_glob(
@@ -60,16 +84,7 @@ def _resolve_default_mask_dir() -> Optional[str]:
     Returned path is relative, matching how other paths are resolved from the
     training CWD (anima_lora/).
     """
-    candidates = (
-        "post_image_dataset/masks",
-        "masks/merged",
-        "masks/sam",
-        "masks/mit",
-    )
-    for candidate in candidates:
-        if os.path.isdir(candidate):
-            return candidate
-    return None
+    return resolve_legacy_auto_mask_dir()
 
 
 def split_train_val(
@@ -262,7 +277,7 @@ class BaseSubset:
         # fnmatch glob applied to each image's path-relative-to-image_dir at
         # enumeration time; `*` / None / empty = no filtering.
         self.path_pattern = path_pattern or "*"
-        self.sample_ratio = sample_ratio
+        self.sample_ratio = normalize_sample_ratio(sample_ratio)
         self.caption_separator = caption_separator
         self.keep_tokens = keep_tokens
         self.keep_tokens_separator = keep_tokens_separator
@@ -326,6 +341,8 @@ class DreamBoothSubset(BaseSubset):
         validation_split: Optional[float] = 0.0,
         validation_split_num: int = 0,
         resize_interpolation: Optional[str] = None,
+        model_family: str = "anima",
+        mask_mode: str = MASK_MODE_AUTO,
         mask_dir: Optional[str] = None,
         cache_dir: Optional[str] = None,
         cond_cache_dir: Optional[str] = None,
@@ -371,15 +388,40 @@ class DreamBoothSubset(BaseSubset):
         if self.caption_extension and not self.caption_extension.startswith("."):
             self.caption_extension = "." + self.caption_extension
         self.cache_info = cache_info
-        if mask_dir is None:
+        from library.models.family_registry import (
+            get_model_family_spec,
+            normalize_registered_family,
+        )
+
+        self.model_family = normalize_registered_family(
+            model_family,
+            allow_aliases=True,
+        )
+        self.text_cache_suffix = get_model_family_spec(
+            self.model_family
+        ).text_cache.suffix
+        explicit_empty_mask_dir = mask_dir is not None and not str(mask_dir).strip()
+        mask_config = normalize_mask_mode(
+            mask_mode,
+            alpha_mask=self.alpha_mask,
+            mask_dir=mask_dir,
+        )
+        if explicit_empty_mask_dir:
+            # Preserve the legacy ``mask_dir=""`` escape hatch: an explicitly
+            # empty directory disables implicit CWD mask discovery.
+            mask_config = normalize_mask_mode("none")
+        elif mask_config.mode == MASK_MODE_AUTO and mask_config.mask_dir is None:
             mask_dir = _resolve_default_mask_dir()
             if mask_dir:
                 logger.info(f"Auto-resolved mask_dir: {mask_dir}")
-        self.mask_dir = mask_dir
-        if mask_dir:
-            self.alpha_mask = (
-                True  # enable alpha mask pipeline when using separate mask files
-            )
+                mask_config = normalize_mask_mode(
+                    MASK_MODE_EXTERNAL,
+                    alpha_mask=True,
+                    mask_dir=mask_dir,
+                )
+        self.mask_mode = mask_config.mode
+        self.mask_dir = "" if explicit_empty_mask_dir else mask_config.mask_dir
+        self.alpha_mask = mask_config.alpha_mask
         # Optional redirect for VAE / text-encoder / PE caches. When set, all
         # caches for this subset live under cache_dir/ with stem-mirrored
         # filenames; when None (default) they sit alongside the source image.

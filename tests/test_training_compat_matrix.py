@@ -284,16 +284,18 @@ def test_matrix_accepts_krea2_plain_lora() -> None:
         {"functional_loss_weight": 0.1},
     ],
 )
-def test_matrix_rejects_krea2_non_plain_adapter_configs(override) -> None:
+@pytest.mark.parametrize("family", ["anima", "krea2_raw", "z_image"])
+def test_matrix_does_not_blanket_reject_model_family_variants(override, family) -> None:
     config = {
-        "model_family": "krea2_raw",
+        "model_family": family,
         "network_module": "networks.lora_anima",
         "attn_mode": "torch",
         "selective_checkpoint": "off",
     }
     config.update(override)
     result = check_training_compat(config)
-    assert "krea2_plain_lora_only" in _codes(result.errors)
+    assert "krea2_plain_lora_only" not in _codes(result.errors)
+    assert "family_plain_lora_only" not in _codes(result.errors)
 
 
 class _CacheableDataset:
@@ -321,9 +323,6 @@ def test_cli_preflight_applies_model_family_env_fallback(monkeypatch) -> None:
         block_swap_restore_mode="slab",
     )
 
-    with pytest.raises(
-        ValueError, match="Krea-2 training currently supports only plain LoRA"
-    ):
-        assert_training_extra_args(args, _CacheableDataset(), None)
+    assert_training_extra_args(args, _CacheableDataset(), None)
 
     assert args.model_family == "krea2_raw"

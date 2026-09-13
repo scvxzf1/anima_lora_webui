@@ -246,6 +246,46 @@ def add_training_arguments(parser: argparse.ArgumentParser, support_dreambooth: 
         ),
     )
     parser.add_argument(
+        "--gradient_flow_probe_jsonl",
+        type=str,
+        default=None,
+        help=(
+            "Write opt-in block-level gradient and real optimizer-update telemetry "
+            "to JSONL. Use off/none to disable, auto for a logs path, or an "
+            "explicit path."
+        ),
+    )
+    parser.add_argument(
+        "--gradient_flow_probe_every_n_steps",
+        type=int,
+        default=10,
+        help="Record gradient-flow telemetry every N optimizer steps after the dense window.",
+    )
+    parser.add_argument(
+        "--gradient_flow_probe_dense_steps",
+        type=int,
+        default=20,
+        help="Record every optimizer step through this 1-based step number.",
+    )
+    parser.add_argument(
+        "--anima_freeze_blocks",
+        type=str,
+        default=None,
+        help=(
+            "Experimental resume-only Anima A/B control: comma-separated DiT block "
+            "indices whose LoRA parameters stop updating after state restore."
+        ),
+    )
+    parser.add_argument(
+        "--anima_freeze_fuse",
+        action="store_true",
+        help=(
+            "Fold --anima_freeze_blocks LoRA deltas into resident BF16 base weights "
+            "and disable those adapter branches. Requires torch_compile=false and "
+            "blocks_to_swap=0."
+        ),
+    )
+    parser.add_argument(
         "--huggingface_repo_id",
         type=str,
         default=None,
@@ -919,6 +959,9 @@ def add_dit_training_arguments(parser: argparse.ArgumentParser):
         default=None,
         help="[EXPERIMENTAL] Sets the number of blocks to swap during the forward and backward passes.",
     )
+    from library.training.auto_block_swap.config import add_arguments as add_auto_swap_arguments
+
+    add_auto_swap_arguments(parser)
     parser.add_argument(
         "--pipeline_parallel",
         action=argparse.BooleanOptionalAction,

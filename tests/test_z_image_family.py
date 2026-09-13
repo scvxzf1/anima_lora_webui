@@ -38,7 +38,10 @@ def test_z_image_registry_uses_isolated_cache_contract() -> None:
     assert spec.text_cache.suffix == "_z_image_te.safetensors"
     assert spec.text_cache.schema == "z_image_te_v1"
     assert spec.text_cache.hidden_width == 2560
-    assert spec.plain_lora_only is True
+    assert spec.plain_lora_only is False
+    assert spec.supported_network_specs is None
+    assert spec.supported_attention_modes == {"torch", "flash", "sdpa"}
+    assert spec.flash_runtime_dtypes == {"bf16"}
 
 
 def test_z_image_compat_disables_anima_compile_seq_bands() -> None:
@@ -375,6 +378,27 @@ def test_z_image_compat_rejects_unverified_optimizations() -> None:
         "z_image_training_sampler",
         "z_image_v100_flash_stability",
     } <= codes
+
+
+@pytest.mark.parametrize("attn_mode", [None, "flash", "torch", "sdpa"])
+def test_z_image_compat_accepts_supported_attention_modes(attn_mode) -> None:
+    result = check_training_compat(
+        {
+            "model_family": "z_image",
+            "network_module": "networks.lora_anima",
+            "mixed_precision": "bf16",
+            "base_compute": "bf16",
+            "attn_mode": attn_mode,
+            "xformers": False,
+            "torch_compile": False,
+            "selective_checkpoint": "off",
+            "discrete_flow_shift": 6.0,
+            "timestep_sampling": "uniform",
+            "weighting_scheme": "none",
+        }
+    )
+
+    assert "z_image_attention_mode" not in {item.code for item in result.errors}
 
 
 def test_z_image_compat_accepts_block_swap_and_rejects_out_of_range() -> None:

@@ -325,6 +325,9 @@ class TextFusionTransformer(torch.nn.Module):
 
 
 class SingleStreamBlock(nn.Module):
+    # Residual adapters must run inside the checkpoint/compile computation.
+    reft_forward_method = "_forward"
+
     def __init__(
         self,
         features: int,
@@ -334,6 +337,7 @@ class SingleStreamBlock(nn.Module):
         kvheads: int = None,
     ):
         super().__init__()
+        self.features = features
         self.mod = DoubleSharedModulation(features)
         self.prenorm = RMSNorm(features)
         self.postnorm = RMSNorm(features)
@@ -582,6 +586,8 @@ class SingleStreamDiT(nn.Module):
         if mode:
             compile_kwargs["mode"] = mode
 
+        self._krea_compile_options = compile_kwargs
+
         for block_idx, block in enumerate(self.blocks):
             if block_idx >= resident:
                 continue
@@ -590,6 +596,7 @@ class SingleStreamDiT(nn.Module):
                 base_forward = block._forward
                 block._krea_compile_base_forward = base_forward
             block._forward = torch.compile(base_forward, **compile_kwargs)
+            block._krea_dynamic_compiled_forward = block._forward
 
     # === Block swap 接口 (移植自 anima models.py:2291-2387, 复用 ModelOffloader) ===
     # ModelOffloader 只遍历 block.named_modules() 取 .weight + .to(device) +

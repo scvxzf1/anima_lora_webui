@@ -193,6 +193,8 @@ def _capture_cpu_master(
         # 确保副本在 CPU (deepcopy 后可能仍在原 device, .to("cpu") 整体搬)
         if getattr(master_copy.data, "device", torch.device("cpu")).type != "cpu":
             master_copy = master_copy.to("cpu")
+        if pin_memory:
+            master_copy.data = master_copy.data.pin_memory()
         master = Params4bitBlockSwapCpuMaster(params4bit=master_copy)
         stored = master.stored_nbytes()
         stats: dict[str, float] = {
@@ -311,6 +313,34 @@ def _restore_params4bit_master(
     import copy as _copy
 
     return _copy.deepcopy(master.params4bit).to(device)
+
+
+def _bind_params4bit_master(module, master: Params4bitBlockSwapCpuMaster, device, *, storage=None, parked=False):
+    """Rebind packed storage without retaining obsolete compiled Parameters.
+
+    Quantization metadata is immutable for the frozen base. Keep its GPU copy
+    during ordinary swapping, and never move the independent CPU master state.
+    """
+    import copy
+
+    device = torch.device(device)
+    if device.type == "cuda" and device.index is None:
+        device = torch.device("cuda", torch.cuda.current_device())
+    weight = module.weight
+    if not is_params4bit_weight(weight):
+        raise TypeError("NF4 restore requires a Params4bit destination")
+    state = weight.quant_state
+    if (device.type != "cpu" or not parked) and state.absmax.device != device:
+        state = copy.deepcopy(master.params4bit.quant_state)
+        state.to(device)
+    packed = master.params4bit.data
+    if storage is not None and storage.device == device and storage.shape == packed.shape:
+        storage.copy_(packed, non_blocking=True)
+        weight.data = storage
+    else:
+        weight.data = packed.to(device=device, non_blocking=True)
+    weight.quant_state = state
+    module.quant_state = state
 
 
 def _restore_int8_cpu_master_into_tensor(

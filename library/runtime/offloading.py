@@ -30,6 +30,7 @@ from library.runtime.block_swap_config import (
 from library.runtime.block_swap_masters import (
     Int8BlockSwapCpuMaster,
     Params4bitBlockSwapCpuMaster,
+    _bind_params4bit_master,
     _can_swap_frozen_weight_to_cpu,
     _capture_cpu_master,
     _CpuMaster,
@@ -37,7 +38,6 @@ from library.runtime.block_swap_masters import (
     _parked_cpu_master_tensor,
     _restore_cpu_master_tensor,
     _restore_int8_cpu_master_into_tensor,
-    _restore_params4bit_master,
     _tensor_nbytes,
     _weight_device_type,
     is_params4bit_weight,
@@ -402,7 +402,11 @@ class Offloader:
         fp8_saturated_tensors = 0
         int8_saturated_tensors = 0
         int8_quantized_tensors = 0
-        for block in blocks:
+        from .block_swap_sparse_masters import participating_blocks, uses_sparse_masters
+
+        active = participating_blocks(len(blocks), self.blocks_to_swap)
+        sparse = uses_sparse_masters(self)
+        for block_index, block in enumerate(blocks):
             block_masters: dict[str, _CpuMaster] = {}
             block_dtypes: dict[str, torch.dtype] = {}
             block_bytes = 0
@@ -417,12 +421,13 @@ class Offloader:
             block_int8_max_abs_error = 0.0
             block_int8_mean_abs_errors: list[float] = []
             block_int8_relative_l2s: list[float] = []
-            for name, module in block.named_modules():
+            modules = block.named_modules() if not sparse or block_index in active else ()
+            for name, module in modules:
                 weight = getattr(module, "weight", None)
                 if weight is None or not _can_swap_frozen_weight_to_cpu(module):
                     continue
                 master, stats = _capture_cpu_master(
-                    weight.data,
+                    weight if is_params4bit_weight(weight) else weight.data,
                     module_name=name,
                     pin_memory=pin_memory,
                     transfer_dtype=self.transfer_dtype,
@@ -590,7 +595,10 @@ class Offloader:
     ]:
         if not block_masters:
             return block_masters, None, None
-        if any(isinstance(master, Int8BlockSwapCpuMaster) for master in block_masters.values()):
+        if any(
+            isinstance(master, (Int8BlockSwapCpuMaster, Params4bitBlockSwapCpuMaster))
+            for master in block_masters.values()
+        ):
             return block_masters, None, None
         dtypes = {tensor.dtype for tensor in block_masters.values()}
         if len(dtypes) != 1:
@@ -1216,11 +1224,8 @@ class Offloader:
             if module_to_cpu is not None:
                 _ensure_weight_on_device(module_to_cpu, self.device)
 
-        # NF4 (Params4bit) 整体搬运: bnb Linear4bit.to() 原地搬 4-bit 码+quant_state.
-        # 不能走 slab/foreach 的 .data 赋值 (会丢 quant_state, forward 崩), 必须
-        # deepcopy master 再 .to(device), 整体挂回 module.weight (非 .data).
-        # 探针 probe_nf4_blockswap_compat 已证此模式 delta=0.
-        # 见 docs/proposal/krea2_nf4_blockswap.md 方向 A.
+        # NF4 keeps Parameter identity and immutable execution quantization state.
+        # Only packed storage moves; CPU master state must remain independent.
         nf4_ms = 0.0
         if nf4_jobs:
             nf4_t0 = time.perf_counter()
@@ -1237,14 +1242,13 @@ class Offloader:
                 ) in nf4_jobs:
                     module_to_cpu = modules_to_cpu[module_name]
                     module_to_cuda = modules_to_cuda[module_name]
+                    storage = module_to_cpu.weight.data
                     # inactive 块停放: 用 master 的 4-bit 码占位回 inactive.weight.data,
                     # 释放其原 GPU Params4bit 占的显存 (Params4bit.data 本就是 uint8 码).
                     module_to_cpu.weight.data = _parked_cpu_master_tensor(source_master)
-                    # active 块整体重建: 从 target master deepcopy 出新 Params4bit 搬到 GPU,
-                    # 整体赋回 module.weight (非 .data, 保留 quant_state). bnb 契约:
-                    # Linear4bit.to() 原地改 device, 故必须 deepcopy master 再 .to().
-                    restored = _restore_params4bit_master(target_master, self.device)
-                    module_to_cuda.weight = restored
+                    _bind_params4bit_master(
+                        module_to_cuda, target_master, self.device, storage=storage
+                    )
             synchronize_device(self.device)
             nf4_ms = (time.perf_counter() - nf4_t0) * 1000.0
 
@@ -1435,8 +1439,7 @@ class Offloader:
             module_to_cpu = modules_to_cpu[module_name]
             module_to_cuda = modules_to_cuda[module_name]
             module_to_cpu.weight.data = _parked_cpu_master_tensor(source_master)
-            # NF4 整体重建: deepcopy master 再 .to(device), 整体挂回 (非 .data).
-            module_to_cuda.weight = _restore_params4bit_master(target_master, self.device)
+            _bind_params4bit_master(module_to_cuda, target_master, self.device)
         for (
             module_name,
             source_master,
@@ -1477,9 +1480,7 @@ class Offloader:
                     continue
                 dtype = dtypes.get(name, weight.data.dtype)
                 if isinstance(master, Params4bitBlockSwapCpuMaster):
-                    # NF4: 整体 deepcopy master 再 .to(device), 挂回 module.weight
-                    # (非 .data, 保留 quant_state). 见 docs/proposal/krea2_nf4_blockswap.md.
-                    module.weight = _restore_params4bit_master(master, device)
+                    _bind_params4bit_master(module, master, device)
                 else:
                     weight.data = _restore_cpu_master_tensor(
                         master,
@@ -1731,11 +1732,18 @@ class ModelOffloader(Offloader):
                     self.remove_handles.append(handle)
 
     def set_forward_only(self, forward_only: bool):
+        if forward_only and getattr(self, "master_scope", "all") == "participating":
+            raise ValueError("Sparse CPU masters support training only")
         # switching must wait for all pending transfers
         for block_idx in list(self.futures.keys()):
             self._wait_blocks_move(block_idx, phase="mode_switch")
         self.flush_profile_events(blocking=True)
         self.forward_only = forward_only
+
+    def reconfigure(self, blocks, blocks_to_swap: int) -> bool:
+        from library.runtime.block_swap_reconfigure import reconfigure_block_swap
+
+        return reconfigure_block_swap(self, blocks, blocks_to_swap)
 
     def __del__(self):
         try:

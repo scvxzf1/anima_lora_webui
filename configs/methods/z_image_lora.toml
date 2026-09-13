@@ -12,7 +12,7 @@ learning_rate = 1e-4
 
 mixed_precision = "bf16"
 base_compute = "bf16"
-attn_mode = "torch"
+attn_mode = "flash"
 gradient_checkpointing = true
 cpu_offload_checkpointing = false
 unsloth_offload_checkpointing = false

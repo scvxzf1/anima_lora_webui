@@ -54,7 +54,12 @@ def pe_cache_suffix(encoder: str | None = None) -> str:
     return f"_anima_{name}.safetensors"
 
 
-def classify_cache_file(name: str, pe_encoder: str | None = None) -> str | None:
+def classify_cache_file(
+    name: str,
+    pe_encoder: str | None = None,
+    *,
+    model_family: str = "anima",
+) -> str | None:
     """Bucket a cache filename into ``"latents"`` / ``"te"`` / ``"pe"`` (or None).
 
     The single place that maps a sidecar name → cache kind, so no consumer has to
@@ -62,11 +67,12 @@ def classify_cache_file(name: str, pe_encoder: str | None = None) -> str | None:
     ``"pe"`` (defaults to the REPA default ``pe_spatial``). Note ``TE`` is tested
     before ``pe`` so the ``pe`` encoder can never shadow a ``_anima_te`` sidecar.
     """
-    if name.endswith(TE_CACHE_SUFFIX):
+    latent_suffix, text_suffix = family_cache_suffixes(model_family)
+    if name.endswith(text_suffix):
         return "te"
     if name.endswith(pe_cache_suffix(pe_encoder)):
         return "pe"
-    if name.endswith(LATENT_CACHE_SUFFIX):
+    if name.endswith(latent_suffix):
         return "latents"
     return None
 
@@ -75,6 +81,8 @@ def count_preprocess_caches(
     cache_dir: str | os.PathLike,
     path_pattern: str | None = None,
     pe_encoder: str | None = None,
+    *,
+    model_family: str = "anima",
 ) -> dict[str, int]:
     """Count latent / TE / PE cache sidecars under ``cache_dir`` by filename.
 
@@ -103,7 +111,26 @@ def count_preprocess_caches(
         )
         paths = [p for p, k in zip(paths, keep) if k]
     for p in paths:
-        kind = classify_cache_file(p.name, pe_encoder)
+        kind = classify_cache_file(
+            p.name,
+            pe_encoder,
+            model_family=model_family,
+        )
         if kind:
             out[kind] += 1
     return out
+
+
+def family_cache_suffixes(model_family: str) -> tuple[str, str]:
+    from library.models.family_registry import (
+        get_model_family_spec,
+        normalize_registered_family,
+    )
+
+    family = normalize_registered_family(model_family, allow_aliases=True)
+    spec = get_model_family_spec(family)
+    return spec.latent_space.cache_suffix, spec.text_cache.suffix
+
+
+# Backwards-compatible private spelling for lightweight callers.
+_family_cache_suffixes = family_cache_suffixes

@@ -77,18 +77,25 @@ class CachedImage(NamedTuple):
     te_path: str | None
 
 
-def discover_cached_images(data_dir: str) -> list[CachedImage]:
+def discover_cached_images(
+    data_dir: str,
+    *,
+    model_family: str = "anima",
+) -> list[CachedImage]:
     """Find all images in a preprocessed dataset directory that have cached latents.
 
     Returns a sorted list of :class:`CachedImage` tuples.
     """
+    from library.io.cache_names import family_cache_suffixes
+
+    latent_suffix, te_suffix = family_cache_suffixes(model_family)
     images = []
     for png_path in sorted(glob.glob(os.path.join(data_dir, "*.png"))):
         stem = os.path.splitext(png_path)[0]
-        npz_files = glob.glob(f"{stem}_*{LATENT_CACHE_SUFFIX}")
+        npz_files = glob.glob(f"{stem}_*{latent_suffix}")
         if not npz_files:
             continue
-        te_path = f"{stem}{TE_CACHE_SUFFIX}"
+        te_path = f"{stem}{te_suffix}"
         if not os.path.exists(te_path):
             te_path = None
         images.append(
@@ -102,7 +109,11 @@ def discover_cached_images(data_dir: str) -> list[CachedImage]:
     return images
 
 
-def discover_cached_pairs(cache_dir: str) -> list[CachedImage]:
+def discover_cached_pairs(
+    cache_dir: str,
+    *,
+    model_family: str = "anima",
+) -> list[CachedImage]:
     """Find latent+TE cache pairs anywhere under a cache directory.
 
     Walks ``cache_dir`` recursively so nested layouts (caches mirrored from
@@ -110,14 +121,17 @@ def discover_cached_pairs(cache_dir: str) -> list[CachedImage]:
     latent NPZ is looked up next to the TE sidecar (same subdir + same
     stem), which is where the writers place them.
     """
+    from library.io.cache_names import family_cache_suffixes
+
+    latent_suffix, te_suffix = family_cache_suffixes(model_family)
     images = []
     te_paths = sorted(
-        glob.glob(os.path.join(cache_dir, "**", f"*{TE_CACHE_SUFFIX}"), recursive=True)
+        glob.glob(os.path.join(cache_dir, "**", f"*{te_suffix}"), recursive=True)
     )
     for te_path in te_paths:
-        stem = os.path.basename(te_path).removesuffix(TE_CACHE_SUFFIX)
+        stem = os.path.basename(te_path).removesuffix(te_suffix)
         parent = os.path.dirname(te_path)
-        npz_files = glob.glob(os.path.join(parent, f"{stem}_*{LATENT_CACHE_SUFFIX}"))
+        npz_files = glob.glob(os.path.join(parent, f"{stem}_*{latent_suffix}"))
         if not npz_files:
             continue
         images.append(
@@ -241,7 +255,11 @@ def load_cached_text_features(
     return crossattn, pooled
 
 
-def stem_from_cache_path(path: str | os.PathLike) -> str | None:
+def stem_from_cache_path(
+    path: str | os.PathLike,
+    *,
+    model_family: str = "anima",
+) -> str | None:
     """Extract the image stem from a cache file path.
 
     Handles both latent NPZ (``{stem}_{WxH}_anima.npz``) and
@@ -249,12 +267,15 @@ def stem_from_cache_path(path: str | os.PathLike) -> str | None:
 
     Returns ``None`` if the path doesn't match a known cache pattern.
     """
+    from library.io.cache_names import family_cache_suffixes
+
+    latent_suffix, te_suffix = family_cache_suffixes(model_family)
     name = os.path.basename(str(path))
-    if name.endswith(TE_CACHE_SUFFIX):
-        return name.removesuffix(TE_CACHE_SUFFIX)
-    if name.endswith(LATENT_CACHE_SUFFIX):
+    if name.endswith(te_suffix):
+        return name.removesuffix(te_suffix)
+    if name.endswith(latent_suffix):
         # {stem}_{WxH}_anima.npz -> strip _anima.npz, then rsplit to remove _{WxH}
-        without_suffix = name.removesuffix(LATENT_CACHE_SUFFIX)
+        without_suffix = name.removesuffix(latent_suffix)
         parts = without_suffix.rsplit("_", 1)
         return parts[0] if len(parts) >= 2 else without_suffix
     return None
@@ -274,6 +295,7 @@ def discover_bucketed_samples(
     seed: int,
     *,
     allow_replace: bool = False,
+    model_family: str = "anima",
 ) -> tuple[str, list[tuple[str, str, str, str]]]:
     """Scan ``data_dir`` for (latent npz, TE sidecar) pairs grouped by bucket.
 
@@ -304,18 +326,21 @@ def discover_bucketed_samples(
         SystemExit: if no pairs are found, the requested bucket is empty,
             or the pool is too small and ``allow_replace=False``.
     """
-    npz_paths = sorted(glob.glob(str(data_dir / "*_anima.npz")))
+    from library.io.cache_names import family_cache_suffixes
+
+    latent_suffix, te_suffix = family_cache_suffixes(model_family)
+    npz_paths = sorted(glob.glob(str(data_dir / f"*{latent_suffix}")))
     if not npz_paths:
-        raise SystemExit(f"no `*_anima.npz` in {data_dir}")
+        raise SystemExit(f"no `*{latent_suffix}` in {data_dir}")
 
     by_bucket: dict[str, list[tuple[str, str, str, str]]] = {}
     for p in npz_paths:
         name = Path(p).name
-        m = _RES_RE.search(name)
+        m = re.search(r"_(\d{3,5})x(\d{3,5})_[^_]+\.npz$", name)
         if not m:
             continue
         stem = name[: m.start()]
-        te = data_dir / f"{stem}_anima_te.safetensors"
+        te = data_dir / f"{stem}{te_suffix}"
         if not te.exists():
             continue
         with np.load(p) as z:

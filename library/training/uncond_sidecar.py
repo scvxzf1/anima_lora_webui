@@ -34,6 +34,11 @@ def ensure_uncond_crossattn(
 
     sidecar = default_uncond_path()
     if not sidecar.exists():
+        if getattr(args, "_auto_swap_probe", None) or getattr(args, "_auto_swap_resolved", False):
+            raise ValueError(
+                "AUTO cannot stage a missing Anima uncond text cache; "
+                "run text preprocessing before calibration"
+            )
         logger.info(
             f"T5('') uncond sidecar missing at {sidecar} — staging "
             f"on demand (would normally be produced by `make preprocess-te`)."

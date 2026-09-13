@@ -137,6 +137,7 @@ def load_unet_lazily(trainer, args, weight_dtype, accelerator, text_encoders) ->
 
 
 def _load_z_image_dit(trainer, args, weight_dtype, accelerator, text_encoders):
+    from library.models.z_image.attention_backend import prepare_z_image_attention
     from library.models.z_image.block_swap import enable_z_image_block_swap
     from library.models.z_image.weights import load_z_image_transformer
 
@@ -152,6 +153,16 @@ def _load_z_image_dit(trainer, args, weight_dtype, accelerator, text_encoders):
         args.pretrained_model_name_or_path,
         dtype=weight_dtype,
         device=loading_device,
+    )
+    attn_mode = prepare_z_image_attention(
+        model,
+        getattr(args, "attn_mode", None),
+        dtype=weight_dtype,
+    )
+    logger.info(
+        "Using Z-Image attention mode: %s%s",
+        attn_mode,
+        " (Diffusers flash_varlen)" if attn_mode == "flash" else "",
     )
     if getattr(args, "gradient_checkpointing", False):
         model.enable_gradient_checkpointing()
@@ -185,7 +196,7 @@ def _load_z_image_dit(trainer, args, weight_dtype, accelerator, text_encoders):
         phase="setup",
         loading_device=loading_device,
         loading_dtype=weight_dtype,
-        attn_mode="torch",
+        attn_mode=attn_mode,
     )
     return model, text_encoders
 
@@ -347,7 +358,7 @@ def _load_anima_dit(trainer, args, weight_dtype, accelerator, text_encoders):
     loading_dtype = weight_dtype
     loading_device = "cpu" if trainer.is_swapping_blocks else accelerator.device
 
-    attn_mode = "torch"
+    attn_mode = "flash"
     if args.xformers:
         attn_mode = "xformers"
     if args.attn_mode is not None:

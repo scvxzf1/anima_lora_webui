@@ -148,10 +148,18 @@ def test_z_image_loader_stages_on_cpu_and_enables_block_swap(monkeypatch) -> Non
     def fake_enable(model, blocks_to_swap, device, **kwargs):
         captured["enable"] = (model, blocks_to_swap, torch.device(device), kwargs)
 
+    def fake_prepare(model, mode, *, dtype):
+        captured["attention"] = (model, mode, dtype)
+        return "flash"
+
     monkeypatch.setattr(
         "library.models.z_image.weights.load_z_image_transformer", fake_load
     )
     monkeypatch.setattr(block_swap_module, "enable_z_image_block_swap", fake_enable)
+    monkeypatch.setattr(
+        "library.models.z_image.attention_backend.prepare_z_image_attention",
+        fake_prepare,
+    )
     monkeypatch.setattr(
         model_loading, "resolve_block_swap_profile_jsonl", lambda _args: "profile.jsonl"
     )
@@ -164,6 +172,7 @@ def test_z_image_loader_stages_on_cpu_and_enables_block_swap(monkeypatch) -> Non
         blocks_to_swap=20,
         block_swap_transfer_dtype="bf16",
         block_swap_restore_mode="slab",
+        attn_mode="flash",
     )
     trainer = SimpleNamespace(is_swapping_blocks=False)
     accelerator = SimpleNamespace(device=torch.device("cpu"))
@@ -181,6 +190,7 @@ def test_z_image_loader_stages_on_cpu_and_enables_block_swap(monkeypatch) -> Non
     assert trainer.is_swapping_blocks is True
     assert captured["gradient_checkpointing"] is True
     assert captured["load"] == ("z-image", torch.bfloat16, torch.device("cpu"))
+    assert captured["attention"] == (model, "flash", torch.bfloat16)
     assert captured["enable"][1:] == (
         20,
         torch.device("cpu"),

@@ -26,6 +26,8 @@ from library.training.loop import build_loop_state, run_training_loop
 from library.log import setup_logging
 from library.runtime.peak_probe import PeakProbe
 from library.training.cli_args import verify_training_args
+from library.training.gradient_flow_probe import GradientFlowProbe
+from library.training.anima_block_freeze import apply_anima_block_freeze
 from library.training.memory_probe import MemoryProbe
 from library.training.metadata import (
     add_dataset_metadata,
@@ -51,6 +53,10 @@ logger = logging.getLogger(__name__)
 
 
 def run_training_session(trainer, args) -> None:
+    from library.training.auto_block_swap.coordinator import calibrate_if_requested
+    from library.training.auto_block_swap.probe import after_model_load, check_dataset, run_probe
+
+    calibrate_if_requested(args)
     session_id = random.randint(0, 2**32)
     training_started_at = time.time()
     normalize_sample_args(args)
@@ -92,6 +98,7 @@ def run_training_session(trainer, args) -> None:
         use_user_config,
         use_dreambooth_method,
     ) = trainer._prepare_dataset(args)
+    check_dataset(args, train_dataset_group, val_dataset_group)
     # Preview images use the same compiled DiT blocks as training, so the
     # compile shape set must cover both dataset buckets and sample prompt
     # preview resolutions.
@@ -221,6 +228,11 @@ def run_training_session(trainer, args) -> None:
         is_main_process=is_main_process,
         t0=training_started_at,
     )
+    trainer.gradient_flow_probe = GradientFlowProbe.from_args(
+        args,
+        is_main_process=is_main_process,
+        t0=training_started_at,
+    )
     maybe_probe(
         trainer,
         "accelerator_ready",
@@ -240,6 +252,9 @@ def run_training_session(trainer, args) -> None:
         ),
         memory_probe_jsonl=getattr(trainer.memory_probe, "path", None),
         peak_probe_jsonl=getattr(trainer.peak_probe, "path", None),
+        gradient_flow_probe_jsonl=getattr(
+            trainer.gradient_flow_probe, "path", None
+        ),
     )
     if trainer.peak_probe is not None:
         trainer.peak_probe.write(
@@ -340,6 +355,8 @@ def run_training_session(trainer, args) -> None:
         unet, text_encoders = trainer.load_unet_lazily(
             args, weight_dtype, accelerator, text_encoders
         )
+
+    after_model_load(args, unet)
 
     # Stage the T5("") sidecar once if caption dropout is on — dropped
     # rows then get the same crossattn embedding Anima feeds at
@@ -573,6 +590,12 @@ def run_training_session(trainer, args) -> None:
     )
     initial_step = resume_plan.initial_step
     epoch_to_start = resume_plan.epoch_to_start
+    apply_anima_block_freeze(
+        args,
+        accelerator,
+        network,
+        resume_step=int(saver.steps_from_state or 0),
+    )
 
     # Keep train_dataset_group when stage schedule needs mid-run rebuilds.
     # Otherwise drop it before loop entry — the dataloader already holds
@@ -636,12 +659,17 @@ def run_training_session(trainer, args) -> None:
 
     # run_scope emits the matching run_end (ok / stopped / error) on exit;
     # run_start already fired when the sink was constructed above.
+    run_probe(trainer, loop_state)
+    from library.training.auto_block_swap.online import attach as attach_dynamic_swap, finish as finish_dynamic_swap
+
+    attach_dynamic_swap(trainer, loop_state)
     with run_scope(trainer.progress_sink, final_step=lambda: loop_state.global_step):
         training_loop_completed = False
         try:
             run_training_loop(trainer, loop_state)
             training_loop_completed = True
         finally:
+            finish_dynamic_swap(loop_state, completed=training_loop_completed)
             if not training_loop_completed:
                 decode_deferred_samples_safely(
                     accelerator,

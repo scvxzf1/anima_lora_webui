@@ -31,7 +31,7 @@ from library.datasets import (
     DatasetGroup,
     glob_images,
 )
-from library.datasets.subsets import filter_paths_by_glob
+from library.datasets.subsets import filter_paths_by_glob, normalize_sample_ratio
 from library.datasets.dreambooth import balance_reg_datasets
 from library.training import (
     add_dataset_arguments,
@@ -94,6 +94,8 @@ class DreamBoothSubsetParams(BaseSubsetParams):
     caption_extension: str = ".caption"
     cache_info: bool = False
     alpha_mask: bool = False
+    model_family: str = "anima"
+    mask_mode: str = "auto"
     mask_dir: Optional[str] = None
     cache_dir: Optional[str] = None
     cond_cache_dir: Optional[str] = None
@@ -178,7 +180,7 @@ class ConfigSanitizer:
         ),
         "flip_aug": bool,
         "num_repeats": int,
-        "sample_ratio": Any(float, int),
+        "sample_ratio": normalize_sample_ratio,
         "random_crop": bool,
         "keep_tokens": int,
         "keep_tokens_separator": str,
@@ -209,6 +211,7 @@ class ConfigSanitizer:
         Required("image_dir"): str,
         "is_reg": bool,
         "alpha_mask": bool,
+        "mask_mode": str,
         "cache_dir": str,
         "cond_cache_dir": str,
         "text_cache_dir": str,
