@@ -54,8 +54,18 @@ def test_dragon_training_preview_save_as_patch_and_preflight_use_isolated_config
     assert "已存在" in _payload(collision_response)["error"]
     assert 'output_name = "dragon-preview"' in copy_path.read_text(encoding="utf-8")
 
+    rename_response = asyncio.run(config_routes.handle_raw_rename(_JsonRequest({
+        "source": "configs/imported/dragon_copy.toml",
+        "target": "configs/imported/dragon_renamed.toml",
+    })))
+    assert rename_response.status == 200
+    renamed_path = configs / "imported" / "dragon_renamed.toml"
+    assert renamed_path.exists()
+    assert not copy_path.exists()
+    copy_path = renamed_path
+
     patch_response = asyncio.run(config_routes.handle_raw_patch(_JsonRequest({
-        "file": "configs/imported/dragon_copy.toml",
+        "file": "configs/imported/dragon_renamed.toml",
         "values": {"output_name": "dragon-saved"},
     })))
     assert patch_response.status == 200
@@ -67,7 +77,7 @@ def test_dragon_training_preview_save_as_patch_and_preflight_use_isolated_config
         "variant": "lora",
         "preset": "default",
         "methods_subdir": "imported",
-        "config_file": "configs/imported/dragon_copy.toml",
+        "config_file": "configs/imported/dragon_renamed.toml",
     })))
     assert preflight_response.status == 200
     preflight = _payload(preflight_response)

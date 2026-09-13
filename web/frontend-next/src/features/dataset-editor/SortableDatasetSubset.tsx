@@ -6,6 +6,7 @@ import type { FieldPath, UseFormReturn } from 'react-hook-form';
 
 import type { DatasetFormValues } from './datasetForm';
 import { DatasetSettingsFields } from './DatasetSettingsFields';
+import { DatasetMaskFields } from './DatasetMaskFields';
 
 type Props = {
   form: UseFormReturn<DatasetFormValues>;
@@ -145,6 +146,7 @@ export function SortableDatasetSubset({
 
       <details className="dataset-row-advanced dataset-wide-field">
         <summary>高级规则</summary>
+        <DatasetMaskFields form={form} index={index} />
         <DatasetSettingsFields form={form} prefix={`datasets.${index}.settings`} />
         <section className="dataset-experimental-settings">
           <h4>实验规则</h4>

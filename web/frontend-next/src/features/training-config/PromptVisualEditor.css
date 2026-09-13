@@ -1,0 +1,12 @@
+.command-dialog:has(.prompt-visual-editor) { width: min(960px, calc(100vw - 32px)); }
+.prompt-visual-editor textarea { width: 100%; }
+.prompt-row { display: flex; gap: 8px; border-bottom: 1px solid var(--line); padding: 10px 0; }
+.prompt-row-title { flex: 1; min-width: 0; overflow-wrap: anywhere; text-align: left; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.prompt-row .toolbar { flex-shrink: 0; }
+.prompt-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 12px; border: 1px solid var(--line); }
+.prompt-fields label { display: grid; gap: 4px; min-width: 0; }
+.prompt-fields input { width: 100%; min-width: 0; }
+.prompt-fields select, .prompt-fields textarea { width: 100%; min-width: 0; }
+.training-field-label > button { justify-self: start; width: 32px; height: 32px; padding: 4px; }
+.prompt-fields label:first-of-type, .prompt-fields label:nth-of-type(2), .prompt-fields label:last-of-type { grid-column: 1 / -1; }
+@media (max-width: 600px) { .prompt-row { flex-direction: column; } }

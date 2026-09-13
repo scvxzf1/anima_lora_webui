@@ -1,0 +1,122 @@
+.next-layout[data-training-workspace="true"] {
+  min-height: 0;
+  overflow: hidden;
+  grid-template-rows: minmax(0, 1fr);
+}
+.next-layout[data-training-workspace="true"] > .app-navigation {
+  height: 100%;
+  min-height: 0;
+}
+.next-layout[data-training-workspace="true"] > .next-content {
+  min-height: 0;
+  overflow: hidden;
+}
+.training-config-shell {
+  height: 100%;
+  min-height: 0;
+}
+.training-config-page {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding-bottom: 16px;
+}
+.training-config-page > :not(.training-workspace-layout) {
+  flex-shrink: 0;
+}
+.training-tools {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 10px;
+}
+.training-workspace-layout {
+  flex: 1;
+  min-height: 0;
+  grid-template-columns: 240px minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  align-items: stretch;
+  margin-top: 10px;
+}
+.training-workspace-layout:has(
+  .training-config-library[data-expanded="false"]
+) {
+  grid-template-columns: minmax(0, 1fr);
+}
+.training-editor-column {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.training-editor-column > :not(.training-edit-groups) {
+  flex-shrink: 0;
+}
+.training-editor-column > .toolbar {
+  margin-top: 0;
+}
+.training-stage-nav {
+  position: static;
+}
+.training-edit-groups {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  align-content: start;
+}
+.training-edit-card,
+[id^="training-field-"] {
+  scroll-margin-top: 8px;
+}
+.training-config-library {
+  position: static;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.training-library-groups {
+  min-height: 0;
+  max-height: none;
+  overflow: auto;
+}
+.training-config-library[hidden] {
+  display: none;
+}
+@media (max-width: 800px) {
+  .training-config-page { overflow: auto; }
+  .training-workspace-layout { flex: none; }
+  .training-edit-groups { flex: none; overflow: visible; }
+  .next-layout[data-training-workspace="true"] {
+    display: flex;
+    flex-direction: column;
+  }
+  .next-layout[data-training-workspace="true"] > .app-navigation {
+    height: auto;
+    flex-shrink: 0;
+    max-height: 45%;
+  }
+  .next-layout[data-training-workspace="true"] > .next-content {
+    flex: 1;
+  }
+}
+@container workspace (max-width: 1050px) {
+  .training-workspace-layout {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+    gap: 10px;
+  }
+  .training-config-library {
+    max-height: 180px;
+  }
+  .training-workspace-layout:has(.training-config-library[hidden]) {
+    grid-template-rows: minmax(0, 1fr);
+  }
+  .training-config-library .eyebrow {
+    display: none;
+  }
+}

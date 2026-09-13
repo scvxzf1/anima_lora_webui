@@ -1,16 +1,19 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from "react";
 
-type WebSocketStatus = 'connecting' | 'open' | 'closed';
+type WebSocketStatus = "connecting" | "open" | "closed";
 
 export function useWebSocket(
   path: string,
   onMessage: (message: Record<string, unknown>) => void,
   enabled = true,
+  onOpen?: () => void,
 ) {
-  const [status, setStatus] = useState<WebSocketStatus>('connecting');
-  const [error, setError] = useState('');
+  const [status, setStatus] = useState<WebSocketStatus>("connecting");
+  const [error, setError] = useState("");
   const callbackRef = useRef(onMessage);
   callbackRef.current = onMessage;
+  const openRef = useRef(onOpen);
+  openRef.current = onOpen;
 
   useEffect(() => {
     if (!enabled) return;
@@ -21,29 +24,34 @@ export function useWebSocket(
 
     function connect() {
       if (disposed) return;
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
       socket = new WebSocket(`${protocol}//${window.location.host}${path}`);
-      setStatus('connecting');
-      setError('');
+      setStatus("connecting");
+      setError("");
 
       socket.onopen = () => {
         attempts = 0;
-        if (!disposed) setStatus('open');
+        if (!disposed) {
+          setStatus("open");
+          openRef.current?.();
+        }
       };
       socket.onmessage = (event) => {
         if (disposed) return;
         try {
-          callbackRef.current(JSON.parse(event.data as string) as Record<string, unknown>);
+          callbackRef.current(
+            JSON.parse(event.data as string) as Record<string, unknown>,
+          );
         } catch {
           // Ignore non-JSON frames.
         }
       };
       socket.onerror = () => {
-        if (!disposed) setError('实时连接异常');
+        if (!disposed) setError("实时连接异常");
       };
       socket.onclose = () => {
         if (disposed) return;
-        setStatus('closed');
+        setStatus("closed");
         socket = null;
         scheduleReconnect();
       };

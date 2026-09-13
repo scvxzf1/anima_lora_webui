@@ -1,13 +1,13 @@
-import { useQuery } from '@tanstack/react-query';
-import { useEffect, useMemo } from 'react';
+import { useQuery } from "@tanstack/react-query";
+import { useEffect, useMemo } from "react";
 
 import {
   fetchMergedTrainingConfig,
   fetchTrainingConfigGroups,
   fetchTrainingPresets,
   trainingContextKeys,
-} from '../api/trainingContext';
-import { useTrainingContextStore } from './trainingContextStore';
+} from "../api/trainingContext";
+import { useTrainingContextStore } from "./trainingContextStore";
 
 export function useTrainingContext() {
   const selection = useTrainingContextStore();
@@ -19,23 +19,32 @@ export function useTrainingContext() {
     queryKey: trainingContextKeys.presets(),
     queryFn: ({ signal }) => fetchTrainingPresets(signal),
   });
-  const files = useMemo(() => (groupsQuery.data || []).flatMap((group) => (
-    (group.files || [])
-      .filter((file) => file.trainable !== false)
-      .map((file) => ({
-        ...file,
-        methods_subdir: file.methods_subdir || group.methods_subdir,
-      }))
-  )), [groupsQuery.data]);
+  const files = useMemo(
+    () =>
+      (groupsQuery.data || []).flatMap((group) =>
+        (group.files || [])
+          .filter((file) => file.trainable !== false)
+          .map((file) => ({
+            ...file,
+            methods_subdir: file.methods_subdir || group.methods_subdir,
+          })),
+      ),
+    [groupsQuery.data],
+  );
   const presets = presetsQuery.data || [];
-  const selectedFile = files.find((file) => file.path === selection.configFile)
-    || files.find((file) => file.path === 'configs/imported/lora.toml' && !file.locked)
-    || files.find((file) => !file.locked)
-    || files.find((file) => file.path === 'configs/gui-methods/lora.toml')
-    || files[0];
+  const selectedFile =
+    files.find((file) => file.path === selection.configFile) ||
+    files.find(
+      (file) => file.path === "configs/imported/lora.toml" && !file.locked,
+    ) ||
+    files.find((file) => !file.locked) ||
+    files.find((file) => file.path === "configs/gui-methods/lora.toml") ||
+    files[0];
   const selectedPreset = presets.includes(selection.preset)
     ? selection.preset
-    : presets.includes('default') ? 'default' : presets[0] || 'default';
+    : presets.includes("default")
+      ? "default"
+      : presets[0] || "default";
 
   useEffect(() => {
     if (selectedFile && selectedFile.path !== selection.configFile) {
@@ -44,16 +53,22 @@ export function useTrainingContext() {
   }, [selectedFile?.path, selection.configFile, selection.selectConfigFile]);
 
   useEffect(() => {
-    if (selectedPreset !== selection.preset) selection.selectPreset(selectedPreset);
+    if (selectedPreset !== selection.preset)
+      selection.selectPreset(selectedPreset);
   }, [selectedPreset, selection.preset, selection.selectPreset]);
 
   const mergedQuery = useQuery({
-    queryKey: trainingContextKeys.merged(selectedFile?.path || '', selectedPreset),
-    queryFn: ({ signal }) => fetchMergedTrainingConfig(selectedFile!, selectedPreset, signal),
+    queryKey: trainingContextKeys.merged(
+      selectedFile?.path || "",
+      selectedPreset,
+    ),
+    queryFn: ({ signal }) =>
+      fetchMergedTrainingConfig(selectedFile!, selectedPreset, signal),
     enabled: Boolean(selectedFile),
   });
 
   return {
+    groups: groupsQuery.data || [],
     files,
     presets,
     selectedFile,
@@ -62,7 +77,8 @@ export function useTrainingContext() {
     selectPreset: selection.selectPreset,
     mergedConfig: mergedQuery.data,
     maxTrainSteps: positiveSteps(mergedQuery.data?.max_train_steps),
-    isPending: groupsQuery.isPending || presetsQuery.isPending || mergedQuery.isPending,
+    isPending:
+      groupsQuery.isPending || presetsQuery.isPending || mergedQuery.isPending,
     error: groupsQuery.error || presetsQuery.error || mergedQuery.error,
   };
 }

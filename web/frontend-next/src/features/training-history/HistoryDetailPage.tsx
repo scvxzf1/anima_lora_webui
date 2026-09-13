@@ -1,109 +1,86 @@
-import { useQuery } from '@tanstack/react-query';
-import { Link, useParams } from 'react-router-dom';
-import { Topbar } from '../../app/Topbar';
-import { fetchHistoryTaskDetail, historyKeys, type HistoryTaskSummary } from './api';
-import './HistoryDetailPage.css';
+import { useQuery } from "@tanstack/react-query";
+import { Link, useParams, useLocation, useSearchParams } from "react-router-dom";
+import { useState } from "react";
+import { RotateCcw } from "lucide-react";
+import { fetchHistoryTaskDetail, historyKeys, type HistoryTaskDetail } from "./api";
+import { MetricsChart } from "../../components/MetricsChart";
+import { TrainingMetricsCharts } from "../../components/TrainingMetricsCharts";
+import { HistoryLogs } from "./HistoryLogs";
+import { HistoryResume } from "./HistoryResume";
+import { HistoryAssets } from "./HistoryAssets";
+import { HistoryOverview } from "./HistoryOverview";
+import { HistoryArtifacts } from "./HistoryArtifacts";
+import { historyStateLabel, historyTaskName } from "./historySummary";
+import { finiteNumber } from "../../components/trainingNumbers";
+import "./HistoryDetailPage.css";
 
-function taskName(task?: HistoryTaskSummary) {
-  return String(task?.name || task?.history_run_label || task?.id || '历史任务');
-}
-
-function historyStateLabel(state?: string) {
-  const labels: Record<string, string> = {
-    idle: '完成',
-    running: '运行中',
-    error: '异常',
-    interrupted: '已中断',
-  };
-  return labels[state || ''] || state || '未知';
-}
-
-function metricValue(point: Record<string, unknown>, key: string) {
-  const value = point[key];
-  return value == null ? null : Number(value);
-}
+const VIEWS = [["overview", "概览"], ["metrics", "指标"], ["artifacts", "产物"], ["logs", "日志"], ["config", "配置"]];
 
 export function HistoryDetailPage() {
-  const { taskId = '' } = useParams();
+  const { taskId = "" } = useParams();
+  const [params] = useSearchParams();
+  const location = useLocation();
+  const tab = VIEWS.some(([key]) => key === params.get("view")) ? params.get("view")! : "overview";
+  const listSearch = params.get("from") || location.state?.listSearch || "";
+  const [resumeOpen, setResumeOpen] = useState(false);
   const query = useQuery({
     queryKey: historyKeys.detail(taskId),
     queryFn: ({ signal }) => fetchHistoryTaskDetail(taskId, signal),
     enabled: Boolean(taskId),
   });
-  const detail = query.data;
-  const task = detail?.task;
-  const metrics = detail?.metrics || [];
-  const logs = detail?.logs || [];
-  const lastMetric = metrics.at(-1) || {};
-  const lastLoss = metricValue(lastMetric, 'loss');
-  const lastStep = metricValue(lastMetric, 'step');
-  const lastLr = metricValue(lastMetric, 'lr');
-
-  return (
-    <div className="history-detail-shell">
-      <Topbar />
-      <main className="history-detail-page">
-        <header className="history-detail-header">
-          <div>
-            <Link to="/history" className="history-back">← 返回历史</Link>
-            <p className="eyebrow">{task?.job === 'preprocess' ? 'PREPROCESS' : 'TRAINING'}</p>
-            <h1>{taskName(task)}</h1>
-            <p>{task?.started_at_text || taskId}</p>
-          </div>
-          <span className="history-detail-state" data-state={task?.state || 'unknown'}>
-            {historyStateLabel(task?.state)}
-          </span>
-        </header>
-
-        {query.error ? (
-          <section className="history-detail-error" role="alert"><h2>无法读取历史任务</h2><p>{query.error.message}</p></section>
-        ) : (
-          <>
-            <section className="history-detail-stats">
-              <div><span>最终损失</span><strong>{lastLoss != null ? lastLoss.toFixed(4) : 'N/A'}</strong></div>
-              <div><span>最后步数</span><strong>{lastStep != null ? lastStep.toFixed(0) : (task?.metric_count ?? '—')}</strong></div>
-              <div><span>学习率</span><strong>{lastLr != null ? lastLr.toFixed(6) : 'N/A'}</strong></div>
-              <div><span>曲线数据</span><strong>{metrics.length || task?.metric_count || 0} 点</strong></div>
-            </section>
-
-            <section className="history-detail-grid">
-              <div className="history-detail-panel">
-                <header><span className="eyebrow">运行信息</span><h2>任务信息</h2></header>
-                <dl className="history-info">
-                  <InfoRow label="任务 ID" value={task?.id} />
-                  <InfoRow label="类型" value={task?.job === 'preprocess' ? '预处理' : '训练'} />
-                  <InfoRow label="分组" value={task?.group || task?.history_group_key || '未分组'} />
-                  <InfoRow label="源配置" value={task?.history_source_config_file} />
-                  <InfoRow label="运行目录" value={task?.run_dir || task?.output_dir || task?.training_output_dir} />
-                  <InfoRow label="日志" value={`${task?.log_count ?? logs.length} 行`} />
-                  <InfoRow label="指标" value={`${task?.metric_count ?? metrics.length} 点`} />
-                </dl>
-              </div>
-              <div className="history-detail-panel">
-                <header><span className="eyebrow">日志</span><h2>日志记录</h2><span>{logs.length} 行</span></header>
-                <div className="history-detail-logs">
-                  {logs.length ? logs.map((log, index) => (
-                    <div key={log.id || index} className="history-detail-log-line" data-type={log.type || 'info'}>
-                      {log.line || String(log)}
-                    </div>
-                  )) : <p className="history-detail-empty">暂无日志。</p>}
-                </div>
-              </div>
-            </section>
-
-            {detail?.config_toml ? (
-              <section className="history-detail-panel">
-                <header><span className="eyebrow">CONFIG</span><h2>配置快照</h2></header>
-                <pre className="history-detail-toml">{detail.config_toml}</pre>
-              </section>
-            ) : null}
-          </>
-        )}
-      </main>
-    </div>
-  );
+  const task = query.data?.task;
+  return <div className="history-detail-shell">
+    <main className="history-detail-page" data-view={tab}>
+      <header className="history-detail-header">
+        <div>
+          <Link to={`/history${listSearch ? `?${listSearch}` : ""}`} className="history-back">返回历史</Link>
+          <h1>{historyTaskName(task)}</h1>
+          <p>{task?.job === "preprocess" ? "数据预处理" : task?.job === "training" ? "模型训练" : "历史任务"} · {task?.started_at_text || taskId}</p>
+        </div>
+        {task && <div className="history-detail-commands">
+          <span className="history-detail-state" data-state={task.state}>{historyStateLabel(task.state)}</span>
+          {task.job === "training" && <button type="button" disabled={Boolean(query.error)} onClick={() => setResumeOpen(true)}>
+            <RotateCcw size={16} />检查点续训
+          </button>}
+        </div>}
+      </header>
+      <nav className="page-tabs" aria-label="历史详情视图">
+        {VIEWS.map(([key, label]) => {
+          const next = new URLSearchParams(params);
+          next.set("view", key);
+          return <Link key={key} to={`?${next}`} state={location.state} replace aria-current={tab === key ? "page" : undefined}>{label}</Link>;
+        })}
+      </nav>
+      {query.error && <section className="history-detail-error" role="alert">
+        <h2>无法读取历史任务</h2><p>{query.error.message}</p>
+        {query.data && <p>以下为上次成功读取的记录。</p>}
+        <button type="button" disabled={query.isFetching} onClick={() => void query.refetch()}>重新读取</button>
+      </section>}
+      {query.isPending && <p role="status">正在读取历史任务</p>}
+      {query.data && <HistoryDetailContent key={taskId} detail={query.data} taskId={taskId} tab={tab} />}
+    </main>
+    {resumeOpen && <HistoryResume key={taskId} taskId={taskId} onClose={() => setResumeOpen(false)} />}
+  </div>;
 }
 
-function InfoRow({ label, value }: { label: string; value?: string | number }) {
-  return <div><dt>{label}</dt><dd title={String(value || '')}>{value || '—'}</dd></div>;
+function HistoryDetailContent({ detail, taskId, tab }: { detail: HistoryTaskDetail; taskId: string; tab: string }) {
+  switch (tab) {
+    case "metrics": return <>
+      {detail.task?.job === "training" ? <TrainingMetricsCharts points={detail.metrics || []} total={finiteNumber(detail.limits?.metrics_total)} />
+        : <p className="data-scope">此任务不适用训练 Loss。</p>}
+      <MetricsChart points={detail.system || []} metric="vram_used_gb" label="显存 (GB)" timeAxis total={finiteNumber(detail.limits?.system_total)} />
+    </>;
+    case "artifacts": return <HistoryAssets taskId={taskId} />;
+    case "logs": return <HistoryLogs taskId={taskId} running={detail.task?.state === "running"} />;
+    case "config": return <HistorySnapshot detail={detail} taskId={taskId} />;
+    default: return <HistoryOverview detail={detail} />;
+  }
+}
+
+function HistorySnapshot({ detail, taskId }: { detail: HistoryTaskDetail; taskId: string }) {
+  return <section className="history-overview-section">
+    <h2>配置快照</h2>
+    {detail.config_toml ? <pre className="history-detail-toml">{detail.config_toml}</pre> : <p role="status">此任务未保存配置快照。</p>}
+    <HistoryArtifacts taskId={taskId} />
+  </section>;
 }

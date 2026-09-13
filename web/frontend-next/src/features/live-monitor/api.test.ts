@@ -28,8 +28,16 @@ describe('live monitor API', () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ ok: true, message: '训练已停止' }), { status: 200 }));
     vi.stubGlobal('fetch', fetchMock);
 
-    await stopTraining();
+    await stopTraining('task-a');
 
-    expect(fetchMock).toHaveBeenCalledWith('/api/training/stop', expect.objectContaining({ method: 'POST' }));
+    expect(fetchMock).toHaveBeenCalledWith('/api/training/stop', expect.objectContaining({ method: 'POST', body: JSON.stringify({ task_id: 'task-a' }) }));
+    expect(new Headers(fetchMock.mock.calls[0][1].headers).get('Content-Type')).toBe('application/json');
+  });
+
+  it('does not send an unguarded stop for an unknown task', () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    expect(() => stopTraining(' ')).toThrow('任务身份未确认');
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

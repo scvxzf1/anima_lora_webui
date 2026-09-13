@@ -25,6 +25,7 @@
 
 .queue-header-actions {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
 }
@@ -378,6 +379,8 @@
 }
 
 @media (max-width: 900px) {
+  .queue-header { flex-direction: column; align-items: flex-start; gap: 12px; }
+  .queue-worklist > header { flex-wrap: wrap; }
   .queue-stats {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }

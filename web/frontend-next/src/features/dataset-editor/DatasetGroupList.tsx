@@ -1,6 +1,6 @@
 import {
-  closestCenter,
   DndContext,
+  DragOverlay,
   KeyboardSensor,
   PointerSensor,
   useSensor,
@@ -9,9 +9,13 @@ import {
   type DragStartEvent,
 } from '@dnd-kit/core';
 import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from '@dnd-kit/sortable';
-import { useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { datasetCollision, datasetDropOrder, type DatasetDrop } from './datasetDrag';
+import './DatasetDrag.css';
+import { useDatasetGroupCollapse } from './useDatasetGroupCollapse';
 
-import { insertPath, isSortableDatasetGroup, movePath } from './datasetOrdering';
+import { isSortableDatasetGroup } from './datasetOrdering';
 import {
   groupDragId,
   SortableDatasetGroup,
@@ -57,14 +61,38 @@ export function DatasetGroupList({
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
   const [activeType, setActiveType] = useState<DragData['type']>();
+  const [activeFile, setActiveFile] = useState<string>();
+  const [dropTarget, setDropTarget] = useState<DatasetDrop | null>(null);
+  const collapse = useDatasetGroupCollapse(activeType === 'preset', searchActive, dropTarget?.groupId ?? null);
+  const targetRef = useRef<DatasetDrop | null>(null);
+  const collision = useMemo(() => datasetCollision((target) => { targetRef.current = target; }), []);
+  function syncDropTarget() {
+    const next = targetRef.current;
+    setDropTarget((previous) => (
+      previous?.groupId === next?.groupId
+      && previous?.file === next?.file
+      && previous?.position === next?.position
+        ? previous
+        : next
+    ));
+  }
+  function resetDrag() {
+    setActiveType(undefined);
+    setActiveFile(undefined);
+    setDropTarget(null);
+    targetRef.current = null;
+  }
   const sortableGroups = groups.filter((group) => isSortableDatasetGroup(group, searchActive));
 
   function handleDragStart(event: DragStartEvent) {
     setActiveType((event.active.data.current as DragData | undefined)?.type);
+    setActiveFile(event.active.data.current?.file);
   }
 
   function handleDragEnd(event: DragEndEvent) {
-    setActiveType(undefined);
+    const target = targetRef.current;
+    resetDrag();
+    if (ordering || searchActive) return;
     if (!event.over) return;
     const active = event.active.data.current as DragData | undefined;
     const over = event.over.data.current as DragData | undefined;
@@ -81,25 +109,12 @@ export function DatasetGroupList({
 
     if (active.type !== 'preset' || !active.file || !active.groupId) return;
     const sourceGroup = groups.find((group) => group.id === active.groupId);
-    const targetGroup = groups.find((group) => group.id === over.groupId);
+    const targetGroup = groups.find((group) => group.id === target?.groupId);
     if (!sourceGroup || !targetGroup) return;
 
     const targetPaths = targetGroup.files.map((preset) => preset.path);
-    let nextOrder: string[];
-    if (over.type === 'preset' && over.file) {
-      const overIndex = targetPaths.indexOf(over.file);
-      if (overIndex < 0) return;
-      if (sourceGroup.id === targetGroup.id) {
-        nextOrder = movePath(targetPaths, active.file, overIndex);
-      } else {
-        const translatedTop = event.active.rect.current.translated?.top;
-        const insertAfter = translatedTop != null
-          && translatedTop > event.over.rect.top + event.over.rect.height / 2;
-        nextOrder = insertPath(targetPaths, active.file, overIndex + (insertAfter ? 1 : 0));
-      }
-    } else {
-      nextOrder = insertPath(targetPaths, active.file);
-    }
+    const nextOrder = target && datasetDropOrder(groups, active.file, target);
+    if (!nextOrder) return;
 
     const unchanged = sourceGroup.id === targetGroup.id
       && nextOrder.every((path, index) => path === targetPaths[index]);
@@ -109,9 +124,12 @@ export function DatasetGroupList({
   return (
     <DndContext
       sensors={sensors}
-      collisionDetection={closestCenter}
+      autoScroll={{ threshold: { x: 0.05, y: 0.08 }, acceleration: 5 }}
+      collisionDetection={collision}
       onDragStart={handleDragStart}
-      onDragCancel={() => setActiveType(undefined)}
+      onDragCancel={resetDrag}
+      onDragMove={syncDropTarget}
+      onDragOver={syncDropTarget}
       onDragEnd={handleDragEnd}
     >
       <SortableContext items={groups.map((group) => groupDragId(group.id))} strategy={verticalListSortingStrategy}>
@@ -130,6 +148,11 @@ export function DatasetGroupList({
               sortableGroupIndex={sortableGroups.findIndex((item) => item.id === group.id)}
               sortableGroupCount={sortableGroups.length}
               presetDragging={activeType === 'preset'}
+              collapsed={collapse.isCollapsed(group.id)}
+              temporaryExpanded={collapse.isTemporary(group.id)}
+              collapseDisabled={Boolean(activeType) || searchActive}
+              onToggle={() => collapse.toggle(group.id)}
+              dropTarget={dropTarget}
               onSelect={onSelect}
               onGroupAction={onGroupAction}
               onPlaceGroup={onPlaceGroup}
@@ -138,6 +161,9 @@ export function DatasetGroupList({
           ))}
         </div>
       </SortableContext>
+      {createPortal(<DragOverlay dropAnimation={null}>
+        {activeFile && <div className="dataset-drag-overlay">{datasetPresetName(groups.flatMap((group) => group.files).find((file) => file.path === activeFile) || { path: activeFile })}</div>}
+      </DragOverlay>, document.body)}
     </DndContext>
   );
 }

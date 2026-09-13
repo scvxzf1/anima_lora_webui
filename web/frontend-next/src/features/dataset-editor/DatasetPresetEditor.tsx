@@ -60,13 +60,14 @@ export function DatasetPresetEditor({
     },
   });
 
-  function openNameDialog(action: DatasetNameAction) {
+  async function openNameDialog(action: DatasetNameAction) {
+    if (action === 'new' && !(await editor.confirmDiscard('新建预设'))) return;
     setNameAction(action);
   }
 
   async function confirmName(name: string) {
     let accepted = false;
-    if (nameAction === 'new') accepted = editor.startNew(name);
+    if (nameAction === 'new') accepted = await editor.startNew(name, true);
     if (nameAction === 'save-as') accepted = await editor.saveAs(name);
     if (nameAction === 'copy') accepted = await editor.saveAs(name, 'copy');
     if (nameAction === 'rename') accepted = await editor.rename(name);
@@ -128,7 +129,7 @@ export function DatasetPresetEditor({
 
       <div className="dataset-command-bar" aria-label="预设操作">
         <button type="button" onClick={() => openNameDialog('new')} disabled={busy}>新建</button>
-        <button type="submit" className="primary-command" disabled={!canEdit || busy}>保存</button>
+        <button type="submit" className="primary-command" disabled={!canEdit || busy || !editor.hasUnsavedChanges}>保存</button>
         <button type="button" onClick={() => openNameDialog('save-as')} disabled={busy}>另存</button>
         <button type="button" onClick={() => openNameDialog('copy')} disabled={busy}>复制</button>
         <button

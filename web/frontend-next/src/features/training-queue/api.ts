@@ -29,6 +29,8 @@ export type QueueItem = {
 
 export type QueueSnapshot = {
   ok?: boolean;
+  revision?: string;
+  current_task_id?: string;
   paused?: boolean;
   failure_policy?: string;
   auto_retry?: boolean;
@@ -91,26 +93,31 @@ export function cancelQueueItem(itemId: string, deleteRuntime = false) {
   });
 }
 
-export function cancelAllQueueItems() {
-  return apiRequest<QueueSnapshot>('/api/training/queue/cancel-all', { method: 'POST' });
+function bulkQueueCommand(action: string, revision: string) {
+  if (!revision) throw new Error('缺少队列快照版本，请刷新后重试');
+  return apiRequest<QueueSnapshot>(`/api/training/queue/${action}`, { method: 'POST', body: JSON.stringify({ expected_revision: revision }) });
 }
 
-export function abortQueueAfterCurrent() {
-  return apiRequest<QueueSnapshot>('/api/training/queue/abort-after-current', { method: 'POST' });
+export function cancelAllQueueItems(revision: string) {
+  return bulkQueueCommand('cancel-all', revision);
 }
 
-export function forceAbortQueue() {
-  return apiRequest<QueueSnapshot>('/api/training/queue/force-abort', { method: 'POST' });
+export function abortQueueAfterCurrent(revision: string) {
+  return bulkQueueCommand('abort-after-current', revision);
 }
 
-export function cancelWaitingQueueItems() {
-  return apiRequest<QueueSnapshot>('/api/training/queue/cancel-waiting', { method: 'POST' });
+export function forceAbortQueue(revision: string) {
+  return bulkQueueCommand('force-abort', revision);
 }
 
-export function clearCompletedQueueItems() {
-  return apiRequest<QueueSnapshot>('/api/training/queue/clear-completed', { method: 'POST' });
+export function cancelWaitingQueueItems(revision: string) {
+  return bulkQueueCommand('cancel-waiting', revision);
 }
 
-export function clearCanceledQueueItems() {
-  return apiRequest<QueueSnapshot>('/api/training/queue/clear-canceled', { method: 'POST' });
+export function clearCompletedQueueItems(revision: string) {
+  return bulkQueueCommand('clear-completed', revision);
+}
+
+export function clearCanceledQueueItems(revision: string) {
+  return bulkQueueCommand('clear-canceled', revision);
 }

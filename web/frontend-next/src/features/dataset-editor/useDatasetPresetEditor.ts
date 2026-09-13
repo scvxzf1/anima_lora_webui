@@ -24,9 +24,7 @@ import type {
   DatasetPresetResponse,
   DatasetPresetSummary,
 } from './types';
-import { useUnsavedChangesGuard } from './useUnsavedChangesGuard';
-
-const UNSAVED_NAVIGATION_MESSAGE = '当前数据集有未保存修改，离开会丢失这些修改。是否继续？';
+import { useDatasetDiscardGuard } from './useDatasetDiscardGuard';
 
 type Command =
   | { type: 'save'; file: string; overwrite: boolean; values: DatasetFormValues }
@@ -54,7 +52,7 @@ class RenamePartialError extends Error {
   }
 }
 
-export function useDatasetPresetEditor(presets: DatasetPresetSummary[]) {
+export function useDatasetPresetEditor(presets: DatasetPresetSummary[], initialFile = '') {
   const queryClient = useQueryClient();
   const [selectedFile, setSelectedFile] = useState('');
   const [draftFile, setDraftFile] = useState('');
@@ -73,7 +71,6 @@ export function useDatasetPresetEditor(presets: DatasetPresetSummary[]) {
   const currentFile = draftFile || selectedFile;
   const readonly = Boolean(selectedPreset.data?.readonly) && !draftFile;
   const presetPaths = useMemo(() => new Set(presets.map((preset) => preset.path)), [presets]);
-  useUnsavedChangesGuard(hasUnsavedChanges, UNSAVED_NAVIGATION_MESSAGE);
 
   useEffect(() => {
     if (draftFile) return;
@@ -83,9 +80,9 @@ export function useDatasetPresetEditor(presets: DatasetPresetSummary[]) {
       return;
     }
     if (!selectedFile) {
-      setSelectedFile(presets[0].path);
+      setSelectedFile(presets.find((preset) => preset.path === initialFile)?.path || presets[0].path);
     }
-  }, [draftFile, presets, selectedFile]);
+  }, [draftFile, presets, selectedFile, initialFile]);
 
   useEffect(() => {
     if (!selectedPreset.data || draftFile) return;
@@ -116,6 +113,9 @@ export function useDatasetPresetEditor(presets: DatasetPresetSummary[]) {
         form.reset(datasetFormFromPreset(result.preset));
       }
       setNotice(result.message);
+      if (result.file) {
+        await queryClient.invalidateQueries({ queryKey: [...datasetKeys.all, 'cover', result.file] });
+      }
       await queryClient.invalidateQueries({ queryKey: datasetKeys.library() });
     },
     onError: async (error) => {
@@ -131,14 +131,12 @@ export function useDatasetPresetEditor(presets: DatasetPresetSummary[]) {
     },
   });
 
-  function confirmDiscard(action: string) {
-    return !hasUnsavedChanges
-      || window.confirm(`当前数据集有未保存修改。${action}会丢弃这些修改，是否继续？`);
-  }
+  const { confirmDiscard, discardDialog } = useDatasetDiscardGuard(hasUnsavedChanges, command.isPending);
 
-  function selectFile(file: string, force = false) {
+  async function selectFile(file: string, force = false) {
+    if (command.isPending) return false;
     if (file === selectedFile && !draftFile) return true;
-    if (!force && !confirmDiscard('切换预设')) return false;
+    if (!force && !(await confirmDiscard('切换预设'))) return false;
     setDraftFile('');
     setSelectedFile(file);
     setHydratedFile('');
@@ -147,8 +145,8 @@ export function useDatasetPresetEditor(presets: DatasetPresetSummary[]) {
     return true;
   }
 
-  function startNew(name: string) {
-    if (!confirmDiscard('新建预设')) return false;
+  async function startNew(name: string, confirmed = false) {
+    if (command.isPending || (!confirmed && !(await confirmDiscard('新建预设')))) return false;
     const file = datasetPresetPathFromName(name);
     if (presetPaths.has(file)) {
       setNotice('数据集预设已存在，请换一个名称或使用复制/重命名');
@@ -163,7 +161,7 @@ export function useDatasetPresetEditor(presets: DatasetPresetSummary[]) {
   }
 
   async function save() {
-    if (!currentFile || readonly || !(await form.trigger())) return false;
+    if (!currentFile || readonly || command.isPending || !hasUnsavedChanges || !(await form.trigger())) return false;
     command.mutate({
       type: 'save',
       file: currentFile,
@@ -203,7 +201,7 @@ export function useDatasetPresetEditor(presets: DatasetPresetSummary[]) {
   }
 
   async function reload() {
-    if (!selectedFile || !confirmDiscard('重新加载')) return false;
+    if (!selectedFile || !(await confirmDiscard('重新加载'))) return false;
     setDraftFile('');
     const result = await selectedPreset.refetch();
     if (result.data) {
@@ -232,6 +230,7 @@ export function useDatasetPresetEditor(presets: DatasetPresetSummary[]) {
     remove,
     reload,
     confirmDiscard,
+    discardDialog,
     notify: setNotice,
     suggestedName: datasetPresetStem(currentFile || 'dataset'),
   };

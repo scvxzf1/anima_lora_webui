@@ -420,15 +420,15 @@ describe('DatasetWorkspace', () => {
     await act(async () => {
       await router.navigate('/other');
     });
-    await waitFor(() => expect(confirm).toHaveBeenCalledWith(
-      '当前数据集有未保存修改，离开会丢失这些修改。是否继续？',
-    ));
+    await screen.findByRole('dialog', { name: '放弃未保存修改？' });
+    expect(confirm).not.toHaveBeenCalled();
     expect(router.state.location.pathname).toBe('/datasets');
+    await user.click(screen.getByRole('button', { name: '继续编辑' }));
 
-    confirm.mockReturnValue(true);
     await act(async () => {
       await router.navigate('/other');
     });
+    await user.click(await screen.findByRole('button', { name: '放弃修改并继续' }));
     expect(await screen.findByText('其他页面')).toBeInTheDocument();
   });
 
@@ -738,8 +738,8 @@ describe('DatasetWorkspace', () => {
     await user.type(source, '-dirty');
     expect(screen.getByRole('button', { name: '预览子集 1 图片和标注' })).toBeDisabled();
 
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
     await user.click(screen.getByRole('button', { name: /beta.toml/ }));
+    await user.click(await screen.findByRole('button', { name: '放弃修改并继续' }));
     expect(await screen.findByRole('heading', { name: 'beta.toml' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '预览子集 1 图片和标注' })).toBeEnabled();
   });
@@ -863,8 +863,30 @@ describe('DatasetWorkspace', () => {
     await user.type(source, '-dirty');
     await user.click(screen.getByRole('button', { name: /beta.toml/ }));
 
-    expect(confirm).toHaveBeenCalledWith(expect.stringContaining('切换预设会丢弃'));
+    expect(await screen.findByRole('dialog', { name: '放弃未保存修改？' })).toHaveTextContent('切换预设将丢弃');
+    expect(confirm).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: '继续编辑' })).toHaveFocus();
+    await user.keyboard('{Escape}');
+    expect(source).toHaveValue('image_dataset/alpha-dirty');
     expect(screen.getByRole('heading', { name: 'alpha.toml' })).toBeInTheDocument();
+  });
+
+  it('enables save only for changes and disables it after save or reverting edits', async () => {
+    const { fetchMock } = createFetchMock();
+    vi.stubGlobal('fetch', fetchMock);
+    const user = userEvent.setup();
+    renderWorkspace();
+    const source = await screen.findByLabelText('原始图片目录');
+    const save = screen.getByRole('button', { name: '保存' });
+    expect(save).toBeDisabled();
+    await user.type(source, 'x');
+    expect(save).toBeEnabled();
+    await user.keyboard('{Backspace}');
+    expect(save).toBeDisabled();
+    await user.type(source, '-updated');
+    await user.click(save);
+    await screen.findByText('已保存数据集预设 alpha.toml');
+    await waitFor(() => expect(save).toBeDisabled());
   });
 
   it('copies a readonly preset through save-as', async () => {

@@ -1,0 +1,19 @@
+.dataset-row-advanced > .dataset-mask-settings {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.dataset-settings-group.dataset-mask-settings > div {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+}
+
+.dataset-mask-settings label {
+  min-width: 0;
+}
+
+@media (max-width: 600px) {
+  .dataset-settings-group.dataset-mask-settings > div {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

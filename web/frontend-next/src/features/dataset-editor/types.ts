@@ -52,6 +52,9 @@ export type DatasetRow = {
   cache_dir?: string;
   num_repeats?: number;
   is_reg?: boolean;
+  mask_mode?: string;
+  mask_dir?: string;
+  alpha_mask?: boolean;
   settings?: Record<string, unknown>;
   [key: string]: unknown;
 };

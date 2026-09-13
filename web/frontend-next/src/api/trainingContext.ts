@@ -17,6 +17,9 @@ export type TrainingConfigGroup = {
   kind?: string;
   methods_subdir?: string;
   files: TrainingConfigFile[];
+  readonly?: boolean;
+  locked?: boolean;
+  system?: boolean;
 };
 
 export type TrainingPresets = string[];

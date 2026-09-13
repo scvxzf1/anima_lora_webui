@@ -24,6 +24,7 @@ import os
 import sys
 
 from scripts.experimental_tasks import inference as exp_inference
+from scripts.experimental_tasks import parallel as exp_parallel
 from scripts.experimental_tasks import training as exp_training
 from scripts.tasks import (
     daemon,
@@ -216,6 +217,9 @@ COMMANDS = {
         "Remove post_image_dataset/masks/",
     ),
     "web": (web.cmd_web, "Launch lightweight Web UI on port 20102 (--port N to override)"),
+    "web-next-build": (web.cmd_frontend_build, "Build and safely publish the isolated /next frontend"),
+    "web-next-check": (web.cmd_frontend_check, "Typecheck and test the /next frontend"),
+    "web-next-e2e": (web.cmd_frontend_e2e, "Run isolated /next browser tests with mocked API commands"),
     # ── Utilities ─────────────────────────────────────────────────────
     "merge": (
         utilities.cmd_merge,
@@ -303,6 +307,10 @@ COMMANDS = {
     # ── Experimental ──────────────────────────────────────────────────
     # Unstable methods kept under exp-* so they don't pollute the main command
     # surface. May produce broken output, change without notice, or be removed.
+    "exp-anima-pipeline-bench": (
+        exp_parallel.cmd_anima_pipeline_bench,
+        "[experimental] Fixed-effective-batch Anima PP/single/TP benchmark and PP resume validation.",
+    ),
     "exp-turbo": (
         exp_training.cmd_turbo,
         "[experimental] DP-DMD distillation — bakes CFG=4 / 28-step Anima "

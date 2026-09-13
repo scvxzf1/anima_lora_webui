@@ -1,0 +1,13 @@
+.query-feedback {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  margin: 10px 0;
+  color: var(--muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.query-feedback p { margin: 0; }
+.query-feedback [role="alert"] { color: var(--danger); }
+.query-feedback button { display: inline-flex; align-items: center; gap: 6px; }

@@ -1,5 +1,5 @@
-import { apiRequest } from '../../api/client';
-import type { TrainingConfigFile } from '../../api/trainingContext';
+import { apiRequest } from "../../api/client";
+import type { TrainingConfigFile } from "../../api/trainingContext";
 
 export type RawTrainingConfigResponse = {
   file: string;
@@ -24,7 +24,7 @@ export type RawSaveAsResponse = {
 };
 
 export type PreflightCheck = {
-  level: 'ok' | 'warning' | 'error' | string;
+  level: "ok" | "warning" | "error" | string;
   key: string;
   message: string;
   path?: string;
@@ -42,48 +42,121 @@ export type TrainingPreflightResponse = {
 };
 
 export const trainingConfigKeys = {
-  all: ['training-config'] as const,
-  raw: (file: string) => [...trainingConfigKeys.all, 'raw', file] as const,
+  all: ["training-config"] as const,
+  raw: (file: string) => [...trainingConfigKeys.all, "raw", file] as const,
 };
 
 export function fetchRawTrainingConfig(file: string, signal?: AbortSignal) {
   const query = new URLSearchParams({ file });
-  return apiRequest<RawTrainingConfigResponse>(`/api/config/raw?${query.toString()}`, { signal });
+  return apiRequest<RawTrainingConfigResponse>(
+    `/api/config/raw?${query.toString()}`,
+    { signal },
+  );
 }
 
-export function previewTrainingConfigPatch(file: string, values: Record<string, unknown>) {
-  return apiRequest<RawPatchResponse>('/api/config/raw/patch-preview', {
-    method: 'POST',
+export function previewTrainingConfigPatch(
+  file: string,
+  values: Record<string, unknown>,
+) {
+  return apiRequest<RawPatchResponse>("/api/config/raw/patch-preview", {
+    method: "POST",
     body: JSON.stringify({ file, values }),
   });
 }
 
-export function saveTrainingConfigPatch(file: string, values: Record<string, unknown>) {
-  return apiRequest<RawPatchResponse>('/api/config/raw', {
-    method: 'PATCH',
+export function saveTrainingConfigPatch(
+  file: string,
+  values: Record<string, unknown>,
+) {
+  return apiRequest<RawPatchResponse>("/api/config/raw", {
+    method: "PATCH",
     body: JSON.stringify({ file, values }),
   });
 }
 
 export function saveTrainingConfigAs(file: string, content: string) {
-  return apiRequest<RawSaveAsResponse>('/api/config/raw/save-as', {
-    method: 'POST',
+  return apiRequest<RawSaveAsResponse>("/api/config/raw/save-as", {
+    method: "POST",
     body: JSON.stringify({ file, content }),
   });
 }
 
-export async function runTrainingPreflight(file: TrainingConfigFile, preset: string) {
-  const response = await fetch('/api/training/preflight', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+export async function runTrainingPreflight(
+  file: TrainingConfigFile,
+  preset: string,
+  gpuWhitelist: string[] = [],
+) {
+  const response = await fetch("/api/training/preflight", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      variant: file.method || 'lora',
+      variant: file.method || "lora",
       preset,
-      methods_subdir: file.methods_subdir || 'gui-methods',
+      methods_subdir: file.methods_subdir || "gui-methods",
       config_file: file.path,
+      gpu_whitelist: gpuWhitelist,
     }),
   });
-  const payload = await response.json() as TrainingPreflightResponse & { error?: string };
-  if (!response.ok) throw new Error(payload.error || payload.errors?.[0]?.message || '训练预检测请求失败');
+  const payload = (await response.json()) as TrainingPreflightResponse & {
+    error?: string;
+  };
+  if (!response.ok && !Array.isArray(payload.checks))
+    throw new Error(payload.error || "训练预检测请求失败");
   return payload;
+}
+
+export type TrainingActionResponse = {
+  ok: boolean;
+  message?: string;
+  job?: string;
+  requires_confirmation?: boolean;
+  requires_preprocess_confirmation?: boolean;
+  preflight?: TrainingPreflightResponse;
+};
+
+function trainingActionPayload(file: TrainingConfigFile, preset: string) {
+  return {
+    variant: file.method || "lora",
+    preset,
+    methods_subdir: file.methods_subdir || "gui-methods",
+    config_file: file.path,
+  };
+}
+
+export type TrainingConfirmation = {
+  confirmed: true;
+  confirm_preprocess: true;
+};
+
+export function startTraining(
+  file: TrainingConfigFile,
+  preset: string,
+  confirmation: TrainingConfirmation,
+  gpuWhitelist: string[] = [],
+) {
+  return apiRequest<TrainingActionResponse>("/api/training/start", {
+    method: "POST",
+    body: JSON.stringify({
+      ...trainingActionPayload(file, preset),
+      ...confirmation,
+      gpu_whitelist: gpuWhitelist,
+    }),
+  });
+}
+
+export function enqueueTraining(
+  file: TrainingConfigFile,
+  preset: string,
+  confirmation: TrainingConfirmation,
+  gpuWhitelist: string[] = [],
+) {
+  return apiRequest<TrainingActionResponse>("/api/training/queue", {
+    method: "POST",
+    body: JSON.stringify({
+      ...trainingActionPayload(file, preset),
+      ...confirmation,
+      start_paused: true,
+      gpu_whitelist: gpuWhitelist,
+    }),
+  });
 }

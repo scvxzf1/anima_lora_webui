@@ -40,12 +40,13 @@ export function fetchDatasetPresetImages(
   file: string,
   datasetIndex: number,
   signal?: AbortSignal,
+  limit = 120,
 ) {
   const query = new URLSearchParams({
     file,
     dataset_index: String(datasetIndex),
     source: 'source',
-    limit: '120',
+    limit: String(limit),
   });
   return apiRequest<DatasetPreviewResponse>(
     `/api/config/dataset-presets/images?${query.toString()}`,

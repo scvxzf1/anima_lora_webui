@@ -1,0 +1,22 @@
+.training-devices { min-width: 0; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.training-device-heading, .training-device-heading > strong, .training-device-options,
+.training-device-options > label, .training-device-modes { display: flex; align-items: center; gap: 8px; }
+.training-device-heading { flex-wrap: wrap; }
+.training-device-heading > strong { font-size: 13px; }
+.training-device-modes { gap: 0; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; }
+.training-device-modes button { min-height: 30px; padding: 4px 8px; border: 0; border-radius: 0; font-size: 12px; }
+.training-device-modes button[aria-pressed="true"] { background: var(--success-soft); color: var(--ink); box-shadow: inset 0 -2px var(--success); }
+.training-device-options { flex-wrap: wrap; margin-top: 6px; max-height: 100px; overflow: auto; }
+.training-device-options > label { min-width: 0; max-width: 100%; padding: 4px 8px; font-size: 12px; border-bottom: 2px solid transparent; }
+.training-device-options > label:has(input:checked) { border-color: var(--success); background: var(--success-soft); }
+.training-device-options input { width: 14px; height: 14px; flex-shrink: 0; }
+.training-device-options span { overflow-wrap: anywhere; }
+.training-device-options small { white-space: nowrap; color: var(--muted); font-size: 11px; }
+.training-device-detail { display: flex; gap: 8px; flex-wrap: wrap; padding: 12px 0; font-size: 13px; }
+.training-device-detail small { color: var(--muted); }
+.training-devices .form-error { margin: 6px 0 0; font-size: 12px; }
+@media (max-width: 800px) {
+  .training-device-heading { gap: 6px; }
+  .training-device-options > label { flex-wrap: wrap; gap: 4px; }
+  .training-device-options small { margin-left: 18px; }
+}

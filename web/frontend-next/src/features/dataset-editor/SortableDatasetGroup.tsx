@@ -1,7 +1,8 @@
 import { useDroppable } from '@dnd-kit/core';
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { ArrowDown, ArrowUp, GripVertical } from 'lucide-react';
+import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, GripVertical } from 'lucide-react';
+import { useId } from 'react';
 
 import {
   datasetMoveTargets,
@@ -13,6 +14,8 @@ import {
   movePath,
 } from './datasetOrdering';
 import type { DatasetLibraryGroup, DatasetPresetSummary } from './types';
+import { DatasetCover } from './DatasetCover';
+import type { DatasetDrop } from './datasetDrag';
 
 type Props = {
   group: DatasetLibraryGroup;
@@ -23,6 +26,11 @@ type Props = {
   sortableGroupIndex: number;
   sortableGroupCount: number;
   presetDragging: boolean;
+  collapsed: boolean;
+  temporaryExpanded: boolean;
+  collapseDisabled: boolean;
+  onToggle: () => void;
+  dropTarget: DatasetDrop | null;
   onSelect: (file: string) => void;
   onGroupAction: (action: 'rename' | 'delete', group: DatasetLibraryGroup) => void;
   onPlaceGroup: (groupId: string, index: number) => void;
@@ -54,11 +62,20 @@ export function SortableDatasetGroup({
   sortableGroupIndex,
   sortableGroupCount,
   presetDragging,
+  collapsed,
+  temporaryExpanded,
+  collapseDisabled,
+  onToggle,
+  dropTarget,
   onSelect,
   onGroupAction,
   onPlaceGroup,
   onPlacePreset,
 }: Props) {
+  const contentId = useId();
+  // Temporary expansion must control the actual content visibility, not just
+  // the data attribute used for styling and diagnostics.
+  const effectiveCollapsed = collapsed && !temporaryExpanded;
   const sortable = isSortableDatasetGroup(group, searchActive);
   const groupSort = useSortable({
     id: groupDragId(group.id),
@@ -68,7 +85,7 @@ export function SortableDatasetGroup({
   const drop = useDroppable({
     id: groupDropId(group.id),
     data: { type: 'group-drop', groupId: group.id },
-    disabled: !isDatasetMoveTarget(group) || ordering,
+    disabled: !isDatasetMoveTarget(group) || ordering || collapsed,
   });
   const style = {
     transform: CSS.Transform.toString(groupSort.transform),
@@ -83,14 +100,24 @@ export function SortableDatasetGroup({
       ref={groupSort.setNodeRef}
       style={style}
       className="dataset-group"
+      data-temporary-flyout={temporaryExpanded}
+      data-group-id={group.id}
+      data-collapsed={collapsed}
+      data-temporary-expanded={temporaryExpanded}
       data-dragging={groupSort.isDragging}
     >
-      <header>
+      <header ref={effectiveCollapsed ? drop.setNodeRef : undefined}>
         <div>
           <h3>{group.label}</h3>
           <span>{group.files.length} 个预设</span>
         </div>
         <div className="dataset-group-actions">
+          <button type="button" className="dataset-sort-button" onClick={onToggle}
+            disabled={collapseDisabled} aria-expanded={!collapsed} aria-controls={contentId}
+            aria-label={`${collapsed ? '展开' : '折叠'}分组 ${group.label}`}
+            title={searchActive ? '搜索时显示匹配预设' : `${collapsed ? '展开' : '折叠'}分组`}>
+            {effectiveCollapsed ? <ChevronRight size={15} aria-hidden="true" /> : <ChevronDown size={15} aria-hidden="true" />}
+          </button>
           {group.locked || group.group_locked ? <span className="badge">锁定</span> : null}
           <button
             ref={groupSort.setActivatorNodeRef}
@@ -137,8 +164,8 @@ export function SortableDatasetGroup({
         </div>
       </header>
       <SortableContext items={group.files.map((preset) => presetDragId(preset.path))} strategy={verticalListSortingStrategy}>
-        <div className="dataset-preset-list">
-          {group.files.map((preset, index) => (
+        <div id={contentId} className="dataset-preset-list" hidden={effectiveCollapsed}>
+          {!effectiveCollapsed && group.files.map((preset, index) => (
             <SortablePresetRow
               key={preset.path}
               group={group}
@@ -148,14 +175,16 @@ export function SortableDatasetGroup({
               selected={preset.path === selectedFile}
               searchActive={searchActive}
               ordering={ordering}
+              presetDragging={presetDragging}
+              dropPosition={dropTarget?.groupId === group.id && dropTarget.file === preset.path ? dropTarget.position : undefined}
               onSelect={onSelect}
               onPlacePreset={onPlacePreset}
             />
           ))}
           <div
-            ref={drop.setNodeRef}
+            ref={effectiveCollapsed ? undefined : drop.setNodeRef}
             className="dataset-group-dropzone"
-            data-over={drop.isOver}
+            data-over={dropTarget?.groupId === group.id && !dropTarget.file}
             data-visible={presetDragging || group.files.length === 0}
           >
             {group.files.length === 0 ? '空分组，可将预设移到此处' : '拖到此组末尾'}
@@ -174,6 +203,8 @@ type PresetRowProps = {
   selected: boolean;
   searchActive: boolean;
   ordering: boolean;
+  presetDragging: boolean;
+  dropPosition?: 'before' | 'after';
   onSelect: (file: string) => void;
   onPlacePreset: (file: string, groupId: string, order: string[]) => void;
 };
@@ -186,6 +217,8 @@ function SortablePresetRow({
   selected,
   searchActive,
   ordering,
+  presetDragging,
+  dropPosition,
   onSelect,
   onPlacePreset,
 }: PresetRowProps) {
@@ -200,7 +233,7 @@ function SortablePresetRow({
   const name = datasetPresetName(preset);
   const paths = group.files.map((item) => item.path);
   const style = {
-    transform: CSS.Transform.toString(sort.transform),
+    transform: presetDragging ? undefined : CSS.Transform.toString(sort.transform),
     transition: sort.transition,
   };
   const sortDisabledReason = searchActive
@@ -208,13 +241,14 @@ function SortablePresetRow({
     : '该预设不能排序';
 
   return (
-    <div ref={sort.setNodeRef} style={style} className="dataset-preset-row" data-dragging={sort.isDragging}>
+    <div ref={sort.setNodeRef} style={style} className="dataset-preset-row" data-dragging={sort.isDragging} data-drop-position={dropPosition} data-file={preset.path}>
       <button
         type="button"
         className="dataset-preset"
         data-selected={selected}
         onClick={() => onSelect(preset.path)}
       >
+        <DatasetCover file={preset.path} />
         <span className="dataset-preset-title">
           <strong>{name}</strong>
           {preset.readonly ? <span className="badge">只读</span> : null}

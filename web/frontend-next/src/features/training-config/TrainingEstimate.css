@@ -1,0 +1,70 @@
+html:has(.estimate-workspace), body:has(.estimate-workspace) { overflow: hidden; }
+.command-backdrop:has(.estimate-workspace) { overscroll-behavior: none; overflow: hidden; }
+.command-dialog:has(.estimate-workspace) { width: min(920px, 100%); overscroll-behavior: none; touch-action: pan-y; }
+.command-dialog:has(.estimate-workspace) > header { position: sticky; top: -22px; z-index: 3; background: var(--surface); padding-block: 10px; }
+.estimate-workspace { font-size: 13px; font-variant-numeric: tabular-nums; }
+.estimate-context { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-bottom: 18px; }
+.estimate-context > span { min-width: 0; overflow-wrap: anywhere; font-weight: 600; }
+.estimate-context small { display: block; margin-top: 5px; color: var(--muted); font-weight: 400; }
+.estimate-context button { flex-shrink: 0; }
+.estimate-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin: 0; border-block: 1px solid var(--line); padding: 18px 0; gap: 16px; }
+.estimate-metrics > div { min-width: 0; }
+.estimate-metrics dt { color: var(--muted); font-size: 12px; }
+.estimate-metrics dd { margin: 8px 0 0; font-size: 25px; font-weight: 650; overflow-wrap: anywhere; }
+.estimate-metrics dd small { font-size: 12px; font-weight: 400; color: var(--muted); margin-left: 6px; }
+.estimate-total dd { color: var(--accent); }
+.estimate-equation { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; padding-top: 12px; color: var(--muted); font-size: 12px; }
+.estimate-equation strong { color: var(--ink); }
+.estimate-caption { font-size: 12px; color: var(--muted); line-height: 1.65; margin: 8px 0 12px; }
+.estimate-section { margin-top: 22px; border-top: 1px solid var(--line); padding-top: 18px; }
+.estimate-section-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 12px; }
+.estimate-section h3 { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 0; font-size: 14px; }
+.estimate-section h3 > span { color: var(--muted); font-size: 12px; font-weight: 400; }
+.estimate-controls { display: flex; gap: 8px; min-width: 0; }
+.estimate-controls select { width: auto; max-width: 210px; min-width: 0; height: 32px; font: inherit; font-size: 12px; color: var(--ink); background: var(--surface); border: 1px solid var(--line-strong); border-radius: 4px; padding: 0 6px; }
+.estimate-datasets { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 24px; }
+.estimate-dataset { padding: 12px 0; border-bottom: 1px solid var(--line); min-width: 0; }
+.estimate-dataset-name { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.estimate-dataset-name strong { overflow-wrap: anywhere; }
+.estimate-dataset-name small { color: var(--muted); font-size: 11px; }
+.estimate-tag { color: var(--accent); font-size: 11px; border-left: 3px solid currentColor; padding-left: 6px; white-space: nowrap; }
+.estimate-tag.regularization { color: var(--success); }
+.estimate-path { color: var(--muted); font-size: 11px; overflow-wrap: anywhere; line-height: 1.5; margin: 6px 0 10px; }
+.estimate-dataset-values { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 6px; font-size: 12px; }
+.estimate-dataset-values b { margin-left: 4px; }
+.estimate-clone { display: block; color: var(--muted); margin-top: 7px; }
+.estimate-warning { padding: 9px 12px; background: var(--warning-soft); color: var(--warning); border-left: 3px solid var(--warning-line); line-height: 1.6; font-size: 12px; }
+.estimate-empty { padding: 24px 0; color: var(--muted); text-align: center; }
+.estimate-workspace .landscape { background: var(--accent); }
+.estimate-workspace .square { background: var(--success); }
+.estimate-workspace .portrait { background: var(--warning); }
+.estimate-aspect-bar { display: flex; height: 8px; overflow: hidden; border-radius: 2px; gap: 2px; margin-top: 16px; }
+.estimate-aspect-legend { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; margin: 10px 0 18px; font-size: 12px; }
+.estimate-aspect-legend > span { display: inline-flex; align-items: center; gap: 6px; }
+.estimate-aspect-legend i { width: 7px; height: 7px; border-radius: 1px; }
+.estimate-aspect-legend small { color: var(--muted); }
+.estimate-count { margin-left: auto; color: var(--muted); }
+.estimate-bucket-table { max-height: 360px; overflow: auto; scrollbar-gutter: stable; overscroll-behavior: contain; }
+.estimate-bucket-row { display: grid; grid-template-columns: 190px minmax(40px, 1fr) 60px 65px; gap: 16px; align-items: center; padding: 10px 0; min-height: 58px; border-bottom: 1px solid var(--line); }
+.estimate-bucket-row > :nth-last-child(-n+2) { text-align: right; }
+.estimate-table-head { min-height: 30px; font-size: 11px; color: var(--muted); position: sticky; top: 0; background: var(--surface); z-index: 1; padding: 8px 0; }
+.estimate-bucket-size { display: flex; gap: 12px; align-items: center; min-width: 0; }
+.estimate-bucket-size strong { font-size: 12px; white-space: nowrap; }
+.estimate-bucket-size small { display: block; font-size: 10px; color: var(--muted); margin-top: 4px; }
+.estimate-shape-space { display: grid; place-items: center; width: 36px; height: 36px; flex-shrink: 0; }
+.estimate-shape-space i { display: block; border-radius: 2px; opacity: .7; }
+.estimate-bar-track { height: 7px; background: var(--surface-subtle); border-radius: 2px; overflow: hidden; }
+.estimate-bar-track i { display: block; height: 100%; min-width: 2px; border-radius: 2px; }
+@media (max-width: 620px) {
+  .command-dialog:has(.estimate-workspace) > header { top: -16px; }
+  .estimate-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
+  .estimate-metrics dd { font-size: 23px; }
+  .estimate-datasets { grid-template-columns: minmax(0, 1fr); }
+  .estimate-controls { width: 100%; }
+  .estimate-controls select { flex: 1; max-width: 100%; height: 36px; }
+  .estimate-bucket-row { grid-template-columns: minmax(130px, 1fr) 40px 48px; gap: 8px; }
+  .estimate-bucket-row > :nth-child(2) { display: none; }
+  .estimate-bucket-size { gap: 7px; }
+  .estimate-shape-space { width: 28px; }
+  .estimate-aspect-legend { gap: 8px 12px; }
+}

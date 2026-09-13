@@ -1,0 +1,348 @@
+.training-dataset-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 160;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: #0009;
+}
+.training-dataset-dialog {
+  width: min(1180px, 100%);
+  height: min(850px, calc(100dvh - 48px));
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  box-shadow: 0 16px 60px #0005;
+  font-size: 13px;
+}
+.training-dataset-dialog header,
+.training-dataset-dialog footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.training-dataset-dialog > header,
+.training-dataset-dialog > footer {
+  flex-shrink: 0;
+  padding: 14px 18px;
+}
+.training-dataset-dialog > header {
+  border-bottom: 1px solid var(--line);
+}
+.training-dataset-dialog > header > div {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+.training-dataset-dialog > footer {
+  border-top: 1px solid var(--line);
+}
+.training-dataset-dialog h2 {
+  font-size: 17px;
+  margin: 0;
+}
+.training-dataset-dialog h3 {
+  font-size: 14px;
+  margin: 0;
+}
+.training-dataset-dialog h4 {
+  font-size: 13px;
+  margin: 0;
+}
+.training-dataset-dialog code {
+  font-size: 11px;
+  overflow-wrap: anywhere;
+  color: var(--muted);
+}
+.training-dataset-dialog p {
+  font-size: 12px;
+}
+.training-dataset-dialog [role="alert"] {
+  color: var(--danger);
+}
+.training-dataset-dialog button,
+.training-dataset-dialog input {
+  font: inherit;
+}
+.training-dataset-dialog button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 5px 10px;
+  border: 1px solid var(--line-strong);
+  background: var(--surface-subtle);
+  color: var(--ink);
+  border-radius: 4px;
+  cursor: pointer;
+}
+.training-dataset-dialog button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.training-dataset-dialog button.primary-command {
+  background: var(--accent);
+  color: var(--page);
+  border-color: var(--accent);
+}
+.training-dataset-dialog .icon-button {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  flex-shrink: 0;
+}
+.training-dataset-dialog input:not([type="checkbox"]) {
+  width: 100%;
+  min-width: 0;
+  min-height: 32px;
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  padding: 5px 8px;
+  color: var(--ink);
+  background: var(--page);
+}
+.training-dataset-dialog-body {
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  min-height: 0;
+  flex: 1;
+  overflow: hidden;
+}
+.training-dataset-dialog-body > aside {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 14px;
+  border-right: 1px solid var(--line);
+  gap: 12px;
+}
+.training-dataset-library-search {
+  display: flex;
+  gap: 6px;
+}
+.training-dataset-library-list {
+  flex: 1;
+  overflow: auto;
+  min-height: 0;
+}
+.training-dataset-library-list h3 {
+  font-size: 12px;
+  color: var(--muted);
+  padding: 10px 0;
+}
+.training-dataset-library-item {
+  display: flex !important;
+  width: 100%;
+  text-align: left;
+  margin-bottom: 6px;
+  gap: 10px !important;
+  padding: 10px !important;
+}
+.training-dataset-library-item[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: var(--accent-soft, var(--surface-subtle));
+}
+.training-dataset-library-item .dataset-cover {
+  flex-shrink: 0;
+}
+.training-dataset-library-item > span:last-child {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+.training-dataset-library-item small,
+.training-dataset-dialog footer > span,
+.training-dataset-editor-actions > span {
+  color: var(--muted);
+  font-size: 12px;
+}
+.training-dataset-dialog-body > aside > a {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+.training-dataset-dialog-detail {
+  overflow: auto;
+  min-width: 0;
+  padding: 18px;
+  background: var(--page);
+}
+.training-dataset-editor {
+  display: grid;
+  gap: 16px;
+}
+.training-dataset-editor > header > div {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.training-dataset-editor > header > span {
+  white-space: nowrap;
+  color: var(--muted);
+}
+.training-dataset-editor-actions,
+.training-dataset-editor-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.training-dataset-editor-footer {
+  position: sticky;
+  bottom: -18px;
+  padding: 12px 0;
+  border-top: 1px solid var(--line);
+  background: var(--page);
+  z-index: 1;
+}
+.training-dataset-subsets {
+  display: grid;
+  gap: 20px;
+}
+.training-dataset-subset {
+  border-top: 1px solid var(--line);
+  padding-top: 14px;
+  min-width: 0;
+}
+.training-dataset-subset > header {
+  margin-bottom: 12px;
+}
+.training-dataset-subset > header span {
+  margin-right: auto;
+  color: var(--muted);
+  font-size: 12px;
+}
+.training-dataset-subset-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.training-dataset-subset label {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+.training-dataset-subset-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 24px;
+  padding: 14px 0;
+}
+.training-dataset-subset-metrics > div {
+  display: grid;
+  gap: 8px;
+  min-width: 100px;
+}
+.training-dataset-subset-metrics > div > span {
+  color: var(--muted);
+  font-size: 12px;
+}
+.training-dataset-subset-metrics input[type="number"] {
+  width: 88px;
+}
+.training-dataset-subset label.training-dataset-reg {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.training-dataset-thumbnails {
+  display: grid;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.training-dataset-thumbnails button {
+  padding: 0;
+  aspect-ratio: 1;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--surface);
+}
+.training-dataset-thumbnails img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.training-dataset-expanded {
+  display: grid;
+  gap: 10px;
+  padding-top: 14px;
+}
+.training-dataset-expanded img {
+  width: 100%;
+  height: 320px;
+  object-fit: contain;
+  background: var(--surface);
+}
+.training-dataset-expanded pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 120px;
+  overflow: auto;
+  font-size: 12px;
+  margin: 0;
+}
+@media (max-width: 760px) {
+  .training-dataset-backdrop {
+    padding: 8px;
+  }
+  .training-dataset-dialog {
+    height: calc(100dvh - 16px);
+  }
+  .training-dataset-dialog-body {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(150px, 28%) minmax(0, 1fr);
+  }
+  .training-dataset-dialog-body > aside {
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+    padding: 10px;
+    gap: 6px;
+  }
+  .training-dataset-library-list {
+    display: flex;
+    gap: 10px;
+  }
+  .training-dataset-library-list > section {
+    flex: 0 0 240px;
+  }
+  .training-dataset-library-list h3 {
+    padding: 4px 0;
+  }
+  .training-dataset-library-item {
+    padding: 6px !important;
+  }
+  .training-dataset-dialog-detail {
+    padding: 12px;
+  }
+  .training-dataset-dialog > header,
+  .training-dataset-dialog > footer {
+    padding: 10px 12px;
+  }
+  .training-dataset-dialog h2 {
+    font-size: 15px;
+  }
+  .training-dataset-subset-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .training-dataset-thumbnails {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  .training-dataset-editor-footer {
+    bottom: -12px;
+  }
+}

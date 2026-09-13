@@ -1,0 +1,155 @@
+.training-config-page
+  .training-workspace-layout:not(:has(.training-config-library[hidden])) {
+  grid-template-columns: 320px minmax(0, 1fr);
+}
+.training-config-library > * {
+  flex-shrink: 0;
+}
+.training-library-group[data-drop-over="true"] {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  background: var(--accent-soft);
+}
+.training-library-drag-overlay {
+  display: grid;
+  gap: 4px;
+  max-width: 280px;
+  transform: translate(24px, 16px);
+  padding: 10px;
+  border: 1px solid var(--accent);
+  background: var(--surface);
+  color: var(--ink);
+  overflow-wrap: anywhere;
+  border-radius: 4px;
+}
+.training-library-drag-overlay small {
+  color: var(--muted);
+  font-size: 12px;
+}
+.training-library-drag-overlay[data-valid="false"] {
+  border-color: var(--warning);
+}
+.training-library-group {
+  position: relative;
+}
+.training-library-row[data-dragging="true"] {
+  opacity: 0.35;
+}
+.training-library-row[data-drop-position]::after,
+.training-library-group[data-drop-end="true"]::after {
+  content: "";
+  position: absolute;
+  left: 20px;
+  right: 0;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--accent);
+  pointer-events: none;
+  z-index: 3;
+}
+.training-library-row[data-drop-position="before"]::after {
+  top: -5px;
+}
+.training-library-row[data-drop-position="after"]::after,
+.training-library-group[data-drop-end="true"]::after {
+  bottom: -5px;
+}
+.training-config-library > .training-library-groups {
+  flex: 1 0 100px;
+}
+.training-config-library .training-library-group-heading {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 0;
+}
+.training-config-library .training-library-group-toggle {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 0;
+  color: var(--ink);
+  font-size: 12px;
+}
+.training-library-group-toggle > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.training-library-group-toggle small {
+  display: block;
+  color: var(--muted);
+  font-size: 10px;
+}
+.training-config-library .training-library-actions {
+  padding: 0;
+}
+.training-config-library > .training-library-actions {
+  padding: 0 12px 10px;
+}
+.training-library-actions .toolbar {
+  flex-wrap: nowrap;
+  margin: 0;
+  gap: 4px;
+}
+.training-library-actions[data-scope="group"] button,
+.training-library-actions[data-scope="file"] button {
+  padding: 0;
+  width: 26px;
+  min-height: 26px;
+  flex-shrink: 0;
+}
+.training-library-actions[data-scope="file"] fieldset {
+  display: flex;
+  gap: 4px;
+}
+.training-library-file-commands {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  gap: 4px;
+}
+.training-library-file-commands label {
+  min-width: 0;
+  flex: 1;
+}
+.training-library-file-commands select {
+  height: 26px;
+  padding: 0 4px;
+  font-size: 11px;
+}
+.training-config-library .training-library-row {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  gap: 3px 0;
+  margin-bottom: 10px;
+}
+.training-library-row > .training-library-actions {
+  grid-column: 2;
+}
+.training-library-row > .training-library-item {
+  grid-column: 2;
+  grid-row: 1;
+  padding: 8px;
+  min-height: 54px;
+}
+.training-library-row .training-library-file-copy {
+  display: grid;
+  gap: 4px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.training-library-file-copy strong {
+  font-size: 12px;
+}
+.training-library-row .training-library-file-copy small {
+  font-size: 10px;
+  line-height: 1.4;
+}
+.training-library-groups .training-library-group {
+  padding: 0 10px;
+}
+@container workspace (max-width: 1050px) {
+  .training-config-page
+    .training-workspace-layout:not(:has(.training-config-library[hidden])) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

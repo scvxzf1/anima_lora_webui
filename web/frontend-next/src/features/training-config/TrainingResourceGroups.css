@@ -1,0 +1,56 @@
+.training-resource-group {
+  border-bottom: 1px solid var(--line);
+}
+.training-resource-group h3 {
+  margin: 0;
+}
+.training-resource-group h3 button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 48px;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 0;
+  background: var(--surface-subtle);
+  color: var(--ink);
+  text-align: left;
+  font-size: 13px;
+  cursor: pointer;
+}
+.training-resource-group h3 button:hover {
+  background: var(--surface);
+}
+.training-resource-group h3 svg {
+  flex-shrink: 0;
+}
+.training-resource-group h3 small {
+  min-width: 0;
+  max-width: 55%;
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.resource-field-count {
+  flex-shrink: 0;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 400;
+}
+@container workspace (max-width: 600px) {
+  .training-resource-group h3 button {
+    flex-wrap: wrap;
+  }
+  .training-resource-group h3 small {
+    max-width: 100%;
+    order: 1;
+    flex-basis: 100%;
+    margin-left: 26px;
+  }
+  .resource-field-count {
+    margin-left: auto;
+  }
+}

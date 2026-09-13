@@ -2,7 +2,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
-import { Topbar } from '../../app/Topbar';
+import { Link, useSearchParams } from 'react-router-dom';
 
 import { z } from 'zod';
 
@@ -19,6 +19,7 @@ import {
   renameDatasetGroup,
 } from './api';
 import { DatasetGroupDialog } from './DatasetGroupDialog';
+import { DatasetDiscardDialog } from './DatasetDiscardDialog';
 import { DatasetGroupList, datasetPresetName } from './DatasetGroupList';
 import { DatasetImportDialog } from './DatasetImportDialog';
 import { DatasetPresetEditor } from './DatasetPresetEditor';
@@ -28,6 +29,7 @@ import type { DatasetLibraryGroup, DatasetPresetSummary } from './types';
 import { useDatasetPresetEditor } from './useDatasetPresetEditor';
 import { useDatasetLibraryOrdering } from './useDatasetLibraryOrdering';
 import './DatasetWorkspace.css';
+import './DatasetWorkspaceLayout.css';
 
 const groupSchema = z.object({
   label: z.string().trim().min(1, '请输入分组名称').max(80, '分组名称不能超过 80 个字符'),
@@ -57,7 +59,9 @@ function filterGroups(groups: DatasetLibraryGroup[], search: string) {
   return groups
     .map((group) => ({
       ...group,
-      files: group.files.filter((preset) => presetSearchText(preset).includes(term)),
+      files: group.label.toLocaleLowerCase().includes(term)
+        ? group.files
+        : group.files.filter((preset) => presetSearchText(preset).includes(term)),
     }))
     .filter((group) => group.files.length > 0 || group.label.toLocaleLowerCase().includes(term));
 }
@@ -71,7 +75,8 @@ export function DatasetWorkspace() {
   const [groupDialog, setGroupDialog] = useState<GroupDialogState | null>(null);
   const [importDraft, setImportDraft] = useState<ImportDraft | null>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
-  const editor = useDatasetPresetEditor(library.data?.presets ?? []);
+  const [searchParams] = useSearchParams();
+  const editor = useDatasetPresetEditor(library.data?.presets ?? [], searchParams.get('dataset') || '');
   const ordering = useDatasetLibraryOrdering(setNotice);
   const visibleGroups = useMemo(
     () => filterGroups(library.data?.groups ?? [], search),
@@ -130,8 +135,8 @@ export function DatasetWorkspace() {
     createGroup.mutate(values);
   });
 
-  function chooseImportFile() {
-    if (!editor.confirmDiscard('导入预设')) return;
+  async function chooseImportFile() {
+    if (!(await editor.confirmDiscard('导入预设'))) return;
     importPreset.reset();
     importInputRef.current?.click();
   }
@@ -156,14 +161,12 @@ export function DatasetWorkspace() {
 
   return (
     <div className="app-shell">
-      <Topbar />
 
       <main className="dataset-page">
         <header className="dataset-page-header">
           <div>
             <p className="eyebrow">DATASET FORGE</p>
             <h1>数据集蓝图</h1>
-            <p>管理训练数据结构、分组和磁盘中的 TOML 预设。</p>
           </div>
           <div className="dataset-metrics" aria-label="数据集统计">
             <span><strong>{library.data?.presets.length ?? 0}</strong>预设</span>
@@ -181,6 +184,9 @@ export function DatasetWorkspace() {
         </header>
 
         <TrainingContextBar context={trainingContext} />
+        {editor.selectedFile && <div className="toolbar"><Link to={`/captioning?${new URLSearchParams({ dataset: editor.selectedFile })}`}>打开此数据集的打标工作台</Link>
+          <Link to={`/datasets/masks?${new URLSearchParams({ dataset: editor.selectedFile })}`}>编辑蒙版</Link>
+        </div>}
 
         {library.isError ? (
           <section className="error-panel" role="alert">
@@ -198,7 +204,10 @@ export function DatasetWorkspace() {
                 </div>
                 <div className="dataset-library-toolbar-actions">
                   <button type="button" onClick={chooseImportFile}>导入</button>
-                  <button type="button" onClick={() => library.refetch()} disabled={library.isFetching}>
+                  <button type="button" onClick={() => {
+                    void library.refetch();
+                    void queryClient.invalidateQueries({ queryKey: [...datasetKeys.all, 'cover'] });
+                  }} disabled={library.isFetching}>
                     {library.isFetching ? '刷新中' : '刷新'}
                   </button>
                   <input
@@ -272,6 +281,7 @@ export function DatasetWorkspace() {
         )}
       </main>
 
+      {editor.discardDialog && <DatasetDiscardDialog {...editor.discardDialog} />}
       {groupDialog ? (
         <DatasetGroupDialog
           action={groupDialog.action}

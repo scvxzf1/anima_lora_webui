@@ -1,16 +1,25 @@
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
+@import "./workspace.css";
+@import "../components/sharedControls.css";
+
 :root {
-  color: #171918;
-  background: #f4f6f8;
+  color: var(--ink);
+  background: var(--page);
   font-family: "Noto Sans SC", "Microsoft YaHei", sans-serif;
   font-synthesis: none;
   --surface: #ffffff;
+  --page: #f5f6f7;
   --surface-subtle: #f7f8fa;
   --line: #d8dde5;
   --line-strong: #b9c2cf;
   --muted: #5f6875;
-  --accent: #2457d6;
+  --accent: #2461bb;
+  --primary: #19765d;
   --accent-soft: #e9efff;
   --danger: #b42318;
+  --danger-soft: #fff0ef;
+  --danger-line: #d88b85;
   --success: #18794e;
   --success-soft: #eaf8f1;
   --success-line: #a8dcc3;
@@ -23,6 +32,32 @@
   --button-border: #bcc6d4;
 }
 
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #18191c;
+  --surface: #202125;
+  --surface-subtle: #25262b;
+  --line: #37383e;
+  --line-strong: #61636d;
+  --muted: #adaeb8;
+  --ink: #f0f0f3;
+  --accent: #89b8ff;
+  --accent-soft: #26354d;
+  --primary: #217c65;
+  --success: #84dabb;
+  --success-soft: #223c32;
+  --success-line: #44665b;
+  --danger: #ffa6ac;
+  --danger-soft: #3e252b;
+  --danger-line: #9e6069;
+  --warning: #ecc879;
+  --warning-soft: #3c3524;
+  --warning-line: #74613f;
+  --button-ink: #ededf1;
+  --button-bg: #28292e;
+  --button-border: #555761;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -31,7 +66,33 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
-  background: #f4f6f8;
+  background: var(--page);
+}
+
+:root[data-next-motion="off"] *,
+:root[data-next-motion="off"] *::before,
+:root[data-next-motion="off"] *::after {
+  animation: none !important;
+  transition: none !important;
+  scroll-behavior: auto !important;
+}
+
+.training-field-help {
+  display: none;
+  line-height: 1.6;
+}
+:root[data-next-help="always"] .training-field-help,
+.training-edit-fields > label:focus-within .training-field-help {
+  display: block;
+}
+:root[data-next-tags="contextual"] .training-field-tag {
+  visibility: hidden;
+}
+:root[data-next-tags="contextual"]
+  .training-edit-fields
+  > label:is(:hover, :focus-within)
+  .training-field-tag {
+  visibility: visible;
 }
 
 button {
@@ -73,7 +134,14 @@ button {
   color: #cbd3df;
   font-size: 13px;
   text-decoration: none;
+  gap: 6px;
   border-bottom: 2px solid transparent;
+}
+
+.topbar strong {
+  white-space: nowrap;
+  font-size: 14px;
+  letter-spacing: 0;
 }
 
 .topbar a[aria-current="page"] {

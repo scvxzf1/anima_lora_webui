@@ -1,27 +1,30 @@
-import react from '@vitejs/plugin-react';
-import { defineConfig } from 'vitest/config';
+import react from "@vitejs/plugin-react";
+import { defineConfig } from "vitest/config";
+import tailwindcss from "@tailwindcss/vite";
+import process from "node:process";
 
 export default defineConfig(({ command }) => ({
-  base: command === 'build' ? '/static/dragon-next/' : '/',
-  plugins: [react()],
+  base: command === "build" ? "/static/dragon-next/" : "/",
+  plugins: [react(), tailwindcss()],
   build: {
-    outDir: '../static/dragon-next',
+    outDir: "../static/dragon-next",
     emptyOutDir: true,
-    sourcemap: true,
+    sourcemap: false,
   },
   server: {
-    host: '127.0.0.1',
+    host: "127.0.0.1",
     port: 5173,
     proxy: {
-      '/api': 'http://127.0.0.1:20203',
-      '/ws': {
-        target: 'ws://127.0.0.1:20203',
+      "/api": process.env.DRAGON_API_TARGET || "http://127.0.0.1:20203",
+      "/ws": {
+        target: process.env.DRAGON_API_TARGET || "http://127.0.0.1:20203",
         ws: true,
       },
     },
   },
   test: {
-    environment: 'jsdom',
-    setupFiles: './src/test/setup.ts',
+    include: ["src/**/*.test.{ts,tsx}"],
+    environment: "jsdom",
+    setupFiles: "./src/test/setup.ts",
   },
 }));

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { datasetMaskForWrite, datasetMaskFromRow, datasetMaskModes } from './datasetMask';
 
 import type {
   DatasetPresetMutationResponse,
@@ -53,6 +54,8 @@ const datasetRowSchema = z.object({
   cache_dir: z.string().trim(),
   num_repeats: z.number().int().min(1, '重复次数至少为 1'),
   is_reg: z.boolean(),
+  mask_mode: z.enum(datasetMaskModes),
+  mask_dir: z.string().trim(),
   recursive: z.boolean(),
   path_pattern: z.string().trim().min(1, '路径筛选不能为空'),
   settings: datasetSettingsSchema,
@@ -68,6 +71,13 @@ export const datasetFormSchema = z.object({
 }).superRefine((value, context) => {
   validateBucketSettings(value.defaults, ['defaults'], context);
   value.datasets.forEach((row, index) => {
+    if (row.mask_mode === 'external' && !row.mask_dir) {
+      context.addIssue({
+        code: 'custom',
+        path: ['datasets', index, 'mask_dir'],
+        message: '使用外部蒙版时必须填写蒙版目录',
+      });
+    }
     validateBucketSettings(row.settings, ['datasets', index, 'settings'], context);
     if (row.trigger_clone.enabled && !row.trigger_clone.prompt) {
       context.addIssue({
@@ -114,6 +124,8 @@ export function emptyDatasetRow(defaults: Partial<DatasetSettingsValues> = {}): 
     cache_dir: '',
     num_repeats: 1,
     is_reg: false,
+    mask_mode: 'auto',
+    mask_dir: '',
     recursive: true,
     path_pattern: '*',
     settings: normalizeSettings(defaults),
@@ -141,6 +153,7 @@ export function datasetFormFromPreset(
     datasets: preset.datasets.length
       ? preset.datasets.map((row) => ({
           ...row,
+          ...datasetMaskFromRow(row),
           source_dir: String(row.source_dir || ''),
           image_dir: String(row.image_dir || ''),
           cache_dir: String(row.cache_dir || ''),
@@ -160,7 +173,7 @@ export function datasetFormFromPreset(
 
 export function datasetWritePayload(values: DatasetFormValues): DatasetPresetWritePayload {
   return {
-    datasets: values.datasets,
+    datasets: values.datasets.map((row) => ({ ...row, ...datasetMaskForWrite(row) })),
     defaults: values.defaults,
     stage_schedule_enabled: values.stage_schedule_enabled,
     stage_schedule: values.stage_schedule,

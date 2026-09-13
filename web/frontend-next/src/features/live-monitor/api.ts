@@ -1,4 +1,4 @@
-import { apiRequest } from '../../api/client';
+import { apiRequest } from "../../api/client";
 
 export type TrainingStatus = {
   status?: string;
@@ -7,6 +7,7 @@ export type TrainingStatus = {
   job?: string;
   output_dir?: string;
   task_id?: string;
+  last_output_at?: string | number;
   last_log_line?: string;
   last_log_id?: number;
   log_count?: number;
@@ -40,28 +41,46 @@ export type LogRecord = {
 export type GpuInfo = Record<string, unknown>;
 
 export const liveMonitorKeys = {
-  status: ['live-monitor', 'status'] as const,
-  metrics: ['live-monitor', 'metrics'] as const,
-  logs: ['live-monitor', 'logs'] as const,
-  gpus: ['live-monitor', 'gpus'] as const,
+  status: ["live-monitor", "status"] as const,
+  metrics: ["live-monitor", "metrics"] as const,
+  logs: ["live-monitor", "logs"] as const,
+  gpus: ["live-monitor", "gpus"] as const,
 };
 
 export function fetchTrainingStatus(signal?: AbortSignal) {
-  return apiRequest<TrainingStatus>('/api/training/status', { signal });
+  return apiRequest<TrainingStatus>("/api/training/status", { signal });
 }
 
-export function fetchTrainingMetrics(signal?: AbortSignal) {
-  return apiRequest<Record<string, unknown>[]>('/api/training/metrics', { signal });
+export async function fetchTrainingMetrics(taskId?: string, signal?: AbortSignal) {
+  const query = taskId ? `?task_id=${encodeURIComponent(taskId)}` : "";
+  const points = await apiRequest<Record<string, unknown>[]>(
+    `/api/training/metrics${query}`,
+    { signal },
+  );
+  return points.slice(-2000);
 }
 
-export function fetchTrainingLogs(limit = 300, signal?: AbortSignal) {
-  return apiRequest<{ records: LogRecord[] }>(`/api/training/logs?limit=${limit}`, { signal });
+export async function fetchTrainingLogs(limit = 300, taskId?: string, signal?: AbortSignal) {
+  const query = new URLSearchParams({ limit: String(limit) });
+  if (taskId) query.set("task_id", taskId);
+  const data = await apiRequest<{ records: LogRecord[] }>(
+    `/api/training/logs?${query.toString()}`,
+    { signal },
+  );
+  return { ...data, records: data.records.slice(-limit) };
 }
 
 export function fetchGpus(signal?: AbortSignal) {
-  return apiRequest<{ ok?: boolean; gpus?: GpuInfo[] }>('/api/training/gpus', { signal });
+  return apiRequest<{ ok?: boolean; gpus?: GpuInfo[] }>("/api/training/gpus", {
+    signal,
+  });
 }
 
-export function stopTraining() {
-  return apiRequest<{ ok?: boolean; message?: string }>('/api/training/stop', { method: 'POST' });
+export function stopTraining(taskId: string) {
+  if (!taskId.trim()) throw new Error("任务身份未确认，不能停止训练");
+  return apiRequest<{ ok?: boolean; message?: string }>("/api/training/stop", {
+    method: "POST",
+    body: JSON.stringify({ task_id: taskId }),
+    headers: { "Content-Type": "application/json" },
+  });
 }

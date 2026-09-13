@@ -1,0 +1,135 @@
+.settings-page {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 28px 28px 64px;
+}
+.settings-section {
+  margin: 16px 0;
+  padding: 20px 0;
+  border-bottom: 1px solid var(--line);
+}
+.settings-section h2 {
+  margin: 0 0 16px;
+  font-size: 17px;
+}
+.model-row-head input,
+.model-row-head select {
+  min-width: 0;
+  height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  color: var(--ink);
+  background: var(--surface-subtle);
+}
+.settings-actions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 18px;
+  color: var(--success);
+  font-size: 13px;
+}
+.settings-actions button,
+.settings-section button,
+.settings-page .page-heading button {
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 12px;
+  border: 1px solid var(--button-border);
+  border-radius: 4px;
+  background: var(--button-bg);
+  color: var(--button-ink);
+  cursor: pointer;
+}
+.settings-actions {
+  flex-wrap: wrap;
+}
+.model-list {
+  display: grid;
+  gap: 12px;
+}
+.model-row {
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface-subtle);
+}
+.model-row-head {
+  display: grid;
+  grid-template-columns: minmax(160px, 1fr) 160px auto 36px;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.default-radio {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.icon-button.danger {
+  width: 32px;
+  padding: 0;
+  justify-content: center;
+  color: var(--danger);
+}
+.caption-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+  color: var(--muted);
+}
+.caption-summary strong {
+  color: var(--ink);
+  font-size: 24px;
+}
+.caption-summary button {
+  margin-left: auto;
+}
+.profile-list,
+.job-list {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.profile-item,
+.job-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 12px;
+  border: 1px solid var(--line);
+  background: var(--surface-subtle);
+  border-radius: 4px;
+}
+.profile-item small,
+.job-item small {
+  margin-left: auto;
+  color: var(--muted);
+}
+.inline-notice {
+  margin-left: 10px;
+  color: var(--success);
+  font-size: 13px;
+}
+@media (max-width: 760px) {
+  .settings-page {
+    padding: 20px 14px 44px;
+  }
+  .model-row-head {
+    grid-template-columns: 1fr 1fr;
+  }
+  .default-radio {
+    grid-column: 1;
+  }
+  .icon-button.danger {
+    grid-column: 2;
+    grid-row: 2;
+    justify-self: end;
+  }
+}

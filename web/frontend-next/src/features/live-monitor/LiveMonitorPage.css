@@ -25,6 +25,7 @@
 
 .monitor-header-actions {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 10px;
 }
@@ -49,6 +50,9 @@
 }
 
 .monitor-stop {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   min-height: 34px;
   padding: 0 14px;
   color: #fff;
@@ -100,11 +104,9 @@
 }
 
 .monitor-progress-copy strong {
-  overflow: hidden;
   color: var(--ink);
   font-size: 17px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
 .monitor-progress-track {
@@ -152,6 +154,7 @@
 .monitor-metric strong {
   color: var(--ink);
   font-size: 17px;
+  overflow-wrap: anywhere;
 }
 
 .monitor-grid {
@@ -236,7 +239,12 @@
 .monitor-gpu-card dd {
   margin: 0;
   color: var(--ink);
+  overflow-wrap: anywhere;
 }
+
+.monitor-identity { overflow-wrap: anywhere; }
+.monitor-log-panel > .query-feedback,
+.monitor-gpu-panel > .query-feedback { padding-inline: 16px; }
 
 .monitor-empty {
   margin: 0;
@@ -245,6 +253,9 @@
 }
 
 @media (max-width: 900px) {
+  .monitor-header { align-items: flex-start; flex-direction: column; gap: 12px; }
+  .monitor-progress-copy { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .monitor-progress-copy > div:last-child { grid-column: 1 / -1; }
   .monitor-metrics {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }

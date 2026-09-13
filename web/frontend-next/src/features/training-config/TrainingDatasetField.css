@@ -1,0 +1,50 @@
+.training-dataset-field {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px;
+}
+.training-dataset-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.training-dataset-heading > div {
+  display: grid;
+  gap: 5px;
+}
+.training-dataset-heading strong {
+  font-size: 13px;
+}
+.training-dataset-reference {
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+}
+.training-dataset-reference input {
+  flex: 1;
+  min-width: 0;
+}
+.training-dataset-reference button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 34px;
+  flex-shrink: 0;
+  padding: 0 10px;
+  color: var(--ink);
+  background: var(--surface-subtle);
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  font-size: 12px;
+}
+@media (max-width: 520px) {
+  .training-dataset-reference {
+    flex-wrap: wrap;
+  }
+  .training-dataset-reference input {
+    flex-basis: 100%;
+  }
+}

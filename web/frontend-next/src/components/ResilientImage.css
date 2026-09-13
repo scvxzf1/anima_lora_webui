@@ -1,0 +1,11 @@
+.image-fallback {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--muted);
+  background: var(--surface-subtle);
+  overflow-wrap: anywhere;
+}
+.image-fallback button { flex: none; }
