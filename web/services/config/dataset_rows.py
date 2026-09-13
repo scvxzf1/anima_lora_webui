@@ -13,6 +13,13 @@ from typing import Any
 
 import tomlkit
 
+from library.config.normalize import to_plain_config
+from library.datasets.mask_mode import (
+    MASK_MODE_EXTERNAL,
+    MASK_MODE_NONE,
+    normalize_mask_mode,
+)
+from library.datasets.subsets import normalize_sample_ratio
 from library.env import expand_env_vars, get_configs_root, load_dotenv
 from library.preprocess.captions import normalize_caption_source_mode
 from web.services.config import paths as _config_paths
@@ -40,6 +47,41 @@ ROOT = Path(__file__).resolve().parents[3]
 CONFIGS_DIR = get_configs_root()
 
 load_dotenv()
+
+_PRESERVED_DATASET_FIELDS = "preserved_dataset_fields"
+_PRESERVED_SUBSET_FIELDS = "preserved_subset_fields"
+_PRESERVED_CUSTOM_ATTRIBUTES = "preserved_custom_attributes"
+_PRESERVED_GENERAL_FIELDS = "preserved_general_fields"
+_PRESERVED_GENERAL_CUSTOM_ATTRIBUTES = "preserved_general_custom_attributes"
+_MANAGED_GENERAL_FIELDS = frozenset(
+    {"caption_extension", "keep_tokens", "custom_attributes"}
+)
+_MANAGED_GENERAL_CUSTOM_ATTRIBUTES = frozenset(
+    {WEBUI_DATASET_DEFAULTS_ATTR_KEY}
+)
+_MANAGED_DATASET_FIELDS = frozenset(DATASET_SETTING_KEYS | {"batch_size", "subsets"})
+_MANAGED_SUBSET_FIELDS = frozenset(
+    {
+        "image_dir",
+        "cache_dir",
+        "num_repeats",
+        "is_reg",
+        "recursive",
+        "path_pattern",
+        "mask_mode",
+        "mask_dir",
+        "alpha_mask",
+        "flip_aug",
+        "text_cache_dir",
+        "cond_cache_dir",
+        "sample_ratio",
+        "custom_attributes",
+    }
+)
+_MANAGED_CUSTOM_ATTRIBUTES = frozenset(
+    {"source_dir", NL_TAG_MIX_ATTR_KEY, TRIGGER_CLONE_ATTR_KEY, RUNTIME_PREPROCESS_ATTR_KEY}
+)
+_LEGACY_REG_MASK_DIR = "post_image_dataset/reg_masks"
 
 
 def _sync_from_facade() -> None:
@@ -121,6 +163,7 @@ def _single_dataset_config_from_cfg(cfg: dict[str, Any]) -> dict[str, Any]:
                         "image_dir": image_dir,
                         "cache_dir": cache_dir,
                         "num_repeats": 1,
+                        "mask_mode": MASK_MODE_NONE,
                         "custom_attributes": {"source_dir": source_dir},
                     }
                 ],
@@ -220,6 +263,12 @@ def _dataset_rows_from_config(data: dict[str, Any], cfg: dict[str, Any]) -> list
     fallback_image = str(cfg.get("resized_image_dir") or fallback_source)
     fallback_cache = str(cfg.get("lora_cache_dir") or "")
     fallback_path_pattern = cfg.get("path_pattern")
+    general = data.get("general") if isinstance(data.get("general"), dict) else {}
+    general_attrs = (
+        general.get("custom_attributes")
+        if isinstance(general.get("custom_attributes"), dict)
+        else {}
+    )
 
     for dataset in datasets:
         if not isinstance(dataset, dict):
@@ -236,22 +285,50 @@ def _dataset_rows_from_config(data: dict[str, Any], cfg: dict[str, Any]) -> list
             image_dir = _dataset_path_value(subset.get("image_dir") or fallback_image, cfg)
             cache_dir = _dataset_path_value(subset.get("cache_dir") or fallback_cache, cfg)
             source_dir = _dataset_path_value(attrs.get("source_dir") or fallback_source or image_dir, cfg)
+            is_reg = _bool_value(subset.get("is_reg"), False)
+            mask_mode = subset.get("mask_mode")
+            mask_dir = str(subset.get("mask_dir") or "").strip() or None
+            if mask_mode is None and is_reg and mask_dir == _LEGACY_REG_MASK_DIR:
+                mask_mode = MASK_MODE_NONE
+                mask_dir = None
+            mask_config = normalize_mask_mode(
+                mask_mode,
+                alpha_mask=_bool_value(subset.get("alpha_mask"), False),
+                mask_dir=mask_dir,
+            )
             settings = _dataset_defaults_from_dataset(dataset, data)
             settings.update(_preprocess_settings_from_custom_attributes(attrs))
-            rows.append({
+            row = {
                 "source_dir": source_dir,
                 "image_dir": image_dir,
                 "cache_dir": cache_dir,
                 "num_repeats": _positive_int(subset.get("num_repeats"), 1),
-                "is_reg": _bool_value(subset.get("is_reg"), False),
+                "is_reg": is_reg,
                 "recursive": _bool_value(subset.get("recursive", dataset.get("recursive")), True),
                 "path_pattern": _normalize_path_pattern(
                     subset.get("path_pattern", dataset.get("path_pattern", fallback_path_pattern))
                 ),
                 "nl_tag_mix": _normalize_nl_tag_mix(attrs.get(NL_TAG_MIX_ATTR_KEY)),
                 "trigger_clone": _normalize_trigger_clone(attrs.get(TRIGGER_CLONE_ATTR_KEY)),
+                "mask_mode": mask_config.mode,
+                "mask_dir": _optional_dataset_path(mask_config.mask_dir, cfg),
+                "alpha_mask": mask_config.alpha_mask,
+                "flip_aug": _bool_value(subset.get("flip_aug"), False),
+                "text_cache_dir": _optional_dataset_path(subset.get("text_cache_dir"), cfg),
+                "cond_cache_dir": _optional_dataset_path(subset.get("cond_cache_dir"), cfg),
+                _PRESERVED_DATASET_FIELDS: _preserved_fields(dataset, _MANAGED_DATASET_FIELDS),
+                _PRESERVED_SUBSET_FIELDS: _preserved_fields(subset, _MANAGED_SUBSET_FIELDS),
+                _PRESERVED_CUSTOM_ATTRIBUTES: _preserved_fields(attrs, _MANAGED_CUSTOM_ATTRIBUTES),
+                _PRESERVED_GENERAL_FIELDS: _preserved_fields(general, _MANAGED_GENERAL_FIELDS),
+                _PRESERVED_GENERAL_CUSTOM_ATTRIBUTES: _preserved_fields(
+                    general_attrs,
+                    _MANAGED_GENERAL_CUSTOM_ATTRIBUTES,
+                ),
                 "settings": settings,
-            })
+            }
+            if "sample_ratio" in subset:
+                row["sample_ratio"] = normalize_sample_ratio(subset["sample_ratio"])
+            rows.append(row)
 
     if not rows:
         rows = _normalize_dataset_rows([
@@ -279,7 +356,15 @@ def _normalize_dataset_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         source_path = _resolve_project_path(source)
         image_path = _resolve_project_path(image) if image else _derived_data_dir(source_path, "resized")
         cache_path = _resolve_project_path(cache) if cache else _derived_data_dir(source_path, "lora_cache")
-        clean_rows.append({
+        raw_mask_mode = raw.get("mask_mode")
+        if raw_mask_mode is None and not raw.get("mask_dir") and not _bool_value(raw.get("alpha_mask"), False):
+            raw_mask_mode = MASK_MODE_NONE
+        mask_config = normalize_mask_mode(
+            raw_mask_mode,
+            alpha_mask=_bool_value(raw.get("alpha_mask"), False),
+            mask_dir=str(raw.get("mask_dir") or "").strip() or None,
+        )
+        clean_row = {
             "source_dir": _display_path(source_path),
             "image_dir": _display_path(image_path),
             "cache_dir": _display_path(cache_path),
@@ -291,8 +376,24 @@ def _normalize_dataset_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
             "trigger_clone": _normalize_trigger_clone(
                 raw.get(TRIGGER_CLONE_ATTR_KEY) or raw.get("trigger_clone")
             ),
+            "mask_mode": mask_config.mode,
+            "mask_dir": _normalize_optional_path(mask_config.mask_dir),
+            "alpha_mask": mask_config.alpha_mask,
+            "flip_aug": _bool_value(raw.get("flip_aug"), False),
+            "text_cache_dir": _normalize_optional_path(raw.get("text_cache_dir")),
+            "cond_cache_dir": _normalize_optional_path(raw.get("cond_cache_dir")),
+            _PRESERVED_DATASET_FIELDS: _plain_mapping(raw.get(_PRESERVED_DATASET_FIELDS)),
+            _PRESERVED_SUBSET_FIELDS: _plain_mapping(raw.get(_PRESERVED_SUBSET_FIELDS)),
+            _PRESERVED_CUSTOM_ATTRIBUTES: _plain_mapping(raw.get(_PRESERVED_CUSTOM_ATTRIBUTES)),
+            _PRESERVED_GENERAL_FIELDS: _plain_mapping(raw.get(_PRESERVED_GENERAL_FIELDS)),
+            _PRESERVED_GENERAL_CUSTOM_ATTRIBUTES: _plain_mapping(
+                raw.get(_PRESERVED_GENERAL_CUSTOM_ATTRIBUTES)
+            ),
             "settings": _normalize_dataset_row_settings(raw),
-        })
+        }
+        if "sample_ratio" in raw and raw.get("sample_ratio") not in (None, ""):
+            clean_row["sample_ratio"] = normalize_sample_ratio(raw["sample_ratio"])
+        clean_rows.append(clean_row)
     return clean_rows
 
 def _normalize_dataset_row_settings(raw: dict[str, Any]) -> dict[str, Any]:
@@ -545,10 +646,21 @@ def _build_dataset_config_doc(
     doc.add(tomlkit.comment("原始数据集路径保存在 custom_attributes.source_dir，训练读取 image_dir/cache_dir。"))
 
     general = tomlkit.table()
+    first_row = clean_rows[0] if clean_rows else {}
+    _add_preserved_fields(
+        general,
+        first_row.get(_PRESERVED_GENERAL_FIELDS),
+        _MANAGED_GENERAL_FIELDS,
+    )
     general.add("caption_extension", str(cfg.get("caption_extension") or ".txt"))
     general.add("keep_tokens", _nonnegative_int(cfg.get("keep_tokens"), 3))
     # UI defaults are distinct from the effective settings stored on each dataset row.
     custom_attributes = tomlkit.table()
+    _add_preserved_fields(
+        custom_attributes,
+        first_row.get(_PRESERVED_GENERAL_CUSTOM_ATTRIBUTES),
+        _MANAGED_GENERAL_CUSTOM_ATTRIBUTES,
+    )
     stored_defaults = tomlkit.table()
     for key, value in _normalize_dataset_defaults(cfg).items():
         stored_defaults.add(key, value)
@@ -597,6 +709,7 @@ def _build_dataset_config_doc(
             dataset.add("validation_split_num", validation_split_num)
         dataset.add("validation_split", _nonnegative_float(row_cfg.get("validation_split"), 0.0))
         dataset.add("validation_seed", _nonnegative_int(row_cfg.get("validation_seed"), 42))
+        _add_preserved_fields(dataset, row.get(_PRESERVED_DATASET_FIELDS), _MANAGED_DATASET_FIELDS)
 
         subsets = tomlkit.aot()
         subset = tomlkit.table()
@@ -605,16 +718,33 @@ def _build_dataset_config_doc(
         subset.add("num_repeats", _positive_int(row.get("num_repeats"), 1))
         if _bool_value(row.get("is_reg"), False):
             subset.add("is_reg", True)
-            # Reg images keep prior preservation intact: point them at an empty
-            # mask_dir so external masks (matched by stem) never load, while the
-            # present mask_dir keeps the cache-completeness check exempted.
-            subset.add("mask_dir", "post_image_dataset/reg_masks")
+        mask_config = normalize_mask_mode(
+            row.get("mask_mode", MASK_MODE_NONE),
+            alpha_mask=_bool_value(row.get("alpha_mask"), False),
+            mask_dir=str(row.get("mask_dir") or "").strip() or None,
+        )
+        subset.add("mask_mode", mask_config.mode)
+        if mask_config.mode == MASK_MODE_EXTERNAL and mask_config.mask_dir:
+            subset.add("mask_dir", mask_config.mask_dir)
+        if _bool_value(row.get("flip_aug"), False):
+            subset.add("flip_aug", True)
+        if "sample_ratio" in row:
+            subset.add("sample_ratio", normalize_sample_ratio(row["sample_ratio"]))
+        for key in ("text_cache_dir", "cond_cache_dir"):
+            value = str(row.get(key) or "").strip()
+            if value:
+                subset.add(key, value)
         if not _bool_value(row.get("recursive"), True):
             subset.add("recursive", False)
         path_pattern = _normalize_path_pattern(row.get("path_pattern"))
         if path_pattern != "*":
             subset.add("path_pattern", path_pattern)
         attrs = tomlkit.inline_table()
+        _add_preserved_fields(
+            attrs,
+            row.get(_PRESERVED_CUSTOM_ATTRIBUTES),
+            _MANAGED_CUSTOM_ATTRIBUTES,
+        )
         attrs.add("source_dir", row["source_dir"])
         mix = _normalize_nl_tag_mix(row.get("nl_tag_mix"))
         if mix["enabled"]:
@@ -635,6 +765,7 @@ def _build_dataset_config_doc(
                 preprocess_attrs.add(key, value)
             attrs.add(RUNTIME_PREPROCESS_ATTR_KEY, preprocess_attrs)
         subset.add("custom_attributes", attrs)
+        _add_preserved_fields(subset, row.get(_PRESERVED_SUBSET_FIELDS), _MANAGED_SUBSET_FIELDS)
         subsets.append(subset)
         dataset.add("subsets", subsets)
         datasets.append(dataset)
@@ -681,6 +812,33 @@ def _dataset_path_value(value: Any, cfg: dict[str, Any]) -> str:
         if isinstance(raw, str):
             text = text.replace("{" + key + "}", raw)
     return _display_path(_resolve_project_path(expand_env_vars(text)))
+
+
+def _optional_dataset_path(value: Any, cfg: dict[str, Any]) -> str:
+    return _dataset_path_value(value, cfg) if str(value or "").strip() else ""
+
+
+def _normalize_optional_path(value: Any) -> str:
+    text = str(value or "").strip()
+    return _display_path(_resolve_project_path(text)) if text else ""
+
+
+def _plain_mapping(value: Any) -> dict[str, Any]:
+    return to_plain_config(value) if isinstance(value, dict) else {}
+
+
+def _preserved_fields(source: dict[str, Any], managed: frozenset[str]) -> dict[str, Any]:
+    return {
+        str(key): to_plain_config(value)
+        for key, value in source.items()
+        if str(key) not in managed
+    }
+
+
+def _add_preserved_fields(table, value: Any, managed: frozenset[str]) -> None:
+    for key, item in _plain_mapping(value).items():
+        if key not in managed and key not in table:
+            table.add(key, item)
 
 def _safe_file_stem(value: str) -> str:
     stem = Path(str(value or "").replace("\\", "/")).stem

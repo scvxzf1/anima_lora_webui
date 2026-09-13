@@ -538,6 +538,7 @@ def test_history_log_pages_cover_records_omitted_from_detail(tmp_path, monkeypat
     assert first == {
         "ok": True,
         "logs": first["logs"],
+        "indices": [0, 1, 2],
         "offset": 0,
         "limit": 3,
         "returned": 3,

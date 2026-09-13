@@ -56,8 +56,13 @@ async def handle_preview_images(request: web.Request) -> web.Response:
     source = request.query.get("source", "training")
     try:
         limit = int(request.query.get("limit", "200") or 200)
+        offset = int(request.query.get("offset", "0") or 0)
+        if offset < 0:
+            raise ValueError("offset 不能为负数")
         days = _preview_days_filter(request)
         if source == "training" and request.query.get("mode") == "config_group":
+            if offset:
+                raise ValueError("配置组预览尚不支持 offset 分页")
             tasks = _selected_config_group_tasks(request)
             payload = await asyncio.to_thread(
                 list_config_group_preview_images,
@@ -83,6 +88,7 @@ async def handle_preview_images(request: web.Request) -> web.Response:
             allow_latest_fallback=not task_selected,
             limit=limit,
             days=days,
+            offset=offset,
         )
         return web.json_response(payload)
     except ValueError as e:
@@ -133,7 +139,12 @@ async def handle_preview_images_delete(request: web.Request) -> web.Response:
 
 async def handle_preview_weights(request: web.Request) -> web.Response:
     try:
+        offset = int(request.query.get("offset", "0") or 0)
+        if offset < 0:
+            raise ValueError("offset 不能为负数")
         if request.query.get("mode") == "config_group":
+            if offset:
+                raise ValueError("配置组权重尚不支持 offset 分页")
             tasks = _selected_config_group_tasks(request)
             return web.json_response(await asyncio.to_thread(
                 list_config_group_training_weights,
@@ -147,6 +158,9 @@ async def handle_preview_weights(request: web.Request) -> web.Response:
             list_training_weights,
             task,
             allow_latest_fallback=not _has_task_selection(request),
+            limit=int(request.query["limit"]) if request.query.get("limit") else None,
+            offset=offset,
+            sort=request.query.get("sort", "legacy"),
         ))
     except ValueError as e:
         return web.json_response({"ok": False, "error": str(e)}, status=400)

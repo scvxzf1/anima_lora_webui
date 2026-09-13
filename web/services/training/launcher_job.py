@@ -202,8 +202,11 @@ async def _launch_job(
             generation=generation,
         )
 
-async def stop(self):
+async def stop(self, expected_task_id: str | None = None):
     async with self._launch_lock:
+        current_task_id = getattr(self, "current_task_id", None)
+        if expected_task_id and current_task_id != expected_task_id:
+            raise RuntimeError("当前训练任务已发生变化，请刷新后重试")
         await _stop_unlocked(self)
 
 

@@ -18,8 +18,11 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from library.models.family_registry import normalize_registered_family
+
 from web.services.config.preflight_compat import (
     _check_checkpointing_config,
+    _check_core_training_semantics,
     _check_network_weights,
     _check_no_dataset_regularization_config,
     _check_training_sample_config,
@@ -320,12 +323,25 @@ def preflight_training_config(
                 root,
             )
 
+    try:
+        family = normalize_registered_family(
+            cfg.get("model_family") or "anima",
+            allow_aliases=True,
+        )
+    except ValueError as exc:
+        add("error", "model_family", str(exc))
+        family = "anima"
+    cfg = dict(cfg)
+    cfg["model_family"] = family
+
     if "output_name" in cfg and _is_blank_output_name(cfg.get("output_name")):
         add("error", "output_name", "输出名称未填写")
+    dataset_rows = _dataset_rows_for_estimate(cfg)
+    _check_core_training_semantics(cfg, add, dataset_rows=dataset_rows)
     _check_checkpointing_config(cfg, add, world_size=world_size)
     _check_no_dataset_regularization_config(cfg, add)
     _check_output_dir_history_reuse(cfg, add)
-    if str(cfg.get("model_family") or "anima").strip().lower() == "z_image":
+    if family == "z_image":
         check_z_image_component(
             "pretrained_model_name_or_path", "基础 DiT 模型", "transformer"
         )
@@ -352,7 +368,7 @@ def preflight_training_config(
     _check_training_sample_config(cfg, add)
     check_stage_schedule(
         cfg,
-        dataset_rows=_dataset_rows_for_estimate(cfg),
+        dataset_rows=dataset_rows,
         add=add,
     )
     schema_errors, schema_warnings = validate_config_mapping(cfg)

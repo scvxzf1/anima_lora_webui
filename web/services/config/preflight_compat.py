@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import math
 from pathlib import Path
 from typing import Any
 
+from library.datasets.subsets import normalize_sample_ratio
 from library.training.compat_matrix import check_training_compat
 from web.services.continue_lora_service import inspect_continue_lora_weight as _inspect_continue_lora_weight
 from web.services.config.metadata import (
+    DATASET_IMAGE_EXTS,
     LEGACY_TRAINING_SAMPLE_SAMPLERS,
     PREPROCESS_ENV_CHECK_KEY,
     PREPROCESS_ENV_REQUIRED_FILES,
@@ -16,7 +19,9 @@ from web.services.config.metadata import (
 from web.services.config.preflight_runtime import (
     ROOT,
     _bool_value,
+    _count_source_images,
     _nonnegative_float_value,
+    _normalize_path_pattern,
     _positive_int_or_none,
     _resolve_project_path,
 )
@@ -184,6 +189,177 @@ def _check_checkpointing_config(
         if item.code in seen_warning_codes:
             continue
         add("warning", item.key, _compat_web_message(item))
+
+
+def _check_core_training_semantics(
+    cfg: dict[str, Any],
+    add,
+    *,
+    dataset_rows: list[dict[str, Any]] | None = None,
+) -> None:
+    """Check field relationships that the trainer resolves at runtime."""
+
+    raw_epochs = cfg.get("max_train_epochs")
+    epochs_configured = raw_epochs not in (None, "")
+    epochs = _int_or_none(raw_epochs)
+    steps = _int_or_none(cfg.get("max_train_steps"))
+    if epochs_configured:
+        if epochs is None or epochs <= 0:
+            add(
+                "error",
+                "max_train_epochs",
+                "max_train_epochs 已设置但不是大于 0 的整数；训练端仍会用它覆盖 max_train_steps。",
+            )
+        elif steps is not None and steps > 0:
+            add(
+                "warning",
+                "max_train_steps",
+                "max_train_epochs 已设置；训练端会按当前数据集重新计算并覆盖 max_train_steps。",
+            )
+    elif steps is None or steps <= 0:
+        add(
+            "error",
+            "max_train_steps",
+            "未设置有效训练时长：请填写大于 0 的 max_train_epochs，或使用大于 0 的 max_train_steps。",
+        )
+
+    raw_ratio = cfg.get("sample_ratio")
+    if raw_ratio not in (None, ""):
+        _check_sample_ratio_value(raw_ratio, "sample_ratio", add)
+    for index, row in enumerate(dataset_rows or (), start=1):
+        _check_dataset_sample_ratios(row, index, add)
+
+    network_weights = str(cfg.get("network_weights") or "").strip()
+    if _bool_value(cfg.get("dim_from_weights"), False) and not network_weights:
+        add(
+            "error",
+            "dim_from_weights",
+            "已开启从权重读取维度，但未填写 network_weights；训练端无法推断 rank/alpha。",
+        )
+
+    save_keep = _int_or_none(cfg.get("save_last_n_epochs"))
+    if save_keep == 0:
+        add(
+            "warning",
+            "save_last_n_epochs",
+            "普通权重保留数量 0 不表示关闭；训练端会按 1 份处理。负数才表示不清理。",
+        )
+    checkpoint_keep = _int_or_none(cfg.get("checkpointing_last_n_epochs"))
+    if checkpoint_keep == 0 or (
+        checkpoint_keep is not None and checkpoint_keep < -1
+    ):
+        add(
+            "warning",
+            "checkpointing_last_n_epochs",
+            "续训状态保留数量仅 -1 表示不清理；0 或小于 -1 的值都会按 1 份处理。",
+        )
+
+    _validation_configured, validation_effective, validation_auto_disabled = (
+        _validation_state(dataset_rows or ())
+    )
+    if validation_auto_disabled:
+        add(
+            "warning",
+            "validation_split",
+            "验证集划分已配置，但有效训练图少于 100；训练端会自动关闭验证并把整组图片用于训练。",
+        )
+    if _bool_value(cfg.get("use_cmmd"), False) and not validation_effective:
+        detail = (
+            "训练端会因小数据集自动关闭验证"
+            if validation_auto_disabled
+            else "数据集没有有效验证集划分"
+        )
+        add(
+            "warning",
+            "use_cmmd",
+            f"已开启 CMMD，但{detail}；本次训练不会运行 CMMD 验证。",
+        )
+
+
+def _check_sample_ratio_value(value: Any, key: str, add) -> None:
+    try:
+        normalize_sample_ratio(value)
+    except ValueError:
+        add("error", key, "sample_ratio 必须满足 0 < 值 <= 1；训练端不会静默回退。")
+
+
+def _check_dataset_sample_ratios(row: dict[str, Any], index: int, add) -> None:
+    values: list[tuple[str, Any]] = []
+    if "sample_ratio" in row:
+        values.append(("subset", row.get("sample_ratio")))
+    for scope, map_key in (
+        ("subset", "preserved_subset_fields"),
+        ("dataset", "preserved_dataset_fields"),
+        ("general", "preserved_general_fields"),
+    ):
+        mapping = row.get(map_key)
+        if isinstance(mapping, dict) and "sample_ratio" in mapping:
+            values.append((scope, mapping.get("sample_ratio")))
+    for scope, value in values:
+        _check_sample_ratio_value(
+            value,
+            f"dataset_{index}_{scope}_sample_ratio",
+            add,
+        )
+
+
+def _int_or_none(value: Any) -> int | None:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _validation_state(rows) -> tuple[bool, bool, bool]:
+    configured = False
+    effective = False
+    auto_disabled = False
+    for row in rows:
+        if _bool_value(row.get("is_reg"), False):
+            continue
+        settings = row.get("settings") if isinstance(row.get("settings"), dict) else {}
+        try:
+            split_num = int(settings.get("validation_split_num") or 0)
+            split_ratio = float(settings.get("validation_split") or 0.0)
+        except (TypeError, ValueError):
+            continue
+        if split_num <= 0 and split_ratio <= 0.0:
+            continue
+        configured = True
+        candidates = [
+            str(row.get("image_dir") or "").strip(),
+            str(row.get("source_dir") or "").strip(),
+        ]
+        image_dir = next(
+            (
+                path
+                for raw_dir in candidates
+                if raw_dir
+                for path in (_resolve_project_path(raw_dir),)
+                if path.is_dir()
+            ),
+            None,
+        )
+        image_count = (
+            _count_source_images(
+                image_dir,
+                DATASET_IMAGE_EXTS,
+                recursive=_bool_value(row.get("recursive"), True),
+                path_pattern=_normalize_path_pattern(row.get("path_pattern")),
+            )
+            if image_dir is not None
+            else 0
+        )
+        if 0 < image_count < 100:
+            auto_disabled = True
+            continue
+        if split_num > 0:
+            effective = effective or image_count > split_num
+        elif 0.0 < split_ratio < 1.0 and image_count > 0:
+            train_count = math.ceil(image_count * (1.0 - split_ratio))
+            effective = effective or train_count < image_count
+    return configured, effective, auto_disabled
+
 
 def _check_no_dataset_regularization_config(cfg: dict[str, Any], add) -> None:
     prior_weight = _nonnegative_float_value(cfg.get("prior_preservation_weight"), 0.0)

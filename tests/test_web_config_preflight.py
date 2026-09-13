@@ -138,8 +138,9 @@ def test_preflight_fills_blank_model_paths_from_global_settings(
     }
 
 
+@pytest.mark.parametrize("family", ["z_image", "zimage"])
 def test_preflight_accepts_z_image_diffusers_component_directories(
-    tmp_path: Path, monkeypatch
+    tmp_path: Path, monkeypatch, family: str
 ):
     configs, _dataset_path = _write_minimal_config_tree(tmp_path)
     _patch_config_service_paths(monkeypatch, tmp_path)
@@ -153,7 +154,7 @@ def test_preflight_accepts_z_image_diffusers_component_directories(
     selected_config.write_text(
         "\n".join(
             [
-                'model_family = "z_image"',
+                f'model_family = "{family}"',
                 'pretrained_model_name_or_path = "models/Z-Image"',
                 'qwen3 = "models/Z-Image"',
                 'vae = "models/Z-Image"',
@@ -184,6 +185,37 @@ def test_preflight_accepts_z_image_diffusers_component_directories(
     assert checks["pretrained_model_name_or_path"]["level"] == "ok"
     assert checks["qwen3"]["level"] == "ok"
     assert checks["vae"]["level"] == "ok"
+
+
+@pytest.mark.parametrize("family", ["krea2_raw", "krea2"])
+def test_preflight_normalizes_krea_family_aliases(
+    tmp_path: Path,
+    monkeypatch,
+    family: str,
+):
+    configs, _dataset_path = _write_minimal_config_tree(tmp_path)
+    _patch_config_service_paths(monkeypatch, tmp_path)
+    for relative in (
+        "models/diffusion_models/anima-base-v1.0.safetensors",
+        "models/text_encoders/qwen_3_06b_base.safetensors",
+        "models/vae/qwen_image_vae.safetensors",
+    ):
+        path = tmp_path / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"model")
+    selected_config = configs / "imported" / "krea_alias.toml"
+    selected_config.write_text(f'model_family = "{family}"\n', encoding="utf-8")
+
+    result = config_service.preflight_training_config(
+        "lora",
+        "default",
+        "imported",
+        config_file="configs/imported/krea_alias.toml",
+    )
+
+    checks = {item["key"]: item for item in result["checks"]}
+    assert checks["pretrained_model_name_or_path"]["level"] == "ok"
+    assert not [item for item in result["errors"] if item["key"] == "model_family"]
 
 
 def test_preflight_accepts_z_image_comfyui_single_files(tmp_path: Path, monkeypatch):
@@ -1265,8 +1297,9 @@ def test_preflight_ignores_legacy_cache_fields_for_plain_web_config(
     selected_config.write_text(
         "\n".join(
             [
-                'source_image_dir = "image_dataset/selected"',
-                'resized_image_dir = "bad-resized-file"',
+                    'source_image_dir = "image_dataset/selected"',
+                    "max_train_steps = 1",
+                    'resized_image_dir = "bad-resized-file"',
                 'lora_cache_dir = "bad-cache-file"',
                 'dataset_config = "configs/datasets/lora.toml"',
                 'pretrained_model_name_or_path = "models/anima.safetensors"',
@@ -1392,8 +1425,10 @@ def test_runtime_preflight_checks_nested_training_images_and_cache_sidecars(
     Image.new("RGB", (8, 8), color=(20, 40, 60)).save(
         resized_dir / "char_a" / "hero.png"
     )
-    (cache_dir / "char_a" / "hero_0008x0008_anima.npz").write_bytes(b"latent")
-    (cache_dir / "char_a" / "hero_anima_te.safetensors").write_bytes(b"te")
+    _write_valid_anima_caches(
+        resized_dir / "char_a" / "hero.png",
+        cache_dir / "char_a",
+    )
     dataset_path = configs / "datasets" / "nested.toml"
     dataset_path.write_text(
         "\n".join(

@@ -449,6 +449,7 @@ def test_preflight_uses_selected_config_file_dataset_paths(tmp_path: Path, monke
                 'pretrained_model_name_or_path = "models/anima.safetensors"',
                 'qwen3 = "models/qwen.safetensors"',
                 'vae = "models/vae.safetensors"',
+                "max_train_steps = 1",
             ]
         ),
         encoding="utf-8",
@@ -495,6 +496,7 @@ def test_preflight_allows_plain_web_config_with_missing_dataset_config_but_valid
         "\n".join(
             [
                 'source_image_dir = "image_dataset/selected"',
+                "max_train_steps = 1",
                 'pretrained_model_name_or_path = "models/anima.safetensors"',
                 'qwen3 = "models/qwen.safetensors"',
                 'vae = "models/vae.safetensors"',
@@ -608,8 +610,7 @@ def test_preflight_runtime_config_checks_cache_sidecars_per_dataset(tmp_path: Pa
         path.mkdir(parents=True)
     Image.new("RGB", (8, 8), color=(20, 40, 60)).save(resized_a / "a.png")
     Image.new("RGB", (8, 8), color=(60, 40, 20)).save(resized_b / "b.png")
-    (cache_a / "a_0008x0008_anima.npz").write_bytes(b"latent")
-    (cache_a / "a_anima_te.safetensors").write_bytes(b"te")
+    _write_valid_anima_caches(resized_a / "a.png", cache_a)
     (tmp_path / "models").mkdir()
     (tmp_path / "models" / "anima.safetensors").write_bytes(b"model")
     (tmp_path / "models" / "qwen.safetensors").write_bytes(b"qwen")
@@ -661,8 +662,9 @@ def test_preflight_runtime_config_checks_cache_sidecars_per_dataset(tmp_path: Pa
     checks = {item["key"]: item for item in result["checks"]}
     assert checks["latent_cache"]["level"] == "ok"
     assert checks["text_cache"]["level"] == "ok"
-    assert checks["dataset_2_latent_cache"]["level"] == "warning"
-    assert checks["dataset_2_text_cache"]["level"] == "warning"
+    assert checks["dataset_2_latent_cache"]["level"] == "error"
+    assert checks["dataset_2_text_cache"]["level"] == "error"
+    assert "0/1" in checks["dataset_2_latent_cache"]["message"]
 
 
 def test_dataset_groups_are_dataset_only_and_presets_list_returns_groups(tmp_path: Path, monkeypatch):
@@ -1641,6 +1643,48 @@ def test_runtime_dataset_doc_hides_preprocess_settings_from_training_schema():
     from library.config.loader import ConfigSanitizer
 
     ConfigSanitizer(support_dropout=True).sanitize_user_config(data)
+
+
+def test_dataset_rows_roundtrip_hidden_training_semantics():
+    source = {
+        "general": {"caption_extension": ".txt"},
+        "datasets": [
+            {
+                "resolution": 1024,
+                "network_multiplier": 0.75,
+                "subsets": [
+                    {
+                        "image_dir": "post_image_dataset/resized",
+                        "cache_dir": "post_image_dataset/lora",
+                        "mask_mode": "external",
+                        "mask_dir": "post_image_dataset/masks",
+                        "flip_aug": True,
+                        "text_cache_dir": "post_image_dataset/text",
+                        "cond_cache_dir": "post_image_dataset/cond",
+                        "class_tokens": "subject",
+                        "custom_attributes": {
+                            "source_dir": "image_dataset",
+                            "user_note": "preserve-me",
+                        },
+                    }
+                ],
+            }
+        ],
+    }
+
+    rows = config_service._dataset_rows_from_config(source, {})
+    rebuilt = toml.loads(config_service._build_dataset_config_doc(rows, {}))
+    dataset = rebuilt["datasets"][0]
+    subset = dataset["subsets"][0]
+
+    assert dataset["network_multiplier"] == 0.75
+    assert subset["mask_mode"] == "external"
+    assert subset["mask_dir"] == "post_image_dataset/masks"
+    assert subset["flip_aug"] is True
+    assert subset["text_cache_dir"] == "post_image_dataset/text"
+    assert subset["cond_cache_dir"] == "post_image_dataset/cond"
+    assert subset["class_tokens"] == "subject"
+    assert subset["custom_attributes"]["user_note"] == "preserve-me"
 
 
 def test_system_dataset_preset_is_readonly_but_can_be_saved_as(tmp_path: Path, monkeypatch):

@@ -253,6 +253,30 @@ class TaggingJobManager:
         job = self._get(job_id)
         return {"ok": True, "job": self._public_job(job)}
 
+    def clear_finished(self, job_ids: list[str]) -> dict[str, Any]:
+        if not isinstance(job_ids, list) or any(not isinstance(key, str) for key in job_ids):
+            raise ValueError("job_ids 必须是字符串数组")
+        removed, skipped = [], []
+        # No await: eligibility checks and removal are atomic on the event loop.
+        for key in dict.fromkeys(job_ids):
+            job = self.jobs.get(key)
+            if job is None:
+                continue
+            task = self._tasks.get(key)
+            locks = (self._commit_locks.get(key), self._rerun_locks.get(key))
+            if (
+                job["state"] not in {"completed", "partial", "failed", "canceled"}
+                or (task is not None and not task.done())
+                or any(lock is not None and lock.locked() for lock in locks)
+                or key in self._local_workers
+            ):
+                skipped.append(key)
+                continue
+            for mapping in (self.jobs, self._tasks, self._cancel_events, self._commit_locks, self._rerun_locks):
+                mapping.pop(key, None)
+            removed.append(key)
+        return {"ok": True, "removed": removed, "skipped": skipped}
+
     def get_logs(self, *, after: Any = 0, limit: Any = None, job_id: str = "") -> dict[str, Any]:
         return self.logs.snapshot(after=after, limit=limit, job_id=job_id)
 

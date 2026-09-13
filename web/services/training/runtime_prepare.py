@@ -40,6 +40,7 @@ _bool_value_for_row = _runtime_datasets._bool_value_for_row
 _prepare_runtime_nl_tag_mix_source = _runtime_datasets._prepare_runtime_nl_tag_mix_source
 _prepare_runtime_trigger_clone_source = _runtime_datasets._prepare_runtime_trigger_clone_source
 _bind_subset_to_cache_pool = _runtime_datasets._bind_subset_to_cache_pool
+_runtime_row_semantics = _runtime_datasets._runtime_row_semantics
 
 
 def _resolve_training_runtime_info(
@@ -158,6 +159,7 @@ def _prepare_web_runtime_config(
             "recursive": _bool_value_for_row(row.get("recursive"), True),
             "path_pattern": _normalize_path_pattern(row.get("path_pattern")),
             "settings": row.get("settings") if isinstance(row.get("settings"), dict) else {},
+            **_runtime_row_semantics(row),
         })
         trigger_clone = _normalize_trigger_clone(row.get("trigger_clone"))
         if trigger_clone["enabled"]:
@@ -187,6 +189,7 @@ def _prepare_web_runtime_config(
                 "recursive": _bool_value_for_row(row.get("recursive"), True),
                 "path_pattern": _normalize_path_pattern(row.get("path_pattern")),
                 "settings": clone_settings,
+                **_runtime_row_semantics(clone_row),
             })
             stage_members.append(len(runtime_rows) - 1)
         stage_target_groups.append(stage_members)

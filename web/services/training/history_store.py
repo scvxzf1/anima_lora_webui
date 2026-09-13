@@ -159,24 +159,31 @@ def _write_json_atomic(*args, **kwargs):
     return writer(*args, **kwargs)
 
 
-def _list_history_tasks(*, include_archived: bool = False, limit: int | None = None) -> list[dict[str, Any]]:
+def _list_history_tasks(*, include_archived: bool = False, limit: int | None = None, search: str = "", cursor: int = 0) -> list[dict[str, Any]]:
     meta_paths = _history_meta_paths()
     records = _history_meta_records(meta_paths, repair=True)
     _sync_bound_history_collection_groups(records=records)
 
     tasks = []
+    needle = search.strip().casefold()
     for record in records:
         meta_path = record["path"]
         task = _safe_history_summary(record["meta"], meta_path.parent)
         if task is None:
             continue
         if include_archived or not task.get("archived"):
+            if needle and not any(
+                needle in str(task.get(key) or "").casefold()
+                for key in ("id", "name", "history_run_label", "group", "history_group_label", "history_source_config_file", "source_task_name", "run_dir", "output_dir")
+            ):
+                continue
             tasks.append(task)
     tasks.sort(key=lambda item: item.get("started_at") or 0, reverse=True)
+    cursor = max(0, int(cursor or 0))
     if limit is None:
         limit = _max_history_items()
     if limit and limit > 0:
-        return tasks[:limit]
+        return tasks[cursor : cursor + limit]
     return tasks
 
 
@@ -316,8 +323,7 @@ def _history_summary(meta: dict[str, Any], task_dir: Path) -> dict[str, Any]:
         out["name"] = _default_preprocess_history_name(out)
     out["log_count"] = _history_jsonl_count(out, "log_count", task_dir / "logs.jsonl")
     out["metric_count"] = _history_metric_count(out, task_dir)
-    if out["metric_count"] > 0:
-        out.update(_history_metric_summary(task_dir, out["metric_count"]))
+    out.update(_history_metric_summary(task_dir, out["metric_count"]))
     chips = history_config_chips_for_task_dir(
         task_dir,
         variant=str(out.get("variant") or ""),
@@ -575,9 +581,10 @@ def _history_metric_summary(task_dir: Path, metric_count: int) -> dict[str, Any]
     metrics_path = task_dir / "metrics.jsonl"
     progress_path = task_dir / "progress.jsonl"
     summary = _read_history_metric_summary(metrics_path, metric_count, progress=False)
-    if summary:
+    if summary.get("final_loss") is not None or summary.get("last_step") is not None:
         return summary
-    return _read_history_metric_summary(progress_path, metric_count, progress=True)
+    fallback = _read_history_metric_summary(progress_path, metric_count, progress=True)
+    return fallback or summary
 
 
 def _read_history_metric_summary(
@@ -594,6 +601,7 @@ def _read_history_metric_summary(
     final_loss: float | None = None
     last_step: int | None = None
     valid_index = 0
+    saw_validation = False
     try:
         with path.open("r", encoding="utf-8") as handle:
             for raw in handle:
@@ -604,6 +612,10 @@ def _read_history_metric_summary(
                 if not isinstance(event, dict):
                     continue
                 if progress and str(event.get("ev") or "") not in {"step", "val"}:
+                    continue
+                # Legacy validation events duplicate CMMD into the loss field.
+                if event.get("kind") == "val" or event.get("ev") == "val":
+                    saw_validation = True
                     continue
                 loss = next(
                     (
@@ -636,7 +648,10 @@ def _read_history_metric_summary(
         return {}
 
     if final_loss is None:
-        return {"last_step": last_step} if last_step is not None else {}
+        summary = {"last_step": last_step} if last_step is not None else {}
+        if saw_validation:
+            summary.update(final_loss=None, loss_preview=[])
+        return summary
     if not preview or preview[-1] != final_loss:
         preview.append(final_loss)
     if len(preview) > 24:

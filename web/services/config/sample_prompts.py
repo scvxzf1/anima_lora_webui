@@ -87,7 +87,7 @@ def load_sample_prompts_file(rel_path: str | None = None) -> dict[str, Any]:
     normalized = _normalize_prompt_file_path(rel_path or DEFAULT_SAMPLE_PROMPTS_FILE)
     path = _resolve_prompt_path(normalized)
     if not path.exists():
-        return {"ok": True, "file": normalized, "content": "", "prompts": []}
+        return {"ok": True, "file": normalized, "content": "", "prompts": [], "exists": False}
     content = path.read_text(encoding="utf-8")
     lines = content.splitlines()
     prompts = [
@@ -99,6 +99,7 @@ def load_sample_prompts_file(rel_path: str | None = None) -> dict[str, Any]:
         "ok": True,
         "file": normalized,
         "content": content,
+        "exists": True,
         "prompts": prompts,
     }
 

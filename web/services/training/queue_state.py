@@ -7,6 +7,7 @@ from typing import Any
 
 from web.services.training.common import _format_ts, _positive_int_or_none
 from web.services.training.constants import max_queue_items, queue_dir
+from web.services.training.queue_revision import queue_revision
 from web.services.training.service_state import (
     _normalize_queue_auto_retry,
     _normalize_queue_failure_policy,
@@ -50,7 +51,7 @@ def get_queue_snapshot(self) -> dict[str, Any]:
         state = str(item.get("state") or "")
         if state in summary:
             summary[state] += 1
-    return {
+    snapshot = {
         "ok": True,
         "paused": self._queue_paused,
         "failure_policy": self._queue_failure_policy,
@@ -59,9 +60,16 @@ def get_queue_snapshot(self) -> dict[str, Any]:
         "retry_backoff_sec": float(getattr(self, "_queue_retry_backoff_sec", 0.0) or 0.0),
         "status": self.status,
         "current_item_id": self._current_queue_item_id,
+        "current_task_id": self.current_task_id,
+        "launching_item_id": self._queue_launching_item_id,
         "summary": summary,
         "items": [dict(item) for item in self._queue_items()],
     }
+    snapshot["revision"] = queue_revision({
+        **snapshot,
+        "process_active": bool(self.process and getattr(self.process, "returncode", None) is None),
+    })
+    return snapshot
 
 
 def _repair_queue_on_startup(self) -> None:

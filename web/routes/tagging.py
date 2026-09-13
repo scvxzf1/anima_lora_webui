@@ -42,6 +42,7 @@ def setup_tagging_routes(app: web.Application) -> None:
         app.router.add_delete(f"{prefix}/logs", handle_logs_delete)
         app.router.add_get(f"{prefix}/jobs", handle_jobs_get)
         app.router.add_post(f"{prefix}/jobs", handle_job_create)
+        app.router.add_post(f"{prefix}/jobs/cleanup", handle_jobs_cleanup)
         app.router.add_get(f"{prefix}/jobs/{{job_id}}", handle_job_get)
         app.router.add_post(f"{prefix}/jobs/{{job_id}}/rerun", handle_job_rerun)
         app.router.add_post(f"{prefix}/jobs/{{job_id}}/cancel", handle_job_cancel)
@@ -369,6 +370,17 @@ async def handle_job_get(request: web.Request) -> web.Response:
         return web.json_response(service.get_job(request.match_info["job_id"]))
     except KeyError as exc:
         return web.json_response({"ok": False, "error": str(exc)}, status=404)
+
+
+async def handle_jobs_cleanup(request: web.Request) -> web.Response:
+    service = _service(request)
+    if service is None:
+        return _unavailable()
+    try:
+        payload = await _json_object(request)
+        return web.json_response(service.clear_finished_jobs(payload.get("job_ids")))
+    except ValueError as exc:
+        return web.json_response({"ok": False, "error": str(exc)}, status=400)
 
 
 async def handle_job_rerun(request: web.Request) -> web.Response:

@@ -21,6 +21,25 @@ from web.services.training.runtime_paths import (
     _resolve_display_path,
 )
 
+_RUNTIME_ROW_SEMANTIC_KEYS = (
+    "mask_mode",
+    "mask_dir",
+    "alpha_mask",
+    "flip_aug",
+    "text_cache_dir",
+    "cond_cache_dir",
+    "sample_ratio",
+    "preserved_dataset_fields",
+    "preserved_subset_fields",
+    "preserved_custom_attributes",
+    "preserved_general_fields",
+    "preserved_general_custom_attributes",
+)
+
+
+def _runtime_row_semantics(row: dict[str, Any]) -> dict[str, Any]:
+    return {key: row[key] for key in _RUNTIME_ROW_SEMANTIC_KEYS if key in row}
+
 
 def _display_logical_path(path: Path) -> str:
     """Project-relative display path without following symlinks.
@@ -112,6 +131,7 @@ def _clone_runtime_dataset_rows(
             "recursive": _bool_value_for_row(row.get("recursive"), True),
             "path_pattern": _normalize_path_pattern(row.get("path_pattern")),
             "settings": row.get("settings") if isinstance(row.get("settings"), dict) else {},
+            **_runtime_row_semantics(row),
         })
     return cloned_rows
 

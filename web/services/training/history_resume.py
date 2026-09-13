@@ -223,7 +223,7 @@ def _ensure_resume_checkpoint_available(
         and _int_or_none(selected.get("step")) is not None
     ):
         integrity = selected.get("state_integrity") if isinstance(selected.get("state_integrity"), dict) else {}
-        if integrity.get("complete") is False:
+        if integrity.get("ok") is not True or selected.get("state_complete") is False:
             raise ValueError(reason)
         target_total_steps = _int_or_none(selected.get("target_total_steps"))
         if target_total_steps is not None and _int_or_none(selected.get("step")) >= target_total_steps:

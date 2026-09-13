@@ -21,10 +21,12 @@ class DatasetPreviewThumbnail:
     etag: str
 
 
-def render_dataset_preview_thumbnail(path: Path) -> DatasetPreviewThumbnail:
+def render_dataset_preview_thumbnail(
+    path: Path, *, size: tuple[int, int] = DATASET_PREVIEW_THUMBNAIL_SIZE,
+) -> DatasetPreviewThumbnail:
     resolved = path.resolve()
     stat = resolved.stat()
-    width, height = DATASET_PREVIEW_THUMBNAIL_SIZE
+    width, height = size
     content, content_type = _render_thumbnail_cached(
         str(resolved),
         stat.st_mtime_ns,

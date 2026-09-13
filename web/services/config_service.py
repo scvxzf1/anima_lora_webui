@@ -257,6 +257,7 @@ from web.services.config.raw_files import (  # noqa: E402,F401
     load_raw_file,
     patch_raw_file_values,
     preview_raw_file_patch,
+    rename_raw_file,
     save_raw_file,
 )
 from web.services.config.sample_prompts import (  # noqa: E402,F401

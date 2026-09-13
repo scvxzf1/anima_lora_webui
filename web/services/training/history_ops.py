@@ -51,8 +51,8 @@ from web.services.training.service_state import (
 )
 from web.services.training.storage import _count_jsonl, _read_json, _write_json_atomic
 
-def list_history_tasks(self, *, include_archived: bool = False, limit: int | None = None) -> list[dict[str, Any]]:
-    return _list_history_tasks(include_archived=include_archived, limit=limit)
+def list_history_tasks(self, *, include_archived: bool = False, limit: int | None = None, search: str = "", cursor: int = 0) -> list[dict[str, Any]]:
+    return _list_history_tasks(include_archived=include_archived, limit=limit, search=search, cursor=cursor)
 
 def get_history_task(self, task_id: str) -> dict[str, Any]:
     return _load_history_task(task_id)

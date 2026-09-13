@@ -30,6 +30,7 @@ def list_preview_images(
     allow_latest_fallback: bool = True,
     limit: int = 200,
     days: int | None = None,
+    offset: int = 0,
 ) -> dict[str, Any]:
     source = (source or "training").strip().lower()
     if source not in {"training", "inference", "custom"}:
@@ -84,12 +85,14 @@ def list_preview_images(
         return _empty_listing(source, label, display_dir, exists=False, message="路径不是目录")
 
     limit = max(1, min(int(limit or 200), get("MAX_IMAGE_LIMIT")))
+    offset = max(0, int(offset))
     days = _normalize_preview_days(days)
     candidates, total = select_recent_files(
         resolved,
         suffixes=get("IMAGE_EXTS"),
         limit=limit,
         min_mtime=_preview_days_cutoff(days),
+        offset=offset,
     )
     prompt_entries = _load_sample_prompt_entries(sample_config) if source == "training" else []
     step_index = call("_training_step_index", task) if source == "training" else {}
@@ -113,6 +116,9 @@ def list_preview_images(
         "directory_exists": True,
         "count": len(images),
         "total": total,
+        "offset": offset,
+        "next_offset": offset + limit if offset + limit < total else None,
+        "sort": "recent",
         "images": images,
         "message": "" if images else _preview_empty_message(source, "暂无预览图", sample_config, settings=settings),
         "sample_config": sample_config or {},

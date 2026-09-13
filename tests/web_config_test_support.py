@@ -30,6 +30,38 @@ from web.services import config_service
 from web.services.config import _legacy as legacy_config
 
 
+def _write_valid_anima_caches(image_path: Path, cache_dir: Path) -> None:
+    import numpy as np
+    import torch
+    from safetensors.torch import save_file
+
+    with Image.open(image_path) as image:
+        width, height = image.size
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    np.savez(
+        cache_dir / f"{image_path.stem}_{width:04d}x{height:04d}_anima.npz",
+        **{
+            f"latents_{height // 8}x{width // 8}": np.zeros(
+                (16, height // 8, width // 8), dtype=np.float32
+            ),
+            # Tiny synthetic fixtures are also used with the default 1024px
+            # bucket settings; retain the corresponding first constant bucket
+            # key selected for a square image.
+            "latents_128x126": np.zeros((16, 128, 126), dtype=np.float32),
+        },
+    )
+    save_file(
+        {
+            "prompt_embeds": torch.zeros((1, 1), dtype=torch.bfloat16),
+            "attn_mask": torch.ones((1,), dtype=torch.int32),
+            "t5_input_ids": torch.zeros((1,), dtype=torch.int64),
+            "t5_attn_mask": torch.ones((1,), dtype=torch.int32),
+            "caption_dropout_rate": torch.tensor(0.0),
+        },
+        str(cache_dir / f"{image_path.stem}_anima_te.safetensors"),
+    )
+
+
 def _json_response_payload(response) -> dict[str, Any]:
     return json.loads(response.text or "{}")
 
@@ -156,6 +188,7 @@ def _write_selected_checkpoint_preflight_config(
         "\n".join(
             [
                 'source_image_dir = "image_dataset/selected"',
+                "max_train_steps = 1",
                 'pretrained_model_name_or_path = "models/anima.safetensors"',
                 'qwen3 = "models/qwen.safetensors"',
                 'vae = "models/vae.safetensors"',

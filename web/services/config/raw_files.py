@@ -8,6 +8,7 @@ imported directly without pulling in the legacy facade.
 from __future__ import annotations
 
 from functools import wraps
+from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
@@ -145,7 +146,7 @@ def _lock_reason_message(meta: dict[str, Any]) -> str:
     return _call_file_groups_impl("_lock_reason_message", meta)
 
 
-__all__ = ['load_raw_file', 'save_raw_file', 'delete_raw_file', 'patch_raw_file_values', 'preview_raw_file_patch', '_prepare_raw_file_patch', '_restore_dataset_config_after_failed_train_patch', '_patch_toml_top_level', '_normalize_patch_value', '_normalize_saved_raw_config_content', '_normalize_saved_raw_config_content_with_changed_keys', '_is_blank_output_name']
+__all__ = ['load_raw_file', 'save_raw_file', 'rename_raw_file', 'delete_raw_file', 'patch_raw_file_values', 'preview_raw_file_patch', '_prepare_raw_file_patch', '_restore_dataset_config_after_failed_train_patch', '_patch_toml_top_level', '_normalize_patch_value', '_normalize_saved_raw_config_content', '_normalize_saved_raw_config_content_with_changed_keys', '_is_blank_output_name']
 
 def load_raw_file(rel_path: str) -> str:
     path = _safe_resolve(_normalize_config_rel_path(rel_path))
@@ -197,6 +198,77 @@ def save_raw_file(
     if schema_warnings:
         message = f"保存成功（警告: {'; '.join(schema_warnings)}）"
     return True, message, schema_warnings
+
+
+def rename_raw_file(source_rel_path: str, target_rel_path: str) -> tuple[bool, str]:
+    raw_paths = [str(value or '').strip().replace('\\', '/') for value in (source_rel_path, target_rel_path)]
+    if any(not value or Path(value).is_absolute() or '..' in Path(value).parts for value in raw_paths):
+        return False, "路径不合法，重命名必须使用 configs/ 相对路径"
+    source = _normalize_config_rel_path(source_rel_path)
+    target = _normalize_config_rel_path(target_rel_path)
+    source_path = _safe_resolve(source)
+    target_path = _safe_resolve(target)
+    if (
+        source_path is None
+        or target_path is None
+        or source_path.suffix.lower() != ".toml"
+        or target_path.suffix.lower() != ".toml"
+    ):
+        return False, "路径不合法，只能重命名 configs/ 下的 TOML 文件"
+    if source_path.parent != target_path.parent:
+        return False, "重命名不能移动配置文件到其他目录"
+    source = f"configs/{source_path.relative_to(CONFIGS_DIR.resolve()).as_posix()}"
+    target = f"configs/{target_path.relative_to(CONFIGS_DIR.resolve()).as_posix()}"
+    if not source_path.exists() or not source_path.is_file():
+        return False, "配置文件不存在或已被移动"
+    meta = get_config_file_meta(source)
+    if meta.get("locked"):
+        return False, f"{_lock_reason_message(meta)}，不能重命名"
+    if not meta.get("trainable"):
+        return False, "只能重命名训练配置文件"
+    if source == target:
+        return True, "配置名称未变更"
+    if target_path.exists():
+        return False, "配置文件已存在，请换一个新的名称"
+    if get_config_file_meta(target).get("locked"):
+        return False, "目标配置名称已锁定，不能重命名"
+
+    specs = _call_file_groups_impl("_load_config_file_group_specs")
+    original_specs = deepcopy(specs)
+    metadata_changed = False
+    for spec in specs:
+        for key in ("files", "order", "patterns"):
+            values = list(spec.get(key) or [])
+            replaced = [target if value == source else value for value in values]
+            if replaced != values:
+                spec[key] = replaced
+                metadata_changed = True
+        excluded = set(spec.get("exclude") or set())
+        if source in excluded:
+            excluded.discard(source)
+            excluded.add(target)
+            spec["exclude"] = excluded
+            metadata_changed = True
+
+    linked = False
+    try:
+        # Exclusive creation cannot overwrite a target created after validation.
+        target_path.hardlink_to(source_path)
+        linked = True
+        if metadata_changed:
+            _call_file_groups_impl("_save_config_file_group_specs", specs)
+        source_path.unlink()
+    except Exception as exc:
+        try:
+            if linked:
+                if metadata_changed:
+                    _call_file_groups_impl("_save_config_file_group_specs", original_specs)
+                target_path.unlink()
+        except Exception:
+            return False, f"分组信息更新失败且无法自动回滚: {exc}"
+        return False, f"重命名失败: {exc}"
+
+    return True, "重命名成功"
 
 
 def delete_raw_file(rel_path: str) -> tuple[bool, str]:
@@ -522,6 +594,7 @@ def _normalize_saved_raw_config_content_with_changed_keys(content: str) -> tuple
 _SYNC_WRAPPED_EXPORTS = {
     "load_raw_file",
     "save_raw_file",
+    "rename_raw_file",
     "delete_raw_file",
     "patch_raw_file_values",
     "preview_raw_file_patch",

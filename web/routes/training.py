@@ -2,9 +2,14 @@
 
 from __future__ import annotations
 
+import asyncio
+
 from urllib.parse import quote
 
 from aiohttp import web
+from web.routes.training_history_list import history_list_response
+from web.routes.training_artifacts import handle_history_artifact_manifest
+from web.routes.training_queue_commands import queue_command_response
 
 from library.runtime.launch import resolve_training_world_size_for_gpu_selection
 from web.services.config_service import is_web_runtime_config, preflight_training_config
@@ -56,6 +61,7 @@ def setup_training_routes(app: web.Application) -> None:
     app.router.add_get("/api/training/history/{task_id}/logs", handle_history_logs)
     app.router.add_get("/api/training/history/{task_id}/logs/download", handle_history_log_download)
     app.router.add_get("/api/training/history/{task_id}/artifacts/{artifact_key}", handle_history_artifact)
+    app.router.add_get("/api/training/history/{task_id}/artifacts", handle_history_artifact_manifest)
     app.router.add_get("/api/training/history/{task_id}", handle_history_detail)
     app.router.add_get("/api/training/history/{task_id}/resume-options", handle_history_resume_options)
     app.router.add_patch("/api/training/history/{task_id}", handle_history_update)
@@ -352,8 +358,30 @@ def _preflight_requiring_preprocess(result: dict) -> dict:
 
 async def handle_stop(request: web.Request) -> web.Response:
     svc = request.app["training_service"]
-    await svc.stop()
-    return web.json_response({"ok": True, "message": "训练已停止"})
+    expected_task_id = request.query.get("task_id")
+    if request.can_read_body:
+        try:
+            payload = await request.json()
+        except (ValueError, TypeError) as exc:
+            raise web.HTTPBadRequest(text="停止请求必须是包含 task_id 的 JSON 对象") from exc
+        if not isinstance(payload, dict):
+            raise web.HTTPBadRequest(text="停止请求必须是包含 task_id 的 JSON 对象")
+        body_task_id = payload.get("task_id")
+        if not isinstance(body_task_id, str) or not body_task_id.strip():
+            raise web.HTTPBadRequest(text="task_id 必须是非空字符串")
+        if expected_task_id is not None and expected_task_id != body_task_id:
+            raise web.HTTPBadRequest(text="查询参数与请求正文中的 task_id 不一致")
+        expected_task_id = body_task_id
+    if expected_task_id is not None and not expected_task_id.strip():
+        raise web.HTTPBadRequest(text="task_id 必须是非空字符串")
+    try:
+        if expected_task_id:
+            await svc.stop(expected_task_id=expected_task_id)
+        else:
+            await svc.stop()
+    except RuntimeError as exc:
+        raise web.HTTPConflict(text=str(exc)) from exc
+    return web.json_response({"ok": True, "message": "训练已停止", "task_id": expected_task_id})
 
 
 async def handle_status(request: web.Request) -> web.Response:
@@ -361,17 +389,33 @@ async def handle_status(request: web.Request) -> web.Response:
     return web.json_response(svc.get_status_snapshot())
 
 
+def _check_task_query(request: web.Request, svc) -> str | None:
+    expected = request.query.get("task_id")
+    if not expected:
+        return None
+    current = (svc.get_status_snapshot() or {}).get("task_id")
+    if current != expected:
+        raise web.HTTPConflict(text="当前训练任务已发生变化，请刷新后重试")
+    return expected
+
+
 async def handle_metrics(request: web.Request) -> web.Response:
     svc = request.app["training_service"]
+    _check_task_query(request, svc)
     return web.json_response(svc.get_metrics_history())
 
 
 async def handle_logs(request: web.Request) -> web.Response:
     svc = request.app["training_service"]
-    after = int(request.query.get("after", "0") or 0)
-    limit = int(request.query.get("limit", "1000") or 1000)
+    task_id = _check_task_query(request, svc)
+    try:
+        after = int(request.query.get("after", "0") or 0)
+        limit = int(request.query.get("limit", "1000") or 1000)
+    except (TypeError, ValueError) as exc:
+        raise web.HTTPBadRequest(text="after 和 limit 必须是整数") from exc
     return web.json_response({
         "records": svc.get_log_records(after=after, limit=limit),
+        **({"task_id": task_id} if task_id else {}),
     })
 
 
@@ -594,38 +638,31 @@ async def handle_queue_retry(request: web.Request) -> web.Response:
 
 
 async def handle_queue_cancel_waiting(request: web.Request) -> web.Response:
-    svc = request.app["training_service"]
-    return web.json_response(await svc.cancel_waiting_queue_items())
+    return await queue_command_response(request, "cancel_waiting_queue_items")
 
 
 async def handle_queue_cancel_all(request: web.Request) -> web.Response:
-    svc = request.app["training_service"]
-    return web.json_response(await svc.cancel_all_queue_items())
+    return await queue_command_response(request, "cancel_all_queue_items")
 
 
 async def handle_queue_abort_after_current(request: web.Request) -> web.Response:
-    svc = request.app["training_service"]
-    return web.json_response(await svc.abort_queue_after_current())
+    return await queue_command_response(request, "abort_queue_after_current")
 
 
 async def handle_queue_force_abort(request: web.Request) -> web.Response:
-    svc = request.app["training_service"]
-    return web.json_response(await svc.force_abort_queue())
+    return await queue_command_response(request, "force_abort_queue")
 
 
 async def handle_queue_clear(request: web.Request) -> web.Response:
-    svc = request.app["training_service"]
-    return web.json_response(await svc.clear_finished_queue_items())
+    return await queue_command_response(request, "clear_finished_queue_items")
 
 
 async def handle_queue_clear_completed(request: web.Request) -> web.Response:
-    svc = request.app["training_service"]
-    return web.json_response(await svc.clear_completed_queue_items())
+    return await queue_command_response(request, "clear_completed_queue_items")
 
 
 async def handle_queue_clear_canceled(request: web.Request) -> web.Response:
-    svc = request.app["training_service"]
-    return web.json_response(await svc.clear_canceled_queue_items())
+    return await queue_command_response(request, "clear_canceled_queue_items")
 
 
 async def handle_queue_settings(request: web.Request) -> web.Response:
@@ -675,13 +712,7 @@ async def handle_queue_pause(request: web.Request) -> web.Response:
 
 
 async def handle_history_list(request: web.Request) -> web.Response:
-    svc = request.app["training_service"]
-    include_archived = str(request.query.get("include_archived") or "0").lower() in {"1", "true", "yes"}
-    limit = _positive_query_int(request.query.get("limit"))
-    return web.json_response({
-        "ok": True,
-        "tasks": svc.list_history_tasks(include_archived=include_archived, limit=limit),
-    })
+    return await history_list_response(request)
 
 
 async def handle_history_batch(request: web.Request) -> web.Response:
@@ -748,7 +779,7 @@ async def handle_history_logs(request: web.Request) -> web.Response:
         limit = _positive_query_int(request.query.get("limit"))
         if offset is not None and offset < 0:
             raise ValueError("日志偏移量不能小于 0")
-        return web.json_response(svc.get_history_log_page(task_id, offset=offset, limit=limit))
+        return web.json_response(await asyncio.to_thread(svc.get_history_log_page, task_id, offset=offset, limit=limit))
     except FileNotFoundError as e:
         return web.json_response({"ok": False, "error": str(e)}, status=404)
     except ValueError as e:
@@ -760,7 +791,7 @@ async def handle_history_log_search(request: web.Request) -> web.Response:
     task_id = request.match_info["task_id"]
     try:
         cursor = int(request.query.get("cursor") or 0)
-        return web.json_response(svc.find_history_log_match(
+        return web.json_response(await asyncio.to_thread(svc.find_history_log_match,
             task_id,
             query=request.query.get("query") or "",
             cursor=cursor,

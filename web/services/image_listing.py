@@ -18,8 +18,9 @@ def select_recent_files(
     suffixes: Collection[str],
     limit: int,
     min_mtime: float | None = None,
+    offset: int = 0,
 ) -> tuple[list[RecentFile], int]:
-    """Return newest regular files while retaining only ``limit`` candidates.
+    """Return one newest-first page, retaining at most ``offset + limit`` candidates.
 
     Directory scans still count every eligible file for API ``total`` fields,
     but expensive image metadata work can be restricted to the returned list.
@@ -33,7 +34,9 @@ def select_recent_files(
         return [], 0
 
     normalized_suffixes = {str(value).lower() for value in suffixes}
-    bounded_limit = max(0, int(limit))
+    page_limit = max(0, int(limit))
+    offset = max(0, int(offset))
+    bounded_limit = offset + page_limit if page_limit else 0
     heap: list[tuple[tuple[float, str, str], Path, os.stat_result]] = []
     total = 0
 
@@ -65,4 +68,4 @@ def select_recent_files(
         pass
 
     selected = sorted(heap, key=lambda item: item[0], reverse=True)
-    return [(path, stat_result) for _, path, stat_result in selected], total
+    return [(path, stat_result) for _, path, stat_result in selected[offset:offset + page_limit]], total

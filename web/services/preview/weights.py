@@ -15,6 +15,9 @@ def list_training_weights(
     task: dict[str, Any] | None = None,
     *,
     allow_latest_fallback: bool = True,
+    limit: int | None = None,
+    offset: int = 0,
+    sort: str = "legacy",
 ) -> dict[str, Any]:
     task = task or {}
     output_dir = str(task.get("output_dir") or "")
@@ -41,6 +44,7 @@ def list_training_weights(
         p
         for p in resolved.iterdir()
         if p.is_file()
+        and not p.is_symlink()
         and p.suffix.lower() in get("WEIGHT_EXTS")
         and not p.name.endswith("_moe.safetensors")
     ]
@@ -49,8 +53,20 @@ def list_training_weights(
         if named:
             candidates = named
 
-    items = [_weight_meta(path, task=task) for path in candidates[:get("MAX_WEIGHT_LIMIT")]]
-    items.sort(key=_weight_sort_key)
+    limit = max(1, min(int(limit or get("MAX_WEIGHT_LIMIT")), get("MAX_WEIGHT_LIMIT")))
+    offset = max(0, int(offset))
+    if sort not in {"legacy", "recent", "name"}:
+        raise ValueError("不支持的权重排序")
+    if sort == "legacy" and offset:
+        raise ValueError("权重分页需选择 recent 或 name 排序")
+    # New galleries sort cheap file attributes before opening only one page of headers.
+    if sort == "recent":
+        candidates.sort(key=lambda path: (path.stat().st_mtime, path.name), reverse=True)
+    elif sort == "name":
+        candidates.sort(key=lambda path: path.name)
+    items = [_weight_meta(path, task=task) for path in candidates[offset:offset + limit]]
+    if sort == "legacy":
+        items.sort(key=_weight_sort_key)
     task_count = sum(1 for item in items if item.get("scope") == "task")
     return {
         "ok": True,
@@ -58,6 +74,9 @@ def list_training_weights(
         "directory_exists": True,
         "count": len(items),
         "total": len(candidates),
+        "offset": offset,
+        "next_offset": offset + limit if offset + limit < len(candidates) else None,
+        "sort": sort,
         "task_count": task_count,
         "weights": items,
         "message": "" if items else "未找到权重文件",
@@ -250,5 +269,3 @@ def _empty_weights_listing(directory: str, message: str) -> dict[str, Any]:
         "weights": [],
         "message": message,
     }
-
-

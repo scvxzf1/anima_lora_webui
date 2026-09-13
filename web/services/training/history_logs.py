@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-import json
-from collections import deque
 from typing import Any
+from web.services.training.log_index import fingerprint, index_for, records, search
 
 from web.services.training.constants import (
     DEFAULT_HISTORY_LOG_PAGE_RECORDS,
@@ -25,35 +24,21 @@ def get_history_log_page(
     if path is None:
         return _empty_log_page(safe_limit)
     requested_offset = max(0, int(offset)) if offset is not None else None
-    page_end = requested_offset + safe_limit if requested_offset is not None else None
-    tail: deque[tuple[int, dict[str, Any]]] = deque(maxlen=safe_limit)
-    page: list[tuple[int, dict[str, Any]]] = []
-    total = 0
-
-    with path.open("r", encoding="utf-8", errors="replace") as handle:
-        for raw_line in handle:
-            line = raw_line.strip()
-            if not line:
-                continue
-            index = total
-            total += 1
-            try:
-                value = json.loads(line)
-            except Exception:
-                continue
-            if not isinstance(value, dict):
-                continue
-            if requested_offset is None:
-                tail.append((index, value))
-            elif requested_offset <= index < page_end:
-                page.append((index, value))
-
-    selected = list(tail) if requested_offset is None else page
+    key = fingerprint(path)
+    total = index_for(key)[1]
+    start = max(0, total - safe_limit) if requested_offset is None else requested_offset
+    selected = list(records(key, start, start + safe_limit))
+    # Preserve the legacy tail contract: return the last N valid records.
+    while requested_offset is None and len(selected) < safe_limit and start > 0:
+        previous = max(0, start - safe_limit)
+        selected = (list(records(key, previous, start)) + selected)[-safe_limit:]
+        start = previous
     resolved_offset = selected[0][0] if selected else min(requested_offset or total, total)
     next_offset = min(total, (requested_offset if requested_offset is not None else resolved_offset) + safe_limit)
     return {
         "ok": True,
         "logs": [value for _index, value in selected],
+        "indices": [index for index, _value in selected],
         "offset": resolved_offset,
         "limit": safe_limit,
         "returned": len(selected),
@@ -84,39 +69,12 @@ def find_history_log_match(
     if path is None:
         return _empty_log_search()
 
-    target = int(cursor)
-    first_match = None
-    last_match = None
-    selected = None
-    matches_total = 0
-    total = 0
-    with path.open("r", encoding="utf-8", errors="replace") as handle:
-        for raw_line in handle:
-            line = raw_line.strip()
-            if not line:
-                continue
-            index = total
-            total += 1
-            try:
-                value = json.loads(line)
-            except Exception:
-                continue
-            if not isinstance(value, dict) or safe_query not in _log_search_text(value):
-                continue
-            matches_total += 1
-            match = (index, value, matches_total)
-            if first_match is None:
-                first_match = match
-            last_match = match
-            if safe_direction == "forward" and selected is None and index >= target:
-                selected = match
-            elif safe_direction == "backward" and index <= target:
-                selected = match
-
-    selected = selected or (first_match if safe_direction == "forward" else last_match)
+    key = fingerprint(path)
+    total = index_for(key)[1]
+    selected = search(key, safe_query, int(cursor), safe_direction)
     if selected is None:
         return {**_empty_log_search(), "total": total}
-    index, record, ordinal = selected
+    index, record, ordinal, matches_total = selected
     return {
         "ok": True,
         "match": record,

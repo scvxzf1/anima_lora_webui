@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from web.services.training.common import _format_ts
+from web.services.training.queue_revision import ensure_queue_revision
 from web.services.training.service_state import (
     _normalize_queue_auto_retry,
     _normalize_queue_failure_policy,
@@ -140,7 +141,8 @@ async def retry_queue_item(self, item_id: str) -> dict[str, Any]:
     return {"ok": True, "message": "已重新加入队列", "item": dict(retry), **self.get_queue_snapshot()}
 
 
-async def cancel_waiting_queue_items(self) -> dict[str, Any]:
+async def cancel_waiting_queue_items(self, *, expected_revision: str | None = None) -> dict[str, Any]:
+    ensure_queue_revision(self, expected_revision)
     now = time.time()
     count = 0
     for item in self._queue_items():
@@ -159,7 +161,13 @@ async def cancel_waiting_queue_items(self) -> dict[str, Any]:
     return {"ok": True, "message": f"已取消 {count} 个等待任务", "canceled": count, **self.get_queue_snapshot()}
 
 
-async def cancel_all_queue_items(self) -> dict[str, Any]:
+async def cancel_all_queue_items(self, *, expected_revision: str | None = None) -> dict[str, Any]:
+    async with self._launch_lock:
+        ensure_queue_revision(self, expected_revision)
+        return await _cancel_all_queue_items_unlocked(self)
+
+
+async def _cancel_all_queue_items_unlocked(self) -> dict[str, Any]:
     now = time.time()
     waiting_count = 0
     stale_running_count = 0
@@ -191,7 +199,7 @@ async def cancel_all_queue_items(self) -> dict[str, Any]:
         self._save_queue()
         await self._broadcast_queue()
     if stop_running:
-        await self.stop()
+        await self._stop_unlocked()
     canceled = waiting_count + stale_running_count + (1 if stop_running else 0)
     return {
         "ok": True,
@@ -203,8 +211,9 @@ async def cancel_all_queue_items(self) -> dict[str, Any]:
     }
 
 
-async def abort_queue_after_current(self) -> dict[str, Any]:
+async def abort_queue_after_current(self, *, expected_revision: str | None = None) -> dict[str, Any]:
     async with self._launch_lock:
+        ensure_queue_revision(self, expected_revision)
         now = time.time()
         canceled_waiting = 0
         self._queue_paused = True
@@ -235,8 +244,9 @@ async def abort_queue_after_current(self) -> dict[str, Any]:
     }
 
 
-async def force_abort_queue(self) -> dict[str, Any]:
+async def force_abort_queue(self, *, expected_revision: str | None = None) -> dict[str, Any]:
     async with self._launch_lock:
+        ensure_queue_revision(self, expected_revision)
         now = time.time()
         canceled_waiting = 0
         canceled_stale_running = 0
@@ -294,15 +304,18 @@ async def force_abort_queue(self) -> dict[str, Any]:
     }
 
 
-async def clear_finished_queue_items(self) -> dict[str, Any]:
+async def clear_finished_queue_items(self, *, expected_revision: str | None = None) -> dict[str, Any]:
+    ensure_queue_revision(self, expected_revision)
     return await self.clear_queue_items_by_state(QUEUE_CLEARABLE_STATES, label="已结束")
 
 
-async def clear_completed_queue_items(self) -> dict[str, Any]:
+async def clear_completed_queue_items(self, *, expected_revision: str | None = None) -> dict[str, Any]:
+    ensure_queue_revision(self, expected_revision)
     return await self.clear_queue_items_by_state({"done"}, label="已完成")
 
 
-async def clear_canceled_queue_items(self) -> dict[str, Any]:
+async def clear_canceled_queue_items(self, *, expected_revision: str | None = None) -> dict[str, Any]:
+    ensure_queue_revision(self, expected_revision)
     return await self.clear_queue_items_by_state({"canceled"}, label="已取消")
 
 

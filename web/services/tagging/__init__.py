@@ -201,6 +201,9 @@ class TaggingService:
     def list_jobs(self) -> dict[str, Any]:
         return {"ok": True, "jobs": self.jobs.list()}
 
+    def clear_finished_jobs(self, job_ids: list[str]) -> dict[str, Any]:
+        return self.jobs.clear_finished(job_ids)
+
     def get_job(self, job_id: str) -> dict[str, Any]:
         return self.jobs.snapshot(job_id)
 

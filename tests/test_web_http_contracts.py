@@ -50,6 +50,7 @@ class _FakeRequest:
     ) -> None:
         self.app = app or {}
         self._payload = payload or {}
+        self.can_read_body = payload is not None
         self.query = query or {}
         self.match_info = match_info or {}
 

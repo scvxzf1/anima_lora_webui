@@ -8,6 +8,7 @@ from urllib.parse import quote
 from aiohttp import web
 
 from library.models.family_registry import model_family_capability_catalog
+from web.services.config.dataset_cover import dataset_cover
 from web.services.config.dataset_preview_thumbnail import render_dataset_preview_thumbnail
 from web.services.config_service import (
     apply_dataset_preset_to_training_config,
@@ -39,6 +40,7 @@ from web.services.config_service import (
     load_raw_file,
     patch_raw_file_values,
     preview_raw_file_patch,
+    rename_raw_file,
     restore_system_presets,
     resolve_dataset_preview_image,
     save_raw_file,
@@ -80,6 +82,7 @@ def setup_config_routes(app: web.Application) -> None:
     app.router.add_delete("/api/config/dataset-presets", handle_dataset_preset_delete)
     app.router.add_post("/api/config/dataset-presets/apply", handle_dataset_preset_apply)
     app.router.add_get("/api/config/dataset-presets/images", handle_dataset_preset_images)
+    app.router.add_get("/api/config/dataset-presets/cover", handle_dataset_preset_cover)
     app.router.add_get("/api/config/dataset-presets/thumbnail", handle_dataset_preset_thumbnail)
     app.router.add_get("/api/config/dataset-presets/image", handle_dataset_preset_image)
     app.router.add_get("/api/config/output-runs", handle_output_runs_list)
@@ -90,6 +93,7 @@ def setup_config_routes(app: web.Application) -> None:
     app.router.add_patch("/api/config/raw", handle_raw_patch)
     app.router.add_post("/api/config/raw/patch-preview", handle_raw_patch_preview)
     app.router.add_delete("/api/config/raw", handle_raw_delete)
+    app.router.add_post("/api/config/raw/rename", handle_raw_rename)
     app.router.add_post("/api/config/raw/save-as", handle_raw_save_as)
     app.router.add_get("/api/config/sample-prompts", handle_sample_prompts_get)
     app.router.add_put("/api/config/sample-prompts", handle_sample_prompts_put)
@@ -159,14 +163,17 @@ async def handle_steps(request: web.Request) -> web.Response:
     methods_subdir = request.query.get("methods_subdir", "gui-methods")
     config_file = request.query.get("config_file")
     dataset_config = request.query.get("dataset_config")
+    options = {"include_buckets": True} if request.query.get("include_buckets") == "1" else {}
     try:
         return web.json_response(
-            estimate_training_steps(
+            await asyncio.to_thread(
+                estimate_training_steps,
                 variant,
                 preset,
                 methods_subdir,
                 config_file=config_file,
                 dataset_config=dataset_config,
+                **options,
             )
         )
     except Exception as e:
@@ -341,6 +348,14 @@ async def handle_dataset_preset_apply(request: web.Request) -> web.Response:
         return web.json_response({"ok": False, "error": str(e)}, status=400)
 
 
+async def handle_dataset_preset_cover(request: web.Request) -> web.Response:
+    try:
+        result = await asyncio.to_thread(dataset_cover, request.query.get("file", ""))
+        return web.json_response(result, headers={"Cache-Control": "private, no-store"})
+    except (ValueError, OSError):
+        return web.json_response({"ok": True, "image": None, "reason": "数据集配置不存在、无效或无法读取"})
+
+
 async def handle_dataset_preset_images(request: web.Request) -> web.Response:
     file = request.query.get("file", "")
     source = request.query.get("source", "training")
@@ -511,6 +526,25 @@ async def handle_raw_delete(request: web.Request) -> web.Response:
     ok, msg = delete_raw_file(file_path)
     if ok:
         return web.json_response({"ok": True, "file": file_path, "message": msg})
+    return web.json_response({"ok": False, "error": msg}, status=400)
+
+
+async def handle_raw_rename(request: web.Request) -> web.Response:
+    try:
+        data = await request.json()
+    except (ValueError, UnicodeError):
+        return web.json_response({"ok": False, "error": "请求体必须是有效 JSON 对象"}, status=400)
+    if not isinstance(data, dict):
+        return web.json_response({"ok": False, "error": "请求体必须是 JSON 对象"}, status=400)
+    source = data.get("source", "")
+    target = data.get("target", "")
+    if not isinstance(source, str) or not isinstance(target, str):
+        return web.json_response({"ok": False, "error": "source 和 target 必须是字符串"}, status=400)
+    if not source.strip() or not target.strip():
+        return web.json_response({"ok": False, "error": "缺少 source 或 target 参数"}, status=400)
+    ok, msg = rename_raw_file(source, target)
+    if ok:
+        return web.json_response({"ok": True, "file": target, "message": msg})
     return web.json_response({"ok": False, "error": msg}, status=400)
 
 

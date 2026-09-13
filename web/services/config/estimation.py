@@ -8,7 +8,10 @@ imported directly without pulling in the legacy facade.
 from __future__ import annotations
 
 from functools import wraps
+import math
 from typing import Any
+
+from library.datasets.subsets import normalize_sample_ratio
 
 def _missing_facade_dependency(*args, **kwargs):
     raise RuntimeError("config estimation helper was called before facade sync")
@@ -118,6 +121,7 @@ def estimate_training_steps(
     *,
     config_file: str | None = None,
     dataset_config: str | None = None,
+    include_buckets: bool = False,
 ) -> dict[str, Any]:
     cfg = _load_training_config_for_web_run(
         variant,
@@ -139,6 +143,15 @@ def estimate_training_steps(
     train_images = 0
     weighted_images = 0
     dataset_repeats = 0
+    repeated_images = 0
+    sampling_base_weighted_images = 0
+    raw_global_ratio = cfg.get("sample_ratio")
+    global_ratio_configured = raw_global_ratio not in (None, "")
+    global_ratio = (
+        normalize_sample_ratio(raw_global_ratio)
+        if global_ratio_configured
+        else None
+    )
     for idx, row in enumerate(dataset_rows):
         source_dir = _resolve_project_path(str(row.get("source_dir") or ""))
         resized_dir = _resolve_project_path(str(row.get("image_dir") or ""))
@@ -186,13 +199,39 @@ def estimate_training_steps(
         )
         trigger_clone_repeats = trigger_clone["num_repeats"] if trigger_clone["enabled"] else 0
         trigger_clone_weighted = trigger_clone_image_count * trigger_clone_repeats
+        settings = row.get("settings") if isinstance(row.get("settings"), dict) else {}
+        is_reg = _bool_value(row.get("is_reg"), False)
+        training_pool_count = _training_pool_count(used_count, settings, is_reg=is_reg)
+        trigger_clone_training_pool_count = _training_pool_count(
+            trigger_clone_image_count,
+            settings,
+            is_reg=is_reg,
+        )
+        row_ratio = global_ratio
+        if row_ratio is None:
+            row_ratio = normalize_sample_ratio(_row_semantic_value(row, "sample_ratio", 1.0))
+        sampled_count = _sampled_count(training_pool_count, row_ratio)
+        trigger_clone_sampled_count = _sampled_count(
+            trigger_clone_training_pool_count,
+            row_ratio,
+        )
+        sampled_weighted = sampled_count * repeats
+        trigger_clone_sampled_weighted = (
+            trigger_clone_sampled_count * trigger_clone_repeats
+        )
         source_images += src_count
         resized_images += resized_count
         train_images += used_count + trigger_clone_image_count
         weighted_images += used_count * repeats + trigger_clone_weighted
+        sampling_base_weighted_images += (
+            training_pool_count * repeats
+            + trigger_clone_training_pool_count * trigger_clone_repeats
+        )
+        repeated_images += sampled_weighted + trigger_clone_sampled_weighted
         dataset_repeats += repeats
         detail_rows.append({
             "index": idx + 1,
+            "is_reg": is_reg,
             "source_dir": _display_path(source_dir),
             "image_dir": _display_path(resized_dir),
             "cache_dir": _display_path(_resolve_project_path(str(row.get("cache_dir") or ""))),
@@ -201,24 +240,44 @@ def estimate_training_steps(
             "train_image_count": used_count,
             "num_repeats": repeats,
             "weighted_image_count": used_count * repeats,
+            "training_pool_image_count": training_pool_count,
+            "sample_ratio": row_ratio,
+            "sampled_image_count": sampled_count,
+            "sampled_weighted_image_count": sampled_weighted,
             "trigger_clone": trigger_clone,
             "trigger_clone_image_count": trigger_clone_image_count,
             "trigger_clone_weighted_image_count": trigger_clone_weighted,
+            "trigger_clone_training_pool_image_count": trigger_clone_training_pool_count,
+            "trigger_clone_sampled_image_count": trigger_clone_sampled_count,
+            "trigger_clone_sampled_weighted_image_count": trigger_clone_sampled_weighted,
             "uses_preprocessed_images": resized_count > 0,
             "recursive": recursive,
             "path_pattern": path_pattern,
             "nl_tag_mix": mix,
             "nl_tag_mix_missing": mix["enabled"] and mix_count is None,
         })
+        if include_buckets:
+            from web.services.config.estimate_buckets import inspect_estimate_buckets
 
-    sample_ratio = _positive_float(cfg.get("sample_ratio"), 1.0)
+            detail_rows[-1]["bucket_distribution"] = inspect_estimate_buckets(
+                resized_dir if resized_count > 0 else source_dir,
+                recursive=recursive,
+                path_pattern=path_pattern,
+                available=resized_count > 0 or src_count > 0,
+                source_settings=None if resized_count > 0 else settings,
+                min_pixels=(
+                    _nonnegative_int(cfg.get("min_pixels"), 500_000)
+                    if _bool_value(cfg.get("drop_lowres_images"), True) else 0
+                ),
+            )
+
+    sample_ratio = global_ratio if global_ratio is not None else 1.0
     explicit_epochs = cfg.get("max_train_epochs") not in (None, "")
     epochs = _positive_int(cfg.get("max_train_epochs"), 0) if explicit_epochs else None
     max_train_steps = _nonnegative_int(cfg.get("max_train_steps"), DEFAULT_MAX_TRAIN_STEPS)
     batch_size = _positive_int(cfg.get("train_batch_size"), 1)
     grad_accum = _positive_int(cfg.get("gradient_accumulation_steps"), 1)
     effective_batch = max(1, batch_size * grad_accum)
-    repeated_images = int(weighted_images * sample_ratio)
     steps_per_epoch = (repeated_images + effective_batch - 1) // effective_batch if repeated_images else 0
     if epochs is not None:
         total_steps = steps_per_epoch * epochs
@@ -242,7 +301,9 @@ def estimate_training_steps(
         "dataset_count": len(detail_rows),
         "dataset_num_repeats": dataset_repeats or 1,
         "weighted_image_count": weighted_images,
+        "sampling_base_weighted_image_count": sampling_base_weighted_images,
         "sample_ratio": sample_ratio,
+        "sample_ratio_configured": global_ratio_configured,
         "max_train_epochs": epochs,
         "max_train_steps": max_train_steps,
         "uses_max_train_epochs": epochs is not None,
@@ -260,6 +321,50 @@ def estimate_training_steps(
         "lora_cache_dir": first_row.get("cache_dir", ""),
         "datasets": detail_rows,
     }
+
+
+def _row_semantic_value(row: dict[str, Any], key: str, default: Any) -> Any:
+    if key in row:
+        return row[key]
+    for map_key in (
+        "preserved_subset_fields",
+        "preserved_dataset_fields",
+        "preserved_general_fields",
+    ):
+        values = row.get(map_key)
+        if isinstance(values, dict) and key in values:
+            return values[key]
+    return default
+
+
+def _training_pool_count(
+    image_count: int,
+    settings: dict[str, Any],
+    *,
+    is_reg: bool,
+) -> int:
+    if image_count <= 0 or is_reg:
+        return max(0, image_count)
+    split_num = _nonnegative_int(settings.get("validation_split_num"), 0)
+    try:
+        split_ratio = float(settings.get("validation_split") or 0.0)
+    except (TypeError, ValueError):
+        split_ratio = 0.0
+    if image_count < 100 and (split_num > 0 or split_ratio > 0.0):
+        return image_count
+    if split_num > 0:
+        return image_count if split_num >= image_count else image_count - split_num
+    if split_ratio <= 0.0 or split_ratio >= 1.0:
+        return image_count
+    return math.ceil(image_count * (1.0 - split_ratio))
+
+
+def _sampled_count(image_count: int, ratio: float) -> int:
+    if image_count <= 0:
+        return 0
+    if ratio >= 1.0:
+        return image_count
+    return max(1, int(image_count * ratio))
 
 
 

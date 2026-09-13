@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from library.models.family_registry import get_model_family_spec
+from web.services.config.cache_audit import audit_dataset_row_caches
 from library.preprocess.captions import normalize_caption_source_mode, read_caption_source_from_dirs
 from web.services.config.metadata import DATASET_IMAGE_EXTS
 from web.services.config.preflight_runtime import (
@@ -175,42 +175,79 @@ def _check_dataset_paths(cfg: dict[str, Any], add, *, check_runtime_dirs: bool =
         return
     for idx, row in enumerate(rows, start=1):
         image_dir = _resolve_project_path(str(row.get("image_dir") or ""))
-        cache_dir = _resolve_project_path(str(row.get("cache_dir") or ""))
         prefix = f"dataset_{idx}"
         if not image_dir.exists():
             add("error", f"{prefix}_image_dir", f"第 {idx} 组缩放图路径不存在", image_dir)
         elif not image_dir.is_dir():
             add("error", f"{prefix}_image_dir", f"第 {idx} 组缩放图路径不是目录", image_dir)
-        if not cache_dir.exists():
-            add("error", f"{prefix}_cache_dir", f"第 {idx} 组缓存路径不存在", cache_dir)
-        elif not cache_dir.is_dir():
-            add("error", f"{prefix}_cache_dir", f"第 {idx} 组缓存路径不是目录", cache_dir)
+        raw_cache_dir = str(row.get("cache_dir") or "").strip()
+        if raw_cache_dir:
+            cache_dir = _resolve_project_path(raw_cache_dir)
+            if not cache_dir.exists():
+                add("error", f"{prefix}_cache_dir", f"第 {idx} 组缓存路径不存在", cache_dir)
+            elif not cache_dir.is_dir():
+                add("error", f"{prefix}_cache_dir", f"第 {idx} 组缓存路径不是目录", cache_dir)
 
 def _check_cache_sidecars(cfg: dict[str, Any], add) -> None:
-    cache_dirs: list[tuple[int, Path, bool]] = []
-    for idx, row in enumerate(_dataset_rows_for_estimate(cfg), start=1):
-        raw = str(row.get("cache_dir") or "").strip()
-        if not raw:
+    rows = _dataset_rows_for_estimate(cfg)
+    for idx, row in enumerate(rows, start=1):
+        image_dir = _resolve_project_path(
+            str(row.get("image_dir") or row.get("source_dir") or "")
+        )
+        if not image_dir.is_dir():
             continue
-        cache_dirs.append((idx, _resolve_project_path(raw), _bool_value(row.get("recursive"), True)))
-    if not cache_dirs:
-        raw = str(cfg.get("lora_cache_dir") or "").strip()
-        if raw:
-            cache_dirs = [(1, _resolve_project_path(raw), True)]
-
-    cache_dirs = [(idx, path, recursive) for idx, path, recursive in cache_dirs if path.is_dir()]
-    if not cache_dirs:
-        return
-
-    family = str(cfg.get("model_family") or "anima").strip().lower()
-    family_spec = get_model_family_spec(family)
-    latent_pattern = "*_z_image.npz" if family == "z_image" else "*_anima.npz"
-    if cfg.get("use_vae_cache", cfg.get("cache_latents_to_disk", False)):
-        _check_cache_sidecar_pattern(add, cache_dirs, latent_pattern, "latent_cache", "VAE latent 缓存", "未找到当前模型 family 的 latent 缓存，可能需要先预处理")
-    if cfg.get("use_text_cache", cfg.get("cache_text_encoder_outputs_to_disk", False)):
-        _check_cache_sidecar_pattern(add, cache_dirs, f"*{family_spec.text_cache.suffix}", "text_cache", "文本编码器缓存", "未找到当前模型 family 的文本编码器缓存，可能需要先预处理")
-    if cfg.get("ip_features_cache_to_disk", False) or cfg.get("use_ip_adapter", False):
-        _check_cache_sidecar_pattern(add, cache_dirs, "*_anima_pe.safetensors", "pe_cache", "PE 图像特征缓存", "未找到 PE 图像特征缓存，IP-Adapter 可能需要先 preprocess-pe")
+        try:
+            images = _dataset_image_files(
+                image_dir,
+                DATASET_IMAGE_EXTS,
+                recursive=_bool_value(row.get("recursive"), True),
+                path_pattern=_normalize_path_pattern(row.get("path_pattern")),
+            )
+            if not images:
+                continue
+            results = audit_dataset_row_caches(
+                cfg,
+                row,
+                images,
+                resolve_path=_resolve_project_path,
+            )
+        except ValueError as exc:
+            add("error", f"dataset_{idx}_cache_semantics", str(exc), image_dir)
+            continue
+        for result in results:
+            key = result["kind"] if idx == 1 else f"dataset_{idx}_{result['kind']}"
+            valid = result["valid"]
+            total = result["total"]
+            missing = result["missing"]
+            invalid = result["invalid"]
+            if not missing and not invalid:
+                add(
+                    "ok",
+                    key,
+                    f"第 {idx} 组{result['label']}完整：{valid}/{total}",
+                    result["root"],
+                )
+                continue
+            samples = [Path(path).name for path in [*missing, *invalid][:3]]
+            details = []
+            if missing:
+                details.append(f"缺失 {len(missing)}")
+            if invalid:
+                details.append(f"无效 {len(invalid)}")
+            sample_text = f"；例如 {', '.join(samples)}" if samples else ""
+            level = "error" if invalid else result["missing_level"]
+            if result["kind"] == "external_masks":
+                suffix = "；缺失遮罩的图片会按全 1 mask 训练"
+            elif result["kind"] == "condition_latent_cache":
+                suffix = "；通用预处理不会生成条件 latent，请先运行当前方法的 condition prep"
+            else:
+                suffix = "；runtime 训练不会临时补缓存，请重新预处理"
+            add(
+                level,
+                key,
+                f"第 {idx} 组{result['label']}不完整：{valid}/{total}（{'，'.join(details)}）{sample_text}{suffix}",
+                result["root"],
+            )
 
 def _check_cache_sidecar_pattern(
     add,
