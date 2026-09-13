@@ -1,0 +1,763 @@
+{
+  "runs": [
+    {
+      "name": "diagnostic-fixed",
+      "completion": {
+        "status": "completed",
+        "steps": 4,
+        "finite": true,
+        "seconds": 135.27344338999683,
+        "final_blocks": 26
+      },
+      "acceptance": {
+        "passed": true,
+        "failures": [],
+        "pressure_adjusted": false,
+        "pressure_recovery_explored": false,
+        "pressure_cycle_completed": false,
+        "causal_speedup_proven": false
+      },
+      "updates": 4,
+      "observed_blocks": [
+        26
+      ],
+      "peak_gib": 15.501106262207031,
+      "switches": [],
+      "pressure": [],
+      "pressure_recovery_explored": false,
+      "runtime_end": null,
+      "decisions": [],
+      "compile_graph_counts": [
+        4,
+        8
+      ],
+      "segments": [
+        {
+          "blocks": 26,
+          "start": 1,
+          "end": 4,
+          "sample_counts_by_shape": {
+            "unrecorded": 4
+          },
+          "hot_seconds_by_shape": {
+            "unrecorded": 18.44646527849909
+          }
+        }
+      ],
+      "mean_recorded_update_seconds": 22.35312937574963
+    },
+    {
+      "name": "diagnostic-memory",
+      "completion": {
+        "status": "completed",
+        "steps": 2,
+        "finite": true,
+        "seconds": 102.12091687499924,
+        "final_blocks": 26
+      },
+      "acceptance": {
+        "passed": true,
+        "failures": [],
+        "pressure_adjusted": false,
+        "pressure_recovery_explored": false,
+        "pressure_cycle_completed": false,
+        "causal_speedup_proven": false
+      },
+      "updates": 2,
+      "observed_blocks": [
+        26
+      ],
+      "peak_gib": 15.32370376586914,
+      "switches": [],
+      "pressure": [],
+      "pressure_recovery_explored": false,
+      "runtime_end": null,
+      "decisions": [],
+      "compile_graph_counts": [
+        4,
+        8
+      ],
+      "segments": [
+        {
+          "blocks": 26,
+          "start": 1,
+          "end": 2,
+          "sample_counts_by_shape": {
+            "unrecorded": 2
+          },
+          "hot_seconds_by_shape": {}
+        }
+      ],
+      "mean_recorded_update_seconds": 26.571824126000138
+    },
+    {
+      "name": "fixed26-v6",
+      "completion": {
+        "status": "completed",
+        "steps": 24,
+        "finite": true,
+        "seconds": 502.8309765140002,
+        "final_blocks": 26
+      },
+      "acceptance": {
+        "passed": true,
+        "failures": [],
+        "pressure_adjusted": false,
+        "pressure_recovery_explored": false,
+        "pressure_cycle_completed": false,
+        "causal_speedup_proven": false
+      },
+      "updates": 24,
+      "observed_blocks": [
+        26
+      ],
+      "peak_gib": 4.903345108032227,
+      "switches": [],
+      "pressure": [],
+      "pressure_recovery_explored": false,
+      "runtime_end": null,
+      "decisions": [],
+      "compile_graph_counts": [
+        4,
+        8
+      ],
+      "segments": [
+        {
+          "blocks": 26,
+          "start": 1,
+          "end": 24,
+          "sample_counts_by_shape": {
+            "[[1, 16, 150, 112]]": 12,
+            "[[1, 16, 168, 96]]": 12
+          },
+          "hot_seconds_by_shape": {
+            "[[1, 16, 150, 112]]": 19.043383520500356,
+            "[[1, 16, 168, 96]]": 17.913566305502172
+          }
+        }
+      ],
+      "mean_recorded_update_seconds": 19.136726430583924
+    },
+    {
+      "name": "live-accumulation2",
+      "completion": {
+        "status": "completed",
+        "steps": 24,
+        "finite": true,
+        "seconds": 972.6990656120033,
+        "final_blocks": 26
+      },
+      "acceptance": {
+        "passed": true,
+        "failures": [],
+        "pressure_adjusted": false,
+        "pressure_recovery_explored": false,
+        "pressure_cycle_completed": false,
+        "causal_speedup_proven": false
+      },
+      "updates": 24,
+      "observed_blocks": [
+        24,
+        26
+      ],
+      "peak_gib": 5.487085342407227,
+      "switches": [
+        {
+          "time": 1788879391.9496508,
+          "blocks": 24,
+          "event": "switch",
+          "step": 6,
+          "previous": 26,
+          "reason": "explore",
+          "seconds": 0.05061509399820352
+        },
+        {
+          "time": 1788879613.5765483,
+          "blocks": 26,
+          "event": "switch",
+          "step": 12,
+          "previous": 24,
+          "reason": "paired_reference",
+          "seconds": 0.12023429099645
+        }
+      ],
+      "pressure": [],
+      "pressure_recovery_explored": false,
+      "runtime_end": {
+        "time": 1788880071.7605996,
+        "blocks": 26,
+        "event": "end",
+        "step": 24,
+        "completed": true,
+        "switches": 2,
+        "switch_seconds": 0.17084938499465352,
+        "controller_seconds": 0.23218418899341486
+      },
+      "decisions": [
+        {
+          "time": 1788879840.217227,
+          "blocks": 26,
+          "event": "update",
+          "step": 18,
+          "seconds": 38.505671875,
+          "shapes": [
+            [
+              1,
+              16,
+              150,
+              112
+            ],
+            [
+              1,
+              16,
+              168,
+              96
+            ]
+          ],
+          "headroom": 13856905216,
+          "loss": 0.31357577443122864,
+          "phase": "baseline",
+          "verdict": {
+            "stable": true,
+            "drift": 0.041679097472614,
+            "reference_seconds": 37.81169787892062,
+            "candidate_seconds": 36.874755859375,
+            "accepted": false,
+            "warmup_cost_seconds": 0.0037675781250001705,
+            "switch_cost_seconds": 0.2910836759911035
+          },
+          "switches": 2,
+          "switch_seconds": 0.17084938499465352,
+          "controller_seconds": 0.21762011899409117
+        }
+      ],
+      "compile_graph_counts": [
+        8
+      ],
+      "segments": [
+        {
+          "blocks": 26,
+          "start": 1,
+          "end": 6,
+          "sample_counts_by_shape": {
+            "[[1, 16, 150, 112], [1, 16, 168, 96]]": 6
+          },
+          "hot_seconds_by_shape": {
+            "[[1, 16, 150, 112], [1, 16, 168, 96]]": 37.047525390625
+          }
+        },
+        {
+          "blocks": 24,
+          "start": 7,
+          "end": 12,
+          "sample_counts_by_shape": {
+            "[[1, 16, 150, 112], [1, 16, 168, 96]]": 6
+          },
+          "hot_seconds_by_shape": {
+            "[[1, 16, 150, 112], [1, 16, 168, 96]]": 36.874755859375
+          }
+        },
+        {
+          "blocks": 26,
+          "start": 13,
+          "end": 24,
+          "sample_counts_by_shape": {
+            "[[1, 16, 150, 112], [1, 16, 168, 96]]": 12
+          },
+          "hot_seconds_by_shape": {
+            "[[1, 16, 150, 112], [1, 16, 168, 96]]": 38.515945312499994
+          }
+        }
+      ],
+      "mean_recorded_update_seconds": 38.22070905108285
+    },
+    {
+      "name": "live-pressure-v1",
+      "completion": null,
+      "acceptance": {
+        "passed": false,
+        "failures": [
+          "checkpoint_completion_missing_or_failed",
+          "incomplete_update_sequence",
+          "runtime_not_completed",
+          "pressure_cycle_incomplete"
+        ],
+        "pressure_adjusted": false,
+        "pressure_recovery_explored": false,
+        "pressure_cycle_completed": false,
+        "causal_speedup_proven": false
+      },
+      "updates": 15,
+      "observed_blocks": [
+        26
+      ],
+      "peak_gib": 15.501106262207031,
+      "switches": [],
+      "pressure": [],
+      "pressure_recovery_explored": false,
+      "runtime_end": {
+        "time": 1788874850.4317155,
+        "blocks": 26,
+        "event": "end",
+        "step": 15,
+        "completed": false,
+        "switches": 0,
+        "switch_seconds": 0,
+        "controller_seconds": 0.5342390140140196
+      },
+      "decisions": [],
+      "compile_graph_counts": [
+        4,
+        8
+      ],
+      "segments": [
+        {
+          "blocks": 26,
+          "start": 1,
+          "end": 15,
+          "sample_counts_by_shape": {
+            "[[1, 16, 150, 112]]": 8,
+            "[[1, 16, 168, 96]]": 7
+          },
+          "hot_seconds_by_shape": {
+            "[[1, 16, 150, 112]]": 20.1844033203125,
+            "[[1, 16, 168, 96]]": 18.774900390625
+          }
+        }
+      ],
+      "mean_recorded_update_seconds": 20.614993340532724
+    },
+    {
+      "name": "live-pressure-v2",
+      "completion": null,
+      "acceptance": {
+        "passed": false,
+        "failures": [
+          "checkpoint_completion_missing_or_failed",
+          "incomplete_update_sequence",
+          "runtime_not_completed",
+          "pressure_cycle_incomplete"
+        ],
+        "pressure_adjusted": false,
+        "pressure_recovery_explored": false,
+        "pressure_cycle_completed": false,
+        "causal_speedup_proven": false
+      },
+      "updates": 7,
+      "observed_blocks": [
+        26
+      ],
+      "peak_gib": 15.501106262207031,
+      "switches": [],
+      "pressure": [],
+      "pressure_recovery_explored": false,
+      "runtime_end": {
+        "time": 1788875154.2612157,
+        "blocks": 26,
+        "event": "end",
+        "step": 7,
+        "completed": false,
+        "switches": 0,
+        "switch_seconds": 0,
+        "controller_seconds": 0.26442381200467935
+      },
+      "decisions": [],
+      "compile_graph_counts": [
+        4,
+        8
+      ],
+      "segments": [
+        {
+          "blocks": 26,
+          "start": 1,
+          "end": 7,
+          "sample_counts_by_shape": {
+            "[[1, 16, 150, 112]]": 3,
+            "[[1, 16, 168, 96]]": 4
+          },
+          "hot_seconds_by_shape": {
+            "[[1, 16, 168, 96]]": 17.9375849609375
+          }
+        }
+      ],
+      "mean_recorded_update_seconds": 20.70593508942797
+    },
+    {
+      "name": "live-pressure-v3",
+      "completion": null,
+      "acceptance": {
+        "passed": false,
+        "failures": [
+          "checkpoint_completion_missing_or_failed",
+          "incomplete_update_sequence",
+          "runtime_not_completed",
+          "pressure_cycle_incomplete"
+        ],
+        "pressure_adjusted": false,
+        "pressure_recovery_explored": false,
+        "pressure_cycle_completed": false,
+        "causal_speedup_proven": false
+      },
+      "updates": 7,
+      "observed_blocks": [
+        26
+      ],
+      "peak_gib": 15.501106262207031,
+      "switches": [],
+      "pressure": [],
+      "pressure_recovery_explored": false,
+      "runtime_end": {
+        "time": 1788875418.2043564,
+        "blocks": 26,
+        "event": "end",
+        "step": 7,
+        "completed": false,
+        "switches": 0,
+        "switch_seconds": 0,
+        "controller_seconds": 0.24779874701198423
+      },
+      "decisions": [],
+      "compile_graph_counts": [
+        4,
+        8
+      ],
+      "segments": [
+        {
+          "blocks": 26,
+          "start": 1,
+          "end": 7,
+          "sample_counts_by_shape": {
+            "[[1, 16, 150, 112]]": 3,
+            "[[1, 16, 168, 96]]": 4
+          },
+          "hot_seconds_by_shape": {
+            "[[1, 16, 168, 96]]": 17.902999023437502
+          }
+        }
+      ],
+      "mean_recorded_update_seconds": 20.641753661427565
+    },
+    {
+      "name": "live-pressure-v4",
+      "completion": null,
+      "acceptance": {
+        "passed": false,
+        "failures": [
+          "checkpoint_completion_missing_or_failed",
+          "incomplete_update_sequence",
+          "runtime_not_completed",
+          "pressure_cycle_incomplete"
+        ],
+        "pressure_adjusted": false,
+        "pressure_recovery_explored": false,
+        "pressure_cycle_completed": false,
+        "causal_speedup_proven": false
+      },
+      "updates": 9,
+      "observed_blocks": [
+        26
+      ],
+      "peak_gib": 4.903345108032227,
+      "switches": [],
+      "pressure": [],
+      "pressure_recovery_explored": false,
+      "runtime_end": {
+        "time": 1788876063.144096,
+        "blocks": 26,
+        "event": "end",
+        "step": 9,
+        "completed": false,
+        "switches": 0,
+        "switch_seconds": 0,
+        "controller_seconds": 0.32802148300834233
+      },
+      "decisions": [],
+      "compile_graph_counts": [
+        4,
+        8
+      ],
+      "segments": [
+        {
+          "blocks": 26,
+          "start": 1,
+          "end": 9,
+          "sample_counts_by_shape": {
+            "[[1, 16, 150, 112]]": 5,
+            "[[1, 16, 168, 96]]": 4
+          },
+          "hot_seconds_by_shape": {
+            "[[1, 16, 150, 112]]": 19.35405078125,
+            "[[1, 16, 168, 96]]": 17.8861552734375
+          }
+        }
+      ],
+      "mean_recorded_update_seconds": 20.46288921044389
+    },
+    {
+      "name": "live-pressure-v5",
+      "completion": null,
+      "acceptance": {
+        "passed": false,
+        "failures": [
+          "checkpoint_completion_missing_or_failed",
+          "incomplete_update_sequence",
+          "runtime_not_completed",
+          "pressure_cycle_incomplete"
+        ],
+        "pressure_adjusted": false,
+        "pressure_recovery_explored": false,
+        "pressure_cycle_completed": false,
+        "causal_speedup_proven": false
+      },
+      "updates": 10,
+      "observed_blocks": [
+        24,
+        26
+      ],
+      "peak_gib": 5.128849029541016,
+      "switches": [
+        {
+          "time": 1788876377.0222168,
+          "blocks": 24,
+          "event": "switch",
+          "step": 9,
+          "previous": 26,
+          "reason": "explore",
+          "seconds": 0.04959268200036604
+        }
+      ],
+      "pressure": [
+        {
+          "step": 10,
+          "held_bytes": 11845544740
+        }
+      ],
+      "pressure_recovery_explored": false,
+      "runtime_end": {
+        "time": 1788876395.2275186,
+        "blocks": 24,
+        "event": "end",
+        "step": 10,
+        "completed": false,
+        "switches": 1,
+        "switch_seconds": 0.04959268200036604,
+        "controller_seconds": 0.42560574601520784
+      },
+      "decisions": [],
+      "compile_graph_counts": [
+        4,
+        8
+      ],
+      "segments": [
+        {
+          "blocks": 26,
+          "start": 1,
+          "end": 9,
+          "sample_counts_by_shape": {
+            "[[1, 16, 150, 112]]": 5,
+            "[[1, 16, 168, 96]]": 4
+          },
+          "hot_seconds_by_shape": {
+            "[[1, 16, 150, 112]]": 19.008203125,
+            "[[1, 16, 168, 96]]": 17.985818359375
+          }
+        },
+        {
+          "blocks": 24,
+          "start": 10,
+          "end": 10,
+          "sample_counts_by_shape": {
+            "[[1, 16, 168, 96]]": 1
+          },
+          "hot_seconds_by_shape": {}
+        }
+      ],
+      "mean_recorded_update_seconds": 20.17815174939751
+    },
+    {
+      "name": "live-pressure-v6",
+      "completion": {
+        "status": "completed",
+        "steps": 96,
+        "finite": true,
+        "seconds": 1862.273418261997,
+        "final_blocks": 25
+      },
+      "acceptance": {
+        "passed": true,
+        "failures": [],
+        "pressure_adjusted": true,
+        "pressure_recovery_explored": true,
+        "pressure_cycle_completed": true,
+        "causal_speedup_proven": false
+      },
+      "updates": 96,
+      "observed_blocks": [
+        23,
+        24,
+        25,
+        26
+      ],
+      "peak_gib": 5.509790420532227,
+      "switches": [
+        {
+          "time": 1788876751.604981,
+          "blocks": 24,
+          "event": "switch",
+          "step": 9,
+          "previous": 26,
+          "reason": "explore",
+          "seconds": 0.05022433799604187
+        },
+        {
+          "time": 1788876770.490063,
+          "blocks": 25,
+          "event": "switch",
+          "step": 10,
+          "previous": 24,
+          "reason": "gpu_pressure",
+          "seconds": 0.009558748999552336
+        },
+        {
+          "time": 1788877496.1181297,
+          "blocks": 23,
+          "event": "switch",
+          "step": 49,
+          "previous": 25,
+          "reason": "explore",
+          "seconds": 0.04768297399277799
+        },
+        {
+          "time": 1788877660.0952168,
+          "blocks": 25,
+          "event": "switch",
+          "step": 58,
+          "previous": 23,
+          "reason": "paired_reference",
+          "seconds": 0.12230909000209067
+        }
+      ],
+      "pressure": [
+        {
+          "step": 10,
+          "held_bytes": 11352587020
+        },
+        {
+          "step": 14,
+          "held_bytes": 0
+        }
+      ],
+      "pressure_recovery_explored": true,
+      "runtime_end": {
+        "time": 1788878362.341175,
+        "blocks": 25,
+        "event": "end",
+        "step": 96,
+        "completed": true,
+        "switches": 4,
+        "switch_seconds": 0.22977515099046286,
+        "controller_seconds": 0.4662444989589858
+      },
+      "decisions": [
+        {
+          "time": 1788877808.0772696,
+          "blocks": 25,
+          "event": "update",
+          "step": 66,
+          "seconds": 19.015935546875,
+          "shapes": [
+            [
+              1,
+              16,
+              150,
+              112
+            ]
+          ],
+          "headroom": 13501356000,
+          "loss": 0.1368655264377594,
+          "phase": "baseline",
+          "verdict": {
+            "stable": true,
+            "drift": 0.010967460549500485,
+            "reference_seconds": 18.38620456577525,
+            "candidate_seconds": 18.2189716796875,
+            "accepted": false,
+            "warmup_cost_seconds": 0.4159902343749984,
+            "switch_cost_seconds": 0.29230115399695933
+          },
+          "switches": 4,
+          "switch_seconds": 0.22977515099046286,
+          "controller_seconds": 0.39253634495980805
+        }
+      ],
+      "compile_graph_counts": [
+        4,
+        8
+      ],
+      "segments": [
+        {
+          "blocks": 26,
+          "start": 1,
+          "end": 9,
+          "sample_counts_by_shape": {
+            "[[1, 16, 150, 112]]": 5,
+            "[[1, 16, 168, 96]]": 4
+          },
+          "hot_seconds_by_shape": {
+            "[[1, 16, 150, 112]]": 19.9912734375,
+            "[[1, 16, 168, 96]]": 18.4664501953125
+          }
+        },
+        {
+          "blocks": 24,
+          "start": 10,
+          "end": 10,
+          "sample_counts_by_shape": {
+            "[[1, 16, 168, 96]]": 1
+          },
+          "hot_seconds_by_shape": {}
+        },
+        {
+          "blocks": 25,
+          "start": 11,
+          "end": 49,
+          "sample_counts_by_shape": {
+            "[[1, 16, 150, 112]]": 20,
+            "[[1, 16, 168, 96]]": 19
+          },
+          "hot_seconds_by_shape": {
+            "[[1, 16, 150, 112]]": 18.998291015625,
+            "[[1, 16, 168, 96]]": 17.85203125
+          }
+        },
+        {
+          "blocks": 23,
+          "start": 50,
+          "end": 58,
+          "sample_counts_by_shape": {
+            "[[1, 16, 168, 96]]": 5,
+            "[[1, 16, 150, 112]]": 4
+          },
+          "hot_seconds_by_shape": {
+            "[[1, 16, 168, 96]]": 17.70661328125,
+            "[[1, 16, 150, 112]]": 18.731330078124998
+          }
+        },
+        {
+          "blocks": 25,
+          "start": 59,
+          "end": 96,
+          "sample_counts_by_shape": {
+            "[[1, 16, 150, 112]]": 19,
+            "[[1, 16, 168, 96]]": 19
+          },
+          "hot_seconds_by_shape": {
+            "[[1, 16, 150, 112]]": 19.002361328125,
+            "[[1, 16, 168, 96]]": 17.825728515625
+          }
+        }
+      ],
+      "mean_recorded_update_seconds": 18.689064950968184
+    }
+  ]
+}

@@ -150,15 +150,16 @@
   `docs/proposal/krea2_raw_migration.md`）。`dit.py` 提供 single-stream MMDiT、block swap、
   checkpoint 和 fixed resident compile；`weights.py` / `quantize.py` 负责 strict BF16/NF4
   加载；`strategy.py`、`family.py`、`sampling.py`、`inference_runner.py` 分别承载 Qwen3-VL
-  cache、训练 forward、Euler flow sampling 和独立推理 dispatch。当前只支持 plain LoRA、
-  single/euler 推理以及 `torch`/`sdpa`/显式 `flash` attention。完整迁移与消融证据进入
+  cache、训练 forward、Euler flow sampling 和独立推理 dispatch。当前开放网络变体选择，但不代表
+  所有组合均经过验证；支持 single/euler 推理以及 `flash`（默认）/`torch`/`sdpa` attention。完整迁移与消融证据进入
   `docs/findings/`，不要继续把阶段日志堆进本项目地图。
 - `library/models/z_image/`：Z-Image 训练与训练预览 v1。使用官方 Diffusers transformer、
   Flux VAE latent normalization、Qwen3 prompt/cache 和 plain LoRA；`family.py` 提供
   flow-matching 训练契约，`strategy.py` 使用 `_z_image_te.safetensors`，`weights.py` 支持
-  Diffusers 目录和受校验的单文件组件，`block_swap.py` 把官方 `model.layers` 接到共享
-  `ModelOffloader`。通用 image-test/独立推理尚未注册。
-- Krea-2 RTX 3080 速度诊断（最终）：1024² NF4+swap20 约 12s/it 的主因是大矩阵吞吐，长窗口再叠加热降频；同机对照中 3080 BF16 Linear 比 PG199 慢 4.4-5.2×，NF4 Linear 慢 4.1-4.6×，attention 慢 2.83×。选择性 checkpoint、fixed resident compile、Flash varlen、NF4 和 block-swap 已完成消融；生产建议保留 NF4 + full checkpoint + fixed resident compile，并按显存选择 swap20-24，Flash 仅显式 opt-in。不要每步调 `prepare_block_swap_before_forward`（探针会多计约 196ms），也不要把 padding 尾裁剪当作优化方向。详见 `docs/findings/krea2_3080_speed_final.md` 和 `docs/findings/krea2_3080_speed_comparison_extended.md`。
+  Diffusers 目录和受校验的单文件组件，`attention_backend.py` 将默认 `flash` 映射到
+  Diffusers `flash_varlen`，`block_swap.py` 把官方 `model.layers` 接到共享 `ModelOffloader`。
+  通用 image-test/独立推理尚未注册。
+- Krea-2 RTX 3080 速度诊断（最终）：1024² NF4+swap20 约 12s/it 的主因是大矩阵吞吐，长窗口再叠加热降频；同机对照中 3080 BF16 Linear 比 PG199 慢 4.4-5.2×，NF4 Linear 慢 4.1-4.6×，attention 慢 2.83×。选择性 checkpoint、fixed resident compile、Flash varlen、NF4 和 block-swap 已完成消融；生产建议保留 NF4 + full checkpoint + fixed resident compile，并按显存选择 swap20-24。当前默认使用 Flash varlen，`torch`/`sdpa` 可显式回退。不要每步调 `prepare_block_swap_before_forward`（探针会多计约 196ms），也不要把 padding 尾裁剪当作优化方向。详见 `docs/findings/krea2_3080_speed_final.md` 和 `docs/findings/krea2_3080_speed_comparison_extended.md`。
 - Krea-2 选择性 checkpoint：PG199 32GB 可用 `gradient_checkpointing=false` + `selective_checkpoint="every_other"`，1024² NF4 实测 28.46GB / 2.90s，比 full checkpoint 快 13.9%。RTX 3080 swap20 放开单 block 仍 OOM，10GB 卡必须保持 full checkpoint。Krea 目前只支持 `off/every_other`，其他 Anima selective 模式显式拒绝，见 `docs/findings/krea2_3080_speed_stage2.md`。
 - Krea-2 compile：固定长度编译目标必须是 adapter apply/load 后的 block `_forward`，不要编译 checkpoint wrapper 或 swapped tail。PG199 NF4 full-ckpt 实测 3.370→2.726s（-19.1%）。RTX 3080 swap20 的冷态 12.140→11.744s 不能外推为持续收益；长窗口会漂到 12.65s，compile 的可靠价值是 peak 约 6.15GB 且避免 eager 首个 backward OOM。24 buckets 已验证只形成 4608/4864 两张 resident 图并默认开启 fixed compile，见阶段 3、5、9 findings。
 - Krea-2 PG199 叠加边界：compile + every-other（14/28 checkpoint）会 OOM；compile + 16/28 checkpoint 的 20 步稳态为 2.408s/it（-28.5%），但峰值 31.55GB 无余量，仅作 PG199 探针实验点，不进默认配置或通用 CLI。安全档仍是 full checkpoint + compile（2.726s/it / 11.06GB）。RTX 3080 不适用 selective 叠加，见 `docs/findings/krea2_3080_speed_stage4.md`。
@@ -169,8 +170,8 @@
 - Krea-2 multi-bucket compile：24 个 `CONSTANT_TOKEN_BUCKETS` 加固定 512 文本后只形成 4608/4864 两张 block 图，同 token family 的不同宽高比可直接复用，实测稳态 2.731/2.956s、峰值 <=11.35GB。`configs/methods/krea2_lora.toml` 因此默认 `torch_compile=true`、`compile_dynamic_seq=false`、resident scope、default mode。不要启用 dynamic_seq/其他 preset/编译 swapped tail，见 `docs/findings/krea2_3080_speed_stage9.md`。
 - Krea-2 compile 续训：PG199 NF4 中途保存/reload LoRA 96.4MB + optimizer 193.0MB 后，LoRA/forward round-trip delta=0，loss jump=0.000214，续训步时 2.728-2.730s 无重编译。reload 后不需再调 `compile_blocks()`，默认 fixed resident compile 可用于正常 checkpoint/resume，见 `docs/findings/krea2_3080_speed_stage10.md`。
 - Krea-2 compiled 算子天花板：PG199 profile 中 eager→compiled 为 3.398→2.746s；GEMM 1593ms 和 cuDNN attention 847ms 前后不变，收益来自融合约 601ms 的 mul/copy/add 及将可见 NF4 dequant 706→486 次。compiled 后 GEMM+attention 约占 89%，不要再期待 Python/prepare/padding 小修获得两位数加速，见 `docs/findings/krea2_3080_speed_stage11.md`。
-- Krea-2 packed varlen FlashAttention：有效 token 打包 + native GQA 在 PG199 全模型/双 token-family 快 11-13%，50 步保持 2.417-2.439s（末步 2.429s）；RTX 3080 swap20 的 20 步热稳态约 12.145s（比历史 cuDNN compile 12.65s 快 4%），checkpoint LoRA/forward delta=0，GPU peak 6.09GB。已通过 `library/models/krea2_raw/attention_backend.py` 生产化为 `attn_mode="flash"` 显式 opt-in，包含 provider/dtype 前置拒绝、batch>1/GQA/padding 契约、训练/推理接线与 WebUI family 过滤；默认仍为 `attn_mode="torch"` cuDNN SDPA，见 `docs/findings/krea2_3080_speed_stage12.md`。
-- Krea-2 RTX 3080 速度研究最终摘要：根因、有效配置、否决路径和可选后端的权威总表见 `docs/findings/krea2_3080_speed_final.md`，跨 PG199/3080 的 step、it/min、显存、冷/热稳态和 swap/checkpoint/compile/Flash 统一矩阵见 `docs/findings/krea2_3080_speed_comparison_extended.md`。简述为“大矩阵吞吐主导 + 长窗口热降频叠加”；生产默认保留 NF4、full checkpoint、fixed resident compile 与按显存选择 swap，Flash varlen 为显式 opt-in。
+- Krea-2 packed varlen FlashAttention：有效 token 打包 + native GQA 在 PG199 全模型/双 token-family 快 11-13%，50 步保持 2.417-2.439s（末步 2.429s）；RTX 3080 swap20 的 20 步热稳态约 12.145s（比历史 cuDNN compile 12.65s 快 4%），checkpoint LoRA/forward delta=0，GPU peak 6.09GB。已通过 `library/models/krea2_raw/attention_backend.py` 生产化为 `attn_mode="flash"`，包含 provider/dtype 前置拒绝、batch>1/GQA/padding 契约、训练/推理接线与 WebUI family 过滤；当前默认使用 Flash，`torch`/`sdpa` 可显式回退，见 `docs/findings/krea2_3080_speed_stage12.md`。
+- Krea-2 RTX 3080 速度研究最终摘要：根因、有效配置、否决路径和可选后端的权威总表见 `docs/findings/krea2_3080_speed_final.md`，跨 PG199/3080 的 step、it/min、显存、冷/热稳态和 swap/checkpoint/compile/Flash 统一矩阵见 `docs/findings/krea2_3080_speed_comparison_extended.md`。简述为“大矩阵吞吐主导 + 长窗口热降频叠加”；生产默认保留 NF4、full checkpoint、fixed resident compile、Flash varlen 与按显存选择 swap。
 - `library/config/`：TOML 读取、合并、normalize、schema 校验。
 - `library/training/`：训练 bootstrap、loop、optimizer、scheduler、checkpoint、loss 等。
 - `library/inference/`：generation、sampling、adapter 加载、DirectEdit、DCW、输出处理。
@@ -329,8 +330,9 @@ DiT forward 使用 5D latent：`(B, C, T=1, H, W)`，单例时间轴是 dim 2。
 
 - `MODEL_FAMILY_REGISTRY` 和 `dispatch_model_family()` 必须 fail closed；未知 family、缺失
   handler、未注册推理 mode/sampler 不得回退 Anima。
-- Z-Image 当前只支持 plain LoRA、`torch`/`sdpa` attention、full checkpoint、训练和训练
-  preview；NF4、compile、Flash、selective/offloaded checkpoint 及通用推理均不支持。
+- Z-Image 当前开放网络变体选择，但真机训练证据仍以 plain LoRA 为限，不得外推全部变体已验证。
+  支持 BF16 `torch`/`sdpa`/Flash varlen attention、full checkpoint、训练和训练 preview；
+  NF4、compile、selective/offloaded checkpoint 及通用推理均不支持。
 - Z-Image `blocks_to_swap=0` 表示关闭；启用时必须满足
   `1 <= blocks_to_swap <= len(model.layers)-2`，当前 30 main layers 即 `1..28`。
 - Z-Image dataset/subset `caption_dropout_rate` 必须为 0；其 text cache 和 latent affine

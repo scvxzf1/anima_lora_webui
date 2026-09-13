@@ -1,0 +1,18 @@
+[
+  {
+    "batch": 6,
+    "python_rng_changed": false
+  },
+  {
+    "batch": 3,
+    "python_rng_changed": false
+  },
+  {
+    "batch": 6,
+    "python_rng_changed": false
+  },
+  {
+    "batch": 3,
+    "python_rng_changed": false
+  }
+]

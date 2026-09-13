@@ -47,6 +47,7 @@
 | [plans/2026-07-11-backend-config-optimization.md](plans/2026-07-11-backend-config-optimization.md) | 后端配置优化执行计划 |
 | [plans/2026-07-11-backend-next-optimization.md](plans/2026-07-11-backend-next-optimization.md) | 后端下一轮优化执行计划 |
 | [plans/2026-07-11-backend-residual-optimization.md](plans/2026-07-11-backend-residual-optimization.md) | 后端残留优化执行计划 |
+| [plans/2026-09-13-webui-backend-audit-followup.md](plans/2026-09-13-webui-backend-audit-followup.md) | WebUI 后端审计后续整改计划（5 小时窗口） |
 | [plans/2026-07-11-backend-round-c-product-decisions.md](plans/2026-07-11-backend-round-c-product-decisions.md) | 后端 C 轮产品决策执行计划 |
 | [plans/2026-07-11-dataset-page-stage-schedule-ia.md](plans/2026-07-11-dataset-page-stage-schedule-ia.md) | 数据集页阶段/排期信息架构执行计划 |
 | [plans/2026-07-11-networks-cycle-break.md](plans/2026-07-11-networks-cycle-break.md) | networks 循环依赖打断计划 |

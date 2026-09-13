@@ -1,0 +1,24 @@
+[
+  {
+    "family": "vae",
+    "files": 64,
+    "exact_files": 34,
+    "max_relative_l2": 0.003409941680729389,
+    "seconds": {
+      "fixed": 15.933369608999783,
+      "auto": 15.409802842000317
+    },
+    "reused": 64
+  },
+  {
+    "family": "anima-text",
+    "files": 64,
+    "exact_files": 57,
+    "max_relative_l2": 0.015238684602081776,
+    "seconds": {
+      "fixed": 6.230846845999622,
+      "auto": 5.884232456000063
+    },
+    "reused": 64
+  }
+]

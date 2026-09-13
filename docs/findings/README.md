@@ -9,6 +9,7 @@
 
 | 文档 | 说明 |
 | --- | --- |
+| [uncommitted_audit_closure_20260913.md](uncommitted_audit_closure_20260913.md) | 未提交更新审计修正、本地提交序列、验证证据与未关闭风险 |
 | [test_suite_audit_20260831.md](test_suite_audit_20260831.md) | 2026-08-31 测试集规模、分层、重复、source-probe 与默认门禁审计 |
 | [test_script_audit_20260809.md](test_script_audit_20260809.md) | 2026-08-09 测试脚本审计、精简结果与 probe 保护边界 |
 | [documentation_consolidation_20260706.md](documentation_consolidation_20260706.md) | 2026-07-06 文档库合并整理报告 |
@@ -22,6 +23,7 @@
 
 | 文档 | 说明 |
 | --- | --- |
+| [webui_frontend_audit_20260913.md](webui_frontend_audit_20260913.md) | 2026-09-13 Classic/Dragon/Next 前端当前工作树审计：静态/Next 门禁、cache token、配置库键盘排序与文档风险分级 |
 | [captioning_uiux_external_review_20260829.md](captioning_uiux_external_review_20260829.md) | Captioning 13 界面外部视觉评审 API 探针、失败边界与后续裁决要求 |
 | [captioning_uiux_iteration_20260829.md](captioning_uiux_iteration_20260829.md) | Captioning/打标工作台 13 界面两轮 UI/UX 优化与验收记录 |
 | [dragon_frontend_performance_20260826.md](dragon_frontend_performance_20260826.md) | Dragon 五个核心路由的按需加载与运行时优化历史基线（不含后续 tagging 工作台） |
@@ -43,6 +45,11 @@
 
 ## Runtime 和能力边界
 
+- [预处理 Auto Batch 实测与消融](preprocess_auto_batch_20260906.md)：从1起步、预测上拉、OOM退避、吞吐收敛，以及真实模型/缓存验收边界。
+- [AUTO 块交换真实 GPU 热测与消融](auto_block_swap_hot_20260908.md)：Krea-2 真实缓存、显存竞争、OOM 回退、安全余量和速度排序的时变边界。
+- [全程动态 AUTO 块交换验收](auto_block_swap_dynamic_20260908.md)：运行时显存压力退避、释放后再探索、A/B/A 决策、NF4 存储复用和策略消融。
+- [Anima / Z-Image AUTO 块交换热测](auto_block_swap_families_20260909.md)：Anima 真实 startup AUTO 通过；Z-Image 因系统换页保护拒绝。
+
 | 文档 | 说明 |
 | --- | --- |
 | [backend_multi_model_audit_20260810.md](backend_multi_model_audit_20260810.md) | 2026-08-10 后端多模型兼容审计：Anima/Krea-2 主链、P1 风险、测试缺口与 registry 路线 |
@@ -57,8 +64,11 @@
 | 文档 | 说明 |
 | --- | --- |
 | [anima_dual_gpu_parallel_probe_20260904.md](anima_dual_gpu_parallel_probe_20260904.md) | Anima 异构双卡 PP2、TP2、TP2 INT8 通信的 BS=1 性能、显存、数值与同参数图片对比 |
+| [z_image_170hx_100step_20260905.md](z_image_170hx_100step_20260905.md) | Z-Image 在 CMP 170HX 上的 100-step BF16 Flash varlen + full checkpoint + swap8 + fused AdamW 真机测试：运行时 PASS，单图过拟合在 step 100 出现明显曝光和细节退化 |
 | [lycoris_4_fused_kernel_audit_20260902.md](lycoris_4_fused_kernel_audit_20260902.md) | LyCORIS 4.0.0 Triton/TileLang fused kernel 发布、性能、精度与 release 宣传审计，以及对本项目 LoKr/LoHa 的借鉴优先级 |
 | [lokr_fused_backward_stage1_20260902.md](lokr_fused_backward_stage1_20260902.md) | 基于 LyCORIS 审计方向独立实现 LoKr `grad_w1` Triton reduction；RTX 3080 组件验证与 CMP 170HX 3-seed x 50-step 端到端热测、Nsight、resume/compile/swap gate |
+| [krea2_adapter_variants_170hx_300step_20260904.md](krea2_adapter_variants_170hx_300step_20260904.md) | Krea-2 在 CMP 170HX 上的 adapter 变体 smoke 与部分 300-step 训练：Flash/checkpoint/swap/compile/fused 组合、显存、loss、checkpoint 身份和固定 prompt 预览对比 |
+| [krea2_nf4_adapter_repair_20260905.md](krea2_nf4_adapter_repair_20260905.md) | DoRA / OrthoLoRA / ReFT 的 NF4 数值、checkpoint/compile、保存重载与 CMP 170HX 短训修复验证 |
 | [convrot_longrun_bf16_w8a8_w8a16_20260727.md](convrot_longrun_bf16_w8a8_w8a16_20260727.md) | RTX 3080 上 BF16/W8A8/W8A16 三组 1710-step 长训审计（速度、显存、loss、样图及最终保存回归修复） |
 | [loha_hot_test_20260725.md](loha_hot_test_20260725.md) | LoHa 在 RTX 3080 10GB 上的 12-step 热测与检查点验证 |
 | [training_profiling_hot_test_20260629.md](training_profiling_hot_test_20260629.md) | 训练 profiling 热测记录 |

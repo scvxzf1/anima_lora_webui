@@ -18,11 +18,18 @@ family、未注册推理模式或 sampler 都应失败，不得静默回退 Anim
 | 模型族 | 当前定位 | Adapter | 通用推理 | Attention |
 | --- | --- | --- | --- | --- |
 | `anima` | 默认生产模型族 | 完整方法面 | `single` / `batch` / `interactive`；`euler` / `er_sde` / `lcm` | registry 中声明的 Anima 后端 |
-| `krea2_raw` | 第二生产模型族 | plain LoRA only | `single` + `euler` | `torch` / `sdpa` / `flash` |
-| `z_image` | 训练与训练预览 v1 | plain LoRA only | 尚未注册；mode/sampler 集合为空 | `torch` / `sdpa` |
+| `krea2_raw` | 第二生产模型族 | 开放所有网络变体选择 | `single` + `euler` | `torch` / `sdpa` / `flash` |
+| `z_image` | 训练与训练预览 v1 | 开放所有网络变体选择 | 尚未注册；mode/sampler 集合为空 | `torch` / `sdpa` / `flash` (`flash_varlen`) |
 
 WebUI 能选择三个模型族，但这不扩大 registry 的能力集合。尤其是 Z-Image 的训练 sample
 preview 只服务训练流程，不代表生图测试、独立 CLI 推理、batch 或 interactive 已可用。
+
+三个已注册模型族均开放网络变体选择，配置预检与 network 创建/加载不再套用
+“非 Anima 仅 plain LoRA”的统一白名单。`supported_network_specs=None`、
+`plain_lora_only=False` 表示允许尝试，不代表所有变体组合均已通过训练验证。
+不兼容的权重、精度、目标层结构与 forward 契约仍在对应实现处报错，不静默替换成 LoRA。
+Krea-2 与 Z-Image 的 `supports_method_adapters=False` 保留：IP-Adapter、EasyControl、BYG
+等依赖独立训练 forward hooks 的方法不因开放网络变体而自动适配。
 
 ## Pipeline Parallel 规划能力
 
@@ -77,7 +84,7 @@ transformer input/caption width 和 Qwen3 hidden width。
 - Qwen3 ChatML、倒数第二层 hidden state、固定 512-token hidden/mask cache；
 - 独立 `_z_image_te.safetensors` 和 `_z_image.npz` sidecar；
 - `(latent - 0.1159) * 0.3611` 归一化和 shift `6` 的 1000-step flow grid；
-- BF16 SDPA、full gradient checkpointing、attention-only plain LoRA；
+- BF16 SDPA/FlashAttention varlen、full gradient checkpointing、attention-only plain LoRA；
 - 训练 sample preview；
 - `library/models/z_image/block_swap.py` 对 30 个 main layers 的 block swap，refiner 与
   input/output 模块常驻。
@@ -90,8 +97,8 @@ transformer input/caption width 和 Qwen3 hidden width。
 以下能力在 v1 明确不可用或由兼容层关闭：
 
 - 通用推理/image-test、batch/interactive mode 和任意推理 sampler；
-- NF4、`torch.compile`、per-band dynamic-seq、selective/offloaded checkpointing 和 FlashAttention；
-- ReFT、HydraLoRA 等 method adapter；
+- NF4、`torch.compile`、per-band dynamic-seq 和 selective/offloaded checkpointing；
+- 依赖独立训练 forward hooks 的 MethodAdapter（如 IP-Adapter、EasyControl、BYG）；
 - weighted caption、layer range、alternate loss/timestep scheme；
 - 任意大于 0 的 dataset/subset caption dropout。
 
@@ -107,7 +114,7 @@ transformer input/caption width 和 Qwen3 hidden width。
 | family registry | 显式静态注册，handler 必须覆盖全部 family | 新 family 同步补全所有 operation handler 和 fail-closed 测试 |
 | 训练加载 | `model_loading.py` 已分派，但仍直接导入 Anima loader/compat | 不要把 Anima fallback 当成通用协议 |
 | 训练辅助 | `noise_target.py`、`train_session.py`、`trainer_network_mixin.py` 仍有 Anima import | 新 family 先走显式分支，不要伪装成 Anima tensor/layout |
-| Adapter | 多数高级方法绑定 Anima block 名称、cross-attention 和 monkey patch | 非 Anima 默认 plain LoRA only，逐方法验证后再开放 |
+| Adapter | 部分高级方法仍绑定具体 block 名称、cross-attention 和 monkey patch | 所有模型开放网络变体选择，具体实现校验兼容性；独立 forward hooks 仍需逐项适配 |
 | 推理 | Anima 与 Krea-2 有独立路径，Z-Image 尚无通用路径 | registry 集合为空时必须拒绝，不得借用 Anima sampler |
 | Compile/bucket | Anima 支持 dynamic-seq；Krea-2 使用固定 token family；Z-Image 未验证 compile | family compatibility 必须关闭不适用参数 |
 

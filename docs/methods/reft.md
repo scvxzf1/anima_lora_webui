@@ -40,11 +40,21 @@ Loader behavior on these keys is strict: any `reft_*` key must match `reft_unet_
 
 Dim inference on load: `reft_dim` is read from `rotate_layer.weight.shape[0]`, block indices from the key prefix, and `reft_layers` is rebuilt from the set of present indices. Nothing else is needed from the original training config.
 
+Each block restores its own `alpha` and the derived `alpha / reft_dim` scale during state loading. The alpha buffer is floating-point even when configured with an integer, so fractional checkpoint values are not truncated. This applies to both adapter-file loading and native training-state resume.
+
+## NF4, checkpointing and compile
+
+ReFT edits activations; it never reads or overwrites packed NF4 base weights. Rank must satisfy `1 <= reft_dim <= embed_dim`. The embedding width comes from the block's `x_dim` or `features`, with `unet.config.features` as a fallback.
+
+Krea-2 blocks opt into the inner `_forward` target so that the ReFT intervention is included in checkpoint recomputation and resident block compilation. The public block object and block-swap hooks remain intact. Other blocks retain their existing public `forward` target. Install and load adapters before compiling; a late Krea ReFT installation is explicitly rejected. Repeated application of the same module is idempotent, while installing a second ReFT on the same target is rejected.
+
+Krea-2 remains **experimental** for this variant: its family registry permits network variant selection, but selection is not a validation guarantee. The bounded NF4/Flash/checkpoint/swap/compile checks and their limits are recorded in [the repair report](../findings/krea2_nf4_adapter_repair_20260905.md); they do not establish 300-step quality or general Krea inference support.
+
 ## Inference
 
 ### CLI (`inference.py`, `make test`)
 
-No special flag. `reft_*` keys are detected in the adapter file and the matching `ReFTModule`s are constructed, installed onto the DiT blocks, and their trained weights loaded. The network is then treated like any other adapter — multiplier, P-GRAFT cutoff, etc., all apply to both the LoRA and ReFT branches together via `network.enabled`.
+For supported model families, no special flag is needed. `reft_*` keys are detected in the adapter file and the matching `ReFTModule`s are constructed, installed onto the DiT blocks, and their trained weights loaded. Use `network.set_multiplier(value)` and `network.set_enabled(bool)` to control both LoRA and ReFT branches together. Zero multiplier or a disabled module returns the unedited block output exactly. ReFT cannot be merged into base Linear weights.
 
 ### ComfyUI — requires the custom node
 

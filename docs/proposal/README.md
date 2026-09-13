@@ -9,6 +9,8 @@
 
 | 文档 | 状态 | 说明 |
 | --- | --- | --- |
+| [dragon_frontend_rebuild_plan.md](dragon_frontend_rebuild_plan.md) | 已实施 / 独立入口验收 | FocusFlow 多栏结构与 Zaptix 监控层级；八页新前端已构建，默认切换与真实使用签收待批准 |
+| [dragon_config_progressive_disclosure.md](dragon_config_progressive_disclosure.md) | 探索 / 未实现 | Dragon 训练配置由静态等级与双重分类迁移到模型族、Adapter、功能开关驱动的渐进披露方案 |
 | [auto_vram_v1.md](auto_vram_v1.md) | 提案 / 未实现 | AutoVram v1 自动显存档位搜索与可审计协议 |
 | [krea2_raw_migration.md](krea2_raw_migration.md) | 核心已落地 / 待归档 | Anima → Krea-2-Raw 历史迁移计划；当前事实见 [多模型说明](../multi_model_support.md)，配套风险快照见 [krea2_raw_migration_notes.md](krea2_raw_migration_notes.md) |
 | [dcgen_anima_f32c32.md](dcgen_anima_f32c32.md) | POC / 阶段 1-2 | DC-Gen Anima f32c32 latent space、双缓存和 patch 对齐探针记录 |

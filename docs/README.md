@@ -11,8 +11,15 @@
 | 推理与组合 DCW、Spectrum | [推理参考](guidelines/inference.md) |
 | 理解配置合并和外置路径 | [配置索引](configuration/README.md) |
 | 使用 WebUI 独立功能 | [功能索引](features/README.md) |
+| 阅读完整历史日志、跳转与搜索 | [历史日志](features/history-logs.md) |
 | 使用外部模型 API 打标 | [打标工作台](features/tagging-workbench.md) |
 | 切换 Dragon / classic 界面 | [Dragon UI 指南](features/dragon-ui.md) |
+| 了解 Dragon 八个界面的功能与关联 | [Dragon UI 功能图谱](features/dragon-ui-functional-map.md) |
+| 实施新前端重建 | [Dragon 新前端开发计划书](proposal/dragon_frontend_rebuild_plan.md) |
+| 访问和验收新前端 | [Dragon Next 实施记录](features/dragon-next-implementation.md) |
+| 为数据集手动绘制训练蒙版 | [手动蒙版编辑器](features/manual-mask-editor.md) |
+| 跟踪 Next 视觉与工作流修复 | [Dragon Next UI/UX 实施进度](features/dragon-next-uiux-progress.md) |
+| 审计并推进 WebUI 后端整改 | [后端审计后续计划](superpowers/plans/2026-09-13-webui-backend-audit-followup.md) |
 | 审核当前分支前端健康度 | [前端健康度评分卡](features/frontend-health-scorecard.md) |
 | 查稳定方法 | [方法索引](methods/README.md) |
 | 查可运行实验 | [实验索引](experimental/README.md) |

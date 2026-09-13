@@ -1,0 +1,270 @@
+{
+  "evidence_kind": "synthetic_policy_ablation_not_gpu_performance",
+  "reference_drift": [
+    {
+      "variant": "full",
+      "final_blocks": 26,
+      "accepted": 0,
+      "unsafe_updates": 0,
+      "switches": [
+        {
+          "step": 4,
+          "blocks": 24,
+          "reason": "explore"
+        },
+        {
+          "step": 8,
+          "blocks": 26,
+          "reason": "paired_reference"
+        }
+      ],
+      "last_verdict": {
+        "stable": false,
+        "drift": 0.30000000000000004,
+        "reference_seconds": 8.366600265340756,
+        "candidate_seconds": 8.0,
+        "accepted": false,
+        "warmup_cost_seconds": 0.0,
+        "switch_cost_seconds": 0.0
+      }
+    },
+    {
+      "variant": "without_reference_recheck",
+      "final_blocks": 22,
+      "accepted": 1,
+      "unsafe_updates": 0,
+      "switches": [
+        {
+          "step": 4,
+          "blocks": 24,
+          "reason": "explore"
+        },
+        {
+          "step": 8,
+          "blocks": 24,
+          "reason": "accepted"
+        },
+        {
+          "step": 12,
+          "blocks": 22,
+          "reason": "explore"
+        }
+      ],
+      "last_verdict": {
+        "accepted": true
+      }
+    }
+  ],
+  "compile_cost": [
+    {
+      "variant": "full",
+      "final_blocks": 26,
+      "accepted": 0,
+      "unsafe_updates": 0,
+      "switches": [
+        {
+          "step": 5,
+          "blocks": 24,
+          "reason": "explore"
+        },
+        {
+          "step": 10,
+          "blocks": 26,
+          "reason": "paired_reference"
+        }
+      ],
+      "last_verdict": {
+        "stable": true,
+        "drift": 0.0,
+        "reference_seconds": 10.0,
+        "candidate_seconds": 8.0,
+        "accepted": false,
+        "warmup_cost_seconds": 9992.0,
+        "switch_cost_seconds": 0.0
+      }
+    },
+    {
+      "variant": "without_warmup_cost",
+      "final_blocks": 24,
+      "accepted": 1,
+      "unsafe_updates": 0,
+      "switches": [
+        {
+          "step": 5,
+          "blocks": 24,
+          "reason": "explore"
+        },
+        {
+          "step": 10,
+          "blocks": 26,
+          "reason": "paired_reference"
+        },
+        {
+          "step": 15,
+          "blocks": 24,
+          "reason": "accepted"
+        }
+      ],
+      "last_verdict": {
+        "stable": true,
+        "drift": 0.0,
+        "reference_seconds": 10.0,
+        "candidate_seconds": 8.0,
+        "accepted": true,
+        "warmup_cost_seconds": 0,
+        "switch_cost_seconds": 0.0
+      }
+    }
+  ],
+  "pressure": [
+    {
+      "variant": "full",
+      "final_blocks": 25,
+      "accepted": 0,
+      "unsafe_updates": 0,
+      "switches": [
+        {
+          "step": 4,
+          "blocks": 24,
+          "reason": "explore"
+        },
+        {
+          "step": 5,
+          "blocks": 25,
+          "reason": "gpu_pressure"
+        }
+      ],
+      "last_verdict": null
+    },
+    {
+      "variant": "without_pressure_guard",
+      "final_blocks": 26,
+      "accepted": 0,
+      "unsafe_updates": 4,
+      "switches": [
+        {
+          "step": 4,
+          "blocks": 24,
+          "reason": "explore"
+        },
+        {
+          "step": 8,
+          "blocks": 26,
+          "reason": "paired_reference"
+        }
+      ],
+      "last_verdict": null
+    }
+  ],
+  "plateau": [
+    {
+      "variant": "full",
+      "final_blocks": 18,
+      "accepted": 1,
+      "unsafe_updates": 0,
+      "switches": [
+        {
+          "step": 4,
+          "blocks": 24,
+          "reason": "explore"
+        },
+        {
+          "step": 8,
+          "blocks": 26,
+          "reason": "paired_reference"
+        },
+        {
+          "step": 47,
+          "blocks": 22,
+          "reason": "explore"
+        },
+        {
+          "step": 51,
+          "blocks": 26,
+          "reason": "paired_reference"
+        },
+        {
+          "step": 90,
+          "blocks": 18,
+          "reason": "explore"
+        },
+        {
+          "step": 94,
+          "blocks": 26,
+          "reason": "paired_reference"
+        },
+        {
+          "step": 98,
+          "blocks": 18,
+          "reason": "accepted"
+        },
+        {
+          "step": 102,
+          "blocks": 10,
+          "reason": "explore"
+        },
+        {
+          "step": 106,
+          "blocks": 18,
+          "reason": "paired_reference"
+        }
+      ],
+      "last_verdict": {
+        "stable": true,
+        "drift": 0.0,
+        "reference_seconds": 8.0,
+        "candidate_seconds": 8.0,
+        "accepted": false,
+        "warmup_cost_seconds": 0.0,
+        "switch_cost_seconds": 0.0
+      }
+    },
+    {
+      "variant": "fixed_stride",
+      "final_blocks": 26,
+      "accepted": 0,
+      "unsafe_updates": 0,
+      "switches": [
+        {
+          "step": 4,
+          "blocks": 24,
+          "reason": "explore"
+        },
+        {
+          "step": 8,
+          "blocks": 26,
+          "reason": "paired_reference"
+        },
+        {
+          "step": 47,
+          "blocks": 24,
+          "reason": "explore"
+        },
+        {
+          "step": 51,
+          "blocks": 26,
+          "reason": "paired_reference"
+        },
+        {
+          "step": 90,
+          "blocks": 24,
+          "reason": "explore"
+        },
+        {
+          "step": 94,
+          "blocks": 26,
+          "reason": "paired_reference"
+        }
+      ],
+      "last_verdict": {
+        "stable": true,
+        "drift": 0.0,
+        "reference_seconds": 10.0,
+        "candidate_seconds": 10.0,
+        "accepted": false,
+        "warmup_cost_seconds": 0.0,
+        "switch_cost_seconds": 0.0
+      }
+    }
+  ]
+}

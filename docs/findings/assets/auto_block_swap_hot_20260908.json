@@ -1,0 +1,2536 @@
+{
+  "environment": {
+    "torch": "2.12.0+cu130",
+    "cuda": "13.0",
+    "gpu": "_CudaDeviceProperties(name='NVIDIA Graphics Device', major=8, minor=6, total_memory=20048MB, multi_processor_count=82, uuid=8d47b1e2-27f2-8f05-f3d6-9e81562e1086, pci_bus_id=3, pci_device_id=0, pci_domain_id=0, L2_cache_size=5MB)",
+    "host": {
+      "total": 67307024384,
+      "available": 52958806016,
+      "swap_total": 8589930496,
+      "swap_used": 0,
+      "swap_in": 0,
+      "swap_out": 0
+    },
+    "nvidia_smi": "NVIDIA Graphics Device, GPU-8d47b1e2-27f2-8f05-f3d6-9e81562e1086, 20480 MiB, 580.178.04, 59"
+  },
+  "config_sha256": "614797ffc5ade6ef92e2ea131bafa3258c2d612c48de7a6bb7492527557d83c7",
+  "probes": [
+    {
+      "source": "fixed-stride/confirm-swap-26/result.json",
+      "status": "ok",
+      "safe": true,
+      "blocks": 26,
+      "elapsed_seconds": 122.47445328699905,
+      "headroom_gib": 13.09206247329712,
+      "host_min_available_gib": 31.460174560546875,
+      "process_tree_rss_upper_bound_gib": 29.119556427001953,
+      "swap_io_bytes": 0,
+      "cpu_master_gib": 5.66015625,
+      "shapes": [
+        {
+          "index": 0,
+          "dataset": 0,
+          "width": 896,
+          "height": 1200,
+          "batch_size": 1
+        },
+        {
+          "index": 1,
+          "dataset": 0,
+          "width": 768,
+          "height": 1344,
+          "batch_size": 1
+        }
+      ],
+      "hardware": {
+        "active_samples": 28,
+        "temperature.gpu": {
+          "min": 65.0,
+          "median": 73.0,
+          "max": 77.0
+        },
+        "clocks.sm": {
+          "min": 1740.0,
+          "median": 1890.0,
+          "max": 1935.0
+        },
+        "power.draw": {
+          "min": 259.38,
+          "median": 327.15999999999997,
+          "max": 347.48
+        },
+        "memory.used": {
+          "min": 4824.0,
+          "median": 7179.5,
+          "max": 7340.0
+        }
+      },
+      "completed_updates": 6,
+      "warm_seconds": 8.95404012149993,
+      "hot_seconds": 8.716256716499629,
+      "peak_allocated_gib": 4.902383327484131,
+      "peak_reserved_gib": 5.525390625,
+      "cases": [
+        {
+          "case": 0,
+          "updates": 3,
+          "first_seconds": 21.91960844800269,
+          "warm_median_seconds": 9.200942029501675,
+          "hot_median_seconds": 8.976240757001506,
+          "early_hot_seconds": 8.976240757001506,
+          "last_hot_seconds": 8.976240757001506,
+          "losses": [
+            0.10622075945138931,
+            0.08203695714473724,
+            0.09497813135385513
+          ]
+        },
+        {
+          "case": 1,
+          "updates": 3,
+          "first_seconds": 14.042686633001722,
+          "warm_median_seconds": 8.707138213498183,
+          "hot_median_seconds": 8.456272675997752,
+          "early_hot_seconds": 8.456272675997752,
+          "last_hot_seconds": 8.456272675997752,
+          "losses": [
+            0.14151686429977417,
+            0.21548287570476532,
+            0.14493033289909363
+          ]
+        }
+      ]
+    },
+    {
+      "source": "fixed-stride/trial-01-swap-25/result.json",
+      "status": "ok",
+      "safe": true,
+      "blocks": 25,
+      "elapsed_seconds": 144.24615591800102,
+      "headroom_gib": 12.87929391860962,
+      "host_min_available_gib": 31.787994384765625,
+      "process_tree_rss_upper_bound_gib": 28.826885223388672,
+      "swap_io_bytes": 0,
+      "cpu_master_gib": 5.66015625,
+      "shapes": [
+        {
+          "index": 0,
+          "dataset": 0,
+          "width": 896,
+          "height": 1200,
+          "batch_size": 1
+        },
+        {
+          "index": 1,
+          "dataset": 0,
+          "width": 768,
+          "height": 1344,
+          "batch_size": 1
+        }
+      ],
+      "hardware": {
+        "active_samples": 38,
+        "temperature.gpu": {
+          "min": 58.0,
+          "median": 73.0,
+          "max": 75.0
+        },
+        "clocks.sm": {
+          "min": 1890.0,
+          "median": 1920.0,
+          "max": 1935.0
+        },
+        "power.draw": {
+          "min": 145.93,
+          "median": 309.925,
+          "max": 316.92
+        },
+        "memory.used": {
+          "min": 2763.0,
+          "median": 7619.0,
+          "max": 7672.0
+        }
+      },
+      "completed_updates": 6,
+      "warm_seconds": 12.69906573775097,
+      "hot_seconds": 12.703236788502181,
+      "peak_allocated_gib": 5.104531764984131,
+      "peak_reserved_gib": 5.896484375,
+      "cases": [
+        {
+          "case": 0,
+          "updates": 3,
+          "first_seconds": 22.510329613000067,
+          "warm_median_seconds": 13.050070233501174,
+          "hot_median_seconds": 13.033972831002757,
+          "early_hot_seconds": 13.033972831002757,
+          "last_hot_seconds": 13.033972831002757,
+          "losses": [
+            0.1062202975153923,
+            0.08203065395355225,
+            0.09497574716806412
+          ]
+        },
+        {
+          "case": 1,
+          "updates": 3,
+          "first_seconds": 18.329994091000117,
+          "warm_median_seconds": 12.348061242000767,
+          "hot_median_seconds": 12.372500746001606,
+          "early_hot_seconds": 12.372500746001606,
+          "last_hot_seconds": 12.372500746001606,
+          "losses": [
+            0.14153693616390228,
+            0.21548232436180115,
+            0.1449262499809265
+          ]
+        }
+      ]
+    },
+    {
+      "source": "fixed-stride/trial-03-swap-23/result.json",
+      "status": "ok",
+      "safe": true,
+      "blocks": 23,
+      "elapsed_seconds": 142.51179059900096,
+      "headroom_gib": 12.41237497329712,
+      "host_min_available_gib": 32.19163513183594,
+      "process_tree_rss_upper_bound_gib": 28.248092651367188,
+      "swap_io_bytes": 0,
+      "cpu_master_gib": 5.66015625,
+      "shapes": [
+        {
+          "index": 0,
+          "dataset": 0,
+          "width": 896,
+          "height": 1200,
+          "batch_size": 1
+        },
+        {
+          "index": 1,
+          "dataset": 0,
+          "width": 768,
+          "height": 1344,
+          "batch_size": 1
+        }
+      ],
+      "hardware": {
+        "active_samples": 39,
+        "temperature.gpu": {
+          "min": 60.0,
+          "median": 73.0,
+          "max": 75.0
+        },
+        "clocks.sm": {
+          "min": 1875.0,
+          "median": 1920.0,
+          "max": 1935.0
+        },
+        "power.draw": {
+          "min": 146.64,
+          "median": 307.81,
+          "max": 315.29
+        },
+        "memory.used": {
+          "min": 3168.0,
+          "median": 8396.0,
+          "max": 8567.0
+        }
+      },
+      "completed_updates": 6,
+      "warm_seconds": 12.61678839849992,
+      "hot_seconds": 12.585630731498895,
+      "peak_allocated_gib": 5.508828639984131,
+      "peak_reserved_gib": 6.66015625,
+      "cases": [
+        {
+          "case": 0,
+          "updates": 3,
+          "first_seconds": 22.589161121999496,
+          "warm_median_seconds": 12.991149963499993,
+          "hot_median_seconds": 12.971648088998336,
+          "early_hot_seconds": 12.971648088998336,
+          "last_hot_seconds": 12.971648088998336,
+          "losses": [
+            0.10622237622737885,
+            0.08203253895044327,
+            0.09498495608568192
+          ]
+        },
+        {
+          "case": 1,
+          "updates": 3,
+          "first_seconds": 18.377856195998902,
+          "warm_median_seconds": 12.242426833499849,
+          "hot_median_seconds": 12.199613373999455,
+          "early_hot_seconds": 12.199613373999455,
+          "last_hot_seconds": 12.199613373999455,
+          "losses": [
+            0.14151443541049957,
+            0.2154916673898697,
+            0.14494472742080688
+          ]
+        }
+      ]
+    },
+    {
+      "source": "fixed-stride/trial-04-swap-22/result.json",
+      "status": "ok",
+      "safe": true,
+      "blocks": 22,
+      "elapsed_seconds": 141.64049287200032,
+      "headroom_gib": 12.29445505142212,
+      "host_min_available_gib": 31.210857391357422,
+      "process_tree_rss_upper_bound_gib": 27.931686401367188,
+      "swap_io_bytes": 0,
+      "cpu_master_gib": 5.66015625,
+      "shapes": [
+        {
+          "index": 0,
+          "dataset": 0,
+          "width": 896,
+          "height": 1200,
+          "batch_size": 1
+        },
+        {
+          "index": 1,
+          "dataset": 0,
+          "width": 768,
+          "height": 1344,
+          "batch_size": 1
+        }
+      ],
+      "hardware": {
+        "active_samples": 38,
+        "temperature.gpu": {
+          "min": 59.0,
+          "median": 73.0,
+          "max": 76.0
+        },
+        "clocks.sm": {
+          "min": 1875.0,
+          "median": 1905.0,
+          "max": 1935.0
+        },
+        "power.draw": {
+          "min": 143.36,
+          "median": 307.6,
+          "max": 316.04
+        },
+        "memory.used": {
+          "min": 3748.0,
+          "median": 8691.0,
+          "max": 8710.0
+        }
+      },
+      "completed_updates": 6,
+      "warm_seconds": 12.406087147249309,
+      "hot_seconds": 12.39265498199893,
+      "peak_allocated_gib": 5.710977077484131,
+      "peak_reserved_gib": 6.931640625,
+      "cases": [
+        {
+          "case": 0,
+          "updates": 3,
+          "first_seconds": 22.453704558000027,
+          "warm_median_seconds": 12.75059226799931,
+          "hot_median_seconds": 12.729395180998836,
+          "early_hot_seconds": 12.729395180998836,
+          "last_hot_seconds": 12.729395180998836,
+          "losses": [
+            0.10623136907815933,
+            0.08203069865703583,
+            0.09497997164726257
+          ]
+        },
+        {
+          "case": 1,
+          "updates": 3,
+          "first_seconds": 18.166060101997573,
+          "warm_median_seconds": 12.061582026499309,
+          "hot_median_seconds": 12.055914782999025,
+          "early_hot_seconds": 12.055914782999025,
+          "last_hot_seconds": 12.055914782999025,
+          "losses": [
+            0.1415395736694336,
+            0.2154814600944519,
+            0.14493195712566376
+          ]
+        }
+      ]
+    },
+    {
+      "source": "fixed-stride/trial-05-swap-21/result.json",
+      "status": "ok",
+      "safe": true,
+      "blocks": 21,
+      "elapsed_seconds": 139.68075365999903,
+      "headroom_gib": 12.11415719985962,
+      "host_min_available_gib": 33.12936019897461,
+      "process_tree_rss_upper_bound_gib": 27.63534927368164,
+      "swap_io_bytes": 0,
+      "cpu_master_gib": 5.66015625,
+      "shapes": [
+        {
+          "index": 0,
+          "dataset": 0,
+          "width": 896,
+          "height": 1200,
+          "batch_size": 1
+        },
+        {
+          "index": 1,
+          "dataset": 0,
+          "width": 768,
+          "height": 1344,
+          "batch_size": 1
+        }
+      ],
+      "hardware": {
+        "active_samples": 37,
+        "temperature.gpu": {
+          "min": 66.0,
+          "median": 73.0,
+          "max": 75.0
+        },
+        "clocks.sm": {
+          "min": 1860.0,
+          "median": 1905.0,
+          "max": 1935.0
+        },
+        "power.draw": {
+          "min": 259.31,
+          "median": 309.21,
+          "max": 317.06
+        },
+        "memory.used": {
+          "min": 6896.0,
+          "median": 9063.0,
+          "max": 9068.0
+        }
+      },
+      "completed_updates": 6,
+      "warm_seconds": 12.329417231000662,
+      "hot_seconds": 12.320423300001494,
+      "peak_allocated_gib": 5.913125514984131,
+      "peak_reserved_gib": 7.302734375,
+      "cases": [
+        {
+          "case": 0,
+          "updates": 3,
+          "first_seconds": 22.191560502000357,
+          "warm_median_seconds": 12.620030725998731,
+          "hot_median_seconds": 12.629675607000536,
+          "early_hot_seconds": 12.629675607000536,
+          "last_hot_seconds": 12.629675607000536,
+          "losses": [
+            0.10622023046016693,
+            0.08204115927219391,
+            0.09498102962970734
+          ]
+        },
+        {
+          "case": 1,
+          "updates": 3,
+          "first_seconds": 18.10812437899949,
+          "warm_median_seconds": 12.038803736002592,
+          "hot_median_seconds": 12.011170993002452,
+          "early_hot_seconds": 12.011170993002452,
+          "last_hot_seconds": 12.011170993002452,
+          "losses": [
+            0.1415327489376068,
+            0.21548205614089966,
+            0.14493727684020996
+          ]
+        }
+      ]
+    },
+    {
+      "source": "full-auto/confirm-swap-4/result.json",
+      "status": "ok",
+      "safe": true,
+      "blocks": 4,
+      "elapsed_seconds": 130.58685572100148,
+      "headroom_gib": 8.28316068649292,
+      "host_min_available_gib": 38.3283805847168,
+      "process_tree_rss_upper_bound_gib": 22.60094451904297,
+      "swap_io_bytes": 0,
+      "cpu_master_gib": 5.66015625,
+      "shapes": [
+        {
+          "index": 0,
+          "dataset": 0,
+          "width": 896,
+          "height": 1200,
+          "batch_size": 1
+        },
+        {
+          "index": 1,
+          "dataset": 0,
+          "width": 768,
+          "height": 1344,
+          "batch_size": 1
+        }
+      ],
+      "hardware": {
+        "active_samples": 36,
+        "temperature.gpu": {
+          "min": 60.0,
+          "median": 73.0,
+          "max": 76.0
+        },
+        "clocks.sm": {
+          "min": 1860.0,
+          "median": 1920.0,
+          "max": 1935.0
+        },
+        "power.draw": {
+          "min": 145.17,
+          "median": 314.255,
+          "max": 320.18
+        },
+        "memory.used": {
+          "min": 1225.0,
+          "median": 12372.0,
+          "max": 12440.0
+        }
+      },
+      "completed_updates": 6,
+      "warm_seconds": 11.379823110750294,
+      "hot_seconds": 11.359936675500649,
+      "peak_allocated_gib": 9.72349214553833,
+      "peak_reserved_gib": 10.5625,
+      "cases": [
+        {
+          "case": 0,
+          "updates": 3,
+          "first_seconds": 21.220566238000174,
+          "warm_median_seconds": 11.69642856199971,
+          "hot_median_seconds": 11.66086869100036,
+          "early_hot_seconds": 11.66086869100036,
+          "last_hot_seconds": 11.66086869100036,
+          "losses": [
+            0.10622207820415497,
+            0.0820266455411911,
+            0.09494226425886154
+          ]
+        },
+        {
+          "case": 1,
+          "updates": 3,
+          "first_seconds": 17.178933938001137,
+          "warm_median_seconds": 11.063217659500879,
+          "hot_median_seconds": 11.059004660000937,
+          "early_hot_seconds": 11.059004660000937,
+          "last_hot_seconds": 11.059004660000937,
+          "losses": [
+            0.14154008030891418,
+            0.2154523879289627,
+            0.14489805698394775
+          ]
+        }
+      ]
+    },
+    {
+      "source": "full-auto/inventory/result.json",
+      "status": "inventory",
+      "safe": null,
+      "blocks": null,
+      "elapsed_seconds": 10.564077811999596,
+      "headroom_gib": 0.0,
+      "host_min_available_gib": 48.74235916137695,
+      "process_tree_rss_upper_bound_gib": 0.9069671630859375,
+      "swap_io_bytes": 0,
+      "cpu_master_gib": 0.0,
+      "shapes": [],
+      "hardware": {
+        "active_samples": 0
+      },
+      "completed_updates": 0
+    },
+    {
+      "source": "full-auto/trial-00-swap-26/result.json",
+      "status": "ok",
+      "safe": true,
+      "blocks": 26,
+      "elapsed_seconds": 141.46135816899914,
+      "headroom_gib": 13.15083932876587,
+      "host_min_available_gib": 32.10773849487305,
+      "process_tree_rss_upper_bound_gib": 29.12688446044922,
+      "swap_io_bytes": 0,
+      "cpu_master_gib": 5.66015625,
+      "shapes": [
+        {
+          "index": 0,
+          "dataset": 0,
+          "width": 896,
+          "height": 1200,
+          "batch_size": 1
+        },
+        {
+          "index": 1,
+          "dataset": 0,
+          "width": 768,
+          "height": 1344,
+          "batch_size": 1
+        }
+      ],
+      "hardware": {
+        "active_samples": 0
+      },
+      "completed_updates": 6,
+      "warm_seconds": 12.639240889498979,
+      "hot_seconds": 12.625516437998158,
+      "peak_allocated_gib": 4.902383327484131,
+      "peak_reserved_gib": 5.525390625,
+      "cases": [
+        {
+          "case": 0,
+          "updates": 3,
+          "first_seconds": 22.238299619002646,
+          "warm_median_seconds": 12.94358729349915,
+          "hot_median_seconds": 12.95174495199899,
+          "early_hot_seconds": 12.95174495199899,
+          "last_hot_seconds": 12.95174495199899,
+          "losses": [
+            0.10622075945138931,
+            0.082026906311512,
+            0.09499269723892212
+          ]
+        },
+        {
+          "case": 1,
+          "updates": 3,
+          "first_seconds": 18.135076110000227,
+          "warm_median_seconds": 12.334894485498808,
+          "hot_median_seconds": 12.299287923997326,
+          "early_hot_seconds": 12.299287923997326,
+          "last_hot_seconds": 12.299287923997326,
+          "losses": [
+            0.14153902232646942,
+            0.2154778391122818,
+            0.14492091536521912
+          ]
+        }
+      ]
+    },
+    {
+      "source": "full-auto/trial-01-swap-24/result.json",
+      "status": "ok",
+      "safe": true,
+      "blocks": 24,
+      "elapsed_seconds": 142.53536153800087,
+      "headroom_gib": 12.63063669204712,
+      "host_min_available_gib": 32.589500427246094,
+      "process_tree_rss_upper_bound_gib": 28.527690887451172,
+      "swap_io_bytes": 0,
+      "cpu_master_gib": 5.66015625,
+      "shapes": [
+        {
+          "index": 0,
+          "dataset": 0,
+          "width": 896,
+          "height": 1200,
+          "batch_size": 1
+        },
+        {
+          "index": 1,
+          "dataset": 0,
+          "width": 768,
+          "height": 1344,
+          "batch_size": 1
+        }
+      ],
+      "hardware": {
+        "active_samples": 0
+      },
+      "completed_updates": 6,
+      "warm_seconds": 12.7281001882493,
+      "hot_seconds": 12.739182592998986,
+      "peak_allocated_gib": 5.306680202484131,
+      "peak_reserved_gib": 6.25,
+      "cases": [
+        {
+          "case": 0,
+          "updates": 3,
+          "first_seconds": 22.477797262999957,
+          "warm_median_seconds": 13.08832933749909,
+          "hot_median_seconds": 13.088995236998016,
+          "early_hot_seconds": 13.088995236998016,
+          "last_hot_seconds": 13.088995236998016,
+          "losses": [
+            0.10621170699596405,
+            0.08203201740980148,
+            0.09498705714941025
+          ]
+        },
+        {
+          "case": 1,
+          "updates": 3,
+          "first_seconds": 18.216765225999552,
+          "warm_median_seconds": 12.36787103899951,
+          "hot_median_seconds": 12.389369948999956,
+          "early_hot_seconds": 12.389369948999956,
+          "last_hot_seconds": 12.389369948999956,
+          "losses": [
+            0.14153678715229034,
+            0.21548619866371155,
+            0.14491470158100128
+          ]
+        }
+      ]
+    },
+    {
+      "source": "full-auto/trial-02-swap-20/result.json",
+      "status": "ok",
+      "safe": true,
+      "blocks": 20,
+      "elapsed_seconds": 138.45138946500083,
+      "headroom_gib": 11.83669137954712,
+      "host_min_available_gib": 33.242679595947266,
+      "process_tree_rss_upper_bound_gib": 27.3427734375,
+      "swap_io_bytes": 0,
+      "cpu_master_gib": 5.66015625,
+      "shapes": [
+        {
+          "index": 0,
+          "dataset": 0,
+          "width": 896,
+          "height": 1200,
+          "batch_size": 1
+        },
+        {
+          "index": 1,
+          "dataset": 0,
+          "width": 768,
+          "height": 1344,
+          "batch_size": 1
+        }
+      ],
+      "hardware": {
+        "active_samples": 25,
+        "temperature.gpu": {
+          "min": 64.0,
+          "median": 74.0,
+          "max": 75.0
+        },
+        "clocks.sm": {
+          "min": 1875.0,
+          "median": 1905.0,
+          "max": 1920.0
+        },
+        "power.draw": {
+          "min": 151.67,
+          "median": 308.92,
+          "max": 316.8
+        },
+        "memory.used": {
+          "min": 9397.0,
+          "median": 9406.0,
+          "max": 9468.0
+        }
+      },
+      "completed_updates": 6,
+      "warm_seconds": 12.331476540749463,
+      "hot_seconds": 12.299603857500188,
+      "peak_allocated_gib": 6.115273952484131,
+      "peak_reserved_gib": 7.595703125,
+      "cases": [
+        {
+          "case": 0,
+          "updates": 3,
+          "first_seconds": 21.828524911001296,
+          "warm_median_seconds": 12.666185808999217,
+          "hot_median_seconds": 12.648580611999932,
+          "early_hot_seconds": 12.648580611999932,
+          "last_hot_seconds": 12.648580611999932,
+          "losses": [
+            0.10622106492519379,
+            0.08202449232339859,
+            0.09498907625675201
+          ]
+        },
+        {
+          "case": 1,
+          "updates": 3,
+          "first_seconds": 17.93975466199845,
+          "warm_median_seconds": 11.99676727249971,
+          "hot_median_seconds": 11.950627103000443,
+          "early_hot_seconds": 11.950627103000443,
+          "last_hot_seconds": 11.950627103000443,
+          "losses": [
+            0.14154501259326935,
+            0.21549412608146667,
+            0.14493167400360107
+          ]
+        }
+      ]
+    },
+    {
+      "source": "full-auto/trial-03-swap-12/result.json",
+      "status": "ok",
+      "safe": true,
+      "blocks": 12,
+      "elapsed_seconds": 133.36452821700004,
+      "headroom_gib": 10.25093698501587,
+      "host_min_available_gib": 35.94384765625,
+      "process_tree_rss_upper_bound_gib": 24.97183609008789,
+      "swap_io_bytes": 0,
+      "cpu_master_gib": 5.66015625,
+      "shapes": [
+        {
+          "index": 0,
+          "dataset": 0,
+          "width": 896,
+          "height": 1200,
+          "batch_size": 1
+        },
+        {
+          "index": 1,
+          "dataset": 0,
+          "width": 768,
+          "height": 1344,
+          "batch_size": 1
+        }
+      ],
+      "hardware": {
+        "active_samples": 61,
+        "temperature.gpu": {
+          "min": 58.0,
+          "median": 69.0,
+          "max": 76.0
+        },
+        "clocks.sm": {
+          "min": 1860.0,
+          "median": 1920.0,
+          "max": 1935.0
+        },
+        "power.draw": {
+          "min": 145.06,
+          "median": 296.55,
+          "max": 320.29
+        },
+        "memory.used": {
+          "min": 1247.0,
+          "median": 11769.0,
+          "max": 11823.0
+        }
+      },
+      "completed_updates": 6,
+      "warm_seconds": 11.804263835499114,
+      "hot_seconds": 11.857061332999365,
+      "peak_allocated_gib": 7.732461452484131,
+      "peak_reserved_gib": 9.919921875,
+      "cases": [
+        {
+          "case": 0,
+          "updates": 3,
+          "first_seconds": 21.902504011002748,
+          "warm_median_seconds": 12.162924020498394,
+          "hot_median_seconds": 12.211076628998853,
+          "early_hot_seconds": 12.211076628998853,
+          "last_hot_seconds": 12.211076628998853,
+          "losses": [
+            0.10622262209653854,
+            0.08203032612800598,
+            0.09497019648551941
+          ]
+        },
+        {
+          "case": 1,
+          "updates": 3,
+          "first_seconds": 17.40625910699964,
+          "warm_median_seconds": 11.445603650499834,
+          "hot_median_seconds": 11.503046036999876,
+          "early_hot_seconds": 11.503046036999876,
+          "last_hot_seconds": 11.503046036999876,
+          "losses": [
+            0.14152035117149353,
+            0.2154877781867981,
+            0.14493007957935333
+          ]
+        }
+      ]
+    },
+    {
+      "source": "full-auto/trial-04-swap-4/result.json",
+      "status": "ok",
+      "safe": true,
+      "blocks": 4,
+      "elapsed_seconds": 128.0776706939978,
+      "headroom_gib": 8.28285551071167,
+      "host_min_available_gib": 38.068145751953125,
+      "process_tree_rss_upper_bound_gib": 22.591415405273438,
+      "swap_io_bytes": 0,
+      "cpu_master_gib": 5.66015625,
+      "shapes": [
+        {
+          "index": 0,
+          "dataset": 0,
+          "width": 896,
+          "height": 1200,
+          "batch_size": 1
+        },
+        {
+          "index": 1,
+          "dataset": 0,
+          "width": 768,
+          "height": 1344,
+          "batch_size": 1
+        }
+      ],
+      "hardware": {
+        "active_samples": 59,
+        "temperature.gpu": {
+          "min": 58.0,
+          "median": 66.0,
+          "max": 76.0
+        },
+        "clocks.sm": {
+          "min": 1845.0,
+          "median": 1920.0,
+          "max": 1935.0
+        },
+        "power.draw": {
+          "min": 144.8,
+          "median": 278.01,
+          "max": 320.83
+        },
+        "memory.used": {
+          "min": 1253.0,
+          "median": 12368.0,
+          "max": 12475.0
+        }
+      },
+      "completed_updates": 6,
+      "warm_seconds": 11.262441669500731,
+      "hot_seconds": 11.236606579501313,
+      "peak_allocated_gib": 9.72349214553833,
+      "peak_reserved_gib": 10.5625,
+      "cases": [
+        {
+          "case": 0,
+          "updates": 3,
+          "first_seconds": 20.801908826000727,
+          "warm_median_seconds": 11.575111844498679,
+          "hot_median_seconds": 11.531507220999629,
+          "early_hot_seconds": 11.531507220999629,
+          "last_hot_seconds": 11.531507220999629,
+          "losses": [
+            0.10622207820415497,
+            0.08203380554914474,
+            0.09494266659021378
+          ]
+        },
+        {
+          "case": 1,
+          "updates": 3,
+          "first_seconds": 16.875173798001924,
+          "warm_median_seconds": 10.949771494502784,
+          "hot_median_seconds": 10.941705938002997,
+          "early_hot_seconds": 10.941705938002997,
+          "last_hot_seconds": 10.941705938002997,
+          "losses": [
+            0.14152537286281586,
+            0.21545250713825226,
+            0.14490775763988495
+          ]
+        }
+      ]
+    },
+    {
+      "source": "full-auto/trial-05-swap-0/result.json",
+      "status": "ok",
+      "safe": true,
+      "blocks": 0,
+      "elapsed_seconds": 124.04200960800154,
+      "headroom_gib": 7.30104398727417,
+      "host_min_available_gib": 45.60986328125,
+      "process_tree_rss_upper_bound_gib": 14.49393081665039,
+      "swap_io_bytes": 0,
+      "cpu_master_gib": 0.0,
+      "shapes": [
+        {
+          "index": 0,
+          "dataset": 0,
+          "width": 896,
+          "height": 1200,
+          "batch_size": 1
+        },
+        {
+          "index": 1,
+          "dataset": 0,
+          "width": 768,
+          "height": 1344,
+          "batch_size": 1
+        }
+      ],
+      "hardware": {
+        "active_samples": 52,
+        "temperature.gpu": {
+          "min": 59.0,
+          "median": 70.5,
+          "max": 75.0
+        },
+        "clocks.sm": {
+          "min": 1860.0,
+          "median": 1920.0,
+          "max": 1935.0
+        },
+        "power.draw": {
+          "min": 141.88,
+          "median": 305.83500000000004,
+          "max": 323.74
+        },
+        "memory.used": {
+          "min": 1194.0,
+          "median": 12864.0,
+          "max": 12944.0
+        }
+      },
+      "completed_updates": 6,
+      "warm_seconds": 11.16553707049843,
+      "hot_seconds": 11.208769635499266,
+      "peak_allocated_gib": 10.72910737991333,
+      "peak_reserved_gib": 11.0703125,
+      "cases": [
+        {
+          "case": 0,
+          "updates": 3,
+          "first_seconds": 20.907265399000607,
+          "warm_median_seconds": 11.484317827498671,
+          "hot_median_seconds": 11.534024605000013,
+          "early_hot_seconds": 11.534024605000013,
+          "last_hot_seconds": 11.534024605000013,
+          "losses": [
+            0.10621901601552963,
+            0.08199755102396011,
+            0.09489560127258301
+          ]
+        },
+        {
+          "case": 1,
+          "updates": 3,
+          "first_seconds": 19.14961944300012,
+          "warm_median_seconds": 10.84675631349819,
+          "hot_median_seconds": 10.883514665998518,
+          "early_hot_seconds": 10.883514665998518,
+          "last_hot_seconds": 10.883514665998518,
+          "losses": [
+            0.14152684807777405,
+            0.21540942788124084,
+            0.14484527707099915
+          ]
+        }
+      ]
+    },
+    {
+      "source": "hot-swap-26/result.json",
+      "status": "ok",
+      "safe": true,
+      "blocks": 26,
+      "elapsed_seconds": 459.8507740369969,
+      "headroom_gib": 12.63765573501587,
+      "host_min_available_gib": 28.926666259765625,
+      "process_tree_rss_upper_bound_gib": 29.124961853027344,
+      "swap_io_bytes": 0,
+      "cpu_master_gib": 5.66015625,
+      "shapes": [
+        {
+          "index": 0,
+          "dataset": 0,
+          "width": 896,
+          "height": 1200,
+          "batch_size": 1
+        },
+        {
+          "index": 1,
+          "dataset": 0,
+          "width": 768,
+          "height": 1344,
+          "batch_size": 1
+        }
+      ],
+      "hardware": {
+        "active_samples": 221,
+        "temperature.gpu": {
+          "min": 58.0,
+          "median": 72.0,
+          "max": 77.0
+        },
+        "clocks.sm": {
+          "min": 1890.0,
+          "median": 1920.0,
+          "max": 1935.0
+        },
+        "power.draw": {
+          "min": 143.9,
+          "median": 278.61,
+          "max": 322.88
+        },
+        "memory.used": {
+          "min": 1361.0,
+          "median": 7350.0,
+          "max": 7769.0
+        }
+      },
+      "completed_updates": 24,
+      "warm_seconds": 16.340518982000503,
+      "hot_seconds": 16.35491137625013,
+      "peak_allocated_gib": 4.902383327484131,
+      "peak_reserved_gib": 5.525390625,
+      "cases": [
+        {
+          "case": 0,
+          "updates": 12,
+          "first_seconds": 26.996094191999873,
+          "warm_median_seconds": 17.352349337001215,
+          "hot_median_seconds": 17.48070379800083,
+          "early_hot_seconds": 17.584019969667377,
+          "last_hot_seconds": 17.046264660668385,
+          "losses": [
+            0.10622075945138931,
+            0.08202461898326874,
+            0.09496661275625229,
+            0.1306632161140442,
+            0.10629676282405853,
+            0.07818076759576797,
+            0.07955728471279144,
+            0.07433316111564636,
+            0.09642868489027023,
+            0.08646199107170105,
+            0.35974517464637756,
+            0.09180374443531036
+          ]
+        },
+        {
+          "case": 1,
+          "updates": 12,
+          "first_seconds": 22.27937955500238,
+          "warm_median_seconds": 15.328688626999792,
+          "hot_median_seconds": 15.229118954499427,
+          "early_hot_seconds": 14.092802892999316,
+          "last_hot_seconds": 15.458963069332336,
+          "losses": [
+            0.13619808852672577,
+            0.20812901854515076,
+            0.14322127401828766,
+            0.2961607575416565,
+            0.25695905089378357,
+            0.1704270839691162,
+            0.20721611380577087,
+            0.1254688799381256,
+            0.12990634143352509,
+            0.1498349905014038,
+            0.19330155849456787,
+            0.13602414727210999
+          ]
+        }
+      ]
+    },
+    {
+      "source": "hot-swap-26-repeat/result.json",
+      "status": "ok",
+      "safe": true,
+      "blocks": 26,
+      "elapsed_seconds": 549.7846647299993,
+      "headroom_gib": 12.99574899673462,
+      "host_min_available_gib": 28.896442413330078,
+      "process_tree_rss_upper_bound_gib": 29.133586883544922,
+      "swap_io_bytes": 0,
+      "cpu_master_gib": 5.66015625,
+      "shapes": [
+        {
+          "index": 0,
+          "dataset": 0,
+          "width": 896,
+          "height": 1200,
+          "batch_size": 1
+        },
+        {
+          "index": 1,
+          "dataset": 0,
+          "width": 768,
+          "height": 1344,
+          "batch_size": 1
+        }
+      ],
+      "hardware": {
+        "active_samples": 270,
+        "temperature.gpu": {
+          "min": 59.0,
+          "median": 71.0,
+          "max": 74.0
+        },
+        "clocks.sm": {
+          "min": 1905.0,
+          "median": 1920.0,
+          "max": 1935.0
+        },
+        "power.draw": {
+          "min": 147.15,
+          "median": 258.48,
+          "max": 293.8
+        },
+        "memory.used": {
+          "min": 1302.0,
+          "median": 7351.0,
+          "max": 7446.0
+        }
+      },
+      "completed_updates": 24,
+      "warm_seconds": 19.987028909499713,
+      "hot_seconds": 19.9798878267502,
+      "peak_allocated_gib": 4.902383327484131,
+      "peak_reserved_gib": 5.525390625,
+      "cases": [
+        {
+          "case": 0,
+          "updates": 12,
+          "first_seconds": 32.48378098300236,
+          "warm_median_seconds": 20.59766562599907,
+          "hot_median_seconds": 20.594855567500417,
+          "early_hot_seconds": 19.800999605334557,
+          "last_hot_seconds": 20.598782251667824,
+          "losses": [
+            0.10622075945138931,
+            0.08204305917024612,
+            0.0949709564447403,
+            0.1306307315826416,
+            0.10631246119737625,
+            0.07816978543996811,
+            0.07954581826925278,
+            0.07432644814252853,
+            0.096432626247406,
+            0.08648207038640976,
+            0.35970795154571533,
+            0.09177962690591812
+          ]
+        },
+        {
+          "case": 1,
+          "updates": 12,
+          "first_seconds": 25.595566251999117,
+          "warm_median_seconds": 19.376392193000356,
+          "hot_median_seconds": 19.364920085999984,
+          "early_hot_seconds": 19.441506647001614,
+          "last_hot_seconds": 19.38610422999894,
+          "losses": [
+            0.1361984759569168,
+            0.2081063836812973,
+            0.1432182788848877,
+            0.2961485981941223,
+            0.2569573223590851,
+            0.17041464149951935,
+            0.2072003185749054,
+            0.12546703219413757,
+            0.12991349399089813,
+            0.14982454478740692,
+            0.19330370426177979,
+            0.13601718842983246
+          ]
+        }
+      ]
+    },
+    {
+      "source": "hot-swap-4/result.json",
+      "status": "ok",
+      "safe": true,
+      "blocks": 4,
+      "elapsed_seconds": 494.57244801900015,
+      "headroom_gib": 8.09443998336792,
+      "host_min_available_gib": 35.29657745361328,
+      "process_tree_rss_upper_bound_gib": 22.602291107177734,
+      "swap_io_bytes": 0,
+      "cpu_master_gib": 5.66015625,
+      "shapes": [
+        {
+          "index": 0,
+          "dataset": 0,
+          "width": 896,
+          "height": 1200,
+          "batch_size": 1
+        },
+        {
+          "index": 1,
+          "dataset": 0,
+          "width": 768,
+          "height": 1344,
+          "batch_size": 1
+        }
+      ],
+      "hardware": {
+        "active_samples": 235,
+        "temperature.gpu": {
+          "min": 59.0,
+          "median": 70.0,
+          "max": 74.0
+        },
+        "clocks.sm": {
+          "min": 1890.0,
+          "median": 1920.0,
+          "max": 1935.0
+        },
+        "power.draw": {
+          "min": 146.84,
+          "median": 256.76,
+          "max": 310.3
+        },
+        "memory.used": {
+          "min": 2906.0,
+          "median": 12487.0,
+          "max": 12691.0
+        }
+      },
+      "completed_updates": 24,
+      "warm_seconds": 17.330650008500015,
+      "hot_seconds": 17.920792502999575,
+      "peak_allocated_gib": 9.72349214553833,
+      "peak_reserved_gib": 10.5625,
+      "cases": [
+        {
+          "case": 0,
+          "updates": 12,
+          "first_seconds": 25.105759048001346,
+          "warm_median_seconds": 16.0240227409995,
+          "hot_median_seconds": 17.177355674499267,
+          "early_hot_seconds": 15.54341060433338,
+          "last_hot_seconds": 20.052642905332807,
+          "losses": [
+            0.10622207820415497,
+            0.08202260732650757,
+            0.09494039416313171,
+            0.13066789507865906,
+            0.10622800141572952,
+            0.07812720537185669,
+            0.07951099425554276,
+            0.07419949769973755,
+            0.09629158675670624,
+            0.08642268925905228,
+            0.3596760332584381,
+            0.09164027869701385
+          ]
+        },
+        {
+          "case": 1,
+          "updates": 12,
+          "first_seconds": 25.26821457799815,
+          "warm_median_seconds": 18.637277276000532,
+          "hot_median_seconds": 18.664229331499882,
+          "early_hot_seconds": 18.42328410999956,
+          "last_hot_seconds": 18.604664676332806,
+          "losses": [
+            0.1361825168132782,
+            0.2080579698085785,
+            0.14319612085819244,
+            0.2961515784263611,
+            0.2569516599178314,
+            0.1703987717628479,
+            0.2072046548128128,
+            0.12546509504318237,
+            0.1299368292093277,
+            0.14981770515441895,
+            0.19328069686889648,
+            0.1360345333814621
+          ]
+        }
+      ]
+    },
+    {
+      "source": "inventory-initial/result.json",
+      "status": "inventory",
+      "safe": null,
+      "blocks": null,
+      "elapsed_seconds": 10.523373290001473,
+      "headroom_gib": 0.0,
+      "host_min_available_gib": 49.072654724121094,
+      "process_tree_rss_upper_bound_gib": 1.0089073181152344,
+      "swap_io_bytes": 0,
+      "cpu_master_gib": 0.0,
+      "shapes": [],
+      "hardware": {
+        "active_samples": 0
+      },
+      "completed_updates": 0
+    },
+    {
+      "source": "no-bisection/confirm-swap-26/result.json",
+      "status": "ok",
+      "safe": true,
+      "blocks": 26,
+      "elapsed_seconds": 167.4340099439978,
+      "headroom_gib": 4.635397434234619,
+      "host_min_available_gib": 30.424938201904297,
+      "process_tree_rss_upper_bound_gib": 29.107284545898438,
+      "swap_io_bytes": 0,
+      "cpu_master_gib": 5.66015625,
+      "shapes": [
+        {
+          "index": 0,
+          "dataset": 0,
+          "width": 896,
+          "height": 1200,
+          "batch_size": 1
+        },
+        {
+          "index": 1,
+          "dataset": 0,
+          "width": 768,
+          "height": 1344,
+          "batch_size": 1
+        }
+      ],
+      "hardware": {
+        "active_samples": 60,
+        "temperature.gpu": {
+          "min": 58.0,
+          "median": 70.0,
+          "max": 72.0
+        },
+        "clocks.sm": {
+          "min": 1905.0,
+          "median": 1920.0,
+          "max": 1935.0
+        },
+        "power.draw": {
+          "min": 144.32,
+          "median": 271.41499999999996,
+          "max": 306.51
+        },
+        "memory.used": {
+          "min": 9750.0,
+          "median": 15870.0,
+          "max": 15991.0
+        }
+      },
+      "completed_updates": 6,
+      "warm_seconds": 16.39315663099933,
+      "hot_seconds": 17.06285776349978,
+      "peak_allocated_gib": 4.902383327484131,
+      "peak_reserved_gib": 5.525390625,
+      "cases": [
+        {
+          "case": 0,
+          "updates": 3,
+          "first_seconds": 25.482579471001372,
+          "warm_median_seconds": 15.769930075997763,
+          "hot_median_seconds": 16.95244910099791,
+          "early_hot_seconds": 16.95244910099791,
+          "last_hot_seconds": 16.95244910099791,
+          "losses": [
+            0.10622075945138931,
+            0.08204273134469986,
+            0.09496481716632843
+          ]
+        },
+        {
+          "case": 1,
+          "updates": 3,
+          "first_seconds": 23.805752803997166,
+          "warm_median_seconds": 17.016383186000894,
+          "hot_median_seconds": 17.173266426001646,
+          "early_hot_seconds": 17.173266426001646,
+          "last_hot_seconds": 17.173266426001646,
+          "losses": [
+            0.14151933789253235,
+            0.21548299491405487,
+            0.14493334293365479
+          ]
+        }
+      ]
+    },
+    {
+      "source": "no-reserve/confirm-swap-26/result.json",
+      "status": "ok",
+      "safe": true,
+      "blocks": 26,
+      "elapsed_seconds": 172.7791170019991,
+      "headroom_gib": 4.704489231109619,
+      "host_min_available_gib": 29.790298461914062,
+      "process_tree_rss_upper_bound_gib": 29.116653442382812,
+      "swap_io_bytes": 0,
+      "cpu_master_gib": 5.66015625,
+      "shapes": [
+        {
+          "index": 0,
+          "dataset": 0,
+          "width": 896,
+          "height": 1200,
+          "batch_size": 1
+        },
+        {
+          "index": 1,
+          "dataset": 0,
+          "width": 768,
+          "height": 1344,
+          "batch_size": 1
+        }
+      ],
+      "hardware": {
+        "active_samples": 80,
+        "temperature.gpu": {
+          "min": 58.0,
+          "median": 68.0,
+          "max": 73.0
+        },
+        "clocks.sm": {
+          "min": 1890.0,
+          "median": 1920.0,
+          "max": 1935.0
+        },
+        "power.draw": {
+          "min": 147.22,
+          "median": 262.905,
+          "max": 294.29
+        },
+        "memory.used": {
+          "min": 9803.0,
+          "median": 15811.5,
+          "max": 15956.0
+        }
+      },
+      "completed_updates": 6,
+      "warm_seconds": 16.55120484100098,
+      "hot_seconds": 16.10818626999935,
+      "peak_allocated_gib": 4.902383327484131,
+      "peak_reserved_gib": 5.525390625,
+      "cases": [
+        {
+          "case": 0,
+          "updates": 3,
+          "first_seconds": 28.200757407998026,
+          "warm_median_seconds": 17.141224722499828,
+          "hot_median_seconds": 16.514374102996953,
+          "early_hot_seconds": 16.514374102996953,
+          "last_hot_seconds": 16.514374102996953,
+          "losses": [
+            0.10622075945138931,
+            0.08204330503940582,
+            0.09497877955436707
+          ]
+        },
+        {
+          "case": 1,
+          "updates": 3,
+          "first_seconds": 24.372650532997795,
+          "warm_median_seconds": 15.961184959502134,
+          "hot_median_seconds": 15.701998437001748,
+          "early_hot_seconds": 15.701998437001748,
+          "last_hot_seconds": 15.701998437001748,
+          "losses": [
+            0.14152531325817108,
+            0.21547310054302216,
+            0.14493197202682495
+          ]
+        }
+      ]
+    },
+    {
+      "source": "pressure-auto/confirm-swap-26/result.json",
+      "status": "ok",
+      "safe": true,
+      "blocks": 26,
+      "elapsed_seconds": 141.99576513400098,
+      "headroom_gib": 4.767965793609619,
+      "host_min_available_gib": 30.936599731445312,
+      "process_tree_rss_upper_bound_gib": 29.14639663696289,
+      "swap_io_bytes": 0,
+      "cpu_master_gib": 5.66015625,
+      "shapes": [
+        {
+          "index": 0,
+          "dataset": 0,
+          "width": 896,
+          "height": 1200,
+          "batch_size": 1
+        },
+        {
+          "index": 1,
+          "dataset": 0,
+          "width": 768,
+          "height": 1344,
+          "batch_size": 1
+        }
+      ],
+      "hardware": {
+        "active_samples": 40,
+        "temperature.gpu": {
+          "min": 64.0,
+          "median": 71.5,
+          "max": 74.0
+        },
+        "clocks.sm": {
+          "min": 1830.0,
+          "median": 1920.0,
+          "max": 1920.0
+        },
+        "power.draw": {
+          "min": 152.63,
+          "median": 293.89,
+          "max": 339.14
+        },
+        "memory.used": {
+          "min": 13567.0,
+          "median": 15779.0,
+          "max": 15863.0
+        }
+      },
+      "completed_updates": 6,
+      "warm_seconds": 12.969967234749674,
+      "hot_seconds": 14.141938576500252,
+      "peak_allocated_gib": 4.902383327484131,
+      "peak_reserved_gib": 5.525390625,
+      "cases": [
+        {
+          "case": 0,
+          "updates": 3,
+          "first_seconds": 19.88878145200215,
+          "warm_median_seconds": 12.074167621500237,
+          "hot_median_seconds": 13.758644394001749,
+          "early_hot_seconds": 13.758644394001749,
+          "last_hot_seconds": 13.758644394001749,
+          "losses": [
+            0.10622075945138931,
+            0.08203087747097015,
+            0.09497285634279251
+          ]
+        },
+        {
+          "case": 1,
+          "updates": 3,
+          "first_seconds": 21.04792411699964,
+          "warm_median_seconds": 13.865766847999112,
+          "hot_median_seconds": 14.525232758998754,
+          "early_hot_seconds": 14.525232758998754,
+          "last_hot_seconds": 14.525232758998754,
+          "losses": [
+            0.1415334790945053,
+            0.2155001014471054,
+            0.14493274688720703
+          ]
+        }
+      ]
+    },
+    {
+      "source": "pressure-auto/inventory/result.json",
+      "status": "inventory",
+      "safe": null,
+      "blocks": null,
+      "elapsed_seconds": 10.137408417998813,
+      "headroom_gib": 0.0,
+      "host_min_available_gib": 47.955806732177734,
+      "process_tree_rss_upper_bound_gib": 0.9069366455078125,
+      "swap_io_bytes": 0,
+      "cpu_master_gib": 0.0,
+      "shapes": [],
+      "hardware": {
+        "active_samples": 0
+      },
+      "completed_updates": 0
+    },
+    {
+      "source": "pressure-auto/trial-00-swap-26/result.json",
+      "status": "ok",
+      "safe": true,
+      "blocks": 26,
+      "elapsed_seconds": 113.59255975699853,
+      "headroom_gib": 4.874228000640869,
+      "host_min_available_gib": 31.361587524414062,
+      "process_tree_rss_upper_bound_gib": 29.136859893798828,
+      "swap_io_bytes": 0,
+      "cpu_master_gib": 5.66015625,
+      "shapes": [
+        {
+          "index": 0,
+          "dataset": 0,
+          "width": 896,
+          "height": 1200,
+          "batch_size": 1
+        },
+        {
+          "index": 1,
+          "dataset": 0,
+          "width": 768,
+          "height": 1344,
+          "batch_size": 1
+        }
+      ],
+      "hardware": {
+        "active_samples": 25,
+        "temperature.gpu": {
+          "min": 67.0,
+          "median": 73.0,
+          "max": 76.0
+        },
+        "clocks.sm": {
+          "min": 1740.0,
+          "median": 1875.0,
+          "max": 1920.0
+        },
+        "power.draw": {
+          "min": 231.01,
+          "median": 332.02,
+          "max": 348.33
+        },
+        "memory.used": {
+          "min": 13983.0,
+          "median": 15655.0,
+          "max": 15669.0
+        }
+      },
+      "completed_updates": 6,
+      "warm_seconds": 8.733165448999898,
+      "hot_seconds": 8.732172842001091,
+      "peak_allocated_gib": 4.902383327484131,
+      "peak_reserved_gib": 5.525390625,
+      "cases": [
+        {
+          "case": 0,
+          "updates": 3,
+          "first_seconds": 17.8533270859989,
+          "warm_median_seconds": 8.91925627350065,
+          "hot_median_seconds": 8.79099472800226,
+          "early_hot_seconds": 8.79099472800226,
+          "last_hot_seconds": 8.79099472800226,
+          "losses": [
+            0.10622075945138931,
+            0.08205242455005646,
+            0.09497885406017303
+          ]
+        },
+        {
+          "case": 1,
+          "updates": 3,
+          "first_seconds": 13.97869430100036,
+          "warm_median_seconds": 8.547074624499146,
+          "hot_median_seconds": 8.673350955999922,
+          "early_hot_seconds": 8.673350955999922,
+          "last_hot_seconds": 8.673350955999922,
+          "losses": [
+            0.14152692258358002,
+            0.2154664397239685,
+            0.14493539929389954
+          ]
+        }
+      ]
+    },
+    {
+      "source": "pressure-auto/trial-01-swap-24/result.json",
+      "status": "ok",
+      "safe": true,
+      "blocks": 24,
+      "elapsed_seconds": 122.94446900500043,
+      "headroom_gib": 4.468100070953369,
+      "host_min_available_gib": 31.908695220947266,
+      "process_tree_rss_upper_bound_gib": 28.52814483642578,
+      "swap_io_bytes": 0,
+      "cpu_master_gib": 5.66015625,
+      "shapes": [
+        {
+          "index": 0,
+          "dataset": 0,
+          "width": 896,
+          "height": 1200,
+          "batch_size": 1
+        },
+        {
+          "index": 1,
+          "dataset": 0,
+          "width": 768,
+          "height": 1344,
+          "batch_size": 1
+        }
+      ],
+      "hardware": {
+        "active_samples": 30,
+        "temperature.gpu": {
+          "min": 62.0,
+          "median": 72.0,
+          "max": 77.0
+        },
+        "clocks.sm": {
+          "min": 1755.0,
+          "median": 1890.0,
+          "max": 1935.0
+        },
+        "power.draw": {
+          "min": 178.22,
+          "median": 307.48,
+          "max": 343.23
+        },
+        "memory.used": {
+          "min": 14087.0,
+          "median": 16407.0,
+          "max": 16430.0
+        }
+      },
+      "completed_updates": 6,
+      "warm_seconds": 10.084169856499102,
+      "hot_seconds": 9.901584025497868,
+      "peak_allocated_gib": 5.306680202484131,
+      "peak_reserved_gib": 6.25,
+      "cases": [
+        {
+          "case": 0,
+          "updates": 3,
+          "first_seconds": 20.068021630999283,
+          "warm_median_seconds": 10.307542934498997,
+          "hot_median_seconds": 10.125727768998331,
+          "early_hot_seconds": 10.125727768998331,
+          "last_hot_seconds": 10.125727768998331,
+          "losses": [
+            0.10621170699596405,
+            0.08203589916229248,
+            0.0949782207608223
+          ]
+        },
+        {
+          "case": 1,
+          "updates": 3,
+          "first_seconds": 15.740816477999033,
+          "warm_median_seconds": 9.860796778499207,
+          "hot_median_seconds": 9.677440281997406,
+          "early_hot_seconds": 9.677440281997406,
+          "last_hot_seconds": 9.677440281997406,
+          "losses": [
+            0.14153030514717102,
+            0.21549582481384277,
+            0.14493142068386078
+          ]
+        }
+      ]
+    },
+    {
+      "source": "pressure-auto/trial-02-swap-20/result.json",
+      "status": "ok",
+      "safe": true,
+      "blocks": 20,
+      "elapsed_seconds": 122.49864385099863,
+      "headroom_gib": 3.657370090484619,
+      "host_min_available_gib": 32.701385498046875,
+      "process_tree_rss_upper_bound_gib": 27.33698272705078,
+      "swap_io_bytes": 0,
+      "cpu_master_gib": 5.66015625,
+      "shapes": [
+        {
+          "index": 0,
+          "dataset": 0,
+          "width": 896,
+          "height": 1200,
+          "batch_size": 1
+        },
+        {
+          "index": 1,
+          "dataset": 0,
+          "width": 768,
+          "height": 1344,
+          "batch_size": 1
+        }
+      ],
+      "hardware": {
+        "active_samples": 26,
+        "temperature.gpu": {
+          "min": 64.0,
+          "median": 73.5,
+          "max": 76.0
+        },
+        "clocks.sm": {
+          "min": 1725.0,
+          "median": 1882.5,
+          "max": 1935.0
+        },
+        "power.draw": {
+          "min": 273.3,
+          "median": 331.755,
+          "max": 344.12
+        },
+        "memory.used": {
+          "min": 15883.0,
+          "median": 17778.0,
+          "max": 17820.0
+        }
+      },
+      "completed_updates": 6,
+      "warm_seconds": 9.752143621999494,
+      "hot_seconds": 9.917644960500184,
+      "peak_allocated_gib": 6.115273952484131,
+      "peak_reserved_gib": 7.595703125,
+      "cases": [
+        {
+          "case": 0,
+          "updates": 3,
+          "first_seconds": 20.366842823998013,
+          "warm_median_seconds": 10.20440361099827,
+          "hot_median_seconds": 10.478687164999428,
+          "early_hot_seconds": 10.478687164999428,
+          "last_hot_seconds": 10.478687164999428,
+          "losses": [
+            0.10622106492519379,
+            0.08203740417957306,
+            0.09498614817857742
+          ]
+        },
+        {
+          "case": 1,
+          "updates": 3,
+          "first_seconds": 15.437240452996775,
+          "warm_median_seconds": 9.299883633000718,
+          "hot_median_seconds": 9.356602756000939,
+          "early_hot_seconds": 9.356602756000939,
+          "last_hot_seconds": 9.356602756000939,
+          "losses": [
+            0.14153386652469635,
+            0.2154805064201355,
+            0.14493076503276825
+          ]
+        }
+      ]
+    },
+    {
+      "source": "pressure-auto/trial-03-swap-12/result.json",
+      "status": "ok",
+      "safe": true,
+      "blocks": 12,
+      "elapsed_seconds": 118.48159762599971,
+      "headroom_gib": 2.057089328765869,
+      "host_min_available_gib": 35.46139907836914,
+      "process_tree_rss_upper_bound_gib": 24.98754119873047,
+      "swap_io_bytes": 0,
+      "cpu_master_gib": 5.66015625,
+      "shapes": [
+        {
+          "index": 0,
+          "dataset": 0,
+          "width": 896,
+          "height": 1200,
+          "batch_size": 1
+        },
+        {
+          "index": 1,
+          "dataset": 0,
+          "width": 768,
+          "height": 1344,
+          "batch_size": 1
+        }
+      ],
+      "hardware": {
+        "active_samples": 26,
+        "temperature.gpu": {
+          "min": 58.0,
+          "median": 73.5,
+          "max": 76.0
+        },
+        "clocks.sm": {
+          "min": 1755.0,
+          "median": 1875.0,
+          "max": 1950.0
+        },
+        "power.draw": {
+          "min": 102.5,
+          "median": 329.185,
+          "max": 343.32
+        },
+        "memory.used": {
+          "min": 9648.0,
+          "median": 19180.5,
+          "max": 19755.0
+        }
+      },
+      "completed_updates": 6,
+      "warm_seconds": 9.537161307000133,
+      "hot_seconds": 9.496461013999578,
+      "peak_allocated_gib": 7.732461452484131,
+      "peak_reserved_gib": 9.779296875,
+      "cases": [
+        {
+          "case": 0,
+          "updates": 3,
+          "first_seconds": 18.915906719001214,
+          "warm_median_seconds": 9.83917874349936,
+          "hot_median_seconds": 9.85015593099888,
+          "early_hot_seconds": 9.85015593099888,
+          "last_hot_seconds": 9.85015593099888,
+          "losses": [
+            0.10622262209653854,
+            0.0820358470082283,
+            0.09497761726379395
+          ]
+        },
+        {
+          "case": 1,
+          "updates": 3,
+          "first_seconds": 15.301607949000754,
+          "warm_median_seconds": 9.235143870500906,
+          "hot_median_seconds": 9.142766097000276,
+          "early_hot_seconds": 9.142766097000276,
+          "last_hot_seconds": 9.142766097000276,
+          "losses": [
+            0.14154186844825745,
+            0.21548043191432953,
+            0.14492298662662506
+          ]
+        }
+      ]
+    },
+    {
+      "source": "pressure-auto/trial-04-swap-4/result.json",
+      "status": "cuda_oom",
+      "safe": null,
+      "blocks": null,
+      "elapsed_seconds": 66.00061667599948,
+      "headroom_gib": 0.0,
+      "host_min_available_gib": 37.95237731933594,
+      "process_tree_rss_upper_bound_gib": 22.53836441040039,
+      "swap_io_bytes": 0,
+      "cpu_master_gib": 0.0,
+      "shapes": [],
+      "hardware": {
+        "active_samples": 5,
+        "temperature.gpu": {
+          "min": 67.0,
+          "median": 69.0,
+          "max": 72.0
+        },
+        "clocks.sm": {
+          "min": 1770.0,
+          "median": 1890.0,
+          "max": 1920.0
+        },
+        "power.draw": {
+          "min": 284.54,
+          "median": 306.84,
+          "max": 341.27
+        },
+        "memory.used": {
+          "min": 19141.0,
+          "median": 19577.0,
+          "max": 20000.0
+        }
+      },
+      "completed_updates": 1,
+      "warm_seconds": null,
+      "hot_seconds": null,
+      "peak_allocated_gib": 9.364418506622314,
+      "peak_reserved_gib": 9.775390625,
+      "cases": [
+        {
+          "case": 0,
+          "updates": 1,
+          "first_seconds": 18.49129132300004,
+          "warm_median_seconds": null,
+          "hot_median_seconds": null,
+          "early_hot_seconds": null,
+          "last_hot_seconds": null,
+          "losses": [
+            0.10622207820415497
+          ]
+        }
+      ],
+      "error": "CUDA out of memory. Tried to allocate 152.00 MiB. GPU 0 has a total capacity of 19.58 GiB of which 186.88 MiB is free. Process 3511 has 260.00 MiB memory in use. Process 340649 has 8.30 GiB memory in use. Including non-PyTorch memory, this process has 9.97 GiB memory in use. Of the allocated memory 9.20 GiB is allocated by PyTorch, and 447.96 MiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://docs.pytorch.org/docs/stable/notes/cuda.html#optimizing-memory-usage-with-pytorch-cuda-alloc-conf)"
+    },
+    {
+      "source": "pressure-auto/trial-05-swap-8/result.json",
+      "status": "ok",
+      "safe": false,
+      "blocks": 8,
+      "elapsed_seconds": 116.23343821199887,
+      "headroom_gib": 1.01979398727417,
+      "host_min_available_gib": 36.547019958496094,
+      "process_tree_rss_upper_bound_gib": 23.789371490478516,
+      "swap_io_bytes": 0,
+      "cpu_master_gib": 5.66015625,
+      "shapes": [
+        {
+          "index": 0,
+          "dataset": 0,
+          "width": 896,
+          "height": 1200,
+          "batch_size": 1
+        },
+        {
+          "index": 1,
+          "dataset": 0,
+          "width": 768,
+          "height": 1344,
+          "batch_size": 1
+        }
+      ],
+      "hardware": {
+        "active_samples": 26,
+        "temperature.gpu": {
+          "min": 67.0,
+          "median": 73.0,
+          "max": 75.0
+        },
+        "clocks.sm": {
+          "min": 1830.0,
+          "median": 1890.0,
+          "max": 1920.0
+        },
+        "power.draw": {
+          "min": 286.35,
+          "median": 326.565,
+          "max": 342.31
+        },
+        "memory.used": {
+          "min": 18920.0,
+          "median": 19831.5,
+          "max": 19981.0
+        }
+      },
+      "completed_updates": 6,
+      "warm_seconds": 9.318054120250054,
+      "hot_seconds": 9.24017157849994,
+      "peak_allocated_gib": 8.71787691116333,
+      "peak_reserved_gib": 9.7109375,
+      "cases": [
+        {
+          "case": 0,
+          "updates": 3,
+          "first_seconds": 18.638207650998083,
+          "warm_median_seconds": 9.58606347499881,
+          "hot_median_seconds": 9.351377955998032,
+          "early_hot_seconds": 9.351377955998032,
+          "last_hot_seconds": 9.351377955998032,
+          "losses": [
+            0.10621950030326843,
+            0.08203369379043579,
+            0.09496042877435684
+          ]
+        },
+        {
+          "case": 1,
+          "updates": 3,
+          "first_seconds": 15.084953206998762,
+          "warm_median_seconds": 9.050044765501298,
+          "hot_median_seconds": 9.128965201001847,
+          "early_hot_seconds": 9.128965201001847,
+          "last_hot_seconds": 9.128965201001847,
+          "losses": [
+            0.1415138840675354,
+            0.21545115113258362,
+            0.1449175775051117
+          ]
+        }
+      ]
+    },
+    {
+      "source": "smoke-swap26/result.json",
+      "status": "ok",
+      "safe": true,
+      "blocks": 26,
+      "elapsed_seconds": 171.98975149499893,
+      "headroom_gib": 13.01412057876587,
+      "host_min_available_gib": 31.16329574584961,
+      "process_tree_rss_upper_bound_gib": 31.81069564819336,
+      "swap_io_bytes": 0,
+      "cpu_master_gib": 5.66015625,
+      "shapes": [
+        {
+          "index": 0,
+          "dataset": 0,
+          "width": 896,
+          "height": 1200,
+          "batch_size": 1
+        },
+        {
+          "index": 1,
+          "dataset": 0,
+          "width": 768,
+          "height": 1344,
+          "batch_size": 1
+        }
+      ],
+      "hardware": {
+        "active_samples": 0
+      },
+      "completed_updates": 6,
+      "warm_seconds": 12.57024462524987,
+      "hot_seconds": 12.629366966999442,
+      "peak_allocated_gib": 4.902383327484131,
+      "peak_reserved_gib": 5.525390625,
+      "cases": [
+        {
+          "case": 0,
+          "updates": 3,
+          "first_seconds": 37.29894884799796,
+          "warm_median_seconds": 12.81518989899996,
+          "hot_median_seconds": 12.92925314400054,
+          "early_hot_seconds": 12.92925314400054,
+          "last_hot_seconds": 12.92925314400054,
+          "losses": [
+            0.10622075945138931,
+            0.08203426748514175,
+            0.0949668288230896
+          ]
+        },
+        {
+          "case": 1,
+          "updates": 3,
+          "first_seconds": 29.43895726899791,
+          "warm_median_seconds": 12.32529935149978,
+          "hot_median_seconds": 12.329480789998343,
+          "early_hot_seconds": 12.329480789998343,
+          "last_hot_seconds": 12.329480789998343,
+          "losses": [
+            0.14153626561164856,
+            0.21548190712928772,
+            0.14493243396282196
+          ]
+        }
+      ]
+    }
+  ],
+  "searches": [
+    {
+      "source": "fixed-stride/summary.json",
+      "selected": 26,
+      "confirmation_timing_change_percent": -29.156820415226147,
+      "trials": [
+        {
+          "blocks": 26,
+          "status": "ok",
+          "safe": true,
+          "seconds": 12.639240889498979,
+          "headroom_gib": 13.15083932876587,
+          "reused": true
+        },
+        {
+          "blocks": 25,
+          "status": "ok",
+          "safe": true,
+          "seconds": 12.69906573775097,
+          "headroom_gib": 12.87929391860962,
+          "reused": false
+        },
+        {
+          "blocks": 24,
+          "status": "ok",
+          "safe": true,
+          "seconds": 12.7281001882493,
+          "headroom_gib": 12.63063669204712,
+          "reused": true
+        },
+        {
+          "blocks": 23,
+          "status": "ok",
+          "safe": true,
+          "seconds": 12.61678839849992,
+          "headroom_gib": 12.41237497329712,
+          "reused": false
+        },
+        {
+          "blocks": 22,
+          "status": "ok",
+          "safe": true,
+          "seconds": 12.406087147249309,
+          "headroom_gib": 12.29445505142212,
+          "reused": false
+        },
+        {
+          "blocks": 21,
+          "status": "ok",
+          "safe": true,
+          "seconds": 12.329417231000662,
+          "headroom_gib": 12.11415719985962,
+          "reused": false
+        }
+      ],
+      "candidate_count": 6,
+      "fresh_candidates": 4,
+      "logical_candidate_seconds": 852.0759127560013,
+      "fresh_candidate_seconds": 568.0791930490013,
+      "inventory_seconds": 0,
+      "confirmation_seconds": 122.47445328699905,
+      "confirmation_status": "ok",
+      "confirmation_safe": true,
+      "confirmation_passed_by_variant": true
+    },
+    {
+      "source": "full-auto/summary.json",
+      "selected": 4,
+      "confirmation_timing_change_percent": 1.0422379506518364,
+      "trials": [
+        {
+          "blocks": 26,
+          "status": "ok",
+          "safe": true,
+          "seconds": 12.639240889498979,
+          "headroom_gib": 13.15083932876587,
+          "reused": false
+        },
+        {
+          "blocks": 24,
+          "status": "ok",
+          "safe": true,
+          "seconds": 12.7281001882493,
+          "headroom_gib": 12.63063669204712,
+          "reused": false
+        },
+        {
+          "blocks": 20,
+          "status": "ok",
+          "safe": true,
+          "seconds": 12.331476540749463,
+          "headroom_gib": 11.83669137954712,
+          "reused": false
+        },
+        {
+          "blocks": 12,
+          "status": "ok",
+          "safe": true,
+          "seconds": 11.804263835499114,
+          "headroom_gib": 10.25093698501587,
+          "reused": false
+        },
+        {
+          "blocks": 4,
+          "status": "ok",
+          "safe": true,
+          "seconds": 11.262441669500731,
+          "headroom_gib": 8.28285551071167,
+          "reused": false
+        },
+        {
+          "blocks": 0,
+          "status": "ok",
+          "safe": true,
+          "seconds": 11.16553707049843,
+          "headroom_gib": 7.30104398727417,
+          "reused": false
+        }
+      ],
+      "candidate_count": 6,
+      "fresh_candidates": 6,
+      "logical_candidate_seconds": 807.9323176910002,
+      "fresh_candidate_seconds": 807.9323176910002,
+      "inventory_seconds": 10.564077811999596,
+      "confirmation_seconds": 130.58685572100148,
+      "confirmation_status": "ok",
+      "confirmation_safe": true,
+      "confirmation_passed_by_variant": null
+    },
+    {
+      "source": "no-bisection/summary.json",
+      "selected": 26,
+      "confirmation_timing_change_percent": 87.71150880780158,
+      "trials": [
+        {
+          "blocks": 26,
+          "status": "ok",
+          "safe": true,
+          "seconds": 8.733165448999898,
+          "headroom_gib": 4.874228000640869,
+          "reused": true
+        },
+        {
+          "blocks": 24,
+          "status": "ok",
+          "safe": true,
+          "seconds": 10.084169856499102,
+          "headroom_gib": 4.468100070953369,
+          "reused": true
+        },
+        {
+          "blocks": 20,
+          "status": "ok",
+          "safe": true,
+          "seconds": 9.752143621999494,
+          "headroom_gib": 3.657370090484619,
+          "reused": true
+        },
+        {
+          "blocks": 12,
+          "status": "ok",
+          "safe": true,
+          "seconds": 9.537161307000133,
+          "headroom_gib": 2.057089328765869,
+          "reused": true
+        },
+        {
+          "blocks": 4,
+          "status": "cuda_oom",
+          "safe": null,
+          "seconds": null,
+          "headroom_gib": 0.0,
+          "reused": true
+        }
+      ],
+      "candidate_count": 5,
+      "fresh_candidates": 0,
+      "logical_candidate_seconds": 543.5178869149968,
+      "fresh_candidate_seconds": 0,
+      "inventory_seconds": 0,
+      "confirmation_seconds": 167.4340099439978,
+      "confirmation_status": "ok",
+      "confirmation_safe": true,
+      "confirmation_passed_by_variant": true
+    },
+    {
+      "source": "no-reserve/summary.json",
+      "selected": 26,
+      "confirmation_timing_change_percent": 89.52125592555203,
+      "trials": [
+        {
+          "blocks": 26,
+          "status": "ok",
+          "safe": true,
+          "seconds": 8.733165448999898,
+          "headroom_gib": 4.874228000640869,
+          "reused": true
+        },
+        {
+          "blocks": 24,
+          "status": "ok",
+          "safe": true,
+          "seconds": 10.084169856499102,
+          "headroom_gib": 4.468100070953369,
+          "reused": true
+        },
+        {
+          "blocks": 20,
+          "status": "ok",
+          "safe": true,
+          "seconds": 9.752143621999494,
+          "headroom_gib": 3.657370090484619,
+          "reused": true
+        },
+        {
+          "blocks": 12,
+          "status": "ok",
+          "safe": true,
+          "seconds": 9.537161307000133,
+          "headroom_gib": 2.057089328765869,
+          "reused": true
+        },
+        {
+          "blocks": 4,
+          "status": "cuda_oom",
+          "safe": null,
+          "seconds": null,
+          "headroom_gib": 0.0,
+          "reused": true
+        },
+        {
+          "blocks": 8,
+          "status": "ok",
+          "safe": false,
+          "seconds": 9.318054120250054,
+          "headroom_gib": 1.01979398727417,
+          "reused": true
+        }
+      ],
+      "candidate_count": 6,
+      "fresh_candidates": 0,
+      "logical_candidate_seconds": 659.7513251269957,
+      "fresh_candidate_seconds": 0,
+      "inventory_seconds": 0,
+      "confirmation_seconds": 172.7791170019991,
+      "confirmation_status": "ok",
+      "confirmation_safe": true,
+      "confirmation_passed_by_variant": true
+    },
+    {
+      "source": "pressure-auto/summary.json",
+      "selected": 26,
+      "confirmation_timing_change_percent": 48.51393014929042,
+      "trials": [
+        {
+          "blocks": 26,
+          "status": "ok",
+          "safe": true,
+          "seconds": 8.733165448999898,
+          "headroom_gib": 4.874228000640869,
+          "reused": false
+        },
+        {
+          "blocks": 24,
+          "status": "ok",
+          "safe": true,
+          "seconds": 10.084169856499102,
+          "headroom_gib": 4.468100070953369,
+          "reused": false
+        },
+        {
+          "blocks": 20,
+          "status": "ok",
+          "safe": true,
+          "seconds": 9.752143621999494,
+          "headroom_gib": 3.657370090484619,
+          "reused": false
+        },
+        {
+          "blocks": 12,
+          "status": "ok",
+          "safe": true,
+          "seconds": 9.537161307000133,
+          "headroom_gib": 2.057089328765869,
+          "reused": false
+        },
+        {
+          "blocks": 4,
+          "status": "cuda_oom",
+          "safe": null,
+          "seconds": null,
+          "headroom_gib": 0.0,
+          "reused": false
+        },
+        {
+          "blocks": 8,
+          "status": "ok",
+          "safe": false,
+          "seconds": 9.318054120250054,
+          "headroom_gib": 1.01979398727417,
+          "reused": false
+        }
+      ],
+      "candidate_count": 6,
+      "fresh_candidates": 6,
+      "logical_candidate_seconds": 659.7513251269957,
+      "fresh_candidate_seconds": 659.7513251269957,
+      "inventory_seconds": 10.137408417998813,
+      "confirmation_seconds": 141.99576513400098,
+      "confirmation_status": "ok",
+      "confirmation_safe": true,
+      "confirmation_passed_by_variant": null
+    }
+  ],
+  "loss_comparisons": [
+    {
+      "first": "hot-swap-26/result.json",
+      "second": "hot-swap-26-repeat/result.json",
+      "updates": 24,
+      "max_absolute_loss_difference": 3.7223100662231445e-05,
+      "mean_absolute_loss_difference": 1.175763706366221e-05
+    },
+    {
+      "first": "hot-swap-26/result.json",
+      "second": "hot-swap-4/result.json",
+      "updates": 24,
+      "max_absolute_loss_difference": 0.0001634657382965088,
+      "mean_absolute_loss_difference": 4.1518049935499825e-05
+    }
+  ],
+  "formal": [
+    {
+      "source": "formal-epoch-16-v2/completion.json",
+      "checkpoint_checks": {
+        "file": "auto-swap-acceptance.safetensors",
+        "bytes": 192747496,
+        "sha256": "5b6b8e137883879ee72a8d466315ea66714aa4fc51ff55236ca4ebfa7c5375df",
+        "tensor_count": 588,
+        "all_finite": true,
+        "steps": 16,
+        "epoch": 8,
+        "rank": 16
+      },
+      "status": "completed",
+      "steps": 16,
+      "blocks": 4,
+      "elapsed_seconds": 332.49020329999985,
+      "checkpoints": [
+        "auto-swap-acceptance.safetensors"
+      ]
+    }
+  ]
+}

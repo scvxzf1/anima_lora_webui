@@ -12,6 +12,7 @@
 | --- | --- |
 | [lokr.md](lokr.md) | LoKr Kronecker 分解、全因子模式与旧哨兵迁移 |
 | [loha.md](loha.md) | LoHa Hadamard 积分解：兼容可用、非主力，PEFT/LyCORIS 键布局 |
+| [dora.md](dora.md) | DoRA magnitude、完整 edit 强度语义、NF4 只读基座和 merge/fuse 边界 |
 | [hydra-lora.md](hydra-lora.md) | HydraLoRA 多专家路由，配合 [../structure/hydralora.md](../structure/hydralora.md) 阅读 |
 | [psoft-integrated-ortholora.md](psoft-integrated-ortholora.md) | OrthoLoRA / Cayley 正交参数化，配合 [../structure/ortholora.md](../structure/ortholora.md) 阅读 |
 | [timestep_mask.md](timestep_mask.md) | T-LoRA 时间步 rank mask，配合 [../structure/timestep-mask.md](../structure/timestep-mask.md) 阅读 |

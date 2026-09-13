@@ -18,8 +18,10 @@
 
 - 新手部署和 WebUI 使用：[Linux 部署启动](#linux-部署启动)、[Windows 部署启动](#windows-部署启动)
 - 默认 Dragon UI、classic 回退与空白页排查：[docs/features/dragon-ui.md](docs/features/dragon-ui.md)
+- Next 数据集手动蒙版：在 `/next/datasets` 选择蓝图后进入「编辑蒙版」，支持手绘、保存及应用到子集，见 [使用说明](docs/features/manual-mask-editor.md)。
 - Linux 部署：[docs/guidelines/linux-deployment.zh.md](docs/guidelines/linux-deployment.zh.md)
 - 训练参考：[docs/guidelines/training.md](docs/guidelines/training.md)
+- AUTO 块交换（实验，默认关闭）：Dragon「资源与预检 / 模型驻留」开启，先独立预热再固定交换数；限制和验证状态见 [配置说明](docs/configuration/auto-block-swap.md)。
 - 推理参考：[docs/guidelines/inference.md](docs/guidelines/inference.md)
 - 文档归档：[docs/archive-index.md](docs/archive-index.md)
 

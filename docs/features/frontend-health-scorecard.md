@@ -1,6 +1,7 @@
 # WebUI 前端健康度评分卡
 
-状态：稳定（维护用）  
+状态：稳定（维护用；分数按各章节的审计日期和工作树快照解释）
+
 适用版本：当前 `main` / 功能分支前端  
 入口命令：
 
@@ -222,9 +223,12 @@ timeout 60 .venv/bin/python -m pytest \
 
 ---
 
-## 5. 2026-07-11 当前分支基线（docs/backend-config-optimization）
+## 5. 历史基线（2026-07-11；docs/backend-config-optimization）
 
-一句话：前端能用，但过渡层和配置可信度把总分压在 D 档。
+以下分数、规模和 High 清单只描述 2026-07-11 的历史快照，不代表当前工作树。
+当前审计结果见 [2026-09-13 前端审计](../findings/webui_frontend_audit_20260913.md)。
+
+一句话：当时前端能用，但过渡层和配置可信度把总分压在 D 档。
 
 | 域 | 原始分 | 加权贡献 | 关键判断 |
 |---|---:|---:|---|
@@ -265,17 +269,40 @@ timeout 60 .venv/bin/python -m pytest \
 
 ---
 
-## 6. 与五轮自动迭代的关系
+## 6. 五轮自动迭代历史说明
 
-- 每轮开始：用本评分卡复评
-- 每轮结束：更新 `docs/superpowers/plans/2026-07-11-fullstack-auto-iteration-log.md`
-- 详细执行任务：`docs/superpowers/plans/2026-07-11-frontend-config-optimization.md`
+- 以下链接记录 2026-07-11 的历史迭代，不是当前分支的活动门禁：
+- 迭代日志：`docs/superpowers/plans/2026-07-11-fullstack-auto-iteration-log.md`
+- 执行任务：`docs/superpowers/plans/2026-07-11-frontend-config-optimization.md`
 - 协议正文：`docs/superpowers/specs/2026-07-11-five-round-auto-iteration-protocol.md`
 
 ---
 
-## 7. 维护规则
+## 7. 2026-09-13 当前工作树快照
 
-- 改前端架构 / 配置体验 / 测试护栏后，至少更新本页“当前基线”或迭代日志
+状态：临时审计基线；`dev @ 2e96bd0c` 工作树含大量未提交实现，分数只适用于本次磁盘状态，不代表该 commit 或发布版本。
+完整范围、证据、失败分类和命令见 [本轮 findings](../findings/webui_frontend_audit_20260913.md)。
+
+| 域 | 原始分 | 权重 | 加权 | 依据 |
+|---|---:|---:|---:|---|
+| A 结构与迁移 | 70 | 0.30 | 21.0 | 入口与功能目录已分层，仍有 45 个历史编号 chunks、双 UI DOM 契约和大体量页面/目录模块 |
+| B 测试与门禁 | 65 | 0.25 | 16.25 | Next typecheck、208 项 Vitest 通过；Classic 静态组 357/368 通过；Next E2E 122/130 通过，仍有可复现失败 |
+| C CSS / DOM | 72 | 0.20 | 14.4 | CSS 入口目标存在且顺序有约束；响应式有多处重复断点/固定最小宽度，Classic/Dragon 未做本轮真实浏览器矩阵验收 |
+| D 配置体验 | 70 | 0.25 | 17.5 | API 契约整体匹配、字段动态目录完整；帮助摘要有 7 项漂移，键盘排序有可复现无动作 |
+| **总分** |  |  | **69 / D** | `round(70×0.30 + 65×0.25 + 72×0.20 + 70×0.25)` |
+
+本轮必须跟进：
+
+1. 修正训练配置库键盘向下排序的中心碰撞语义，并保留 API 失败回滚测试。
+2. 对齐 7 个紧凑帮助摘要；维护 Stage 目录数量时按真实字段自动断言，不锁死旧计数。
+3. 统一同一模块的 query token。Classic 图中 4 个目标有重复 token；Dragon 的共享 `dialog.js` 以两个 token 导入，破坏模块级单例假设。
+4. 更新随模块拆分、文案调整和 release token 变化而过期的快照测试；不要为了恢复旧字符串或旧 token 回退当前功能代码。
+5. 复测 E2E 中的打标切换 confirm 时序和 history logs mock，再重新记录通过率。
+
+未确认项：Classic/Dragon 窄屏固定最小宽度、Queue/History 32px 按钮目标的实际计算尺寸；需补真实浏览器/视口检查后再升级或关闭风险。
+
+## 8. 维护规则
+
+- 改前端架构 / 配置体验 / 测试护栏后，至少更新本页“当前工作树快照”或新增 findings
 - 分数必须附证据；没有测试命令结果，不得上调测试域分数
 - 用户数据目录、训练输出、历史/队列文件不在本评分范围内，也不得为了提分去碰

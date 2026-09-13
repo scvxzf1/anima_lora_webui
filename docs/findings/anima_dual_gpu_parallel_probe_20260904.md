@@ -1,5 +1,7 @@
 # Anima dual-GPU PP2 / TP2 probe
 
+Status: Experimental; historical bounded probe, not a production capability claim.
+
 Date: 2026-09-04
 
 ## Scope

@@ -7,6 +7,10 @@
 | 文档 | 状态 | 说明 |
 | --- | --- | --- |
 | [external-configs.md](external-configs.md) | 当前实现说明 | 解释 `ANIMA_CONFIGS_ROOT`、WebUI 全局设置里的 `configs_root`、路径解析优先级和迁移建议 |
+| [dragon-training-config-215.md](dragon-training-config-215.md) | 运行时快照 | 收集 Dragon 训练配置页当前显示的 215 项，并记录五类导航、八章画布、当前值和可用性 |
+| [dataset-cache-semantics.md](dataset-cache-semantics.md) | 当前实现说明 | Dragon 数据集的 `mask_mode`、family-aware 缓存和 runtime 预检契约 |
+| [preprocess-auto-batch.md](preprocess-auto-batch.md) | 当前实现说明 | VAE/文本缓存从 1 起步的自动批大小、预测上拉、OOM 退避和固定预设兼容 |
+| [auto-block-swap.md](auto-block-swap.md) | 实验 | 独立进程启动校准、物理内存预算、完整训练步验证及手动配置兼容 |
 
 ## 维护规则
 

@@ -1,0 +1,37 @@
+{
+  "evidence_kind": "sequential_descriptive_comparison_not_causal_speedup",
+  "dynamic": "live-pressure-v6",
+  "fixed": "fixed26-v6",
+  "same_step_loss": {
+    "updates": 24,
+    "max_abs": 0.00013440847396850586,
+    "mean_abs": 1.910111556450526e-05,
+    "max_relative": 0.0003846995187812658
+  },
+  "fixed_after_update_8": {
+    "[[1, 16, 150, 112]]": {
+      "n": 8,
+      "median_seconds": 19.02410517500175
+    },
+    "[[1, 16, 168, 96]]": {
+      "n": 8,
+      "median_seconds": 17.914666506501817
+    }
+  },
+  "dynamic_after_paired_verdict_66": {
+    "[[1, 16, 150, 112]]": {
+      "n": 15,
+      "median_seconds": 19.007182080000348
+    },
+    "[[1, 16, 168, 96]]": {
+      "n": 15,
+      "median_seconds": 17.838507063999714
+    }
+  },
+  "causal_speedup_proven": false,
+  "limits": [
+    "Sequential runs are subject to thermal and temporal drift.",
+    "Loss agreement is not a convergence or image-quality evaluation.",
+    "Timings are synchronized whole-update wall times, not runtime CUDA-event times."
+  ]
+}

@@ -42,7 +42,17 @@ Compared to standard LoRA at the same rank, OrthoLoRA Exp uses slightly more act
 
 ## Save format
 
-Training saves native keys (`S_p`, `S_q`, `lambda_layer`, `P_basis`, `Q_basis`). On save, these are automatically converted to standard LoRA (`lora_up.weight`, `lora_down.weight`) for ComfyUI compatibility. The conversion is exact — `DeltaW = P_eff @ diag(lambda) @ Q_eff` is rank r, factored directly without SVD.
+The native network state contains `S_p`, `S_q`, `lambda_layer`, `P_basis` and `Q_basis`. Enable `save_state = true` and resume from the saved state directory to restore this parameterization together with optimizer, scheduler and RNG state.
+
+The exported adapter `.safetensors` instead converts those keys to standard LoRA (`lora_up.weight`, `lora_down.weight`) for compatible inference loaders. It preserves the rank-r update algebraically, without another SVD, but BF16 factorization and rounding are not bitwise identical to the native forward. This distilled file does **not** preserve the original Cayley parameters or optimizer state and must not be presented as an equivalent OrthoLoRA training resume.
+
+## NF4 and runtime boundaries
+
+- SVD initialization uses the logical dequantized weight, never the packed `Params4bit.data` shape. The temporary dense matrix is released after each module; the NF4 base remains unchanged.
+- Rank must satisfy `1 <= network_dim <= min(in_features, out_features)` and is checked before initialization. SVD runs on the base weight's device, without silently selecting the default CUDA device. CPU-loaded models therefore perform CPU SVD, which can make initialization noticeably slower.
+- Cayley solves run in FP32 even after adapter BF16 conversion. Bases and the activation path retain their configured compute dtype.
+- `network.set_enabled(False)` or a zero multiplier disables the adapter branch without changing base weights.
+- Krea-2 NF4 support remains an isolated experimental path, not a production registry expansion. See [the repair report](../findings/krea2_nf4_adapter_repair_20260905.md) for numerical, export/reload and bounded hardware evidence.
 
 ## What to compare
 

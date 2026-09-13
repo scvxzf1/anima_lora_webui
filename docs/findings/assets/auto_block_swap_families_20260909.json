@@ -1,0 +1,532 @@
+{
+  "runs": [
+    {
+      "source": "output/runs/auto-families-hot-20260909/anima",
+      "valid": false,
+      "errors": [
+        "AUTO selection incomplete",
+        "Formal acceptance incomplete or failed",
+        "Formal update sequence incomplete"
+      ],
+      "acceptance": {},
+      "completion": {},
+      "environment": {
+        "gpu": "NVIDIA Graphics Device, GPU-8d47b1e2-27f2-8f05-f3d6-9e81562e1086, 20480 MiB, 580.178.04\n",
+        "torch_compile": false
+      },
+      "fixture": {
+        "family": "anima",
+        "width": 896,
+        "height": 1200,
+        "sources": [
+          "/home/scv/nvme0n1p1/\u8bad\u7ec3\u5668\u76f8\u5173/krea2-webui/post_image_dataset/resized/pixiv_\u58f1\u73c2_40462352_2022-07-26 09_58_15_100011311_p0.png",
+          "/home/scv/nvme0n1p1/\u8bad\u7ec3\u5668\u76f8\u5173/krea2-webui/post_image_dataset/lora/pixiv_\u58f1\u73c2_40462352_2022-07-26 09_58_15_100011311_p0_0896x1200_anima.npz",
+          "/home/scv/nvme0n1p1/\u8bad\u7ec3\u5668\u76f8\u5173/krea2-webui/output/runs/model-family-fused-flash-smoke-20260903/cache/anima/pixiv_\u58f1\u73c2_40462352_2022-07-26 09_58_15_100011311_p0_anima_te.safetensors"
+        ],
+        "source_config": "output/runs/model-family-fused-flash-smoke-20260903/configs/anima.toml",
+        "real_cached_sample": true
+      },
+      "trials": [
+        {
+          "blocks": 26,
+          "status": "ok",
+          "safe": true,
+          "seconds": 4.113576936506433,
+          "headroom": 16790059520,
+          "gpu_reserve": 5255708672,
+          "cpu_master_bytes": 3875565568,
+          "host_rss_peak": 14175883264,
+          "host_min_available": 31014367232,
+          "swap_io_bytes": 523059200,
+          "accepted_resource_probe": false,
+          "rejection": "AUTO block-swap host RAM/paging budget changed during the probe"
+        }
+      ],
+      "confirmation": null,
+      "reused_candidates_from": null,
+      "failure": {},
+      "updates": []
+    },
+    {
+      "source": "output/runs/auto-families-hot-20260909/z_image",
+      "valid": false,
+      "errors": [
+        "AUTO selection incomplete",
+        "Formal acceptance incomplete or failed",
+        "Formal update sequence incomplete"
+      ],
+      "acceptance": {},
+      "completion": {},
+      "environment": {
+        "gpu": "NVIDIA Graphics Device, GPU-8d47b1e2-27f2-8f05-f3d6-9e81562e1086, 20480 MiB, 580.178.04\n",
+        "torch_compile": false
+      },
+      "fixture": {
+        "family": "z_image",
+        "width": 896,
+        "height": 1200,
+        "sources": [
+          "/home/scv/nvme0n1p1/\u8bad\u7ec3\u5668\u76f8\u5173/krea2-webui/post_image_dataset/resized/pixiv_\u58f1\u73c2_40462352_2022-07-26 09_58_15_100011311_p0.png",
+          "/home/scv/nvme0n1p1/\u8bad\u7ec3\u5668\u76f8\u5173/krea2-webui/output/runs/model-family-fused-flash-smoke-20260903/cache/z_image/pixiv_\u58f1\u73c2_40462352_2022-07-26 09_58_15_100011311_p0_0896x1200_z_image.npz",
+          "/home/scv/nvme0n1p1/\u8bad\u7ec3\u5668\u76f8\u5173/krea2-webui/output/runs/model-family-fused-flash-smoke-20260903/cache/z_image/pixiv_\u58f1\u73c2_40462352_2022-07-26 09_58_15_100011311_p0_z_image_te.safetensors"
+        ],
+        "source_config": "output/runs/z-image-100step-20260905/configs/formal.toml",
+        "real_cached_sample": true
+      },
+      "trials": [
+        {
+          "blocks": 28,
+          "status": "ok",
+          "safe": true,
+          "seconds": 7.213309133490839,
+          "headroom": 14172246016,
+          "gpu_reserve": 5255708672,
+          "cpu_master_bytes": 10853698560,
+          "host_rss_peak": 41005142016,
+          "host_min_available": 19368706048,
+          "swap_io_bytes": 8122806272,
+          "accepted_resource_probe": false,
+          "rejection": "AUTO block-swap host RAM/paging budget changed during the probe"
+        }
+      ],
+      "confirmation": null,
+      "reused_candidates_from": null,
+      "failure": {
+        "status": "failed",
+        "error_type": "RuntimeError",
+        "error": "AUTO block-swap host RAM/paging budget changed during the probe"
+      },
+      "updates": []
+    },
+    {
+      "source": "output/runs/auto-families-hot-20260909/anima-formal-recovery",
+      "valid": true,
+      "errors": [],
+      "acceptance": {
+        "status": "passed",
+        "family": "anima",
+        "steps": 16,
+        "finite_checkpoint": true,
+        "selected_blocks": 26,
+        "gpu_reserve": 5255708672,
+        "preference": "vram",
+        "hot_median_seconds": 2.9024768305025646,
+        "peak_allocated": 2158364160,
+        "min_headroom": 16794253824,
+        "max_swap_io": 20226048,
+        "min_host_available": 38856257536,
+        "compile": false,
+        "evidence": "single_real_sample_startup_auto_not_dynamic_or_speed_ab"
+      },
+      "completion": {
+        "status": "completed",
+        "steps": 16,
+        "blocks": 26,
+        "selection": "/home/scv/nvme0n1p1/\u8bad\u7ec3\u5668\u76f8\u5173/krea2-webui/output/runs/auto-families-hot-20260909/anima-formal-recovery/calibration/summary.json",
+        "elapsed_seconds": 77.97962185299548,
+        "checkpoints": [
+          "family-auto-hot.safetensors"
+        ]
+      },
+      "environment": {
+        "gpu": "NVIDIA Graphics Device, GPU-8d47b1e2-27f2-8f05-f3d6-9e81562e1086, 20480 MiB, 580.178.04\n",
+        "torch_compile": false
+      },
+      "fixture": {
+        "family": "anima",
+        "width": 896,
+        "height": 1200,
+        "sources": [
+          "/home/scv/nvme0n1p1/\u8bad\u7ec3\u5668\u76f8\u5173/krea2-webui/output/runs/auto-families-hot-20260909/anima-retry/images/pixiv_\u58f1\u73c2_40462352_2022-07-26 09_58_15_100011311_p0.png",
+          "/home/scv/nvme0n1p1/\u8bad\u7ec3\u5668\u76f8\u5173/krea2-webui/output/runs/auto-families-hot-20260909/anima-retry/cache/pixiv_\u58f1\u73c2_40462352_2022-07-26 09_58_15_100011311_p0_0896x1200_anima.npz",
+          "/home/scv/nvme0n1p1/\u8bad\u7ec3\u5668\u76f8\u5173/krea2-webui/output/runs/auto-families-hot-20260909/anima-retry/cache/pixiv_\u58f1\u73c2_40462352_2022-07-26 09_58_15_100011311_p0_anima_te.safetensors"
+        ],
+        "source_config": "/home/scv/nvme0n1p1/\u8bad\u7ec3\u5668\u76f8\u5173/krea2-webui/output/runs/auto-families-hot-20260909/anima-retry/config.toml",
+        "real_cached_sample": true
+      },
+      "trials": [
+        {
+          "blocks": 26,
+          "status": "ok",
+          "safe": true,
+          "seconds": 4.097172920999583,
+          "headroom": 16813521408,
+          "gpu_reserve": 5255708672,
+          "cpu_master_bytes": 3875565568,
+          "host_rss_peak": 14285209600,
+          "host_min_available": 38906134528,
+          "swap_io_bytes": 9625600,
+          "accepted_resource_probe": true
+        },
+        {
+          "blocks": 24,
+          "status": "ok",
+          "safe": true,
+          "seconds": 3.937332579997019,
+          "headroom": 16573723136,
+          "gpu_reserve": 5255708672,
+          "cpu_master_bytes": 3875565568,
+          "host_rss_peak": 13873946624,
+          "host_min_available": 39127465984,
+          "swap_io_bytes": 8851456,
+          "accepted_resource_probe": true
+        },
+        {
+          "blocks": 20,
+          "status": "ok",
+          "safe": true,
+          "seconds": 4.1644513524952345,
+          "headroom": 15961743872,
+          "gpu_reserve": 5255708672,
+          "cpu_master_bytes": 3875565568,
+          "host_rss_peak": 13269790720,
+          "host_min_available": 39629320192,
+          "swap_io_bytes": 1970176,
+          "accepted_resource_probe": true
+        },
+        {
+          "blocks": 12,
+          "status": "ok",
+          "safe": true,
+          "seconds": 3.8055685345098027,
+          "headroom": 14932554240,
+          "gpu_reserve": 5255708672,
+          "cpu_master_bytes": 3875565568,
+          "host_rss_peak": 12872880128,
+          "host_min_available": 40387854336,
+          "swap_io_bytes": 6938624,
+          "accepted_resource_probe": true
+        }
+      ],
+      "confirmation": {
+        "status": "ok",
+        "blocks": 26,
+        "cases": [
+          {
+            "index": 0,
+            "dataset": 0,
+            "width": 896,
+            "height": 1200,
+            "batch_size": 1
+          }
+        ],
+        "updates": [
+          {
+            "case": 0,
+            "update": 0,
+            "loss": 0.09625895321369171,
+            "seconds": 4.3772931860003155,
+            "peak_allocated": 1993012736,
+            "peak_reserved": 2329935872,
+            "headroom": 17017866752
+          },
+          {
+            "case": 0,
+            "update": 1,
+            "loss": 0.07415036857128143,
+            "seconds": 3.8952871130022686,
+            "peak_allocated": 2158364160,
+            "peak_reserved": 2334130176,
+            "headroom": 16849959424
+          },
+          {
+            "case": 0,
+            "update": 2,
+            "loss": 0.08673781156539917,
+            "seconds": 3.868542151991278,
+            "peak_allocated": 2158364160,
+            "peak_reserved": 2334130176,
+            "headroom": 16849959424
+          }
+        ],
+        "seconds": 3.8819146324967733,
+        "headroom": 16849959424,
+        "gpu_reserve": 5255708672,
+        "safe": true,
+        "cpu_master_bytes": 3875565568,
+        "cpu_master_bytes_by_block": [
+          138413056,
+          138413056,
+          138413056,
+          138413056,
+          138413056,
+          138413056,
+          138413056,
+          138413056,
+          138413056,
+          138413056,
+          138413056,
+          138413056,
+          138413056,
+          138413056,
+          138413056,
+          138413056,
+          138413056,
+          138413056,
+          138413056,
+          138413056,
+          138413056,
+          138413056,
+          138413056,
+          138413056,
+          138413056,
+          138413056,
+          138413056,
+          138413056
+        ],
+        "host_before": {
+          "total": 67307024384,
+          "available": 52740411392,
+          "swap_total": 8589930496,
+          "swap_used": 8363675648,
+          "swap_in": 312528896,
+          "swap_out": 8641982464
+        },
+        "host_after": {
+          "total": 67307024384,
+          "available": 52833480704,
+          "swap_total": 8589930496,
+          "swap_used": 8361488384,
+          "swap_in": 315031552,
+          "swap_out": 8641982464
+        },
+        "host_min_available": 38502567936,
+        "host_rss_peak": 14175924224,
+        "host_reserve": 6730702438,
+        "swap_io_bytes": 2502656,
+        "elapsed_seconds": 51.941567598987604
+      },
+      "reused_candidates_from": "/home/scv/nvme0n1p1/\u8bad\u7ec3\u5668\u76f8\u5173/krea2-webui/output/runs/auto-families-hot-20260909/anima-retry/calibration/summary.json",
+      "failure": {},
+      "updates": [
+        {
+          "step": 1,
+          "seconds": 3.3508530450053513,
+          "loss": 0.09625895321369171,
+          "blocks": 26,
+          "peak_allocated": 1993012736,
+          "peak_reserved": 2329935872,
+          "headroom": 17020291584,
+          "host_available": 39253565440,
+          "swap_io": 19251200
+        },
+        {
+          "step": 2,
+          "seconds": 2.89600887800043,
+          "loss": 0.07413879781961441,
+          "blocks": 26,
+          "peak_allocated": 2158364160,
+          "peak_reserved": 2334130176,
+          "headroom": 16794253824,
+          "host_available": 39249682432,
+          "swap_io": 19292160
+        },
+        {
+          "step": 3,
+          "seconds": 2.890853513003094,
+          "loss": 0.08673486858606339,
+          "blocks": 26,
+          "peak_allocated": 2158364160,
+          "peak_reserved": 2334130176,
+          "headroom": 16798382592,
+          "host_available": 38947168256,
+          "swap_io": 19292160
+        },
+        {
+          "step": 4,
+          "seconds": 2.8850583070016,
+          "loss": 0.12805457413196564,
+          "blocks": 26,
+          "peak_allocated": 2158364160,
+          "peak_reserved": 2334130176,
+          "headroom": 16827021824,
+          "host_available": 38874656768,
+          "swap_io": 19304448
+        },
+        {
+          "step": 5,
+          "seconds": 2.896543933005887,
+          "loss": 0.09943770617246628,
+          "blocks": 26,
+          "peak_allocated": 2158364160,
+          "peak_reserved": 2334130176,
+          "headroom": 16830560768,
+          "host_available": 38856257536,
+          "swap_io": 19599360
+        },
+        {
+          "step": 6,
+          "seconds": 2.915831211998011,
+          "loss": 0.0731179267168045,
+          "blocks": 26,
+          "peak_allocated": 2158364160,
+          "peak_reserved": 2334130176,
+          "headroom": 16832920064,
+          "host_available": 39302946816,
+          "swap_io": 19603456
+        },
+        {
+          "step": 7,
+          "seconds": 2.918545403997996,
+          "loss": 0.07421056926250458,
+          "blocks": 26,
+          "peak_allocated": 2158364160,
+          "peak_reserved": 2334130176,
+          "headroom": 16810768896,
+          "host_available": 39322140672,
+          "swap_io": 19607552
+        },
+        {
+          "step": 8,
+          "seconds": 2.8855656670057215,
+          "loss": 0.06992997229099274,
+          "blocks": 26,
+          "peak_allocated": 2158364160,
+          "peak_reserved": 2334130176,
+          "headroom": 16832920064,
+          "host_available": 39309787136,
+          "swap_io": 19611648
+        },
+        {
+          "step": 9,
+          "seconds": 2.886956570990151,
+          "loss": 0.08972569555044174,
+          "blocks": 26,
+          "peak_allocated": 2158364160,
+          "peak_reserved": 2334130176,
+          "headroom": 16853301760,
+          "host_available": 39327387648,
+          "swap_io": 19640320
+        },
+        {
+          "step": 10,
+          "seconds": 2.911447493999731,
+          "loss": 0.0849870815873146,
+          "blocks": 26,
+          "peak_allocated": 2158364160,
+          "peak_reserved": 2334130176,
+          "headroom": 16815356416,
+          "host_available": 39340974080,
+          "swap_io": 19726336
+        },
+        {
+          "step": 11,
+          "seconds": 2.917598321000696,
+          "loss": 0.29679206013679504,
+          "blocks": 26,
+          "peak_allocated": 2158364160,
+          "peak_reserved": 2334130176,
+          "headroom": 16820861440,
+          "host_available": 39351681024,
+          "swap_io": 19726336
+        },
+        {
+          "step": 12,
+          "seconds": 2.9157021069986513,
+          "loss": 0.08210296183824539,
+          "blocks": 26,
+          "peak_allocated": 2158364160,
+          "peak_reserved": 2334130176,
+          "headroom": 16842291712,
+          "host_available": 39360540672,
+          "swap_io": 19906560
+        },
+        {
+          "step": 13,
+          "seconds": 2.943663268990349,
+          "loss": 0.07281765341758728,
+          "blocks": 26,
+          "peak_allocated": 2158364160,
+          "peak_reserved": 2334130176,
+          "headroom": 16839801344,
+          "host_available": 39353155584,
+          "swap_io": 19996672
+        },
+        {
+          "step": 14,
+          "seconds": 2.898314032005146,
+          "loss": 0.0950731560587883,
+          "blocks": 26,
+          "peak_allocated": 2158364160,
+          "peak_reserved": 2334130176,
+          "headroom": 16853105152,
+          "host_available": 39355248640,
+          "swap_io": 20082688
+        },
+        {
+          "step": 15,
+          "seconds": 2.904443318999256,
+          "loss": 0.07056967914104462,
+          "blocks": 26,
+          "peak_allocated": 2158364160,
+          "peak_reserved": 2334130176,
+          "headroom": 16853039616,
+          "host_available": 39343239168,
+          "swap_io": 20193280
+        },
+        {
+          "step": 16,
+          "seconds": 2.900510342005873,
+          "loss": 0.1441933512687683,
+          "blocks": 26,
+          "peak_allocated": 2158364160,
+          "peak_reserved": 2334130176,
+          "headroom": 16856119808,
+          "host_available": 39347560448,
+          "swap_io": 20226048
+        }
+      ]
+    },
+    {
+      "source": "output/runs/auto-families-hot-20260909/z_image-retry",
+      "valid": false,
+      "errors": [
+        "AUTO selection incomplete",
+        "Formal acceptance incomplete or failed",
+        "Formal update sequence incomplete"
+      ],
+      "acceptance": {},
+      "completion": {},
+      "environment": {
+        "gpu": "NVIDIA Graphics Device, GPU-8d47b1e2-27f2-8f05-f3d6-9e81562e1086, 20480 MiB, 580.178.04\n",
+        "torch_compile": false
+      },
+      "fixture": {
+        "family": "z_image",
+        "width": 896,
+        "height": 1200,
+        "sources": [
+          "/home/scv/nvme0n1p1/\u8bad\u7ec3\u5668\u76f8\u5173/krea2-webui/post_image_dataset/resized/pixiv_\u58f1\u73c2_40462352_2022-07-26 09_58_15_100011311_p0.png",
+          "/home/scv/nvme0n1p1/\u8bad\u7ec3\u5668\u76f8\u5173/krea2-webui/output/runs/model-family-fused-flash-smoke-20260903/cache/z_image/pixiv_\u58f1\u73c2_40462352_2022-07-26 09_58_15_100011311_p0_0896x1200_z_image.npz",
+          "/home/scv/nvme0n1p1/\u8bad\u7ec3\u5668\u76f8\u5173/krea2-webui/output/runs/model-family-fused-flash-smoke-20260903/cache/z_image/pixiv_\u58f1\u73c2_40462352_2022-07-26 09_58_15_100011311_p0_z_image_te.safetensors"
+        ],
+        "source_config": "output/runs/z-image-100step-20260905/configs/formal.toml",
+        "real_cached_sample": true
+      },
+      "trials": [
+        {
+          "blocks": 28,
+          "status": "ok",
+          "safe": true,
+          "seconds": 7.06082970200805,
+          "headroom": 14206521344,
+          "gpu_reserve": 5255708672,
+          "cpu_master_bytes": 10853698560,
+          "host_rss_peak": 40992591872,
+          "host_min_available": 19689558016,
+          "swap_io_bytes": 253665280,
+          "accepted_resource_probe": false,
+          "rejection": "AUTO block-swap host RAM/paging budget changed during the probe"
+        }
+      ],
+      "confirmation": null,
+      "reused_candidates_from": null,
+      "failure": {
+        "status": "failed",
+        "error_type": "RuntimeError",
+        "error": "AUTO block-swap host RAM/paging budget changed during the probe"
+      },
+      "updates": []
+    }
+  ]
+}
