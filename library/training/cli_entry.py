@@ -40,6 +40,16 @@ def run_training_cli(
     verify_command_line_training_args(args)
     args = read_config_from_file(args, parser)
 
+    # Resolve hardware-selected precision before the supervisor freezes its
+    # child configuration.  Explicit modes remain unchanged.
+    from library.training.adaptive_runtime.precision import resolve_adaptive_precision
+    resolve_adaptive_precision(args)
+
+    if getattr(args, "adaptive_oom_retry", False):
+        from library.training.adaptive_runtime.supervisor import run_supervised
+        result = run_supervised(args)
+        raise SystemExit(0 if result["status"] == "ok" else 1)
+
     from library.models.pipeline_parallel import (
         PipelineParallelConfig,
         validate_pipeline_parallel_config,

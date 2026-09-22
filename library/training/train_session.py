@@ -40,6 +40,7 @@ from library.training.precision_policy import (
     resolve_mixed_precision,
     resolve_vae_dtype,
 )
+from library.training.adaptive_runtime.training_runtime import notify as adaptive_notify, validate_entry
 from library.training.progress import ProgressSink, run_scope
 from library.training.probes import attach_peak_probe_to_network, maybe_probe, maybe_probe_components
 from library.training.train_bootstrap import (
@@ -56,6 +57,9 @@ def run_training_session(trainer, args) -> None:
     from library.training.auto_block_swap.coordinator import calibrate_if_requested
     from library.training.auto_block_swap.probe import after_model_load, check_dataset, run_probe
 
+    from library.training.adaptive_runtime.precision import resolve_adaptive_precision
+    resolve_adaptive_precision(args)
+    validate_entry(trainer, args)
     calibrate_if_requested(args)
     session_id = random.randint(0, 2**32)
     training_started_at = time.time()
@@ -285,6 +289,7 @@ def run_training_session(trainer, args) -> None:
     )
 
     # load target models: unet may be None for lazy loading
+    adaptive_notify(trainer, "model_load")
     model_version, text_encoder, vae, unet = trainer.load_target_model(
         args,
         weight_dtype,
@@ -292,6 +297,7 @@ def run_training_session(trainer, args) -> None:
         load_qwen3=qwen3_needed,
         load_vae=vae_needed,
     )
+    adaptive_notify(trainer, "setup")
     maybe_probe(
         trainer,
         "target_models_loaded",
@@ -352,9 +358,11 @@ def run_training_session(trainer, args) -> None:
 
     if unet is None:
         # lazy load unet if needed. text encoders may be freed or replaced with dummy models for saving memory
+        adaptive_notify(trainer, "model_load")
         unet, text_encoders = trainer.load_unet_lazily(
             args, weight_dtype, accelerator, text_encoders
         )
+        adaptive_notify(trainer, "setup")
 
     after_model_load(args, unet)
 
@@ -438,6 +446,7 @@ def run_training_session(trainer, args) -> None:
         optimizer_name=optimizer_name,
     )
 
+    adaptive_notify(trainer, "model_load")
     (
         network,
         optimizer,
@@ -467,6 +476,7 @@ def run_training_session(trainer, args) -> None:
         train_text_encoder,
         cache_latents,
     )
+    adaptive_notify(trainer, "setup")
     maybe_probe_components(
         trainer,
         "accelerator_prepared",
@@ -696,3 +706,4 @@ def run_training_session(trainer, args) -> None:
 
         saver.cleanup_resumable()
         saver.save_final(loop_state.network, loop_state.global_step, num_train_epochs)
+        adaptive_notify(trainer, "finish", loop_state)

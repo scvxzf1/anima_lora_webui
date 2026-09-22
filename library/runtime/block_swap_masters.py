@@ -284,6 +284,26 @@ def _parked_cpu_master_tensor(master: _CpuMaster) -> torch.Tensor:
     return master
 
 
+def _bind_captured_cpu_weights(
+    block: nn.Module, masters: dict[str, _CpuMaster], *, allow_cuda: bool = False,
+) -> None:
+    """Release duplicate CPU payload after a block's native masters are captured.
+
+    Called only during initial master preparation, before any forward graph.
+    Quantized representations retain their own path. Initial tail placement can
+    opt in after synchronous GPU placement, avoiding a redundant D2H copy.
+    """
+    for name, master in masters.items():
+        module = block.get_submodule(name)
+        weight = getattr(module, "weight", None)
+        if (type(weight) is not nn.Parameter or weight.requires_grad
+                or weight.device.type not in (("cpu", "cuda") if allow_cuda else ("cpu",))
+                or not isinstance(master, torch.Tensor)):
+            continue
+        if master.device.type == "cpu" and weight.dtype == master.dtype and weight.shape == master.shape:
+            weight.data = master
+
+
 def _restore_cpu_master_tensor(
     master: _CpuMaster,
     *,

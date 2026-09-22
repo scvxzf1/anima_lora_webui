@@ -588,6 +588,8 @@ class TrainingBootstrap:
 
         train_unet = not args.network_train_text_encoder_only
         train_text_encoder = trainer.is_train_text_encoder(args)
+        from library.training.adaptive_runtime.training_precision import validate_training_network
+        validate_training_network(args, network)
         network.apply_to(text_encoder, unet, train_text_encoder, train_unet)
 
         if args.network_weights is not None:
@@ -929,9 +931,12 @@ class TrainingBootstrap:
 
         unet_weight_dtype = te_weight_dtype = weight_dtype
 
+        from library.training.adaptive_runtime.training_precision import preserve_precision_cast
+        unet_cast_dtype = preserve_precision_cast(unet, unet_weight_dtype)
+
         unet.requires_grad_(False)
         if trainer.cast_unet(args):
-            unet.to(dtype=unet_weight_dtype)
+            unet.to(dtype=unet_cast_dtype)
         for t_enc in text_encoders:
             if t_enc is None:
                 continue
@@ -944,7 +949,7 @@ class TrainingBootstrap:
         else:
             unet.to(
                 accelerator.device,
-                dtype=unet_weight_dtype if trainer.cast_unet(args) else None,
+                dtype=unet_cast_dtype if trainer.cast_unet(args) else None,
             )
         if train_text_encoder:
             text_encoders = [

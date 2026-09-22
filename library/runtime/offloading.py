@@ -28,6 +28,7 @@ from library.runtime.block_swap_config import (
     normalize_block_swap_transfer_dtype,
 )
 from library.runtime.block_swap_masters import (
+    _bind_captured_cpu_weights,
     Int8BlockSwapCpuMaster,
     Params4bitBlockSwapCpuMaster,
     _bind_params4bit_master,
@@ -465,6 +466,7 @@ class Offloader:
                 block_masters,
                 pin_memory=pin_memory,
             )
+            _bind_captured_cpu_weights(block, block_masters)
             masters.append(block_masters)
             master_dtypes.append(block_dtypes)
             master_slabs.append(block_master_slab)
@@ -1267,17 +1269,19 @@ class Offloader:
             return timings
 
         stream = self._get_copy_stream_for_slot(slot_id)
-        slab_bundle = self._get_cached_restore_slab(
-            block_idx_to_cpu,
-            block_idx_to_cuda,
-            swap_plan,
-            slot_id=slot_id,
-        )
-        if slab_bundle is not None:
-            timings["_slab_slot_id"] = slot_id
         with torch.cuda.stream(stream):
             if ready_event is not None:
                 stream.wait_event(ready_event)
+            # Allocate on the first-use stream: the caching allocator may reuse
+            # storage whose default-stream work postdates the ready event.
+            slab_bundle = self._get_cached_restore_slab(
+                block_idx_to_cpu,
+                block_idx_to_cuda,
+                swap_plan,
+                slot_id=slot_id,
+            )
+            if slab_bundle is not None:
+                timings["_slab_slot_id"] = slot_id
 
             # Frozen base weights never change during LoRA training. We keep a
             # CPU master for every swappable weight and only restore the next
@@ -1323,6 +1327,12 @@ class Offloader:
                     cuda_data_view = module_to_cpu.weight.data
                     module_to_cpu.weight.data = _parked_cpu_master_tensor(source_master)
                     cuda_data_view.record_stream(stream)
+                    # Precision islands can differ between otherwise identical
+                    # blocks. copy_ casts values but cannot change storage dtype.
+                    if source_dtype != target_dtype:
+                        cuda_data_view = torch.empty_like(
+                            cuda_data_view, dtype=target_dtype, device=self.device
+                        )
                     cuda_dsts.append(cuda_data_view)
                     if (
                         has_int8_master
@@ -1827,10 +1837,14 @@ class ModelOffloader(Offloader):
             b.to(self.device)
             weighs_to_device(b, self.device)  # make sure weights are on device
 
-        for b in blocks[self.num_blocks - self.blocks_to_swap :]:
+        for block_index in range(self.num_blocks - self.blocks_to_swap, self.num_blocks):
+            b = blocks[block_index]
             b.to(
                 self.device
             )  # move block to device first. this makes sure that buffers (non weights) are on the device
+            _bind_captured_cpu_weights(
+                b, self._cpu_weight_masters[block_index], allow_cuda=True
+            )
             weighs_to_device(
                 b, torch.device("cpu"), include_trainable=False
             )  # keep adapter/trainable weights on the training device

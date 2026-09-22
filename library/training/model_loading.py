@@ -2,8 +2,9 @@
 
 Keeps DiT / TE / VAE load order and freeze-merge behavior identical to train.py.
 Family dispatch (stage 6): ``resolve_model_family(args)`` selects Anima
-(Qwen3+T5 cross-attn DiT) or Krea-2-Raw (Qwen3-VL single-stream MMDiT). Anima
-is the default and unchanged; Krea-2 loads via ``library.models.krea2_raw``.
+(Qwen3+T5 cross-attn DiT), Krea-2-Raw (Qwen3-VL single-stream MMDiT), or
+Z-Image (Diffusers flow transformer). Adaptive precision islands are installed
+in each family loader before adapter and offloader setup.
 """
 
 from __future__ import annotations
@@ -25,6 +26,32 @@ from library.training.v100_flash import (
 import logging
 
 logger = logging.getLogger(__name__)
+
+
+def _adaptive_islands_enabled(args) -> bool:
+    from library.training.adaptive_runtime.training_config import islands_enabled
+
+    return islands_enabled(args)
+
+
+def _install_adaptive_precision(model, args, accelerator, family: str) -> None:
+    """Install frozen precision islands before adapter/offloader setup."""
+    if not _adaptive_islands_enabled(args):
+        return
+    from library.training.adaptive_runtime.training_config import require_training_contract
+    from library.training.adaptive_runtime.training_precision import (
+        install_training_precision,
+        register_precision_checkpoint,
+    )
+
+    require_training_contract(args, world_size=accelerator.num_processes)
+    manifest = install_training_precision(model, args, model_family=family)
+    register_precision_checkpoint(accelerator, manifest)
+    logger.info(
+        "Adaptive precision islands installed: family=%s linear_units=%d",
+        family,
+        len(manifest["assignments"]),
+    )
 
 
 def _load_anima_text_encoder(args, weight_dtype):
@@ -154,6 +181,7 @@ def _load_z_image_dit(trainer, args, weight_dtype, accelerator, text_encoders):
         dtype=weight_dtype,
         device=loading_device,
     )
+    _install_adaptive_precision(model, args, accelerator, "z_image")
     attn_mode = prepare_z_image_attention(
         model,
         getattr(args, "attn_mode", None),
@@ -215,8 +243,14 @@ def _load_krea2_dit(trainer, args, weight_dtype, accelerator, text_encoders):
         validate_krea2_attention_mode,
     )
     from library.models.krea2_raw.weights import load_krea2_dit
+    from library.training.adaptive_runtime.training_config import islands_enabled
 
-    loading_dtype = weight_dtype
+    adaptive = islands_enabled(args)
+    if adaptive:
+        from library.models.krea2_raw.quantize import inspect_nf4_checkpoint
+        if inspect_nf4_checkpoint(str(args.pretrained_model_name_or_path)).is_nf4:
+            raise ValueError("FP16/FP32 training requires nonquantized base weights, not NF4")
+    loading_dtype = torch.bfloat16 if adaptive else weight_dtype
     loading_device = "cpu" if trainer.is_swapping_blocks else accelerator.device
     # NF4 (Krea-2 QLoRA): compat_matrix 对 nf4×block_swap 已降级 warning (方向 A
     # 端到端探针验证通过). NF4 v1 通过 nf4_prequantized_path 覆盖 BF16;
@@ -254,10 +288,11 @@ def _load_krea2_dit(trainer, args, weight_dtype, accelerator, text_encoders):
         nf4=nf4_active,
         nf4_path=nf4_path if nf4_active else None,
     )
+    _install_adaptive_precision(model, args, accelerator, "krea2_raw")
     attn_mode = prepare_krea2_attention(
         model,
         requested_attn_mode,
-        dtype=loading_dtype,
+        dtype=weight_dtype if adaptive else loading_dtype,
         compile_enabled=bool(getattr(args, "torch_compile", False)),
     )
     logger.info("Krea-2 attention mode: %s", attn_mode)
@@ -471,6 +506,7 @@ def _load_anima_dit(trainer, args, weight_dtype, accelerator, text_encoders):
         checkpoint_layout=layout,
         anima_base_sha256=base_sha256,
     )
+    _install_adaptive_precision(model, args, accelerator, "anima")
     _maybe_probe_components(
         trainer,
         "dit_loaded",

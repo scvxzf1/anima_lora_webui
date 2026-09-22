@@ -611,6 +611,8 @@ def add_training_arguments(parser: argparse.ArgumentParser, support_dreambooth: 
     parser.add_argument(
         "--full_fp16", action="store_true", help="fp16 training including gradients"
     )
+    from library.training.adaptive_runtime.training_config import add_arguments as add_precision_arguments
+    add_precision_arguments(parser)
     parser.add_argument(
         "--full_bf16", action="store_true", help="bf16 training including gradients"
     )

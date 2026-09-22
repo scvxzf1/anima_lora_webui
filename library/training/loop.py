@@ -56,6 +56,7 @@ from library.training.method_adapter import StepCtx
 from library.training.metrics import MetricContext, collect_metrics
 from library.training.validation import run_validation
 from library.training.adaptive_personalization import metrics as personalization_metrics
+from library.training.adaptive_runtime.training_runtime import notify as adaptive_notify
 
 logger = logging.getLogger(__name__)
 
@@ -630,6 +631,7 @@ def _run_epoch_steps(trainer, state: LoopState, epoch: int) -> None:
                 _sample_at_step(trainer, state)
                 state.saver.maybe_save_step(state.network, state.global_step, epoch)
                 state.optimizer_train_fn()
+                adaptive_notify(trainer, "commit", state)
 
             _log_step(
                 trainer,
@@ -682,6 +684,7 @@ def _run_step(trainer, state: LoopState, batch) -> torch.Tensor:
     zero_grad. Returns the loss (detached or live)."""
     from library.training.auto_block_swap.online import before_microstep, after_microstep
 
+    adaptive_notify(trainer, "forward")
     before_microstep(state, batch)
     args = state.args
     accelerator = state.accelerator
@@ -752,6 +755,7 @@ def _run_step(trainer, state: LoopState, batch) -> torch.Tensor:
         if state.profile_started:
             torch.cuda.nvtx.range_push("backward")
         _probe_step(memory_probe, state, "before_backward")
+        adaptive_notify(trainer, "backward")
         try:
             accelerator.backward(loss)
         except Exception as exc:
@@ -831,8 +835,10 @@ def _run_step(trainer, state: LoopState, batch) -> torch.Tensor:
         if state.profile_started:
             torch.cuda.nvtx.range_push("optimizer")
         _probe_step(memory_probe, state, "before_optimizer")
+        adaptive_notify(trainer, "optimizer")
         try:
             state.optimizer.step()
+            adaptive_notify(trainer, "after_optimizer", state)
             if accelerator.sync_gradients and gradient_flow_probe is not None:
                 try:
                     gradient_flow_probe.capture_after_optimizer(state.global_step + 1)

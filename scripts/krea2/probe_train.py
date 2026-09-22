@@ -28,8 +28,8 @@ from __future__ import annotations
 import os
 
 # 必须在 import torch 之前设 (同 probe_*.py): PCI_BUS_ID + PG199=device 1 (32GB).
-os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
-os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+os.environ.setdefault("CUDA_DEVICE_ORDER", "PCI_BUS_ID")
+os.environ.setdefault("CUDA_VISIBLE_DEVICES", "1")
 
 import sys
 import time
@@ -100,7 +100,8 @@ def gpu_power() -> float:
     import subprocess
     try:
         out = subprocess.check_output(
-            ["nvidia-smi", "--query-gpu=power.draw", "--format=csv,noheader,nounits", "-i", "1"],
+            ["nvidia-smi", "--query-gpu=power.draw", "--format=csv,noheader,nounits",
+             "-i", os.environ.get("CUDA_VISIBLE_DEVICES", "1")],
             stderr=subprocess.DEVNULL, text=True, timeout=5,
         )
         return float(out.strip())

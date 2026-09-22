@@ -55,6 +55,19 @@ sigmoid_bias = 0.0
 discrete_flow_shift = 1.0
 mixed_precision = "bf16"
 
+# Experimental adaptive precision / OOM recovery controls. Exposed in the
+# Next WebUI for every registered model family; ``auto`` is hardware-selected,
+# while ``fp16_fp32`` enables the explicit island contract. Keep ``off`` here
+# until a method opts into the compatible plain-LoRA contract.
+adaptive_precision = "off"
+adaptive_fp32_modules = []
+adaptive_loss_scale = 1024.0
+adaptive_oom_retry = false
+adaptive_oom_retry_max_attempts = 4
+adaptive_oom_retry_swap_increment = 2
+adaptive_oom_retry_max_swap = 26
+adaptive_oom_retry_timeout = 3600.0
+
 gradient_checkpointing = false
 unsloth_offload_checkpointing = false
 selective_checkpoint = "off"

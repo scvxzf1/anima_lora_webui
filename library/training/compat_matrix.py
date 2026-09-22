@@ -169,6 +169,10 @@ def check_training_compat(
     for message in configuration_errors(config, world_size=world_size or 1):
         out.error("auto_block_swap_contract", "auto_block_swap", message)
 
+    from library.training.adaptive_runtime.training_config import configuration_errors as precision_errors
+    for message in precision_errors(config, world_size=world_size or 1):
+        out.error("adaptive_precision_contract", "adaptive_precision", message)
+
     selective_checkpoint = (
         str(_get(config, "selective_checkpoint", "off") or "off").strip().lower()
     )
@@ -402,11 +406,17 @@ def check_training_compat(
         mixed_precision = (
             str(_get(config, "mixed_precision", "bf16") or "bf16").strip().lower()
         )
-        if mixed_precision != "bf16":
+        from library.training.adaptive_runtime.training_config import islands_enabled
+        adaptive_islands = islands_enabled(config)
+        if mixed_precision != "bf16" and not (
+            (adaptive_islands and mixed_precision == "fp16" or mixed_precision == "no")
+            and attn_mode in {"torch", "sdpa"}
+        ):
             out.error(
                 "z_image_bf16_only",
                 "mixed_precision",
-                "Z-Image v1 is validated only with mixed_precision=bf16.",
+                "Z-Image v1 is validated with mixed_precision=bf16; adaptive "
+                "FP16/FP32 or pure FP32 paths require torch/sdpa attention.",
             )
         base_compute = (
             str(_get(config, "base_compute", "bf16") or "bf16").strip().lower()
