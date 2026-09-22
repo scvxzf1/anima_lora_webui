@@ -10,6 +10,7 @@
 
 | 文档 | 说明 |
 | --- | --- |
+| [adaptive-runtime.md](adaptive-runtime.md) | DiT 自适应精度与 OOM 恢复，实现边界和双卡三模型验证进度 |
 | [anima_tagger.md](anima_tagger.md) | Anima Tagger，多标签 tagger 与 DirectEdit 文本入口 |
 | [byg.md](byg.md) | BYG unpaired instruction-editing：训练可用，专用推理仍是占位 |
 | [chimera-hydra.md](chimera-hydra.md) | ChimeraHydra 双池 MoE，配合 [../structure/chimera-hydra.md](../structure/chimera-hydra.md) 阅读 |

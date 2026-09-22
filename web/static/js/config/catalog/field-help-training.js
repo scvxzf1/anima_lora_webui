@@ -712,6 +712,70 @@ export const FIELD_HELP_TRAINING_ZH = {    learning_rate: help(
         ["fp16 更容易数值不稳定；bf16 在旧卡上可能不可用。"],
         "新手优先用 bf16；启动时报不支持再换 fp16。"
     ),
+    adaptive_precision: help(
+        "实验性自适应精度。关闭时不改变现有训练；开启后按当前实验契约使用 FP16/FP32 混合路径。",
+        "auto 按 GPU compute capability 选择 BF16、FP16/FP32 岛屿或纯 FP32；fp16_fp32 固定使用 FP16/FP32 岛屿。三类已注册 DiT 均走统一训练入口，但仍受兼容矩阵限制。",
+        ["在旧显卡上保留敏感残差和指定 Linear 的 FP32，同时让普通 Linear 使用 FP16。"],
+        ["首次启动需要额外检查；FP16/FP32 岛屿会关闭 compile、量化和复杂 adapter 组合。"],
+        ["当前不是质量自动认证；不满足模型族合同时启动预检会拒绝。"],
+        "先用 off 验证普通配置；在单卡、普通 LoRA、完整 checkpoint 条件下再尝试 auto。"
+    ),
+    adaptive_fp32_modules: help(
+        "显式指定需要保持 FP32 的 Linear 名称或 glob；留空不代表已完成敏感层校准。",
+        "匹配模型中的完整模块路径，例如 blocks.0.*；只接受普通 Linear，未知模式会在启动前拒绝。",
+        ["可以把已知数值敏感的投影固定在 FP32。"],
+        ["FP32 模块越多，显存和计算开销越高。"],
+        ["模块名随模型族变化，错误模式不会静默忽略。"],
+        "没有校准证据时保持空数组，先使用默认残差 FP32 保护。"
+    ),
+    adaptive_loss_scale: help(
+        "FP16/FP32 实验路径的初始梯度缩放值；普通 BF16 训练不使用 scaler。",
+        "传给 Accelerate GradScaler 的 init_scale，必须是大于 1 的有限数。",
+        ["减少 FP16 梯度下溢。"],
+        ["过大可能放大溢出和重试次数。"],
+        ["只影响 FP16/FP32 岛屿路径。"],
+        "默认 1024；出现 scaler 溢出时再降低。"
+    ),
+    adaptive_oom_retry: help(
+        "训练启动或允许阶段发生 CUDA OOM 时，在新进程中有限增加 block swap 后重试。",
+        "每次重试冻结同一份配置，只增加授权范围内的交换块；不会在已有 optimizer 状态中原地重试。",
+        ["显存临界时可以自动找到能启动的交换块数量。"],
+        ["重试会重复加载模型并延长启动时间。"],
+        ["仅支持自适应 FP16/FP32 岛屿的单卡实验合同；普通配置不会被隐式重试。"],
+        "先关闭确认普通训练稳定，再在可恢复的实验目录启用。"
+    ),
+    adaptive_oom_retry_max_attempts: help(
+        "OOM 自动重试的总尝试上限。",
+        "包含第一次训练尝试；每次失败后才进入下一次 fresh worker。",
+        ["限制最坏情况下的重复启动时间。"],
+        ["过小可能在找到可行交换值前提前停止。"],
+        ["过大不会突破最大交换块数或其他合同限制。"],
+        "默认 4；显存波动明显时再小幅提高。"
+    ),
+    adaptive_oom_retry_swap_increment: help(
+        "每次 OOM 重试增加的 block swap 数量。",
+        "仅在模型加载、forward 或 backward 阶段的结构化 CUDA OOM 后增加。",
+        ["较大的步长能更快避开显存临界点。"],
+        ["交换越多通常越慢，且可能增加 CPU 内存和 PCIe 压力。"],
+        ["不会修改正在运行的 offloader；每次都在新进程重建。"],
+        "默认 2；显存余量很小时保持较小步长。"
+    ),
+    adaptive_oom_retry_max_swap: help(
+        "OOM 重试允许达到的最大交换块数量。",
+        "必须落在当前模型族 block swap 合法范围内。",
+        ["为重试提供明确的显存上限。"],
+        ["上限越高，最慢的重试方案越可能被尝试。"],
+        ["不会绕过 Z-Image 或 Anima 的块范围校验。"],
+        "按显存和 CPU 内存设置；不要盲目填满模型块数。"
+    ),
+    adaptive_oom_retry_timeout: help(
+        "单个隔离训练尝试的最长运行时间（秒）。",
+        "超时的 worker 视为非 CUDA 失败，不会继续无限重试。",
+        ["防止异常 worker 长时间占住 GPU。"],
+        ["过小会误杀首次加载较慢的机器。"],
+        ["超时不会生成可恢复的 optimizer checkpoint。"],
+        "默认 3600 秒；按模型大小和磁盘速度调整。"
+    ),
     precision_preference: help(
         "训练时优先采用哪种数值精度方案。",
         "bf16 是默认推荐；fp16 表示 fp16/32 混合精度；fp32 表示关闭混合精度、全程使用 fp32。",

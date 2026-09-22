@@ -1,6 +1,14 @@
 // Generated from field-help.js; keep synchronized with the full help catalog.
 
 export const FIELD_HELP_SUMMARY_ZH = Object.freeze({
+    "adaptive_precision": "实验性自适应精度。关闭时不改变现有训练；开启后按当前实验契约使用 FP16/FP32 混合路径。",
+    "adaptive_fp32_modules": "显式指定需要保持 FP32 的 Linear 名称或 glob；留空不代表已完成敏感层校准。",
+    "adaptive_loss_scale": "FP16/FP32 实验路径的初始梯度缩放值；普通 BF16 训练不使用 scaler。",
+    "adaptive_oom_retry": "训练启动或允许阶段发生 CUDA OOM 时，在新进程中有限增加 block swap 后重试。",
+    "adaptive_oom_retry_max_attempts": "OOM 自动重试的总尝试上限。",
+    "adaptive_oom_retry_swap_increment": "每次 OOM 重试增加的 block swap 数量。",
+    "adaptive_oom_retry_max_swap": "OOM 重试允许达到的最大交换块数量。",
+    "adaptive_oom_retry_timeout": "单个隔离训练尝试的最长运行时间（秒）。",
     "network_dim": "LoRA 的容量大小，也叫 rank 或秩。",
     "network_alpha": "LoRA 的缩放强度，影响训练结果最终作用有多猛。",
     "network_module": "训练时加载的网络实现模块。",

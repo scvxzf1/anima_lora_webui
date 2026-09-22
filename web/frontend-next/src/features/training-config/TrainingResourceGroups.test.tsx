@@ -1,7 +1,7 @@
 import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, it, vi } from "vitest";
-import { fieldsForConfig } from "./fieldCatalog";
+import { fieldAvailability, fieldsForConfig } from "./fieldCatalog";
 import { groupResourceFields, resourceSummary } from "./resourceGroups";
 import { TrainingResourceGroups } from "./TrainingResourceGroups";
 
@@ -19,6 +19,22 @@ it("groups every resource exactly once, with AUTO before manual swap", () => {
   expect(groups.find((group) => group.id === "compute")!.fields[0].key).toBe("mixed_precision");
   expect(groups.find((group) => group.id === "diagnostics")!.fields.map((field) => field.key)).toContain("debug_finite_checks");
   expect(groupResourceFields([{ key: "future", label: "Future", kind: "text", group: "resources" }])[0].id).toBe("other");
+});
+
+it("exposes adaptive controls for every registered model family", () => {
+  const keys = [
+    "adaptive_precision", "adaptive_fp32_modules", "adaptive_loss_scale",
+    "adaptive_oom_retry", "adaptive_oom_retry_max_attempts",
+    "adaptive_oom_retry_swap_increment", "adaptive_oom_retry_max_swap",
+    "adaptive_oom_retry_timeout",
+  ];
+  const compute = groupResourceFields(fields).find((group) => group.id === "compute")!;
+  expect(compute.fields.map((field) => field.key)).toEqual(expect.arrayContaining(keys));
+  for (const model_family of ["anima", "krea2_raw", "z_image"]) {
+    for (const key of keys) {
+      expect(fieldAvailability(key, { model_family }, "lora").enabled).toBe(true);
+    }
+  }
 });
 
 it("shows summaries, expands groups without edits, and reveals search matches", async () => {

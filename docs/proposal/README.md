@@ -9,6 +9,7 @@
 
 | 文档 | 状态 | 说明 |
 | --- | --- | --- |
+| [adaptive_training_roadmap.md](adaptive_training_roadmap.md) | 活跃 / P1、P2 推进中 | FP16/FP32 实际训练、数据游标、OOM 恢复、自动精度选择与双卡多模型分阶段验收计划 |
 | [dragon_frontend_rebuild_plan.md](dragon_frontend_rebuild_plan.md) | 已实施 / 独立入口验收 | FocusFlow 多栏结构与 Zaptix 监控层级；八页新前端已构建，默认切换与真实使用签收待批准 |
 | [dragon_config_progressive_disclosure.md](dragon_config_progressive_disclosure.md) | 探索 / 未实现 | Dragon 训练配置由静态等级与双重分类迁移到模型族、Adapter、功能开关驱动的渐进披露方案 |
 | [auto_vram_v1.md](auto_vram_v1.md) | 提案 / 未实现 | AutoVram v1 自动显存档位搜索与可审计协议 |

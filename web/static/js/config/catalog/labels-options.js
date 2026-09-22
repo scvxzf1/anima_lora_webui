@@ -1,5 +1,13 @@
 export const FIELD_LABEL_ZH = {
     activation_memory_budget: '激活内存预算',
+    adaptive_precision: '自适应精度策略',
+    adaptive_fp32_modules: '自适应 FP32 模块',
+    adaptive_loss_scale: '自适应初始 Loss Scale',
+    adaptive_oom_retry: 'OOM 自动重试',
+    adaptive_oom_retry_max_attempts: 'OOM 最大尝试次数',
+    adaptive_oom_retry_swap_increment: 'OOM 每次增加交换块数',
+    adaptive_oom_retry_max_swap: 'OOM 最大交换块数',
+    adaptive_oom_retry_timeout: 'OOM 单次尝试超时（秒）',
     network_weights: '继续训练权重路径',
     dim_from_weights: '从权重读取秩',
     layer_start: '起始层',
@@ -343,6 +351,7 @@ export const FIELD_OPTIONS = {
     timestep_mask_mode: ['anima', 'paper'],
     timestep_mask_at_inference: [false, true],
     mixed_precision: ['bf16', 'fp16', 'no'],
+    adaptive_precision: ['off', 'auto', 'fp16_fp32'],
     network_module: [
         'networks.lora_anima',
         'networks.methods.ip_adapter',

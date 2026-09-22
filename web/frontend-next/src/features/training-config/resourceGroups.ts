@@ -12,7 +12,17 @@ export const RESOURCE_GROUPS = [
 ] as const;
 
 export function resourceGroup(key: string) {
-  if (key === "mixed_precision") return "compute";
+  if ([
+    "mixed_precision",
+    "adaptive_precision",
+    "adaptive_fp32_modules",
+    "adaptive_loss_scale",
+    "adaptive_oom_retry",
+    "adaptive_oom_retry_max_attempts",
+    "adaptive_oom_retry_swap_increment",
+    "adaptive_oom_retry_max_swap",
+    "adaptive_oom_retry_timeout",
+  ].includes(key)) return "compute";
   if (key === "debug_finite_checks" || key === "v100_flash_stability") return "diagnostics";
   const cluster = CONFIG_FIELD_CATALOG[key]?.cluster;
   return RESOURCE_GROUPS.some(([id]) => id === cluster) ? cluster : "other";
