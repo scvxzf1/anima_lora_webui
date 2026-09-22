@@ -36,6 +36,7 @@ output_temp/
 results
 logs
 .claude
+.cursor/
 .repowise/
 .mcp.json
 .env
@@ -64,3 +65,6 @@ _archive/
 web/frontend-next/*.tsbuildinfo
 web/frontend-next/vite.config.js
 web/frontend-next/vite.config.d.ts
+
+# Local ImageMagick debug artifact accidentally emitted at repository root.
+/torch
