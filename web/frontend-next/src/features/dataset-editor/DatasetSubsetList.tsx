@@ -19,11 +19,13 @@ export function DatasetSubsetList({
   disabled,
   previewDisabled,
   onPreview,
+  onEditMasks,
 }: {
   form: UseFormReturn<DatasetFormValues>;
   disabled: boolean;
   previewDisabled: boolean;
   onPreview: (index: number, trigger: HTMLElement) => void;
+  onEditMasks?: (index: number) => void;
 }) {
   const rows = useFieldArray({ control: form.control, name: 'datasets' });
   const sensors = useSensors(
@@ -97,6 +99,7 @@ export function DatasetSubsetList({
                 previewDisabled={previewDisabled}
                 onSelect={() => setSelectedId(field.id)}
                 onPreview={(trigger) => onPreview(index, trigger)}
+                onEditMasks={onEditMasks ? () => onEditMasks(index) : undefined}
                 onMove={(nextIndex) => rows.move(index, nextIndex)}
                 onRemove={() => rows.remove(index)}
                 onCopyExperimental={copyExperimentalRules}

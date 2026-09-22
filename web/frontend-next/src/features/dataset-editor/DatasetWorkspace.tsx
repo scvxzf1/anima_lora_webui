@@ -185,7 +185,6 @@ export function DatasetWorkspace() {
 
         <TrainingContextBar context={trainingContext} />
         {editor.selectedFile && <div className="toolbar"><Link to={`/captioning?${new URLSearchParams({ dataset: editor.selectedFile })}`}>打开此数据集的打标工作台</Link>
-          <Link to={`/datasets/masks?${new URLSearchParams({ dataset: editor.selectedFile })}`}>编辑蒙版</Link>
         </div>}
 
         {library.isError ? (

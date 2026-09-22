@@ -20,8 +20,8 @@ export function MaskTools({ engine, tool, setTool, size, setSize, view, setView,
   const command = (action: () => void) => { action(); changed(); };
   return <aside className="mask-tools" aria-label="蒙版工具">
     <div className="mask-tool-group" role="group" aria-label="绘制工具">
-      <IconCommand icon={Brush} label="画笔（白色参与训练）" active={tool === 'brush'} onClick={() => setTool('brush')} disabled={disabled} />
-      <IconCommand icon={Eraser} label="橡皮擦（黑色忽略）" active={tool === 'eraser'} onClick={() => setTool('eraser')} disabled={disabled} />
+      <IconCommand icon={Brush} label="画笔（涂色忽略）" active={tool === 'brush'} onClick={() => setTool('brush')} disabled={disabled} />
+      <IconCommand icon={Eraser} label="橡皮擦（恢复训练区域）" active={tool === 'eraser'} onClick={() => setTool('eraser')} disabled={disabled} />
       <IconCommand icon={Hand} label="平移" active={tool === 'pan'} onClick={() => setTool('pan')} />
     </div>
     <label>笔刷大小 <output>{size} px</output><input aria-label="笔刷大小" type="range" min="1" max="512" value={size} onChange={event => setSize(+event.target.value)} /></label>
@@ -30,8 +30,8 @@ export function MaskTools({ engine, tool, setTool, size, setSize, view, setView,
       <IconCommand icon={Redo2} label="重做" disabled={disabled || !engine?.canRedo} onClick={() => command(() => engine?.redo())} />
     </div>
     <div className="mask-tool-group">
-      <IconCommand icon={Square} label="全选" disabled={disabled} onClick={() => command(() => engine?.fill(255))} />
-      <IconCommand icon={SquareDashed} label="清空" disabled={disabled} onClick={() => command(() => engine?.fill(0))} />
+      <IconCommand icon={Square} label="全部忽略" disabled={disabled} onClick={() => command(() => engine?.fill(0))} />
+      <IconCommand icon={SquareDashed} label="清空忽略区域" disabled={disabled} onClick={() => command(() => engine?.fill(255))} />
       <IconCommand icon={Contrast} label="反选" disabled={disabled} onClick={() => command(() => engine?.invert())} />
     </div>
     <div className="mask-tool-group" role="group" aria-label="预览模式">

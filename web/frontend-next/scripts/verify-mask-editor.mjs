@@ -15,6 +15,11 @@ const url = `${target}/next/datasets/masks?${new URLSearchParams({ dataset: file
 const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
 page.on('pageerror', error => errors.push(error.message));
 async function command(name) { await page.getByRole('button', { name, exact: true }).click(); }
+async function strokePixel() {
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  return page.getByLabel('蒙版编辑画布').evaluate(canvas => [...canvas.getContext('2d')
+    .getImageData(Math.floor(canvas.width * .42), Math.floor(canvas.height * .45), 1, 1).data]);
+}
 async function draw() {
   const canvas = page.getByLabel('蒙版编辑画布');
   const box = await canvas.boundingBox();
@@ -25,12 +30,25 @@ async function draw() {
 }
 try {
   await page.goto(url);
-  await expect(page.getByRole('button', { name: '清空', exact: true })).toBeEnabled();
-  await command('清空');
+  await expect(page.getByRole('button', { name: '清空忽略区域', exact: true })).toBeEnabled();
+  await command('清空忽略区域');
+  const transparent = await strokePixel();
+  await command('原图预览');
+  expect(await strokePixel()).toEqual(transparent);
+  await command('叠加预览');
   await draw();
+  expect(await strokePixel()).not.toEqual(transparent);
+  await command('黑白蒙版');
+  expect(await strokePixel()).toEqual([0, 0, 0, 255]);
+  await command('叠加预览');
   await expect(page.getByText('未保存', { exact: true })).toBeVisible();
-  await command('橡皮擦（黑色忽略）');
+  await command('橡皮擦（恢复训练区域）');
   await draw();
+  expect(await strokePixel()).toEqual(transparent);
+  await command('黑白蒙版');
+  expect(await strokePixel()).toEqual([255, 255, 255, 255]);
+  await command('叠加预览');
+  checks.push('transparent=training; tinted=ignored; brush black and eraser white pixels');
   await command('撤销');
   await command('重做');
   await command('撤销');
@@ -76,8 +94,8 @@ try {
   expect((await applied).status()).toBe(200);
   await expect(page.getByText('外部蒙版已启用', { exact: true })).toBeVisible();
   checks.push('real HTTP mask save/reload and subset apply');
-  await expect(page.getByRole('button', { name: '清空', exact: true })).toBeEnabled();
-  await command('画笔（白色参与训练）');
+  await expect(page.getByRole('button', { name: '清空忽略区域', exact: true })).toBeEnabled();
+  await command('画笔（涂色忽略）');
   await page.screenshot({ path: `${output}/desktop.png` });
   expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false);
   const peer = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
@@ -97,12 +115,12 @@ try {
   await expect(page.getByRole('button', { name: '保存', exact: true })).toHaveText('已保存');
   checks.push('two-tab stale write rejected; unsaved edit retained');
   await page.getByRole('button', { name: /^garment-02\.png/ }).click();
-  await expect(page.getByRole('button', { name: '全选', exact: true })).toBeEnabled();
-  await command('清空');
+  await expect(page.getByRole('button', { name: '全部忽略', exact: true })).toBeEnabled();
+  await command('全部忽略');
   await page.getByRole('button', { name: /^garment-03\.png/ }).click();
   await command('放弃修改并继续');
   await expect(page.locator('.mask-filename')).toHaveText('garment-03.png');
-  await expect(page.getByRole('button', { name: '清空', exact: true })).toBeEnabled();
+  await expect(page.getByRole('button', { name: '清空忽略区域', exact: true })).toBeEnabled();
   checks.push('discard and continue');
   await page.setViewportSize({ width: 390, height: 844 });
   await command('展开或收起蒙版工具');
@@ -110,7 +128,7 @@ try {
   await page.waitForTimeout(150);
   await page.screenshot({ path: `${output}/mobile.png`, fullPage: true });
   expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false);
-  await command('清空');
+  await command('清空忽略区域');
   await draw();
   await command('保存');
   await expect(page.getByRole('button', { name: '保存', exact: true })).toHaveText('已保存');

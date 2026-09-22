@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 import { trainingContextKeys } from '../../api/trainingContext';
 import type { TrainingContextController } from '../../app/useTrainingContext';
@@ -31,6 +32,7 @@ export function DatasetPresetEditor({
   onExport,
 }: Props) {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [nameAction, setNameAction] = useState<DatasetNameAction | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [applyOpen, setApplyOpen] = useState(false);
@@ -183,6 +185,9 @@ export function DatasetPresetEditor({
         form={editor.form}
         disabled={editor.readonly || busy}
         previewDisabled={!canPreview || busy}
+        onEditMasks={(index) => navigate(`/datasets/masks?${new URLSearchParams({
+          dataset: editor.selectedFile, subset: String(index),
+        })}`)}
         onPreview={(index, trigger) => {
           previewTriggerRef.current = trigger;
           setPreviewIndex(index);

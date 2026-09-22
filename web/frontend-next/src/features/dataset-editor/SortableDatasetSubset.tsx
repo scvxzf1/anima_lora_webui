@@ -1,6 +1,6 @@
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { ArrowDown, ArrowUp, GripVertical, Images } from 'lucide-react';
+import { ArrowDown, ArrowUp, Brush, GripVertical, Images } from 'lucide-react';
 import { useEffect, useState, type KeyboardEvent } from 'react';
 import type { FieldPath, UseFormReturn } from 'react-hook-form';
 
@@ -19,6 +19,7 @@ type Props = {
   previewDisabled: boolean;
   onSelect: () => void;
   onPreview: (trigger: HTMLElement) => void;
+  onEditMasks?: () => void;
   onMove: (index: number) => void;
   onRemove: () => void;
   onCopyExperimental: (sourceId: string, targetIds: string[]) => void;
@@ -35,6 +36,7 @@ export function SortableDatasetSubset({
   previewDisabled,
   onSelect,
   onPreview,
+  onEditMasks,
   onMove,
   onRemove,
   onCopyExperimental,
@@ -74,6 +76,16 @@ export function SortableDatasetSubset({
     >
       <legend className="dataset-row-legend">
         <span>子集 {index + 1}</span>
+        {onEditMasks && <button
+          type="button"
+          aria-label={`编辑子集 ${index + 1} 蒙版`}
+          title={previewDisabled ? '请先保存当前预设，并确保没有未保存修改' : '编辑此子集的蒙版'}
+          disabled={previewDisabled || disabled}
+          onClick={onEditMasks}
+        >
+          <Brush aria-hidden="true" size={15} />
+          编辑蒙版
+        </button>}
         <button
           type="button"
           aria-label={`预览子集 ${index + 1} 图片和标注`}

@@ -87,7 +87,7 @@ export class MaskCanvas {
   invert() { this.restore(invertValues(this.values())); this.commit(); }
   stroke(from: Point, to: Point, size: number, erase: boolean) {
     const ctx = context(this.mask);
-    ctx.strokeStyle = ctx.fillStyle = erase ? '#000000' : '#ffffff';
+    ctx.strokeStyle = ctx.fillStyle = erase ? '#ffffff' : '#000000';
     ctx.lineWidth = size;
     ctx.lineCap = ctx.lineJoin = 'round';
     ctx.beginPath(); ctx.moveTo(from.x, from.y); ctx.lineTo(to.x, to.y); ctx.stroke();
@@ -104,7 +104,7 @@ export class MaskCanvas {
       const data = context(this.mask).getImageData(rect.x, rect.y, rect.right - rect.x, rect.bottom - rect.y);
       for (let i = 0; i < data.data.length; i += 4) {
         const value = data.data[i];
-        data.data[i] = 24; data.data[i + 1] = 190; data.data[i + 2] = 148; data.data[i + 3] = value;
+        data.data[i] = 24; data.data[i + 1] = 190; data.data[i + 2] = 148; data.data[i + 3] = 255 - value;
       }
       context(this.overlay).putImageData(data, rect.x, rect.y);
     }
