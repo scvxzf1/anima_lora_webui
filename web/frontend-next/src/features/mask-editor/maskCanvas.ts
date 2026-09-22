@@ -27,20 +27,37 @@ export class MaskCanvas {
   private cursor = 0;
   private serial = 0;
   private ids = [0];
-  private savedId = 0;
+  private currentValues = new Uint8Array();
+  private savedValues = new Uint8Array();
+  private dirtyState = false;
   private dirtyRect: { x: number; y: number; right: number; bottom: number } | null = null;
   constructor(readonly image: HTMLImageElement, initialMask: HTMLImageElement) {
     this.mask.width = this.overlay.width = image.naturalWidth;
     this.mask.height = this.overlay.height = image.naturalHeight;
     context(this.mask).drawImage(initialMask, 0, 0, this.mask.width, this.mask.height);
     this.invalidate();
-    this.history = [this.values()];
+    const initial = this.values();
+    this.history = [initial];
+    this.currentValues = initial.slice();
+    this.savedValues = initial.slice();
   }
-  get dirty() { return this.ids[this.cursor] !== this.savedId; }
+  get dirty() { return this.dirtyState; }
   get canUndo() { return this.cursor > 0; }
   get canRedo() { return this.cursor < this.history.length - 1; }
   get version() { return this.ids[this.cursor]; }
-  markSaved(version: number) { this.savedId = version; }
+  markSaved(version: number, snapshot?: Uint8Array) {
+    const current = this.values();
+    const baseline = snapshot?.slice() ?? current.slice();
+    if (this.version !== version || !sameValues(current, baseline)) {
+      this.currentValues = current;
+      this.dirtyState = !sameValues(this.currentValues, this.savedValues);
+      return;
+    }
+    this.currentValues = current;
+    this.savedValues = baseline;
+    this.dirtyState = false;
+  }
+  snapshot() { return this.values(); }
   private values() {
     const rgba = context(this.mask).getImageData(0, 0, this.mask.width, this.mask.height).data;
     const values = new Uint8Array(rgba.length / 4);
@@ -62,6 +79,8 @@ export class MaskCanvas {
       data.data[i * 4 + 3] = 255;
     });
     ctx.putImageData(data, 0, 0);
+    this.currentValues = values.slice();
+    this.dirtyState = !sameValues(this.currentValues, this.savedValues);
     this.invalidate();
   }
   commit() {
@@ -74,6 +93,8 @@ export class MaskCanvas {
     const limit = Math.max(2, Math.min(40, Math.floor(64 * 1024 * 1024 / values.length)));
     while (this.history.length > limit) { this.history.shift(); this.ids.shift(); }
     this.cursor = this.history.length - 1;
+    this.currentValues = values;
+    this.dirtyState = !sameValues(this.currentValues, this.savedValues);
   }
   undo() { if (this.canUndo) this.restore(this.history[--this.cursor]); }
   redo() { if (this.canRedo) this.restore(this.history[++this.cursor]); }
@@ -116,4 +137,12 @@ export class MaskCanvas {
       if (blob) resolve(blob); else reject(new Error('蒙版导出失败'));
     }, 'image/png'));
   }
+}
+
+function sameValues(left: Uint8Array, right: Uint8Array) {
+  if (left.length !== right.length) return false;
+  for (let i = 0; i < left.length; i++) {
+    if (left[i] !== right[i]) return false;
+  }
+  return true;
 }

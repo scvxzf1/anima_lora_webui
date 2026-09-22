@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 import signal
 import subprocess
+import sys
 import threading
 import time
 
@@ -65,12 +66,27 @@ class IsolatedRunner:
                 if memory.available <= memory.reserve:
                     result = {"status": "host_limit"}
                 else:
-                    with (directory / "worker.log").open("w", encoding="utf-8") as log:
+                    with (directory / "worker.log").open("wb") as log:
                         process = subprocess.Popen(
-                            self.command(request), stdout=log, stderr=subprocess.STDOUT,
+                            self.command(request), stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                             env={**os.environ, **self.env}, start_new_session=os.name == "posix",
                         )
+                        output_thread = threading.Thread(
+                            target=self._relay_output,
+                            args=(process.stdout, log),
+                            name="adaptive-worker-output",
+                            daemon=True,
+                        )
+                        output_thread.start()
                         failure = self._wait(process, started, cancelled)
+                        process.wait()
+                        output_thread.join(timeout=2.0)
+                        if output_thread.is_alive():
+                            # A detached descendant can keep the pipe open after
+                            # the worker itself exits.  Do not let that delay
+                            # timeout/cancel handling indefinitely.
+                            process.stdout.close()
+                            output_thread.join(timeout=1.0)
                     result = self._result(directory, process.returncode, failure)
             finally:
                 if process is not None:
@@ -81,6 +97,31 @@ class IsolatedRunner:
                 result["elapsed_seconds"] = time.monotonic() - started
                 write_result(directory / "supervisor.json", result)
         return result
+
+    @staticmethod
+    def _relay_output(stream, log) -> None:
+        """Persist worker output and mirror it to the supervisor's stdout."""
+        try:
+            while True:
+                chunk = stream.read(8192)
+                if not chunk:
+                    return
+                log.write(chunk)
+                log.flush()
+                try:
+                    target = getattr(sys.stdout, "buffer", None)
+                    if target is None:
+                        sys.stdout.write(chunk.decode("utf-8", errors="replace"))
+                        sys.stdout.flush()
+                    else:
+                        target.write(chunk)
+                        target.flush()
+                except (BrokenPipeError, OSError, ValueError):
+                    # The WebUI/parent pipe may close while the worker is
+                    # still unwinding; the on-disk log remains authoritative.
+                    pass
+        except (OSError, ValueError):
+            return
 
     def _wait(self, process, started, cancelled):
         while process.poll() is None:

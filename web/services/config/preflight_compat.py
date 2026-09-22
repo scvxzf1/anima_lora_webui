@@ -168,6 +168,20 @@ def _compat_web_message(item) -> str:
         return f"blocks_to_swap 不兼容 Inductor CUDAGraph mode；训练启动时会改用 {target}。"
     return messages.get(item.code, item.message)
 
+
+def _adaptive_precision_requires_runtime_resolution(cfg: dict[str, Any]) -> bool:
+    """Return whether ``adaptive_precision=auto`` is still hardware-agnostic.
+
+    WebUI preflight runs before the training process has selected a CUDA device,
+    while the CLI resolves ``auto`` immediately before validating the worker
+    contract.  Do not let the raw ``mixed_precision`` value stand in for that
+    missing capability probe.
+    """
+    requested = str(cfg.get("adaptive_precision", "off") or "off").strip().lower()
+    resolved = str(cfg.get("adaptive_resolved_mode", "") or "").strip().lower()
+    return requested == "auto" and resolved not in {"bf16", "fp16_fp32", "fp32"}
+
+
 def _check_checkpointing_config(
     cfg: dict[str, Any],
     add,
@@ -175,8 +189,19 @@ def _check_checkpointing_config(
     world_size: int | None = None,
 ) -> None:
     compat = check_training_compat(cfg, world_size=world_size)
+    defer_adaptive_contract = _adaptive_precision_requires_runtime_resolution(cfg)
     for item in compat.errors:
+        if defer_adaptive_contract and item.code == "adaptive_precision_contract":
+            continue
         add("error", item.key, _compat_web_message(item))
+
+    if defer_adaptive_contract:
+        add(
+            "warning",
+            "adaptive_precision",
+            "adaptive_precision=auto 将在训练启动时按实际 CUDA compute capability 解析；"
+            "当前 WebUI 预检不会用 mixed_precision 代替硬件结果，启动阶段仍会执行完整兼容性校验。",
+        )
 
     mutation_codes = {item.code for item in compat.mutations}
     seen_warning_codes: set[str] = set()

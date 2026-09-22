@@ -35,6 +35,29 @@ result = {'status': 'cuda_oom' if request['plan']['blocks_to_swap'] == 0 else 'o
     assert len(list(tmp_path.rglob("supervisor.json"))) == 2
 
 
+def test_worker_output_is_teeed_to_parent_stdout_and_worker_log(tmp_path, capsys):
+    script = (
+        "import pathlib, sys; "
+        "print('worker-stdout-sentinel', flush=True); "
+        "print('worker-stderr-sentinel', file=sys.stderr, flush=True); "
+        "pathlib.Path(sys.argv[1]).with_name('result.json').write_text('{\"status\": \"ok\"}')"
+    )
+    runner = IsolatedRunner(
+        tmp_path,
+        lambda p: [sys.executable, "-c", script, str(p)],
+        resources=resources,
+    )
+
+    assert runner(MemoryPlan(), attempt=0, resume=None)["status"] == "ok"
+
+    captured = capsys.readouterr().out
+    log = (tmp_path / "attempt-000" / "worker.log").read_text(encoding="utf-8")
+    assert "worker-stdout-sentinel" in captured
+    assert "worker-stderr-sentinel" in captured
+    assert "worker-stdout-sentinel" in log
+    assert "worker-stderr-sentinel" in log
+
+
 def test_timeout_is_not_oom(tmp_path):
     runner = IsolatedRunner(tmp_path, lambda p: [sys.executable, "-c", "import time; time.sleep(10)"],
                             resources=resources, timeout=0.1)

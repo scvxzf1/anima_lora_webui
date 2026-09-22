@@ -33,9 +33,10 @@ export function useMaskImage(file: string, index: number, image: string, onSaved
     if (!engine || !meta || pending.current || meta.readonly) return;
     pending.current = true; setSaving(true); setError(''); setNotice('');
     const version = engine.version;
+    const snapshot = engine.snapshot();
     try {
       const result = await saveMask(file, index, image, meta.revision, await engine.toBlob());
-      engine.markSaved(version); setMeta({ ...meta, revision: result.revision, has_mask: true });
+      engine.markSaved(version, snapshot); setMeta({ ...meta, revision: result.revision, has_mask: true });
       setNotice('蒙版已保存'); onSaved();
     } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)); }
     finally { pending.current = false; setSaving(false); }

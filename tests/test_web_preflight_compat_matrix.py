@@ -124,3 +124,67 @@ def test_preflight_warns_block_swap_inductor_mode_downgrade(
         "max-autotune-no-cudagraphs" in msg
         for msg in _messages(result, "warnings", "compile_inductor_mode")
     )
+
+
+def test_preflight_defers_unresolved_auto_precision_contract(tmp_path: Path, monkeypatch) -> None:
+    _write_selected_checkpoint_preflight_config(
+        tmp_path,
+        monkeypatch,
+        [
+            'adaptive_precision = "auto"',
+            'mixed_precision = "bf16"',
+            "adaptive_oom_retry = true",
+        ],
+    )
+
+    result = _preflight()
+
+    assert result["ok"] is True
+    assert not _messages(result, "errors", "adaptive_precision")
+    warnings = _messages(result, "warnings", "adaptive_precision")
+    assert len(warnings) == 1
+    assert "compute capability" in warnings[0]
+
+
+def test_preflight_does_not_use_raw_mixed_precision_for_auto_krea2_attention(
+    tmp_path: Path, monkeypatch
+) -> None:
+    _write_selected_checkpoint_preflight_config(
+        tmp_path,
+        monkeypatch,
+        [
+            'model_family = "krea2_raw"',
+            'adaptive_precision = "auto"',
+            'mixed_precision = "fp16"',
+            'attn_mode = "flash"',
+        ],
+    )
+
+    result = _preflight()
+
+    assert result["ok"] is True
+    assert not _messages(result, "errors", "adaptive_precision")
+    assert len(_messages(result, "warnings", "adaptive_precision")) == 1
+
+
+def test_preflight_keeps_explicit_fp16_precision_contract_strict(
+    tmp_path: Path, monkeypatch
+) -> None:
+    _write_selected_checkpoint_preflight_config(
+        tmp_path,
+        monkeypatch,
+        [
+            'model_family = "krea2_raw"',
+            'adaptive_precision = "fp16_fp32"',
+            'mixed_precision = "fp16"',
+            'attn_mode = "flash"',
+        ],
+    )
+
+    result = _preflight()
+
+    assert result["ok"] is False
+    assert any(
+        "attn_mode='torch'" in msg
+        for msg in _messages(result, "errors", "adaptive_precision")
+    )
