@@ -8,6 +8,7 @@ from typing import Mapping, TypeVar
 from library.models.latent_space import (
     ANIMA_F8C16_P2,
     Z_IMAGE_F8C16_P2,
+    QWEN_IMAGE_21_F16C64_P1,
     LatentSpaceSpec,
 )
 
@@ -163,6 +164,29 @@ MODEL_FAMILY_REGISTRY: dict[str, ModelFamilySpec] = {
             supported_schedules=frozenset({"1f1b"}),
             supported_splits=frozenset({"balanced"}),
         ),
+    ),
+    "qwen_image_2_1": ModelFamilySpec(
+        name="qwen_image_2_1",
+        display_name="Qwen Image 2.1",
+        aliases=frozenset({"qwen_image_2_1", "qwen_image_21", "qwen21"}),
+        latent_space=QWEN_IMAGE_21_F16C64_P1,
+        text_cache=TextCacheSpec(
+            suffix="_qwen_image_2_1_te.safetensors",
+            schema="qwen_image_2_1_te_v1",
+            hidden_width=4096,
+        ),
+        supported_network_specs=frozenset({"lora"}),
+        supports_method_adapters=False,
+        plain_lora_only=True,
+        supported_inference_modes=frozenset(),
+        supported_inference_samplers=frozenset(),
+        supported_attention_modes=frozenset({"torch", "sdpa", "flash"}),
+        sdpa_aliases_to_torch=True,
+        flash_runtime_dtypes=frozenset({"bf16"}),
+        image_test_flow_shift_default=1.0,
+        automatic_flow_shift=True,
+        supports_anima_selective_lora=False,
+        pipeline_parallel=None,
     ),
 }
 

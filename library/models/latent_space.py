@@ -123,7 +123,16 @@ Z_IMAGE_F8C16_P2 = LatentSpaceSpec(
     shift_factor=0.1159,
 )
 
-ALL_SPACES = (ANIMA_F8C16_P2, DCGEN_F32C32_P1, Z_IMAGE_F8C16_P2)
+QWEN_IMAGE_21_F16C64_P1 = LatentSpaceSpec(
+    name="qwen_image_2_1",
+    vae_spatial_compression=16,
+    latent_channels=64,
+    patch_spatial=1,
+    cache_suffix="_qwen_image_2_1.npz",
+    normalization="qwen_image_2_1_mean_std",
+)
+
+ALL_SPACES = (ANIMA_F8C16_P2, DCGEN_F32C32_P1, Z_IMAGE_F8C16_P2, QWEN_IMAGE_21_F16C64_P1)
 
 
 def get_latent_space(name: str) -> LatentSpaceSpec:

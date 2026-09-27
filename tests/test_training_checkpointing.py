@@ -359,8 +359,9 @@ def test_plan_resume_start_uses_steps_from_state():
         num_processes=1,
     )
 
-    assert plan.initial_step == 16
-    assert plan.epoch_to_start == 3
+    assert plan.initial_step == 6
+    assert plan.epoch_to_start == 1
+    assert plan.global_step == 8
     assert plan.steps_from_state is None
 
 def test_plan_resume_start_auto_enables_skip_for_resume_state():
@@ -381,8 +382,9 @@ def test_plan_resume_start_auto_enables_skip_for_resume_state():
     )
 
     assert args.skip_until_initial_step is True
-    assert plan.initial_step == 16
-    assert plan.epoch_to_start == 3
+    assert plan.initial_step == 6
+    assert plan.epoch_to_start == 1
+    assert plan.global_step == 8
     assert plan.steps_from_state is None
 
 def test_plan_resume_start_rejects_completed_resume_step():
@@ -422,9 +424,10 @@ def test_plan_resume_start_initial_step_overrides_state():
 
     assert plan.initial_step == 0
     assert plan.epoch_to_start == 1
+    assert plan.global_step == 6
     assert plan.steps_from_state == 42
 
-def test_plan_resume_start_skip_until_initial_step_scales_by_grad_accum():
+def test_plan_resume_start_initial_epoch_uses_prepared_loader_steps():
     args = SimpleNamespace(
         initial_epoch=3,
         initial_step=None,
@@ -441,8 +444,37 @@ def test_plan_resume_start_skip_until_initial_step_scales_by_grad_accum():
         num_processes=2,
     )
 
-    assert plan.initial_step == 12
-    assert plan.epoch_to_start == 3
+    assert plan.initial_step == 0
+    assert plan.epoch_to_start == 2
+    assert plan.global_step == 8
+
+
+@pytest.mark.parametrize(
+    ("step", "batches", "ga", "expected"),
+    [
+        (1200, 10, 5, (600, 0)),
+        (1200, 10, 1, (120, 0)),
+        (12, 20, 4, (2, 8)),
+        (1800, 11, 5, (600, 0)),
+        (1801, 11, 5, (600, 5)),
+    ],
+)
+def test_resume_skip_plan_uses_optimizer_steps(step, batches, ga, expected):
+    from library.training.checkpoints import resume_skip_plan
+
+    assert resume_skip_plan(step, batches, ga) == expected
+
+
+@pytest.mark.parametrize("ga", [1, 2, 3, 5, 8])
+@pytest.mark.parametrize("batches", [1, 7, 10, 11, 64])
+def test_resume_skip_plan_never_skips_past_epoch(ga, batches):
+    from library.training.checkpoints import resume_skip_plan
+
+    steps_per_epoch = (batches + ga - 1) // ga
+    for step in range(5 * steps_per_epoch + 1):
+        epoch, skipped_batches = resume_skip_plan(step, batches, ga)
+        assert epoch * steps_per_epoch + skipped_batches // ga == step
+        assert skipped_batches < batches
 
 
 def test_plan_resume_start_stage_uses_full_update_budget():

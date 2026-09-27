@@ -8,11 +8,13 @@ import pytest
 import torch
 
 from library.training.adaptive_runtime import supervisor
+from library.training.adaptive_runtime.contract import precision_contract_id
 from library.training.adaptive_runtime.retry import MemoryPlan, RetryLimits, run_recovery
 from library.training.adaptive_runtime.training_config import require_training_contract
 from library.training.adaptive_runtime.training_runtime import TrainingRuntime, validate_entry
 from library.training.adaptive_runtime.training_state import save_training_state
 from library.training.adaptive_runtime.training_worker import execute
+from library.training.adaptive_runtime.training_precision import install_training_precision
 
 
 def configured(**changes):
@@ -114,10 +116,14 @@ def test_supervisor_retries_structured_startup_oom_for_each_dit_family(
             request = directory / "request.json"
             request.write_text(json.dumps({"plan": {"blocks_to_swap": plan.blocks_to_swap}, "resume": resume}))
             command = self.command(request)
-            worker_configs.append(json.loads(Path(command[-1]).read_text()))
+            worker_config = json.loads(Path(command[-1]).read_text())
+            worker_configs.append(worker_config)
+            contract_id = worker_config["_adaptive_precision_contract_id"]
             if attempt == 0:
-                return {"status": "cuda_oom", "stage": "backward", "optimizer_started": False}
-            return {"status": "ok", "completed_steps": 2}
+                return {"status": "cuda_oom", "stage": "backward", "optimizer_started": False,
+                        "precision_contract_id": contract_id, "precision_manifest_id": "fixture"}
+            return {"status": "ok", "completed_steps": 2,
+                    "precision_contract_id": contract_id, "precision_manifest_id": "fixture"}
 
     monkeypatch.setattr(supervisor, "IsolatedRunner", Runner)
     result = supervisor.run_supervised(
@@ -153,6 +159,128 @@ def test_worker_classifies_exception_not_log_text(tmp_path, exception, status):
     assert result["status"] == status and result["stage"] == "forward"
     assert result["optimizer_started"] is False
     assert result == json.loads((tmp_path / "result.json").read_text())
+
+
+def test_possible_cuda_oom_text_is_observable_but_not_retryable(tmp_path):
+    class Trainer:
+        def train(self, args):
+            self._adaptive_training_runtime.phase("forward")
+            raise RuntimeError("CUDA error: out of memory")
+
+    result = execute(worker_config(tmp_path), tmp_path, Trainer)
+    assert result["status"] == "error"
+    assert result["failure_kind"] == "possible_oom"
+    assert result["reason"] == "possible_oom"
+
+
+def test_worker_recomputes_precision_contract_after_setup(tmp_path):
+    config = worker_config(tmp_path, mixed_precision="fp16")
+    expected = precision_contract_id(config)
+    config._adaptive_precision_contract_id = expected
+    config.adaptive_fp32_modules = ["different.*"]
+
+    from library.training.adaptive_runtime.training_runtime import notify
+
+    class Trainer:
+        def train(self, args):
+            notify(self, "setup")
+
+    result = execute(config, tmp_path, Trainer)
+    assert result["status"] == "error"
+    assert result["failure_kind"] == "precision_contract_mismatch"
+    assert result["reason"] == "precision_contract_mismatch"
+
+
+def test_worker_checks_contract_before_model_load(tmp_path):
+    config = worker_config(tmp_path, mixed_precision="fp16")
+    config._adaptive_precision_contract_id = precision_contract_id(config)
+    config.adaptive_loss_scale = 2048
+    constructed = []
+
+    result = execute(config, tmp_path, lambda: constructed.append(True))
+    assert not constructed
+    assert result["status"] == "error"
+    assert result["reason"] == "precision_contract_mismatch"
+
+
+def test_worker_rechecks_contract_after_setup_oom(tmp_path):
+    from library.training.adaptive_runtime.training_runtime import notify
+
+    config = worker_config(tmp_path, mixed_precision="fp16")
+    config._adaptive_precision_contract_id = precision_contract_id(config)
+
+    class Trainer:
+        def train(self, args):
+            notify(self, "setup")
+            args.adaptive_loss_scale = 2048
+            self._adaptive_training_runtime.phase("model_load")
+            raise torch.cuda.OutOfMemoryError("injected after config drift")
+
+    result = execute(config, tmp_path, Trainer)
+    assert result["status"] == "error"
+    assert result["reason"] == "precision_contract_mismatch"
+
+
+@pytest.mark.parametrize("oom", [False, True])
+def test_worker_rechecks_realized_dtype_at_exit(tmp_path, oom):
+    from library.training.adaptive_runtime.training_runtime import notify
+
+    config = worker_config(tmp_path, mixed_precision="fp16", adaptive_fp32_modules=[])
+    config._adaptive_precision_contract_id = precision_contract_id(config)
+
+    class Trainer:
+        def train(self, args):
+            model = torch.nn.Sequential(torch.nn.Linear(4, 4), torch.nn.LayerNorm(4))
+            install_training_precision(model, args)
+            self._adaptive_precision_manifest_model = model
+            notify(self, "setup")
+            model[1].half()
+            if oom:
+                self._adaptive_training_runtime.phase("forward")
+                raise torch.cuda.OutOfMemoryError("injected after dtype drift")
+            self._adaptive_training_runtime.finished = True
+
+    result = execute(config, tmp_path, Trainer)
+    assert result["status"] == "error"
+    assert result["reason"] == "precision_contract_mismatch"
+
+
+def test_commit_rechecks_dtype_before_publishing_snapshot(tmp_path):
+    from library.training.adaptive_runtime.training_runtime import notify
+
+    config = worker_config(tmp_path, mixed_precision="fp16", adaptive_fp32_modules=[])
+    config._adaptive_precision_contract_id = precision_contract_id(config)
+    model = torch.nn.Sequential(torch.nn.Linear(4, 4), torch.nn.LayerNorm(4))
+    install_training_precision(model, config)
+    runtime = TrainingRuntime(
+        tmp_path, precision_contract_id=config._adaptive_precision_contract_id, args=config,
+    )
+    trainer = SimpleNamespace(
+        _adaptive_training_runtime=runtime, _adaptive_precision_manifest_model=model,
+    )
+    notify(trainer, "setup")
+    runtime.phase("optimizer")
+    model[1].half()
+    with pytest.raises(ValueError, match="installed dtype manifest drifted"):
+        notify(trainer, "commit", fake_state())
+    assert runtime.saved_state is None
+    assert not (tmp_path / "latest-state.json").exists()
+
+
+def test_unresolved_auto_worker_fails_precision_contract(tmp_path):
+    config = worker_config(tmp_path, adaptive_precision="auto", mixed_precision="fp16")
+    config._adaptive_precision_contract_id = precision_contract_id(config)
+
+    from library.training.adaptive_runtime.training_runtime import notify
+
+    class Trainer:
+        def train(self, args):
+            notify(self, "setup")
+
+    result = execute(config, tmp_path, Trainer)
+    assert result["status"] == "error"
+    assert result["failure_kind"] == "precision_contract_mismatch"
+    assert result["reason"] == "precision_contract_mismatch"
 
 
 def test_auto_resolved_z_image_worker_keeps_precision_contract(tmp_path):
@@ -213,6 +341,144 @@ def test_post_update_oom_stops_even_with_saved_snapshot(tmp_path):
     assert len(report["attempts"]) == 1
     assert report["attempts"][0]["stop_reason"] == "no_committed_checkpoint"
     assert report["attempts"][0]["result"]["saved_state"] == runtime.saved_state
+
+
+def test_retry_precision_contract_is_stable_when_memory_plan_changes():
+    args = configured()
+    contract = precision_contract_id(args)
+    plans = []
+
+    def runner(plan, **kwargs):
+        plans.append((plan.blocks_to_swap, kwargs["resume"]))
+        return {"status": "cuda_oom", "stage": "forward", "optimizer_started": False,
+                "precision_contract_id": contract, "precision_manifest_id": "fixture"}
+
+    report = run_recovery(
+        MemoryPlan(blocks_to_swap=24, gradient_checkpointing=True),
+        RetryLimits(max_blocks=26, max_attempts=2),
+        runner,
+        record=lambda value: None,
+        expected_precision_contract=contract,
+    )
+    assert report["status"] == "failed"
+    assert [swap for swap, _resume in plans] == [24, 26]
+    assert [item["result"]["precision_contract_id"] for item in report["attempts"]] == [
+        contract, contract
+    ]
+
+
+def test_retry_precision_contract_mismatch_fails_closed_before_next_attempt():
+    calls = []
+    result = run_recovery(
+        MemoryPlan(), RetryLimits(max_blocks=4),
+        lambda plan, **kwargs: calls.append(kwargs) or {
+            "status": "cuda_oom", "stage": "forward", "optimizer_started": False,
+            "precision_contract_id": "changed",
+        },
+        record=lambda value: None,
+        expected_precision_contract="frozen",
+    )
+    assert result["status"] == "failed" and len(calls) == 1
+    assert result["attempts"][0]["stop_reason"] == "precision_contract_mismatch"
+
+
+def test_missing_realized_precision_manifest_fails_closed():
+    contract = precision_contract_id(configured())
+    result = run_recovery(
+        MemoryPlan(), RetryLimits(max_blocks=4),
+        lambda plan, **kwargs: {
+            "status": "cuda_oom", "stage": "forward", "optimizer_started": False,
+            "precision_contract_id": contract,
+        },
+        record=lambda value: None,
+        expected_precision_contract=contract,
+    )
+    assert result["status"] == "failed"
+    assert result["attempts"][0]["stop_reason"] == "missing_precision_manifest"
+
+
+def test_model_load_oom_without_manifest_retries_after_local_contract_check(tmp_path):
+    config = worker_config(tmp_path, mixed_precision="fp16")
+    contract = precision_contract_id(config)
+    config._adaptive_precision_contract_id = contract
+    plans = []
+
+    class Trainer:
+        def train(self, args):
+            self._adaptive_training_runtime.phase("model_load")
+            raise torch.cuda.OutOfMemoryError("injected before DiT install")
+
+    def runner(plan, **kwargs):
+        plans.append(plan.blocks_to_swap)
+        if len(plans) == 1:
+            return execute(config, tmp_path, Trainer)
+        return {"status": "ok", "precision_contract_id": contract,
+                "precision_manifest_id": "installed"}
+
+    result = run_recovery(
+        MemoryPlan(), RetryLimits(max_blocks=4), runner,
+        record=lambda value: None, expected_precision_contract=contract,
+    )
+    assert result["status"] == "ok" and plans == [0, 2]
+    assert result["attempts"][0]["result"]["precision_manifest_id"] is None
+
+
+def test_missing_manifest_does_not_bypass_progress_or_success_checks():
+    contract = precision_contract_id(configured())
+    for status, started in (("cuda_oom", True), ("ok", False)):
+        result = run_recovery(
+            MemoryPlan(), RetryLimits(max_blocks=4),
+            lambda plan, **kwargs: {
+                "status": status, "stage": "model_load", "optimizer_started": started,
+                "precision_contract_id": contract,
+            },
+            record=lambda value: None, expected_precision_contract=contract,
+        )
+        assert result["status"] == "failed"
+        assert result["attempts"][0]["stop_reason"] == "missing_precision_manifest"
+
+
+def test_supervisor_identity_probe_failure_leaves_no_recovery_directory(tmp_path, monkeypatch):
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
+    monkeypatch.setattr(
+        torch.cuda, "current_device",
+        lambda: (_ for _ in ()).throw(RuntimeError("device probe failed")),
+    )
+    with pytest.raises(ValueError, match="CUDA device identity unavailable"):
+        supervisor.run_supervised(configured(output_dir=str(tmp_path)))
+    assert not (tmp_path / ".adaptive-recovery").exists()
+
+
+def test_realized_precision_manifest_mismatch_fails_closed():
+    contract = precision_contract_id(configured())
+    calls = []
+
+    def runner(plan, **kwargs):
+        calls.append(plan)
+        return {
+            "status": "cuda_oom", "stage": "forward", "optimizer_started": False,
+            "precision_contract_id": contract,
+            "precision_manifest_id": "manifest-a" if len(calls) == 1 else "manifest-b",
+        }
+
+    result = run_recovery(
+        MemoryPlan(), RetryLimits(max_blocks=4, max_attempts=2), runner,
+        record=lambda value: None, expected_precision_contract=contract,
+    )
+    assert result["status"] == "failed" and len(calls) == 2
+    assert result["attempts"][1]["stop_reason"] == "realized_precision_manifest_mismatch"
+
+
+def test_infrastructure_failure_keeps_its_reason_without_worker_contract():
+    result = run_recovery(
+        MemoryPlan(), RetryLimits(max_blocks=4),
+        lambda plan, **kwargs: {"status": "timeout"},
+        record=lambda value: None,
+        expected_precision_contract="frozen",
+    )
+    assert result["status"] == "failed"
+    assert "stop_reason" not in result["attempts"][0]
+    assert result["attempts"][0]["result"]["status"] == "timeout"
 
 
 def fake_state(step=1, missing=None, fail=False):

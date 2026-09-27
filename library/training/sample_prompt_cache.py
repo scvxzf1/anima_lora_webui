@@ -89,6 +89,16 @@ def _z_image_encoding_profile(args) -> dict[str, Any]:
     )
 
 
+def _qwen_image_2_1_encoding_profile(args) -> dict[str, Any]:
+    from library.models.qwen_image_2_1.strategy import MAX_PROMPT_LENGTH, resolve_tokenizer_path
+
+    return dict(
+        max_length=MAX_PROMPT_LENGTH,
+        hidden_layer="last_pre_norm",
+        tokenizer=_path_fingerprint(resolve_tokenizer_path(getattr(args, "qwen3", ""))),
+    )
+
+
 def _encoding_profile(args, family: str) -> dict[str, Any]:
     profile: dict[str, Any] = {
         "family": family,
@@ -102,6 +112,7 @@ def _encoding_profile(args, family: str) -> dict[str, Any]:
             "anima": _anima_encoding_profile,
             "krea2_raw": _krea2_encoding_profile,
             "z_image": _z_image_encoding_profile,
+            "qwen_image_2_1": _qwen_image_2_1_encoding_profile,
         },
     )
     profile.update(handler(args))

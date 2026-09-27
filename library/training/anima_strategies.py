@@ -27,6 +27,17 @@ def _z_image_tokenize_strategy(args):
     return ZImageTokenizeStrategy(args.qwen3)
 
 
+def _qwen_image_2_1_tokenize_strategy(args):
+    from library.models.qwen_image_2_1.strategy import (
+        QwenImage21EditTokenizeStrategy,
+        QwenImage21TokenizeStrategy,
+    )
+
+    if getattr(args, "qwen_image_2_1_task", "t2i") == "edit":
+        return QwenImage21EditTokenizeStrategy(args.qwen3)
+    return QwenImage21TokenizeStrategy(args.qwen3)
+
+
 def _anima_tokenize_strategy(args):
     return strategy_anima.AnimaTokenizeStrategy(
         qwen3_path=args.qwen3,
@@ -44,6 +55,7 @@ def get_tokenize_strategy(args):
             "anima": _anima_tokenize_strategy,
             "krea2_raw": _krea2_tokenize_strategy,
             "z_image": _z_image_tokenize_strategy,
+            "qwen_image_2_1": _qwen_image_2_1_tokenize_strategy,
         },
     )
     return factory(args)
@@ -60,6 +72,10 @@ def get_tokenizers(tokenize_strategy):
 
     if isinstance(tokenize_strategy, ZImageTokenizeStrategy):
         return [tokenize_strategy.tokenizer]
+    from library.models.qwen_image_2_1.strategy import QwenImage21TokenizeStrategy
+
+    if isinstance(tokenize_strategy, QwenImage21TokenizeStrategy):
+        return [tokenize_strategy.tokenizer]
     raise TypeError(
         f"Unsupported tokenize strategy: {type(tokenize_strategy).__name__}"
     )
@@ -75,6 +91,7 @@ def get_latents_caching_strategy(args):
             "anima": strategy_anima.AnimaLatentsCachingStrategy,
             "krea2_raw": strategy_anima.AnimaLatentsCachingStrategy,
             "z_image": _z_image_latents_caching_strategy,
+            "qwen_image_2_1": _qwen_image_2_1_latents_caching_strategy,
         },
     )
     return factory(
@@ -93,6 +110,11 @@ def get_text_encoding_strategy(args):
 
         return ZImageTextEncodingStrategy()
 
+    def qwen_image_2_1_factory():
+        from library.models.qwen_image_2_1.strategy import QwenImage21TextEncodingStrategy
+
+        return QwenImage21TextEncodingStrategy()
+
     factory = dispatch_model_family(
         resolve_model_family(args),
         operation="training text-encoding strategy",
@@ -100,12 +122,19 @@ def get_text_encoding_strategy(args):
             "anima": strategy_anima.AnimaTextEncodingStrategy,
             "krea2_raw": krea2_factory,
             "z_image": z_image_factory,
+            "qwen_image_2_1": qwen_image_2_1_factory,
         },
     )
     return factory()
 
 
 def get_text_encoder_outputs_caching_strategy(args, weight_dtype: torch.dtype):
+    qwen_edit = (
+        resolve_model_family(args) == "qwen_image_2_1"
+        and getattr(args, "qwen_image_2_1_task", "t2i") == "edit"
+    )
+    if qwen_edit and not args.cache_text_encoder_outputs:
+        raise ValueError("Qwen Image 2.1 Edit requires cached Qwen3-VL outputs")
     if not args.cache_text_encoder_outputs:
         return None
 
@@ -156,6 +185,20 @@ def get_text_encoder_outputs_caching_strategy(args, weight_dtype: torch.dtype):
             ),
         )
 
+    def qwen_image_2_1_factory():
+        from library.models.qwen_image_2_1.strategy import (
+            QwenImage21EditTextCache,
+            QwenImage21TextCache,
+        )
+
+        cache_type = QwenImage21EditTextCache if qwen_edit else QwenImage21TextCache
+        return cache_type(
+            args.cache_text_encoder_outputs_to_disk,
+            args.text_encoder_batch_size,
+            args.skip_cache_check,
+            use_shuffled_caption_variants=getattr(args, "use_shuffled_caption_variants", False),
+        )
+
     factory = dispatch_model_family(
         resolve_model_family(args),
         operation="training text cache strategy",
@@ -163,6 +206,7 @@ def get_text_encoder_outputs_caching_strategy(args, weight_dtype: torch.dtype):
             "anima": anima_factory,
             "krea2_raw": krea2_factory,
             "z_image": z_image_factory,
+            "qwen_image_2_1": qwen_image_2_1_factory,
         },
     )
     return factory()
@@ -172,6 +216,12 @@ def _z_image_latents_caching_strategy(*args):
     from library.models.z_image.strategy import ZImageLatentsCachingStrategy
 
     return ZImageLatentsCachingStrategy(*args)
+
+
+def _qwen_image_2_1_latents_caching_strategy(*args):
+    from library.models.qwen_image_2_1.strategy import QwenImage21LatentCache
+
+    return QwenImage21LatentCache(*args)
 
 
 def get_models_for_text_encoding(args, accelerator, text_encoders):

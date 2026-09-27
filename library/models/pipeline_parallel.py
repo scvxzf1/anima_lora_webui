@@ -357,6 +357,9 @@ def build_pipeline_block_stage(
             "anima": AnimaBlockStage,
             "krea2_raw": Krea2BlockStage,
             "z_image": ZImageBlockStage,
+            "qwen_image_2_1": lambda *_args, **_kwargs: (_ for _ in ()).throw(
+                NotImplementedError("Qwen Image 2.1 pipeline parallel is not implemented")
+            ),
         },
     )
     blocks = getattr(model, pipeline_spec.block_container, None)

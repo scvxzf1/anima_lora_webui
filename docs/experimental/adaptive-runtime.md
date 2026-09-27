@@ -2,6 +2,14 @@
 
 状态：实验，正在实现；不改变现有训练默认行为。
 
+精度请求与 OOM 重试的静态不变量证明见
+[2026-09-24 静态契约论证](../findings/adaptive_precision_oom_static_proof_20260924.md)。
+
+当前按用户要求仅推进静态测试和数学论证，优先混合精度训练，暂不扩展 OOM 重试。
+前后向误差传播、FP32 LoRA 和 loss scaling 的数值边界见
+[混合精度数值论证](../structure/adaptive-precision-numerics.md)。CPU 反例不构成
+真实模型数值认证，也不代表恢复双卡热测授权。
+
 开发已于 2026-09-22 恢复，阶段依赖、剩余缺口与验收标准见
 [阶段开发计划](../proposal/adaptive_training_roadmap.md)。T10 实际训练三步 smoke
 与数据游标原型的新进程对照见[最新报告](../findings/adaptive_training_20260922.md)；

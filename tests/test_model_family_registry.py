@@ -47,7 +47,7 @@ def test_dispatch_rejects_incomplete_handler_table(monkeypatch) -> None:
         dispatch_model_family(
             "anima",
             operation="test operation",
-            handlers={"anima": object(), "krea2_raw": object()},
+            handlers={"anima": object(), "krea2_raw": object(), "z_image": object(), "qwen_image_2_1": object()},
         )
 
 

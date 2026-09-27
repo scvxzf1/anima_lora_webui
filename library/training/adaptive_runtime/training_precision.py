@@ -2,14 +2,39 @@
 
 from fnmatch import fnmatchcase
 import json
+import hashlib
 from pathlib import Path
 
 import torch
 
+from .contract import precision_contract_id
 from .islands import install_precision_islands
 
 
 PRECISION_STATE = "adaptive_precision.json"
+
+
+def _dtype_entries(model, names=None):
+    parameters = dict(model.named_parameters(remove_duplicate=False))
+    buffers = dict(model.named_buffers(remove_duplicate=False))
+    if names is None:
+        names = [*(f"parameter:{name}" for name in parameters),
+                 *(f"buffer:{name}" for name in buffers)]
+    entries = {}
+    for key in names:
+        kind, name = key.split(":", 1)
+        tensor = parameters.get(name) if kind == "parameter" else buffers.get(name)
+        if tensor is None:
+            raise ValueError(f"Realized precision manifest is missing {key}")
+        entries[key] = str(tensor.dtype)
+    return entries
+
+
+def realized_precision_manifest_id(model, names=None) -> str:
+    """Hash the dtypes actually resident in the selected base tensors."""
+    payload = json.dumps(_dtype_entries(model, names), sort_keys=True,
+                         separators=(",", ":"), allow_nan=False).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
 
 
 def accelerator_handlers(args):
@@ -51,8 +76,25 @@ def install_training_precision(model, args, *, model_family=None):
     manifest = {"schema": "adaptive_training_precision_v1", "model_family": family,
                 "assignments": assignments, "residual_dtype": "fp32",
                 "initial_loss_scale": args.adaptive_loss_scale}
+    model._adaptive_precision_manifest_names = tuple(_dtype_entries(model))
+    model._adaptive_precision_manifest_id = realized_precision_manifest_id(
+        model, model._adaptive_precision_manifest_names
+    )
     model._adaptive_training_precision = manifest
     return manifest
+
+
+def validate_local_precision_contract(args, expected):
+    """Recompute the worker-side request; injected IDs are not trusted."""
+    requested = str(getattr(args, "adaptive_precision", "off") or "off").strip().lower()
+    if requested == "auto" and getattr(args, "adaptive_resolved_mode", None) not in {
+        "bf16", "fp16_fp32", "fp32"
+    }:
+        raise ValueError("precision_contract_mismatch: worker adaptive mode is unresolved")
+    actual = precision_contract_id(args)
+    if actual != expected:
+        raise ValueError("precision_contract_mismatch: worker precision request drifted")
+    return actual
 
 
 def preserve_precision_cast(model, dtype):

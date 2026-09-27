@@ -643,9 +643,44 @@ def _run_preprocess_te(
             "anima": _run_preprocess_te_anima,
             "krea2_raw": _run_preprocess_te_krea2,
             "z_image": _run_preprocess_te_z_image,
+            "qwen_image_2_1": _run_preprocess_te_qwen_image_2_1,
         },
     )
     handler(row, extra, shuffle_variants, tag_dropout_rate)
+
+
+def _run_preprocess_te_qwen_image_2_1(
+    row: dict[str, Any], extra: list[str],
+    shuffle_variants: str | None = None, tag_dropout_rate: str | None = None,
+) -> None:
+    if float(tag_dropout_rate or 0):
+        raise ValueError("Qwen Image 2.1 caption tag dropout is not supported")
+    mp_args, extra = _resolve_lowres_filter(extra)
+    _, text_batch_size = _preprocess_cache_batch_sizes()
+    prefer_json_env = os.environ.get("CAPTION_PREFER_JSON")
+    prefer_json = (
+        _truthy(prefer_json_env)
+        if prefer_json_env is not None
+        else _truthy(row.get("prefer_json_caption"))
+    )
+    source_mode = os.environ.get("CAPTION_SOURCE_MODE") or row.get("caption_source_mode")
+    run([
+        PY, "-m", "scripts.qwen_image_2_1.preprocess_te_cache",
+        "--dir", str(row.get("source_image_dir") or _path("source_image_dir", "image_dataset")),
+        "--cache_dir", _text_cache_dir_for_row(row),
+        "--qwen3", _path("qwen3", "models/text_encoders/Qwen-Image-2.1"),
+        "--batch_size", str(text_batch_size),
+        "--dtype", _preprocess_precision_dtype(),
+        "--caption_shuffle_variants", str(shuffle_variants or 0),
+        *_caption_source_args(source_mode, prefer_json),
+        *_caption_extension_args_for_row(row),
+        *(["--prefer_json_caption"] if prefer_json else []),
+        *_recursive_args(row),
+        *_path_pattern_args(row),
+        *mp_args,
+        *_reuse_overwrite_args(row, kind="te"),
+        *extra,
+    ])
 
 
 def _model_family() -> str:

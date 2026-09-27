@@ -35,6 +35,9 @@ def model_block_bytes(model, family: str) -> list[int]:
             "anima": lambda: model.blocks,
             "krea2_raw": lambda: model.blocks,
             "z_image": lambda: model.layers,
+            "qwen_image_2_1": lambda: (_ for _ in ()).throw(
+                ValueError("Qwen Image 2.1 AUTO block swap is not supported")
+            ),
         },
     )()
     sizes = []

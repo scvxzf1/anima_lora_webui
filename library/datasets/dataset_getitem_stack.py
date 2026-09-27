@@ -73,6 +73,7 @@ def assemble_training_example(
     images,
     latents_list,
     cond_latents_list,
+    qwen_edit_reference_latents,
     captions,
     original_sizes_hw,
     crop_top_lefts,
@@ -144,6 +145,12 @@ def assemble_training_example(
         example["cond_latents"] = torch.stack(cond_latents_list)
     else:
         example["cond_latents"] = None
+    if qwen_edit_reference_latents and any(t is not None for t in qwen_edit_reference_latents):
+        if not all(t is not None for t in qwen_edit_reference_latents):
+            raise ValueError("Mixed Qwen edit and non-edit samples in one batch are not supported")
+        example["qwen_edit_reference_latents"] = torch.stack(qwen_edit_reference_latents)
+    else:
+        example["qwen_edit_reference_latents"] = None
     example["captions"] = captions
 
     example["original_sizes_hw"] = torch.stack(
@@ -229,4 +236,3 @@ def assemble_training_example(
     if dataset.debug_dataset:
         example["image_keys"] = bucket[image_index : image_index + dataset.batch_size]
     return example
-

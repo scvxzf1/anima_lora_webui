@@ -32,7 +32,7 @@ def main() -> None:
     parser.add_argument("--vae", type=str, required=True, help="Path to VAE weights")
     parser.add_argument(
         "--model_family",
-        choices=["anima", "krea2_raw", "z_image"],
+        choices=["anima", "krea2_raw", "z_image", "qwen_image_2_1"],
         default="anima",
     )
     parser.add_argument(
@@ -78,6 +78,13 @@ def main() -> None:
 
         def encode_fn(vae, images):
             return encode_z_image_latents(vae, images)
+    elif args.model_family == "qwen_image_2_1":
+        from library.models.qwen_image_2_1.latent import encode_qwen_image_2_1_latents
+        from library.models.qwen_image_2_1.weights import load_qwen_image_2_1_vae
+
+        vae = load_qwen_image_2_1_vae(args.vae, dtype=dtype, device="cpu")
+        latent_space_name = "qwen_image_2_1"
+        encode_fn = encode_qwen_image_2_1_latents
     else:
         from library.models import qwen_vae as qwen_image_autoencoder_kl
 
@@ -102,6 +109,7 @@ def main() -> None:
         progress=tqdm_progress("Caching latents"),
         overwrite=bool(args.overwrite),
         latent_space_name=latent_space_name,
+        vae_spatial_compression=16 if args.model_family == "qwen_image_2_1" else 8,
         encode_fn=encode_fn,
     )
     print(

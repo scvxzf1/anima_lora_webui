@@ -83,21 +83,27 @@ class DatasetCacheMixin:
         if caching_strategy is None or not caching_strategy.cache_to_disk:
             return False
         for info in self.image_data.values():
-            if info.latents_npz is not None:  # fine tuning dataset: pre-set path
-                continue
             subset = self.image_to_subset[info.image_key]
-            npz_path = caching_strategy.get_latents_npz_path(
-                info.absolute_path,
-                info.image_size,
-                cache_dir=getattr(subset, "cache_dir", None),
-                image_dir=getattr(subset, "image_dir", None),
-            )
+            if info.latents_npz is not None and not getattr(info, "reference_image_path", None):
+                continue
+            if info.latents_npz is None:
+                npz_path = caching_strategy.get_latents_npz_path(
+                    info.absolute_path,
+                    info.image_size,
+                    cache_dir=getattr(subset, "cache_dir", None),
+                    image_dir=getattr(subset, "image_dir", None),
+                )
+            else:
+                npz_path = info.latents_npz
             if not caching_strategy.is_disk_cached_latents_expected(
                 info.bucket_reso,
                 npz_path,
                 subset.flip_aug,
                 alpha_mask_required_for_cache(info, subset),
             ):
+                return False
+            reference_check = getattr(caching_strategy, "is_edit_reference_cache_expected", None)
+            if reference_check is not None and not reference_check(info, subset):
                 return False
         return True
 
@@ -113,15 +119,26 @@ class DatasetCacheMixin:
             return False
         for info in self.image_data.values():
             subset = self.image_to_subset.get(info.image_key)
-            npz_path = caching_strategy.get_outputs_npz_path(
-                info.absolute_path,
-                cache_dir=(
-                    getattr(subset, "text_cache_dir", None)
-                    or getattr(subset, "cache_dir", None)
-                ),
-                image_dir=getattr(subset, "image_dir", None),
+            path_for_info = getattr(caching_strategy, "get_outputs_npz_path_for_info", None)
+            npz_path = (
+                path_for_info(info, subset)
+                if path_for_info is not None
+                else caching_strategy.get_outputs_npz_path(
+                    info.absolute_path,
+                    cache_dir=(
+                        getattr(subset, "text_cache_dir", None)
+                        or getattr(subset, "cache_dir", None)
+                    ),
+                    image_dir=getattr(subset, "image_dir", None),
+                )
             )
-            if not caching_strategy.is_disk_cached_outputs_expected(npz_path):
+            expected_for_info = getattr(caching_strategy, "is_expected_for_info", None)
+            cache_valid = (
+                expected_for_info(npz_path, info)
+                if expected_for_info is not None
+                else caching_strategy.is_disk_cached_outputs_expected(npz_path)
+            )
+            if not cache_valid:
                 return False
         return True
 
@@ -188,28 +205,44 @@ class DatasetCacheMixin:
             for i, info in enumerate(tqdm(image_infos)):
                 subset = self.image_to_subset[info.image_key]
 
-                if info.latents_npz is not None:  # fine tuning dataset
+                has_edit_reference = bool(getattr(info, "reference_image_path", None))
+                if info.latents_npz is not None and not has_edit_reference:
                     continue
 
                 # check disk cache exists and size of latents
                 if caching_strategy.cache_to_disk:
-                    info.latents_npz = caching_strategy.get_latents_npz_path(
-                        info.absolute_path,
-                        info.image_size,
-                        cache_dir=getattr(subset, "cache_dir", None),
-                        image_dir=getattr(subset, "image_dir", None),
+                    if info.latents_npz is None:
+                        info.latents_npz = caching_strategy.get_latents_npz_path(
+                            info.absolute_path,
+                            info.image_size,
+                            cache_dir=getattr(subset, "cache_dir", None),
+                            image_dir=getattr(subset, "image_dir", None),
+                        )
+                    reference_path_factory = getattr(
+                        caching_strategy, "get_edit_reference_latent_path", None
                     )
+                    if has_edit_reference and reference_path_factory is not None:
+                        info.edit_reference_latent_path = reference_path_factory(info, subset)
 
                     # if the modulo of num_processes is not equal to process_index, skip caching
                     if i % num_processes != process_index:
                         continue
 
-                    cache_available = caching_strategy.is_disk_cached_latents_expected(
+                    target_available = caching_strategy.is_disk_cached_latents_expected(
                         info.bucket_reso,
                         info.latents_npz,
                         subset.flip_aug,
                         alpha_mask_required_for_cache(info, subset),
                     )
+                    reference_check = getattr(
+                        caching_strategy, "is_edit_reference_cache_expected", None
+                    )
+                    reference_available = (
+                        reference_check(info, subset)
+                        if has_edit_reference and reference_check is not None
+                        else True
+                    )
+                    cache_available = target_available and reference_available
                     if cache_available:  # do not add to batch
                         continue
 
@@ -226,7 +259,7 @@ class DatasetCacheMixin:
                 if condition != current_condition and runtime_flags.HIGH_VRAM:
                     clean_memory_on_device(accelerator.device)
 
-                if info.image is None:
+                if info.latents_npz is None and info.image is None:
                     # load image in parallel
                     info.image = executor.submit(
                         load_image, info.absolute_path, condition.alpha_mask
@@ -370,21 +403,29 @@ class DatasetCacheMixin:
             subset = self.image_to_subset.get(info.image_key)
             # check disk cache exists and size of text encoder outputs
             if caching_strategy.cache_to_disk:
-                te_out_npz = caching_strategy.get_outputs_npz_path(
-                    info.absolute_path,
-                    cache_dir=(
-                        getattr(subset, "text_cache_dir", None)
-                        or getattr(subset, "cache_dir", None)
-                    ),
-                    image_dir=getattr(subset, "image_dir", None),
+                path_for_info = getattr(caching_strategy, "get_outputs_npz_path_for_info", None)
+                te_out_npz = (
+                    path_for_info(info, subset)
+                    if path_for_info is not None
+                    else caching_strategy.get_outputs_npz_path(
+                        info.absolute_path,
+                        cache_dir=(
+                            getattr(subset, "text_cache_dir", None)
+                            or getattr(subset, "cache_dir", None)
+                        ),
+                        image_dir=getattr(subset, "image_dir", None),
+                    )
                 )
                 info.text_encoder_outputs_npz = te_out_npz
 
                 if i % num_processes != process_index:
                     continue
 
-                cache_available = caching_strategy.is_disk_cached_outputs_expected(
-                    te_out_npz
+                expected_for_info = getattr(caching_strategy, "is_expected_for_info", None)
+                cache_available = (
+                    expected_for_info(te_out_npz, info)
+                    if expected_for_info is not None
+                    else caching_strategy.is_disk_cached_outputs_expected(te_out_npz)
                 )
                 if cache_available:
                     continue

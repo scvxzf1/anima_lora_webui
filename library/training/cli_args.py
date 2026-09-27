@@ -44,8 +44,15 @@ def add_sd_models_arguments(parser: argparse.ArgumentParser):
         type=str,
         default=None,
         choices=list(KNOWN_MODEL_FAMILIES),
-        help="model family switch: anima (default), krea2_raw, or z_image. "
+        help="model family switch: anima (default), krea2_raw, z_image, or qwen_image_2_1. "
         "None → fall back to resolve_model_family() (env/base.toml, stage 6 truth source).",
+    )
+    parser.add_argument(
+        "--qwen_image_2_1_task",
+        type=str,
+        choices=("t2i", "edit"),
+        default="t2i",
+        help="Qwen Image 2.1 task mode: text-to-image (default) or paired-reference edit LoRA.",
     )
     parser.add_argument(
         "--tokenizer_cache_dir",

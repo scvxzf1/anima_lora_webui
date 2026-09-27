@@ -155,6 +155,111 @@ def _nested_caption_dropout_enabled(config: Mapping[str, Any] | object) -> bool:
     return False
 
 
+def _check_qwen_image_2_1_contract(out: _CompatBuilder, config, *,
+                                   selective_checkpoint: str, blocks_to_swap: int,
+                                   torch_compile: bool, cpu_offload_checkpointing: bool,
+                                   unsloth_offload_checkpointing: bool) -> None:
+    def forbid(flag: str, active: bool, message: str) -> None:
+        if active:
+            out.error(f"qwen_image_2_1_{flag}", flag, message)
+
+    task = str(_get(config, "qwen_image_2_1_task", "t2i") or "t2i").strip().lower()
+    family = "Qwen Image 2.1 Edit LoRA" if task == "edit" else "Qwen Image 2.1 T2I LoRA"
+    forbid("task", task not in {"t2i", "edit"},
+           "qwen_image_2_1_task must be 't2i' or 'edit'")
+    if task == "edit":
+        dataset_general = _get(config, "general", {})
+        forbid("edit_augmentation", any(
+            _bool_value(_get(source, key))
+            for source in (config, dataset_general)
+            for key in ("flip_aug", "color_aug", "random_crop")
+        ), f"{family} requires deterministic reference/target transforms")
+        forbid("edit_text_cache", not _bool_value(_get(config, "cache_text_encoder_outputs")),
+               "Qwen Image 2.1 Edit requires cached Qwen3-VL prompt/reference outputs")
+        forbid("edit_latent_cache", not _bool_value(_get(config, "cache_latents")),
+               "Qwen Image 2.1 Edit requires VAE latent caching before DiT loading")
+        datasets = _get(config, "datasets", None)
+        if isinstance(datasets, (list, tuple)):
+            edit_rows = [
+                subset
+                for dataset in datasets if isinstance(dataset, Mapping)
+                for subset in (_get(dataset, "subsets", []) or [])
+                if isinstance(subset, Mapping)
+            ]
+            forbid("edit_subsets", not edit_rows and not _get(config, "dataset_config"),
+                   "Qwen Image 2.1 Edit requires at least one dataset subset")
+            for index, subset in enumerate(edit_rows):
+                prefix = f"datasets.subsets[{index}]"
+                forbid("edit_regularization", _bool_value(_get(subset, "is_reg")),
+                       f"{family} does not support regularization subsets ({prefix})")
+                forbid("edit_reference_dir", not str(_get(subset, "reference_image_dir", "") or "").strip(),
+                       f"{family} requires reference_image_dir for every subset ({prefix})")
+                forbid("edit_augmentation", any(_bool_value(_get(subset, key)) for key in ("flip_aug", "color_aug", "random_crop")),
+                       f"{family} requires deterministic reference/target transforms ({prefix})")
+            for index, dataset in enumerate(datasets):
+                if isinstance(dataset, Mapping):
+                    forbid("edit_batch_size", _int_value(_get(dataset, "batch_size"), 1) != 1,
+                           f"{family} currently requires batch_size=1 (datasets[{index}])")
+        elif not _get(config, "dataset_config"):
+            forbid("edit_subsets", True, "Qwen Image 2.1 Edit requires a dataset config")
+    elif isinstance(_get(config, "datasets"), (list, tuple)):
+        has_edit_reference = any(
+            str(_get(subset, "reference_image_dir", "") or "").strip()
+            for dataset in _get(config, "datasets", [])
+            if isinstance(dataset, Mapping)
+            for subset in (_get(dataset, "subsets", []) or [])
+            if isinstance(subset, Mapping)
+        )
+        forbid("edit_task_mismatch", has_edit_reference,
+               "reference_image_dir is configured but qwen_image_2_1_task is 't2i'")
+    forbid("mixed_precision", str(_get(config, "mixed_precision", "bf16") or "bf16").lower() != "bf16",
+           f"{family} requires mixed_precision=bf16")
+    forbid("base_compute", str(_get(config, "base_compute", "bf16") or "bf16").lower() != "bf16",
+           f"{family} does not support NF4/ConvRot; use base_compute=bf16")
+    forbid("adaptive_precision", str(_get(config, "adaptive_precision", "off") or "off").lower() != "off",
+           f"{family} does not support adaptive precision")
+    mode = str(_get(config, "attn_mode", "torch") or "torch").lower()
+    forbid("attn_mode", mode not in {"torch", "sdpa", "flash"} or _bool_value(_get(config, "xformers")),
+           f"{family} supports torch/sdpa and bf16 FlashAttention varlen")
+    forbid("blocks_to_swap", blocks_to_swap > 30,
+           f"{family} blocks_to_swap must be between 0 and 30")
+    forbid("block_swap_checkpoint", blocks_to_swap > 0 and not _bool_value(_get(config, "gradient_checkpointing")),
+           f"{family} block swap requires full gradient_checkpointing")
+    forbid("compile_backend", torch_compile and str(_get(config, "dynamo_backend", "inductor") or "inductor") == "cudagraphs",
+           f"{family} block compile does not support CUDA Graphs")
+    forbid("compile_mode", torch_compile and _get(config, "compile_inductor_mode") not in (None, "default"),
+           f"{family} block compile supports only default Inductor mode")
+    forbid("auto_block_swap", _bool_value(_get(config, "auto_block_swap")),
+           f"{family} AUTO block swap is not implemented")
+    forbid("selective_checkpoint", selective_checkpoint != "off",
+           f"{family} supports only full gradient checkpointing")
+    forbid("cpu_offload_checkpointing", cpu_offload_checkpointing or unsloth_offload_checkpointing,
+           f"{family} checkpoint offload is not implemented")
+    forbid("network_train_unet_only", not _bool_value(_get(config, "network_train_unet_only"), True),
+           f"{family} cannot train the text encoder")
+    forbid("weighted_captions", _bool_value(_get(config, "weighted_captions")),
+           f"{family} weighted captions are not implemented")
+    forbid("caption_dropout_rate", _float_value(_get(config, "caption_dropout_rate")) > 0
+           or _nested_caption_dropout_enabled(config),
+           f"{family} requires caption_dropout_rate=0")
+    forbid("masked_loss", _bool_value(_get(config, "masked_loss")),
+           f"{family} masked loss is not implemented")
+    forbid("loss_type", str(_get(config, "loss_type", "l2") or "l2").lower() != "l2",
+           f"{family} supports L2 flow-matching loss only")
+    forbid("timestep_sampling", str(_get(config, "timestep_sampling", "uniform") or "uniform").lower() != "uniform",
+           f"{family} uses uniformly sampled dynamic-shift sigmas")
+    forbid("weighting_scheme", str(_get(config, "weighting_scheme", "none") or "none").lower() != "none",
+           f"{family} requires weighting_scheme=none")
+    forbid("sample_at_first", any(_bool_value(_get(config, key)) if key == "sample_at_first"
+                                  else _int_value(_get(config, key)) > 0
+                                  for key in ("sample_at_first", "sample_every_n_steps", "sample_every_n_epochs")),
+           f"{family} sample preview is not implemented; disable sample scheduling")
+    forbid("layer_start", _get(config, "layer_start") is not None or _get(config, "layer_end") is not None,
+           f"{family} layer-range targeting is not implemented")
+    forbid("t_min", _get(config, "t_min") is not None or _get(config, "t_max") is not None,
+           f"{family} uses the full sigma range")
+
+
 def check_training_compat(
     config: Mapping[str, Any] | object,
     *,
@@ -205,6 +310,7 @@ def check_training_compat(
         return out.build()
     krea2_family = family_spec.name == "krea2_raw"
     z_image_family = family_spec.name == "z_image"
+    qwen_image_2_1_family = family_spec.name == "qwen_image_2_1"
     pipeline_parallel_error: ValueError | None = None
     try:
         pipeline_parallel = PipelineParallelConfig.from_config(config).enabled
@@ -310,6 +416,16 @@ def check_training_compat(
                 f"{family_spec.display_name} training currently supports only "
                 "plain LoRA; unsupported: " + ", ".join(adapter_conflicts),
             )
+
+    if qwen_image_2_1_family:
+        _check_qwen_image_2_1_contract(
+            out, config,
+            selective_checkpoint=selective_checkpoint,
+            blocks_to_swap=blocks_to_swap,
+            torch_compile=torch_compile,
+            cpu_offload_checkpointing=cpu_offload_checkpointing,
+            unsloth_offload_checkpointing=unsloth_offload_checkpointing,
+        )
 
     if krea2_family:
         krea2_attn_mode = str(_get(config, "attn_mode", "") or "").strip().lower()

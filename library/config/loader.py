@@ -100,6 +100,7 @@ class DreamBoothSubsetParams(BaseSubsetParams):
     cache_dir: Optional[str] = None
     cond_cache_dir: Optional[str] = None
     text_cache_dir: Optional[str] = None
+    reference_image_dir: Optional[str] = None
 
 
 @dataclass

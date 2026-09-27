@@ -22,6 +22,12 @@ def _z_image_sample_images(*args, **kwargs):
     return sample_images(*args, **kwargs)
 
 
+def _qwen_image_2_1_sample_images(*args, **kwargs):
+    options = args[1]
+    if any(getattr(options, key, None) for key in ("sample_at_first", "sample_every_n_steps", "sample_every_n_epochs")):
+        raise NotImplementedError("Qwen Image 2.1 training preview is not implemented")
+
+
 def sample_images(
     trainer,
     accelerator,
@@ -50,6 +56,7 @@ def sample_images(
             "anima": anima_train_utils.sample_images,
             "krea2_raw": _krea2_sample_images,
             "z_image": _z_image_sample_images,
+            "qwen_image_2_1": _qwen_image_2_1_sample_images,
         },
     )
 

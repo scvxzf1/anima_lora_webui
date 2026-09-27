@@ -1,10 +1,50 @@
 # DiT 自适应混合精度与 OOM 恢复阶段开发计划
 
 状态：活跃提案 / 已恢复开发，P1 smoke 与 P2 数据原型通过
-更新时间：2026-09-22
+更新时间：2026-09-27
 适用范围：当前工作树中的实验实现，不代表已发布版本
 当前说明：[实验入口与限制](../experimental/adaptive-runtime.md)
 历史证据：[实测与失败记录](../findings/adaptive_runtime_20260921.md)
+
+## 当前执行限制（2026-09-26）
+
+按用户最新要求，优先打通 FP16/FP32 混合精度训练，暂不扩展 OOM 重试关联；
+当前只授权静态测试、CPU 小型数值夹具和数学论证，不启动 GPU、整模训练或热测。
+下文历史热测授权和“两线同步”的阶段安排不构成当前执行授权。三模型双卡的
+最终目标保留，但未完成、未在本轮验证。
+
+本轮新增前后向误差传播、LoRA 梯度、loss scaling 上下界和非单调 promotion 的
+[数值说明及 CPU 反例](../structure/adaptive-precision-numerics.md)。新增 16 项测试
+通过，相关回归 118 passed、1 CUDA 项 deselected；产物为
+`output/adaptive-runtime-20260926/precision-math-cpu.xml`。尚不能据此生成真实
+模型的自动 FP32 名单或宣称训练质量/加速通过。
+
+2026-09-27 继续静态核验共享参数边界：新增 18 项通过测试与 3 项严格预期失败。
+实际训练入口会在修改模型前拒绝共享 Parameter；底层 island 安装器缺少同一检查，
+本轮仅记录缺口，不改运行时。相关 CPU 回归 136 passed、3 xfailed、1 CUDA 项
+deselected；产物为 `output/adaptive-runtime-20260927/precision-aliases-regression-cpu.xml`。
+关闭 xfail 的核验明确返回 3 failed，缺口不计作通过；数学约束与复现命令见上述数值说明。
+
+同日继续验证统一 loss scale 的可行域：新增 19 项 CPU 测试通过，证明受控双分支
+中统一 scale 可以无解，而定点提升大梯度分支 FP32 后 LoRA/输入梯度可恢复为
+FP32 对照；另验证 finite gate 不能发现静默下溢。完整假设和反例见数值说明第 6 节。
+回归 155 passed、3 xfailed、1 CUDA 项 deselected，产物为
+`output/adaptive-runtime-20260927/precision-scale-feasibility-regression-cpu.xml`。
+只增加测试和论证，不生成真实层名单、不扩展 OOM，不代表完成三模型双卡验收。
+
+同日比较门槛审计新增 18 项通过、2 项严格预期失败：固定余弦分母使两个比较入口
+误判相同小梯度，缺口未修复；另用精确分数证明全局梯度误差小不保证第一步 Adam
+更新接近。范围、假设和现有保护见数值说明第 8 节。最终 CPU 回归 173 passed、
+5 xfailed、1 CUDA 项 deselected，产物为
+`output/adaptive-runtime-20260927/precision-comparison-math-final-cpu.xml`。
+本轮没有修改比较门槛或生产策略。
+
+同日块交换精度边界新增 6 项 CPU 测试通过：确认普通权重的 `bf16` 传输策略保留
+原生 FP16/FP32 表示，两种精度布局在实际 CPU fallback 的三轮前后向交换中保持
+权重、LoRA 梯度、Parameter 身份和 dtype manifest。数学条件与证据边界见数值说明
+第 9.1 节。回归 185 passed、5 xfailed、1 CUDA 项 deselected；产物为
+`output/adaptive-runtime-20260927/precision-swap-regression-cpu.xml`。
+这不认证 CUDA stream、显存或吞吐，也未扩大 OOM 重试与自动块交换能力。
 
 ## 最新进度（2026-09-22）
 

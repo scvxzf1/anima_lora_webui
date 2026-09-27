@@ -13,8 +13,10 @@ from library.training.adaptive_runtime.training_config import (
 from library.training.adaptive_runtime.precision import resolve_adaptive_precision
 from library.training.adaptive_runtime.training_precision import (
     PRECISION_STATE, accelerator_handlers, install_training_precision,
-    preserve_precision_cast, register_precision_checkpoint, validate_training_network,
+    preserve_precision_cast, realized_precision_manifest_id, register_precision_checkpoint,
+    validate_training_network,
 )
+from library.training.adaptive_runtime.training_runtime import TrainingRuntime
 
 
 def args(**changes):
@@ -70,6 +72,17 @@ def test_auto_precision_uses_shared_compute_capability_policy(capability, mode, 
     assert resolve_adaptive_precision(configured, get_capability=lambda: capability) == mode
     assert configured.adaptive_candidate == candidate
     assert configured.mixed_precision == mixed
+
+
+def test_resolved_auto_does_not_probe_hardware_again(monkeypatch):
+    configured = SimpleNamespace(
+        adaptive_precision="auto", adaptive_resolved_mode="fp16_fp32",
+        adaptive_candidate="fp16", mixed_precision="fp16", model_family="krea2_raw",
+        attn_mode="torch",
+    )
+    monkeypatch.setattr(torch.cuda, "get_device_capability",
+                        lambda: (_ for _ in ()).throw(AssertionError("re-probed")))
+    assert resolve_adaptive_precision(configured) == "fp16_fp32"
 
 
 def test_auto_pre_ampere_selects_native_attention_for_krea_and_z_image():
@@ -288,6 +301,28 @@ def test_fp32_residual_and_explicit_sensitive_linear():
     with pytest.raises(ValueError, match="precision drift"):
         preserve_precision_cast(model, torch.float32)
     assert preserve_precision_cast(base(), torch.bfloat16) == torch.bfloat16
+
+
+def test_realized_dtype_manifest_is_stable_and_detects_drift():
+    model = base()
+    install_training_precision(model, args())
+    names = model._adaptive_precision_manifest_names
+    expected = model._adaptive_precision_manifest_id
+    assert realized_precision_manifest_id(model, names) == expected
+    for _ in range(3):
+        assert realized_precision_manifest_id(model, names) == expected
+    model[0].float()
+    assert realized_precision_manifest_id(model, names) != expected
+
+
+def test_first_runtime_check_compares_installed_manifest(tmp_path):
+    model = base()
+    install_training_precision(model, args())
+    model[1].half()
+    runtime = TrainingRuntime(tmp_path)
+    with pytest.raises(ValueError, match="installed dtype manifest drifted"):
+        runtime.validate_precision(model)
+    assert runtime.precision_manifest_id is None
 
 
 def test_bad_pattern_or_alias_rejected_before_install():

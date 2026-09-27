@@ -65,6 +65,14 @@ COMMANDS = {
         "Follow the daemon (read-only). JOB=<id> tails that job's stdout; "
         "ctrl-C detaches only — training keeps running.",
     ),
+    "daemon-jobs": (
+        daemon.cmd_daemon_jobs,
+        "List persisted daemon jobs; works while the daemon is stopped.",
+    ),
+    "daemon-log": (
+        daemon.cmd_daemon_log,
+        "Read the latest job stdout, or JOB=<id>; -n N tails N lines (default 100).",
+    ),
     "daemon-kill": (
         daemon.cmd_daemon_kill,
         "Abort the running job (or JOB=<id>) and free the GPU; daemon stays up "

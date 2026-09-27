@@ -55,6 +55,12 @@ def _z_image_lora_target_kwargs() -> dict:
 
     return z_image_target_kwargs()
 
+
+def _qwen_image_2_1_lora_target_kwargs() -> dict:
+    from library.models.qwen_image_2_1.lora_targets import qwen_image_2_1_target_kwargs
+
+    return qwen_image_2_1_target_kwargs()
+
 # Network-module-consumed flags (networks.lora_anima / networks.methods.*).
 # Source of truth is the registry in networks/__init__.py.
 NETWORK_KWARG_ALLOWLIST: tuple[str, ...] = all_network_kwargs()
@@ -147,6 +153,20 @@ class TrainingBootstrap:
             )
 
     @staticmethod
+    def validate_qwen_dataset_config(args, user_config: dict) -> None:
+        if getattr(args, "model_family", None) != "qwen_image_2_1":
+            return
+        from library.training.compat_matrix import check_training_compat
+
+        result = check_training_compat({
+            **vars(args),
+            "general": user_config.get("general", {}),
+            "datasets": user_config.get("datasets", []),
+        })
+        if result.errors:
+            raise ValueError(result.errors[0].message)
+
+    @staticmethod
     def build_net_kwargs(args) -> dict[str, str]:
         net_kwargs = {}
         if args.network_args is not None:
@@ -194,6 +214,7 @@ class TrainingBootstrap:
                 "anima": _anima_lora_target_kwargs,
                 "krea2_raw": _krea2_lora_target_kwargs,
                 "z_image": _z_image_lora_target_kwargs,
+                "qwen_image_2_1": _qwen_image_2_1_lora_target_kwargs,
             },
         )
         for k, v in target_factory().items():
@@ -447,6 +468,7 @@ class TrainingBootstrap:
                 logger.info(f"Applied --sample_ratio={sample_ratio} to all subsets")
 
             self.apply_train_batch_size_to_user_config(user_config, args)
+            self.validate_qwen_dataset_config(args, user_config)
 
             blueprint = blueprint_generator.generate(user_config, args)
             train_dataset_group, val_dataset_group = (
@@ -635,6 +657,22 @@ class TrainingBootstrap:
         # setup, so checkpoint recompute and original forward call the same
         # compiled inner graph.
         if args.torch_compile:
+            from library.env import resolve_model_family
+
+            if resolve_model_family(args) == "qwen_image_2_1":
+                from library.models.qwen_image_2_1.compile import (
+                    compile_qwen_image_2_1_blocks,
+                )
+
+                compile_qwen_image_2_1_blocks(
+                    unet,
+                    backend=args.dynamo_backend,
+                    mode=getattr(args, "compile_inductor_mode", None),
+                    dynamic_seq=bool(getattr(args, "compile_dynamic_seq", True)),
+                    scope=str(getattr(args, "compile_block_scope", "all") or "all"),
+                )
+
+        if args.torch_compile and resolve_model_family(args) != "qwen_image_2_1":
             from library.runtime.harness import (
                 compile_blocks_for_training,
                 pixel_bucket_token_counts,

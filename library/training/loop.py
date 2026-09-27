@@ -337,20 +337,9 @@ def build_loop_state(
         is_tracking=is_tracking,
     )
 
-    # Skip prelude: when resuming with skip_until_initial_step, fast-forward
-    # the global_step counter before tqdm so the bar total is sized correctly,
-    # and consume per-epoch skip credit so dataloader.skip_first_batches has
-    # the right offset on the first epoch only. Runs before the dtype log so
-    # the log order matches the original train() body.
+    # The checkpoint plan keeps global_step in optimizer steps and initial_step
+    # as the residual batch count within the resumed epoch.
     global_step = max(0, int(resume_global_step or 0))
-    if initial_step > 0:
-        global_step = initial_step // args.gradient_accumulation_steps
-        for skip_epoch in range(epoch_to_start):
-            logger.info(
-                f"skipping epoch {skip_epoch + 1} because initial_step "
-                f"(multiplied) is {initial_step}"
-            )
-            initial_step -= len(train_dataloader)
 
     logger.info(f"unet dtype: {unet_weight_dtype}, device: {unet.device}")
     _ts_parts = [f"timestep_sampling={args.timestep_sampling}"]

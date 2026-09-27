@@ -432,6 +432,15 @@ def _checkpoint_state_candidates(args: argparse.Namespace) -> list[tuple[int, fl
     return candidates
 
 
+def resume_skip_plan(
+    resume_step: int, num_batches: int, gradient_accumulation_steps: int
+) -> tuple[int, int]:
+    """Split completed optimizer steps into whole epochs and residual batches."""
+    steps_per_epoch = max(1, math.ceil(num_batches / gradient_accumulation_steps))
+    epoch_to_start, residual_steps = divmod(resume_step, steps_per_epoch)
+    return epoch_to_start, residual_steps * gradient_accumulation_steps
+
+
 def plan_resume_start(
     args: argparse.Namespace,
     *,
@@ -443,11 +452,10 @@ def plan_resume_start(
     """Resolve resume/initial-step counters without mutating checkpoint state."""
     steps_from_state_out = steps_from_state
     staged_updates_per_epoch = max(0, int(updates_per_epoch or 0))
-    initial_steps_per_epoch = staged_updates_per_epoch or math.ceil(
-        batches_per_epoch / num_processes / args.gradient_accumulation_steps
-    )
-    skip_batches_per_epoch = math.ceil(
-        batches_per_epoch / args.gradient_accumulation_steps
+    # The caller passes the accelerator-prepared dataloader length, already
+    # sharded per process. Keep num_processes for existing callers.
+    initial_steps_per_epoch = staged_updates_per_epoch or max(
+        1, math.ceil(batches_per_epoch / args.gradient_accumulation_steps)
     )
 
     initial_step = 0
@@ -487,23 +495,26 @@ def plan_resume_start(
     epoch_to_start = 0
     resume_global_step = 0
     if initial_step > 0:
+        resume_global_step = initial_step
         if staged_updates_per_epoch:
             epoch_to_start = initial_step // staged_updates_per_epoch
-            resume_global_step = initial_step
             # Stage loaders are rebuilt from current global progress. Replaying
             # a stage0-sized batch skip here can exhaust the loader forever.
             initial_step = 0
-        elif args.skip_until_initial_step:
-            if not args.resume:
+        else:
+            epoch_to_start, skip_batches = resume_skip_plan(
+                initial_step, batches_per_epoch, args.gradient_accumulation_steps
+            )
+            if args.skip_until_initial_step and not args.resume:
                 logger.info(
                     "initial_step is specified but not resuming. lr scheduler will be started from the beginning"
                 )
-            logger.info(f"skipping {initial_step} steps")
-            initial_step *= args.gradient_accumulation_steps
-            epoch_to_start = initial_step // skip_batches_per_epoch
-        else:
-            epoch_to_start = initial_step // skip_batches_per_epoch
-            initial_step = 0
+            if args.skip_until_initial_step:
+                logger.info(
+                    f"skipping {initial_step} steps: {epoch_to_start} full epochs"
+                    f" + {skip_batches} batches of epoch {epoch_to_start + 1}"
+                )
+            initial_step = skip_batches if args.skip_until_initial_step else 0
 
     return ResumeStartPlan(
         initial_step=initial_step,

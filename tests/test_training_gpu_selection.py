@@ -125,6 +125,6 @@ def test_system_monitor_samples_immediately_and_keeps_short_interval():
     assert "await asyncio.sleep(SYSTEM_MONITOR_INTERVAL_SECONDS)" in monitor
     assert "await asyncio.sleep(5)" not in monitor
     # First sample happens at the top of the loop, before sleeping.
-    sample_idx = monitor.index("stats = await get_gpu_stats(list(gpu_whitelist))")
+    sample_idx = monitor.index("snapshot = await self._gpu_snapshot_cache.read(ttl=2.0)")
     sleep_idx = monitor.index("await asyncio.sleep(SYSTEM_MONITOR_INTERVAL_SECONDS)")
     assert sample_idx < sleep_idx

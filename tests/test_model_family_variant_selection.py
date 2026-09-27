@@ -15,7 +15,7 @@ STATIC = ROOT / "web/static/js"
 VARIANT_TOKEN = "auto-block-swap-20260908-v3"
 
 
-@pytest.mark.parametrize("family", list(MODEL_FAMILY_REGISTRY))
+@pytest.mark.parametrize("family", [name for name, spec in MODEL_FAMILY_REGISTRY.items() if not spec.plain_lora_only])
 def test_registered_models_have_no_blanket_network_variant_gate(family):
     spec = MODEL_FAMILY_REGISTRY[family]
     assert spec.supported_network_specs is None
@@ -90,3 +90,26 @@ console.log(JSON.stringify(names.map(modelFamily => ({{
             assert branch["visible"], (row["modelFamily"], branch)
         assert row["flash"] is True
         assert row["invalidAttention"] is False
+
+
+def test_qwen_image_2_1_plain_lora_options_are_filtered():
+    if not shutil.which("node"):
+        pytest.skip("node is required for frontend checks")
+    family_uri = (STATIC / "features/config-form/model-family.js").as_uri()
+    script = f"""
+const family = await import({json.dumps(family_uri + '?v=qwen-image-21-v2')});
+const selected = {{
+    adapter: family.modelFamilySelectOptions('lora_adapter_kind', 'qwen_image_2_1', ['lora', 'loha'], 'lora'),
+    module: family.modelFamilySelectOptions('network_module', 'qwen_image_2_1', ['networks.lora_anima', 'networks.reft'], 'networks.lora_anima'),
+    attention: family.modelFamilySelectOptions('attn_mode', 'qwen_image_2_1', ['torch', 'sdpa', 'flash'], 'torch'),
+}};
+console.log(JSON.stringify(selected));
+"""
+    result = subprocess.run(
+        ["node", "--input-type=module", "--eval", script],
+        cwd=ROOT, check=True, capture_output=True, text=True, timeout=20,
+    )
+    selected = json.loads(result.stdout)
+    assert [item["value"] for item in selected["adapter"]] == ["lora"]
+    assert [item["value"] for item in selected["module"]] == ["networks.lora_anima"]
+    assert [item["value"] for item in selected["attention"]] == ["torch", "sdpa", "flash"]

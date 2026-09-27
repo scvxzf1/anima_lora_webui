@@ -145,11 +145,21 @@ def load_visual_sample(dataset, image_info, subset, flipped: bool):
     else:
         crop_left_top = (target_size[0] - crop_ltrb[2], crop_ltrb[1])
 
+    reference_latent_loader = getattr(
+        dataset.latents_caching_strategy, "load_edit_reference_latent", None
+    )
+    edit_reference_latent = (
+        reference_latent_loader(image_info, subset)
+        if reference_latent_loader is not None and image_info.reference_image_path
+        else None
+    )
+
     return {
         "image": image,
         "latents": latents,
         "alpha_mask": alpha_mask,
         "cond_latents": dataset._load_cond_latent(subset, image_info, flipped),
+        "qwen_edit_reference_latent": edit_reference_latent,
         "original_size_hw": (int(original_size[1]), int(original_size[0])),
         "crop_top_left": (int(crop_left_top[1]), int(crop_left_top[0])),
         "target_size_hw": (int(target_size[1]), int(target_size[0])),

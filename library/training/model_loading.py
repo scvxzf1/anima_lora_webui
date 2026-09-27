@@ -34,7 +34,7 @@ def _adaptive_islands_enabled(args) -> bool:
     return islands_enabled(args)
 
 
-def _install_adaptive_precision(model, args, accelerator, family: str) -> None:
+def _install_adaptive_precision(model, args, accelerator, family: str, *, trainer=None) -> None:
     """Install frozen precision islands before adapter/offloader setup."""
     if not _adaptive_islands_enabled(args):
         return
@@ -47,6 +47,11 @@ def _install_adaptive_precision(model, args, accelerator, family: str) -> None:
     require_training_contract(args, world_size=accelerator.num_processes)
     manifest = install_training_precision(model, args, model_family=family)
     register_precision_checkpoint(accelerator, manifest)
+    # Keep the original base model visible to the adaptive runtime.  The
+    # runtime re-hashes these tensors after setup and after accelerator
+    # preparation so an offloader dtype drift cannot hide behind the request ID.
+    if trainer is not None:
+        trainer._adaptive_precision_manifest_model = model
     logger.info(
         "Adaptive precision islands installed: family=%s linear_units=%d",
         family,
@@ -79,6 +84,12 @@ def _load_z_image_text_encoder(args, weight_dtype):
     return load_z_image_text_encoder(args.qwen3, dtype=weight_dtype, device="cpu")
 
 
+def _load_qwen_image_2_1_text_encoder(args, weight_dtype):
+    from library.models.qwen_image_2_1.weights import load_qwen_image_2_1_text_encoder
+
+    return load_qwen_image_2_1_text_encoder(args.qwen3, dtype=weight_dtype, device="cpu")
+
+
 def _load_qwen_vae(args, weight_dtype):
     vae = qwen_image_autoencoder_kl.load_vae(
         args.vae,
@@ -96,6 +107,12 @@ def _load_z_image_vae(args, weight_dtype):
     from library.models.z_image.weights import load_z_image_vae
 
     return load_z_image_vae(args.vae, dtype=weight_dtype, device="cpu")
+
+
+def _load_qwen_image_2_1_vae(args, weight_dtype):
+    from library.models.qwen_image_2_1.weights import load_qwen_image_2_1_vae
+
+    return load_qwen_image_2_1_vae(args.vae, dtype=weight_dtype, device="cpu")
 
 
 def load_target_model(trainer, args, weight_dtype, accelerator, load_qwen3=True, load_vae=True):
@@ -116,6 +133,7 @@ def load_target_model(trainer, args, weight_dtype, accelerator, load_qwen3=True,
                 "anima": _load_anima_text_encoder,
                 "krea2_raw": _load_krea2_text_encoder,
                 "z_image": _load_z_image_text_encoder,
+                "qwen_image_2_1": _load_qwen_image_2_1_text_encoder,
             },
         )
         qwen3_text_encoder = loader(args, weight_dtype)
@@ -137,6 +155,7 @@ def load_target_model(trainer, args, weight_dtype, accelerator, load_qwen3=True,
                 "anima": _load_qwen_vae,
                 "krea2_raw": _load_qwen_vae,
                 "z_image": _load_z_image_vae,
+                "qwen_image_2_1": _load_qwen_image_2_1_vae,
             },
         )
         vae = loader(args, weight_dtype)
@@ -158,9 +177,46 @@ def load_unet_lazily(trainer, args, weight_dtype, accelerator, text_encoders) ->
             "anima": _load_anima_dit,
             "krea2_raw": _load_krea2_dit,
             "z_image": _load_z_image_dit,
+            "qwen_image_2_1": _load_qwen_image_2_1_dit,
         },
     )
     return loader(trainer, args, weight_dtype, accelerator, text_encoders)
+
+
+def _load_qwen_image_2_1_dit(trainer, args, weight_dtype, accelerator, text_encoders):
+    from library.models.qwen_image_2_1.attention_backend import prepare_qwen_image_2_1_attention
+    from library.models.qwen_image_2_1.block_swap import enable_qwen_image_2_1_block_swap
+    from library.models.qwen_image_2_1.weights import load_qwen_image_2_1_transformer
+
+    trainer.is_swapping_blocks = bool(getattr(args, "blocks_to_swap", 0) or 0)
+    loading_device = "cpu" if trainer.is_swapping_blocks else accelerator.device
+    model = load_qwen_image_2_1_transformer(
+        args.pretrained_model_name_or_path, dtype=weight_dtype, device=loading_device
+    )
+    attn_mode = prepare_qwen_image_2_1_attention(
+        model,
+        getattr(args, "attn_mode", None),
+        dtype=weight_dtype,
+    )
+    logger.info(
+        "Using Qwen Image 2.1 attention mode: %s%s",
+        attn_mode,
+        " (FlashAttention varlen for image segments; native SDPA for causal text segments)"
+        if attn_mode == "flash" else "",
+    )
+    if getattr(args, "gradient_checkpointing", False):
+        model.enable_gradient_checkpointing()
+    if trainer.is_swapping_blocks:
+        enable_qwen_image_2_1_block_swap(
+            model,
+            args.blocks_to_swap,
+            accelerator.device,
+            profile_jsonl=resolve_block_swap_profile_jsonl(args),
+            transfer_dtype=getattr(args, "block_swap_transfer_dtype", None),
+            restore_mode=getattr(args, "block_swap_restore_mode", None),
+        )
+    trainer._use_unsloth_offload_checkpointing = False
+    return model, text_encoders
 
 
 def _load_z_image_dit(trainer, args, weight_dtype, accelerator, text_encoders):
@@ -181,7 +237,7 @@ def _load_z_image_dit(trainer, args, weight_dtype, accelerator, text_encoders):
         dtype=weight_dtype,
         device=loading_device,
     )
-    _install_adaptive_precision(model, args, accelerator, "z_image")
+    _install_adaptive_precision(model, args, accelerator, "z_image", trainer=trainer)
     attn_mode = prepare_z_image_attention(
         model,
         getattr(args, "attn_mode", None),
@@ -288,7 +344,7 @@ def _load_krea2_dit(trainer, args, weight_dtype, accelerator, text_encoders):
         nf4=nf4_active,
         nf4_path=nf4_path if nf4_active else None,
     )
-    _install_adaptive_precision(model, args, accelerator, "krea2_raw")
+    _install_adaptive_precision(model, args, accelerator, "krea2_raw", trainer=trainer)
     attn_mode = prepare_krea2_attention(
         model,
         requested_attn_mode,
@@ -506,7 +562,7 @@ def _load_anima_dit(trainer, args, weight_dtype, accelerator, text_encoders):
         checkpoint_layout=layout,
         anima_base_sha256=base_sha256,
     )
-    _install_adaptive_precision(model, args, accelerator, "anima")
+    _install_adaptive_precision(model, args, accelerator, "anima", trainer=trainer)
     _maybe_probe_components(
         trainer,
         "dit_loaded",

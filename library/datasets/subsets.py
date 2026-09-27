@@ -193,6 +193,10 @@ class ImageInfo:
         )
 
         self.text_encoder_outputs: Optional[List[torch.Tensor]] = None
+        self.reference_image_path: Optional[str] = None
+        self.edit_reference_latent: Optional[torch.Tensor] = None
+        self.edit_reference_latent_path: Optional[str] = None
+        self.edit_reference_size: Optional[Tuple[int, int]] = None
         self.text_encoder_outputs1: Optional[torch.Tensor] = None
         self.text_encoder_outputs2: Optional[torch.Tensor] = None
         self.text_encoder_pool2: Optional[torch.Tensor] = None
@@ -347,6 +351,7 @@ class DreamBoothSubset(BaseSubset):
         cache_dir: Optional[str] = None,
         cond_cache_dir: Optional[str] = None,
         text_cache_dir: Optional[str] = None,
+        reference_image_dir: Optional[str] = None,
         recursive: bool = False,
         path_pattern: Optional[str] = None,
     ) -> None:
@@ -433,6 +438,11 @@ class DreamBoothSubset(BaseSubset):
         # TE outputs without moving VAE/PE caches away from cache_dir.
         self.cond_cache_dir = cond_cache_dir
         self.text_cache_dir = text_cache_dir
+        self.reference_image_dir = str(reference_image_dir or "").strip() or None
+        if self.reference_image_dir and self.model_family == "qwen_image_2_1":
+            from library.datasets.qwen_image_edit import EDIT_TEXT_CACHE_SUFFIX
+
+            self.text_cache_suffix = EDIT_TEXT_CACHE_SUFFIX
 
     def __eq__(self, other) -> bool:
         if not isinstance(other, DreamBoothSubset):

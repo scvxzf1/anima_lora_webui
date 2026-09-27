@@ -1,11 +1,13 @@
-"""CLI surface for the local training daemon (``make daemon*``).
+"""CLI surface for the local training daemon (``tasks.py daemon*``).
 
-Four verbs, mapped to the lifecycle guarantees in ``plan.md`` Phase 1:
+Lifecycle verbs, mapped to the guarantees in ``plan.md`` Phase 1:
 
     daemon            start (idempotent — no-op if already up), wait /health
     daemon-attach     non-owning viewer; ctrl-C detaches only, training lives on
     daemon-kill       abort the running (or JOB=<id>) job, free GPU; daemon stays up
     daemon-terminate  shut the whole daemon down (active job dies too)
+    daemon-jobs       list persisted jobs, including when the daemon is down
+    daemon-log        read persisted stdout from a job
 
 ``daemon`` starts the daemon **console-detached** (see ``proc.spawn_detached``),
 so the terminal's SIGINT reaches only the foreground group, never the daemon.
@@ -22,6 +24,7 @@ import sys
 from scripts.daemon import client as _client
 from scripts.daemon import config as _cfg
 from scripts.daemon import proc as _proc
+from scripts.tasks.daemon_history import cmd_daemon_jobs, cmd_daemon_log
 
 
 def _job_arg(extra) -> str | None:
@@ -51,6 +54,8 @@ def cmd_daemon(extra):
         f"daemon up on {cl.base} (pid {health.get('pid')}). "
         f"Logs: {_cfg.DAEMON_LOG}\n"
         "  make daemon-attach        # follow events\n"
+        "  python tasks.py daemon-jobs  # list persisted jobs\n"
+        "  python tasks.py daemon-log   # read the latest job log\n"
         "  make daemon-kill          # abort the running job\n"
         "  make daemon-terminate     # stop the daemon"
     )

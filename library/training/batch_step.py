@@ -29,6 +29,12 @@ def _z_image_noise_pred_and_target(*args, **kwargs):
     return compute_noise_pred_and_target(*args, **kwargs)
 
 
+def _qwen_image_2_1_noise_pred_and_target(*args, **kwargs):
+    from library.models.qwen_image_2_1.family import compute_noise_pred_and_target
+
+    return compute_noise_pred_and_target(*args, **kwargs)
+
+
 def _get_noise_pred_and_target(trainer, ctx, latents, batch, text_encoder_conds, *, is_train=True):
     from library.env import resolve_model_family
 
@@ -39,6 +45,7 @@ def _get_noise_pred_and_target(trainer, ctx, latents, batch, text_encoder_conds,
             "anima": compute_noise_pred_and_target,
             "krea2_raw": _krea2_noise_pred_and_target,
             "z_image": _z_image_noise_pred_and_target,
+            "qwen_image_2_1": _qwen_image_2_1_noise_pred_and_target,
         },
     )
     return handler(

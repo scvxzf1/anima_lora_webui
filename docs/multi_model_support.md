@@ -20,20 +20,22 @@ family、未注册推理模式或 sampler 都应失败，不得静默回退 Anim
 | `anima` | 默认生产模型族 | 完整方法面 | `single` / `batch` / `interactive`；`euler` / `er_sde` / `lcm` | registry 中声明的 Anima 后端 |
 | `krea2_raw` | 第二生产模型族 | 开放所有网络变体选择 | `single` + `euler` | `torch` / `sdpa` / `flash` |
 | `z_image` | 训练与训练预览 v1 | 开放所有网络变体选择 | 尚未注册；mode/sampler 集合为空 | `torch` / `sdpa` / `flash` (`flash_varlen`) |
+| `qwen_image_2_1` | T2I LoRA 首阶段；CMP 90HX torch/Flash 指定组合各 60 步短测通过 | 仅 plain LoRA | 尚未注册 | `torch` / `sdpa` / `flash`（BF16） |
 
-WebUI 能选择三个模型族，但这不扩大 registry 的能力集合。尤其是 Z-Image 的训练 sample
+WebUI 能选择四个模型族，但这不扩大 registry 的能力集合。尤其是 Z-Image 的训练 sample
 preview 只服务训练流程，不代表生图测试、独立 CLI 推理、batch 或 interactive 已可用。
 
-三个已注册模型族均开放网络变体选择，配置预检与 network 创建/加载不再套用
+Anima、Krea-2 与 Z-Image 开放网络变体选择，配置预检与 network 创建/加载不再套用
 “非 Anima 仅 plain LoRA”的统一白名单。`supported_network_specs=None`、
 `plain_lora_only=False` 表示允许尝试，不代表所有变体组合均已通过训练验证。
 不兼容的权重、精度、目标层结构与 forward 契约仍在对应实现处报错，不静默替换成 LoRA。
 Krea-2 与 Z-Image 的 `supports_method_adapters=False` 保留：IP-Adapter、EasyControl、BYG
 等依赖独立训练 forward hooks 的方法不因开放网络变体而自动适配。
+Qwen Image 2.1 的 `plain_lora_only=True`，不适用上述开放策略。
 
 ## Pipeline Parallel 规划能力
 
-三个已注册模型族都声明了双卡 PP 拓扑，并通过公共
+Anima、Krea-2 与 Z-Image 声明了双卡 PP 拓扑，并通过公共
 `library/models/pipeline_parallel.py` 完成配置归一化、互斥校验和连续 block 范围规划。
 Anima 使用 `blocks` 并均分 28/40 block；Krea-2 使用 `blocks` 并保留 28 block
 的 13/15 启发式；Z-Image 只分配 `layers` 中的 30 个 main layers，不混入 refiner。
@@ -72,6 +74,45 @@ Anima 使用 `blocks` 并均分 28/40 block；Krea-2 使用 `blocks` 并保留 2
   Anima-only extras 必须显式拒绝。
 - Z-Image 目前只有 `library/models/z_image/training_preview.py`。通用 image-test 和独立推理
   没有注册 handler，请勿从 WebUI family 下拉框推断其已支持。
+- Qwen Image 2.1 的推理、image-test 和训练 sample preview 均未实现，入口显式拒绝。
+
+## Qwen Image 2.1 首阶段边界
+
+`configs/methods/qwen_image_2_1_lora.toml` 是 T2I plain LoRA 起始配置。三个组件使用
+ComfyUI 单文件 safetensors：32-block DiT、Qwen3-VL 8B 和独立的 RGBA/64-channel VAE。
+加载器在装载权重前核对完整参数名与形状；文本编码器的 ComfyUI `model.*` 命名映射到
+Transformers `model.language_model.*`，VAE 转换卷积的 singleton 时间核，DiT 拆分
+`img_mlp.gate_up`。文本以官方 T2I 模板左填充，取最终 decoder 层 RMSNorm 前 hidden，
+使用独立 `_qwen_image_2_1_te.safetensors` 缓存。RGB 数据在 VAE 前补不透明 alpha，
+64-channel latent 使用 VAE 的逐通道 mean/std，并隔离到 `_qwen_image_2_1.npz`。
+
+训练 forward 使用未 patch 的 latent token、2x2 image slot mask、动态指数 shift 的
+flow-matching sigma 和 attention-only LoRA。当前仅允许 BF16、`torch`/`sdpa` 原生 attention
+或 opt-in `flash`，以及 full checkpoint。Qwen 专属 `transformer_blocks` block swap 和 per-block `torch.compile`
+已接入，方法配置初始启用 `blocks_to_swap=24`、`torch_compile=true`、dynamic sequence；
+编译发生在 LoRA apply/load 后，换块调度留在编译图外。Next 数据集预设现支持 Qwen Image 2.1
+编辑 LoRA：每组使用同一配对名称的“编辑前”和“编辑后”两个 UI 子集，可有多组；保存时只有
+“编辑后”进入训练蓝图，其 `reference_image_dir` 指向对应“编辑前”的图片目录。图片仍按
+相对路径与 case-fold 文件名 stem 配对，缓存 Qwen3-VL image-slot 条件及参考图 VAE latent；
+首版要求 batch size 1，不支持混用普通/正则子集或分阶段调度，
+随机裁剪、翻转和颜色增强。Apply 会校验 Qwen family、plain LoRA、缓存开关及图像配对，并写入
+`qwen_image_2_1_task="edit"`，不会启动训练。
+
+Edit 已通过配对、缓存 schema/网格、DiT 序列形状、Apply 和 UI 单元测试，并以本地 tokenizer 和真实
+`Qwen3VLProcessor` 对 64×32 合成参考图完成 CPU processor smoke（生成 2 个 image slots）；尚未加载
+Qwen3-VL 模型权重执行文本/图像条件编码，也未完成 GPU 编辑训练热测。因此 swap/compile 虽被兼容层允许，
+仍不代表已在 Edit 任务上完成硬件验收。`auto_block_swap`、CUDA Graph compile preset、NF4、
+文本编码器训练、caption dropout、sample preview、通用推理和 PP 仍未接入。依赖 Diffusers 尚未发版的 Qwen 2.1 实现，
+`pyproject.toml` 暂固定到包含官方 PR 的上游提交。Flash 使用 Qwen 专属 packed
+FlashAttention 2 varlen：按真实 key-valid mask gather K/V，避免把 tokenizer 左填充误作有效前缀；
+带因果三角 mask 的文本段仍走原生 SDPA，图像查询走 Flash varlen。`configs/methods/`
+继续默认 `attn_mode="torch"`。CPU 小模型 forward/backward、外置 adapter 梯度与路由契约测试
+通过；CMP 90HX 的 torch 和 Flash 各完成 60-step 单图运行及 LoRA 保存，报告分别见
+[torch 热测](findings/qwen_image_2_1_90hx_hot_test_20260926.md)和
+[Flash 热测](findings/qwen_image_2_1_flash_90hx_20260927.md)。当前 90HX 单次对照中 Flash
+中位步时约 10.16 秒，torch 约 7.94 秒，因此 Flash 保持 opt-in，不作为速度推荐。
+这些短测不代表训练收敛、样图质量、保存后重载/续训、其他 swap 数或其他硬件；`24` 是通过
+测试的点位，不是跨硬件默认建议。
 
 ## Z-Image v1 边界
 

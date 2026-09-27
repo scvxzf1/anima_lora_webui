@@ -1136,6 +1136,9 @@ def main():
                     "anima": generate,
                     "krea2_raw": _generate_krea2_latent,
                     "z_image": _generate_z_image_latent,
+                    "qwen_image_2_1": lambda *_args: (_ for _ in ()).throw(
+                        NotImplementedError("Qwen Image 2.1 standalone inference is not implemented")
+                    ),
                 },
             )
             latent = generator(args, gen_settings)

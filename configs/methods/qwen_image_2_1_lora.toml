@@ -1,0 +1,57 @@
+# Qwen Image 2.1 T2I plain LoRA. Set all three component paths in model settings.
+model_family = "qwen_image_2_1"
+pretrained_model_name_or_path = "models/diffusion_models/Qwen-Image-2.1/qwen_image_2.1_bf16.safetensors"
+qwen3 = "models/text_encoders/Qwen-Image-2.1/qwen3vl_8b_bf16.safetensors"
+vae = "models/vae/Qwen-Image-2.1/qwen_image_2.1_vae_bf16.safetensors"
+
+network_module = "networks.lora_anima"
+network_dim = 16
+network_alpha = 16
+network_train_unet_only = true
+learning_rate = 1e-4
+
+mixed_precision = "bf16"
+base_compute = "bf16"
+attn_mode = "torch"
+gradient_checkpointing = true
+cpu_offload_checkpointing = false
+unsloth_offload_checkpointing = false
+selective_checkpoint = "off"
+torch_compile = true
+compile_dynamic_seq = true
+compile_block_scope = "all"
+# Initial 10 GB candidate; requires a hardware fit and hot-window check.
+blocks_to_swap = 24
+auto_block_swap = false
+
+cache_latents = true
+cache_latents_to_disk = true
+cache_text_encoder_outputs = true
+cache_text_encoder_outputs_to_disk = true
+cache_llm_adapter_outputs = false
+caption_dropout_rate = 0.0
+weighted_captions = false
+masked_loss = false
+sample_at_first = false
+
+timestep_sampling = "uniform"
+weighting_scheme = "none"
+use_moe_style = false
+route_per_layer = false
+router_source = "none"
+output_name = "qwen_image_2_1_lora"
+
+[[datasets]]
+resolution = 1024
+batch_size = 1
+caption_extension = ".txt"
+enable_bucket = true
+min_bucket_reso = 512
+max_bucket_reso = 1536
+bucket_reso_steps = 64
+bucket_no_upscale = true
+
+[[datasets.subsets]]
+image_dir = "post_image_dataset/resized"
+cache_dir = "post_image_dataset/lora"
+num_repeats = 1

@@ -40,6 +40,7 @@ class DatasetGetItemMixin:
         input_ids_list = []
         latents_list = []
         cond_latents_list: List[Optional[torch.Tensor]] = []
+        qwen_edit_reference_latents: List[Optional[torch.Tensor]] = []
         alpha_mask_list = []
         images = []
         original_sizes_hw = []
@@ -71,6 +72,7 @@ class DatasetGetItemMixin:
             images.append(visual["image"])
             latents_list.append(visual["latents"])
             cond_latents_list.append(visual["cond_latents"])
+            qwen_edit_reference_latents.append(visual["qwen_edit_reference_latent"])
             alpha_mask_list.append(visual["alpha_mask"])
             original_sizes_hw.append(visual["original_size_hw"])
             crop_top_lefts.append(visual["crop_top_left"])
@@ -119,6 +121,7 @@ class DatasetGetItemMixin:
             images=images,
             latents_list=latents_list,
             cond_latents_list=cond_latents_list,
+            qwen_edit_reference_latents=qwen_edit_reference_latents,
             captions=captions,
             original_sizes_hw=original_sizes_hw,
             crop_top_lefts=crop_top_lefts,

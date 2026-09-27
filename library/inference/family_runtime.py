@@ -44,6 +44,10 @@ def _install_z_image_strategies(args) -> None:
     return None
 
 
+def _qwen_image_2_1_inference_unsupported(*_args, **_kwargs) -> None:
+    raise NotImplementedError("Qwen Image 2.1 standalone inference is not implemented")
+
+
 def prepare_inference_family(args, family: str, mode: str) -> None:
     spec = get_model_family_spec(family)
     if mode not in spec.supported_inference_modes:
@@ -64,6 +68,7 @@ def prepare_inference_family(args, family: str, mode: str) -> None:
             "anima": _validate_anima,
             "krea2_raw": _validate_krea2,
             "z_image": _validate_z_image,
+            "qwen_image_2_1": _qwen_image_2_1_inference_unsupported,
         },
     )
     validator(args, mode=mode)
@@ -74,6 +79,7 @@ def prepare_inference_family(args, family: str, mode: str) -> None:
             "anima": _install_anima_strategies,
             "krea2_raw": _install_krea2_strategies,
             "z_image": _install_z_image_strategies,
+            "qwen_image_2_1": _qwen_image_2_1_inference_unsupported,
         },
     )
     installer(args)

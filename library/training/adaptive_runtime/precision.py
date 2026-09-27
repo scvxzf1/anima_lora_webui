@@ -188,24 +188,34 @@ def resolve_adaptive_precision(args, *, get_capability=None) -> str:
     requested = str(getattr(args, "adaptive_precision", "off") or "off").strip().lower()
     if requested != "auto":
         return requested
-    capability = get_capability
-    if capability is None:
-        if not torch.cuda.is_available():
-            capability = None
-        else:
-            capability = torch.cuda.get_device_capability()
-    elif callable(capability):
-        try:
-            capability = capability()
-        except Exception:
-            capability = None
-    if capability is None:
-        mixed = str(getattr(args, "mixed_precision", "bf16") or "bf16").strip().lower()
-        mode = {"bf16": "bf16", "fp16": "fp16_fp32", "no": "fp32"}.get(mixed, "fp32")
-        candidate = {"bf16": "bf16", "fp16_fp32": "fp16", "fp32": "fp32"}[mode]
+    cached_mode = getattr(args, "adaptive_resolved_mode", None)
+    cached_candidate = getattr(args, "adaptive_candidate", None)
+    if cached_mode in {"bf16", "fp16_fp32", "fp32"} and cached_candidate in {
+        "bf16", "fp16", "fp32"
+    }:
+        # The parent may call this helper again while entering the supervisor.
+        # A resolved request is now a frozen decision; do not probe hardware a
+        # second time and risk a different device/backend identity.
+        mode, candidate = cached_mode, cached_candidate
     else:
-        candidate = preferred_candidate(tuple(capability))
-        mode = {"bf16": "bf16", "fp16": "fp16_fp32", "fp32": "fp32"}[candidate]
+        capability = get_capability
+        if capability is None:
+            if not torch.cuda.is_available():
+                capability = None
+            else:
+                capability = torch.cuda.get_device_capability()
+        elif callable(capability):
+            try:
+                capability = capability()
+            except Exception:
+                capability = None
+        if capability is None:
+            mixed = str(getattr(args, "mixed_precision", "bf16") or "bf16").strip().lower()
+            mode = {"bf16": "bf16", "fp16": "fp16_fp32", "no": "fp32"}.get(mixed, "fp32")
+            candidate = {"bf16": "bf16", "fp16_fp32": "fp16", "fp32": "fp32"}[mode]
+        else:
+            candidate = preferred_candidate(tuple(capability))
+            mode = {"bf16": "bf16", "fp16": "fp16_fp32", "fp32": "fp32"}[candidate]
     args.adaptive_resolved_mode = mode
     args.adaptive_candidate = candidate
     args.mixed_precision = {"bf16": "bf16", "fp16_fp32": "fp16", "fp32": "no"}[mode]

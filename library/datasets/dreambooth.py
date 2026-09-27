@@ -14,6 +14,7 @@ from library.datasets.image_utils import (
     _assert_unique_stems,
     glob_images,
 )
+from library.datasets.qwen_image_edit import inspect_edit_pairs, require_complete_edit_pairs
 from library.datasets.subsets import (
     DreamBoothSubset,
     ImageInfo,
@@ -425,6 +426,33 @@ class DreamBoothDataset(BaseDataset):
                 )
                 continue
 
+            reference_paths = {}
+            if subset.reference_image_dir:
+                if subset.is_reg:
+                    raise ValueError(
+                        "Qwen Image 2.1 Edit does not support regularization subsets; "
+                        f"remove reference_image_dir from {subset.image_dir}"
+                    )
+                if not os.path.isdir(subset.reference_image_dir):
+                    raise ValueError(
+                        f"Qwen edit reference image directory does not exist: "
+                        f"{subset.reference_image_dir}"
+                    )
+                pair_report = inspect_edit_pairs(
+                    img_paths,
+                    target_dir=subset.image_dir,
+                    reference_dir=subset.reference_image_dir,
+                    recursive=subset.recursive,
+                )
+                require_complete_edit_pairs(pair_report)
+                reference_paths = pair_report.pairs
+                if pair_report.unused_references:
+                    logger.warning(
+                        "Qwen edit reference directory has %d unused image(s): %s",
+                        len(pair_report.unused_references),
+                        ", ".join(pair_report.unused_references[:5]),
+                    )
+
             if subset.is_reg:
                 num_reg_images += num_repeats * len(img_paths)
             else:
@@ -439,6 +467,12 @@ class DreamBoothDataset(BaseDataset):
                     img_path,
                     subset.caption_dropout_rate,
                 )
+                info.reference_image_path = reference_paths.get(img_path)
+                if info.reference_image_path and not str(caption or "").strip():
+                    raise ValueError(
+                        "Qwen Image 2.1 Edit requires a non-empty target caption/instruction: "
+                        f"{img_path}"
+                    )
                 info.resize_interpolation = (
                     subset.resize_interpolation
                     if subset.resize_interpolation is not None

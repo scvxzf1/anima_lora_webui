@@ -23,6 +23,7 @@ class RetryLimits:
     max_attempts: int = 4
     swap_increment: int = 2
     allow_batch_change: bool = False
+    allow_checkpoint_change: bool = False
 
     def __post_init__(self):
         if self.max_blocks < 0 or min(self.max_attempts, self.swap_increment) < 1:
@@ -38,7 +39,7 @@ def next_plan(current: MemoryPlan, limits: RetryLimits, *, stage: str):
             count = min(limits.max_blocks, current.blocks_to_swap + limits.swap_increment)
             return replace(current, blocks_to_swap=count), "increase_block_swap"
     if stage in ("forward", "backward"):
-        if not current.gradient_checkpointing:
+        if limits.allow_checkpoint_change and not current.gradient_checkpointing:
             return replace(current, gradient_checkpointing=True), "enable_checkpointing"
         if limits.allow_batch_change:
             # Only exact divisors preserve the configured effective batch.
@@ -50,19 +51,26 @@ def next_plan(current: MemoryPlan, limits: RetryLimits, *, stage: str):
     return None
 
 
-def run_recovery(initial, limits, runner, *, record):
+def run_recovery(initial, limits, runner, *, record, expected_precision_contract=None):
     """Runner must start a FRESH process and return a structured worker result.
 
     Only explicit CUDA OOM results are retried. A started optimizer requires a
     committed checkpoint path supplied by the worker; its validation/loading is
     the training adapter's responsibility. No checkpoint means fail closed.
+    When supplied, ``expected_precision_contract`` must match every structured
+    ``ok`` or ``cuda_oom`` result before any next plan is considered.
     """
     plan, resume = initial, None
     seen = set()
     history = []
+    realized_manifest = None
     for attempt in range(limits.max_attempts):
         if plan in seen:
-            raise RuntimeError("Refusing repeated OOM candidate")
+            history.append({"attempt": attempt, "plan": asdict(plan),
+                            "stop_reason": "repeated_plan"})
+            final = {"status": "failed", "attempts": history}
+            record(final)
+            return final
         seen.add(plan)
         result = runner(plan, attempt=attempt, resume=resume)
         if not isinstance(result, dict):
@@ -70,8 +78,29 @@ def run_recovery(initial, limits, runner, *, record):
         history.append({"attempt": attempt, "plan": asdict(plan), "result": result})
         record({"status": "running", "attempts": history})
         status = result.get("status")
+        if expected_precision_contract is not None:
+            actual = result.get("precision_contract_id")
+            if status in {"ok", "cuda_oom"} and actual != expected_precision_contract:
+                history[-1]["stop_reason"] = "precision_contract_mismatch"
+                break
+        manifest = result.get("precision_manifest_id")
+        if expected_precision_contract is not None and status in {"ok", "cuda_oom"}:
+            if manifest is None:
+                # No DiT exists yet when loading itself OOMs; its dtype
+                # partition is checked as soon as a later attempt installs it.
+                if not (status == "cuda_oom" and result.get("stage") == "model_load"
+                        and result.get("optimizer_started") is False):
+                    history[-1]["stop_reason"] = "missing_precision_manifest"
+                    break
+            elif realized_manifest is None:
+                realized_manifest = manifest
+            elif manifest != realized_manifest:
+                history[-1]["stop_reason"] = "realized_precision_manifest_mismatch"
+                break
         if status == "ok":
             final = {"status": "ok", "selected": asdict(plan), "attempts": history}
+            if expected_precision_contract is not None:
+                final["precision_contract_id"] = expected_precision_contract
             record(final)
             return final
         if status != "cuda_oom":

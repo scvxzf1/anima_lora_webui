@@ -139,6 +139,11 @@ class TrainerNetworkMixin:
 
             return encode_z_image_latents(loaded_vae, pixels)
 
+        def encode_qwen_image_2_1_vae(loaded_vae, pixels):
+            from library.models.qwen_image_2_1.latent import encode_qwen_image_2_1_latents
+
+            return encode_qwen_image_2_1_latents(loaded_vae, pixels)
+
         encoder = dispatch_model_family(
             resolve_model_family(args),
             operation="live VAE encoding",
@@ -146,6 +151,7 @@ class TrainerNetworkMixin:
                 "anima": encode_qwen_vae,
                 "krea2_raw": encode_qwen_vae,
                 "z_image": encode_z_image_vae,
+                "qwen_image_2_1": encode_qwen_image_2_1_vae,
             },
         )
         return encoder(vae, images)  # Keep 4D for input/output
