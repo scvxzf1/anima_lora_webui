@@ -10,7 +10,7 @@ import {
     isKrea2ModelFamily,
     modelFamilySupportsPipelineParallel,
     normalizeModelFamily,
-} from './model-family.js?v=auto-block-swap-20260908-v3';
+} from './model-family.js?v=qwen-image-21-v2';
 import { setTomlStatus } from '../anima-app/helpers/toml-action-state-bridge.js?v=module-bootstrap-20260831-release-v1';
 import { buildFieldPresentation, fieldSourceBadgeLabel } from './field-presentation.js?v=module-bootstrap-20260831-release-v1';
 import {

@@ -56,3 +56,63 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 1280, height: 720
     });
   }
 }
+
+test("history resume conflict requires refreshed confirmation before retry", async ({ page }) => {
+  const mocks = await mockWorkspace(page);
+  const taskId = "resume-conflict";
+  const checkpoint = "output/runs/resume-conflict/checkpoints/step-50";
+  let optionReads = 0;
+  const submissions: { method: string; path: string; body: unknown }[] = [];
+  await page.route((url) => url.pathname === `/api/training/history/${taskId}`, (route) =>
+    route.fulfill({ json: {
+      ok: true,
+      task: { id: taskId, name: "Resume conflict fixture", job: "training", state: "error", last_step: 50, target_total_steps: 100 },
+      metrics: [], logs: [], system: [], config_toml: "max_train_steps = 100",
+    } }),
+  );
+  await page.route((url) => url.pathname === `/api/training/history/${taskId}/artifacts`, (route) =>
+    route.fulfill({ json: { ok: true, task_id: taskId, artifacts: [] } }),
+  );
+  await page.route((url) => url.pathname === `/api/training/history/${taskId}/resume-options`, (route) => {
+    optionReads += 1;
+    return route.fulfill({ json: {
+      checkpoints: [{ path: checkpoint, name: "step-50", step: 50, target_total_steps: 100, remaining_steps: 50, resume_available: true, state_integrity: { ok: true } }],
+      default_checkpoint: checkpoint,
+      message: "",
+    } });
+  });
+  await page.route((url) => url.pathname === "/api/training/resume", (route) => {
+    submissions.push({ method: route.request().method(), path: new URL(route.request().url()).pathname, body: route.request().postDataJSON() });
+    return submissions.length === 1
+      ? route.fulfill({ status: 409, json: { error: "历史任务已在运行或队列中" } })
+      : route.fulfill({ json: { ok: true, message: "续训任务已创建" } });
+  });
+
+  await page.goto(`/next/history/${taskId}`);
+  await page.getByRole("button", { name: "检查点续训", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "从历史检查点续训" });
+  const confirm = dialog.getByRole("button", { name: "确认续训", exact: true });
+  const consent = dialog.getByRole("checkbox");
+  await expect(consent).toBeEnabled();
+  await consent.check();
+  await confirm.click();
+
+  await expect(dialog.getByRole("alert")).toContainText("历史任务已在运行或队列中");
+  await expect(dialog.getByRole("button", { name: "重新检查后重试", exact: true })).toBeVisible();
+  await expect(confirm).toBeDisabled();
+  expect(submissions).toEqual([{ method: "POST", path: "/api/training/resume", body: { task_id: taskId, checkpoint } }]);
+
+  const readsBeforeRetry = optionReads;
+  await dialog.getByRole("button", { name: "重新检查后重试", exact: true }).click();
+  await expect.poll(() => optionReads).toBeGreaterThan(readsBeforeRetry);
+  await expect(dialog.getByRole("alert")).toHaveCount(0);
+  await expect(consent).toBeEnabled();
+  await consent.check();
+  await confirm.click();
+
+  await expect(dialog.getByRole("status")).toContainText("续训任务已创建");
+  await expect(dialog.getByRole("link", { name: "查看监控", exact: true })).toHaveAttribute("href", "/next/monitor");
+  expect(submissions).toHaveLength(2);
+  expect(mocks.writes).toEqual([]);
+  expect(mocks.unhandled).toEqual([]);
+});

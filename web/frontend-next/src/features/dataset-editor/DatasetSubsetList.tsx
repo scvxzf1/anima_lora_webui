@@ -17,17 +17,19 @@ import { SortableDatasetSubset } from './SortableDatasetSubset';
 export function DatasetSubsetList({
   form,
   disabled,
-  previewDisabled,
-  onPreview,
-  onEditMasks,
+  qwenEditIssue,
+  workbenchDisabled,
+  onOpenWorkbench,
 }: {
   form: UseFormReturn<DatasetFormValues>;
   disabled: boolean;
-  previewDisabled: boolean;
-  onPreview: (index: number, trigger: HTMLElement) => void;
-  onEditMasks?: (index: number) => void;
+  qwenEditIssue: string | null;
+  workbenchDisabled: boolean;
+  onOpenWorkbench?: (index: number) => void;
 }) {
   const rows = useFieldArray({ control: form.control, name: 'datasets' });
+  const watchedRows = form.watch('datasets');
+  const editEnabled = watchedRows.some((row) => row.edit_role !== 'normal');
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
@@ -65,6 +67,47 @@ export function DatasetSubsetList({
     });
   }
 
+  function addEditPair() {
+    const hadDatasetErrors = Boolean(form.formState.errors.datasets);
+    const revalidate = () => {
+      if (hadDatasetErrors) queueMicrotask(() => void form.trigger('datasets'));
+    };
+    const current = form.getValues('datasets');
+    const incompleteIndex = current.findIndex((row) => row.edit_role !== 'normal'
+      && (!row.edit_pair_id || !current.some((other) => other.edit_pair_id === row.edit_pair_id && other.edit_role !== row.edit_role)));
+    const incomplete = current[incompleteIndex];
+    if (incomplete) {
+      const used = new Set(current.map((row) => row.edit_pair_id));
+      let number = 1;
+      while (used.has(String(number))) number += 1;
+      const pairId = incomplete.edit_pair_id || String(number);
+      if (!incomplete.edit_pair_id) form.setValue(`datasets.${incompleteIndex}.edit_pair_id`, pairId, { shouldDirty: true, shouldValidate: true });
+      rows.append({ ...emptyDatasetRow(form.getValues('defaults')),
+        edit_role: incomplete.edit_role === 'before' ? 'after' : 'before',
+        edit_pair_id: pairId });
+      revalidate();
+      return;
+    }
+    const used = new Set(current.map((row) => row.edit_pair_id));
+    let number = 1;
+    while (used.has(String(number))) number += 1;
+    const pairId = String(number);
+    const defaults = form.getValues('defaults');
+    if (rows.fields.length === 1 && form.getValues('datasets.0.edit_role') === 'normal') {
+      rows.replace([
+        { ...emptyDatasetRow(defaults), edit_role: 'before', edit_pair_id: pairId },
+        { ...current[0], is_reg: false, edit_role: 'after', edit_pair_id: pairId },
+      ]);
+      revalidate();
+      return;
+    }
+    rows.append([
+      { ...emptyDatasetRow(defaults), edit_role: 'before', edit_pair_id: pairId },
+      { ...emptyDatasetRow(defaults), edit_role: 'after', edit_pair_id: pairId },
+    ]);
+    revalidate();
+  }
+
   return (
     <section className="dataset-subsets">
       <header>
@@ -72,14 +115,27 @@ export function DatasetSubsetList({
           <h3>数据子集</h3>
           <span>{rows.fields.length} 项</span>
         </div>
-        <button
-          type="button"
-          onClick={() => rows.append(emptyDatasetRow(form.getValues('defaults')))}
-          disabled={disabled}
-        >
-          添加子集
-        </button>
+        <div className="dataset-subset-commands">
+          <button
+            type="button"
+            onClick={() => rows.append(emptyDatasetRow(form.getValues('defaults')))}
+            disabled={disabled || editEnabled}
+          >
+            添加子集
+          </button>
+          <button type="button" onClick={addEditPair} disabled={disabled || (watchedRows.length > 1 && watchedRows.some((row) => row.edit_role === 'normal'))}>
+            添加编辑配对
+          </button>
+        </div>
       </header>
+      {editEnabled && qwenEditIssue ? (
+        <p className="dataset-command-error" role="alert">
+          当前训练配置不兼容：{qwenEditIssue}；数据集可继续编辑，应用时需选择兼容配置。
+        </p>
+      ) : null}
+      {editEnabled && rows.fields.some((_field, index) => form.watch(`datasets.${index}.is_reg`)) ? (
+        <p className="dataset-command-error" role="alert">编辑 LoRA 首版不支持正则数据，请先移除正则子集。</p>
+      ) : null}
       {typeof form.formState.errors.datasets?.message === 'string' ? (
         <p className="dataset-command-error" role="alert">{form.formState.errors.datasets.message}</p>
       ) : null}
@@ -96,10 +152,9 @@ export function DatasetSubsetList({
                 rowCount={rows.fields.length}
                 selected={field.id === selectedId}
                 disabled={disabled}
-                previewDisabled={previewDisabled}
+                workbenchDisabled={workbenchDisabled}
                 onSelect={() => setSelectedId(field.id)}
-                onPreview={(trigger) => onPreview(index, trigger)}
-                onEditMasks={onEditMasks ? () => onEditMasks(index) : undefined}
+                onOpenWorkbench={onOpenWorkbench ? () => onOpenWorkbench(index) : undefined}
                 onMove={(nextIndex) => rows.move(index, nextIndex)}
                 onRemove={() => rows.remove(index)}
                 onCopyExperimental={copyExperimentalRules}

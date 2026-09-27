@@ -16,6 +16,7 @@ from PIL import Image
 
 from web.services.config import dataset_presets_api as presets
 from web.services.config.mask_editor_geometry import check_size, prepare_image
+from web.services.config.revisioned_text import RevisionConflictError, text_revision
 
 _LOCK = RLock()
 MAX_PNG_BYTES = 24 * 1024 * 1024
@@ -201,7 +202,12 @@ def save_mask(file: str, index: int, image: str, revision: str, png: bytes) -> d
         return {"ok": True, "message": "蒙版已保存", "revision": _target(file, index, image)[6]}
 
 
-def apply_masks(file: str, index: int, revision: str) -> dict:
+def apply_masks(
+    file: str,
+    index: int,
+    revision: str,
+    target_indices: list[int] | None = None,
+) -> dict:
     with _write_lock(file):
         preset, _row, _source, _training, root = _context(file, index)
         _check_writable(preset)
@@ -209,12 +215,30 @@ def apply_masks(file: str, index: int, revision: str) -> dict:
             raise MaskConflict("数据集配置已变化，请刷新后再应用")
         doc = tomlkit.parse(preset["content"])
         subsets = [subset for dataset in doc.get("datasets", []) for subset in dataset.get("subsets", [])]
-        if index >= len(subsets):
-            raise ValueError("此数据集结构不支持直接应用蒙版")
-        subsets[index]["mask_mode"] = "external"
-        subsets[index]["mask_dir"] = presets._display_path(root)
-        subsets[index]["alpha_mask"] = True
-        ok, message, _warnings = presets.save_raw_file(file, tomlkit.dumps(doc), overwrite=True)
+        selected = [index] if target_indices is None else target_indices
+        if not selected or any(type(item) is not int for item in selected):
+            raise ValueError("至少选择一个有效子集")
+        if len(set(selected)) != len(selected):
+            raise ValueError("子集列表不能重复")
+        if any(item < 0 or item >= len(subsets) for item in selected):
+            raise ValueError("目标子集序号超出范围")
+        for target_index in selected:
+            subsets[target_index]["mask_mode"] = "external"
+            subsets[target_index]["mask_dir"] = presets._display_path(root)
+            subsets[target_index]["alpha_mask"] = True
+        try:
+            ok, message, _warnings = presets.save_raw_file(
+                file,
+                tomlkit.dumps(doc),
+                overwrite=True,
+                expected_revision=text_revision(preset["content"]),
+            )
+        except RevisionConflictError as exc:
+            raise MaskConflict("数据集配置已变化，请刷新后再应用") from exc
         if not ok:
             raise ValueError(message)
-        return {"ok": True, "message": "已应用到此子集，后续启动的训练生效"}
+        return {
+            "ok": True,
+            "message": f"已应用到 {len(selected)} 个子集，后续启动的训练生效",
+            "indices": selected,
+        }

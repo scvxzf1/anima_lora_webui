@@ -498,12 +498,12 @@ async def _monitor_system(
     # Sample immediately on launch, then keep a short cadence so the
     # dashboard "资源与活动" panel tracks preprocess/training GPU load.
     while generation == self._run_generation and self.status == "running":
-        from web.services.training.gpu_async import get_gpu_stats
-
-        stats = await get_gpu_stats(list(gpu_whitelist))
+        snapshot = await self._gpu_snapshot_cache.read(ttl=2.0)
+        stats = snapshot.stats(list(gpu_whitelist)) if snapshot else {}
         if generation != self._run_generation or self.status != "running":
             return
         if stats:
+            stats["per_gpu"] = snapshot.history_rows()
             stats["last_output_at"] = self._last_output_at
             stats["ts"] = time.time()
             self._latest_system_stats = dict(stats)

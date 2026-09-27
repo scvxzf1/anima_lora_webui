@@ -82,7 +82,13 @@ export function LogViewer({
         </button>
       </div>
       <p className="data-scope">当前视图 {visible.length} 行 · 最近 {Math.min(500, lines.length)} / 已读取 {lines.length} 行{total !== undefined && total > lines.length ? ` / 共 ${total} 行（前段未读取）` : ""}</p>
-      <pre ref={ref} role="log" aria-live="off">
+      <pre
+        ref={ref}
+        role="log"
+        aria-label="日志内容"
+        aria-live="off"
+        tabIndex={0}
+      >
         {text || (lines.length ? "当前视图无匹配日志" : "暂无日志")}
       </pre>
       {notice && <p role="status">{notice}</p>}

@@ -5,7 +5,7 @@ import {
     familyLabel,
     MODEL_PATH_FIELDS,
     normalizeModelGroups,
-} from './model-config-state.js?v=dragon-ui-20260824-zimage-v1';
+} from './model-config-state.js?v=qwen-image-21-v1';
 
 const api = createApiClient();
 

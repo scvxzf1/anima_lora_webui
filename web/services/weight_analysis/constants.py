@@ -60,7 +60,7 @@ UNSUPPORTED_KEY_FRAGMENTS = (
     ".s_q",
     "vera_lambda_",
 )
-BLOCK_RE = re.compile(r"(?:^|_)blocks_(?P<block>\d+)_(?P<component>.+)$")
+BLOCK_RE = re.compile(r"(?:^|_)(?:blocks|layers)_(?P<block>\d+)_(?P<component>.+)$")
 LORA_SUFFIX = ".lora_down.weight"
 LOHA_SUFFIX = ".hada_w1_a"
 LOKR_SUFFIX = ".lokr_w1"

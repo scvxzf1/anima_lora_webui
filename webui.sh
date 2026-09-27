@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# WebUI 快捷启动：等待服务就绪后打开 Dragon UI。
+# WebUI 快捷启动：等待服务就绪后打开 Next UI。
 # 环境变量覆盖:
 #   ANIMA_WEB_HOST / ANIMA_WEB_PORT
 #   ANIMA_WEB_BROWSER_HOST（外部绑定时指定本机访问地址）
@@ -18,7 +18,7 @@ case "$BROWSER_HOST" in
   0.0.0.0|::|"[::]") BROWSER_HOST="127.0.0.1" ;;
 esac
 
-DRAGON_URL="http://${BROWSER_HOST}:${ANIMA_WEB_PORT}/?ui=dragon"
+NEXT_URL="http://${BROWSER_HOST}:${ANIMA_WEB_PORT}/next"
 OPEN_BROWSER="${ANIMA_WEB_OPEN_BROWSER:-1}"
 READY_TIMEOUT="${ANIMA_WEB_READY_TIMEOUT:-45}"
 
@@ -40,27 +40,27 @@ open_url() {
   fi
 }
 
-dragon_ready() {
+next_ready() {
   local html
-  html="$(curl -fsS --max-time 1 "$DRAGON_URL" 2>/dev/null)" || return 1
-  [[ "$html" == *'id="dragon-root"'* ]]
+  html="$(curl -fsS --max-time 1 "$NEXT_URL" 2>/dev/null)" || return 1
+  [[ "$html" == *'id="root"'* ]]
 }
 
 if ! command -v curl >/dev/null 2>&1; then
   echo "[Anima LoRA] 未找到 curl，无法自动检测和打开页面。"
-  echo "[Anima LoRA] 服务启动后请手动打开：$DRAGON_URL"
+  echo "[Anima LoRA] 服务启动后请手动打开：$NEXT_URL"
   exec ./start_webui.sh "$@"
 fi
 
-if dragon_ready; then
-  echo "[Anima LoRA] Dragon UI 已在运行：$DRAGON_URL"
+if next_ready; then
+  echo "[Anima LoRA] Next UI 已在运行：$NEXT_URL"
   if [ "$OPEN_BROWSER" != "0" ]; then
-    open_url "$DRAGON_URL" || echo "[Anima LoRA] 请手动打开：$DRAGON_URL"
+    open_url "$NEXT_URL" || echo "[Anima LoRA] 请手动打开：$NEXT_URL"
   fi
   exit 0
 fi
 
-echo "[Anima LoRA] WebUI 快捷启动 → $DRAGON_URL"
+echo "[Anima LoRA] WebUI 快捷启动 → $NEXT_URL"
 ./start_webui.sh "$@" &
 SERVER_PID=$!
 
@@ -74,7 +74,7 @@ trap cleanup INT TERM EXIT
 
 READY=0
 for ((attempt = 0; attempt < READY_TIMEOUT * 2; attempt++)); do
-  if dragon_ready; then
+  if next_ready; then
     READY=1
     break
   fi
@@ -85,13 +85,13 @@ for ((attempt = 0; attempt < READY_TIMEOUT * 2; attempt++)); do
 done
 
 if [ "$READY" = "1" ]; then
-  echo "[Anima LoRA] Dragon UI 已启动：$DRAGON_URL"
+  echo "[Anima LoRA] Next UI 已启动：$NEXT_URL"
   if [ "$OPEN_BROWSER" != "0" ]; then
-    open_url "$DRAGON_URL" || echo "[Anima LoRA] 请手动打开：$DRAGON_URL"
+    open_url "$NEXT_URL" || echo "[Anima LoRA] 请手动打开：$NEXT_URL"
   fi
 else
-  echo "[Anima LoRA] Dragon UI 未在 ${READY_TIMEOUT}s 内就绪。" >&2
-  echo "[Anima LoRA] 可稍后手动打开：$DRAGON_URL" >&2
+  echo "[Anima LoRA] Next UI 未在 ${READY_TIMEOUT}s 内就绪。" >&2
+  echo "[Anima LoRA] 可稍后手动打开：$NEXT_URL" >&2
 fi
 
 set +e

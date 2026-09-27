@@ -64,7 +64,7 @@ import {
 import {
     loadModelFamilyCapabilities,
     modelFamilySelectOptions,
-} from '../../features/config-form/model-family.js?v=auto-block-swap-20260908-v3';
+} from '../../features/config-form/model-family.js?v=qwen-image-21-v2';
 import {
     bindConfigFieldHelpDialog,
     configHelpSummary,

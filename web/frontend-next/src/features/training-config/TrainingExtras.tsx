@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { apiRequest } from "../../api/client";
+import { apiRequest, ApiError } from "../../api/client";
 import type { TrainingConfigFile } from "../../api/trainingContext";
 import { CommandDialog } from "../../components/CommandDialog";
 import { useServerDraftState } from "../../components/useServerDraft";
@@ -10,7 +10,7 @@ import {
   settingsKeys,
   type ModelConfigItem,
 } from "../settings/api";
-import { saveTrainingConfigPatch } from "./api";
+import { fetchRawTrainingConfig, saveTrainingConfigPatch } from "./api";
 import { PromptVisualEditor } from "./PromptVisualEditor";
 
 type PromptsResponse = {
@@ -19,6 +19,8 @@ type PromptsResponse = {
   content: string;
   prompts: string[];
   exists?: boolean;
+  revision?: string;
+  targetRevision?: string;
 };
 
 export function TrainingModelPicker({
@@ -72,11 +74,13 @@ export function TrainingModelPicker({
 export function TrainingSamplePrompts({
   file,
   promptFile,
+  configRevision,
   onClose,
   onSaved,
 }: {
   file: TrainingConfigFile;
   promptFile: string;
+  configRevision?: string;
   onClose: () => void;
   onSaved: () => Promise<void>;
 }) {
@@ -91,7 +95,9 @@ export function TrainingSamplePrompts({
       const fork = file.path.replace(/^configs\//, "configs/sample-prompts/").replace(/\.toml$/i, ".txt");
       const saved = await read(fork);
       if (saved.exists === undefined && !saved.content) throw new Error("当前后端未提供文件存在状态，请重启 WebUI 后读取旧提示词。不会覆盖已有文件。");
-      return saved.exists === false ? read("configs/sample_prompts.txt") : saved;
+      if (saved.exists !== false) return saved;
+      const fallback = await read("configs/sample_prompts.txt");
+      return { ...fallback, targetRevision: saved.revision };
     },
   });
   const editor = useServerDraftState(query.data?.content);
@@ -115,11 +121,12 @@ export function TrainingSamplePrompts({
             file: query.data?.file,
             train_config_file: file.path,
             content: editor.draft,
+            revision: query.data?.targetRevision || query.data?.revision,
           }),
         },
       );
-      setNotice(`提示词已保存至 ${saved.file}`);
-      await saveTrainingConfigPatch(file.path, { sample_prompts: saved.file });
+      setNotice(`提示词已保存至 ${saved.file}；正在更新配置引用`);
+      await saveTrainingConfigPatch(file.path, { sample_prompts: saved.file }, configRevision);
       return saved;
     },
     retry: false,
@@ -130,6 +137,15 @@ export function TrainingSamplePrompts({
       onClose();
     },
   });
+  const saveConflict = save.error instanceof ApiError && save.error.status === 409;
+  async function reloadAfterConflict() {
+    if (!window.confirm("重新加载会放弃当前未保存的提示词修改。是否继续？")) return;
+    const refreshed = await query.refetch();
+    await fetchRawTrainingConfig(file.path);
+    if (refreshed.data) editor.replace(refreshed.data.content);
+    save.reset();
+    setNotice("");
+  }
   const close = () => {
     if (confirmClose) { setConfirmClose(false); return; }
     if (!editor.dirty && !rowDirty) { onClose(); return; }
@@ -156,6 +172,7 @@ export function TrainingSamplePrompts({
       {(query.error || save.error) && (
         <p role="alert" className="form-error">
           {(query.error || save.error)?.message}
+          {saveConflict && <button type="button" onClick={() => void reloadAfterConflict()}>重新加载提示词</button>}
         </p>
       )}
       {notice && <p role="status">{notice}</p>}
@@ -172,6 +189,7 @@ export function TrainingSamplePrompts({
             editingRow ||
             query.isPending ||
             Boolean(query.error) ||
+            saveConflict ||
             Boolean(file.locked || file.readonly)
           }
         >

@@ -7,6 +7,7 @@ from types import SimpleNamespace
 
 import pytest
 from aiohttp import web
+from yarl import URL
 
 from web.server import index_handler, next_index_handler, static_handler
 from web import server as web_server
@@ -15,14 +16,23 @@ from web import server as web_server
 class _StaticRequest:
     def __init__(self, path: str = "") -> None:
         self.match_info = {"path": path}
+        self.rel_url = URL(path or "/")
 
 
 def _run(coro):
     return asyncio.run(coro)
 
 
-def test_web_index_serves_versioned_frontend_entrypoint() -> None:
-    response = _run(index_handler(_StaticRequest()))
+def test_web_index_redirects_to_next_by_default() -> None:
+    with pytest.raises(web.HTTPFound) as exc_info:
+        _run(index_handler(_StaticRequest("/?token=example")))
+
+    assert str(exc_info.value.location) == "/next?token=example"
+
+
+@pytest.mark.parametrize("mode", ["dragon", "classic"])
+def test_web_index_preserves_legacy_frontend_entrypoints(mode: str) -> None:
+    response = _run(index_handler(_StaticRequest(f"/?ui={mode}")))
 
     assert response.status == 200
     assert response.headers["Cache-Control"] == "no-cache"

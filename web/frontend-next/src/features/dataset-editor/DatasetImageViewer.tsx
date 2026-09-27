@@ -18,6 +18,7 @@ export function DatasetImageViewer({ image, returnFocus, onClose }: Props) {
   const onCloseRef = useRef(onClose);
   const [copyStatus, setCopyStatus] = useState('');
   const [imageFailed, setImageFailed] = useState(false);
+  const [imageLoading, setImageLoading] = useState(true);
   const [reloadIndex, setReloadIndex] = useState(0);
 
   useEffect(() => {
@@ -63,13 +64,14 @@ export function DatasetImageViewer({ image, returnFocus, onClose }: Props) {
           </button>
         </header>
         <div className="dataset-image-viewer-body">
-          <div className="dataset-image-viewer-canvas">
+          <div className="dataset-image-viewer-canvas" aria-busy={imageLoading}>
             {imageFailed ? (
               <div className="dataset-image-viewer-error" role="alert">
                 <ImageOff aria-hidden="true" size={30} />
                 <strong>图片加载失败</strong>
                 <button type="button" onClick={() => {
                   setImageFailed(false);
+                  setImageLoading(true);
                   setReloadIndex((current) => current + 1);
                 }}>
                   <RefreshCw aria-hidden="true" size={15} />
@@ -77,7 +79,19 @@ export function DatasetImageViewer({ image, returnFocus, onClose }: Props) {
                 </button>
               </div>
             ) : (
-              <img key={reloadIndex} src={image.url} alt={image.name} onError={() => setImageFailed(true)} />
+              <>
+                {imageLoading ? <p className="dataset-image-viewer-loading" role="status" aria-live="polite">正在读取图片</p> : null}
+                <img
+                  key={reloadIndex}
+                  src={image.url}
+                  alt={image.name}
+                  onLoad={() => setImageLoading(false)}
+                  onError={() => {
+                    setImageLoading(false);
+                    setImageFailed(true);
+                  }}
+                />
+              </>
             )}
           </div>
           <aside>

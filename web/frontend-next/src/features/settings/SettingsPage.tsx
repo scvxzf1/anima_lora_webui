@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Save, RotateCcw } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useServerDraft } from "../../components/useServerDraft";
+import { ApiError } from "../../api/client";
 import { QueryFeedback } from "../../components/QueryFeedback";
 import { useTrainingContextStore } from "../../app/trainingContextStore";
 import { fetchGlobalSettings, saveGlobalSettings, settingsKeys } from "./api";
@@ -28,7 +29,7 @@ export function SettingsPage() {
   const [notice, setNotice] = useState("");
   const save = useMutation({
     mutationFn: (submitted: NonNullable<typeof editor.draft>) =>
-      saveGlobalSettings(settingsPatch(submitted, editor.baseline!)),
+      saveGlobalSettings({ ...settingsPatch(submitted, editor.baseline!), revision: query.data?.revision }),
     onSuccess: async (data, submitted) => {
       qc.setQueryData(settingsKeys.global, data);
       editor.accept(settingsDraft(data), submitted);
@@ -51,8 +52,15 @@ export function SettingsPage() {
     },
     retry: false,
   });
+  const saveConflict = save.error instanceof ApiError && save.error.status === 409;
+  async function reloadAfterConflict() {
+    if (!window.confirm("重新读取会放弃当前未保存的设置修改。是否继续？")) return;
+    const refreshed = await query.refetch();
+    if (refreshed.data) editor.replace(settingsDraft(refreshed.data));
+    save.reset();
+  }
   function submit() {
-    if (!editor.draft || !editor.baseline || save.isPending || query.error) return;
+    if (!editor.draft || !editor.baseline || save.isPending || saveConflict || query.error) return;
     const patch = settingsPatch(editor.draft, editor.baseline);
     const pathsChanged = [
       "configs_root",
@@ -150,7 +158,7 @@ export function SettingsPage() {
               <button
                 type="submit"
                 className="primary-command"
-                disabled={!editor.dirty || save.isPending || Boolean(query.error)}
+                disabled={!editor.dirty || save.isPending || saveConflict || Boolean(query.error)}
               >
                 <Save size={16} />
                 {save.isPending ? "保存中" : "保存设置"}
@@ -188,6 +196,7 @@ export function SettingsPage() {
         {save.error && (
           <p role="alert" className="form-error">
             {save.error.message}
+            {saveConflict && <button type="button" onClick={() => void reloadAfterConflict()}>重新读取设置</button>}
           </p>
         )}
         {notice && !editor.dirty && !query.error && <p role="status">{notice}</p>}

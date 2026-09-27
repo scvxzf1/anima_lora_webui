@@ -67,6 +67,23 @@ def test_local_profiles_are_reserved_without_claiming_to_be_available(tmp_path, 
     assert not (tmp_path / "models").exists()
 
 
+@pytest.mark.parametrize("provider", ["wd14", "cltagger"])
+def test_local_profiles_reject_api_keys_without_persisting_them(tmp_path, monkeypatch, provider) -> None:
+    _patch_paths(tmp_path, monkeypatch)
+    source = {"id": f"{provider}-local", "name": provider, "provider": provider}
+    with pytest.raises(ValueError, match="不使用 API Key"):
+        profiles.create_profile({**source, "api_key": "should-not-be-saved"})
+    assert not profiles.profiles_file().exists()
+    assert not settings.SECRETS_FILE.exists()
+
+    profiles.create_profile(source)
+    before = profiles.profiles_file().read_bytes()
+    with pytest.raises(ValueError, match="不使用 API Key"):
+        profiles.update_profile(source["id"], {"api_key": "should-not-be-saved"})
+    assert profiles.profiles_file().read_bytes() == before
+    assert not settings.SECRETS_FILE.exists()
+
+
 def test_local_profile_normalizes_target_project_model_ids(tmp_path, monkeypatch) -> None:
     _patch_paths(tmp_path, monkeypatch)
     created = profiles.create_profile(
@@ -209,6 +226,15 @@ def test_profile_routes_are_available_under_both_prefixes(tmp_path, monkeypatch)
                 body = await created.json()
                 assert body["profile"]["id"] == "route-api"
                 assert "route-secret" not in str(body)
+
+                rejected = await client.post(
+                    "/api/captioning/profiles",
+                    json={"id": "local-with-secret", "name": "Local", "provider": "wd14", "api_key": "local-secret"},
+                )
+                assert rejected.status == 400
+                assert "local-secret" not in str(await rejected.json())
+                assert all(item["id"] != "local-with-secret" for item in profiles.list_profiles()["profiles"])
+                assert "local-secret" not in settings.SECRETS_FILE.read_text(encoding="utf-8")
 
                 activated = await client.post("/api/tagging/profiles/route-api/activate", json={})
                 assert activated.status == 200

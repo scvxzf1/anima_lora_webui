@@ -24,6 +24,7 @@
 | 查稳定方法 | [方法索引](methods/README.md) |
 | 查可运行实验 | [实验索引](experimental/README.md) |
 | 理解模型、路由和优化原理 | [结构索引](structure/README.md) |
+| 理解 FP16/FP32 训练误差与静态测试边界 | [混合精度数值论证](structure/adaptive-precision-numerics.md) |
 | 查实验结论、失败路径和审计 | [研究结论索引](findings/README.md) |
 | 评估活跃提案或维护计划 | [提案索引](proposal/README.md)、[施工区索引](superpowers/README.md) |
 | 准备贡献或认领待办 | [PR 规范](../CONTRIBUTING.md)、[贡献优先事项](contribution-priorities.md) |

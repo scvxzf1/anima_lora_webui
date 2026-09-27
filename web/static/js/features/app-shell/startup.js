@@ -118,7 +118,7 @@ import {
     resetConfigFormDraft,
     syncConfigDraftFromForm,
 } from '../config-form/index.js?v=module-bootstrap-20260903-flash-defaults-v1';
-import { loadModelFamilyCapabilities } from '../config-form/model-family.js?v=auto-block-swap-20260908-v3';
+import { loadModelFamilyCapabilities } from '../config-form/model-family.js?v=qwen-image-21-v2';
 
 const ctx = getAppContext();
 const appShellState = getAppShellState();

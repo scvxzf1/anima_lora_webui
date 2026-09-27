@@ -53,6 +53,9 @@ for (const width of [1440, 390]) {
       await page
         .getByRole("button", { name: "展开配置库", exact: true })
         .click();
+    if (width === 390)
+      await expect(page.getByRole("switch", { name: "详细管理" })).toBeInViewport();
+    await page.getByText("详细管理", { exact: true }).click();
     const create = page.getByRole("button", { name: "新建分组", exact: true });
     await create.click();
     let dialog = page.getByRole("dialog", { name: "新建分组", exact: true });

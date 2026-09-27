@@ -138,3 +138,57 @@ test("dataset management validates the initial deep link against the library", a
   expect(reads).not.toContain("missing.toml");
   expect(mocks.writes).toEqual([]);
 });
+
+test("dataset library recovers from an offline response into a confirmed empty state", async ({ page }) => {
+  const mocks = await mockWorkspace(page);
+  const attempts: string[] = [];
+  let recovered = false;
+  await page.route((url) => url.pathname === "/api/config/dataset-presets", async (route) => {
+    attempts.push(route.request().method());
+    if (!recovered) {
+      return route.fulfill({ status: 503, json: { error: "dataset library unavailable" } });
+    }
+    return route.fulfill({ json: { ok: true, presets: [], groups: [] } });
+  });
+
+  await page.goto("/next/datasets");
+  await expect(page.getByRole("alert")).toContainText("dataset library unavailable");
+  const attemptsBeforeManualRetry = attempts.length;
+  expect(attemptsBeforeManualRetry).toBeGreaterThan(0);
+  recovered = true;
+  await page.getByRole("button", { name: "重试", exact: true }).click();
+  await expect(page.locator(".dataset-library")).toContainText("没有匹配的数据集预设");
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  expect(attempts).toHaveLength(attemptsBeforeManualRetry + 1);
+  expect(attempts.every((method) => method === "GET")).toBe(true);
+  expect(mocks.writes).toEqual([]);
+  expect(mocks.unhandled).toEqual([]);
+});
+
+test("dataset library keeps its workspace in a loading gate until presets arrive", async ({ page }) => {
+  const mocks = await mockWorkspace(page);
+  let announceStarted = () => {};
+  let releaseResponse = () => {};
+  const started = new Promise<void>(resolve => { announceStarted = resolve; });
+  const responseGate = new Promise<void>(resolve => { releaseResponse = resolve; });
+  await page.route(
+    url => url.pathname === "/api/config/dataset-presets",
+    async route => {
+      if (route.request().method() !== "GET") return route.fallback();
+      announceStarted();
+      await responseGate;
+      return route.fallback();
+    },
+  );
+
+  await page.goto("/next/datasets");
+  await started;
+  await expect(page.locator(".dataset-workspace")).toHaveAttribute("aria-busy", "true");
+  await expect(page.getByText("正在读取预设库", { exact: true })).toBeVisible();
+
+  releaseResponse();
+  await expect(page.locator(".dataset-workspace")).toHaveAttribute("aria-busy", "false");
+  await expect(page.locator(".dataset-library")).toContainText("Studio");
+  expect(mocks.writes).toEqual([]);
+  expect(mocks.unhandled).toEqual([]);
+});

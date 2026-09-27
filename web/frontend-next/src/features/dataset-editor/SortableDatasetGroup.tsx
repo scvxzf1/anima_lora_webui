@@ -2,7 +2,7 @@ import { useDroppable } from '@dnd-kit/core';
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, GripVertical } from 'lucide-react';
-import { useId } from 'react';
+import { useId, type PointerEvent as ReactPointerEvent } from 'react';
 
 import {
   datasetMoveTargets,
@@ -22,6 +22,7 @@ type Props = {
   groups: DatasetLibraryGroup[];
   selectedFile: string;
   searchActive: boolean;
+  detailedManagement: boolean;
   ordering: boolean;
   sortableGroupIndex: number;
   sortableGroupCount: number;
@@ -58,6 +59,7 @@ export function SortableDatasetGroup({
   groups,
   selectedFile,
   searchActive,
+  detailedManagement,
   ordering,
   sortableGroupIndex,
   sortableGroupCount,
@@ -174,6 +176,7 @@ export function SortableDatasetGroup({
               index={index}
               selected={preset.path === selectedFile}
               searchActive={searchActive}
+              detailedManagement={detailedManagement}
               ordering={ordering}
               presetDragging={presetDragging}
               dropPosition={dropTarget?.groupId === group.id && dropTarget.file === preset.path ? dropTarget.position : undefined}
@@ -181,14 +184,16 @@ export function SortableDatasetGroup({
               onPlacePreset={onPlacePreset}
             />
           ))}
-          <div
-            ref={effectiveCollapsed ? undefined : drop.setNodeRef}
-            className="dataset-group-dropzone"
-            data-over={dropTarget?.groupId === group.id && !dropTarget.file}
-            data-visible={presetDragging || group.files.length === 0}
-          >
-            {group.files.length === 0 ? '空分组，可将预设移到此处' : '拖到此组末尾'}
-          </div>
+          {detailedManagement || presetDragging ? (
+            <div
+              ref={effectiveCollapsed ? undefined : drop.setNodeRef}
+              className="dataset-group-dropzone"
+              data-over={dropTarget?.groupId === group.id && !dropTarget.file}
+              data-visible={presetDragging || group.files.length === 0}
+            >
+              {group.files.length === 0 ? '空分组，可将预设移到此处' : '拖到此组末尾'}
+            </div>
+          ) : group.files.length === 0 ? <p className="dataset-empty">暂无预设</p> : null}
         </div>
       </SortableContext>
     </section>
@@ -202,6 +207,7 @@ type PresetRowProps = {
   index: number;
   selected: boolean;
   searchActive: boolean;
+  detailedManagement: boolean;
   ordering: boolean;
   presetDragging: boolean;
   dropPosition?: 'before' | 'after';
@@ -216,6 +222,7 @@ function SortablePresetRow({
   index,
   selected,
   searchActive,
+  detailedManagement,
   ordering,
   presetDragging,
   dropPosition,
@@ -239,6 +246,9 @@ function SortablePresetRow({
   const sortDisabledReason = searchActive
     ? '搜索时不能调整预设顺序'
     : '该预设不能排序';
+  const coverPointerDown = sortable && !ordering && sort.listeners?.onPointerDown
+    ? (event: ReactPointerEvent<HTMLSpanElement>) => sort.listeners?.onPointerDown?.(event)
+    : undefined;
 
   return (
     <div ref={sort.setNodeRef} style={style} className="dataset-preset-row" data-dragging={sort.isDragging} data-drop-position={dropPosition} data-file={preset.path}>
@@ -248,7 +258,7 @@ function SortablePresetRow({
         data-selected={selected}
         onClick={() => onSelect(preset.path)}
       >
-        <DatasetCover file={preset.path} />
+        <DatasetCover file={preset.path} onPointerDown={coverPointerDown} />
         <span className="dataset-preset-title">
           <strong>{name}</strong>
           {preset.readonly ? <span className="badge">只读</span> : null}
@@ -258,7 +268,7 @@ function SortablePresetRow({
           {preset.summary?.dataset_count ?? 0} 组 · 重复 {preset.summary?.repeat_total ?? 0}
         </span>
       </button>
-      {movable ? (
+      {detailedManagement && movable ? (
         <div className="dataset-preset-order-controls" aria-label={`${name} 排序与分组`}>
           <button
             ref={sort.setActivatorNodeRef}

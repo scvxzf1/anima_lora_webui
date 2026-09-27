@@ -8,7 +8,7 @@ import {
     modelFamilyLabel,
     moveModelConfig,
     moveModelConfigByOffset,
-} from './model-config-data.js?v=module-bootstrap-20260831-release-v1';
+} from './model-config-data.js?v=qwen-image-21-v1';
 
 const state = {
     items: [],

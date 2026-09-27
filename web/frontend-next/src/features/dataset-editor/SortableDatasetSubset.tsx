@@ -1,6 +1,6 @@
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { ArrowDown, ArrowUp, Brush, GripVertical, Images } from 'lucide-react';
+import { ArrowDown, ArrowUp, Images, GripVertical } from 'lucide-react';
 import { useEffect, useState, type KeyboardEvent } from 'react';
 import type { FieldPath, UseFormReturn } from 'react-hook-form';
 
@@ -16,10 +16,9 @@ type Props = {
   rowCount: number;
   selected: boolean;
   disabled: boolean;
-  previewDisabled: boolean;
+  workbenchDisabled: boolean;
   onSelect: () => void;
-  onPreview: (trigger: HTMLElement) => void;
-  onEditMasks?: () => void;
+  onOpenWorkbench?: () => void;
   onMove: (index: number) => void;
   onRemove: () => void;
   onCopyExperimental: (sourceId: string, targetIds: string[]) => void;
@@ -33,10 +32,9 @@ export function SortableDatasetSubset({
   rowCount,
   selected,
   disabled,
-  previewDisabled,
+  workbenchDisabled,
   onSelect,
-  onPreview,
-  onEditMasks,
+  onOpenWorkbench,
   onMove,
   onRemove,
   onCopyExperimental,
@@ -48,6 +46,10 @@ export function SortableDatasetSubset({
   };
   const path = (key: string) => `datasets.${index}.${key}` as FieldPath<DatasetFormValues>;
   const row = form.watch(`datasets.${index}`);
+
+  function revalidatePairs() {
+    if (form.formState.errors.datasets) queueMicrotask(() => void form.trigger('datasets'));
+  }
 
   function handleSortKey(event: KeyboardEvent<HTMLButtonElement>) {
     if (event.altKey && event.key === 'ArrowUp' && index > 0) {
@@ -76,26 +78,16 @@ export function SortableDatasetSubset({
     >
       <legend className="dataset-row-legend">
         <span>子集 {index + 1}</span>
-        {onEditMasks && <button
+        {onOpenWorkbench && <button
           type="button"
-          aria-label={`编辑子集 ${index + 1} 蒙版`}
-          title={previewDisabled ? '请先保存当前预设，并确保没有未保存修改' : '编辑此子集的蒙版'}
-          disabled={previewDisabled || disabled}
-          onClick={onEditMasks}
-        >
-          <Brush aria-hidden="true" size={15} />
-          编辑蒙版
-        </button>}
-        <button
-          type="button"
-          aria-label={`预览子集 ${index + 1} 图片和标注`}
-          title={previewDisabled ? '请先保存当前预设，并确保没有未保存修改' : '预览图片和标注'}
-          disabled={previewDisabled}
-          onClick={(event) => onPreview(event.currentTarget)}
+          aria-label={`打开子集 ${index + 1} 图片工作台`}
+          title={workbenchDisabled ? '请先保存当前预设，并确保没有未保存修改' : '打开此子集的图片工作台'}
+          disabled={workbenchDisabled}
+          onClick={onOpenWorkbench}
         >
           <Images aria-hidden="true" size={15} />
-          预览
-        </button>
+          图片工作台
+        </button>}
       </legend>
       <div className="dataset-row-heading">
         <div className="dataset-row-order-controls">
@@ -119,22 +111,42 @@ export function SortableDatasetSubset({
             <ArrowDown size={15} aria-hidden="true" />
           </button>
         </div>
-        <label className="dataset-checkbox-field">
+        <label>
+          <span>子集角色</span>
+          <select {...form.register(path('edit_role'), {
+            onChange: () => {
+              form.setValue(`datasets.${index}.is_reg`, false, { shouldDirty: true, shouldValidate: true });
+              revalidatePairs();
+            },
+          })}>
+            <option value="normal">非编辑（普通数据集）</option>
+            <option value="before">编辑前</option>
+            <option value="after">编辑后</option>
+          </select>
+        </label>
+        {row.edit_role === 'normal' && <label className="dataset-checkbox-field">
           <input type="checkbox" {...form.register(path('is_reg'))} />
           <span>正则数据</span>
-        </label>
+        </label>}
         <button type="button" className="danger-command" onClick={onRemove} disabled={disabled || rowCount <= 1}>
           删除子集
         </button>
       </div>
 
+      {row.edit_role !== 'normal' && <label className="dataset-wide-field">
+        <span>配对编号或名称</span>
+        <input {...form.register(path('edit_pair_id'), { onChange: revalidatePairs })} placeholder="例如：1" />
+        <FieldError form={form} path={path('edit_pair_id')} />
+      </label>}
+
       <label className="dataset-wide-field">
-        <span>原始图片目录</span>
+        <span>{row.edit_role === 'before' ? '编辑前图片目录' : row.edit_role === 'after' ? '目标图原始目录（编辑后）' : '原始图片目录'}</span>
         <input {...form.register(path('source_dir'))} />
         <FieldError form={form} path={path('source_dir')} />
       </label>
+      {row.edit_role !== 'before' && <>
       <label>
-        <span>处理图片目录</span>
+        <span>{row.edit_role === 'after' ? '目标图训练目录（编辑后）' : '处理图片目录'}</span>
         <input {...form.register(path('image_dir'))} />
       </label>
       <label>
@@ -194,6 +206,7 @@ export function SortableDatasetSubset({
           onApply={(targets) => onCopyExperimental(fieldId, targets)}
         />
       </details>
+      </>}
     </fieldset>
   );
 }

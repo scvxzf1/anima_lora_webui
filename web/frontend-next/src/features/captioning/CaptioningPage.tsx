@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { List } from "lucide-react";
 import { NavLink, useLocation, useSearchParams } from "react-router-dom";
+import { QueryFeedback } from "../../components/QueryFeedback";
 import { captioningKeys, fetchCaptionJobs, fetchCaptionProfiles } from "./api";
 import { CaptionSource } from "./CaptionSource";
 import { CaptionReview } from "./CaptionReview";
@@ -12,20 +13,45 @@ import { CaptionJobCleanup } from "./CaptionJobCleanup";
 import "../settings/settings.css";
 import "./captioning.css";
 
-export function CaptioningPage() {
+export function CaptioningPage({ embeddedBasePath = "/captioning" }: { embeddedBasePath?: string }) {
   const [params, setParams] = useSearchParams();
   const location = useLocation();
   const section = location.pathname.split("/").filter(Boolean).at(-1);
   const profiles = useQuery({
     queryKey: captioningKeys.profiles,
     queryFn: ({ signal }) => fetchCaptionProfiles(signal),
+    retry: false,
   });
   const jobs = useQuery({
     queryKey: captioningKeys.jobs,
     queryFn: ({ signal }) => fetchCaptionJobs(signal),
-    refetchInterval: 5000,
+    retry: false,
+    refetchInterval: (query) => (query.state.error ? false : 5000),
   });
   const selectedJob = params.get("job") || "";
+  const captionViewPath = (name = "") => `${embeddedBasePath}${name ? `/${name}` : ""}${location.search}`;
+  function setSelectedJob(jobId: string) {
+    setParams((current) => {
+      const next = new URLSearchParams();
+      for (const key of ["dataset", "subset"]) {
+        const value = current.get(key);
+        if (value !== null) next.set(key, value);
+      }
+      if (jobId) next.set("job", jobId);
+      return next;
+    }, { replace: true });
+  }
+
+  function setSourceContext(file: string, index: number) {
+    setParams((current) => {
+      const next = new URLSearchParams(current);
+      if (file) next.set("dataset", file);
+      else next.delete("dataset");
+      next.set("subset", String(index));
+      next.delete("job");
+      return next;
+    }, { replace: true });
+  }
   const [showJobs, setShowJobs] = useState(false);
   return (
     <div className="caption-shell">
@@ -37,17 +63,15 @@ export function CaptioningPage() {
           </div>
         </header>
         <nav className="page-tabs" aria-label="打标视图">
-          <NavLink to="/captioning" end>
+          <NavLink to={captionViewPath()} end replace state={location.state}>
             图片与任务
           </NavLink>
-          <NavLink to="/captioning/providers">接入预设</NavLink>
-          <NavLink to="/captioning/prompts">提示词预设</NavLink>
-          <NavLink to="/captioning/assets">本地资源</NavLink>
+          <NavLink to={captionViewPath("providers")} replace state={location.state}>接入预设</NavLink>
+          <NavLink to={captionViewPath("prompts")} replace state={location.state}>提示词预设</NavLink>
+          <NavLink to={captionViewPath("assets")} replace state={location.state}>本地资源</NavLink>
         </nav>
-        {profiles.error && (
-          <p className="form-error" role="alert">
-            {profiles.error.message}
-          </p>
+        {(profiles.isPending || profiles.error) && (
+          <QueryFeedback query={profiles} label="接入预设" hasData={Boolean(profiles.data)} />
         )}
         {section === "assets" ? (
           <CaptionAssets />
@@ -74,23 +98,21 @@ export function CaptioningPage() {
                   <CaptionJobCleanup
                     jobs={jobs.data?.jobs || []}
                     onRemoved={(ids) => {
-                      if (ids.includes(selectedJob)) setParams({});
+                      if (ids.includes(selectedJob)) setSelectedJob("");
                     }}
                   />
                   <button
                     type="button"
                     onClick={() => {
-                      setParams({});
+                      setSelectedJob("");
                       setShowJobs(false);
                     }}
                   >
                     新任务
                   </button>
                 </header>
-                {jobs.error && (
-                  <p className="form-error" role="alert">
-                    {jobs.error.message}
-                  </p>
+                {(jobs.isPending || jobs.error) && (
+                  <QueryFeedback query={jobs} label="打标任务" hasData={Boolean(jobs.data)} />
                 )}
                 {(jobs.data?.jobs || []).map((job) => (
                   <button
@@ -99,7 +121,7 @@ export function CaptioningPage() {
                     key={job.id}
                     data-selected={selectedJob === job.id}
                     onClick={() => {
-                      setParams({ job: job.id });
+                      setSelectedJob(job.id);
                       setShowJobs(false);
                     }}
                   >
@@ -121,7 +143,8 @@ export function CaptioningPage() {
                 ) : (
                   <CaptionSource
                     library={profiles.data}
-                    onCreated={(id) => setParams({ job: id })}
+                    onCreated={(id) => setSelectedJob(id)}
+                    onSourceChange={setSourceContext}
                   />
                 )}
               </div>

@@ -23,6 +23,7 @@ from library.datasets.subsets import normalize_sample_ratio
 from library.env import expand_env_vars, get_configs_root, load_dotenv
 from library.preprocess.captions import normalize_caption_source_mode
 from web.services.config import paths as _config_paths
+from web.services.config.dataset_edit_pairs import LAYOUT_KEY
 from web.services.config.common import (
     _bool_value,
     _nonnegative_float,
@@ -57,7 +58,7 @@ _MANAGED_GENERAL_FIELDS = frozenset(
     {"caption_extension", "keep_tokens", "custom_attributes"}
 )
 _MANAGED_GENERAL_CUSTOM_ATTRIBUTES = frozenset(
-    {WEBUI_DATASET_DEFAULTS_ATTR_KEY}
+    {WEBUI_DATASET_DEFAULTS_ATTR_KEY, LAYOUT_KEY}
 )
 _MANAGED_DATASET_FIELDS = frozenset(DATASET_SETTING_KEYS | {"batch_size", "subsets"})
 _MANAGED_SUBSET_FIELDS = frozenset(
@@ -74,6 +75,7 @@ _MANAGED_SUBSET_FIELDS = frozenset(
         "flip_aug",
         "text_cache_dir",
         "cond_cache_dir",
+        "reference_image_dir",
         "sample_ratio",
         "custom_attributes",
     }
@@ -224,9 +226,10 @@ def _dataset_summary_from_rows(rows: list[dict[str, Any]], defaults: dict[str, A
     clean_rows = _normalize_dataset_rows(rows)
     clean_defaults = _normalize_dataset_defaults(defaults or _first_dataset_settings(clean_rows))
     first = _first_training_dataset_row(clean_rows) if clean_rows else {}
-    repeats = sum(_positive_int(row.get("num_repeats"), 1) for row in clean_rows) if clean_rows else 0
-    reg_rows = [row for row in clean_rows if _bool_value(row.get("is_reg"), False)]
-    train_rows = [row for row in clean_rows if not _bool_value(row.get("is_reg"), False)]
+    runtime_rows = [row for row in clean_rows if row.get("edit_role") != "before"]
+    repeats = sum(_positive_int(row.get("num_repeats"), 1) for row in runtime_rows)
+    reg_rows = [row for row in runtime_rows if _bool_value(row.get("is_reg"), False)]
+    train_rows = [row for row in runtime_rows if not _bool_value(row.get("is_reg"), False)]
     return {
         "ok": True,
         "dataset_count": len(clean_rows),
@@ -245,7 +248,7 @@ def _dataset_summary_from_rows(rows: list[dict[str, Any]], defaults: dict[str, A
 
 def _first_training_dataset_row(rows: list[dict[str, Any]]) -> dict[str, Any]:
     for row in rows:
-        if not _bool_value(row.get("is_reg"), False):
+        if row.get("edit_role") != "before" and not _bool_value(row.get("is_reg"), False):
             return row
     return rows[0] if rows else {}
 
@@ -316,6 +319,7 @@ def _dataset_rows_from_config(data: dict[str, Any], cfg: dict[str, Any]) -> list
                 "flip_aug": _bool_value(subset.get("flip_aug"), False),
                 "text_cache_dir": _optional_dataset_path(subset.get("text_cache_dir"), cfg),
                 "cond_cache_dir": _optional_dataset_path(subset.get("cond_cache_dir"), cfg),
+                "reference_image_dir": _optional_dataset_path(subset.get("reference_image_dir"), cfg),
                 _PRESERVED_DATASET_FIELDS: _preserved_fields(dataset, _MANAGED_DATASET_FIELDS),
                 _PRESERVED_SUBSET_FIELDS: _preserved_fields(subset, _MANAGED_SUBSET_FIELDS),
                 _PRESERVED_CUSTOM_ATTRIBUTES: _preserved_fields(attrs, _MANAGED_CUSTOM_ATTRIBUTES),
@@ -382,6 +386,9 @@ def _normalize_dataset_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
             "flip_aug": _bool_value(raw.get("flip_aug"), False),
             "text_cache_dir": _normalize_optional_path(raw.get("text_cache_dir")),
             "cond_cache_dir": _normalize_optional_path(raw.get("cond_cache_dir")),
+            "reference_image_dir": _normalize_optional_path(raw.get("reference_image_dir")),
+            "edit_role": str(raw.get("edit_role") or "normal"),
+            "edit_pair_id": str(raw.get("edit_pair_id") or "").strip(),
             _PRESERVED_DATASET_FIELDS: _plain_mapping(raw.get(_PRESERVED_DATASET_FIELDS)),
             _PRESERVED_SUBSET_FIELDS: _plain_mapping(raw.get(_PRESERVED_SUBSET_FIELDS)),
             _PRESERVED_CUSTOM_ATTRIBUTES: _plain_mapping(raw.get(_PRESERVED_CUSTOM_ATTRIBUTES)),
@@ -448,6 +455,8 @@ def _normalize_dataset_defaults(raw: dict[str, Any]) -> dict[str, Any]:
         raw.get("caption_source_mode"),
         prefer_json,
     )
+    if "qwen_edit_enabled" in raw:
+        out["qwen_edit_enabled"] = _bool_value(raw.get("qwen_edit_enabled"), False)
     return out
 
 def _normalize_preprocess_dataset_settings(raw: dict[str, Any]) -> dict[str, Any]:
@@ -640,6 +649,7 @@ def _build_dataset_config_doc(
     *,
     prefer_train_batch_size: bool = False,
     include_preprocess_settings: bool = True,
+    edit_layout: list[dict[str, Any]] | None = None,
 ) -> str:
     doc = tomlkit.document()
     doc.add(tomlkit.comment("Web UI 自动生成的数据集配置。"))
@@ -663,8 +673,12 @@ def _build_dataset_config_doc(
     )
     stored_defaults = tomlkit.table()
     for key, value in _normalize_dataset_defaults(cfg).items():
+        if key == "qwen_edit_enabled" and not value:
+            continue
         stored_defaults.add(key, value)
     custom_attributes.add(WEBUI_DATASET_DEFAULTS_ATTR_KEY, stored_defaults)
+    if edit_layout:
+        custom_attributes.add(LAYOUT_KEY, tomlkit.item(edit_layout))
     general.add("custom_attributes", custom_attributes)
     doc.add("general", general)
 
@@ -734,6 +748,9 @@ def _build_dataset_config_doc(
             value = str(row.get(key) or "").strip()
             if value:
                 subset.add(key, value)
+        reference_image_dir = str(row.get("reference_image_dir") or "").strip()
+        if reference_image_dir:
+            subset.add("reference_image_dir", reference_image_dir)
         if not _bool_value(row.get("recursive"), True):
             subset.add("recursive", False)
         path_pattern = _normalize_path_pattern(row.get("path_pattern"))

@@ -17,6 +17,11 @@ const MaskEditorPage = lazy(async () => {
   return { default: module.MaskEditorPage };
 });
 
+const DatasetImageWorkspacePage = lazy(async () => {
+  const module = await import("../features/dataset-editor/DatasetImageWorkspacePage");
+  return { default: module.DatasetImageWorkspacePage };
+});
+
 const QueuePage = lazy(async () => {
   const module = await import("../features/training-queue/QueuePage");
   return { default: module.QueuePage };
@@ -52,12 +57,16 @@ const CaptioningPage = lazy(async () => {
   return { default: module.CaptioningPage };
 });
 
+const ImageTestPage = lazy(async () => ({ default: (await import("../features/image-test/ImageTestPage")).ImageTestPage }));
+const WeightAnalysisPage = lazy(async () => ({ default: (await import("../features/weight-analysis/WeightAnalysisPage")).WeightAnalysisPage }));
+const EnvironmentPage = lazy(async () => ({ default: (await import("../features/environment/EnvironmentPage")).EnvironmentPage }));
+
 function lazyPage(children: ReactNode) {
   return (
     <Suspense
       fallback={
         <main className="route-loading" aria-busy="true">
-          正在加载工作区
+          <p role="status" aria-live="polite">正在加载工作区</p>
         </main>
       }
     >
@@ -81,6 +90,7 @@ export const router = createBrowserRouter(
           element: lazyPage(<DatasetWorkspace />),
         },
         { path: "/datasets/masks", element: lazyPage(<MaskEditorPage />) },
+        { path: "/datasets/workspace/*", element: lazyPage(<DatasetImageWorkspacePage />) },
         {
           path: "/training",
           element: lazyPage(<TrainingWorkspace />),
@@ -104,6 +114,9 @@ export const router = createBrowserRouter(
         { path: "/models", element: lazyPage(<ModelConfigPage />) },
         { path: "/captioning/*", element: lazyPage(<CaptioningPage />) },
         { path: "/settings", element: lazyPage(<SettingsPage />) },
+        { path: "/image-test", element: lazyPage(<ImageTestPage />) },
+        { path: "/weight-analysis", element: lazyPage(<WeightAnalysisPage />) },
+        { path: "/environment", element: lazyPage(<EnvironmentPage />) },
         { path: "*", element: <RouteError /> },
       ],
     },

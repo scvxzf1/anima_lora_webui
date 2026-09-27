@@ -28,7 +28,11 @@ class _WebAccessLogger(AccessLogger):
         super().log(request, response, time)
 
 
-async def index_handler(request: web.Request) -> web.FileResponse:
+async def index_handler(request: web.Request) -> web.StreamResponse:
+    if request.rel_url.query.get("ui") not in {"dragon", "classic"}:
+        raise web.HTTPFound(
+            location=request.rel_url.with_path("/next").with_query(request.rel_url.query)
+        )
     response = web.FileResponse(STATIC_DIR / "index.html")
     response.headers["Cache-Control"] = "no-cache"
     return response

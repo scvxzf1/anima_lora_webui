@@ -206,6 +206,16 @@ export function QueuePage() {
     commandLock.current = true;
     policyMutation.mutate(payload);
   }
+
+  function refreshQueue() {
+    const hadActionError = Boolean(error);
+    void query.refetch().then((result) => {
+      if (!hadActionError || !result.isSuccess) return;
+      setError("");
+      setNotice("已刷新队列状态，当前快照已核对。");
+    });
+  }
+
   const busy = actionMutation.isPending || policyMutation.isPending;
 
   return (
@@ -240,7 +250,7 @@ export function QueuePage() {
             <button
               type="button"
               disabled={query.isFetching}
-              onClick={() => query.refetch()}
+              onClick={refreshQueue}
             >
               刷新
             </button>

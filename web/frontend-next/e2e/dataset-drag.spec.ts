@@ -15,7 +15,7 @@ const group = (id: string, names: string[]) => ({
   renamable: true,
   files: names.map(preset),
 });
-async function setup(page: Page, fail = false) {
+async function setup(page: Page, { fail = false, showControls = true, coverMissing = false } = {}) {
   await mockWorkspace(page);
   let groups = [
     group("Source", ["A"]),
@@ -46,6 +46,14 @@ async function setup(page: Page, fail = false) {
       },
     }),
   );
+  await page.route("**/api/config/dataset-presets/cover?*", (route) =>
+    route.fulfill({
+      json: {
+        image: coverMissing ? null : "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='48' height='48'%3E%3Crect width='48' height='48' fill='%233b82f6'/%3E%3C/svg%3E",
+        reason: coverMissing ? "图片目录不存在或无法访问" : "fixture",
+      },
+    }),
+  );
   await page.route("**/api/config/file-groups/place", async (route) => {
     const body = route.request().postDataJSON();
     writes.push(body);
@@ -65,9 +73,12 @@ async function setup(page: Page, fail = false) {
     await route.fulfill({ json: { ok: true, message: "Moved" } });
   });
   await page.goto("/next/datasets");
-  await expect(
-    page.getByRole("button", { name: "拖动排序预设 A", exact: true }),
-  ).toBeVisible();
+  if (showControls) {
+    await page.getByText("详细管理", { exact: true }).click();
+    await expect(
+      page.getByRole("button", { name: "拖动排序预设 A", exact: true }),
+    ).toBeVisible();
+  }
   await expect(page.getByRole("button", { name: "添加子集", exact: true })).toBeVisible();
   return { writes, release };
 }
@@ -137,6 +148,74 @@ test.skip('dropping on collapsed header appends without changing saved collapse'
   state.release();
   await expect(page.locator('[data-group-id="Target"]')).toHaveAttribute('data-collapsed', 'true');
 });
+
+test('short cover press selects while long press starts preset sorting', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1300 });
+  const state = await setup(page);
+  const source = row(page, 'B');
+  const cover = source.locator('.dataset-cover');
+
+  await cover.click();
+  await expect(source.locator('.dataset-preset')).toHaveAttribute('data-selected', 'true');
+  await expect(page.locator('.dataset-drag-overlay')).toHaveCount(0);
+  expect(state.writes).toEqual([]);
+
+  const start = (await cover.boundingBox())!;
+  await page.mouse.move(start.x + start.width / 2, start.y + start.height / 2);
+  await page.mouse.down();
+  await page.waitForTimeout(100);
+  await page.mouse.move(start.x + start.width / 2 + 18, start.y + start.height / 2 + 12);
+  await expect(page.locator('.dataset-drag-overlay')).toBeVisible();
+  await expect(source).toHaveAttribute('data-dragging', 'true');
+
+  const destination = row(page, 'C');
+  const end = (await destination.boundingBox())!;
+  await page.mouse.move(end.x + end.width / 2, end.y + end.height * 0.75, { steps: 12 });
+  await expect(destination).toHaveAttribute('data-drop-position', 'after');
+  await page.mouse.up();
+
+  await expect.poll(() => state.writes.length).toBe(1);
+  expect(state.writes[0]).toEqual({
+    target: 'file',
+    file: 'configs/datasets/B.toml',
+    group: 'Target',
+    order: ['configs/datasets/C.toml', 'configs/datasets/B.toml'],
+  });
+  state.release();
+  await expect(page.locator('[data-group-id="Target"] .dataset-preset-title strong')).toHaveText(['C', 'B']);
+});
+
+test('missing-image cover still drags when detailed management is off', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1300 });
+  const state = await setup(page, { showControls: false, coverMissing: true });
+  const source = row(page, 'A');
+  const cover = source.locator('.dataset-cover');
+  await expect(page.getByRole('switch', { name: '详细管理' })).not.toBeChecked();
+  await expect(cover).toHaveAttribute('data-drag-enabled', 'true');
+  await expect(cover).toContainText('无图像');
+  await expect(page.getByRole('button', { name: '拖动排序预设 A' })).toHaveCount(0);
+
+  const start = (await cover.boundingBox())!;
+  await page.mouse.move(start.x + start.width / 2, start.y + start.height / 2);
+  await page.mouse.down();
+  await page.waitForTimeout(220);
+  await page.mouse.move(start.x + start.width / 2 + 18, start.y + start.height / 2 + 12);
+  await expect(page.locator('.dataset-drag-overlay')).toBeVisible();
+
+  const target = row(page, 'B');
+  const end = (await target.boundingBox())!;
+  await page.mouse.move(end.x + end.width / 2, end.y + end.height * 0.25, { steps: 12 });
+  await expect(target).toHaveAttribute('data-drop-position', 'before');
+  await page.mouse.up();
+  await expect.poll(() => state.writes.length).toBe(1);
+  expect(state.writes[0]).toMatchObject({
+    file: preset('A').path,
+    group: 'Target',
+    order: ['A', 'B', 'C'].map((name) => preset(name).path),
+  });
+  state.release();
+});
+
 async function drag(page: Page, position: "before" | "after" | "empty") {
   const handle = page.getByRole("button", {
     name: "拖动排序预设 A",
@@ -224,7 +303,7 @@ test("failed cross-group move rolls back and escape cancels without a write", as
   page,
 }) => {
   await page.setViewportSize({ width: 1440, height: 1300 });
-  const state = await setup(page, true);
+  const state = await setup(page, { fail: true });
   await drag(page, "after");
   await page.keyboard.press("Escape");
   expect(state.writes).toEqual([]);

@@ -114,6 +114,20 @@ describe('dataset editor API', () => {
     );
   });
 
+  it('forwards an explicit preview limit without changing the source contract', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ ok: true, images: [], count: 0, total: 0 }), { status: 200 }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await fetchDatasetPresetImages('configs/datasets/studio.toml', 1, undefined, 7);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/config/dataset-presets/images?file=configs%2Fdatasets%2Fstudio.toml&dataset_index=1&source=source&limit=7',
+      expect.objectContaining({ signal: undefined }),
+    );
+  });
+
   it('renames and deletes dataset groups through encoded group URLs', async () => {
     const fetchMock = vi.fn().mockImplementation(async () => (
       new Response(JSON.stringify({ ok: true, message: '已完成', group: { id: '角色 A' } }), { status: 200 })
@@ -188,6 +202,7 @@ describe('dataset editor API', () => {
 
     await saveDatasetPreset('configs/datasets/characters.toml', writePayload, false);
     await saveDatasetPreset('configs/datasets/characters.toml', writePayload, true);
+    await saveDatasetPreset('configs/datasets/characters.toml', writePayload, true, 'read-revision');
 
     expect(fetchMock).toHaveBeenNthCalledWith(1, '/api/config/dataset-presets', expect.objectContaining({
       method: 'PUT',
@@ -196,6 +211,10 @@ describe('dataset editor API', () => {
     expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/config/dataset-presets', expect.objectContaining({
       method: 'PUT',
       body: JSON.stringify({ file: 'configs/datasets/characters.toml', ...writePayload, overwrite: true }),
+    }));
+    expect(fetchMock).toHaveBeenNthCalledWith(3, '/api/config/dataset-presets', expect.objectContaining({
+      method: 'PUT',
+      body: JSON.stringify({ file: 'configs/datasets/characters.toml', ...writePayload, overwrite: true, revision: 'read-revision' }),
     }));
   });
 

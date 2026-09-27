@@ -498,7 +498,9 @@ def test_history_detail_limits_logs_and_system_records(tmp_path, monkeypatch):
         encoding="utf-8",
     )
     (task_dir / "system.jsonl").write_text(
-        "\n".join(json.dumps({"ts": idx, "gpu_util": idx * 10}) for idx in range(4)) + "\n",
+        "\n".join(json.dumps({"ts": idx, "gpu_util": idx * 10,
+                              "per_gpu": [{"index": 1, "uuid": "GPU-b", "vram_used_gb": idx}]})
+                  for idx in range(4)) + "\n",
         encoding="utf-8",
     )
 
@@ -506,6 +508,7 @@ def test_history_detail_limits_logs_and_system_records(tmp_path, monkeypatch):
 
     assert [item["line"] for item in payload["logs"]] == ["log-2", "log-3", "log-4"]
     assert [item["ts"] for item in payload["system"]] == [2, 3]
+    assert payload["system"][0]["per_gpu"] == [{"index": 1, "uuid": "GPU-b", "vram_used_gb": 2}]
     assert payload["limits"]["logs_total"] == 5
     assert payload["limits"]["logs_returned"] == 3
     assert payload["limits"]["logs_truncated"] is True

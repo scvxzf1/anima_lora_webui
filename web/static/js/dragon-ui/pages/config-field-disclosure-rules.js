@@ -2,7 +2,7 @@ import {
     LOKR_SCOPED_FIELD_KEYS,
     VERA_SCOPED_FIELD_KEYS,
 } from '../../config/catalog/defaults.js?v=auto-block-swap-20260908-v3';
-import { modelFamilyCapability, normalizeModelFamily } from '../../features/config-form/model-family.js?v=auto-block-swap-20260908-v3';
+import { modelFamilyCapability, normalizeModelFamily } from '../../features/config-form/model-family.js?v=qwen-image-21-v2';
 import { configFieldCatalogEntry } from './config-field-catalog.js?v=auto-block-swap-20260908-v3';
 import { normalizeBooleanConfigValue } from './config-field-types.js?v=auto-block-swap-20260908-v3';
 

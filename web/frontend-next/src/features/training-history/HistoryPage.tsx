@@ -185,6 +185,22 @@ export function HistoryPage() {
     batch.mutate({ action, task_ids: selected });
   }
 
+  function refreshHistory() {
+    const hadBatchError = Boolean(batch.error);
+    void query.refetch().then((result) => {
+      if (!result.isSuccess || !result.data) return;
+      const loadedIds = new Set(
+        result.data.pages.flatMap((pageData) => pageData.tasks || [])
+          .map((task) => String(task.id || "")),
+      );
+      setSelected((current) => current.filter((id) => loadedIds.has(id)));
+      if (hadBatchError) {
+        batch.reset();
+        setNotice("已刷新历史记录，当前列表已核对。");
+      }
+    });
+  }
+
   const counts = useMemo(
     () => ({
       total: tasks.length,
@@ -204,7 +220,7 @@ export function HistoryPage() {
             <p className="eyebrow">HISTORY FORGE</p>
             <h1>历史任务</h1>
           </div>
-          <button type="button" onClick={() => query.refetch()}>
+          <button type="button" disabled={query.isFetching || busy} onClick={refreshHistory}>
             {query.isFetching ? "刷新中" : "刷新"}
           </button>
         </header>

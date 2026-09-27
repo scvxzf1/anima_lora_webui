@@ -6,6 +6,8 @@ import asyncio
 from urllib.parse import quote
 
 from aiohttp import web
+from web.services.config.revisioned_text import RevisionConflictError, text_revision
+from web.services.config.raw_files import load_raw_file, load_raw_file_snapshot
 
 from library.models.family_registry import model_family_capability_catalog
 from web.services.config.dataset_cover import dataset_cover
@@ -37,7 +39,6 @@ from web.services.config_service import (
     _load_training_config_for_web_run,
     load_dataset_preset,
     load_output_run_config,
-    load_raw_file,
     patch_raw_file_values,
     preview_raw_file_patch,
     rename_raw_file,
@@ -293,7 +294,10 @@ async def handle_dataset_preset_put(request: web.Request) -> web.Response:
             overwrite=bool(overwrite),
             stage_schedule_enabled=data.get("stage_schedule_enabled"),
             stage_schedule=data.get("stage_schedule"),
+            expected_revision=data.get("revision"),
         ))
+    except RevisionConflictError as e:
+        return web.json_response({"ok": False, "error": str(e)}, status=409)
     except Exception as e:
         return web.json_response({"ok": False, "error": str(e)}, status=400)
 
@@ -452,8 +456,8 @@ async def handle_raw_get(request: web.Request) -> web.Response:
     file_path = request.query.get("file", "")
     if not file_path:
         return web.json_response({"ok": False, "error": "缺少 file 参数"}, status=400)
-    content = load_raw_file(file_path)
-    return web.json_response({"file": file_path, "content": content, "meta": get_config_file_meta(file_path)})
+    content, revision = load_raw_file_snapshot(file_path)
+    return web.json_response({"file": file_path, "content": content, "revision": revision, "meta": get_config_file_meta(file_path)})
 
 
 async def handle_raw_put(request: web.Request) -> web.Response:
@@ -462,9 +466,12 @@ async def handle_raw_put(request: web.Request) -> web.Response:
     content = data.get("content", "")
     if not file_path:
         return web.json_response({"ok": False, "error": "缺少 file 参数"}, status=400)
-    ok, msg, warnings = save_raw_file(file_path, content)
+    try:
+        ok, msg, warnings = save_raw_file(file_path, content, expected_revision=data.get("revision"))
+    except RevisionConflictError as e:
+        return web.json_response({"ok": False, "error": str(e)}, status=409)
     if ok:
-        return web.json_response({"ok": True, "message": msg, "warnings": warnings})
+        return web.json_response({"ok": True, "message": msg, "warnings": warnings, "revision": load_raw_file_snapshot(file_path)[1]})
     return web.json_response({"ok": False, "error": msg, "warnings": warnings}, status=400)
 
 
@@ -475,15 +482,19 @@ async def handle_raw_patch(request: web.Request) -> web.Response:
     content = data.get("content")
     if not file_path:
         return web.json_response({"ok": False, "error": "缺少 file 参数"}, status=400)
-    ok, msg, next_content, changed, warnings = patch_raw_file_values(
-        file_path, values, content=content
-    )
+    try:
+        ok, msg, next_content, changed, warnings = patch_raw_file_values(
+            file_path, values, content=content, expected_revision=data.get("revision")
+        )
+    except RevisionConflictError as e:
+        return web.json_response({"ok": False, "error": str(e)}, status=409)
     if ok:
         return web.json_response({
             "ok": True,
             "file": file_path,
             "message": msg,
             "content": next_content,
+            "revision": text_revision(next_content),
             "changed": changed,
             "warnings": warnings,
         })
@@ -583,7 +594,10 @@ async def handle_sample_prompts_put(request: web.Request) -> web.Response:
             content,
             file_path or None,
             train_config_file=train_config_file or None,
+            expected_revision=data.get("revision"),
         ))
+    except RevisionConflictError as e:
+        return web.json_response({"ok": False, "error": str(e)}, status=409)
     except ValueError as e:
         return web.json_response({"ok": False, "error": str(e)}, status=400)
 

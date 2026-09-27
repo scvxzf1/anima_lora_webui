@@ -421,7 +421,7 @@ async def handle_logs(request: web.Request) -> web.Response:
 
 async def handle_gpus(request: web.Request) -> web.Response:
     svc = request.app["training_service"]
-    return web.json_response({"ok": True, "gpus": await svc.list_gpus()})
+    return web.json_response({"ok": True, **await svc.gpu_inventory(force=request.query.get("refresh") == "1")})
 
 
 async def handle_queue_status(request: web.Request) -> web.Response:

@@ -1,0 +1,43 @@
+.weight-analysis-page { max-width: 1180px; }
+.weight-workspace { display: grid; grid-template-columns: minmax(0, 1fr) minmax(220px, 300px); gap: 30px; align-items: start; }
+.weight-workspace.is-comparing { grid-template-columns: minmax(0, 1fr); }
+.weight-sources { display: grid; gap: 20px; }
+.weight-workspace.is-comparing .weight-sources { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.weight-source { min-width: 0; display: grid; gap: 8px; }
+.weight-source-title { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.weight-source-title strong { font-size: 14px; color: var(--ink); }
+.weight-source-title span { color: var(--muted); font-size: 12px; }
+.weight-picker { position: relative; min-width: 0; }
+.weight-picker-trigger { width: 100%; min-height: 42px; justify-content: space-between; text-align: left; }
+.weight-picker-trigger span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.weight-picker-panel { position: absolute; z-index: 10; top: calc(100% + 4px); left: 0; width: 100%; min-width: min(380px, 85vw); padding: 8px; border: 1px solid var(--line-strong); background: var(--surface); box-shadow: 0 12px 28px #0002; border-radius: 5px; }
+.weight-picker-search { display: flex; align-items: center; gap: 6px; padding: 0 8px; border: 1px solid var(--line-strong); border-radius: 4px; color: var(--muted); }
+.weight-picker-search input { border: 0; padding-left: 0; width: 100%; outline: 0; }
+.weight-picker-options { max-height: 290px; overflow: auto; margin-top: 6px; }
+.weight-picker-options button { width: 100%; display: grid; gap: 2px; justify-content: stretch; justify-items: start; min-height: 0; padding: 8px; border: 0; background: transparent; text-align: left; }
+.weight-picker-options button:hover, .weight-picker-options button:focus-visible { background: var(--accent-soft); }
+.weight-picker-options button span, .weight-picker-options button small { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.weight-picker-options button small { color: var(--muted); }
+.weight-picker-options p { margin: 12px 8px; color: var(--muted); }
+.weight-source-path { position: relative; }
+.weight-source-path input { width: 100%; padding-right: 40px; }
+.weight-source-path .weight-source-clear { position: absolute; right: 3px; top: 3px; width: 30px; min-height: 30px; padding: 0; border: 0; background: transparent; }
+.weight-upload { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; min-height: 56px; padding: 8px; border: 1px dashed var(--line-strong); border-radius: 4px; }
+.weight-upload.is-dragging { border-color: var(--accent); background: var(--accent-soft); }
+.weight-upload span { color: var(--muted); font-size: 12px; }
+.weight-file-input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.weight-recent { border-left: 1px solid var(--line); padding-left: 20px; }
+.weight-recent h2 { margin: 0 0 10px; font-size: 14px; }
+.weight-recent button { display: grid; justify-items: start; gap: 3px; width: 100%; min-height: 0; padding: 9px 4px; border: 0; border-bottom: 1px solid var(--line); background: none; text-align: left; }
+.weight-recent button:hover { color: var(--accent); }
+.weight-recent button span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.weight-recent button small { color: var(--muted); }
+.weight-actions { margin-top: 8px; }
+.weight-workspace.is-comparing .weight-actions { grid-column: 1 / -1; }
+.weight-actions label { display: inline-flex; align-items: center; gap: 7px; }
+.tool-row.weight-tabs { display: flex; width: max-content; max-width: 100%; flex-wrap: nowrap; gap: 0; border: 1px solid var(--line-strong); border-radius: 5px; overflow-x: auto; }
+.weight-tabs button { flex-shrink: 0; white-space: nowrap; border: 0; border-right: 1px solid var(--line); border-radius: 0; }
+.weight-tabs button:last-child { border-right: 0; }
+.weight-tabs button[aria-selected="true"] { background: var(--accent-soft); color: var(--accent); }
+.weight-heatmap-view { margin-top: 16px; }
+@container workspace (max-width: 760px) { .weight-workspace { grid-template-columns: minmax(0, 1fr); } .weight-recent { border-left: 0; border-top: 1px solid var(--line); padding: 14px 0 0; } .weight-workspace.is-comparing .weight-sources { grid-template-columns: minmax(0, 1fr); } }

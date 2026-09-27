@@ -424,10 +424,12 @@ def test_http_config_model_families_exposes_pipeline_capabilities():
     items = {item["name"]: item for item in payload["items"]}
 
     assert payload["ok"] is True
-    assert set(items) == {"anima", "krea2_raw", "z_image"}
+    assert set(items) == {"anima", "krea2_raw", "z_image", "qwen_image_2_1"}
     assert items["anima"]["pipeline_parallel"]["known_num_blocks"] == [28, 40]
     assert items["krea2_raw"]["pipeline_parallel"]["runtime_available"] is False
     assert items["z_image"]["pipeline_parallel"]["block_container"] == "layers"
+    assert items["qwen_image_2_1"]["plain_lora_only"] is True
+    assert items["qwen_image_2_1"]["pipeline_parallel"] is None
 
 
 def test_http_config_merged_envelope(monkeypatch):

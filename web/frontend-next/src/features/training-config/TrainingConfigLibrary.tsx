@@ -22,6 +22,13 @@ type Props = {
   dirty?: boolean;
 };
 
+export const TRAINING_DETAILED_MANAGEMENT_KEY = "dragon-next:training-configs:detailed-management:v1";
+
+function readDetailedManagement() {
+  try { return localStorage.getItem(TRAINING_DETAILED_MANAGEMENT_KEY) === "true"; }
+  catch { return false; }
+}
+
 export function TrainingConfigLibrary({
   expanded,
   files,
@@ -33,6 +40,7 @@ export function TrainingConfigLibrary({
   dirty,
 }: Props) {
   const [query, setQuery] = useState("");
+  const [detailedManagement, setDetailedManagement] = useState(readDetailedManagement);
   const queryClient = useQueryClient();
   const refreshing =
     useIsFetching({ queryKey: trainingContextKeys.files() }) > 0;
@@ -75,6 +83,7 @@ export function TrainingConfigLibrary({
       className="training-config-library"
       aria-label="训练配置库"
       data-expanded={expanded}
+      data-detailed-management={detailedManagement}
     >
       <header>
         <div>
@@ -120,6 +129,12 @@ export function TrainingConfigLibrary({
         file={files.find((file) => file.path === selectedPath)}
         disabled={Boolean(disabled || dirty)}
         onRenamed={onSelect}
+        detailedManagement={detailedManagement}
+        onDetailedManagementChange={(enabled) => {
+          setDetailedManagement(enabled);
+          try { localStorage.setItem(TRAINING_DETAILED_MANAGEMENT_KEY, String(enabled)); }
+          catch { /* Keep the setting for this session. */ }
+        }}
       />
       <div className="training-library-groups">
         <TrainingLibraryDrag
@@ -142,6 +157,7 @@ export function TrainingConfigLibrary({
                   onSelect={onSelect}
                   groups={libraryGroups}
                   searchActive={Boolean(query.trim())}
+                  detailedManagement={detailedManagement}
                 />
               ))}
               {!groups.length ? (

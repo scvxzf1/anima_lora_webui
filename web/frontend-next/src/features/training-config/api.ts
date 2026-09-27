@@ -4,6 +4,7 @@ import type { TrainingConfigFile } from "../../api/trainingContext";
 export type RawTrainingConfigResponse = {
   file: string;
   content: string;
+  revision: string;
   meta: TrainingConfigFile;
 };
 
@@ -12,6 +13,7 @@ export type RawPatchResponse = {
   file: string;
   message: string;
   content: string;
+  revision: string;
   changed: string[];
   warnings: string[];
 };
@@ -67,10 +69,11 @@ export function previewTrainingConfigPatch(
 export function saveTrainingConfigPatch(
   file: string,
   values: Record<string, unknown>,
+  revision?: string,
 ) {
   return apiRequest<RawPatchResponse>("/api/config/raw", {
     method: "PATCH",
-    body: JSON.stringify({ file, values }),
+    body: JSON.stringify({ file, values, revision }),
   });
 }
 

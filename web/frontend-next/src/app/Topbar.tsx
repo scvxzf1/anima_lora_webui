@@ -13,9 +13,27 @@ import {
   Moon,
   Menu,
   ExternalLink,
+  PanelLeft,
+  PanelTop,
+  Wrench,
+  Image,
+  ScanSearch,
+  Activity,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Button } from "../components/ui/Button";
+
+const SIDEBAR_WIDTH_KEY = "dragon-next-ui-v1-sidebar-width";
+const NAVIGATION_LAYOUT_KEY = "dragon-next-ui-v1-navigation-layout";
+
+function savedSidebarWidth() {
+  try {
+    const value = Number(localStorage.getItem(SIDEBAR_WIDTH_KEY));
+    return Number.isFinite(value) && value > 0 ? value : null;
+  } catch {
+    return null;
+  }
+}
 
 const LINKS = [
   ["/training", "训练配置", Box],
@@ -30,6 +48,69 @@ const LINKS = [
 
 export function Topbar() {
   const [expanded, setExpanded] = useState(false);
+  const [navigationLayout, setNavigationLayout] = useState<"sidebar" | "top">(() => {
+    try {
+      return localStorage.getItem(NAVIGATION_LAYOUT_KEY) === "top" ? "top" : "sidebar";
+    } catch {
+      return "sidebar";
+    }
+  });
+  const sidebarWidth = useRef<number | null>(savedSidebarWidth());
+  const [widthPercent, setWidthPercent] = useState<number | null>(null);
+  useLayoutEffect(() => {
+    const updateWidthPercent = () => {
+      const layout = document.querySelector<HTMLElement>(".next-layout");
+      const sidebar = document.querySelector<HTMLElement>(".app-navigation");
+      if (layout && sidebar) {
+        setWidthPercent(Math.round((sidebar.getBoundingClientRect().width / layout.getBoundingClientRect().width) * 100));
+      }
+    };
+    if (sidebarWidth.current !== null) {
+      document.querySelector<HTMLElement>(".next-layout")?.style.setProperty(
+        "--sidebar-width",
+        `${sidebarWidth.current}px`,
+      );
+    }
+    updateWidthPercent();
+    window.addEventListener("resize", updateWidthPercent);
+    return () => window.removeEventListener("resize", updateWidthPercent);
+  }, []);
+
+  function resizeSidebar(clientX: number) {
+    const layout = document.querySelector<HTMLElement>(".next-layout");
+    if (!layout) return;
+    const rect = layout.getBoundingClientRect();
+    const width = layout.clientWidth;
+    const requested = ((clientX - rect.left) / rect.width) * width;
+    const next = Math.round(Math.max(width * 0.1, Math.min(requested, width - 320)));
+    sidebarWidth.current = next;
+    setWidthPercent(Math.round((next / width) * 100));
+    layout.style.setProperty("--sidebar-width", `${next}px`);
+  }
+
+  function saveSidebarWidth() {
+    if (sidebarWidth.current === null) return;
+    try {
+      localStorage.setItem(SIDEBAR_WIDTH_KEY, String(sidebarWidth.current));
+    } catch {
+      /* Private browsing can deny storage. */
+    }
+  }
+  function resetSidebarWidth() {
+    const layout = document.querySelector<HTMLElement>(".next-layout");
+    if (!layout) return;
+    sidebarWidth.current = null;
+    layout.style.removeProperty("--sidebar-width");
+    const sidebar = document.querySelector<HTMLElement>(".app-navigation");
+    if (sidebar) {
+      setWidthPercent(Math.round((sidebar.getBoundingClientRect().width / layout.getBoundingClientRect().width) * 100));
+    }
+    try {
+      localStorage.removeItem(SIDEBAR_WIDTH_KEY);
+    } catch {
+      /* Private browsing can deny storage. */
+    }
+  }
   const [theme, setTheme] = useState(() => {
     try {
       return localStorage.getItem("dragon-next-ui-v1-theme") === "light"
@@ -47,8 +128,55 @@ export function Topbar() {
       /* Private browsing can deny storage. */
     }
   }, [theme]);
+  useLayoutEffect(() => {
+    document.querySelector<HTMLElement>(".next-layout")?.setAttribute("data-navigation-layout", navigationLayout);
+    try {
+      localStorage.setItem(NAVIGATION_LAYOUT_KEY, navigationLayout);
+    } catch {
+      /* Private browsing can deny storage. */
+    }
+  }, [navigationLayout]);
   return (
     <aside className="app-navigation" data-expanded={expanded}>
+      <div
+        className="app-navigation-resizer"
+        role="separator"
+        aria-label="调整侧边栏宽度"
+        aria-orientation="vertical"
+        aria-valuemin={10}
+        aria-valuemax={100}
+        aria-valuenow={widthPercent ?? undefined}
+        tabIndex={0}
+        title="拖动调整宽度，双击恢复默认"
+        onDoubleClick={resetSidebarWidth}
+        onPointerDown={(event) => {
+          if (event.button !== 0) return;
+          event.currentTarget.setPointerCapture(event.pointerId);
+          resizeSidebar(event.clientX);
+        }}
+        onPointerMove={(event) => {
+          if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+            resizeSidebar(event.clientX);
+          }
+        }}
+        onPointerUp={saveSidebarWidth}
+        onPointerCancel={saveSidebarWidth}
+        onKeyDown={(event) => {
+          if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+          event.preventDefault();
+          const layout = document.querySelector<HTMLElement>(".next-layout");
+          if (!layout) return;
+          const rect = layout.getBoundingClientRect();
+          const current = (document.querySelector<HTMLElement>(".app-navigation")?.getBoundingClientRect().width ?? rect.width * 0.16) / rect.width * layout.clientWidth;
+          const target = event.key === "Home"
+            ? layout.clientWidth * 0.1
+            : event.key === "End"
+              ? layout.clientWidth - 320
+              : current + (event.key === "ArrowRight" ? 10 : -10);
+          resizeSidebar(rect.left + (target / layout.clientWidth) * rect.width);
+          saveSidebarWidth();
+        }}
+      />
       <div className="app-brand">
         <Layers3 size={23} />
         <strong>
@@ -72,35 +200,47 @@ export function Topbar() {
             key={to}
             to={to}
             end={to === "/datasets"}
+            aria-label={label}
+            title={label}
             onClick={() => setExpanded(false)}
           >
             <Icon size={18} aria-hidden="true" />
-            {label}
+            <span>{label}</span>
           </NavLink>
         ))}
       </nav>
       <div className="nav-footer">
         <details>
-          <summary>辅助工具</summary>
-          <a href="/?ui=dragon#image-test">
-            生图测试 <ExternalLink size={13} />
-          </a>
-          <a href="/?ui=dragon#weight-analysis">
-            权重分析 <ExternalLink size={13} />
-          </a>
-          <a href="/?ui=dragon#environment">
-            环境检测 <ExternalLink size={13} />
-          </a>
+          <summary aria-label="辅助工具" title="辅助工具"><Wrench size={16} aria-hidden="true" /><span>辅助工具</span></summary>
+          <div className="nav-aux-links">
+            <NavLink to="/image-test" aria-label="生图测试" title="生图测试" onClick={() => setExpanded(false)}><Image size={16} aria-hidden="true" /><span>生图测试</span></NavLink>
+            <NavLink to="/weight-analysis" aria-label="权重分析" title="权重分析" onClick={() => setExpanded(false)}><ScanSearch size={16} aria-hidden="true" /><span>权重分析</span></NavLink>
+            <NavLink to="/environment" aria-label="环境检测" title="环境检测" onClick={() => setExpanded(false)}><Activity size={16} aria-hidden="true" /><span>环境检测</span></NavLink>
+            <a className="nav-aux-legacy" href="/?ui=dragon" aria-label="旧版界面" title="旧版界面"><ExternalLink size={16} aria-hidden="true" /><span>旧版界面</span></a>
+          </div>
         </details>
-        <Button
-          variant="ghost"
-          onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-        >
-          {theme === "dark" ? <Sun size={17} /> : <Moon size={17} />}
-          {theme === "dark" ? "浅色外观" : "深色外观"}
-        </Button>
-        <a href="/?ui=dragon">
-          旧版界面 <ExternalLink size={13} />
+        <div className="nav-appearance-controls">
+          <Button
+            variant="ghost"
+            aria-label={theme === "dark" ? "浅色外观" : "深色外观"}
+            title={theme === "dark" ? "浅色外观" : "深色外观"}
+            onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+          >
+            {theme === "dark" ? <Sun size={17} /> : <Moon size={17} />}
+            {theme === "dark" ? "浅色外观" : "深色外观"}
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label={navigationLayout === "sidebar" ? "切换为顶部栏" : "切换为侧边栏"}
+            title={navigationLayout === "sidebar" ? "切换为顶部栏" : "切换为侧边栏"}
+            onClick={() => { setExpanded(false); setNavigationLayout(navigationLayout === "sidebar" ? "top" : "sidebar"); }}
+          >
+            {navigationLayout === "sidebar" ? <PanelTop size={17} /> : <PanelLeft size={17} />}
+          </Button>
+        </div>
+        <a className="nav-legacy-link" href="/?ui=dragon" aria-label="旧版界面" title="旧版界面">
+          <span>旧版界面</span> <ExternalLink size={13} />
         </a>
       </div>
     </aside>

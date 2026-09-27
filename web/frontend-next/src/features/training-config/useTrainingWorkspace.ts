@@ -5,6 +5,7 @@ import { useTrainingContext } from "../../app/useTrainingContext";
 import { datasetKeys } from "../dataset-editor/api";
 import { useTrainingDevices } from "./useTrainingDevices";
 import { useUnsavedChangesGuard } from "../dataset-editor/useUnsavedChangesGuard";
+import { ApiError } from "../../api/client";
 import {
   fetchRawTrainingConfig,
   previewTrainingConfigPatch,
@@ -126,6 +127,7 @@ export function useTrainingWorkspace() {
       saveTrainingConfigPatch(
         selectedFile!.path,
         trainingPatchValues(submitted, baseline, fields, mergedConfig),
+        rawQuery.data?.revision,
       ),
     onSuccess: async (result, submitted) => {
       setBaseline({ ...submitted });
@@ -135,6 +137,7 @@ export function useTrainingWorkspace() {
       queryClient.setQueryData(trainingConfigKeys.raw(selectedFile!.path), {
         file: selectedFile!.path,
         content: result.content,
+        revision: result.revision,
         meta: rawQuery.data!.meta,
       });
       await invalidateTrainingQueries(
@@ -157,6 +160,16 @@ export function useTrainingWorkspace() {
     },
     retry: false,
   });
+  const saveConflict = save.error instanceof ApiError && save.error.status === 409;
+  async function reloadConflictedConfig() {
+    if (!window.confirm("重新加载会放弃当前未保存的配置修改。是否继续？")) return;
+    await Promise.all([
+      queryClient.refetchQueries({ queryKey: trainingConfigKeys.raw(selectedFile!.path) }),
+      queryClient.refetchQueries({ queryKey: trainingContextKeys.merged(selectedFile!.path, context.selectedPreset) }),
+    ]);
+    setHydratedKey("");
+    save.reset();
+  }
   const saveAs = useMutation({
     mutationFn: async (name: string) => {
       const target = importedTrainingPath(name);
@@ -204,7 +217,7 @@ export function useTrainingWorkspace() {
   async function beforeAction(
     action: "preflight" | "start" | "queue" | "prompts",
   ) {
-    if (busy || patch.error || (dirty && locked)) return;
+    if (busy || saveConflict || patch.error || (dirty && locked)) return;
     if (action !== "prompts" && deviceState.issue) return;
     if ((action === "start" || action === "queue") && pipelineUnavailable) return;
     try {
@@ -271,6 +284,7 @@ export function useTrainingWorkspace() {
     capabilities.isPending ||
     Boolean(capabilities.error) ||
     Boolean(patch.error) ||
+    saveConflict ||
     (dirty && locked);
 
   return {
@@ -309,6 +323,8 @@ export function useTrainingWorkspace() {
     ownKeys,
     preview,
     save,
+    saveConflict,
+    reloadConflictedConfig,
     saveAs,
     preflight,
     confirmDiscard,

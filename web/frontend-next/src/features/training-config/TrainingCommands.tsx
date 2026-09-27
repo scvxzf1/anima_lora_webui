@@ -33,6 +33,8 @@ export function TrainingCommands({
     dirty,
     preview,
     save,
+    saveConflict,
+    reloadConflictedConfig,
     saveAs,
     preflight,
     beforeAction,
@@ -71,7 +73,7 @@ export function TrainingCommands({
           title="保存配置"
           aria-label="保存配置"
           onClick={() => save.mutate({ ...draft })}
-          disabled={!dirty || locked || busy || Boolean(patch.error)}
+          disabled={!dirty || locked || busy || saveConflict || Boolean(patch.error)}
         >
           <Save size={16} />
           <span>保存配置</span>
@@ -149,6 +151,7 @@ export function TrainingCommands({
       {save.error ? (
         <p className="training-command-error" role="alert">
           {save.error.message}
+          {saveConflict && <button type="button" onClick={() => void reloadConflictedConfig()}>重新加载配置</button>}
         </p>
       ) : null}
       {patch.error && (

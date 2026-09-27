@@ -317,3 +317,21 @@
 .history-missing-fields summary { cursor: pointer; }
 .history-missing-fields[open] > .history-info { margin-top: 12px; }
 .history-detail-page .page-tabs a { flex-shrink: 0; }
+.history-gpu-metrics { min-width: 0; margin-top: 20px; border-top: 1px solid var(--line); }
+.history-gpu-heading { display: flex; align-items: flex-end; justify-content: space-between; flex-wrap: wrap; gap: 12px; padding-top: 16px; }
+.history-gpu-heading h2 { margin: 0; font-size: 16px; }
+.history-gpu-heading p { margin: 4px 0 0; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+.history-gpu-choices { display: flex; flex-wrap: wrap; gap: 0; }
+.history-gpu-choices button { min-height: 32px; padding: 0 12px; color: var(--muted); background: var(--surface); border: 1px solid var(--line-strong); font-size: 12px; }
+.history-gpu-choices button + button { border-left: 0; }
+.history-gpu-choices button:first-child { border-radius: 4px 0 0 4px; }
+.history-gpu-choices button:last-child { border-radius: 0 4px 4px 0; }
+.history-gpu-choices button[aria-pressed="true"] { color: var(--accent); background: var(--accent-soft); font-weight: 600; }
+.history-gpu-charts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 24px; }
+.history-gpu-charts .chart-section { min-width: 0; }
+.history-gpu-charts .chart-section:first-child { grid-column: 1 / -1; }
+.history-gpu-charts .metric-chart { height: 250px; }
+@media (max-width: 1000px) {
+  .history-gpu-charts { grid-template-columns: minmax(0, 1fr); }
+  .history-gpu-charts .chart-section:first-child { grid-column: auto; }
+}

@@ -35,15 +35,63 @@
 .training-workspace-layout {
   flex: 1;
   min-height: 0;
-  grid-template-columns: 240px minmax(0, 1fr);
+  grid-template-columns: clamp(10%, var(--training-library-side-size, 320px), 80%) 10px minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr);
   align-items: stretch;
+  gap: 0;
   margin-top: 10px;
+}
+.training-workspace-layout > .training-config-library {
+  grid-column: 1;
+  grid-row: 1;
+}
+.training-workspace-layout > .training-editor-column {
+  grid-column: 3;
+  grid-row: 1;
+  margin-left: 10px;
+}
+.training-library-resizer {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  touch-action: none;
+  cursor: col-resize;
+}
+.training-library-resizer::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 4px;
+  width: 2px;
+  height: 32px;
+  transform: translateY(-50%);
+  border-radius: 2px;
+  background: var(--line-strong);
+}
+.training-library-resizer:hover,
+.training-library-resizer:focus-visible {
+  background: var(--accent-soft);
+  outline: 0;
+  box-shadow: inset 2px 0 var(--accent);
+}
+.training-library-resizer--side {
+  grid-column: 2;
+  grid-row: 1;
+}
+.training-library-resizer--top {
+  display: none;
 }
 .training-workspace-layout:has(
   .training-config-library[data-expanded="false"]
 ) {
   grid-template-columns: minmax(0, 1fr);
+}
+.training-workspace-layout:has(.training-config-library[hidden]) .training-library-resizer {
+  display: none;
+}
+.training-workspace-layout:has(.training-config-library[hidden]) > .training-editor-column {
+  grid-column: 1;
+  margin-left: 0;
 }
 .training-editor-column {
   min-height: 0;
@@ -90,6 +138,15 @@
 @media (max-width: 800px) {
   .training-config-page { overflow: auto; }
   .training-workspace-layout { flex: none; }
+  .training-workspace-layout .training-library-resizer { display: none; }
+  .training-workspace-layout:not(:has(.training-config-library[hidden])) {
+    grid-template-rows: auto auto;
+  }
+  .training-workspace-layout > .training-editor-column { grid-row: 2; margin-top: 10px; }
+  .training-workspace-layout:has(.training-config-library[hidden]) > .training-editor-column {
+    grid-row: 1;
+    margin-top: 0;
+  }
   .training-edit-groups { flex: none; overflow: visible; }
   .next-layout[data-training-workspace="true"] {
     display: flex;
@@ -107,16 +164,53 @@
 @container workspace (max-width: 1050px) {
   .training-workspace-layout {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: auto minmax(0, 1fr);
-    gap: 10px;
+    grid-template-rows: clamp(10%, var(--training-library-top-size, 180px), 80%) 10px minmax(0, 1fr);
   }
   .training-config-library {
-    max-height: 180px;
+    max-height: none;
+  }
+  .training-workspace-layout > .training-editor-column {
+    grid-column: 1;
+    grid-row: 3;
+    margin: 10px 0 0;
+  }
+  .training-library-resizer--side { display: none; }
+  .training-library-resizer--top {
+    display: block;
+    grid-column: 1;
+    grid-row: 2;
+    cursor: row-resize;
+  }
+  .training-library-resizer--top::after {
+    top: 4px;
+    left: 50%;
+    width: 32px;
+    height: 2px;
+    transform: translateX(-50%);
+  }
+  .training-library-resizer--top:hover,
+  .training-library-resizer--top:focus-visible {
+    box-shadow: inset 0 2px var(--accent);
   }
   .training-workspace-layout:has(.training-config-library[hidden]) {
     grid-template-rows: minmax(0, 1fr);
   }
+  .training-workspace-layout:has(.training-config-library[hidden]) > .training-editor-column {
+    grid-row: 1;
+    margin-top: 0;
+  }
   .training-config-library .eyebrow {
     display: none;
+  }
+}
+@media (max-width: 800px) {
+  .training-config-page .training-workspace-layout:not(:has(.training-config-library[hidden])) {
+    grid-template-rows: auto auto;
+  }
+  .training-workspace-layout > .training-config-library {
+    max-height: 180px;
+  }
+  .training-workspace-layout > .training-editor-column {
+    grid-row: 2;
   }
 }

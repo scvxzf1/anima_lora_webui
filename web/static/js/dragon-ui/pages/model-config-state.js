@@ -12,7 +12,7 @@ export const DEFAULT_MODEL_GROUP = Object.freeze({
     item_ids: [],
 });
 
-const MODEL_FAMILIES = new Set(['anima', 'krea2_raw', 'z_image']);
+const MODEL_FAMILIES = new Set(['anima', 'krea2_raw', 'z_image', 'qwen_image_2_1']);
 
 export function cleanModelItem(item = {}) {
     return {
@@ -71,6 +71,7 @@ export function modelGroupForItem(groups, itemId) {
 export function familyLabel(value) {
     if (value === 'krea2_raw') return 'Krea-2';
     if (value === 'z_image') return 'Z-Image';
+    if (value === 'qwen_image_2_1') return 'Qwen Image 2.1';
     return 'Anima';
 }
 

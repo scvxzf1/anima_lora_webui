@@ -1,6 +1,6 @@
 # Dragon Next
 
-React 工作台使用独立 `/next` 入口，复用 aiohttp API，不改变 Dragon/classic 默认入口。
+React 工作台使用 `/next` 入口，复用 aiohttp API；访问服务根路径 `/` 默认跳转到 Next，旧 Dragon/classic 仍可通过 `/?ui=dragon` 和 `/?ui=classic` 访问。
 验收状态与已知边界见 [实施记录](../../docs/features/dragon-next-implementation.md)。
 后续审阅改进见 [UI/UX 实施进度](../../docs/features/dragon-next-uiux-progress.md)。
 
@@ -41,6 +41,10 @@ E2E 使用独立的 5174 端口和系统 Chrome，所有 API 与训练 WebSocket
 构建在临时目录完成，先发布带哈希资源，最后原子替换 `web/static/dragon-next/index.html`。
 旧入口副本为 `previous-index.html`，旧 chunks 保留；不会清空正在被访问的资源目录。
 生产默认不发布 source map。新构建不依赖外部字体/CDN。
+需要在发布前做隔离候选构建时，可设置 `DRAGON_NEXT_DESTINATION=/tmp/dragon-next-candidate`
+覆盖发布目标；未设置时仍使用 `web/static/dragon-next`，默认行为不变。
+候选包可用 `DRAGON_S5_CANDIDATE=/tmp/dragon-next-candidate node scripts/verify-release-candidate.mjs`
+核对入口引用的哈希资源、旧 chunk 保留、`previous-index.html`、原子替换和临时根回退。
 
 发布后访问 Python 服务的 `/next/training`，检查 `/next/history` 等深链刷新。
 也可显式指定本机后端运行只读浏览器检查，命令不启动服务且会拦截非只读 API 请求：
@@ -60,7 +64,7 @@ DRAGON_VERIFY_URL=http://127.0.0.1:20102 node web/frontend-next/scripts/verify-p
 
 ## 维护边界
 
-- 数据集页「编辑蒙版」进入 `/next/datasets/masks` 独立手绘工作区。图片保存与子集应用分离，未保存离开保护和版本冲突校验覆盖完整链路；详情及隔离热测试入口见 [手动蒙版编辑器](../../docs/features/manual-mask-editor.md)。新接口需要更新并重启后端。
+- 数据集页每个已保存子集通过「图片工作台」进入 `/next/datasets/workspace/{preview|masks|tagging}`。三个视图共享预设/子集上下文；显式返回与浏览器后退会恢复数据集列表滚动位置。预览与手绘蒙版复用现有实现，打标视图带入对应数据集和子集，同时保留打标任务、结果审阅及接入/提示词/本地资源配置入口。蒙版的未保存离开保护仍覆盖视图切换；旧 `/next/datasets/masks` 路由继续可用。详见 [手动蒙版编辑器](../../docs/features/manual-mask-editor.md) 与 [打标工作台](../../docs/features/tagging-workbench.md)。
 
 - 训练页通过“选择与配置数据集”打开独立弹窗，支持蓝图库搜索、多子集原始图片数量、缩略图与展开预览、目录和重复次数编辑、正则化标记及添加/移除子集。数量来自已保存蓝图的原始图片目录，不等同于训练实际样本量；每个子集预览前 8 张。修改共享蓝图参数须确认保存，影响所有引用该蓝图的配置；“使用此数据集”只更新训练草稿，仍需保存训练配置。关闭或切换时保护未保存参数。阶段调度蓝图的子集结构及更多高级参数在“完整蓝图管理”中编辑。
 
@@ -73,6 +77,7 @@ DRAGON_VERIFY_URL=http://127.0.0.1:20102 node web/frontend-next/scripts/verify-p
 - 训练量估算显示已保存配置的样本构成、有效批量和步数。分桶面板通过 `GET /api/config/steps?include_buckets=1` 优先实测 `image_dir` 尺寸；训练目录为空时读取源图，复用预处理选桶逻辑按子集配置预测，并应用最低像素过滤，不生成预处理文件。面板明确区分源图预测和训练目录实测，支持数据集筛选、数量/宽高比排序。该分布不包含重复、抽样、验证划分和克隆，不等同于运行时 dataloader 分桶。每个子集最多扫描 20,000 张、10 秒（在图片之间检查），部分结果会显示未读/未统计数量。图片头缓存按路径、修改时间和大小失效，重新估算可刷新目录统计。弹窗与分桶列表独立滚动并隔离滚动边界，弹窗打开期间锁定页面滚动，关闭后恢复。此功能需要更新后端，旧后端会显示分桶不可用提示。
 
 - `app/` 管理壳、路由和 UI 偏好；`features/` 按领域管理表单、API、状态和样式。
+- 辅助工具的生图测试、权重分析和环境检测由 Next 独立页面实现，复用现有 HTTP API，不依赖旧界面 DOM 或状态。
 - 旧字段目录与能力规则只按纯模块复用，不挂载旧 DOM 或全局业务状态。
 - 配置、样张提示词、候选标注、模型库均保留独立草稿；保存不自动执行训练。
 - 所有 mutation 禁用自动重试；连接中断按结果未知提示，必须核对服务器后再重试。

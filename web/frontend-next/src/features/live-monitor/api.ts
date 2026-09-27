@@ -7,6 +7,7 @@ export type TrainingStatus = {
   job?: string;
   output_dir?: string;
   task_id?: string;
+  gpu_whitelist?: number[];
   last_output_at?: string | number;
   last_log_line?: string;
   last_log_id?: number;
@@ -38,7 +39,16 @@ export type LogRecord = {
   level?: string;
 };
 
-export type GpuInfo = Record<string, unknown>;
+export type GpuInfo = Record<string, unknown> & {
+  index?: number;
+  uuid?: string;
+  name?: string;
+  memory_used_gb?: number;
+  memory_total_gb?: number;
+  gpu_util?: number;
+  gpu_temp?: number;
+};
+export type GpuInventory = { ok?: boolean; gpus?: GpuInfo[]; sampled_at?: number | null; stale?: boolean };
 
 export const liveMonitorKeys = {
   status: ["live-monitor", "status"] as const,
@@ -70,8 +80,8 @@ export async function fetchTrainingLogs(limit = 300, taskId?: string, signal?: A
   return { ...data, records: data.records.slice(-limit) };
 }
 
-export function fetchGpus(signal?: AbortSignal) {
-  return apiRequest<{ ok?: boolean; gpus?: GpuInfo[] }>("/api/training/gpus", {
+export function fetchGpus(signal?: AbortSignal, force = false) {
+  return apiRequest<GpuInventory>(`/api/training/gpus${force ? "?refresh=1" : ""}`, {
     signal,
   });
 }

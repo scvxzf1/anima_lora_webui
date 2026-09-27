@@ -14,6 +14,7 @@ const MODEL_FAMILY_LABELS = Object.freeze({
     krea2: 'Krea-2 Raw',
     krea2_raw: 'Krea-2 Raw',
     z_image: 'Z-Image',
+    qwen_image_2_1: 'Qwen Image 2.1',
 });
 
 export function configHelpSummary(help) {

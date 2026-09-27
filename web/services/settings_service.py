@@ -191,6 +191,7 @@ def get_global_settings() -> dict[str, Any]:
     path_overrides = _load_path_overrides()
     return {
         "ok": True,
+        "revision": _settings_revision(),
         **settings,
         "defaults": defaults,
         "path_overrides": path_overrides,
@@ -201,8 +202,28 @@ def get_global_settings() -> dict[str, Any]:
     }
 
 
+class GlobalSettingsConflictError(ValueError):
+    pass
+
+
+def _settings_revision(path: Path | None = None) -> str:
+    from web.services.config.revisioned_text import file_revision
+
+    return file_revision(path or Path(SETTINGS_FILE))
+
+
 def save_global_settings(data: dict[str, Any]) -> dict[str, Any]:
+    from web.services.config.revisioned_text import locked_text_file
+
     current_settings_file = Path(SETTINGS_FILE)
+    with locked_text_file(current_settings_file):
+        revision = data.get("revision")
+        if revision is not None and revision != _settings_revision(current_settings_file):
+            raise GlobalSettingsConflictError("全局设置已在其他位置修改，请重新读取后再保存")
+        return _save_global_settings_locked(data, current_settings_file)
+
+
+def _save_global_settings_locked(data: dict[str, Any], current_settings_file: Path) -> dict[str, Any]:
     current = _load_settings(current_settings_file)
     output_root = _normalize_output_root(
         str(data.get("output_root", current["output_root"]) or DEFAULT_OUTPUT_ROOT),
@@ -310,6 +331,7 @@ def save_global_settings(data: dict[str, Any]) -> dict[str, Any]:
     raw_path_overrides = _load_path_overrides()
     return {
         "ok": True,
+        "revision": _settings_revision(target_settings_file),
         "message": "全局设置已保存",
         "requires_reload": current_settings_file.resolve() != target_settings_file.resolve(),
         **saved,

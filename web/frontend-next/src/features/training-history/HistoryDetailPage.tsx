@@ -3,8 +3,8 @@ import { Link, useParams, useLocation, useSearchParams } from "react-router-dom"
 import { useState } from "react";
 import { RotateCcw } from "lucide-react";
 import { fetchHistoryTaskDetail, historyKeys, type HistoryTaskDetail } from "./api";
-import { MetricsChart } from "../../components/MetricsChart";
 import { TrainingMetricsCharts } from "../../components/TrainingMetricsCharts";
+import { HistoryGpuMetrics } from "./HistoryGpuMetrics";
 import { HistoryLogs } from "./HistoryLogs";
 import { HistoryResume } from "./HistoryResume";
 import { HistoryAssets } from "./HistoryAssets";
@@ -68,7 +68,8 @@ function HistoryDetailContent({ detail, taskId, tab }: { detail: HistoryTaskDeta
     case "metrics": return <>
       {detail.task?.job === "training" ? <TrainingMetricsCharts points={detail.metrics || []} total={finiteNumber(detail.limits?.metrics_total)} />
         : <p className="data-scope">此任务不适用训练 Loss。</p>}
-      <MetricsChart points={detail.system || []} metric="vram_used_gb" label="显存 (GB)" timeAxis total={finiteNumber(detail.limits?.system_total)} />
+      <HistoryGpuMetrics points={detail.system || []} total={finiteNumber(detail.limits?.system_total)}
+        whitelist={detail.task?.gpu_whitelist} />
     </>;
     case "artifacts": return <HistoryAssets taskId={taskId} />;
     case "logs": return <HistoryLogs taskId={taskId} running={detail.task?.state === "running"} />;

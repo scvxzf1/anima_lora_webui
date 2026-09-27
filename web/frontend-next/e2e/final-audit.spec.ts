@@ -90,3 +90,37 @@ test("overview result summary isolates failures and does not invent missing tota
   await expect(summary).toContainText("saved.safetensors");
   expect(mocks.writes).toEqual([]); expect(mocks.unhandled).toEqual([]);
 });
+
+test("overview result summary keeps weights readable while images recover to a missing directory", async ({ page }) => {
+  const mocks = await mockWorkspace(page);
+  let imageFailure = true;
+  let imageReads = 0;
+  await page.route((url) => url.pathname === "/api/preview/images", (route) => {
+    imageReads += 1;
+    return imageFailure
+      ? route.fulfill({ status: 503, json: { error: "sample directory unavailable" } })
+      : route.fulfill({ json: { images: [], total: 0, directory_exists: false } });
+  });
+  await page.route((url) => url.pathname === "/api/preview/weights", (route) => route.fulfill({ json: {
+    weights: [{ file: "saved.safetensors", name: "saved.safetensors", size_bytes: 1 }],
+    total: 1,
+    directory_exists: true,
+  } }));
+
+  await page.goto("/next/history/fixture-run");
+  const summary = page.getByLabel("训练产物摘要");
+  await expect(summary.getByRole("alert")).toContainText("sample directory unavailable");
+  await expect(summary.locator("dl")).toContainText("权重1 项");
+  await expect(summary).toContainText("saved.safetensors");
+  const readsBeforeRetry = imageReads;
+
+  imageFailure = false;
+  await summary.getByRole("button", { name: "重试样张摘要", exact: true }).click();
+  await expect(summary.getByRole("alert")).toHaveCount(0);
+  await expect(summary.locator("dl")).toContainText("样张目录不存在");
+  await expect(summary.locator("dl")).toContainText("权重1 项");
+  await expect(summary).toContainText("saved.safetensors");
+  expect(imageReads).toBe(readsBeforeRetry + 1);
+  expect(mocks.writes).toEqual([]);
+  expect(mocks.unhandled).toEqual([]);
+});

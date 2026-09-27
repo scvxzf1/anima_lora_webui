@@ -78,6 +78,13 @@ def save_model_configs(data: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("模型配置请求必须是对象")
 
     settings_file = Path(settings_service.SETTINGS_FILE)
+    from web.services.config.revisioned_text import locked_text_file
+
+    with locked_text_file(settings_file):
+        return _save_model_configs_locked(data, settings_file)
+
+
+def _save_model_configs_locked(data: dict[str, Any], settings_file: Path) -> dict[str, Any]:
     raw, current_revision = _load_raw_settings_strict(settings_file)
     expected_revision = data.get("revision")
     if not isinstance(expected_revision, str):

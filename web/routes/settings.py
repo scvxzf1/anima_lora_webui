@@ -40,6 +40,8 @@ async def handle_global_settings_put(request: web.Request) -> web.Response:
             config_service.set_configs_root(settings_service.SETTINGS_FILE.parent)
             training_service.reload_runtime_storage_state(request.app.get("training_service"))
         return web.json_response(payload)
+    except settings_service.GlobalSettingsConflictError as e:
+        return web.json_response({"ok": False, "error": str(e)}, status=409)
     except ValueError as e:
         return web.json_response({"ok": False, "error": str(e)}, status=400)
 

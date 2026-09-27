@@ -30,8 +30,14 @@ export function saveMask(file: string, index: number, image: string, revision: s
     method: 'PUT', headers: { 'Content-Type': 'image/png', 'If-Match': revision }, body,
   });
 }
-export function applyMasks(file: string, index: number, revision: string) {
+export function applyMasks(
+  file: string,
+  index: number,
+  revision: string,
+  indices: number[] = [index],
+) {
   return apiRequest<{ ok: true; message: string }>(maskUrl(file, index, '/apply'), {
     method: 'POST', headers: { 'If-Match': revision },
+    body: JSON.stringify({ indices }),
   });
 }

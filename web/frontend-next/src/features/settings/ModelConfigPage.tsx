@@ -50,6 +50,9 @@ export function ModelConfigPage() {
       await qc.invalidateQueries({ queryKey: settingsKeys.global });
     },
   });
+  const recoveryError = save.error instanceof ApiError ? save.error : null;
+  const requiresServerReload =
+    recoveryError?.status === 0 || recoveryError?.status === 409;
   const draft = editor.draft;
   const item =
     draft?.items.find((entry) => entry.id === selectedId) || draft?.items[0];
@@ -130,7 +133,8 @@ export function ModelConfigPage() {
           <form
             onSubmit={(event) => {
               event.preventDefault();
-              if (!save.isPending && !query.error) save.mutate(draft);
+              if (!save.isPending && !query.error && !requiresServerReload)
+                save.mutate(draft);
             }}
           >
             <fieldset
@@ -286,6 +290,7 @@ export function ModelConfigPage() {
                       <option value="anima">Anima</option>
                       <option value="krea2_raw">Krea-2 Raw</option>
                       <option value="z_image">Z-Image</option>
+                      <option value="qwen_image_2_1">Qwen Image 2.1</option>
                     </select>
                   </label>
                   <label>
@@ -331,9 +336,14 @@ export function ModelConfigPage() {
             </fieldset>
             <footer className="settings-actions">
               <button
-                className="primary-command"
-                type="submit"
-                disabled={!editor.dirty || save.isPending || Boolean(query.error)}
+              className="primary-command"
+              type="submit"
+              disabled={
+                !editor.dirty ||
+                save.isPending ||
+                Boolean(query.error) ||
+                requiresServerReload
+              }
               >
                 <Save size={16} />
                 保存模型配置
@@ -352,7 +362,7 @@ export function ModelConfigPage() {
         {save.error && (
           <p className="form-error" role="alert">
             {save.error.message}
-            {save.error instanceof ApiError && save.error.status === 409 && (
+            {requiresServerReload && (
               <button
                 type="button"
                 disabled={query.isFetching}
@@ -367,10 +377,13 @@ export function ModelConfigPage() {
                   if (result.data && !result.error) {
                     editor.accept(result.data, editor.draft!);
                     save.reset();
+                    setNotice("已重新载入服务器模型库");
                   }
                 }}
               >
-                重新载入服务器版本
+                {recoveryError?.status === 0
+                  ? "核对服务器版本"
+                  : "重新载入服务器版本"}
               </button>
             )}
           </p>

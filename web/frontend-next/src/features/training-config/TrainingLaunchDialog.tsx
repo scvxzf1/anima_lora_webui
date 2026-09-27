@@ -61,6 +61,11 @@ export function TrainingLaunchDialog({
     action.error instanceof ApiError
       ? (action.error.payload as TrainingActionResponse)?.preflight
       : undefined;
+  const startResultMayBeUnknown =
+    mode === "start" &&
+    (action.error instanceof TypeError ||
+      (action.error instanceof ApiError &&
+        (action.error.status === 0 || action.error.status >= 500)));
   return (
     <CommandDialog
       title={mode === "start" ? "确认启动训练" : "确认加入队列"}
@@ -100,12 +105,19 @@ export function TrainingLaunchDialog({
         </label>
       </fieldset>
       {action.error && (
-        <p className="form-error" role="alert">
-          {action.error.message}
-          {action.error instanceof TypeError
-            ? "；请求结果未知，请先核对监控和队列，不要重复提交。"
-            : ""}
-        </p>
+        <>
+          <p className="form-error" role="alert">
+            {action.error.message}
+            {startResultMayBeUnknown
+              ? "；启动结果可能未知，请先核对当前监控，不要重复提交。"
+              : ""}
+          </p>
+          {mode === "start" && (
+            <p>
+              <Link to="/monitor">查看当前监控，核对启动结果</Link>
+            </p>
+          )}
+        </>
       )}
       {action.isSuccess ? (
         <div role="status">

@@ -35,6 +35,7 @@ export type HistoryTaskSummary = {
   log_count?: number;
   metric_count?: number;
   variant?: string;
+  gpu_whitelist?: number[];
   training_variant?: string;
   base_compute?: string;
   precision_preference?: string;

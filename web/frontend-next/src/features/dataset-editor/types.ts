@@ -8,6 +8,7 @@ export type DatasetSummary = {
   source_dir?: string;
   image_dir?: string;
   cache_dir?: string;
+  reference_image_dir?: string;
   resolution?: number;
   batch_size?: number;
   enable_bucket?: boolean;
@@ -47,9 +48,12 @@ export type DatasetLibraryResponse = {
 };
 
 export type DatasetRow = {
+  edit_role?: 'normal' | 'before' | 'after';
+  edit_pair_id?: string;
   source_dir?: string;
   image_dir?: string;
   cache_dir?: string;
+  reference_image_dir?: string;
   num_repeats?: number;
   is_reg?: boolean;
   mask_mode?: string;
@@ -64,6 +68,7 @@ export type DatasetPresetResponse = {
   file: string;
   name: string;
   content: string;
+  revision?: string;
   datasets: DatasetRow[];
   defaults: Record<string, unknown>;
   readonly: boolean;
@@ -103,6 +108,7 @@ export type DatasetPresetMutationResponse = DatasetPresetWritePayload & {
   message: string;
   file: string;
   content: string;
+  revision?: string;
   summary: DatasetSummary;
 };
 

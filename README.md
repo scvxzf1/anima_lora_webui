@@ -18,7 +18,7 @@
 
 - 新手部署和 WebUI 使用：[Linux 部署启动](#linux-部署启动)、[Windows 部署启动](#windows-部署启动)
 - 默认 Dragon UI、classic 回退与空白页排查：[docs/features/dragon-ui.md](docs/features/dragon-ui.md)
-- Next 数据集手动蒙版：在 `/next/datasets` 选择蓝图后进入「编辑蒙版」，支持手绘、保存及应用到子集，见 [使用说明](docs/features/manual-mask-editor.md)。
+- Next 数据集图片工作台：在 `/next/datasets` 对应子集进入「图片工作台」，统一提供图片预览、手动蒙版编辑和打标，见 [蒙版使用说明](docs/features/manual-mask-editor.md)。
 - Linux 部署：[docs/guidelines/linux-deployment.zh.md](docs/guidelines/linux-deployment.zh.md)
 - 训练参考：[docs/guidelines/training.md](docs/guidelines/training.md)
 - AUTO 块交换（实验，默认关闭）：Dragon「资源与预检 / 模型驻留」开启，先独立预热再固定交换数；限制和验证状态见 [配置说明](docs/configuration/auto-block-swap.md)。
@@ -152,7 +152,7 @@ uv sync
 ./webui.sh
 ```
 
-该快捷脚本默认监听 `127.0.0.1:20203`，等待服务就绪后自动打开 `?ui=dragon`，因此不会被浏览器中保存的 classic 模式覆盖。只启动服务、不打开浏览器时使用 `ANIMA_WEB_OPEN_BROWSER=0 ./webui.sh`。
+该快捷脚本默认监听 `127.0.0.1:20203`，等待服务就绪后自动打开 `/next`。只启动服务、不打开浏览器时使用 `ANIMA_WEB_OPEN_BROWSER=0 ./webui.sh`。
 
 也可以手动指定监听地址和端口：
 
@@ -166,7 +166,7 @@ uv sync
 http://127.0.0.1:20102/
 ```
 
-默认进入 Dragon UI。首次启动加载后端依赖时可能需要等待约 10–40 秒；需要兼容界面时打开 `http://127.0.0.1:20102/?ui=classic`。
+默认进入 Next UI。首次启动加载后端依赖时可能需要等待约 10–40 秒；旧版 Dragon 和 classic 兼容入口分别是 `http://127.0.0.1:20102/?ui=dragon` 与 `http://127.0.0.1:20102/?ui=classic`。
 
 需要局域网访问时：
 
@@ -236,7 +236,7 @@ uv sync
 http://127.0.0.1:20102/
 ```
 
-默认进入 Dragon UI；classic 兼容入口是 `http://127.0.0.1:20102/?ui=classic`。
+默认进入 Next UI；旧版 Dragon 和 classic 兼容入口分别是 `http://127.0.0.1:20102/?ui=dragon` 与 `http://127.0.0.1:20102/?ui=classic`。
 
 如果 PowerShell 禁止激活脚本，不需要激活虚拟环境，直接使用上面的 `.\.venv\Scripts\python.exe` 命令即可。
 
@@ -252,7 +252,7 @@ http://127.0.0.1:20102/
 
 ## 启动后怎么用
 
-默认是 Dragon UI。Dragon 左上角 `Dragon trainer` 菜单可切换到 **经典界面**；classic 顶部可点 **新版界面** 返回。也可以直接使用：
+默认是 Next UI。旧版 Dragon 左上角 `Dragon trainer` 菜单可切换到 **经典界面**；classic 顶部可点 **新版界面** 返回。旧版界面也可以直接使用：
 
 ```text
 /?ui=dragon

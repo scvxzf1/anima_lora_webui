@@ -99,8 +99,13 @@ def _norm_precision(value: Any) -> str:
 
 def _infer_model_family(flat: dict[str, Any]) -> str:
     """Resolve the same canonical family values used by the model config UI."""
+    from library.models.family_registry import normalize_registered_family
+
     value = str(flat.get("model_family") or "anima").strip().lower()
-    return value if value in {"anima", "krea2_raw", "z_image"} else ""
+    try:
+        return normalize_registered_family(value)
+    except ValueError:
+        return ""
 
 
 def _infer_precision_preference(flat: dict[str, Any]) -> str:

@@ -28,6 +28,7 @@ type Props = {
   pending: boolean;
   selectedFile: string;
   searchActive: boolean;
+  detailedManagement: boolean;
   ordering: boolean;
   orderingError?: string;
   onSelect: (file: string) => void;
@@ -49,6 +50,7 @@ export function DatasetGroupList({
   pending,
   selectedFile,
   searchActive,
+  detailedManagement,
   ordering,
   orderingError,
   onSelect,
@@ -57,7 +59,12 @@ export function DatasetGroupList({
   onPlacePreset,
 }: Props) {
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(PointerSensor, {
+      activationConstraint: { delay: 200, tolerance: 24 },
+      bypassActivationConstraint: ({ event }) => (
+        event.target instanceof Element && Boolean(event.target.closest('.dataset-drag-handle'))
+      ),
+    }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
   const [activeType, setActiveType] = useState<DragData['type']>();
@@ -144,6 +151,7 @@ export function DatasetGroupList({
               groups={groups}
               selectedFile={selectedFile}
               searchActive={searchActive}
+              detailedManagement={detailedManagement}
               ordering={ordering}
               sortableGroupIndex={sortableGroups.findIndex((item) => item.id === group.id)}
               sortableGroupCount={sortableGroups.length}

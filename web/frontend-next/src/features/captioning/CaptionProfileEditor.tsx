@@ -10,6 +10,23 @@ import {
   type ProviderType,
 } from "./api";
 
+const SECRET_CONFIG_KEYS = new Set([
+  "api_key",
+  "apikey",
+  "client_secret",
+  "password",
+  "refresh_token",
+  "secret",
+  "token",
+  "access_token",
+]);
+
+function stripSecretConfig(config: Record<string, unknown>) {
+  return Object.fromEntries(
+    Object.entries(config).filter(([key]) => !SECRET_CONFIG_KEYS.has(key.toLowerCase())),
+  );
+}
+
 export function CaptionProfileEditor({
   profile,
   types,
@@ -23,7 +40,7 @@ export function CaptionProfileEditor({
     () => ({
       name: profile?.name || "",
       provider: profile?.provider || "openai_compatible",
-      config: profile?.config || ({} as Record<string, unknown>),
+      config: stripSecretConfig(profile?.config || {}),
     }),
     [profile],
   );

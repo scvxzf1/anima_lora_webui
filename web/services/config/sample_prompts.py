@@ -12,8 +12,8 @@ from pathlib import Path
 from typing import Any
 
 from library.env import get_configs_root
-from web.services.atomic_io import atomic_write_text
 from web.services.config import paths as _config_paths
+from web.services.config.revisioned_text import text_revision, write_text
 
 ROOT = Path(__file__).resolve().parents[3]
 CONFIGS_DIR = get_configs_root()
@@ -87,7 +87,7 @@ def load_sample_prompts_file(rel_path: str | None = None) -> dict[str, Any]:
     normalized = _normalize_prompt_file_path(rel_path or DEFAULT_SAMPLE_PROMPTS_FILE)
     path = _resolve_prompt_path(normalized)
     if not path.exists():
-        return {"ok": True, "file": normalized, "content": "", "prompts": [], "exists": False}
+        return {"ok": True, "file": normalized, "content": "", "prompts": [], "exists": False, "revision": text_revision("", exists=False)}
     content = path.read_text(encoding="utf-8")
     lines = content.splitlines()
     prompts = [
@@ -100,6 +100,7 @@ def load_sample_prompts_file(rel_path: str | None = None) -> dict[str, Any]:
         "file": normalized,
         "content": content,
         "exists": True,
+        "revision": text_revision(content),
         "prompts": prompts,
     }
 
@@ -109,6 +110,7 @@ def save_sample_prompts_file(
     rel_path: str | None = None,
     *,
     train_config_file: str | None = None,
+    expected_revision: str | None = None,
 ) -> dict[str, Any]:
     # Fork path takes precedence; avoid validating a stale absolute default first.
     if train_config_file:
@@ -124,12 +126,13 @@ def save_sample_prompts_file(
     ]
     path = _resolve_prompt_path(normalized)
     path.parent.mkdir(parents=True, exist_ok=True)
-    atomic_write_text(path, text)
+    revision = write_text(path, text, expected_revision)
     return {
         "ok": True,
         "file": normalized,
         "content": text,
         "prompts": prompts,
+        "revision": revision,
         "message": f"已保存 {len(prompts)} 条预览提示词",
     }
 

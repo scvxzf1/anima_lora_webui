@@ -1,0 +1,32 @@
+.tool-page { max-width: 1260px; margin: 0 auto; padding: 28px 28px 64px; }
+.tool-heading, .tool-section-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.tool-heading { padding-bottom: 16px; border-bottom: 1px solid var(--line); margin-bottom: 20px; }
+.tool-heading h1 { margin: 0; }
+.tool-heading p, .tool-muted { margin: 4px 0 0; color: var(--muted); }
+.tool-section { padding: 20px 0; border-bottom: 1px solid var(--line); }
+.tool-section h2 { font-size: 17px; margin: 0 0 14px; }
+.tool-section h3 { font-size: 14px; margin: 16px 0 8px; }
+.tool-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.tool-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr)); gap: 12px; }
+.tool-field { display: grid; gap: 5px; min-width: 0; color: var(--muted); font-size: 12px; }
+.tool-field input, .tool-field select, .tool-field textarea { width: 100%; color: var(--ink); }
+.tool-field-wide { grid-column: 1 / -1; }
+.tool-metric { padding: 12px; border: 1px solid var(--line); background: var(--surface); border-radius: 4px; }
+.tool-metric strong { display: block; font-size: 19px; overflow-wrap: anywhere; }
+.tool-metric span { color: var(--muted); font-size: 12px; }
+.tool-error { color: var(--danger); white-space: pre-wrap; }
+.tool-notice { color: var(--success); }
+.tool-list { display: grid; gap: 0; margin: 0; padding: 0; list-style: none; }
+.tool-list li { padding: 9px 0; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+.tool-list small { display: block; color: var(--muted); }
+.tool-log { max-height: 280px; overflow: auto; padding: 12px; background: var(--surface-subtle); border: 1px solid var(--line); white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; }
+.tool-gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; }
+.tool-gallery figure { margin: 0; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; }
+.tool-gallery img { width: 100%; aspect-ratio: 1; object-fit: contain; background: var(--surface-subtle); }
+.tool-gallery figcaption { padding: 8px; font-size: 12px; overflow-wrap: anywhere; }
+.tool-table-wrap { overflow: auto; }
+.tool-table { width: 100%; border-collapse: collapse; text-align: left; }
+.tool-table th, .tool-table td { padding: 8px; border-bottom: 1px solid var(--line); }
+.tool-table th { color: var(--muted); font-weight: 500; }
+.tool-table td { overflow-wrap: anywhere; }
+@media (max-width: 650px) { .tool-page { padding: 18px 16px 48px; } .tool-heading { align-items: flex-start; } }

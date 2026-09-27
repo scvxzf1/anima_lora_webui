@@ -3,8 +3,12 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 const apiRequestMock = vi.hoisted(() => vi.fn());
-vi.mock("../../api/client", () => ({ apiRequest: apiRequestMock }));
+vi.mock("../../api/client", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../api/client")>()),
+  apiRequest: apiRequestMock,
+}));
 import { TrainingSamplePrompts } from "./TrainingExtras";
+import { ApiError } from "../../api/client";
 afterEach(() => { cleanup(); apiRequestMock.mockReset(); vi.unstubAllGlobals(); });
 
 describe.sequential("training sample prompts", () => {
@@ -60,5 +64,28 @@ describe.sequential("training sample prompts", () => {
   await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("readonly"));
   expect(onClose).not.toHaveBeenCalled();
   expect(screen.getByLabelText("样张提示词内容")).toHaveValue(content);
+  });
+
+  it("keeps the draft and blocks a stale prompt revision after 409", async () => {
+    apiRequestMock.mockImplementation(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === "PUT") throw new ApiError("文件已在其他位置修改", 409, {});
+      return { ok: true, exists: true, file: "configs/sample_prompts.txt", content: "old prompt\n", prompts: ["old prompt"], revision: "old-revision" };
+    });
+    render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+      <TrainingSamplePrompts file={{ path: "configs/imported/test.toml" }} promptFile="configs/sample_prompts.txt" onClose={() => {}} onSaved={async () => {}} />
+    </QueryClientProvider>);
+    const user = userEvent.setup();
+    await screen.findByRole("button", { name: "样张 1: old prompt" });
+    await user.click(screen.getByRole("button", { name: "原文" }));
+    const textarea = screen.getByLabelText("样张提示词内容");
+    await user.clear(textarea);
+    await user.type(textarea, "my draft\n");
+    await user.click(screen.getByRole("button", { name: "保存提示词与配置引用" }));
+    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("文件已在其他位置修改"));
+    expect(textarea).toHaveValue("my draft\n");
+    expect(screen.getByRole("button", { name: "保存提示词与配置引用" })).toBeDisabled();
+    const writes = apiRequestMock.mock.calls.filter(([, init]) => init?.method === "PUT");
+    expect(writes).toHaveLength(1);
+    expect(JSON.parse(writes[0][1].body as string).revision).toBe("old-revision");
   });
 });

@@ -123,7 +123,7 @@ function historyFilterControls(filters, tasks = []) {
         select('sort', '排序', [['newest', '最新优先'], ['oldest', '最早优先'], ['loss', 'Loss 点数'], ['logs', '日志行数'], ['name', '名称']]),
     ].join('');
     const advanced = [
-        select('modelFamily', '基座模型', [...all, ['anima', 'Anima'], ['krea2_raw', 'Krea-2'], ['z_image', 'Z-Image']]),
+        select('modelFamily', '基座模型', [...all, ['anima', 'Anima'], ['krea2_raw', 'Krea-2'], ['z_image', 'Z-Image'], ['qwen_image_2_1', 'Qwen Image 2.1']]),
         select('trainingVariant', '训练变体', [...all, ...['lora', 'lokr', 'loha', 'vera', 'glora', 'dora', 'hydralora', 'reft', 'tlora', 'ortholora', 'chimera', 'soft_tokens', 'ip_adapter', 'easycontrol'].map((value) => [value, value])]),
         select('archived', '归档', [['active', '未归档'], ['all', '全部'], ['archived', '已归档']]),
         select('source', '来源', [['all', '全部'], ['queue', '来自队列'], ['resume', '续训'], ['continue', '权重热启动']]),

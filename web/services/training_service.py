@@ -20,6 +20,7 @@ from web.services.training.constants import (
     PROGRESS_RATE_SAMPLE_WINDOW,
 )
 from web.services.training.gpu_async import list_available_gpus as _list_available_gpus
+from web.services.training.gpu_snapshot import GpuSnapshotCache
 from web.services.training.live_utils import _json_safe_training_payload
 
 load_dotenv()
@@ -55,6 +56,7 @@ class TrainingService:
             self.current_runtime_info: dict[str, str] = {}
             self.current_job: str = ""
             self.current_gpu_whitelist: list[int] = []
+            self._gpu_snapshot_cache = GpuSnapshotCache()
             self.current_task_id: str = ""
             self.current_task_dir: Path | None = None
             self.current_command: list[str] = []
@@ -131,7 +133,16 @@ class TrainingService:
             return records[-limit:]
 
     async def list_gpus(self) -> list[dict[str, Any]]:
-            return await _list_available_gpus()
+            return (await self.gpu_inventory())["gpus"]
+
+    async def gpu_inventory(self, *, force: bool = False) -> dict[str, Any]:
+            ttl = 2.0 if self.status == "running" else 10.0
+            snapshot = await self._gpu_snapshot_cache.read(ttl=ttl, force=force)
+            return {
+                "gpus": snapshot.inventory() if snapshot else [],
+                "sampled_at": snapshot.sampled_at if snapshot else None,
+                "stale": snapshot is None,
+            }
 
     # Domain methods live in web.services.training.{queue,history,launcher,live_monitor}.
     # This facade keeps a single dynamic dispatch surface instead of dozens of 3-line wrappers.

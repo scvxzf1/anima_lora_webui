@@ -15,13 +15,15 @@ import {
 export function CaptionSource({
   library,
   onCreated,
+  onSourceChange,
 }: {
   library?: Profiles;
   onCreated: (id: string) => void;
+  onSourceChange?: (file: string, index: number) => void;
 }) {
   const [params] = useSearchParams();
   const [file, setFile] = useState(params.get("dataset") || "");
-  const [index, setIndex] = useState(0);
+  const [index, setIndex] = useState(() => Math.max(0, Number(params.get("subset")) || 0));
   const [source, setSource] = useState("source");
   const [offset, setOffset] = useState(0);
   const [scanned, setScanned] = useState(false);
@@ -49,7 +51,13 @@ export function CaptionSource({
     (p) => p.id === (profileId || library.active_profile_id),
   );
   const create = useMutation({
-    mutationFn: createCaptionJob,
+    mutationFn: async (payload: Parameters<typeof createCaptionJob>[0]) => {
+      const data = await createCaptionJob(payload);
+      if (!data?.job?.id) {
+        throw new Error("打标任务响应缺少任务 ID");
+      }
+      return data;
+    },
     retry: false,
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: captioningKeys.jobs });
@@ -99,9 +107,11 @@ export function CaptionSource({
             <select
               value={file}
               onChange={(e) => {
-                setFile(e.target.value);
+                const nextFile = e.target.value;
+                setFile(nextFile);
                 setIndex(0);
                 resetSource();
+                onSourceChange?.(nextFile, 0);
               }}
             >
               <option value="">选择数据集</option>
@@ -117,8 +127,10 @@ export function CaptionSource({
             <select
               value={index}
               onChange={(e) => {
-                setIndex(Number(e.target.value));
+                const nextIndex = Number(e.target.value);
+                setIndex(nextIndex);
                 resetSource();
+                onSourceChange?.(file, nextIndex);
               }}
             >
               {preset.data?.datasets.map((row, i) => (
@@ -177,6 +189,18 @@ export function CaptionSource({
               ))}
             </select>
           </label>
+          {prompts.error && (
+            <p className="form-error full-width" role="alert">
+              {prompts.error.message}
+              <button
+                type="button"
+                onClick={() => void prompts.refetch()}
+                disabled={prompts.isFetching}
+              >
+                重试提示词
+              </button>
+            </p>
+          )}
           {profile?.kind !== "local" && (
             <>
               <label>
@@ -307,16 +331,14 @@ export function CaptionSource({
       {(datasets.error ||
         preset.error ||
         images.error ||
-        create.error ||
-        prompts.error) && (
+        create.error) && (
         <p className="form-error" role="alert">
           {
             (
               datasets.error ||
               preset.error ||
               images.error ||
-              create.error ||
-              prompts.error
+              create.error
             )?.message
           }
         </p>

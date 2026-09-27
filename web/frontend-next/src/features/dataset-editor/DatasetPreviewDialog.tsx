@@ -15,9 +15,10 @@ type Props = {
   datasetIndex: number;
   returnFocus: HTMLElement | null;
   onClose: () => void;
+  embedded?: boolean;
 };
 
-export function DatasetPreviewDialog({ file, datasetIndex, returnFocus, onClose }: Props) {
+export function DatasetPreviewDialog({ file, datasetIndex, returnFocus, onClose, embedded = false }: Props) {
   const closeRef = useRef<HTMLButtonElement>(null);
   const dialogRef = useRef<HTMLElement>(null);
   const onCloseRef = useRef(onClose);
@@ -30,14 +31,17 @@ export function DatasetPreviewDialog({ file, datasetIndex, returnFocus, onClose 
   });
 
   useEffect(() => {
+    if (embedded) return;
     onCloseRef.current = onClose;
-  }, [onClose]);
+  }, [embedded, onClose]);
 
   useEffect(() => {
+    if (embedded) return;
     viewerImageRef.current = viewerImage;
   }, [viewerImage]);
 
   useEffect(() => {
+    if (embedded) return;
     closeRef.current?.focus();
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
@@ -54,18 +58,18 @@ export function DatasetPreviewDialog({ file, datasetIndex, returnFocus, onClose 
       document.body.style.overflow = previousOverflow;
       returnFocus?.focus();
     };
-  }, [returnFocus]);
+  }, [embedded, returnFocus]);
 
   function openViewer(image: DatasetPreviewImage, trigger: HTMLElement) {
     viewerTriggerRef.current = trigger;
     setViewerImage(image);
   }
 
-  return createPortal(
+  const panel = (
     <div className="dataset-preview-backdrop" role="presentation" onMouseDown={(event) => {
-      if (event.target === event.currentTarget) onClose();
-    }}>
-      <section ref={dialogRef} className="dataset-preview-dialog" role="dialog" aria-modal="true" aria-labelledby="dataset-preview-title">
+      if (!embedded && event.target === event.currentTarget) onClose();
+    }} data-embedded={embedded || undefined}>
+      <section ref={dialogRef} className="dataset-preview-dialog" data-embedded={embedded || undefined} role={embedded ? 'region' : 'dialog'} aria-modal={embedded ? undefined : 'true'} aria-labelledby="dataset-preview-title">
         <header className="dataset-preview-header">
           <div>
             <p className="eyebrow">DATASET PREVIEW</p>
@@ -77,14 +81,14 @@ export function DatasetPreviewDialog({ file, datasetIndex, returnFocus, onClose 
               <RefreshCw aria-hidden="true" size={16} />
               {preview.isFetching && preview.data ? '刷新中' : '刷新'}
             </button>
-            <button ref={closeRef} type="button" className="dataset-icon-button" aria-label="关闭图片预览" title="关闭" onClick={onClose}>
+            {!embedded && <button ref={closeRef} type="button" className="dataset-icon-button" aria-label="关闭图片预览" title="关闭" onClick={onClose}>
               <X aria-hidden="true" size={18} />
-            </button>
+            </button>}
           </div>
         </header>
 
         <div className="dataset-preview-body" aria-busy={preview.isPending || preview.isFetching}>
-          {preview.isPending ? <p className="dataset-preview-message">正在读取图片与标注</p> : null}
+          {preview.isPending ? <p className="dataset-preview-message" role="status" aria-live="polite">正在读取图片与标注</p> : null}
           {preview.isError ? (
             <div className="dataset-preview-message" role="alert">
               <strong>无法读取数据集预览</strong>
@@ -129,9 +133,9 @@ export function DatasetPreviewDialog({ file, datasetIndex, returnFocus, onClose 
           onClose={() => setViewerImage(null)}
         />
       ) : null}
-    </div>,
-    document.body,
+    </div>
   );
+  return embedded ? panel : createPortal(panel, document.body);
 }
 
 function DatasetPreviewCard({

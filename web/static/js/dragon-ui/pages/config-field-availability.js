@@ -13,7 +13,7 @@ import {
     modelFamilyPipelineCapability,
     modelFamilySupportsPipelineParallel,
     normalizeModelFamily,
-} from '../../features/config-form/model-family.js?v=auto-block-swap-20260908-v3';
+} from '../../features/config-form/model-family.js?v=qwen-image-21-v2';
 
 const CONVROT_FIELD_KEYS = new Set([
     'convrot_group_size',

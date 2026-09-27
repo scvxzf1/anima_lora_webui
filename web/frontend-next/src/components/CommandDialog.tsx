@@ -46,7 +46,9 @@ export function CommandDialog({
             className="icon-button"
             title="关闭"
             aria-label="关闭"
-            onClick={onClose}
+            onClick={() => {
+              if (!busy) onClose();
+            }}
             disabled={busy}
           >
             <X size={18} />

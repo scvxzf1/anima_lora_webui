@@ -12,6 +12,7 @@ import { createMemoryRouter, RouterProvider } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { TrainingWorkspace } from "./TrainingWorkspace";
+import { TRAINING_DETAILED_MANAGEMENT_KEY } from "./TrainingConfigLibrary";
 
 function renderWorkspace() {
   const router = createMemoryRouter(
@@ -272,6 +273,35 @@ describe("TrainingWorkspace", () => {
     expect(screen.getByText("源图像目录 存在")).toBeInTheDocument();
   });
 
+  it("keeps a stale training draft and blocks repeat saves after 409", async () => {
+    const baseFetch = createFetchMock();
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.startsWith("/api/config/raw?") && !init?.method) {
+        const response = await baseFetch(input, init);
+        return jsonResponse({ ...(await response.json()), revision: "read-revision" });
+      }
+      if (url === "/api/config/raw" && init?.method === "PATCH")
+        return new Response(JSON.stringify({ ok: false, error: "文件已在其他位置修改" }), { status: 409 });
+      return baseFetch(input, init);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const user = userEvent.setup();
+    renderWorkspace();
+    await user.click(screen.getByRole("tab", { name: "训练计划" }));
+    const outputName = await screen.findByLabelText("输出名称");
+    await waitFor(() => expect(outputName).toBeEnabled());
+    await user.clear(outputName);
+    await user.type(outputName, "unsaved-draft");
+    await user.click(screen.getByRole("button", { name: "保存配置" }));
+    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("文件已在其他位置修改"));
+    expect(outputName).toHaveValue("unsaved-draft");
+    expect(screen.getByRole("button", { name: "保存配置" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "重新加载配置" })).toBeInTheDocument();
+    expect(requestBody(fetchMock, "/api/config/raw", "PATCH").revision).toBe("read-revision");
+    expect(fetchMock.mock.calls.filter(([url, init]) => String(url) === "/api/config/raw" && init?.method === "PATCH")).toHaveLength(1);
+  });
+
   it("opens auxiliary dialogs and persists the library toggle", async () => {
     vi.stubGlobal("fetch", createFetchMock());
     const user = userEvent.setup();
@@ -308,6 +338,34 @@ describe("TrainingWorkspace", () => {
     expect(localStorage.getItem("dragon-next.training-library-expanded")).toBe(
       "true",
     );
+  });
+
+  it("hides training library management by default and persists its switch", async () => {
+    vi.stubGlobal("fetch", createFetchMock());
+    const user = userEvent.setup();
+    const view = renderWorkspace();
+    const library = await screen.findByRole("complementary", { name: "训练配置库" });
+    await within(library).findByText("train.toml");
+    expect(within(library).getByRole("switch", { name: "详细管理" })).not.toBeChecked();
+    expect(within(library).getByRole("button", { name: "新建分组" })).toBeInTheDocument();
+    expect(within(library).queryByRole("button", { name: "重命名当前分组" })).not.toBeInTheDocument();
+    expect(within(library).queryByRole("button", { name: "拖动排序 train.toml" })).not.toBeInTheDocument();
+    expect(within(library).queryByRole("combobox", { name: "移动 train.toml 到分组" })).not.toBeInTheDocument();
+    expect(library.querySelector(".training-library-item")).toBeInTheDocument();
+
+    await user.click(within(library).getByRole("switch", { name: "详细管理" }));
+    expect(localStorage.getItem(TRAINING_DETAILED_MANAGEMENT_KEY)).toBe("true");
+    expect(within(library).getByRole("button", { name: "重命名当前分组" })).toBeInTheDocument();
+    expect(within(library).getByRole("button", { name: "拖动排序 train.toml" })).toBeInTheDocument();
+
+    view.unmount();
+    renderWorkspace();
+    const restored = await screen.findByRole("complementary", { name: "训练配置库" });
+    await within(restored).findByText("train.toml");
+    expect(within(restored).getByRole("switch", { name: "详细管理" })).toBeChecked();
+    await user.click(within(restored).getByRole("switch", { name: "详细管理" }));
+    expect(localStorage.getItem(TRAINING_DETAILED_MANAGEMENT_KEY)).toBe("false");
+    expect(within(restored).queryByRole("button", { name: "拖动排序 train.toml" })).not.toBeInTheDocument();
   });
 
   it("guards dirty preset switching, browser unload, and SPA navigation", async () => {

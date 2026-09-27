@@ -118,6 +118,7 @@
 }
 @media (max-width: 600px) {
   .history-advanced-grid { grid-template-columns: 1fr; }
+  .history-search { flex: 1 1 100%; }
 }
 
 .history-bulk-bar {

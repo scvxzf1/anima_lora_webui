@@ -141,7 +141,11 @@ def _candidate_reason(layer: Mapping[str, Any], *, kind: str) -> str:
 
 def _heatmap(layers: list[Mapping[str, Any]]) -> dict[str, Any]:
     block_values = sorted({int(layer["block"]) for layer in layers if isinstance(layer.get("block"), int)})
-    component_values = _ordered_components(str(layer.get("component") or "unknown") for layer in layers)
+    component_values = _ordered_components(
+        str(layer.get("component") or "unknown")
+        for layer in layers
+        if isinstance(layer.get("block"), int)
+    )
     matrix: list[list[float]] = []
     cells: list[dict[str, Any]] = []
     max_value = 0.0

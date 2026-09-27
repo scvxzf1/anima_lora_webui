@@ -4,7 +4,8 @@ import userEvent from '@testing-library/user-event';
 import { createMemoryRouter, RouterProvider } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { DatasetWorkspace } from './DatasetWorkspace';
+import { DATASET_DETAILED_MANAGEMENT_KEY, DatasetWorkspace } from './DatasetWorkspace';
+import { DatasetImageWorkspacePage } from './DatasetImageWorkspacePage';
 
 type PresetRecord = ReturnType<typeof presetPayload>;
 type GroupRecord = {
@@ -362,6 +363,7 @@ function renderWorkspace() {
   });
   const router = createMemoryRouter([
     { path: '/datasets', element: <DatasetWorkspace /> },
+    { path: '/datasets/workspace/*', element: <DatasetImageWorkspacePage /> },
     { path: '/other', element: <main>其他页面</main> },
   ], { initialEntries: ['/datasets'] });
   return {
@@ -380,6 +382,38 @@ describe('DatasetWorkspace', () => {
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
     window.localStorage.clear();
+  });
+
+  it('hides preset management by default and restores the persisted switch state', async () => {
+    const { fetchMock } = createFetchMock();
+    vi.stubGlobal('fetch', fetchMock);
+    const user = userEvent.setup();
+    const view = renderWorkspace();
+    await screen.findByRole('heading', { name: 'alpha.toml' });
+
+    const toggle = screen.getByRole('switch', { name: '详细管理' });
+    expect(toggle).not.toBeChecked();
+    expect(screen.queryByRole('button', { name: '拖动排序预设 alpha.toml' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '上移预设 alpha.toml' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '下移预设 alpha.toml' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('combobox', { name: '移动 alpha.toml 到分组' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /数据集封面，长按拖动排序alpha.toml/ })).toBeInTheDocument();
+    expect(document.querySelector('.dataset-preset-row[data-file="configs/datasets/alpha.toml"] .dataset-cover'))
+      .toHaveAttribute('data-drag-enabled', 'true');
+
+    await user.click(toggle);
+    expect(toggle).toBeChecked();
+    expect(window.localStorage.getItem(DATASET_DETAILED_MANAGEMENT_KEY)).toBe('true');
+    expect(screen.getByRole('button', { name: '拖动排序预设 alpha.toml' })).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: '移动 alpha.toml 到分组' })).toBeInTheDocument();
+
+    view.unmount();
+    renderWorkspace();
+    await screen.findByRole('heading', { name: 'alpha.toml' });
+    expect(screen.getByRole('switch', { name: '详细管理' })).toBeChecked();
+    await user.click(screen.getByRole('switch', { name: '详细管理' }));
+    expect(window.localStorage.getItem(DATASET_DETAILED_MANAGEMENT_KEY)).toBe('false');
+    expect(screen.queryByRole('button', { name: '拖动排序预设 alpha.toml' })).not.toBeInTheDocument();
   });
 
   it('renders grouped presets, filters them, and loads the selected editor', async () => {
@@ -486,6 +520,23 @@ describe('DatasetWorkspace', () => {
     expect(applyButton).toHaveAttribute('title', '请先保存当前数据集修改');
   });
 
+  it('allows preparing reference and target data independently of the selected training family', async () => {
+    const { fetchMock } = createFetchMock();
+    vi.stubGlobal('fetch', fetchMock);
+    const user = userEvent.setup();
+    renderWorkspace();
+    await screen.findByRole('heading', { name: 'alpha.toml' });
+
+    const addPair = screen.getByRole('button', { name: '添加编辑配对' });
+    expect(addPair).toBeEnabled();
+    await user.click(addPair);
+
+    expect(screen.getByLabelText('编辑前图片目录')).toBeEnabled();
+    expect(screen.getByLabelText('目标图原始目录（编辑后）')).toHaveValue('image_dataset/alpha');
+    expect(screen.getByLabelText('目标图训练目录（编辑后）')).toHaveValue('post_image_dataset/alpha');
+    expect(screen.getByText(/当前训练配置不兼容/)).toBeInTheDocument();
+  });
+
   it('edits and saves stage scheduling without any legacy bridge', async () => {
     const { fetchMock } = createFetchMock();
     vi.stubGlobal('fetch', fetchMock);
@@ -546,6 +597,7 @@ describe('DatasetWorkspace', () => {
     const user = userEvent.setup();
     renderWorkspace();
     await screen.findByRole('heading', { name: 'alpha.toml' });
+    await user.click(screen.getByRole('switch', { name: '详细管理' }));
     await user.click(screen.getByRole('button', { name: '下移预设 alpha.toml' }));
 
     await waitFor(() => expect(requestBody(fetchMock, '/api/config/file-groups/place')).toEqual({
@@ -562,6 +614,7 @@ describe('DatasetWorkspace', () => {
     const user = userEvent.setup();
     renderWorkspace();
     await screen.findByRole('heading', { name: 'alpha.toml' });
+    await user.click(screen.getByRole('switch', { name: '详细管理' }));
     const handle = screen.getByRole('button', { name: '拖动排序预设 alpha.toml' });
     handle.focus();
     await user.keyboard('[Space]');
@@ -578,6 +631,7 @@ describe('DatasetWorkspace', () => {
     const user = userEvent.setup();
     renderWorkspace();
     await screen.findByRole('heading', { name: 'alpha.toml' });
+    await user.click(screen.getByRole('switch', { name: '详细管理' }));
     await user.selectOptions(screen.getByRole('combobox', { name: '移动 alpha.toml 到分组' }), 'concepts');
 
     await waitFor(() => expect(requestBody(fetchMock, '/api/config/file-groups/place')).toEqual({
@@ -677,36 +731,34 @@ describe('DatasetWorkspace', () => {
     expect(body.datasets[0].source_dir).toBe('image_dataset/alpha-updated');
   });
 
-  it('previews saved subset images, captions, refresh, fullscreen, and focus restoration', async () => {
+  it('opens the shared workbench and previews images, captions, refresh, and fullscreen', async () => {
     const { fetchMock } = createFetchMock();
     vi.stubGlobal('fetch', fetchMock);
     const user = userEvent.setup();
     const writeText = vi.spyOn(navigator.clipboard, 'writeText');
     renderWorkspace();
     await screen.findByRole('heading', { name: 'alpha.toml' });
-    const previewButton = screen.getByRole('button', { name: '预览子集 1 图片和标注' });
-    await user.click(previewButton);
+    const libraryScroll = document.querySelector('.dataset-library') as HTMLElement;
+    const detailScroll = document.querySelector('.dataset-detail') as HTMLElement;
+    libraryScroll.scrollTop = 37;
+    detailScroll.scrollTop = 79;
+    await user.click(screen.getByRole('button', { name: '打开子集 1 图片工作台' }));
 
-    const dialog = await screen.findByRole('dialog', { name: '子集 1 图片与标注' });
-    expect(within(dialog).getByText(/原始图目录 · image_dataset\/alpha · 1\/1 张/)).toBeInTheDocument();
-    expect(within(dialog).getAllByText('自动识别')).not.toHaveLength(0);
-    const thumbnail = within(dialog).getByRole('img', { name: 'alpha-01.png' });
+    expect(await screen.findByRole('heading', { name: '图片工作台' })).toBeInTheDocument();
+    const preview = await screen.findByRole('region', { name: '子集 1 图片与标注' });
+    expect(within(preview).getByText(/原始图目录 · image_dataset\/alpha · 1\/1 张/)).toBeInTheDocument();
+    expect(within(preview).getAllByText('自动识别')).not.toHaveLength(0);
+    const thumbnail = within(preview).getByRole('img', { name: 'alpha-01.png' });
     expect(thumbnail).toHaveAttribute('loading', 'lazy');
-    expect(within(dialog).getByRole('button', { name: '关闭图片预览' })).toHaveFocus();
-    const refreshButton = within(dialog).getByRole('button', { name: '刷新' });
-    const cardCopyButton = within(dialog).getByRole('button', { name: '复制 alpha-01.png 的标注' });
-    cardCopyButton.focus();
-    await user.tab();
-    expect(refreshButton).toHaveFocus();
-    await user.tab({ shift: true });
-    expect(cardCopyButton).toHaveFocus();
+    const refreshButton = within(preview).getByRole('button', { name: '刷新' });
+    const cardCopyButton = within(preview).getByRole('button', { name: '复制 alpha-01.png 的标注' });
     await user.click(cardCopyButton);
     await waitFor(() => expect(writeText).toHaveBeenCalledWith('alpha caption'));
     const previewCard = thumbnail.closest('.dataset-preview-card');
     fireEvent.error(thumbnail);
-    expect(previewCard).toHaveAttribute('data-image-error', 'true');
+    await waitFor(() => expect(previewCard).toHaveAttribute('data-image-error', 'true'));
 
-    await user.click(within(dialog).getByRole('button', { name: '查看大图 alpha-01.png' }));
+    await user.click(within(preview).getByRole('button', { name: '查看大图 alpha-01.png' }));
     const viewer = await screen.findByRole('dialog', { name: 'alpha-01.png' });
     expect(within(viewer).getByRole('button', { name: '关闭大图' })).toHaveFocus();
     await user.tab({ shift: true });
@@ -717,18 +769,21 @@ describe('DatasetWorkspace', () => {
     expect(within(viewer).getByRole('img', { name: 'alpha-01.png' })).toBeInTheDocument();
     await user.keyboard('{Escape}');
     expect(screen.queryByRole('dialog', { name: 'alpha-01.png' })).not.toBeInTheDocument();
-    expect(screen.getByRole('dialog', { name: '子集 1 图片与标注' })).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: '子集 1 图片与标注' })).toBeInTheDocument();
 
-    await user.click(within(dialog).getByRole('button', { name: '刷新' }));
+    await user.click(within(preview).getByRole('button', { name: '刷新' }));
     await waitFor(() => expect(fetchMock.mock.calls.filter(
       ([input]) => String(input).startsWith('/api/config/dataset-presets/images?'),
     )).toHaveLength(2));
-    await user.keyboard('{Escape}');
-    expect(screen.queryByRole('dialog', { name: '子集 1 图片与标注' })).not.toBeInTheDocument();
-    expect(previewButton).toHaveFocus();
+    await user.click(screen.getByRole('button', { name: '返回数据集' }));
+    expect(await screen.findByRole('heading', { name: 'alpha.toml' })).toBeInTheDocument();
+    await waitFor(() => {
+      expect((document.querySelector('.dataset-library') as HTMLElement).scrollTop).toBe(37);
+      expect((document.querySelector('.dataset-detail') as HTMLElement).scrollTop).toBe(79);
+    });
   });
 
-  it('disables stale preview for drafts and dirty edits, but allows saved readonly presets', async () => {
+  it('disables the workbench for drafts and dirty edits, then enables it after loading a saved preset', async () => {
     const { fetchMock } = createFetchMock();
     vi.stubGlobal('fetch', fetchMock);
     const user = userEvent.setup();
@@ -736,12 +791,12 @@ describe('DatasetWorkspace', () => {
     await screen.findByRole('heading', { name: 'alpha.toml' });
     const source = screen.getByLabelText('原始图片目录');
     await user.type(source, '-dirty');
-    expect(screen.getByRole('button', { name: '预览子集 1 图片和标注' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '打开子集 1 图片工作台' })).toBeDisabled();
 
     await user.click(screen.getByRole('button', { name: /beta.toml/ }));
     await user.click(await screen.findByRole('button', { name: '放弃修改并继续' }));
     expect(await screen.findByRole('heading', { name: 'beta.toml' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '预览子集 1 图片和标注' })).toBeEnabled();
+    await waitFor(() => expect(screen.getByRole('button', { name: '打开子集 1 图片工作台' })).toBeEnabled());
   });
 
   it('saves the complete defaults and advanced subset field contract', async () => {
@@ -807,6 +862,33 @@ describe('DatasetWorkspace', () => {
     await user.click(screen.getByRole('button', { name: '保存' }));
     await waitFor(() => expect(requestBody(fetchMock, '/api/config/dataset-presets', 'PUT').datasets[0].source_dir)
       .toBe('image_dataset/second'));
+  });
+
+  it('retains a dataset draft and blocks a stale revision after 409', async () => {
+    const { fetchMock: baseFetch } = createFetchMock();
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.startsWith('/api/config/dataset-presets/read?')) {
+        const response = await baseFetch(input, init);
+        return jsonResponse({ ...(await response.json()), revision: 'read-revision' });
+      }
+      if (url === '/api/config/dataset-presets' && init?.method === 'PUT')
+        return jsonResponse({ ok: false, error: '文件已在其他位置修改' }, 409);
+      return baseFetch(input, init);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const user = userEvent.setup();
+    renderWorkspace();
+    await screen.findByRole('heading', { name: 'alpha.toml' });
+    const source = screen.getByLabelText('原始图片目录');
+    await user.clear(source);
+    await user.type(source, 'image_dataset/my-draft');
+    await user.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('文件已在其他位置修改'));
+    expect(source).toHaveValue('image_dataset/my-draft');
+    expect(screen.getByRole('button', { name: '保存' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '重新读取' })).toBeEnabled();
+    expect(requestBody(fetchMock, '/api/config/dataset-presets', 'PUT').revision).toBe('read-revision');
   });
 
   it('copies experimental rules to selected subset scopes', async () => {

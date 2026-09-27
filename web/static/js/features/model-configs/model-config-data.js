@@ -16,11 +16,12 @@ export const MODEL_CONFIG_PATH_FIELDS = Object.freeze([
     },
 ]);
 
-const MODEL_CONFIG_FAMILIES = new Set(['anima', 'krea2_raw', 'z_image']);
+const MODEL_CONFIG_FAMILIES = new Set(['anima', 'krea2_raw', 'z_image', 'qwen_image_2_1']);
 
 export function modelFamilyLabel(value) {
     if (value === 'krea2_raw') return 'Krea-2';
     if (value === 'z_image') return 'Z-Image';
+    if (value === 'qwen_image_2_1') return 'Qwen Image 2.1';
     return 'Anima';
 }
 

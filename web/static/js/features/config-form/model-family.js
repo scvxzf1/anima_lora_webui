@@ -26,6 +26,15 @@ const FALLBACK_MODEL_FAMILIES = Object.freeze([
         supported_attention_modes: ['flash', 'torch', 'sdpa'],
         pipeline_parallel: { configurable: true, runtime_available: false },
     },
+    {
+        name: 'qwen_image_2_1',
+        aliases: ['qwen_image_2_1', 'qwen_image_21', 'qwen21'],
+        supported_network_specs: ['lora'],
+        supports_method_adapters: false,
+        plain_lora_only: true,
+        supported_attention_modes: ['torch', 'sdpa', 'flash'],
+        pipeline_parallel: null,
+    },
 ]);
 
 let capabilityByFamily = new Map();
@@ -106,6 +115,12 @@ export function modelFamilyOptionSupported(fieldKey, family, option) {
     const value = String(option ?? '').trim();
     if (fieldKey === 'attn_mode') {
         return (capability.supported_attention_modes || []).includes(value.toLowerCase());
+    }
+    if (capability.name === 'qwen_image_2_1' && capability.plain_lora_only) {
+        if (fieldKey === 'lora_adapter_kind') return value.toLowerCase() === 'lora';
+        if (fieldKey === 'network_module') return value === 'networks.lora_anima';
+        if (fieldKey === 'use_moe_style') return ['false', 'none', 'off', '0'].includes(value.toLowerCase());
+        if (fieldKey === 'router_source') return value.toLowerCase() === 'none';
     }
     // Variant selection is open; concrete network/forward contracts validate execution.
     return true;

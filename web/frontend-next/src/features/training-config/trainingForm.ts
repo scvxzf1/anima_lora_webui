@@ -23,7 +23,7 @@ export const TRAINING_FIELDS: TrainingFieldSpec[] = [
     label: "模型族",
     group: "input",
     kind: "select",
-    options: ["anima", "krea2_raw", "z_image"],
+    options: ["anima", "krea2_raw", "z_image", "qwen_image_2_1"],
   },
   {
     key: "pretrained_model_name_or_path",

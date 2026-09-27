@@ -1,6 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState } from 'react';
 
 import { trainingContextKeys } from '../../api/trainingContext';
 import type { TrainingContextController } from '../../app/useTrainingContext';
@@ -9,10 +8,10 @@ import { applyDatasetPreset } from './api';
 import { DatasetApplyDialog } from './DatasetApplyDialog';
 import { DatasetDeleteDialog } from './DatasetDeleteDialog';
 import { DatasetDefaultsEditor } from './DatasetDefaultsEditor';
-import { DatasetPreviewDialog } from './DatasetPreviewDialog';
 import { DatasetSubsetList } from './DatasetSubsetList';
 import { datasetPresetStem } from './datasetForm';
 import { DatasetNameDialog, type DatasetNameAction } from './DatasetNameDialog';
+import { isQwenImage21Config, qwenImage21DatasetApplyIssue, qwenImage21EditApplyIssue, qwenImage21PlainLoraIssue } from './qwenImage21Edit';
 import { StageScheduleEditor } from './StageScheduleEditor';
 import type { DatasetPresetEditorController } from './useDatasetPresetEditor';
 
@@ -22,6 +21,7 @@ type Props = {
   exportError?: string;
   trainingContext: TrainingContextController;
   onExport: (file: string) => void;
+  onOpenWorkbench: (index: number) => void;
 };
 
 export function DatasetPresetEditor({
@@ -30,26 +30,32 @@ export function DatasetPresetEditor({
   exportError,
   trainingContext,
   onExport,
+  onOpenWorkbench,
 }: Props) {
   const queryClient = useQueryClient();
-  const navigate = useNavigate();
   const [nameAction, setNameAction] = useState<DatasetNameAction | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [applyOpen, setApplyOpen] = useState(false);
-  const [previewIndex, setPreviewIndex] = useState<number | null>(null);
-  const previewTriggerRef = useRef<HTMLElement | null>(null);
   const watchedRows = editor.form.watch('datasets');
   const watchedStageEnabled = editor.form.watch('stage_schedule_enabled');
+  const qwenEditEnabled = watchedRows.some((row) => row.edit_role !== 'normal');
   const busy = editor.command.isPending;
   const persisted = Boolean(editor.selectedFile);
   const canEdit = Boolean(editor.currentFile) && !editor.readonly;
-  const canPreview = persisted && !editor.hasUnsavedChanges;
-  const summary = summarizeRows(watchedRows);
+  const canOpenWorkbench = persisted && !editor.hasUnsavedChanges;
+  const summary = summarizeRows(watchedRows.filter((row) => row.edit_role !== 'before'));
   const targetTrainingFile = trainingContext.selectedFile;
+  const qwenEditAvailable = isQwenImage21Config(trainingContext.mergedConfig);
+  const qwenEditIssue = qwenImage21PlainLoraIssue(trainingContext.mergedConfig);
+  const qwenEditApplyIssue = (qwenEditEnabled
+    ? qwenImage21EditApplyIssue(trainingContext.mergedConfig)
+    : null) || qwenImage21DatasetApplyIssue(trainingContext.mergedConfig, qwenEditEnabled, watchedRows);
   const canApply = persisted
     && !editor.hasUnsavedChanges
     && Boolean(targetTrainingFile)
     && !targetTrainingFile?.locked
+    && !qwenEditApplyIssue
+    && !editor.form.formState.errors.datasets
     && !busy;
   const applyPreset = useMutation({
     mutationFn: () => applyDatasetPreset(editor.selectedFile, targetTrainingFile!.path),
@@ -131,7 +137,7 @@ export function DatasetPresetEditor({
 
       <div className="dataset-command-bar" aria-label="预设操作">
         <button type="button" onClick={() => openNameDialog('new')} disabled={busy}>新建</button>
-        <button type="submit" className="primary-command" disabled={!canEdit || busy || !editor.hasUnsavedChanges}>保存</button>
+        <button type="submit" className="primary-command" disabled={!canEdit || busy || editor.saveConflict || !editor.hasUnsavedChanges}>保存</button>
         <button type="button" onClick={() => openNameDialog('save-as')} disabled={busy}>另存</button>
         <button type="button" onClick={() => openNameDialog('copy')} disabled={busy}>复制</button>
         <button
@@ -161,6 +167,7 @@ export function DatasetPresetEditor({
             dirty: editor.hasUnsavedChanges,
             hasTrainingFile: Boolean(targetTrainingFile),
             trainingFileLocked: Boolean(targetTrainingFile?.locked),
+            qwenEditIssue: qwenEditApplyIssue,
           })}
         >
           应用到当前训练配置
@@ -168,7 +175,7 @@ export function DatasetPresetEditor({
       </div>
 
       {editor.notice ? <p className="dataset-notice" role="status">{editor.notice}</p> : null}
-      {editor.command.isError ? <p className="dataset-command-error" role="alert">{editor.command.error.message}</p> : null}
+      {editor.command.isError ? <p className="dataset-command-error" role="alert">{editor.command.error.message}{editor.saveConflict ? '；请核对后使用“重新读取”' : ''}</p> : null}
       {exportError ? <p className="dataset-command-error" role="alert">{exportError}</p> : null}
 
       <dl className="dataset-summary-grid">
@@ -184,14 +191,9 @@ export function DatasetPresetEditor({
       <DatasetSubsetList
         form={editor.form}
         disabled={editor.readonly || busy}
-        previewDisabled={!canPreview || busy}
-        onEditMasks={(index) => navigate(`/datasets/masks?${new URLSearchParams({
-          dataset: editor.selectedFile, subset: String(index),
-        })}`)}
-        onPreview={(index, trigger) => {
-          previewTriggerRef.current = trigger;
-          setPreviewIndex(index);
-        }}
+        qwenEditIssue={qwenEditIssue}
+        workbenchDisabled={!canOpenWorkbench || busy}
+        onOpenWorkbench={onOpenWorkbench}
       />
       <StageScheduleEditor form={editor.form} disabled={editor.readonly || busy} />
 
@@ -208,6 +210,7 @@ export function DatasetPresetEditor({
         <DatasetApplyDialog
           datasetFile={editor.selectedFile}
           trainFile={targetTrainingFile}
+          qwenTaskMode={qwenEditAvailable ? (qwenEditEnabled ? 'edit' : 't2i') : null}
           busy={applyPreset.isPending}
           error={applyPreset.error?.message}
           onCancel={() => {
@@ -228,14 +231,6 @@ export function DatasetPresetEditor({
         />
       ) : null}
 
-      {previewIndex !== null && editor.selectedFile ? (
-        <DatasetPreviewDialog
-          file={editor.selectedFile}
-          datasetIndex={previewIndex}
-          returnFocus={previewTriggerRef.current}
-          onClose={() => setPreviewIndex(null)}
-        />
-      ) : null}
     </form>
   );
 }
@@ -256,15 +251,18 @@ function applyDisabledReason({
   dirty,
   hasTrainingFile,
   trainingFileLocked,
+  qwenEditIssue,
 }: {
   persisted: boolean;
   dirty: boolean;
   hasTrainingFile: boolean;
   trainingFileLocked: boolean;
+  qwenEditIssue: string | null;
 }) {
   if (!persisted) return '请先保存数据集预设';
   if (dirty) return '请先保存当前数据集修改';
   if (!hasTrainingFile) return '没有可用的训练配置';
   if (trainingFileLocked) return '当前训练配置为只读，请先选择可编辑配置';
+  if (qwenEditIssue) return qwenEditIssue;
   return '将已保存的数据集预设应用到当前训练配置';
 }

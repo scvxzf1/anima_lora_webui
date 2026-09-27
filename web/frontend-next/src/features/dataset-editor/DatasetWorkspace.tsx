@@ -1,13 +1,14 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useMemo, useRef, useState } from 'react';
+import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
-import { Link, useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 
 import { z } from 'zod';
 
 import { TrainingContextBar } from '../../app/TrainingContextBar';
 import { useTrainingContext } from '../../app/useTrainingContext';
+import { ApiError } from '../../api/client';
 
 import {
   createDatasetGroup,
@@ -48,6 +49,20 @@ type ImportDraft = {
   content: string;
 };
 
+type DatasetWorkspaceReturn = {
+  dataset: string;
+  search: string;
+  libraryScrollTop: number;
+  detailScrollTop: number;
+};
+
+export const DATASET_DETAILED_MANAGEMENT_KEY = 'dragon-next:dataset-presets:detailed-management:v1';
+
+function readDetailedManagement() {
+  try { return localStorage.getItem(DATASET_DETAILED_MANAGEMENT_KEY) === 'true'; }
+  catch { return false; }
+}
+
 function presetSearchText(preset: DatasetPresetSummary) {
   return `${datasetPresetName(preset)} ${preset.path}`.toLocaleLowerCase();
 }
@@ -68,14 +83,24 @@ function filterGroups(groups: DatasetLibraryGroup[], search: string) {
 
 export function DatasetWorkspace() {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [searchParams] = useSearchParams();
+  const libraryScrollRef = useRef<HTMLElement>(null);
+  const detailScrollRef = useRef<HTMLElement>(null);
+  const restoredReturn = useMemo(
+    () => getWorkspaceReturn(location.state, new URLSearchParams(location.search).get('dataset') || ''),
+    [location.state, location.search],
+  );
+  const returnRestored = useRef(false);
   const trainingContext = useTrainingContext();
   const library = useQuery(datasetLibraryQuery);
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState(() => restoredReturn?.search || '');
+  const [detailedManagement, setDetailedManagement] = useState(readDetailedManagement);
   const [notice, setNotice] = useState('');
   const [groupDialog, setGroupDialog] = useState<GroupDialogState | null>(null);
   const [importDraft, setImportDraft] = useState<ImportDraft | null>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
-  const [searchParams] = useSearchParams();
   const editor = useDatasetPresetEditor(library.data?.presets ?? [], searchParams.get('dataset') || '');
   const ordering = useDatasetLibraryOrdering(setNotice);
   const visibleGroups = useMemo(
@@ -129,6 +154,36 @@ export function DatasetWorkspace() {
       editor.notify(`已导出 ${filename}`);
     },
   });
+
+  useLayoutEffect(() => {
+    if (!restoredReturn || returnRestored.current || !library.data || editor.hydratedFile !== editor.selectedFile) return;
+    const frame = requestAnimationFrame(() => {
+      if (libraryScrollRef.current) libraryScrollRef.current.scrollTop = restoredReturn.libraryScrollTop;
+      if (detailScrollRef.current) detailScrollRef.current.scrollTop = restoredReturn.detailScrollTop;
+      returnRestored.current = true;
+      const nextState = { ...asRecord(location.state) };
+      delete nextState.datasetWorkspaceReturn;
+      void navigate(`${location.pathname}${location.search}`, { replace: true, state: nextState });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [editor.hydratedFile, editor.selectedFile, library.data, location.pathname, location.search, location.state, navigate, restoredReturn]);
+
+  async function openWorkbench(index: number) {
+    if (!editor.selectedFile || editor.hasUnsavedChanges) return;
+    const returnParams = new URLSearchParams(location.search);
+    returnParams.set('dataset', editor.selectedFile);
+    const returnTo = `${location.pathname}?${returnParams}`;
+    const snapshot: DatasetWorkspaceReturn = {
+      dataset: editor.selectedFile,
+      search,
+      libraryScrollTop: libraryScrollRef.current?.scrollTop || 0,
+      detailScrollTop: detailScrollRef.current?.scrollTop || 0,
+    };
+    const nextState = { ...asRecord(location.state), datasetWorkspaceReturn: snapshot };
+    const query = new URLSearchParams({ dataset: editor.selectedFile, subset: String(index) });
+    await navigate(returnTo, { replace: true, state: nextState });
+    await navigate(`/datasets/workspace/preview?${query}`, { state: { returnTo } });
+  }
 
   const submitGroup = groupForm.handleSubmit((values) => {
     setNotice('');
@@ -184,9 +239,6 @@ export function DatasetWorkspace() {
         </header>
 
         <TrainingContextBar context={trainingContext} />
-        {editor.selectedFile && <div className="toolbar"><Link to={`/captioning?${new URLSearchParams({ dataset: editor.selectedFile })}`}>打开此数据集的打标工作台</Link>
-        </div>}
-
         {library.isError ? (
           <section className="error-panel" role="alert">
             <h2>无法读取数据集预设</h2>
@@ -195,14 +247,31 @@ export function DatasetWorkspace() {
           </section>
         ) : (
           <div className="dataset-workspace" aria-busy={library.isPending}>
-            <aside className="dataset-library" aria-label="数据集预设库">
+            <aside ref={libraryScrollRef} className="dataset-library" aria-label="数据集预设库">
               <div className="dataset-library-toolbar">
                 <div>
                   <h2>预设库</h2>
                   <p>按分组整理磁盘中的数据集蓝图。</p>
                 </div>
                 <div className="dataset-library-toolbar-actions">
-                  <button type="button" onClick={chooseImportFile}>导入</button>
+                  <div className="dataset-library-import-actions">
+                    <button type="button" onClick={chooseImportFile}>导入</button>
+                    <label className="dataset-management-toggle">
+                      <input
+                        type="checkbox"
+                        role="switch"
+                        checked={detailedManagement}
+                        onChange={(event) => {
+                          const enabled = event.target.checked;
+                          setDetailedManagement(enabled);
+                          try { localStorage.setItem(DATASET_DETAILED_MANAGEMENT_KEY, String(enabled)); }
+                          catch { /* Keep the setting for this session. */ }
+                        }}
+                      />
+                      <span className="dataset-management-toggle-track" aria-hidden="true" />
+                      <span>详细管理</span>
+                    </label>
+                  </div>
                   <button type="button" onClick={() => {
                     void library.refetch();
                     void queryClient.invalidateQueries({ queryKey: [...datasetKeys.all, 'cover'] });
@@ -253,6 +322,7 @@ export function DatasetWorkspace() {
                 pending={library.isPending}
                 selectedFile={editor.selectedFile}
                 searchActive={Boolean(search.trim())}
+                detailedManagement={detailedManagement}
                 ordering={ordering.isPending}
                 orderingError={ordering.error?.message}
                 onSelect={editor.selectFile}
@@ -267,13 +337,14 @@ export function DatasetWorkspace() {
               />
             </aside>
 
-            <section className="dataset-detail" aria-live="polite">
+            <section ref={detailScrollRef} className="dataset-detail" aria-live="polite">
               <DatasetPresetEditor
                 editor={editor}
                 exporting={exportPreset.isPending}
                 exportError={exportPreset.error?.message}
                 trainingContext={trainingContext}
                 onExport={(file) => exportPreset.mutate(file)}
+                onOpenWorkbench={(index) => void openWorkbench(index)}
               />
             </section>
           </div>
@@ -299,13 +370,36 @@ export function DatasetWorkspace() {
           initialName={importDraft.name}
           busy={importPreset.isPending}
           error={importPreset.error?.message}
+          resultUnknown={importPreset.error instanceof ApiError && importPreset.error.status === 0}
           onCancel={() => {
             importPreset.reset();
             setImportDraft(null);
+          }}
+          onReconcile={() => {
+            importPreset.reset();
+            setImportDraft(null);
+            void library.refetch();
           }}
           onConfirm={(name) => importPreset.mutate({ ...importDraft, name })}
         />
       ) : null}
     </div>
   );
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' ? value as Record<string, unknown> : {};
+}
+
+function getWorkspaceReturn(state: unknown, dataset: string): DatasetWorkspaceReturn | null {
+  const value = asRecord(state).datasetWorkspaceReturn;
+  if (!value || typeof value !== 'object') return null;
+  const snapshot = value as Partial<DatasetWorkspaceReturn>;
+  if (snapshot.dataset !== dataset || typeof snapshot.search !== 'string') return null;
+  return {
+    dataset,
+    search: snapshot.search,
+    libraryScrollTop: Number.isFinite(snapshot.libraryScrollTop) ? Number(snapshot.libraryScrollTop) : 0,
+    detailScrollTop: Number.isFinite(snapshot.detailScrollTop) ? Number(snapshot.detailScrollTop) : 0,
+  };
 }

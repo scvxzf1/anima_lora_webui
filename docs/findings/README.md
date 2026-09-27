@@ -23,6 +23,13 @@
 
 | 文档 | 说明 |
 | --- | --- |
+| [dragon_next_stage_audit_verification_20260924.md](dragon_next_stage_audit_verification_20260924.md) | Dragon Next 当前只读盘点、验证阻塞、阶段性审计与功能验收矩阵 |
+| [dragon_next_s0_baseline_20260924.md](dragon_next_s0_baseline_20260924.md) | Dragon Next S0 只读门禁、四视口基线、主题/缩放与静态包哈希溯源结果 |
+| [dragon_next_s1_shell_audit_20260925.md](dragon_next_s1_shell_audit_20260925.md) | Dragon Next S1 mock E2E 进度、壳层回归补测与未关闭风险 |
+| [dragon_next_s2_isolation_20260925.md](dragon_next_s2_isolation_20260925.md) | Dragon Next S2 配置、数据集、模型与设置的隔离写入验收 |
+| [dragon_next_s3_queue_monitor_history_20260925.md](dragon_next_s3_queue_monitor_history_20260925.md) | Dragon Next S3 队列、监控、历史与续训控制面隔离验证报告 |
+| [dragon_next_s4_image_mask_caption_20260925.md](dragon_next_s4_image_mask_caption_20260925.md) | Dragon Next S4 图片工作台、蒙版批量应用与打标候选/TXT commit 隔离验收 |
+| [dragon_next_s5_release_candidate_20260925.md](dragon_next_s5_release_candidate_20260925.md) | Dragon Next S5 隔离发布候选、深链、原子替换与回退验证记录 |
 | [webui_frontend_audit_20260913.md](webui_frontend_audit_20260913.md) | 2026-09-13 Classic/Dragon/Next 前端当前工作树审计：静态/Next 门禁、cache token、配置库键盘排序与文档风险分级 |
 | [captioning_uiux_external_review_20260829.md](captioning_uiux_external_review_20260829.md) | Captioning 13 界面外部视觉评审 API 探针、失败边界与后续裁决要求 |
 | [captioning_uiux_iteration_20260829.md](captioning_uiux_iteration_20260829.md) | Captioning/打标工作台 13 界面两轮 UI/UX 优化与验收记录 |
@@ -49,6 +56,11 @@
 - [AUTO 块交换真实 GPU 热测与消融](auto_block_swap_hot_20260908.md)：Krea-2 真实缓存、显存竞争、OOM 回退、安全余量和速度排序的时变边界。
 - [全程动态 AUTO 块交换验收](auto_block_swap_dynamic_20260908.md)：运行时显存压力退避、释放后再探索、A/B/A 决策、NF4 存储复用和策略消融。
 - [Anima / Z-Image AUTO 块交换热测](auto_block_swap_families_20260909.md)：Anima 真实 startup AUTO 通过；Z-Image 因系统换页保护拒绝。
+- [FP16/FP32 与 OOM 重试静态契约论证](adaptive_precision_oom_static_proof_20260924.md)：精度请求与重试关联的不变量证明；不含热测。
+- [Adaptive runtime 实测与失败记录](adaptive_runtime_20260921.md)：自适应运行时实测、失败路径与能力边界。
+- [Adaptive training 实测结论](adaptive_training_20260922.md)：自适应训练实测与训练运行时结论。
+- [Qwen Image 2.1 CMP 90HX 热测](qwen_image_2_1_90hx_hot_test_20260926.md)：full checkpoint + swap24 + per-block compile 的 60-step 单图短测和硬件遥测。
+- [Qwen Image 2.1 Flash CMP 90HX 热测](qwen_image_2_1_flash_90hx_20260927.md)：左填充 mask 正确性、Flash/torch A/B/A 与 60-step 复测、单层 attention 和 block-swap 剖析及 profiling 限制。
 
 | 文档 | 说明 |
 | --- | --- |

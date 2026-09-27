@@ -2,7 +2,12 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useBeforeUnload, useBlocker } from 'react-router-dom';
 
 export function useDatasetDiscardGuard(dirty: boolean, busy: boolean) {
-  const blocker = useBlocker(dirty || busy);
+  const blocker = useBlocker(
+    ({ currentLocation, nextLocation }) =>
+      (dirty || busy) &&
+      (currentLocation.pathname !== nextLocation.pathname ||
+        currentLocation.search !== nextLocation.search),
+  );
   const [action, setAction] = useState<string | null>(null);
   const pending = useRef<((accepted: boolean) => void) | null>(null);
   useBeforeUnload(useCallback((event) => {

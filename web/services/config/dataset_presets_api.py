@@ -15,12 +15,15 @@ from typing import Any
 import toml
 
 from library.env import expand_env_vars, get_configs_root, load_dotenv
+from library.datasets.image_utils import glob_images
+from library.datasets.qwen_image_edit import inspect_edit_pairs, require_complete_edit_pairs
+from library.datasets.subsets import filter_paths_by_glob
 from library.preprocess.captions import normalize_caption_source_mode
 from web.services.config import paths as _config_paths
+from web.services.config.dataset_edit_pairs import project_edit_rows, restore_edit_rows
+from web.services.config.revisioned_text import text_revision
 from web.services.config.common import (
     _bool_value,
-    _nonnegative_float,
-    _positive_int,
 )
 from web.services.config.dataset_preset_paths import (
     _is_dataset_preset_readonly,
@@ -340,6 +343,7 @@ def load_dataset_preset(rel_path: str) -> dict[str, Any]:
         "file": normalized,
         "name": Path(normalized).stem,
         "content": content,
+        "revision": text_revision(content),
         "datasets": rows,
         "defaults": defaults,
         "readonly": _is_dataset_preset_readonly(normalized),
@@ -355,7 +359,7 @@ def _load_dataset_preset_content_rows_defaults(
 ) -> tuple[str, list[dict[str, Any]], dict[str, Any], dict[str, Any]]:
     content = path.read_text(encoding="utf-8")
     data = toml.loads(content)
-    rows = _dataset_rows_from_config(data, {})
+    rows = restore_edit_rows(_dataset_rows_from_config(data, {}), data)
     defaults = _dataset_defaults_from_config(data)
     stage_fields = _stage_schedule_fields_from_dataset_data(data)
     return content, rows, defaults, stage_fields
@@ -370,6 +374,7 @@ def save_dataset_preset(
     stage_schedule_enabled: Any = None,
     stage_schedule: Any = None,
     preserve_existing_stage: bool = True,
+    expected_revision: str | None = None,
 ) -> dict[str, Any]:
     _sync_from_facade()
     normalized = _normalize_dataset_preset_path(rel_path, must_exist=False)
@@ -384,7 +389,8 @@ def save_dataset_preset(
     clean_rows = _fill_missing_dataset_row_settings(_normalize_dataset_rows(rows), _normalize_dataset_defaults(defaults or {}))
     if not clean_rows:
         raise ValueError("请至少填写一个数据集路径")
-    _ensure_training_dataset_rows(clean_rows)
+    runtime_rows, edit_layout = project_edit_rows(clean_rows)
+    _ensure_training_dataset_rows(runtime_rows)
     cfg = _normalize_dataset_defaults(defaults or {})
     # Preserve existing stage schedule when caller omits the keys.
     existing_stage: dict[str, Any] = {}
@@ -401,9 +407,14 @@ def save_dataset_preset(
         cfg["stage_schedule"] = _normalize_stage_schedule_list(stage_schedule)
     elif "stage_schedule" in existing_stage:
         cfg["stage_schedule"] = list(existing_stage["stage_schedule"])
-    validate_stage_schedule_or_raise(cfg, dataset_rows=clean_rows)
-    content = _build_dataset_config_doc(clean_rows, cfg)
-    ok, msg, _warnings = save_raw_file(normalized, content, overwrite=overwrite)
+    if edit_layout and cfg.get("stage_schedule_enabled"):
+        raise ValueError("编辑 LoRA 暂不支持分阶段调度")
+    cfg["qwen_edit_enabled"] = bool(edit_layout) or bool(cfg.get("qwen_edit_enabled"))
+    validate_stage_schedule_or_raise(cfg, dataset_rows=runtime_rows)
+    content = _build_dataset_config_doc(runtime_rows, cfg, edit_layout=edit_layout)
+    ok, msg, _warnings = save_raw_file(
+        normalized, content, overwrite=overwrite, expected_revision=expected_revision
+    )
     if not ok:
         raise ValueError(msg)
     LOGGER.info(
@@ -421,6 +432,7 @@ def save_dataset_preset(
         "datasets": clean_rows,
         "defaults": saved_defaults,
         "content": content,
+        "revision": text_revision(path.read_text(encoding="utf-8")),
         "summary": _dataset_summary_from_rows(clean_rows, saved_defaults),
     }
     if "stage_schedule_enabled" in cfg:
@@ -465,7 +477,7 @@ def import_dataset_preset(
     if not isinstance(data, dict):
         raise ValueError("导入失败，TOML 内容不合法")
 
-    rows = _normalize_dataset_rows(_dataset_rows_from_config(data, data))
+    rows = _normalize_dataset_rows(restore_edit_rows(_dataset_rows_from_config(data, data), data))
     if not rows or any(not str(row.get("source_dir") or "").strip() for row in rows):
         raise ValueError("导入失败，未找到可用的数据集路径")
     defaults = _dataset_defaults_from_config(data)
@@ -510,10 +522,34 @@ def apply_dataset_preset_to_training_config(
     rows = _normalize_dataset_rows(preset.get("datasets", []))
     if not rows:
         raise ValueError("数据集预设里没有可用路径")
-    _ensure_training_dataset_rows(rows)
-    first = _first_training_dataset_row(rows)
+    runtime_rows, edit_layout = project_edit_rows(rows)
+    _ensure_training_dataset_rows(runtime_rows)
+    first = _first_training_dataset_row(runtime_rows)
     defaults = _normalize_dataset_defaults(preset.get("defaults") or {})
     compatibility_defaults = _dataset_training_defaults(rows, defaults)
+    try:
+        training_values = toml.loads(
+            train_content if isinstance(train_content, str) else train_path.read_text(encoding="utf-8")
+        )
+    except toml.TomlDecodeError as exc:
+        raise ValueError(f"训练配置 TOML 无法解析: {exc}") from exc
+    model_family = str(training_values.get("model_family") or "anima").strip().lower()
+    qwen_edit_enabled = bool(edit_layout) or bool(defaults.get("qwen_edit_enabled", False))
+    if qwen_edit_enabled:
+        if model_family != "qwen_image_2_1":
+            raise ValueError(
+                "Qwen Image 2.1 编辑数据只能应用到 model_family=qwen_image_2_1 的训练配置"
+            )
+        dataset_path = _safe_resolve(dataset_rel)
+        if dataset_path is None:
+            raise ValueError("数据集预设路径不合法")
+        dataset_values = toml.loads(dataset_path.read_text(encoding="utf-8"))
+        _validate_qwen_edit_training_config(training_values, dataset_values, dataset_rel)
+        _validate_qwen_edit_rows(runtime_rows, defaults)
+    elif model_family == "qwen_image_2_1" and any(
+        str(row.get("reference_image_dir") or "").strip() for row in runtime_rows
+    ):
+        raise ValueError("数据集仍包含参考图目录（编辑前）；请启用编辑 LoRA 或移除该目录")
     values = {
         "dataset_config": dataset_rel,
         "source_image_dir": first["source_dir"],
@@ -521,6 +557,8 @@ def apply_dataset_preset_to_training_config(
         "lora_cache_dir": first["cache_dir"],
         "prior_loss_weight": compatibility_defaults["prior_loss_weight"],
     }
+    if model_family == "qwen_image_2_1":
+        values["qwen_image_2_1_task"] = "edit" if qwen_edit_enabled else "t2i"
     # Bind stage schedule from dataset preset into the training config so runtime
     # and preflight still see the schedule after apply.
     if "stage_schedule_enabled" in preset:
@@ -544,6 +582,83 @@ def apply_dataset_preset_to_training_config(
         "values": values,
         "summary": preset.get("summary") or _dataset_summary_from_rows(rows, defaults),
     }
+
+
+def _validate_qwen_edit_training_config(
+    training_values: dict[str, Any], dataset_values: dict[str, Any], dataset_rel: str,
+) -> None:
+    from library.training.compat_matrix import check_training_compat
+
+    if not _bool_value(
+        training_values.get("cache_latents", training_values.get("use_vae_cache")), False
+    ):
+        raise ValueError("Qwen Image 2.1 Edit 需要启用 VAE latent 缓存")
+    if not _bool_value(
+        training_values.get(
+            "cache_text_encoder_outputs", training_values.get("use_text_cache")
+        ),
+        False,
+    ):
+        raise ValueError("Qwen Image 2.1 Edit 需要启用 Qwen3-VL 条件缓存")
+
+    result = check_training_compat({
+        **training_values,
+        "model_family": "qwen_image_2_1",
+        "qwen_image_2_1_task": "edit",
+        "dataset_config": dataset_rel,
+        "general": dataset_values.get("general", {}),
+        "datasets": dataset_values.get("datasets", []),
+    })
+    issue = next(
+        (item for item in result.errors if item.code == "family_plain_lora_only"),
+        None,
+    )
+    if issue is not None:
+        raise ValueError(f"Qwen Image 2.1 Edit 仅支持 plain LoRA：{issue.message}")
+    if result.errors:
+        raise ValueError(f"Qwen Image 2.1 Edit 训练配置不兼容：{result.errors[0].message}")
+
+
+def _validate_qwen_edit_rows(rows: list[dict[str, Any]], defaults: dict[str, Any]) -> None:
+    training_rows = [row for row in rows if not _bool_value(row.get("is_reg"), False)]
+    if not training_rows:
+        raise ValueError("Qwen Image 2.1 Edit 至少需要一个普通训练子集")
+    if len(training_rows) != len(rows):
+        raise ValueError("Qwen Image 2.1 Edit 首版不支持正则数据子集")
+
+    for index, row in enumerate(training_rows):
+        reference_value = str(row.get("reference_image_dir") or "").strip()
+        if not reference_value:
+            raise ValueError(f"子集 {index + 1} 缺少参考图目录（编辑前）")
+        settings = dict(defaults)
+        if isinstance(row.get("settings"), dict):
+            settings.update(row["settings"])
+        if int(settings.get("batch_size", 1) or 1) != 1:
+            raise ValueError("Qwen Image 2.1 Edit 首版要求所有数据子集 batch_size=1")
+
+        target_dir = _resolve_project_path(str(row.get("image_dir") or ""))
+        reference_dir = _resolve_project_path(reference_value)
+        if not target_dir.is_dir():
+            raise ValueError(f"子集 {index + 1} 的目标图训练目录（编辑后）不存在: {target_dir}")
+        if not reference_dir.is_dir():
+            raise ValueError(f"子集 {index + 1} 的参考图目录（编辑前）不存在: {reference_dir}")
+        recursive = _bool_value(row.get("recursive"), True)
+        target_paths = glob_images(str(target_dir), recursive=recursive)
+        pattern = _normalize_path_pattern(row.get("path_pattern"))
+        keep = filter_paths_by_glob(target_paths, str(target_dir), pattern)
+        target_paths = [path for path, include in zip(target_paths, keep) if include]
+        if not target_paths:
+            raise ValueError(f"子集 {index + 1} 的目标图训练目录（编辑后）没有符合筛选规则的图片")
+        report = inspect_edit_pairs(
+            target_paths,
+            target_dir=str(target_dir),
+            reference_dir=str(reference_dir),
+            recursive=recursive,
+        )
+        try:
+            require_complete_edit_pairs(report)
+        except ValueError as exc:
+            raise ValueError(f"子集 {index + 1}: {exc}") from exc
 
 
 def list_dataset_preset_images(

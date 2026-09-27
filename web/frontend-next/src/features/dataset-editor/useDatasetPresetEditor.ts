@@ -2,6 +2,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
+import { ApiError } from '../../api/client';
 
 import {
   datasetKeys,
@@ -27,7 +28,7 @@ import type {
 import { useDatasetDiscardGuard } from './useDatasetDiscardGuard';
 
 type Command =
-  | { type: 'save'; file: string; overwrite: boolean; values: DatasetFormValues }
+  | { type: 'save'; file: string; overwrite: boolean; values: DatasetFormValues; revision?: string }
   | { type: 'save-as'; name: string; values: DatasetFormValues }
   | { type: 'copy'; name: string; values: DatasetFormValues }
   | { type: 'rename'; name: string; oldFile: string; values: DatasetFormValues }
@@ -130,6 +131,7 @@ export function useDatasetPresetEditor(presets: DatasetPresetSummary[], initialF
       }
     },
   });
+  const saveConflict = command.error instanceof ApiError && command.error.status === 409;
 
   const { confirmDiscard, discardDialog } = useDatasetDiscardGuard(hasUnsavedChanges, command.isPending);
 
@@ -161,12 +163,13 @@ export function useDatasetPresetEditor(presets: DatasetPresetSummary[], initialF
   }
 
   async function save() {
-    if (!currentFile || readonly || command.isPending || !hasUnsavedChanges || !(await form.trigger())) return false;
+    if (!currentFile || readonly || command.isPending || saveConflict || !hasUnsavedChanges || !(await form.trigger())) return false;
     command.mutate({
       type: 'save',
       file: currentFile,
       overwrite: !draftFile,
       values: form.getValues(),
+      revision: draftFile ? undefined : selectedPreset.data?.revision,
     });
     return true;
   }
@@ -207,6 +210,7 @@ export function useDatasetPresetEditor(presets: DatasetPresetSummary[], initialF
     if (result.data) {
       form.reset(datasetFormFromPreset(result.data));
       setHydratedFile(result.data.file);
+      command.reset();
     }
     return Boolean(result.data);
   }
@@ -222,6 +226,7 @@ export function useDatasetPresetEditor(presets: DatasetPresetSummary[], initialF
     hasUnsavedChanges,
     notice,
     command,
+    saveConflict,
     selectFile,
     startNew,
     save,
@@ -244,6 +249,7 @@ async function executeCommand(command: Command): Promise<CommandResult> {
       command.file,
       datasetWritePayload(command.values),
       command.overwrite,
+      command.revision,
     );
     return { type: command.type, preset, file: preset.file, message: preset.message };
   }

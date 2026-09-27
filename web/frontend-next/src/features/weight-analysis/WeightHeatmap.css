@@ -1,0 +1,21 @@
+.weight-heatmap + .weight-heatmap { margin-top: 24px; }
+.weight-heatmap-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 16px; }
+.weight-heatmap-heading h3 { margin: 0; }
+.weight-heatmap-legend { display: flex; align-items: center; gap: 3px; color: var(--muted); font-size: 12px; }
+.weight-heatmap-legend span:first-child { margin-right: 4px; }
+.weight-heatmap-legend span:last-child { margin-left: 4px; }
+.weight-heatmap-legend i { display: block; width: 18px; height: 12px; border: 1px solid var(--line); }
+.weight-heatmap-note { margin: 8px 0 14px; font-size: 12px; }
+.weight-heatmap-scroll { max-height: 560px; overflow: auto; border: 1px solid var(--line); }
+.weight-heatmap-scroll:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.weight-heatmap-table { width: 100%; min-width: max-content; border-collapse: separate; border-spacing: 0; font-size: 12px; text-align: center; }
+.weight-heatmap-table th, .weight-heatmap-table td { min-width: 108px; height: 36px; padding: 6px 8px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.weight-heatmap-table th:last-child, .weight-heatmap-table td:last-child { border-right: 0; }
+.weight-heatmap-table tbody tr:last-child th, .weight-heatmap-table tbody tr:last-child td { border-bottom: 0; }
+.weight-heatmap-table thead th { position: sticky; top: 0; z-index: 1; max-width: 150px; background: var(--surface-subtle); color: var(--muted); font-weight: 600; overflow-wrap: anywhere; }
+.weight-heatmap-table tr > :first-child { position: sticky; left: 0; z-index: 1; min-width: 70px; background: var(--surface-subtle); font-weight: 600; }
+.weight-heatmap-table thead tr > :first-child { z-index: 2; }
+.weight-heatmap-table tbody td { font-variant-numeric: tabular-nums; }
+.weight-heatmap-value { color: var(--ink); font-weight: 600; }
+.weight-heatmap-zero { background: var(--surface); color: var(--muted); }
+.weight-heatmap-empty { margin: 0; padding: 16px; border: 1px solid var(--line); color: var(--muted); font-size: 13px; }

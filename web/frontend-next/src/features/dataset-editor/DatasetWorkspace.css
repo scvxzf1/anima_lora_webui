@@ -100,6 +100,68 @@
 
 .dataset-library-toolbar-actions {
   flex: none;
+  align-items: flex-start;
+}
+
+.dataset-library-import-actions {
+  display: grid;
+  justify-items: start;
+  gap: 9px;
+}
+
+.dataset-management-toggle {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 24px;
+  color: var(--ink);
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.dataset-management-toggle input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+.dataset-management-toggle-track {
+  position: relative;
+  width: 30px;
+  height: 17px;
+  background: var(--line-strong);
+  border: 1px solid var(--line-strong);
+  border-radius: 9px;
+  transition: background 120ms ease;
+}
+
+.dataset-management-toggle-track::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 11px;
+  height: 11px;
+  background: var(--surface);
+  border-radius: 50%;
+  transition: transform 120ms ease;
+}
+
+.dataset-management-toggle input:checked + .dataset-management-toggle-track {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.dataset-management-toggle input:checked + .dataset-management-toggle-track::after {
+  transform: translateX(13px);
+}
+
+.dataset-management-toggle input:focus-visible + .dataset-management-toggle-track {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .dataset-library-toolbar-actions button {
@@ -1208,6 +1270,32 @@
   margin-left: auto;
   color: var(--accent);
   border-color: var(--accent);
+}
+
+.dataset-subset-commands {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+@container workspace (max-width: 520px) {
+  .dataset-subsets > header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .dataset-subset-commands {
+    width: 100%;
+    gap: 8px;
+  }
+
+  .dataset-subset-commands button {
+    flex: 1;
+  }
+
+  .dataset-row-heading {
+    flex-wrap: wrap;
+  }
 }
 
 .dataset-apply-dialog { width: min(620px, calc(100vw - 32px)); }

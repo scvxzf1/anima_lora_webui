@@ -96,10 +96,11 @@ export function saveDatasetPreset(
   file: string,
   payload: DatasetPresetWritePayload,
   overwrite: boolean,
+  revision?: string,
 ) {
   return apiRequest<DatasetPresetMutationResponse>('/api/config/dataset-presets', {
     method: 'PUT',
-    body: JSON.stringify({ file, ...payload, overwrite }),
+    body: JSON.stringify({ file, ...payload, overwrite, revision }),
   });
 }
 

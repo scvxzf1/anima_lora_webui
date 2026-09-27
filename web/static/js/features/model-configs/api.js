@@ -1,5 +1,5 @@
 import { api } from '../anima-app/helpers/runtime-bridge.js?v=module-bootstrap-20260831-release-v1';
-import { cleanModelConfigItem, modelConfigRequest } from './model-config-data.js?v=module-bootstrap-20260831-release-v1';
+import { cleanModelConfigItem, modelConfigRequest } from './model-config-data.js?v=qwen-image-21-v1';
 
 function normalizeLibrary(payload = {}) {
     return {

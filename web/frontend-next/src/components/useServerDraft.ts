@@ -38,12 +38,18 @@ export function useServerDraftState<T>(
         : current,
     );
   }
+  function replace(value: T) {
+    consumed.current = value;
+    setBaseline(structuredClone(value));
+    setDraft(structuredClone(value));
+  }
   return {
     draft,
     setDraft,
     baseline,
     dirty,
     accept,
+    replace,
     reset: () => setDraft(structuredClone(baseline)),
   };
 }

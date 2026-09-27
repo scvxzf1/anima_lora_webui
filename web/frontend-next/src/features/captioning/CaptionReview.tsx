@@ -8,6 +8,7 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { useState } from "react";
+import { ApiError } from "../../api/client";
 import { CaptionTranslation } from "./CaptionTranslation";
 import { CaptionReviewContext } from "./CaptionReviewContext";
 import { CaptionPreviewImage } from "./CaptionPreviewImage";
@@ -46,6 +47,7 @@ export function CaptionReview({ jobId }: { jobId: string }) {
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [page, setPage] = useState(0);
   const [mobileView, setMobileView] = useState<"editor" | "items">("editor");
+  const [needsReconcile, setNeedsReconcile] = useState(false);
   const dirty = Object.keys(drafts).length > 0;
   useUnsavedChangesGuard(
     dirty,
@@ -97,9 +99,24 @@ export function CaptionReview({ jobId }: { jobId: string }) {
     onSuccess: (data) => {
       qc.setQueryData(captioningKeys.job(jobId), data);
       qc.invalidateQueries({ queryKey: captioningKeys.jobs });
+      setNeedsReconcile(false);
+    },
+    onError: async (error) => {
+      if (error instanceof ApiError && error.status === 409) {
+        await query.refetch();
+      } else if (error instanceof ApiError && error.status === 0) {
+        setNeedsReconcile(true);
+      }
     },
   });
-  const busy = save.isPending || commit.isPending || control.isPending;
+  const busy = save.isPending || commit.isPending || control.isPending || needsReconcile;
+  async function reconcileUnknown() {
+    const result = await query.refetch();
+    if (result.isError || !result.data) return;
+    setNeedsReconcile(false);
+    control.reset();
+    await qc.invalidateQueries({ queryKey: captioningKeys.jobs });
+  }
   function write(ids: string[]) {
     if (
       !ids.length ||
@@ -128,7 +145,7 @@ export function CaptionReview({ jobId }: { jobId: string }) {
         <div className="toolbar">
           <button
             type="button"
-            disabled={!running || busy}
+            disabled={!running || busy || needsReconcile}
             onClick={() => {
               if (window.confirm("取消此打标任务？已生成候选会保留。"))
                 control.mutate("cancel");
@@ -139,7 +156,7 @@ export function CaptionReview({ jobId }: { jobId: string }) {
           </button>
           <button
             type="button"
-            disabled={running || busy || dirty || query.isError}
+            disabled={running || busy || dirty || query.isError || needsReconcile}
             onClick={() => {
               if (
                 window.confirm(
@@ -154,6 +171,19 @@ export function CaptionReview({ jobId }: { jobId: string }) {
           </button>
         </div>
       </header>
+      {needsReconcile && (
+        <div className="toolbar">
+          <p role="status">操作结果尚未确认。核对服务器任务状态后再继续。</p>
+          <button
+            type="button"
+            disabled={query.isFetching}
+            onClick={() => void reconcileUnknown()}
+          >
+            <RefreshCw size={15} />
+            {query.isFetching ? "正在核对" : "核对任务状态"}
+          </button>
+        </div>
+      )}
       <div className="toolbar">
         <button
           type="button"
@@ -289,10 +319,10 @@ export function CaptionReview({ jobId }: { jobId: string }) {
           </div>
         )}
       </div>
-      {(save.error || commit.error || control.error || query.error) && (
+      {(save.error || commit.error || (!needsReconcile && control.error) || query.error) && (
         <p className="form-error" role="alert">
           {
-            (save.error || commit.error || control.error || query.error)
+            (save.error || commit.error || (!needsReconcile && control.error) || query.error)
               ?.message
           }
         </p>

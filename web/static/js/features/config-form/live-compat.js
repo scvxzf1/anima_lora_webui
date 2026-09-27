@@ -3,7 +3,7 @@
  * Mirrors a small subset of library/training/compat_matrix.py codes for UX only.
  * Does NOT replace server preflight.
  */
-import { isKrea2ModelFamily, normalizeModelFamily } from './model-family.js?v=auto-block-swap-20260908-v3';
+import { isKrea2ModelFamily, normalizeModelFamily } from './model-family.js?v=qwen-image-21-v2';
 
 /**
  * @typedef {Object} LiveCompatIssue

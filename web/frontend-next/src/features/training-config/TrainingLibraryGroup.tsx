@@ -23,6 +23,7 @@ type Props = {
   onSelect: (path: string) => void;
   groups: TrainingConfigGroup[];
   searchActive: boolean;
+  detailedManagement: boolean;
 };
 
 export function TrainingLibraryGroup({
@@ -34,6 +35,7 @@ export function TrainingLibraryGroup({
   onSelect,
   groups,
   searchActive,
+  detailedManagement,
 }: Props) {
   const [open, setOpen] = useState(
     () =>
@@ -71,12 +73,12 @@ export function TrainingLibraryGroup({
           onClick={() => setOpen(!open)}
         >
           {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-          <span>
-            {group.label}
+          <span className="training-library-group-title">
+            <strong>{group.label}</strong>
             <small>{files.length} 个配置</small>
           </span>
         </button>
-        {!(group.locked || group.readonly || group.system) && (
+        {detailedManagement && !(group.locked || group.readonly || group.system) && (
           <TrainingLibraryActions
             scope="group"
             groups={groups}
@@ -102,6 +104,7 @@ export function TrainingLibraryGroup({
               groups={groups}
               group={group}
               actionsDisabled={Boolean(disabled || dirty || searchActive)}
+              detailedManagement={detailedManagement}
             />
           ))}
         </SortableContext>
@@ -119,6 +122,7 @@ function SortableFile({
   groups,
   group,
   actionsDisabled,
+  detailedManagement,
 }: {
   file: TrainingConfigFile;
   selected: boolean;
@@ -128,6 +132,7 @@ function SortableFile({
   groups: TrainingConfigGroup[];
   group: TrainingConfigGroup;
   actionsDisabled: boolean;
+  detailedManagement: boolean;
 }) {
   const { setNodeRef, setActivatorNodeRef, attributes, listeners, isDragging } =
     useSortable({ id: file.path, disabled: dragDisabled });
@@ -146,7 +151,7 @@ function SortableFile({
       data-dragging={isDragging}
       data-drop-position={drop}
     >
-      {!dragDisabled && (
+      {detailedManagement && !dragDisabled && (
         <button
           type="button"
           className="training-library-drag"
@@ -160,12 +165,15 @@ function SortableFile({
         </button>
       )}
       <button
+        ref={!detailedManagement && !dragDisabled ? setActivatorNodeRef : undefined}
         type="button"
         className="training-library-item"
         data-selected={selected}
+        data-hold-drag={!detailedManagement && !dragDisabled}
         disabled={disabled}
         title={file.path}
         onClick={() => onSelect(file.path)}
+        {...(!detailedManagement && !dragDisabled ? { ...attributes, ...listeners } : {})}
       >
         <span className="training-library-file-copy">
           <strong>{label}</strong>
@@ -173,7 +181,7 @@ function SortableFile({
         </span>
         {file.locked || file.readonly ? <small>只读</small> : null}
       </button>
-      {!(file.locked || file.readonly) && (
+      {detailedManagement && !(file.locked || file.readonly) && (
         <TrainingLibraryActions
           scope="file"
           groups={groups}

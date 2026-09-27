@@ -13,7 +13,10 @@ import { fileURLToPath } from "node:url";
 import { build } from "vite";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const destination = resolve(root, "../static/dragon-next");
+const configuredDestination = process.env.DRAGON_NEXT_DESTINATION?.trim();
+const destination = resolve(
+  configuredDestination || join(root, "../static/dragon-next"),
+);
 const staging = await mkdtemp(join(tmpdir(), "dragon-next-build-"));
 try {
   await build({ root, build: { outDir: staging, emptyOutDir: true } });

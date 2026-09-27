@@ -13,6 +13,7 @@
 | [anima.md](anima.md) | Anima 模型结构、文本条件、VAE latent 和训练步 |
 | [anima-optimizations.md](anima-optimizations.md) | Anima 性能与 compile 优化结构说明 |
 | [lora.md](lora.md) | Plain LoRA 在 Anima 中的接入方式 |
+| [adaptive-precision-numerics.md](adaptive-precision-numerics.md) | FP16/FP32 前后向误差、LoRA、loss scaling 与非单调 promotion 的 CPU 论证 |
 | [ortholora.md](ortholora.md) | OrthoLoRA 正交基和 Cayley 参数化 |
 | [timestep-mask.md](timestep-mask.md) | T-LoRA rank schedule 与 mask 应用 |
 | [hydralora.md](hydralora.md) | HydraLoRA layer-local MoE 原理 |

@@ -21,7 +21,7 @@ export function TrainingDevices({ state, details = false }: Props) {
     </section>
   );
   return (
-    <section className="training-devices" aria-label="训练设备快捷选择">
+    <section className="training-devices" aria-label="训练设备快捷选择" aria-busy={device.query.isPending || device.query.isFetching}>
       <div className="training-device-heading">
         <strong><Cpu size={16} />训练设备</strong>
         <div className="training-device-modes" role="group" aria-label="训练并行模式">
@@ -32,7 +32,7 @@ export function TrainingDevices({ state, details = false }: Props) {
             onClick={() => changeMode("ddp")}>多卡 · 数据并行</button>
         </div>
         <button type="button" className="icon-button" aria-label="刷新 GPU 列表" title="刷新 GPU 列表"
-          disabled={busy || device.query.isFetching} onClick={() => device.query.refetch()}><RefreshCw size={14} /></button>
+          disabled={busy || device.query.isFetching} onClick={() => void device.refreshDevices()}><RefreshCw size={14} /></button>
       </div>
       <div className="training-device-options" role={device.selection.mode === "single" ? "radiogroup" : "group"} aria-label="选择训练 GPU">
         {device.devices.map((gpu) => (

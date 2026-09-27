@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page, type Route } from "@playwright/test";
 import { parse, stringify } from "smol-toml";
 import { configFile, mockWorkspace } from "./fixtures";
 
@@ -38,6 +38,74 @@ async function fixture(page: Page) {
     return route.fulfill({ json: { ok: true, message: "已冻结配置并暂停入队" } });
   });
   return { ...mocks, commands, values, saveOk: () => { saveFails = false; }, preflightOk: () => { preflightFails = false; } };
+}
+
+async function revisionConflictFixture(page: Page) {
+  const mocks = await mockWorkspace(page);
+  const patchBodies: Record<string, unknown>[] = [];
+  let revision = "server-v1";
+  let merged = {
+    model_family: "krea2_raw",
+    pretrained_model_name_or_path: "models/diffusion_models/krea2_raw.safetensors",
+    qwen3: "models/text_encoders/qwen3vl.safetensors",
+    vae: "models/vae/qwen.safetensors",
+    output_name: "studio-portrait",
+    network_dim: 32,
+    network_alpha: 32,
+    train_batch_size: 1,
+    gradient_accumulation_steps: 4,
+    learning_rate: 0.00002,
+    max_train_steps: 1600,
+    dataset_config: "configs/datasets/studio.toml",
+    gradient_checkpointing: true,
+    base_compute: "nf4",
+  };
+  const reply = (route: Route, data: unknown, status = 200) =>
+    route.fulfill({
+      status,
+      contentType: "application/json",
+      body: JSON.stringify(data),
+    });
+
+  await page.route(
+    (url) => ["/api/config/raw", "/api/config/merged"].includes(url.pathname),
+    async (route) => {
+      const url = new URL(route.request().url());
+      const path = url.pathname;
+      if (route.request().method() === "PATCH") {
+        const body = route.request().postDataJSON() as Record<string, unknown>;
+        patchBodies.push(body);
+        if (patchBodies.length === 1) {
+          revision = "server-v2";
+          merged = { ...merged, output_name: "server-revision" };
+          return reply(route, { ok: false, error: "训练配置已在其他位置修改" }, 409);
+        }
+        if (body.revision !== revision)
+          return reply(route, { ok: false, error: "stale revision" }, 409);
+        merged = { ...merged, ...(body.values as Record<string, unknown>) };
+        revision = "server-v3";
+        return reply(route, {
+          ok: true,
+          file: configFile.path,
+          message: "训练配置已保存",
+          content: stringify(merged),
+          revision,
+          changed: Object.keys(body.values as Record<string, unknown>),
+          warnings: [],
+        });
+      }
+      if (path === "/api/config/raw") {
+        return reply(route, {
+          file: configFile.path,
+          content: stringify(merged),
+          revision,
+          meta: configFile,
+        });
+      }
+      return reply(route, merged);
+    },
+  );
+  return { ...mocks, patchBodies };
 }
 
 for (const width of [1440, 390]) {
@@ -89,3 +157,187 @@ for (const width of [1440, 390]) {
     expect(mocks.writes).toEqual([]); expect(mocks.unhandled).toEqual([]);
   });
 }
+
+test("training enqueue holds pending state and never retries a lost submission", async ({ page }) => {
+  const mocks = await fixture(page);
+  mocks.preflightOk();
+  const calls: { method: string; path: string; body: unknown }[] = [];
+  let releaseQueue: () => void = () => {};
+  const queueGate = new Promise<void>((resolve) => { releaseQueue = resolve; });
+  await page.route((url) => url.pathname === "/api/training/queue" && url.search === "", async (route) => {
+    calls.push({ method: route.request().method(), path: new URL(route.request().url()).pathname, body: route.request().postDataJSON() });
+    await queueGate;
+    return route.abort();
+  });
+
+  await page.goto("/next/training");
+  await page.getByRole("tab", { name: "训练计划", exact: true }).click();
+  await page.getByRole("button", { name: "加入队列", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "确认加入队列" });
+  await expect(dialog).toContainText("Fixture ready");
+  await dialog.getByRole("checkbox", { name: /确认以上检查结果/ }).check();
+  const submit = dialog.getByRole("button", { name: "确认入队", exact: true });
+  await submit.click();
+
+  const pending = dialog.getByRole("button", { name: "正在提交", exact: true });
+  await expect(pending).toBeDisabled();
+  await expect.poll(() => calls.length).toBe(1);
+  expect(calls[0]).toMatchObject({
+    method: "POST",
+    path: "/api/training/queue",
+    body: { start_paused: true, confirmed: true, confirm_preprocess: true },
+  });
+  releaseQueue();
+
+  await expect(dialog.getByRole("alert")).toContainText("操作结果尚未确认");
+  await expect(dialog.getByRole("button", { name: "确认入队", exact: true })).toBeDisabled();
+  await expect(dialog.getByText("已冻结配置并暂停入队", { exact: true })).toHaveCount(0);
+  expect(calls).toHaveLength(1);
+  expect(mocks.commands.filter(({ path }) => path === "/api/training/queue")).toEqual([]);
+  expect(mocks.writes).toEqual([]);
+  expect(mocks.unhandled).toEqual([]);
+});
+
+test("training configuration read failure can recover on explicit retry", async ({ page }) => {
+  const mocks = await fixture(page);
+  let attempts = 0;
+  let recover = false;
+  await page.route((url) => url.pathname === "/api/config/file-groups", async (route) => {
+    attempts += 1;
+    if (!recover) {
+      return route.fulfill({ status: 503, json: { error: "training config unavailable" } });
+    }
+    return route.fallback();
+  });
+
+  await page.goto("/next/training");
+  await expect(page.getByRole("alert")).toContainText("training config unavailable");
+  const retry = page.getByRole("button", { name: "重试读取", exact: true });
+  await expect(retry).toBeEnabled();
+  const attemptsBeforeRetry = attempts;
+  recover = true;
+
+  await retry.click();
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "立即启动", exact: true })).toBeEnabled();
+  expect(attempts).toBe(attemptsBeforeRetry + 1);
+  expect(mocks.commands).toEqual([]);
+  expect(mocks.writes).toEqual([]);
+  expect(mocks.unhandled).toEqual([]);
+});
+
+test("training capability catalog failure blocks execution and recovers on retry", async ({ page }) => {
+  const mocks = await fixture(page);
+  let recover = false;
+  let attempts = 0;
+  await page.route((url) => url.pathname === "/api/config/model-families", async (route) => {
+    attempts += 1;
+    if (!recover) return route.fulfill({ status: 503, json: { error: "capabilities unavailable" } });
+    return route.fallback();
+  });
+
+  await page.goto("/next/training");
+  const error = page.getByRole("alert").filter({ hasText: "模型能力目录不可用" });
+  await expect(error).toContainText("capabilities unavailable");
+  const start = page.getByRole("button", { name: "立即启动", exact: true });
+  const enqueue = page.getByRole("button", { name: "加入队列", exact: true });
+  await expect(start).toBeDisabled();
+  await expect(enqueue).toBeDisabled();
+
+  const attemptsBeforeRetry = attempts;
+  recover = true;
+  await error.getByRole("button", { name: "重试", exact: true }).click();
+  await expect(error).toHaveCount(0);
+  await expect(start).toBeEnabled();
+  await expect(enqueue).toBeEnabled();
+  expect(attempts).toBe(attemptsBeforeRetry + 1);
+  expect(mocks.commands).toEqual([]);
+  expect(mocks.writes).toEqual([]);
+  expect(mocks.unhandled).toEqual([]);
+});
+
+test("training configuration 409 preserves the draft until an explicit reload adopts the server revision", async ({ page }) => {
+  const mocks = await revisionConflictFixture(page);
+  await page.goto("/next/training");
+  await page.getByRole("tab", { name: "训练计划", exact: true }).click();
+
+  const output = page.getByRole("textbox", { name: "输出名称", exact: true });
+  await expect(output).toHaveValue("studio-portrait");
+  await output.fill("local-draft");
+  await page.getByRole("button", { name: "保存配置", exact: true }).click();
+
+  await expect(page.getByRole("alert")).toContainText("训练配置已在其他位置修改");
+  await expect(output).toHaveValue("local-draft");
+  await expect(page.getByRole("button", { name: "保存配置", exact: true })).toBeDisabled();
+  expect(mocks.patchBodies).toHaveLength(1);
+  expect(mocks.patchBodies[0]).toMatchObject({ revision: "server-v1", values: { output_name: "local-draft" } });
+
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.getByRole("button", { name: "重新加载配置", exact: true }).click();
+  await expect(output).toHaveValue("server-revision");
+  await expect(page.getByText("已同步", { exact: true })).toBeVisible();
+  expect(mocks.patchBodies).toHaveLength(1);
+
+  await output.fill("after-reload");
+  await page.getByRole("button", { name: "保存配置", exact: true }).click();
+  await expect(page.getByText("训练配置已保存", { exact: true })).toBeVisible();
+  await expect.poll(() => mocks.patchBodies.length).toBe(2);
+  expect(mocks.patchBodies[1]).toMatchObject({ revision: "server-v2", values: { output_name: "after-reload" } });
+  expect(mocks.writes).toEqual([]);
+  expect(mocks.unhandled).toEqual([]);
+});
+
+test("training workspace success renders the editable config and command surface", async ({ page }) => {
+  const mocks = await fixture(page);
+  await page.goto("/next/training");
+
+  await expect(page.getByRole("heading", { name: "训练配置", exact: true })).toBeVisible();
+  await expect(page.getByRole("region", { name: "训练设备快捷选择" })).toBeVisible();
+  await expect(page.getByLabel("当前训练配置", { exact: true })).toHaveValue(configFile.path);
+  await expect(page.getByRole("button", { name: "立即启动", exact: true })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "加入队列", exact: true })).toBeEnabled();
+  await expect(page.getByText("已同步", { exact: true })).toBeVisible();
+  expect(mocks.writes).toEqual([]);
+  expect(mocks.unhandled).toEqual([]);
+});
+
+test("training workspace empty config library disables execution safely", async ({ page }) => {
+  const mocks = await fixture(page);
+  await page.route(url => url.pathname === "/api/config/file-groups", async route => {
+    if (route.request().method() !== "GET") return route.fallback();
+    return route.fulfill({ json: [] });
+  });
+
+  await page.goto("/next/training");
+  await expect(page.getByRole("heading", { name: "训练配置", exact: true })).toBeVisible();
+  await expect(page.getByLabel("当前训练配置", { exact: true })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "立即启动", exact: true })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "加入队列", exact: true })).toBeDisabled();
+  expect(mocks.writes).toEqual([]);
+  expect(mocks.unhandled).toEqual([]);
+});
+
+test("training workspace loading disables context controls before fixture release", async ({ page }) => {
+  const mocks = await fixture(page);
+  let announceStarted = () => {};
+  let releaseResponse = () => {};
+  const started = new Promise<void>(resolve => { announceStarted = resolve; });
+  const responseGate = new Promise<void>(resolve => { releaseResponse = resolve; });
+  await page.route(url => url.pathname === "/api/config/file-groups", async route => {
+    if (route.request().method() !== "GET") return route.fallback();
+    announceStarted();
+    await responseGate;
+    return route.fallback();
+  });
+
+  await page.goto("/next/training");
+  await started;
+  await expect(page.getByText("正在同步训练上下文", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("当前训练配置", { exact: true })).toBeDisabled();
+  await expect(page.locator(".training-config-source")).toHaveAttribute("aria-busy", "true");
+  releaseResponse();
+  await expect(page.getByText("已同步", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "立即启动", exact: true })).toBeEnabled();
+  expect(mocks.writes).toEqual([]);
+  expect(mocks.unhandled).toEqual([]);
+});

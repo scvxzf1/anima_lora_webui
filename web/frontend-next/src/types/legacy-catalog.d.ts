@@ -37,7 +37,7 @@ declare module "*pages/config-field-availability.js" {
     values: Record<string, unknown>,
   ): string;
 }
-declare module "*config-form/model-family.js?v=auto-block-swap-20260908-v3" {
+declare module "*config-form/model-family.js?v=qwen-image-21-v2" {
   export function configureModelFamilyCapabilities(payload: unknown): unknown[];
   export function modelFamilyOptionSupported(
     key: string,

@@ -1,31 +1,47 @@
 import { Outlet, useRouteError, Link, useLocation } from "react-router-dom";
+import { useEffect } from "react";
 import { Topbar } from "./Topbar";
 import { useUIPreferences } from "./uiPreferences";
 
 export function AppShell() {
   const location = useLocation();
   const scale = useUIPreferences(location.pathname + location.search);
+  useEffect(() => {
+    if (location.hash === "#workspace") {
+      document.getElementById("workspace")?.focus();
+    }
+  }, [location.pathname, location.hash]);
   return (
     <div
       className="next-layout"
       data-training-workspace={location.pathname === "/training"}
       data-dataset-workspace={location.pathname === "/datasets"}
       data-mask-workspace={location.pathname === "/datasets/masks"}
+      data-dataset-image-workspace={location.pathname.startsWith("/datasets/workspace")}
       style={{
         zoom: scale.global,
         height:
           ["/training", "/datasets", "/datasets/masks"].includes(location.pathname)
+            || location.pathname.startsWith("/datasets/workspace")
             ? `calc(100dvh / ${scale.global})`
             : undefined,
       }}
     >
-      <a className="skip-link" href="#workspace">
+      <Link
+        className="skip-link"
+        to={{
+          pathname: location.pathname,
+          search: location.search,
+          hash: "#workspace",
+        }}
+      >
         跳到工作区
-      </a>
+      </Link>
       <Topbar />
       <div
         id="workspace"
         className="next-content"
+        tabIndex={-1}
         style={{ zoom: scale.content }}
       >
         <Outlet />

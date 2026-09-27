@@ -84,6 +84,33 @@ def test_lora_delta_norm_alpha_rank_and_block_parse(tmp_path, monkeypatch):
     assert file_uri_payload["summary"]["layer_count"] == 1
 
 
+def test_layers_named_transformer_blocks_feed_heatmap_without_refiner_collision(tmp_path, monkeypatch):
+    root = _patch_weight_analysis_root(tmp_path, monkeypatch)
+    path = _training_output(root) / "layers.safetensors"
+    main = "lora_unet_layers_2_attention_to_out_0"
+    refiner = "lora_unet_noise_refiner_0_attention_to_out_0"
+    save_file(
+        {
+            f"{prefix}.lora_down.weight": torch.ones(1, 2)
+            for prefix in (main, refiner)
+        } | {
+            f"{prefix}.lora_up.weight": torch.ones(2, 1)
+            for prefix in (main, refiner)
+        },
+        str(path),
+        metadata={"ss_network_spec": "lora"},
+    )
+
+    payload = weight_analysis_service.inspect_weight(str(path))
+
+    assert payload["summary"]["layer_count"] == 2
+    assert payload["summary"]["block_count"] == 1
+    assert payload["heatmap"]["blocks"] == [2]
+    assert payload["heatmap"]["components"] == ["attention_to_out_0"]
+    assert payload["heatmap"]["cells"][0]["layer_count"] == 1
+    assert next(layer for layer in payload["layers"] if layer["name"] == refiner)["block"] is None
+
+
 def test_loha_and_lokr_minimal_weights_are_supported(tmp_path, monkeypatch):
     root = _patch_weight_analysis_root(tmp_path, monkeypatch)
     out = _training_output(root)
@@ -292,4 +319,3 @@ def test_path_safety_shared_header_and_allowlist_consistency(tmp_path, monkeypat
         "output/ckpt/sample",
         "output/runs/001-demo/training_output/sample",
     )
-

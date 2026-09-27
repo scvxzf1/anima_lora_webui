@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import base64
 from io import BytesIO
-from pathlib import Path
 
 import pytest
 import tomlkit
@@ -19,12 +18,15 @@ FILE = "configs/datasets/manual-mask.toml"
 def dataset(tmp_path, monkeypatch):
     _write_minimal_config_tree(tmp_path)
     _patch_config_service_paths(monkeypatch, tmp_path)
-    for directory in ["source/nested", "training/nested"]:
+    for directory in ["source/nested", "training/nested", "source-two", "training-two"]:
         (tmp_path / directory).mkdir(parents=True)
     Image.new("RGB", (80, 60), (80, 120, 200)).save(tmp_path / "source/nested/photo.jpg")
     Image.new("RGB", (64, 48), (80, 120, 200)).save(tmp_path / "training/nested/photo.png")
     config_service.save_dataset_preset(FILE, [{
         "source_dir": "source", "image_dir": "training", "cache_dir": "cache",
+        "mask_mode": "none", "num_repeats": 1,
+    }, {
+        "source_dir": "source-two", "image_dir": "training-two", "cache_dir": "cache-two",
         "mask_mode": "none", "num_repeats": 1,
     }], {"resolution": 64, "enable_bucket": False})
     return tmp_path
@@ -63,6 +65,23 @@ def test_save_reload_apply_and_training_loader(dataset):
                                str(dataset / "training"))
     assert tensor is not None and tensor[0, 0] == 1 and tensor[0, -1] == 0
     assert not list((dataset / "source").rglob("*_mask.png"))
+
+
+def test_batch_apply_uses_explicit_targets_and_one_atomic_config_write(dataset):
+    page = masks.list_masks(FILE, 0)
+    result = masks.apply_masks(FILE, 0, page["config_revision"], [0, 1])
+    rows = config_service.load_dataset_preset(FILE)["datasets"]
+    assert result["indices"] == [0, 1]
+    assert len(rows) == 2
+    assert all(row["mask_mode"] == "external" for row in rows)
+    assert all(row["mask_dir"] == page["mask_dir"] for row in rows)
+
+    before = (dataset / FILE).read_text(encoding="utf-8")
+    with pytest.raises(ValueError, match="重复"):
+        masks.apply_masks(FILE, 0, masks.list_masks(FILE, 0)["config_revision"], [0, 0])
+    with pytest.raises(ValueError, match="范围"):
+        masks.apply_masks(FILE, 0, masks.list_masks(FILE, 0)["config_revision"], [0, 2])
+    assert (dataset / FILE).read_text(encoding="utf-8") == before
 
 
 def test_conflicts_and_invalid_images_are_non_destructive(dataset):
@@ -185,6 +204,51 @@ def test_http_round_trip_and_conflict_status(dataset):
             assert response.status == 409
             response = await client.put("/api/config/dataset-masks/image", params=params, data=b"invalid")
             assert response.status == 415
+            assert (await response.json())["ok"] is False
+            listing = await client.get("/api/config/dataset-masks", params={"file": FILE, "dataset_index": "0"})
+            config_revision = (await listing.json())["config_revision"]
+            before_apply = (dataset / FILE).read_bytes()
+            malformed = await client.post(
+                "/api/config/dataset-masks/apply",
+                params={"file": FILE, "dataset_index": "0"},
+                headers={"If-Match": config_revision, "Content-Type": "application/json"},
+                data="{",
+            )
+            assert malformed.status == 400
+            assert (await malformed.json())["ok"] is False
+            assert (dataset / FILE).read_bytes() == before_apply
+            response = await client.post(
+                "/api/config/dataset-masks/apply",
+                params={"file": FILE, "dataset_index": "0"},
+                headers={"If-Match": config_revision},
+                json={"indices": [0, 1]},
+            )
+            assert response.status == 200
+            assert (await response.json())["indices"] == [0, 1]
+            stale = await client.post(
+                "/api/config/dataset-masks/apply",
+                params={"file": FILE, "dataset_index": "0"},
+                headers={"If-Match": config_revision},
+                json={"indices": [0, 1]},
+            )
+            assert stale.status == 409
+            invalid = await client.post(
+                "/api/config/dataset-masks/apply",
+                params={"file": FILE, "dataset_index": "0"},
+                json={"indices": [0, "1"]},
+            )
+            assert invalid.status == 400
             response = await client.get("/api/config/dataset-masks", params={"file": FILE, "dataset_index": "bad"})
             assert response.status == 400
+            assert (await response.json())["ok"] is False
+            response = await client.get("/api/config/dataset-masks", params={"file": FILE, "offset": "bad"})
+            assert response.status == 400
+            assert (await response.json())["ok"] is False
+            response = await client.post(
+                "/api/config/dataset-masks/apply",
+                params={"file": FILE, "dataset_index": "bad"},
+                json={"indices": [0]},
+            )
+            assert response.status == 400
+            assert (await response.json())["ok"] is False
     asyncio.run(exercise())

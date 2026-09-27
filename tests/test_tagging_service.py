@@ -10,6 +10,7 @@ from aiohttp import web
 from aiohttp.test_utils import TestServer
 
 from web.services.tagging import TaggingService, client, jobs, memory_log, prompt_presets, settings, storage
+from tests.web_config_test_support import _patch_config_service_paths, _write_minimal_config_tree
 
 
 def _patch_settings_paths(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -386,6 +387,134 @@ def test_tagging_client_sends_openai_compatible_vision_payload(tmp_path, monkeyp
     content = payload["messages"][1]["content"]
     assert content[0] == {"type": "text", "text": "describe only visible details"}
     assert content[1]["image_url"]["url"].startswith("data:image/png;base64,")
+
+
+def test_captioning_http_provider_stub_to_reviewed_txt_commit(tmp_path, monkeypatch) -> None:
+    from aiohttp.test_utils import TestClient
+    from PIL import Image
+    from web.routes.tagging import setup_tagging_routes
+    from web.services import config_service
+
+    _write_minimal_config_tree(tmp_path)
+    _patch_config_service_paths(monkeypatch, tmp_path)
+    source = tmp_path / "images" / "s4"
+    source.mkdir(parents=True)
+    first_image = source / "first.png"
+    second_image = source / "second.png"
+    Image.new("RGB", (16, 16), (40, 80, 120)).save(first_image)
+    Image.new("RGB", (16, 16), (120, 80, 40)).save(second_image)
+    first_caption = source / "first.txt"
+    second_caption = source / "second.txt"
+    first_caption.write_text("original first\n", encoding="utf-8")
+    second_caption.write_text("leave this sidecar\n", encoding="utf-8")
+    dataset_file = "configs/datasets/s4-captioning.toml"
+    config_service.save_dataset_preset(dataset_file, [{
+        "source_dir": "images/s4", "image_dir": "images/s4-training",
+        "cache_dir": "cache/s4", "num_repeats": 1,
+    }], {"resolution": 64, "enable_bucket": False})
+    provider_requests: list[dict] = []
+    authorization: list[str] = []
+
+    async def completion(request):
+        authorization.append(request.headers.get("Authorization", ""))
+        provider_requests.append(await request.json())
+        return web.json_response({
+            "model": "s4-stub",
+            "choices": [{"message": {"content": "provider candidate"}}],
+        })
+
+    async def run() -> None:
+        provider_app = web.Application()
+        provider_app.router.add_post("/v1/chat/completions", completion)
+        monkeypatch.setattr(client, "get_api_key", lambda: "s4-private-key")
+        async with TestServer(provider_app) as provider_server:
+            provider_settings = {
+                **settings.DEFAULT_SETTINGS,
+                "base_url": str(provider_server.make_url("/v1")).rstrip("/"),
+                "model": "s4-stub",
+                "system_prompt": "describe fixture image only",
+                "allow_private_network": True,
+                "timeout_seconds": 5,
+                "retry_count": 0,
+                "retry_interval_seconds": 0,
+                "concurrency": 1,
+            }
+            monkeypatch.setattr(jobs, "load_settings", lambda: dict(provider_settings))
+            manager = jobs.TaggingJobManager()
+
+            class Service:
+                async def create_job(self, payload):
+                    return await manager.create(payload)
+
+                def get_job(self, job_id):
+                    return manager.snapshot(job_id)
+
+                def update_item(self, job_id, item_id, text):
+                    return manager.update_item(job_id, item_id, text)
+
+                async def commit_job(self, job_id, *, all_items=False, item_ids=None):
+                    return await manager.commit(job_id, all_items=all_items, item_ids=item_ids)
+
+                def get_logs(self, **kwargs):
+                    return manager.get_logs(**kwargs)
+
+            app = web.Application()
+            app["tagging_service"] = Service()
+            setup_tagging_routes(app)
+            async with TestClient(TestServer(app)) as client_http:
+                created = await client_http.post("/api/captioning/jobs", json={
+                    "dataset_file": dataset_file,
+                    "dataset_index": 0,
+                    "source": "source",
+                    "user_prompt": "write a concise caption",
+                    "items": [
+                        {"file": "images/s4/first.png"},
+                        {"file": "images/s4/second.png"},
+                    ],
+                })
+                assert created.status == 202
+                job = (await created.json())["job"]
+                job_id = job["id"]
+                for _ in range(100):
+                    response = await client_http.get(f"/api/captioning/jobs/{job_id}")
+                    job = (await response.json())["job"]
+                    if job["state"] not in {"queued", "running"}:
+                        break
+                    await asyncio.sleep(.01)
+                assert job["state"] == "completed"
+                assert all(item["proposed_caption"] == "provider candidate" for item in job["items"])
+                assert first_caption.read_text(encoding="utf-8") == "original first\n"
+                assert second_caption.read_text(encoding="utf-8") == "leave this sidecar\n"
+                selected = next(item for item in job["items"] if item["file"].endswith("first.png"))
+                edited = await client_http.patch(
+                    f"/api/captioning/jobs/{job_id}/items/{selected['id']}",
+                    json={"proposed_caption": "reviewed first caption"},
+                )
+                assert edited.status == 200
+                committed = await client_http.post(
+                    f"/api/captioning/jobs/{job_id}/commit",
+                    json={"item_ids": [selected["id"]]},
+                )
+                assert committed.status == 200
+                result = await committed.json()
+                assert result["written"] == 1
+                assert result["conflicts"] == 0
+                assert first_caption.read_text(encoding="utf-8") == "reviewed first caption\n"
+                assert second_caption.read_text(encoding="utf-8") == "leave this sidecar\n"
+                public_job = result["job"]
+                assert "s4-private-key" not in json.dumps(public_job)
+                logs = await client_http.get(f"/api/captioning/logs?job_id={job_id}")
+                assert logs.status == 200
+                assert "s4-private-key" not in await logs.text()
+            await manager.shutdown()
+
+    asyncio.run(run())
+    assert len(provider_requests) == 2
+    assert all(value == "Bearer s4-private-key" for value in authorization)
+    for payload in provider_requests:
+        image_part = payload["messages"][1]["content"][1]["image_url"]["url"]
+        assert image_part.startswith("data:image/png;base64,")
+        assert payload["model"] == "s4-stub"
 
 
 def test_extract_caption_handles_openai_content_parts() -> None:

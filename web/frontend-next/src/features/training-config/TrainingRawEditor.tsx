@@ -3,6 +3,7 @@ import { useState } from "react";
 import { parse } from "smol-toml";
 import { CommandDialog } from "../../components/CommandDialog";
 import { apiRequest } from "../../api/client";
+import { ApiError } from "../../api/client";
 import { downloadTextFile } from "../dataset-editor/downloadTextFile";
 import { importedTrainingPath } from "./trainingForm";
 import { saveTrainingConfigAs, type RawPatchResponse } from "./api";
@@ -10,15 +11,19 @@ import { saveTrainingConfigAs, type RawPatchResponse } from "./api";
 export function TrainingRawEditor({
   file,
   content,
+  revision,
   locked,
   onSaved,
   onClose,
+  onReload,
 }: {
   file?: string;
   content: string;
+  revision?: string;
   locked?: boolean;
   onSaved: (file: string) => void;
   onClose: () => void;
+  onReload: () => Promise<void>;
 }) {
   const [text, setText] = useState(content);
   const [name, setName] = useState("");
@@ -31,7 +36,7 @@ export function TrainingRawEditor({
       if (file && !locked)
         await apiRequest<RawPatchResponse>("/api/config/raw", {
           method: "PUT",
-          body: JSON.stringify({ file, content: text }),
+          body: JSON.stringify({ file, content: text, revision }),
         });
       else await saveTrainingConfigAs(target, text);
       return target;
@@ -39,6 +44,7 @@ export function TrainingRawEditor({
     retry: false,
     onSuccess: onSaved,
   });
+  const saveConflict = save.error instanceof ApiError && save.error.status === 409;
   const dirty = text !== content || Boolean(name);
   function close() {
     if (!dirty || window.confirm("放弃未保存的 TOML 修改？")) onClose();
@@ -115,7 +121,7 @@ export function TrainingRawEditor({
           <button
             type="submit"
             className="primary-command"
-            disabled={save.isPending}
+            disabled={save.isPending || saveConflict}
           >
             {file && !locked ? "保存 TOML" : "创建配置"}
           </button>
@@ -125,6 +131,11 @@ export function TrainingRawEditor({
         <p role="alert" className="form-error">
           {save.error?.message || localError}
         </p>
+      )}
+      {saveConflict && (
+        <button type="button" onClick={() => {
+          if (window.confirm("重新加载会放弃当前 TOML 草稿。是否继续？")) void onReload();
+        }}>重新加载 TOML</button>
       )}
     </CommandDialog>
   );

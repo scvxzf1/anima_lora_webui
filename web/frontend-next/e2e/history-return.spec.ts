@@ -28,6 +28,24 @@ async function fixture(page: Page, total = 600) {
   return { ...mocks, cursors };
 }
 
+for (const width of [390, 360]) {
+  test(`history search remains usable on narrow screens ${width}`, async ({ page }, info) => {
+    const mocks = await fixture(page, 24);
+    await page.setViewportSize({ width, height: 800 });
+    await page.goto("/next/history");
+
+    const search = page.getByRole("searchbox", { name: "搜索历史记录" });
+    await expect(search).toBeVisible();
+    await expect(page.locator(".history-filter-scope")).toContainText("已读取 24 / 24 条");
+    const bounds = await search.boundingBox();
+    expect(bounds?.width).toBeGreaterThanOrEqual(240);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.screenshot({ path: info.outputPath(`history-search-${width}.png`) });
+    expect(mocks.writes).toEqual([]);
+    expect(mocks.unhandled).toEqual([]);
+  });
+}
+
 test("a deep detail URL restores filters, loaded depth, outer page and scroll anchor", async ({ page }) => {
   const mocks = await fixture(page);
   await page.goto("/next/history?collection=Studio&q=Run&layout=list&archived=all");

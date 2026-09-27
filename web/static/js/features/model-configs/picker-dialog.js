@@ -1,5 +1,5 @@
 import { fetchModelConfigLibrary } from './api.js?v=module-bootstrap-20260831-release-v1';
-import { MODEL_CONFIG_PATH_FIELDS, modelFamilyLabel } from './model-config-data.js?v=module-bootstrap-20260831-release-v1';
+import { MODEL_CONFIG_PATH_FIELDS, modelFamilyLabel } from './model-config-data.js?v=qwen-image-21-v1';
 
 function isConfigComplete(item) {
     return Boolean(item) && MODEL_CONFIG_PATH_FIELDS.every(({ key }) => Boolean(item[key]));

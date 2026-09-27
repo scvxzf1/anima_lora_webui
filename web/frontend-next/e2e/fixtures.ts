@@ -259,11 +259,45 @@ export async function mockWorkspace(page: Page) {
       if (path === "/api/config/dataset-presets/images")
         return reply({
           ok: true,
+          file: dataset.path,
+          dataset_index: 0,
+          dataset_label: "Studio",
+          source: "source",
+          source_label: "原始图目录",
+          directory: "images/studio",
+          directory_exists: true,
+          caption_extension: ".txt",
+          prefer_json_caption: false,
+          caption_source_mode: "txt",
+          caption_source_label: "TXT",
+          caption_summary: "",
+          count: 3,
           total: 3,
+          limit: 120,
           images: job.items.map((item) => ({
             ...item,
-            caption: { text: item.caption },
+            caption: {
+              ok: true,
+              file: item.file.replace(/\.png$/, ".txt"),
+              extension: ".txt",
+              source_mode: "txt",
+              source_label: "TXT",
+              detected_mode: "txt",
+              format_label: "TXT",
+              caption_count: 1,
+              text: item.caption,
+              truncated: false,
+              length: item.caption.length,
+            },
           })),
+          row: {
+            source_dir: "images/studio",
+            image_dir: "cache/studio",
+            num_repeats: 1,
+            settings: {},
+          },
+          settings: { resolution: 1024, enable_bucket: true },
+          message: "",
         });
       if (path === "/api/training/status")
         return reply({

@@ -26,6 +26,8 @@ export function TrainingLibraryActions({
   onRenamed,
   scope = "library",
   targetGroup,
+  detailedManagement,
+  onDetailedManagementChange,
 }: {
   groups: TrainingConfigGroup[];
   file?: TrainingConfigFile;
@@ -33,6 +35,8 @@ export function TrainingLibraryActions({
   onRenamed: (file: string) => void;
   scope?: "library" | "group" | "file";
   targetGroup?: TrainingConfigGroup;
+  detailedManagement?: boolean;
+  onDetailedManagementChange?: (enabled: boolean) => void;
 }) {
   const qc = useQueryClient();
   const [nameAction, setNameAction] = useState<LibraryNameAction | null>(null);
@@ -240,6 +244,18 @@ export function TrainingLibraryActions({
           </div>
         )}
       </fieldset>
+      {scope === "library" && onDetailedManagementChange && (
+        <label className="training-library-management-toggle">
+          <input
+            type="checkbox"
+            role="switch"
+            checked={Boolean(detailedManagement)}
+            onChange={(event) => onDetailedManagementChange(event.target.checked)}
+          />
+          <span className="training-library-management-track" aria-hidden="true" />
+          <span>详细管理</span>
+        </label>
+      )}
       {mutation.error && !nameAction && (
         <p role="alert" className="form-error">
           {mutation.error.message}

@@ -104,7 +104,11 @@ export function TrainingLibraryDrag({
       queryClient.invalidateQueries({ queryKey: trainingContextKeys.files() }),
   });
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(PointerSensor, {
+      activationConstraint: { delay: 200, tolerance: 24 },
+      bypassActivationConstraint: ({ event }) =>
+        event.target instanceof Element && Boolean(event.target.closest(".training-library-drag")),
+    }),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
     }),

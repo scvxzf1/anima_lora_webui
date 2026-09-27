@@ -19,6 +19,7 @@
   border-radius: 4px;
   position: relative;
 }
+.dataset-cover[data-drag-enabled="true"] { cursor: grab; touch-action: none; user-select: none; }
 .dataset-cover img { width: 100%; height: 100%; object-fit: cover; border-radius: 3px; }
 .dataset-cover small { font-size: 10px; white-space: nowrap; }
 .dataset-cover-tooltip {

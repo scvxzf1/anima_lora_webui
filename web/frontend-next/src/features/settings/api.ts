@@ -4,6 +4,7 @@ export type GlobalSettings = Record<string, unknown> & {
   ok?: boolean;
   message?: string;
   requires_reload?: boolean;
+  revision?: string;
   defaults?: Record<string, unknown>;
   path_overrides?: Record<string, string>;
   effective_paths?: Record<string, string>;

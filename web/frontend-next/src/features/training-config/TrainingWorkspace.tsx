@@ -6,6 +6,7 @@ import { TrainingContextBar } from "../../app/TrainingContextBar";
 import { TrainingTools } from "./TrainingTools";
 import { TrainingSaveAsDialog } from "./TrainingSaveAsDialog";
 import { TrainingConfigLibrary } from "./TrainingConfigLibrary";
+import { TrainingWorkspaceLayout } from "./TrainingWorkspaceLayout";
 import { TrainingLaunchDialog } from "./TrainingLaunchDialog";
 import { TrainingRawEditor } from "./TrainingRawEditor";
 import { TrainingSamplePrompts } from "./TrainingExtras";
@@ -78,6 +79,16 @@ export function TrainingWorkspace() {
           <section className="training-config-error" role="alert">
             <h2>无法读取训练配置</h2>
             <p>{(context.error || rawQuery.error)?.message}</p>
+            <button
+              type="button"
+              disabled={queryClient.isFetching({ queryKey: trainingContextKeys.all }) > 0 || rawQuery.isFetching}
+              onClick={() => {
+                if (context.error) void queryClient.refetchQueries({ queryKey: trainingContextKeys.all });
+                if (rawQuery.error) void rawQuery.refetch();
+              }}
+            >
+              重试读取
+            </button>
           </section>
         ) : (
           <>
@@ -105,7 +116,7 @@ export function TrainingWorkspace() {
 
             <TrainingCommands state={state} libraryExpanded={libraryExpanded} onToggleLibrary={toggleLibrary} />
             <TrainingTools state={state} />
-            <div className="training-workspace-layout">
+            <TrainingWorkspaceLayout>
               <TrainingConfigLibrary
                 expanded={libraryExpanded}
                 files={context.files}
@@ -119,7 +130,7 @@ export function TrainingWorkspace() {
                 }}
               />
               <TrainingEditor state={state} />
-            </div>
+            </TrainingWorkspaceLayout>
           </>
         )}
       </main>
@@ -129,6 +140,7 @@ export function TrainingWorkspace() {
           promptFile={String(
             mergedConfig.sample_prompts || "",
           )}
+          configRevision={rawQuery.data?.revision}
           onClose={() => setPromptsOpen(false)}
           onSaved={async () => {
             await invalidateTrainingQueries(
@@ -144,8 +156,14 @@ export function TrainingWorkspace() {
         <TrainingRawEditor
           file={rawMode === "edit" ? selectedFile?.path : undefined}
           content={rawMode === "edit" ? rawQuery.data?.content || "" : ""}
+          revision={rawMode === "edit" ? rawQuery.data?.revision : undefined}
           locked={rawMode === "edit" && locked}
           onClose={() => setRawMode(null)}
+          onReload={async () => {
+            await invalidateTrainingQueries(queryClient, selectedFile!.path, context.selectedPreset);
+            setHydratedKey("");
+            setRawMode(null);
+          }}
           onSaved={async (file) => {
             await queryClient.invalidateQueries({
               queryKey: trainingContextKeys.files(),

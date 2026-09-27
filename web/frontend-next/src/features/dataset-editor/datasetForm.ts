@@ -5,6 +5,7 @@ import type {
   DatasetPresetMutationResponse,
   DatasetPresetResponse,
   DatasetPresetWritePayload,
+  DatasetRow,
 } from './types';
 import {
   normalizeStageSchedule,
@@ -35,6 +36,7 @@ const datasetSettingsSchema = z.object(settingsShape).catchall(z.unknown());
 const datasetDefaultsSchema = z.object({
   ...settingsShape,
   keep_tokens: z.number().int().min(0, '保留 Token 数不能小于 0'),
+  qwen_edit_enabled: z.boolean(),
 }).catchall(z.unknown());
 
 const nlTagMixSchema = z.object({
@@ -49,9 +51,12 @@ const triggerCloneSchema = z.object({
 }).catchall(z.unknown());
 
 const datasetRowSchema = z.object({
+  edit_role: z.enum(['normal', 'before', 'after']),
+  edit_pair_id: z.string().trim(),
   source_dir: z.string().trim().min(1, '请输入原始图片目录'),
   image_dir: z.string().trim(),
   cache_dir: z.string().trim(),
+  reference_image_dir: z.string().trim(),
   num_repeats: z.number().int().min(1, '重复次数至少为 1'),
   is_reg: z.boolean(),
   mask_mode: z.enum(datasetMaskModes),
@@ -87,6 +92,52 @@ export const datasetFormSchema = z.object({
       });
     }
   });
+  const editRows = value.datasets.filter((row) => row.edit_role !== 'normal');
+  if (editRows.length) {
+    if (value.datasets.some((row) => row.edit_role === 'normal')) {
+      context.addIssue({
+        code: 'custom',
+        path: ['datasets'],
+        message: '编辑 LoRA 预设不能混用普通数据子集',
+      });
+    }
+    const pairs = new Map<string, { before: number[]; after: number[] }>();
+    value.datasets.forEach((row, index) => {
+      if (row.edit_role === 'normal') return;
+      const pairId = row.edit_pair_id.trim();
+      if (!pairId) {
+        context.addIssue({
+          code: 'custom',
+          path: ['datasets', index, 'edit_pair_id'],
+          message: '请填写配对名称',
+        });
+      }
+      if (row.is_reg) {
+        context.addIssue({ code: 'custom', path: ['datasets', index, 'is_reg'], message: '编辑 LoRA 不支持正则数据' });
+      }
+      if (row.edit_role === 'after' && row.settings.batch_size !== 1) {
+        context.addIssue({
+          code: 'custom',
+          path: ['datasets', index, 'settings', 'batch_size'],
+          message: 'Qwen Image 2.1 编辑 LoRA 首版要求 batch_size=1',
+        });
+      }
+      if (pairId) pairs.set(pairId, {
+        before: [...(pairs.get(pairId)?.before || []), ...(row.edit_role === 'before' ? [index] : [])],
+        after: [...(pairs.get(pairId)?.after || []), ...(row.edit_role === 'after' ? [index] : [])],
+      });
+    });
+    pairs.forEach((pair, pairId) => {
+      if (pair.before.length === 1 && pair.after.length === 1) return;
+      [...pair.before, ...pair.after].forEach((index) => context.addIssue({
+        code: 'custom', path: ['datasets', index, 'edit_pair_id'],
+        message: `配对“${pairId}”需要各一个编辑前和编辑后子集`,
+      }));
+    });
+    if (value.stage_schedule_enabled) context.addIssue({
+      code: 'custom', path: ['stage_schedule_enabled'], message: '编辑 LoRA 暂不支持分阶段调度',
+    });
+  }
   if (value.datasets.every((row) => row.is_reg)) {
     context.addIssue({
       code: 'custom',
@@ -120,8 +171,11 @@ export type DatasetSettingsValues = DatasetFormValues['datasets'][number]['setti
 export function emptyDatasetRow(defaults: Partial<DatasetSettingsValues> = {}): DatasetFormValues['datasets'][number] {
   return {
     source_dir: '',
+    edit_role: 'normal',
+    edit_pair_id: '',
     image_dir: '',
     cache_dir: '',
+    reference_image_dir: '',
     num_repeats: 1,
     is_reg: false,
     mask_mode: 'auto',
@@ -148,15 +202,26 @@ export function datasetFormFromPreset(
   preset: DatasetPresetResponse | DatasetPresetMutationResponse,
 ): DatasetFormValues {
   const defaults = normalizeDefaults(preset.defaults || {});
+  const hasExplicitRoles = preset.datasets.some((row) => row.edit_role === 'before' || row.edit_role === 'after');
+  const sourceRows: DatasetRow[] = [];
+  preset.datasets.forEach((row, index) => {
+    if (defaults.qwen_edit_enabled && !hasExplicitRoles && row.reference_image_dir) {
+      sourceRows.push({ ...row, source_dir: row.reference_image_dir, image_dir: '', reference_image_dir: '', edit_role: 'before', edit_pair_id: String(index + 1) });
+      sourceRows.push({ ...row, reference_image_dir: '', edit_role: 'after', edit_pair_id: String(index + 1) });
+    } else sourceRows.push(row);
+  });
   return {
     defaults,
-    datasets: preset.datasets.length
-      ? preset.datasets.map((row) => ({
+    datasets: sourceRows.length
+      ? sourceRows.map((row) => ({
           ...row,
+          edit_role: row.edit_role === 'before' || row.edit_role === 'after' ? row.edit_role : 'normal',
+          edit_pair_id: String(row.edit_pair_id || ''),
           ...datasetMaskFromRow(row),
           source_dir: String(row.source_dir || ''),
           image_dir: String(row.image_dir || ''),
           cache_dir: String(row.cache_dir || ''),
+          reference_image_dir: String(row.reference_image_dir || ''),
           num_repeats: positiveInt(row.num_repeats, 1),
           is_reg: Boolean(row.is_reg),
           recursive: row.recursive !== false,
@@ -173,8 +238,8 @@ export function datasetFormFromPreset(
 
 export function datasetWritePayload(values: DatasetFormValues): DatasetPresetWritePayload {
   return {
-    datasets: values.datasets.map((row) => ({ ...row, ...datasetMaskForWrite(row) })),
-    defaults: values.defaults,
+    datasets: values.datasets.map((row) => ({ ...row, reference_image_dir: '', ...datasetMaskForWrite(row) })),
+    defaults: { ...values.defaults, qwen_edit_enabled: values.datasets.some((row) => row.edit_role === 'after') },
     stage_schedule_enabled: values.stage_schedule_enabled,
     stage_schedule: values.stage_schedule,
   };
@@ -200,6 +265,7 @@ function normalizeDefaults(raw: Record<string, unknown>): DatasetFormValues['def
     ...raw,
     ...normalizeSettings(raw),
     keep_tokens: nonnegativeInt(raw.keep_tokens, 3),
+    qwen_edit_enabled: Boolean(raw.qwen_edit_enabled),
   };
 }
 

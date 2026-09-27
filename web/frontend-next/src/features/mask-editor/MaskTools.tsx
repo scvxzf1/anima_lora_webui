@@ -44,7 +44,9 @@ export function MaskTools({ engine, tool, setTool, size, setSize, view, setView,
       <IconCommand icon={ZoomOut} label="缩小" onClick={() => viewport.current?.zoom(.8)} />
       <IconCommand icon={ZoomIn} label="放大" onClick={() => viewport.current?.zoom(1.25)} />
       <IconCommand icon={Maximize} label="适应画布" onClick={() => viewport.current?.fit()} />
-      <output className="mask-zoom">{Math.round(zoom * 100)}%</output>
+      <output className="mask-zoom" aria-live="polite" aria-label="画布缩放">
+        {Math.round(zoom * 100)}%
+      </output>
     </div>
   </aside>;
 }

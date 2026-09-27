@@ -59,9 +59,21 @@ export function CaptionPrompts() {
           </article>
         ))}
       </div>
-      {(query.error || remove.error) && (
+      {query.error && (
         <p className="form-error" role="alert">
-          {(query.error || remove.error)?.message}
+          {query.error.message}
+          <button
+            type="button"
+            onClick={() => void query.refetch()}
+            disabled={query.isFetching}
+          >
+            重试提示词
+          </button>
+        </p>
+      )}
+      {remove.error && (
+        <p className="form-error" role="alert">
+          {remove.error.message}
         </p>
       )}
       {editing && (

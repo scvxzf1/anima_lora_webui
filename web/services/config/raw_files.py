@@ -16,6 +16,7 @@ from library.env import get_configs_root, load_dotenv
 from web.services.atomic_io import atomic_write_text
 from web.services.config import file_groups as _file_groups
 from web.services.config import paths as _config_paths
+from web.services.config.revisioned_text import check_revision, locked_text_file, text_revision, write_text
 from web.services.config.schema_gate import (
     normalize_patch_values,
     validate_config_mapping,
@@ -146,7 +147,7 @@ def _lock_reason_message(meta: dict[str, Any]) -> str:
     return _call_file_groups_impl("_lock_reason_message", meta)
 
 
-__all__ = ['load_raw_file', 'save_raw_file', 'rename_raw_file', 'delete_raw_file', 'patch_raw_file_values', 'preview_raw_file_patch', '_prepare_raw_file_patch', '_restore_dataset_config_after_failed_train_patch', '_patch_toml_top_level', '_normalize_patch_value', '_normalize_saved_raw_config_content', '_normalize_saved_raw_config_content_with_changed_keys', '_is_blank_output_name']
+__all__ = ['load_raw_file', 'load_raw_file_snapshot', 'save_raw_file', 'rename_raw_file', 'delete_raw_file', 'patch_raw_file_values', 'preview_raw_file_patch', '_prepare_raw_file_patch', '_restore_dataset_config_after_failed_train_patch', '_patch_toml_top_level', '_normalize_patch_value', '_normalize_saved_raw_config_content', '_normalize_saved_raw_config_content_with_changed_keys', '_is_blank_output_name']
 
 def load_raw_file(rel_path: str) -> str:
     path = _safe_resolve(_normalize_config_rel_path(rel_path))
@@ -155,12 +156,21 @@ def load_raw_file(rel_path: str) -> str:
     return path.read_text(encoding="utf-8")
 
 
+def load_raw_file_snapshot(rel_path: str) -> tuple[str, str]:
+    path = _safe_resolve(_normalize_config_rel_path(rel_path))
+    if path is None or not path.exists():
+        return "", text_revision("", exists=False)
+    content = path.read_text(encoding="utf-8")
+    return content, text_revision(content)
+
+
 def save_raw_file(
     rel_path: str,
     content: str,
     *,
     allow_locked: bool = False,
     overwrite: bool = True,
+    expected_revision: str | None = None,
 ) -> tuple[bool, str, list[str]]:
     """Save a raw TOML config file.
 
@@ -193,7 +203,10 @@ def save_raw_file(
             return False, "; ".join(schema_errors), list(schema_warnings or [])
         schema_warnings = [str(item) for item in (schema_warnings or [])]
     path.parent.mkdir(parents=True, exist_ok=True)
-    atomic_write_text(path, content)
+    try:
+        write_text(path, content, expected_revision, exclusive=not overwrite)
+    except FileExistsError:
+        return False, "配置文件已存在，请换一个新的名称", []
     message = "保存成功"
     if schema_warnings:
         message = f"保存成功（警告: {'; '.join(schema_warnings)}）"
@@ -303,15 +316,22 @@ def patch_raw_file_values(
     values: dict[str, Any],
     *,
     content: str | None = None,
+    expected_revision: str | None = None,
 ) -> tuple[bool, str, str, list[str], list[str]]:
-    ok, msg, path, next_content, changed, warnings = _prepare_raw_file_patch(
-        rel_path, values, content=content
-    )
-    if not ok or path is None:
-        return False, msg, "", [], list(warnings or [])
-    path.parent.mkdir(parents=True, exist_ok=True)
-    atomic_write_text(path, next_content)
-    return True, msg or "保存成功", next_content, changed, list(warnings or [])
+    normalized = _normalize_config_rel_path(rel_path)
+    path = _safe_resolve(normalized)
+    if path is None:
+        return False, "路径不合法", "", [], []
+    with locked_text_file(path):
+        check_revision(path, expected_revision)
+        ok, msg, path, next_content, changed, warnings = _prepare_raw_file_patch(
+            rel_path, values, content=content
+        )
+        if not ok or path is None:
+            return False, msg, "", [], list(warnings or [])
+        path.parent.mkdir(parents=True, exist_ok=True)
+        atomic_write_text(path, next_content)
+        return True, msg or "保存成功", next_content, changed, list(warnings or [])
 
 
 def preview_raw_file_patch(
@@ -593,6 +613,7 @@ def _normalize_saved_raw_config_content_with_changed_keys(content: str) -> tuple
 
 _SYNC_WRAPPED_EXPORTS = {
     "load_raw_file",
+    "load_raw_file_snapshot",
     "save_raw_file",
     "rename_raw_file",
     "delete_raw_file",

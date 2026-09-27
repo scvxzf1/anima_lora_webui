@@ -44,6 +44,43 @@ for (const [width, theme] of [[1440, "light"], [1440, "dark"], [390, "light"]] a
   });
 }
 
+test("estimate errors keep the dialog empty until an explicit retry", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  const mocks = await mockWorkspace(page);
+  let attempts = 0;
+  let recovered = false;
+  await page.route("**/api/config/steps?**", (route) => {
+    attempts += 1;
+    if (!recovered)
+      return route.fulfill({
+        status: 503,
+        contentType: "application/json",
+        body: JSON.stringify({ error: "训练量估算暂不可用" }),
+      });
+    return route.fulfill({ json: {
+      total_steps: 3520, train_image_count: 176, effective_batch_size: 1, steps_per_epoch: 176,
+      repeated_image_count: 176, train_batch_size: 1, gradient_accumulation_steps: 1,
+      duration_mode: "epochs", max_train_epochs: 20, datasets,
+    } });
+  });
+
+  await page.goto("/next/training");
+  await page.getByRole("button", { name: "训练量估算", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "训练量估算" });
+  await expect(dialog.getByRole("alert")).toContainText("训练量估算暂不可用");
+  await expect(dialog.getByRole("table")).toHaveCount(0);
+  const failedAttempts = attempts;
+  await page.waitForTimeout(1200);
+  expect(attempts).toBe(failedAttempts);
+
+  recovered = true;
+  await dialog.getByRole("button", { name: "重新估算", exact: true }).click();
+  await expect(dialog.getByRole("table", { name: "分桶尺寸明细" })).toBeVisible();
+  expect(attempts).toBe(failedAttempts + 1);
+  expect(mocks.writes).toEqual([]);
+  expect(mocks.unhandled).toEqual([]);
+});
+
 for (const width of [1440, 390]) {
   test(`many source buckets scroll without moving background ${width}`, async ({ page }, info) => {
     await page.setViewportSize({ width, height: 800 });

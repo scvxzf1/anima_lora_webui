@@ -109,6 +109,7 @@ def create_profile(payload: dict[str, Any] | None) -> dict[str, Any]:
     profile = _normalize_profile(source)
     if any(item["id"] == profile["id"] for item in profiles):
         raise ValueError("接入预设 ID 已存在")
+    _validate_secret_payload(profile, source)
     profiles.append(profile)
     # Creating a profile must not silently switch a running workspace.  The
     # user explicitly activates it after reviewing its status.
@@ -134,6 +135,7 @@ def update_profile(profile_id: str, payload: dict[str, Any] | None) -> dict[str,
         merged["config"] = {**current["config"], **(source.get("config") if isinstance(source.get("config"), dict) else {})}
     profile = _normalize_profile(merged, current=current)
     profile["id"] = target_id
+    _validate_secret_payload(profile, source)
     profiles[index] = profile
     _save_profiles(profiles, active_id)
     _update_profile_secret(target_id, source)
@@ -451,6 +453,13 @@ def _update_profile_secret(profile_id: str, payload: dict[str, Any]) -> None:
     path = Path(tagging_settings.SECRETS_FILE)
     atomic_write_text(path, toml.dumps(raw))
     _restrict_file_permissions(path)
+
+
+def _validate_secret_payload(profile: dict[str, Any], payload: dict[str, Any]) -> None:
+    if profile["provider"] != "openai_compatible" and (
+        str(payload.get("api_key") or "").strip() or payload.get("clear_api_key")
+    ):
+        raise ValueError("本地接入不使用 API Key")
 
 
 def _read_secrets() -> dict[str, Any]:

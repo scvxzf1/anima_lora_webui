@@ -196,6 +196,10 @@ def _latent_strategy(family: str, skip_check: bool):
         from library.models.z_image.strategy import ZImageLatentsCachingStrategy
 
         cls = ZImageLatentsCachingStrategy
+    elif family == "qwen_image_2_1":
+        from library.models.qwen_image_2_1.strategy import QwenImage21LatentCache
+
+        cls = QwenImage21LatentCache
     else:
         raise ValueError(f"Unsupported latent cache audit family: {family}")
     return cls(True, 1, skip_check)
@@ -214,6 +218,10 @@ def _text_strategy(family: str, skip_check: bool):
         from library.models.z_image.strategy import ZImageTextEncoderOutputsCachingStrategy
 
         return ZImageTextEncoderOutputsCachingStrategy(True, 1, skip_check)
+    if family == "qwen_image_2_1":
+        from library.models.qwen_image_2_1.strategy import QwenImage21TextCache
+
+        return QwenImage21TextCache(True, 1, skip_check)
     raise ValueError(f"Unsupported cache audit family: {family}")
 
 

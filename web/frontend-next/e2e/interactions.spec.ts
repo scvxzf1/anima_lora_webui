@@ -93,6 +93,123 @@ for (const width of [1440, 390]) {
   });
 }
 
+test("caption provider dialog receives focus and restores it on mobile", async ({ page }, info) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const mocks = await mockWorkspace(page);
+  await page.goto("/next/captioning/providers");
+  const trigger = page.getByRole("button", { name: "编辑", exact: true }).first();
+  await trigger.click();
+
+  const dialog = page.getByRole("dialog", { name: "编辑接入预设" });
+  await expect(dialog).toBeVisible();
+  await expect.poll(() => dialog.evaluate((node) => node.contains(document.activeElement))).toBe(true);
+  await page.screenshot({ path: info.outputPath("caption-provider-mobile-dialog.png") });
+
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+  await expect(trigger).toBeFocused();
+  expect(mocks.writes).toEqual([]);
+  expect(mocks.unhandled).toEqual([]);
+});
+
+test("caption provider ping failure is visible and only retries on command", async ({ page }) => {
+  const mocks = await mockWorkspace(page);
+  const attempts: { method: string; body: unknown }[] = [];
+  await page.route("**/api/captioning/test", async (route) => {
+    const request = route.request();
+    attempts.push({ method: request.method(), body: request.postDataJSON() });
+    if (attempts.length === 1) {
+      await new Promise((resolve) => setTimeout(resolve, 350));
+      await route.fulfill({
+        status: 502,
+        contentType: "application/json",
+        body: JSON.stringify({ ok: false, error: "外部 API 请求超时" }),
+      });
+      return;
+    }
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, message: "pong" }),
+    });
+  });
+  let dismissNextConfirmation = true;
+  page.on("dialog", (dialog) =>
+    dismissNextConfirmation ? dialog.dismiss() : dialog.accept(),
+  );
+
+  await page.goto("/next/captioning/providers");
+  const testButton = page.getByRole("button", { name: "测试", exact: true });
+  await testButton.click();
+  expect(attempts).toHaveLength(0);
+  await expect(page.getByRole("status")).toHaveCount(0);
+
+  dismissNextConfirmation = false;
+  await testButton.click();
+  await expect(testButton).toBeDisabled();
+  await expect(page.getByRole("alert")).toHaveText("外部 API 请求超时");
+  await expect(testButton).toBeEnabled();
+  await page.waitForTimeout(1200);
+  expect(attempts).toHaveLength(1);
+
+  await testButton.click();
+  await expect(page.getByRole("status")).toHaveText("连接测试完成");
+  expect(attempts).toEqual([
+    { method: "POST", body: { mode: "ping", profile_id: "provider-a" } },
+    { method: "POST", body: { mode: "ping", profile_id: "provider-a" } },
+  ]);
+  expect(mocks.writes).toEqual([]);
+  expect(mocks.unhandled).toEqual([]);
+});
+
+test("caption provider ping network loss releases controls without auto-retry", async ({ page }) => {
+  const mocks = await mockWorkspace(page);
+  const attempts: { method: string; body: unknown }[] = [];
+  let markStarted!: () => void;
+  const started = new Promise<void>((resolve) => { markStarted = resolve; });
+  let releaseFailure!: () => void;
+  const failureGate = new Promise<void>((resolve) => { releaseFailure = resolve; });
+  await page.route("**/api/captioning/test", async (route) => {
+    const request = route.request();
+    attempts.push({ method: request.method(), body: request.postDataJSON() });
+    if (attempts.length === 1) {
+      markStarted();
+      await failureGate;
+      return route.abort("failed");
+    }
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, message: "pong" }),
+    });
+  });
+
+  await page.goto("/next/captioning/providers");
+  const testButton = page.getByRole("button", { name: "测试", exact: true });
+  page.once("dialog", (dialog) => { void dialog.accept(); });
+  await testButton.click();
+  await started;
+  await expect(testButton).toBeDisabled();
+  releaseFailure();
+
+  await expect(page.getByRole("alert")).toHaveText(
+    "连接中断，操作结果尚未确认。请先刷新对应记录核对服务器状态，再决定是否重试。",
+  );
+  await expect(testButton).toBeEnabled();
+  await page.waitForTimeout(1200);
+  expect(attempts).toEqual([
+    { method: "POST", body: { mode: "ping", profile_id: "provider-a" } },
+  ]);
+
+  page.once("dialog", (dialog) => { void dialog.accept(); });
+  await testButton.click();
+  await expect(page.getByRole("status")).toHaveText("连接测试完成");
+  expect(attempts).toEqual([
+    { method: "POST", body: { mode: "ping", profile_id: "provider-a" } },
+    { method: "POST", body: { mode: "ping", profile_id: "provider-a" } },
+  ]);
+  expect(mocks.writes).toEqual([]);
+  expect(mocks.unhandled).toEqual([]);
+});
+
 test("saved display preferences and zoom apply without double scaling", async ({
   page,
 }, info) => {

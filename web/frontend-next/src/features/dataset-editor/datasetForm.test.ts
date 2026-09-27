@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   datasetFormFromPreset,
   datasetFormSchema,
+  datasetWritePayload,
   emptyDatasetForm,
   emptyDatasetRow,
 } from './datasetForm';
@@ -100,5 +101,31 @@ describe('dataset form domain', () => {
     if (!result.success) {
       expect(result.error.issues.map((issue) => issue.path.join('.'))).toContain('stage_schedule_enabled');
     }
+  });
+
+  it('requires one before and one after row for every named edit pair', () => {
+    const form = emptyDatasetForm();
+    form.datasets = [
+      { ...emptyDatasetRow(), source_dir: 'refs/1', edit_role: 'before', edit_pair_id: '1' },
+      { ...emptyDatasetRow(), source_dir: 'targets/1', edit_role: 'after', edit_pair_id: '1' },
+      { ...emptyDatasetRow(), source_dir: 'refs/2', edit_role: 'before', edit_pair_id: '2' },
+      { ...emptyDatasetRow(), source_dir: 'targets/2', edit_role: 'after', edit_pair_id: '2' },
+    ];
+    expect(datasetFormSchema.safeParse(form).success).toBe(true);
+    expect(datasetWritePayload(form).defaults.qwen_edit_enabled).toBe(true);
+    form.datasets[3].edit_pair_id = '1';
+    expect(datasetFormSchema.safeParse(form).success).toBe(false);
+  });
+
+  it('migrates legacy reference directories into editable before/after rows', () => {
+    const form = datasetFormFromPreset({
+      ok: true, file: 'configs/datasets/legacy.toml', name: 'legacy', content: '', readonly: false,
+      summary: {}, defaults: { qwen_edit_enabled: true },
+      datasets: [{ source_dir: 'original', image_dir: 'target', reference_image_dir: 'reference' }],
+    });
+    expect(form.datasets.map((row) => [row.edit_role, row.edit_pair_id, row.source_dir])).toEqual([
+      ['before', '1', 'reference'], ['after', '1', 'original'],
+    ]);
+    expect(datasetWritePayload(form).datasets.every((row) => row.reference_image_dir === '')).toBe(true);
   });
 });
