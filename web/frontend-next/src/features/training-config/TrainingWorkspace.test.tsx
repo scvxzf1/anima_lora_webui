@@ -478,6 +478,21 @@ describe("TrainingWorkspace", () => {
     );
   });
 
+  it("keeps restore unavailable until the selected config is hydrated", async () => {
+    const base = createFetchMock();
+    let releaseMerged!: (response: Response) => void;
+    const merged = new Promise<Response>((resolve) => { releaseMerged = resolve; });
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) =>
+      String(input).startsWith("/api/config/merged?") ? merged : base(input, init),
+    ));
+    renderWorkspace();
+
+    const restore = await screen.findByRole("button", { name: "恢复页面默认值" });
+    expect(restore).toBeDisabled();
+    releaseMerged(jsonResponse({ model_family: "krea2_raw", max_train_steps: 1600 }));
+    await waitFor(() => expect(restore).toBeEnabled());
+  });
+
   it("blocks execution after a failed save and retains the draft", async () => {
     const base = createFetchMock();
     const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) =>

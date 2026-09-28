@@ -217,7 +217,7 @@ export function useTrainingWorkspace() {
   }
 
   function restorePageDefaults() {
-    if (busy || !selectedFile) return;
+    if (restoreDefaultsBlocked || !selectedFile) return;
     if (!window.confirm("恢复当前可编辑字段的页面默认值？这只会修改未保存草稿，恢复后仍需保存才生效。")) return;
     const editableKeys = new Set(
       fields
@@ -272,6 +272,14 @@ export function useTrainingWorkspace() {
     Boolean(launchMode) ||
     Boolean(rawMode) ||
     promptsOpen;
+  const restoreDefaultsBlocked =
+    !selectedFile ||
+    locked ||
+    busy ||
+    context.isPending ||
+    rawQuery.isPending ||
+    capabilities.isPending ||
+    hydratedKey !== hydrationKey;
   const visibleFields = filterTrainingFields(
     fields,
     draft,
@@ -333,6 +341,7 @@ export function useTrainingWorkspace() {
     preflight,
     confirmDiscard,
     restorePageDefaults,
+    restoreDefaultsBlocked,
     beforeAction,
     guardedContext,
     locked,

@@ -46,6 +46,7 @@ export function TrainingCommands({
     busy,
     commandBlocked,
     restorePageDefaults,
+    restoreDefaultsBlocked,
   } = state;
   return (
     <>
@@ -67,7 +68,7 @@ export function TrainingCommands({
           title="恢复页面默认值"
           aria-label="恢复页面默认值"
           onClick={restorePageDefaults}
-          disabled={!selectedFile || busy || locked}
+          disabled={restoreDefaultsBlocked}
         >
           <RotateCcw size={16} />
           <span>恢复页面默认值</span>
