@@ -12,9 +12,11 @@ import { useMonitorRefresh } from "./useMonitorRefresh";
 import "./LiveMonitorPage.css";
 
 const RUNNING_STATES = new Set(["running", "training", "compiling", "caching", "saving"]);
+const ERROR_STATES = new Set(["error", "failed", "interrupted", "unavailable"]);
 const STATE_LABELS: Record<string, string> = {
   idle: "空闲", running: "运行中", training: "训练中", compiling: "编译中",
-  caching: "缓存中", saving: "保存中", error: "异常", unavailable: "不可用",
+  caching: "缓存中", saving: "保存中", error: "异常", failed: "失败",
+  interrupted: "已中断", unavailable: "不可用",
 };
 
 export function LiveMonitorPage() {
@@ -52,6 +54,7 @@ export function LiveMonitorPage() {
   });
   const connection = useMonitorRefresh();
   const running = RUNNING_STATES.has(status?.status || "");
+  const errorState = ERROR_STATES.has(status?.status || "");
   const state = statusQuery.error ? "状态待确认" : !status ? "读取中" : STATE_LABELS[status.status || ""] || "未知";
   useEffect(() => {
     if (stopTarget && (stopTarget !== taskId || !running || statusQuery.error)) setStopTarget(null);
@@ -67,7 +70,7 @@ export function LiveMonitorPage() {
         </p> : null}
       </div>
       <div className="monitor-header-actions">
-        <span className="monitor-state" role="status" aria-label="当前任务状态" data-state={statusQuery.error ? "unknown" : running ? "running" : status?.status === "error" ? "error" : "idle"}>{state}</span>
+        <span className="monitor-state" role="status" aria-label="当前任务状态" data-state={statusQuery.error ? "unknown" : running ? "running" : errorState ? "error" : "idle"}>{state}</span>
         {taskId ? <button type="button" className="monitor-stop" disabled={!running || Boolean(statusQuery.error) || stop.isPending}
           onClick={() => setStopTarget(taskId)}><Square size={14} />{stop.isPending ? "正在停止" : "停止训练"}</button> : null}
       </div>
