@@ -36,6 +36,7 @@ describe("monitor event refresh", () => {
     await act(() => vi.advanceTimersByTimeAsync(1));
     expect(mocks.invalidateQueries.mock.calls.map(([filter]) => filter.queryKey)).toEqual([
       ["live-monitor", "status"], ["live-monitor", "metrics", "run-B"], ["live-monitor", "logs", "run-B"],
+      ["live-monitor", "gpus"],
     ]);
   });
 

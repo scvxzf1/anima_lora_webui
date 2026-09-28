@@ -22,12 +22,18 @@ const STATE_LABELS: Record<string, string> = {
 export function LiveMonitorPage() {
   const [params] = useSearchParams();
   const [stopTarget, setStopTarget] = useState<string | null>(null);
+  const [visible, setVisible] = useState(() => document.visibilityState === "visible");
   const sourceTask = params.get("from_task");
   const client = useQueryClient();
+  useEffect(() => {
+    const onVisibilityChange = () => setVisible(document.visibilityState === "visible");
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", onVisibilityChange);
+  }, []);
   const statusQuery = useQuery({
     queryKey: liveMonitorKeys.status,
     queryFn: ({ signal }) => fetchTrainingStatus(signal),
-    refetchInterval: (query) => query.state.error ? false : 2000,
+    refetchInterval: (query) => !visible || query.state.error ? false : 2000,
     retry: false,
   });
   const status = statusQuery.data;
@@ -35,17 +41,17 @@ export function LiveMonitorPage() {
   const metricsQuery = useQuery({
     queryKey: [...liveMonitorKeys.metrics, taskId || "none"],
     queryFn: ({ signal }) => fetchTrainingMetrics(taskId, signal),
-    enabled: Boolean(taskId) && !statusQuery.error, refetchInterval: 5000, retry: false,
+    enabled: Boolean(taskId) && !statusQuery.error, refetchInterval: visible ? 5000 : false, retry: false,
   });
   const logsQuery = useQuery({
     queryKey: [...liveMonitorKeys.logs, taskId || "none"],
     queryFn: ({ signal }) => fetchTrainingLogs(300, taskId, signal),
-    enabled: Boolean(taskId) && !statusQuery.error, refetchInterval: 2000, retry: false,
+    enabled: Boolean(taskId) && !statusQuery.error, refetchInterval: visible ? 2000 : false, retry: false,
   });
   const gpusQuery = useQuery({
     queryKey: liveMonitorKeys.gpus,
     queryFn: ({ signal }) => fetchGpus(signal),
-    refetchInterval: RUNNING_STATES.has(status?.status || "") ? 2000 : 10000, retry: false,
+    refetchInterval: visible ? RUNNING_STATES.has(status?.status || "") ? 2000 : 10000 : false, retry: false,
   });
   const stop = useMutation({
     mutationFn: (clickedTaskId: string) => stopTraining(clickedTaskId),
