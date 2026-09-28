@@ -19,6 +19,7 @@ import {
   Image,
   ScanSearch,
   Activity,
+  Images,
 } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Button } from "../components/ui/Button";
@@ -41,6 +42,7 @@ const LINKS = [
   ["/queue", "训练队列", ListTodo],
   ["/monitor", "当前监控", Monitor],
   ["/history", "历史任务", History],
+  ["/preview", "预览工作区", Images],
   ["/models", "模型配置", Cpu],
   ["/captioning", "打标工作台", Captions],
   ["/settings", "全局设置", Settings],

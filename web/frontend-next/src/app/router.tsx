@@ -60,6 +60,7 @@ const CaptioningPage = lazy(async () => {
 const ImageTestPage = lazy(async () => ({ default: (await import("../features/image-test/ImageTestPage")).ImageTestPage }));
 const WeightAnalysisPage = lazy(async () => ({ default: (await import("../features/weight-analysis/WeightAnalysisPage")).WeightAnalysisPage }));
 const EnvironmentPage = lazy(async () => ({ default: (await import("../features/environment/EnvironmentPage")).EnvironmentPage }));
+const PreviewWorkspace = lazy(async () => ({ default: (await import("../features/preview-workspace/PreviewWorkspace")).PreviewWorkspace }));
 
 function lazyPage(children: ReactNode) {
   return (
@@ -117,6 +118,7 @@ export const router = createBrowserRouter(
         { path: "/image-test", element: lazyPage(<ImageTestPage />) },
         { path: "/weight-analysis", element: lazyPage(<WeightAnalysisPage />) },
         { path: "/environment", element: lazyPage(<EnvironmentPage />) },
+        { path: "/preview", element: lazyPage(<PreviewWorkspace />) },
         { path: "*", element: <RouteError /> },
       ],
     },
