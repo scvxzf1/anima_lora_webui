@@ -186,6 +186,17 @@
   white-space: pre-wrap;
 }
 
+.history-final-model {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 5px;
+  border: 1px solid var(--success);
+  color: var(--success);
+  font-size: 10px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
 .history-detail-logs {
   height: 360px;
   overflow: auto;

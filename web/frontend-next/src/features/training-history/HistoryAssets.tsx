@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { Copy } from "lucide-react";
 import { ResilientImage } from "../../components/ResilientImage";
+import { finiteNumber } from "../../components/trainingNumbers";
 import { AssetPagination } from "./AssetPagination";
 import { HistoryImageDialog } from "./HistoryImageDialog";
 import { HistoryArtifacts } from "./HistoryArtifacts";
@@ -36,9 +37,13 @@ function TaskAssets({ taskId }: { taskId: string }) {
     {images.isPending && <p role="status">正在读取样张</p>}
     {images.error && <p role="alert">{images.error.message} <button type="button" onClick={() => images.refetch()}>重试样张</button></p>}
     <div className="history-image-grid">
-      {images.data?.images.map((image) => <button key={image.file} type="button" onClick={() => setSelectedFile(image.file)}>
-        <ResilientImage className="history-thumbnail" src={historyAssetUrl(taskId, image.file)} alt={image.name} loading="lazy" /><span>{image.name}</span>
-      </button>)}
+      {images.data?.images.map((image) => {
+        const sampleStep = finiteNumber(image.sample?.step);
+        const label = sampleStep !== undefined && sampleStep >= 0 ? `Step ${sampleStep}` : image.name;
+        return <button key={image.file} type="button" aria-label={`查看 ${label} 的生成参数`} onClick={() => setSelectedFile(image.file)}>
+          <ResilientImage className="history-thumbnail" src={historyAssetUrl(taskId, image.file)} alt={image.name} loading="lazy" /><span>{label}</span>
+        </button>;
+      })}
     </div>
     {images.data?.images.length === 0 && <p>{images.data.message || "本页暂无样张"}</p>}
     <AssetPagination label="样张" offset={imageOffset} count={images.data?.images.length ?? 0} total={images.data?.total ?? 0} size={60} next={images.data?.next_offset} pending={images.isFetching} onChange={(offset) => { setSelectedFile(undefined); setImageOffset(offset); }} />

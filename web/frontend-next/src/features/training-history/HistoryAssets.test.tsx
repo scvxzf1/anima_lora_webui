@@ -87,7 +87,7 @@ describe("history asset path copying", () => {
     }));
     renderInApp(<HistoryAssets taskId="task-1" />);
 
-    await user.click(await screen.findByText("sample-1.png", { selector: ".history-image-grid span" }));
+    await user.click(await screen.findByRole("button", { name: "查看 Step 1 的生成参数" }));
     const dialog = within(screen.getByRole("dialog"));
     expect(screen.getByRole("button", { name: "上一张样张" })).toBeDisabled();
     expect(dialog.getByRole("img", { name: "sample-1.png" })).toBeInTheDocument();
@@ -105,6 +105,26 @@ describe("history asset path copying", () => {
 
     await user.click(screen.getByRole("button", { name: "关闭" }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("shows a recorded step on the thumbnail and uses the filename when the step is unknown", async () => {
+    const samples = [
+      { file: "sample-step.png", name: "sample-step.png", sample: { step: 2500 } },
+      { file: "sample-unknown.png", name: "sample-unknown.png" },
+    ];
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      const payload = url.includes("/artifacts") ? { artifacts: [] }
+        : url.includes("/api/preview/weights") ? { weights: [] }
+        : { images: samples, total: samples.length };
+      return new Response(JSON.stringify(payload), { status: 200, headers: { "Content-Type": "application/json" } });
+    }));
+    renderInApp(<HistoryAssets taskId="task-1" />);
+
+    expect(await screen.findByText("Step 2500", { selector: ".history-image-grid span" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "查看 Step 2500 的生成参数" })).toBeInTheDocument();
+    expect(screen.getByText("sample-unknown.png", { selector: ".history-image-grid span" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "查看 sample-unknown.png 的生成参数" })).toBeInTheDocument();
   });
 
   it("keeps the selected file stable when refreshed images change order", async () => {
