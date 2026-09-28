@@ -1,0 +1,923 @@
+import { help } from './help-builder.js';
+
+export const FIELD_HELP_TRAINING_ZH = {    learning_rate: help(
+        "学习率，决定每一步参数改动有多大。",
+        "普通 LoRA 常用 2e-5。ReFT、IP-Adapter、Soft Tokens 等实验方法可能用不同值，选择变体后先不要手动改。",
+        ["学习率合适时，loss 和样张会比较平稳地变好。"],
+        ["太低会学得很慢，训练很多轮也变化不明显。"],
+        ["太高会让 loss 抖动、画面变脏，严重时训练直接跑坏。"],
+        "新手普通 LoRA 从 2e-5 开始；只有样张明显欠拟合或过拟合时，再小幅调整。"
+    ),
+    max_train_epochs: help(
+        "最大训练轮数；非空时训练端会重新计算并覆盖最大训练步数。",
+        "只要这里有值，训练端就会按当前数据集重新计算总步数，并覆盖 max_train_steps。一轮约等于把当前数据集完整训练一遍。",
+        ["轮数越多，模型越有机会学会你的角色、风格或概念。"],
+        ["训练时间会变长，也会生成更多保存点和样张。"],
+        ["0 或负数也会覆盖 max_train_steps，但不会形成有效训练预算；启动预检会要求修正。"],
+        "小数据集可先从 4-12 轮观察；样张还学不会再增加，已经像训练图照搬就降低。"
+    ),
+    max_train_steps: help(
+        "固定训练总步数，仅在最大训练轮数为空时生效。",
+        "WebUI 默认 0 表示不启用。只有 max_train_epochs 为空时，正数 max_train_steps 才会作为训练总时长。",
+        ["适合做精确实验，比如只想跑 1000 step。"],
+        ["比“训练几轮”更难直观理解，因为它会受图片数量、批大小和重复次数影响。"],
+        ["max_train_epochs 为空且这里也是 0 时，训练时长没有配置，启动训练会要求补一个。"],
+        "新手保持 0，用最大训练轮数控制训练量。"
+    ),
+    train_batch_size: help(
+        "每个训练 step 同时送进 GPU 的图片数量。",
+        "1024 分辨率或显存紧张时保持 1。显存很充足时可尝试 2 或 4。",
+        ["批大小更大时，每次更新看到的数据更多，loss 可能更平稳。"],
+        ["显存占用会上升很明显，最容易触发 OOM。"],
+        ["调大后每轮 step 数会变少，学习率和训练总量也要重新理解。"],
+        "新手保持 1；想让有效批更大时，优先用梯度累积。"
+    ),
+    save_every_n_epochs: help(
+        "每隔多少轮保存一次普通模型权重。",
+        "它会保存可用于推理/挑版本的 .safetensors，例如第 1、2、4 轮的效果对比。它不是完整续训状态。",
+        ["方便回看不同轮数效果，训练过头时还能拿较早的权重。"],
+        ["保存越频繁，磁盘占用越多。"],
+        ["只有普通权重时，不能完整恢复 optimizer、scheduler、随机状态等训练现场。"],
+        "新手建议先设 1；训练稳定后可调到 2-5 省磁盘。"
+    ),
+    save_last_n_epochs: help(
+        "普通权重保留数；负数不清理，0 会按 1 处理。",
+        "任意负数表示不清理旧权重；正数只保留最近 N 个轮次权重。0 不表示关闭，训练端会按 1 份处理；最终权重仍会单独保存。",
+        ["可以保留多个阶段的 LoRA 权重，方便回看效果或挑选不过拟合的版本。"],
+        ["数值越大，磁盘占用越多；-1 会一直累积权重文件。"],
+        ["只影响普通权重文件，不影响完整续训点；续训点数量由“续训点保留数量”控制。"],
+        "想省磁盘就填 2-5；想保留所有中间权重就保持 -1，不要用 0 表示关闭。"
+    ),
+    checkpointing_epochs: help(
+        "每隔多少轮保存一次可恢复训练状态。",
+        "它会写出完整续训点；重新开始同一配置时会自动从最新可用续训点继续。",
+        ["中断后可恢复 adapter 权重、当前 step/epoch、optimizer、scheduler、随机状态等。"],
+        ["续训点保留数量由下一个字段控制；checkpoint-state/ 体积可能比普通权重大。"],
+        ["如果设得太大，中断时只能回到上一次续训点；如果只剩普通 .safetensors 而没有 checkpoint-state/，不能完整续训。"],
+        "新手建议设 1。想减少中断损失时，让它小于或等于 save_every_n_epochs。"
+    ),
+    checkpointing_last_n_epochs: help(
+        "续训点保留数；仅 -1 不清理，0 或更小非法值按 1 处理。",
+        "默认 1 表示只保留最近 1 个完整续训点；设置为 2、3 等正数会保留最近 N 个续训点。设置为 -1 表示不清理旧续训点，配合保存间隔 1 时每轮都可恢复。",
+        ["保留多个续训点后，历史任务里可以选择不同轮数的 checkpoint-state 继续训练。"],
+        ["数值越大，optimizer、scheduler 和随机状态文件占用的磁盘越多。"],
+        ["设为 0 或其他非法值时，训练端会按 1 处理。"],
+        "新手保持 1；想保留每轮完整现场时，把训练状态保存间隔设 1，并把这里设 -1。"
+    ),
+    gradient_accumulation_steps: help(
+        "累积多少个小批次后，再真正更新一次参数。",
+        "它可以在 batch_size=1 的低显存情况下，模拟更大的有效批大小。例如 batch_size=1、累积 4，就相当于每次更新看 4 张图。",
+        ["显存不变或少量增加，但训练更新更稳定。"],
+        ["参数更新频率变低，训练同样轮数会更慢。"],
+        ["设太高会让反馈变慢，也可能需要重新调学习率。"],
+        "新手用默认；显存小但 loss 很抖时可试 2-4。"
+    ),
+    use_shuffled_caption_variants: help(
+        "训练时使用预处理生成的 caption 打乱变体。",
+        "如果预处理时生成了多 caption 变体，开启；没有则会退回单 caption。",
+        ["提升对标签顺序的鲁棒性，减少死记固定 caption。"],
+        ["需要先在预处理阶段生成对应缓存。"],
+        ["caption 质量差时，打乱会放大噪声。"],
+        "推荐 true，前提是你的 caption 本身干净。"
+    ),
+    caption_dropout_rate: help(
+        "每个样本丢弃 caption 的概率。",
+        "角色/概念 LoRA 用 0.0-0.05；画风训练用 0.1-0.25。",
+        ["让风格更像无条件偏置，提示词变化时也能保持。"],
+        ["会削弱 caption 对姿势、构图、细节的约束。"],
+        ["太高会降低提示词服从性和多样性。"],
+        "当前默认 0.1 偏风格训练；角色 LoRA 可降到 0.0-0.05。"
+    ),
+    optimizer_type: help(
+        "优化器算法。",
+        "默认 AdamW；可选 CAME、Automagic、AdamW8bit、Lion、Prodigy、ProdigyPlusScheduleFree 等。AdamW8bit 使用 bitsandbytes，适合显存特别紧张时降低优化器状态占用。",
+        ["不同优化器适合不同内存和收敛偏好。"],
+        ["CAME 是内存友好的自适应优化器，但通常需要重新确认学习率。"],
+        ["Automagic 属于实验优化器，会在优化器内部自适应调整实际学习率；建议从较小 learning_rate 开始。"],
+        ["AdamW8bit 会省显存，但通常比 fused AdamW 慢；切换到 AdamW8bit 时不要保留 optimizer_args 里的 fused=True。"],
+        ["ProdigyPlusScheduleFree 属于实验优化器；推荐 learning_rate=1.0、lr_scheduler=constant、max_grad_norm=0。"],
+        ["随意切换会让历史经验不再适用。"],
+        "先用 AdamW；只有显存不够时再试 AdamW8bit。"
+    ),
+    optimizer_args: help(
+        "传给优化器的额外参数。",
+        "按字符串数组填写，例如 [\"fused=True\"]。",
+        ["能开启 fused 等性能优化。"],
+        ["依赖 PyTorch/平台支持。"],
+        ["不支持的参数会导致启动失败。"],
+        "保持 base 默认，除非你知道当前优化器支持该参数。"
+    ),
+    lr_scheduler: help(
+        "学习率调度策略。",
+        "base 默认 cosine；constant 表示固定学习率；constant_with_warmup 表示先线性热身再固定；也可用 cosine_with_restarts、polynomial、lulu_loss_gated_cosine 等调度。",
+        ["调度可以让训练后期更平滑。"],
+        ["多一个超参维度，需要搭配总步数理解。"],
+        ["constant_with_warmup 只需要 lr_warmup_steps，热身结束后不会继续衰减。"],
+        ["不合适的调度可能过早降低学习率；lulu 调度器的细调参数走 lr_scheduler_args。"],
+        "先沿用 base/merge 的 cosine，除非你有明确理由改。"
+    ),
+    lr_warmup_steps: help(
+        "学习率预热步数。",
+        "可填整数步数，也可填 0 到 1 之间的比例；小于 1 时按总训练步数折算，例如 0.05 表示前 5% 的训练步数逐步升到目标学习率。",
+        ["配合 constant_with_warmup 时，训练开头会更平滑。"],
+        ["预热太短可能稳定效果不明显，太长会拖慢有效学习。"],
+        ["短跑实验总步数很少时，过长的预热会让你只看到热身阶段。"],
+        "先沿用当前配置；需要开头更稳时，再按总步数小幅调整。"
+    ),
+    timestep_sampling: help(
+        "训练时如何采样去噪时间步。",
+        "flow matching 训练推荐 sigmoid。",
+        ["让训练更关注有效时间步区间。"],
+        ["改变后会影响模型学到的噪声阶段分布。"],
+        ["不匹配方法假设时可能降低质量。"],
+        "推荐 sigmoid。"
+    ),
+    sigmoid_scale: help(
+        "sigmoid/logit-normal 时间步采样的缩放系数。",
+        "值越大，采样越集中在接近 0 或 1 的 sigma 两端；值越小，分布越靠中间。",
+        ["可做 FasterDiT 类时间步分布消融。"],
+        ["会改变模型看到的噪声阶段比例，和已有训练经验不可直接对比。"],
+        ["不要和 sigmoid_bias、Min-SNR、P2 同时大幅调整。"],
+        "短跑实验用 0.75 / 1.0 / 1.5 对照；正式训练先保持 1.0。"
+    ),
+    sigmoid_bias: help(
+        "sigmoid/logit-normal 时间步采样的 logit 偏置。",
+        "正值把采样推向高 sigma 的结构阶段；负值推向低 sigma 的细节阶段。",
+        ["适合检查模型是否欠结构或欠细节。"],
+        ["偏置过大可能让训练分布过窄，泛化变差。"],
+        ["不同数据集最佳值可能不同。"],
+        "短跑实验可试 -0.5 / 0 / 0.5；正式训练先保持 0。"
+    ),
+    weighting_scheme: help(
+        "按 sigma/SNR 给基础 flow-matching loss 加权。",
+        "uniform/none 基本等价于不额外加权；min_snr 和 p2 用 SNR 思路缓解时间步梯度冲突。",
+        ["可减少低效时间步对训练的拖累。"],
+        ["loss 数值会和 baseline 不再完全可比，要看样张和验证指标。"],
+        ["配合时间步采样一起调时，变量太多，难判断原因。"],
+        "先用 uniform 做基线；再单独试 min_snr=5 或 p2_gamma=0.5。"
+    ),
+    min_snr_gamma: help(
+        "Min-SNR 权重方案的 gamma 上限。",
+        "只在 weighting_scheme=min_snr 时生效；常见起点是 5。",
+        ["能压低高 SNR/低 sigma 阶段的损失权重。"],
+        ["gamma 越低干预越强，可能牺牲细节阶段学习。"],
+        ["设了但 weighting_scheme 不是 min_snr 时不会生效。"],
+        "短跑用 3 / 5 / 7 对照；默认先用 5。"
+    ),
+    p2_gamma: help(
+        "P2 权重方案的指数强度。",
+        "只在 weighting_scheme=p2 时生效；值越大，对高 SNR 阶段降权越强。",
+        ["适合测试感知优先的训练权重。"],
+        ["过强时可能低 sigma 细节不足。"],
+        ["设了但 weighting_scheme 不是 p2 时不会生效。"],
+        "短跑先试 0.5，再和 1.0 对照。"
+    ),
+    p2_k: help(
+        "P2 权重方案的 SNR 偏移项。",
+        "只在 weighting_scheme=p2 时生效；一般保持 1.0。",
+        ["可以控制极端 SNR 区间的权重形状。"],
+        ["不是优先调参项，乱改会增加实验维度。"],
+        ["设了但 weighting_scheme 不是 p2 时不会生效。"],
+        "保持 1.0。"
+    ),
+    velocity_direction_loss_weight: help(
+        "FasterDiT 风格的速度方向辅助损失权重。",
+        "在基础 velocity MSE 外，额外约束预测速度和目标速度的方向一致；验证 FM-MSE 不计入此项。",
+        ["给每个像素位置增加方向监督，可能加快早期收敛。"],
+        ["权重过大会压过 MSE 幅值学习，导致 loss/样张异常。"],
+        ["属于实验项，不建议和多个 SNR/时间步改动一起开。"],
+        "短跑先试 0.01 / 0.03 / 0.05；正式训练默认 0。"
+    ),
+    prior_preservation_weight: help(
+        "无额外数据集的先验保留辅助损失权重。",
+        "训练时用同一批 latent/noise/timestep，临时关闭 adapter 得到 base 预测，再让当前预测靠近这个先验。",
+        ["当前支持 blank_prompt_preservation 或 DOP/class prompt 二选一。"],
+        ["每步会多一次 DiT no-grad forward，训练会变慢并增加峰值显存压力。"],
+        ["和有数据集正则化的 prior_loss_weight 是两条不同路线。"],
+        "默认 0；设置为正数时必须同时选择空提示先验，或填写 DOP 类提示。短跑可先试 0.05 / 0.1。"
+    ),
+    blank_prompt_preservation: help(
+        "使用空提示 T5(\"\") 作为先验保留条件。",
+        "开启后复用预处理阶段生成的 max-padded unconditional crossattn sidecar，不在训练 loop 里重新跑 text encoder。",
+        ["适合先验证“无额外正则化数据集”的基线方案。"],
+        ["必须同时设置 prior_preservation_weight > 0 才会生效。"],
+        ["不能和 DOP 类提示同时开启。"],
+        "需要无数据集先验保留时开启；否则保持关闭。"
+    ),
+    diff_output_preservation_trigger: help(
+        "DOP/class prompt 先验保留的触发词。",
+        "填写 caption 中代表训练目标的那段文本，例如 sks、角色名、产品名或风格触发词。预处理文本缓存时，会把它替换成 DOP 类提示并额外写入 prior_crossattn_emb。",
+        ["适合角色/物体 LoRA：例如 trigger=sks，class=woman；trigger=red_jacket，class=outfit。"],
+        ["没有固定触发词时留空，prior caption 会直接使用 DOP 类提示本身。"],
+        ["只填触发词不会启用 DOP；真正必填的是 DOP 类提示。"],
+        ["修改后需要重新运行文本缓存/预处理，否则训练会找不到 prior_crossattn_emb。"],
+        "有明确触发词时填 caption 里的原词；不确定时先检查训练 caption 里哪个词代表目标概念。"
+    ),
+    diff_output_preservation_class: help(
+        "DOP/class prompt 先验保留的类提示。",
+        "填写后启用 DOP 模式：class prompt 是 prior caption 的目标文本，训练用原 caption 跑带 adapter 的预测，用类提示 prior caption 跑关闭 adapter 的 base 预测。",
+        ["必须同时设置 prior_preservation_weight > 0、use_text_cache=true、cache_llm_adapter_outputs=true。"],
+        ["不能和 blank_prompt_preservation 同时使用。"],
+        ["这里填比触发词更泛化的类别：人物/角色用 woman、man、girl、boy、character；物体用 object、outfit、weapon、vehicle；风格用 anime style、illustration style、painting style。"],
+        ["不要填完整角色名、唯一专名或触发词；否则 prior caption 仍然太像训练目标，DOP 的正则化意义会变弱。"],
+        ["每次修改该值后都要重新生成文本缓存。"],
+        "选择规则：问自己“如果去掉专名，这批图大体属于什么类别？”就把那个类别写在这里。"
+    ),
+    inverted_mask_prior_weight: help(
+        "只在遮罩外区域做先验保留的辅助损失权重。",
+        "有 alpha mask 时，训练会用相同 prompt/latent/noise/timestep 临时关闭 adapter 跑 base 预测，并只约束 1-mask 区域。",
+        ["适合局部编辑或带遮罩训练：目标区域继续学习，非目标区域尽量别被 LoRA 带偏。"],
+        ["每步会多一次 DiT no-grad forward，训练会变慢。"],
+        ["需要 use_text_cache=true、cache_llm_adapter_outputs=true；没有 mask 的 batch 此项为 0。"],
+        "默认 0；局部训练短跑可先试 0.05 / 0.1。"
+    ),
+    discrete_flow_shift: help(
+        "flow matching 噪声调度偏移参数。",
+        "默认 1.0。",
+        ["控制时间步/噪声分布形状。"],
+        ["属于底层采样超参，调参反馈不直观。"],
+        ["随意改可能让训练分布偏离推理预期。"],
+        "保持 1.0。"
+    ),
+    sample_ratio: help(
+        "全局数据采样比例；设置后覆盖所有 subset 的比例。",
+        "取值必须大于 0 且不超过 1。这里是全局覆盖：设置后会替换所有 subset 自己的 sample_ratio；留空才沿用各 subset 的值。",
+        ["能更快验证配置和流程。"],
+        ["有效数据减少，结果不能代表完整训练。"],
+        ["多 subset 配置中误设全局比例，会把每个 subset 都改成同一采样比例。"],
+        "正式训练用 1.0 或不设置；试跑可用 half/quarter/tiny 预设。"
+    ),
+    sample_prompts: help(
+        "训练过程中用来生成预览图的提示词。",
+        "一行写一条提示词。表格模式还支持每条提示词单独设置负面提示词、宽高、CFG、步数、种子、Flow Shift 和采样器；需要保留注释或其它扩展参数时可切换文本模式。",
+        ["不用等训练结束，就能边训练边看模型是否学对方向。"],
+        ["每条提示词都会额外出图，提示词越多训练暂停采样的时间越长。"],
+        ["提示词太复杂或和数据集无关，会让你误判训练效果。"],
+        "新手至少写 1 条，再把按轮生成样张设为 1 或 2。"
+    ),
+    sample_every_n_epochs: help(
+        "每隔多少轮生成一次预览图。",
+        "填 1 表示每轮结束都出图；填 2 表示每 2 轮出一次；留空表示不按轮采样。",
+        ["最容易理解，适合和每轮保存的权重一起对比。"],
+        ["采样会打断训练一小段时间，提示词越多越慢。"],
+        ["数据集很小、轮数很多时，填 1 可能生成大量样张。"],
+        "新手建议填 1 或 2；长训练且只想偶尔看效果可调大。"
+    ),
+    sample_every_n_steps: help(
+        "每隔多少训练步生成一次预览图。",
+        "例如 500 表示每 500 step 出一次图；留空表示不按步采样。它适合单轮特别长的大数据集。",
+        ["不用等一整轮结束，也能提前看到训练趋势。"],
+        ["数值太小会频繁打断训练，整体速度明显变慢。"],
+        ["step 不如 epoch 直观，初学者容易设得过密或过稀。"],
+        "多数情况用按轮采样即可；只有一轮很久时再填 500、1000 这类值。"
+    ),
+    sample_at_first: help(
+        "训练开始前先生成一组初始样张。",
+        "开启后可对比训练前后变化；仍需要 sample_prompts 文件。",
+        ["能确认提示词和采样链路是否正常。"],
+        ["启动训练时会多等一轮采样。"],
+        ["显存紧张时，首次采样也可能触发 OOM。"],
+        "排查预览图是否能生成时开启；稳定训练可关闭。"
+    ),
+    sample_sampler: help(
+        "训练中样张使用的采样器。",
+        "当前训练预览支持 euler、er_sde、lcm。旧配置里的 ddim、euler_a、dpmsolver++ 等 Diffusers 采样器名会按 euler 兼容处理。",
+        ["会影响样张风格和速度。"],
+        ["和最终推理采样器不同，样张观感会有差异。"],
+        ["频繁切换会让训练过程对比不直观。"],
+        "默认 euler；需要更随机的预览可试 er_sde，需要少步数蒸馏类预览可试 lcm。"
+    ),
+    attn_mode: help(
+        "注意力计算使用的后端实现。",
+        "Anima、Krea-2 和 Z-Image 的生产默认配置均使用 flash。Krea-2 使用打包有效 token 的 FlashAttention varlen，Z-Image 映射到 Diffusers flash_varlen；三个模型都可显式选择 torch 或 sdpa 回退。Anima 还支持 mem_efficient、xformers、sageattn 和 flex。",
+        ["选对后端能明显影响训练速度和显存占用。"],
+        ["flash 需要可用的 FlashAttention 实现及受支持的精度；Z-Image 使用 BF16，V100 的 FP16 专用实现不能承载 BF16。"],
+        ["高性能后端首次启动或编译可能更慢；缺少依赖时会明确报错。"],
+        "新配置默认 flash。加载已有配置时，显式设置的 torch 或 sdpa 不会被新的默认值自动替换；V100 稳定性专用配置仍以 torch 为准。"
+    ),
+    v100_flash_stability: help(
+        "Tesla V100 使用 FlashAttention 时的诊断模式。",
+        "off 保持全部 Flash；hybrid 只把 cross-attention 切到 Torch SDPA；safe 保持 Flash 并在关键张量边界检查 NaN/Inf。",
+        ["hybrid 可区分 self-attention 与 cross-attention 问题，safe 可尽早报告首个非有限值位置。"],
+        ["这些模式只帮助诊断，不会修复 kernel 的数值误差。"],
+        ["V100 Flash 尚未通过严格验收，生产训练仍应使用 torch 后端。"],
+        "非 V100 保持 off；排查 V100 Flash 时先用 safe，生产配置将注意力后端设为 torch。"
+    ),
+    debug_finite_checks: help(
+        "在训练关键边界检查张量是否包含 NaN 或 Inf。",
+        "开启后会检查注意力输入/输出、残差、loss 和梯度，并在首次发现非有限值时立即中止。",
+        ["能保留最接近故障源的位置，便于定位数值问题。"],
+        ["每步增加同步和检查开销，只适合短时诊断。"],
+        ["它不会替换或隐藏无效值，也不能让不稳定训练继续安全运行。"],
+        "正常训练保持关闭；复现 NaN/Inf 时临时开启并保留报错上下文。"
+    ),
+    gradient_checkpointing: help(
+        "用更多计算换更低显存的训练开关。",
+        "开启后，反向传播时会重新计算一部分中间结果，而不是全部存在显存里。",
+        ["能明显降低显存占用，是低显存训练最常用的救命开关。"],
+        ["训练会变慢，因为部分计算会做第二遍。"],
+        ["和 full compile、block swap 等性能组合可能有兼容限制。"],
+        "8GB/低显存推荐 true；显存充足且追求速度时可测试 false。"
+    ),
+    unsloth_offload_checkpointing: help(
+        "把梯度检查点卸载到 CPU 内存。",
+        "需要 gradient_checkpointing=true；极低显存时开启。",
+        ["进一步节省 GPU 显存。"],
+        ["CPU 内存和 PCIe 传输压力上升，速度下降明显。"],
+        ["CPU 内存不足也会导致训练不稳定或被系统杀掉。"],
+        "只有 OOM 时开启。"
+    ),
+    cpu_offload_checkpointing: help(
+        "在梯度检查点期间把中间激活卸载到 CPU 内存。",
+        "只有 gradient_checkpointing=true 时才有效。开启后使用标准 CPU activation offload 路径。",
+        ["可进一步降低 GPU 激活显存峰值。"],
+        ["CPU 内存占用和 PCIe 传输会增加，训练速度通常明显下降。"],
+        ["不能与 block swap、Unsloth offload 或选择性 checkpoint 组合；关闭 gradient_checkpointing 时开它基本无效。"],
+        "默认关闭；标准梯度检查点仍 OOM，且不使用上述互斥功能时再尝试。"
+    ),
+    auto_block_swap: help(
+        "根据实际资源自动选择块交换数量。",
+        "覆盖本次运行的手动交换块数，不修改配置中的整数；startup 启动校准后固定，dynamic 在完整 optimizer 更新之间调整。",
+        ["按实际模型块数、物理内存和训练显存峰值选择经过验证的候选。"],
+        ["启动校准或动态性能评估有额外成本；虚拟内存不计入容量，不保证持续加速。"],
+        ["实验版仅支持单卡普通 LoRA、完整磁盘缓存、数据加载 workers=0；不支持采样、验证集、续训和阶段调度。"],
+        "默认关闭。只有符合实验边界且接受启动校准开销时开启。"
+    ),
+    auto_block_swap_mode: help(
+        "startup 启动校准；dynamic 全程动态调整。",
+        "dynamic 当前仅支持 Krea-2，先盘点并从最大交换数开始，在安全余量内通过 A/B/A 窗口比较调整。",
+        ["显存受压时增加交换；压力解除后恢复探索。"],
+        ["新常驻块首次编译和权重迁移有额外成本。"],
+        ["不重试已经部分执行的训练 OOM；仍须满足 AUTO 实验限制。"],
+        "默认 startup；dynamic 为显式实验模式。"
+    ),
+    auto_block_swap_interval: help(
+        "每个动态性能窗口的有效 optimizer 更新数。",
+        "范围 4 到 256，默认 8；各负载额外排除两次预热更新。",
+        ["更大窗口降低计时噪声。"], ["窗口较大时响应性能变化更慢。"],
+        ["只影响性能探索频率，资源检查仍在每次更新边界执行。"], "默认 8。"
+    ),
+    auto_block_swap_max_trials: help(
+        "限制 AUTO 搜索的候选数量。",
+        "范围 1 到 16，默认 6；另有一次模型盘点和一次最终确认。",
+        ["控制启动校准成本。"], ["候选较少可能错过更快的交换数量。"],
+        ["只在 AUTO 块交换开启时有效。"], "默认 6。"
+    ),
+    auto_block_swap_vram_reserve_percent: help(
+        "按显卡总容量保留显存，不按当前空闲显存计算。",
+        "范围 0 到 90，默认 10；16 GiB 显卡设置 25 即保留 4 GiB，最低安全余量仍为 1 GiB。",
+        ["保留更多显存给峰值和其他程序。"], ["较大比例可能增加交换或使预算无法满足。"],
+        ["以预测训练峰值检查余量；不保证抵御外部进程突然占用。"], "默认 10%。"
+    ),
+    auto_block_swap_preference: help(
+        "balanced 均衡；vram 节省显存；ram 节省主机内存。",
+        "vram 倾向更多交换；ram 倾向更少交换并释放不参与交换的 CPU 副本，仅支持 Krea-2。",
+        ["在显存和物理内存安全预算内选择资源倾向。"], ["资源优先允许最多约 10% 步时取舍。"],
+        ["ram 无法消除模型加载峰值；交换涉及的首尾块仍需 CPU 副本，不使用磁盘 swap 扩容。"],
+        "默认 balanced；物理内存较小且显存有余量时选 ram。"
+    ),
+    auto_block_swap_timeout: help(
+        "限制每个 AUTO 校准进程的运行时间。",
+        "单位秒，包含模型加载、编译和各分辨率的训练更新；默认 1800。",
+        ["避免校准无限等待。"], ["超时会停止校准，不会当作显存不足继续猜测。"],
+        ["编译或分辨率较多时需要更长时间。"], "默认 1800 秒。"
+    ),
+    auto_block_swap_swap_io_limit_mb: help(
+        "允许 AUTO 使用系统 SWAP；达到该累计换页 IO 上限或物理 RAM 保留线时停止。0 表示不设 IO 上限。",
+        "单位 MiB，默认 1024；达到上限或物理可用内存保留线时停止。设为 0 表示不设换页 IO 上限，但仍不能把 SWAP 当作物理 RAM。",
+        ["内存较小的机器可以用硬盘换页完成块交换。"],
+        ["换页会显著降低速度并增加 SSD 写入；上限越大，训练卡顿和系统 OOM 风险越高。"],
+        ["这是 AUTO 资源保护参数，不会改变块交换数量或显存保留比例。"],
+        "默认 1024 MiB；只有明确接受换页性能代价时再提高。"
+    ),
+    blocks_to_swap: help(
+        "显存不够时，把一部分模型暂时放到电脑内存里。",
+        "0 表示尽量都放在显卡上。数字越大，能省下的显存越多，但显卡和电脑内存之间搬运数据的时间也会变长。",
+        ["遇到显存不足（OOM）时，调大它可能让训练先跑起来。"],
+        ["训练会变慢；数字越大，通常越慢。"],
+        ["如果电脑内存也不够，系统可能会开始使用硬盘，速度会非常慢。"],
+        "能正常训练就先不改。遇到 OOM 时，优先换低显存预设，不要随意猜一个很大的数字。"
+    ),
+    pipeline_parallel: help(
+        "为两张 GPU 规划所选模型族的分层范围。",
+        "Anima、Krea-2 和 Z-Image 已有各自的连续主块分段规划；1F1B 主训练调度尚未接入，开启后预检会阻止启动。",
+        ["真实运行时完成后，目标是让单个任务利用两张卡的显存容量。"],
+        ["需要两个进程和固定的阶段通信；有流水线气泡。"],
+        ["当前三个模型族都只能用于规划与探针；暂不能与 block swap、torch.compile 或 selective checkpoint 叠加。"],
+        "当前保持 false。该开关用于审阅配置和后续硬件原型，不是已可生产训练的承诺。"
+    ),
+    pipeline_parallel_stages: help(
+        "决定把所选模型分到几张显卡上。",
+        "目前只能分成 2 段，也就是必须刚好使用两张显卡。这是当前功能的固定要求，不是需要调优的数字。",
+        ["两张卡可以分担模型占用的显存。"],
+        ["一张卡无法使用这个模式，三张或更多卡也不能设成更多段。"],
+        ["如果选中的显卡不是两张，训练前检查会直接阻止启动。"],
+        "保持 2 就好。选中两张显卡并开启流水线并行后，它才会参与预检。"
+    ),
+    pipeline_parallel_microbatches: help(
+        "决定两张显卡每轮交替处理几份小批量。",
+        "可以把它理解成给两张卡排队的任务数。数字太小时，显卡容易等待对方；数字太大时，每次更新需要等更久。",
+        ["4 或 8 通常能减少两张卡互相等待的时间。"],
+        ["调大后，每次参数更新会包含更多样本，等待时间也会变长。"],
+        ["它会改变有效批大小，不要和梯度累积一起大幅调整。"],
+        "第一次用两张 10GB 显卡时从 4 开始。确认显存和速度正常后，再单独尝试 8。"
+    ),
+    pipeline_parallel_schedule: help(
+        "决定两张显卡怎样轮流工作。",
+        "当前只支持 1f1b。它会让前向计算和反向计算交替进行，避免同时堆积太多中间数据。",
+        ["对显存较小的两张卡更友好。"],
+        ["暂时没有其他调度方式可选。"],
+        ["这个功能仍需要真实双卡验证，不适合用来盲目调速。"],
+        "保持 1f1b，新手不需要改。"
+    ),
+    pipeline_parallel_split: help(
+        "选择当前模型的主块如何分配到两张卡。",
+        "balanced 使用连续范围：Krea-2 保留 13/15 初始启发式，Anima 与 Z-Image 先按主块数均分。",
+        ["所有模型都保留原始 block 顺序和全局 state-dict 键映射。"],
+        ["真实两卡耗时可能要改成 12/16 或 14/14。"],
+        ["这是可复现的初始策略，不是已实测的最佳分割。"],
+        "保持 balanced，后续由 per-stage profile 决定是否扩展选项。"
+    ),
+    block_swap_transfer_dtype: help(
+        "块交换 frozen base 权重在 CPU 侧保存和传输时使用的精度。",
+        "这里不是显卡训练精度开关。bf16 表示当前默认传输路径；即使显卡本身不支持 bf16 训练，也可以继续使用这个默认值。fp8_e4m3 会压缩 PCIe 传输，再在 GPU 上还原为执行精度。",
+        ["可能降低 H2D 等待时间。"],
+        ["fp8_e4m3 会引入 frozen base 权重量化误差。"],
+        ["只影响 frozen base block，不会量化 LoRA、router 或优化器状态。"],
+        ["旧卡没有 bf16 训练支持时，不需要因为这个字段改成 fp16；训练精度请看上面的“精度倾向”。"],
+        "保持 bf16；只有做 FP8 交换传输消融时再改为 fp8_e4m3。"
+    ),
+    base_compute: help(
+        "决定底模保持原精度，还是压缩后再计算。",
+        "这是冻结 DiT 底模 Linear 的计算路径。bf16 是稳妥起点；w8a16_convrot 和 w8a8_convrot 使用压缩权重。nf4（仅 Krea-2）已验证可与 block swap 组合，但压缩不保证速度或质量收益。",
+        ["显存紧张时，压缩底模可能让训练跑起来，或留出空间给更大的 LoRA。"],
+        ["压缩不一定更快，部分选项反而会更慢。"],
+        ["不同模型家族支持的选项不同；不兼容的组合会被训练前检查拒绝。压缩也可能带来少量质量差异。"],
+        "新手先用 bf16。只有遇到显存不足时，再优先使用对应模型的低显存预设；不要同时改多个压缩选项。",
+        "这一项只改冻结的底模，不会把 LoRA 和优化器一起压缩。"
+    ),
+    convrot_group_size: help(
+        "ConvRot 分组大小（RHT 的 group size）。",
+        "必须整除 in_features。可选 64 / 256 / 1024。默认 256 与当前 sylvester 路径兼容；论文更偏 4 的幂，质量 opt-in 可试 64。",
+        ["较小 group 有时改善 outlier / 梯度对齐。"],
+        ["过小可能增加开销；过大可能放大量化误差。"],
+        ["仅 base_compute 为 w8a*_convrot 时生效。"],
+        "默认 256；质量对照时可试 64。"
+    ),
+    convrot_scope: help(
+        "ConvRot 作用到哪些 Linear 模块。",
+        "mlp：速度默认（compile 下 W8A16 ~1.04× bf16，peak ~4.1GB）。all：mlp+attn 显存优先（~3.4GB，~1.08×）；同峰可 b=2。attention_out：只 out-proj 折中。",
+        ["只 patch 大 MLP 层通常性价比最高。"],
+        ["扩大 scope 会增加量化误差面和 apply 成本。"],
+        ["仅 base_compute 为 w8a*_convrot 时生效。"],
+        "默认 mlp；要同峰翻 batch 或极限省显存再改 all。"
+    ),
+    convrot_hadamard: help(
+        "Group RHT 的 Hadamard 构造（P0-D / 质量 opt-in）。",
+        "sylvester：默认，2 的幂 FWHT 兼容，与既有 prequant 对齐。regular：论文 Kronecker 4^k 路径；本机 regular@64 检查点门 3/3 PASS。",
+        ["seed 敏感或要收紧 grad gate 时优先 regular + group 64。"],
+        ["切换 hadamard/group 后已有 prequant 必须重导出。"],
+        ["仅 base_compute 为 w8a*_convrot 时生效。"],
+        "默认 sylvester；质量对照时改 regular 并考虑 group=64。"
+    ),
+    convrot_min_in_features: help(
+        "按 in_features 下限过滤 ConvRot patch（P1-G）。",
+        "0 表示不过滤。例如 4096 可跳过 Anima mlp.layer1（in=2048），只保留 layer2（in=8192）。",
+        ["小层 RHT 固定开销占比高，跳过它们常能略提速。"],
+        ["过滤过多会减少省显存收益。"],
+        ["仅 base_compute 为 w8a*_convrot 时生效。"],
+        "默认 0；想只 patch 大层时再设。"
+    ),
+    convrot_largest_in_features_only: help(
+        "在 scope 命中层里只 patch 最大 in_features 的 Linear（P1-G）。",
+        "Anima mlp 下通常只剩 layer2（8192→2048）。可与 min_in_features 叠用。",
+        ["进一步砍小层固定税。"],
+        ["省显存幅度变小；质量面也更窄。"],
+        ["仅 base_compute 为 w8a*_convrot 时生效。"],
+        "默认关；显存仍紧或要提速时再开。"
+    ),
+    convrot_large_layer_mode: help(
+        "大 in_features 层覆盖计算模式（P1-F 混精）。",
+        "空=不覆盖。可设 w8a16 / w8a8，配合「大层阈值」：例如默认 w8a16，大层改 w8a8。",
+        ["大层吃算力/显存，小层留更高精度。"],
+        ["混精增加配置复杂度；W8A8 大层仍可能更慢。"],
+        ["必须同时设 convrot_large_min_in_features。"],
+        "默认空；质量紧时再试。"
+    ),
+    convrot_large_min_in_features: help(
+        "触发 large_layer_mode 的 in_features 阈值（P1-F）。",
+        "例如 4096：Anima layer2（8192）走 large 模式，layer1（2048）走 base_compute。",
+        ["只覆盖真正的大矩阵。"],
+        ["阈值过低会把几乎所有层都改成 large 模式。"],
+        ["仅在设置了 convrot_large_layer_mode 时生效。"],
+        "与 large_layer_mode 成对使用。"
+    ),
+    block_swap_restore_mode: help(
+        "块交换 restore 阶段如何把 frozen base 权重恢复回 GPU。",
+        "slab 是当前默认正式路径：把同一 slot 的多个小 weight 恢复合并成一段连续大 H2D，减少小 kernel / 小 copy 调度；foreach 逐 weight 恢复，仅作对照/回退。",
+        ["slab 在 RTX 3080 基线上每块比 foreach 快约 0.7ms（见 docs/findings/blockswap_baseline_20260806.md）。"],
+        ["slab 会额外引入少量 GPU slab storage，占用一点显存余量。"],
+        ["int8 传输模式或混合 dtype 时 slab 自动回退到 foreach，无需手动切换。"],
+        "默认 slab；如需对照旧行为可手动改回 foreach。"
+    ),
+    selective_checkpoint: help(
+        "只对部分 DiT 计算做 activation 重算。",
+        "off 是最快默认；adapter_aware 整块重算大激活但缓存 LoRA/router 小中间值；peak_blocks_* 只对指定高峰 block 生效。",
+        ["能在 block swap 仍然接近 OOM 时补出一些显存余量。"],
+        ["会增加 backward 重算成本，速度会下降。"],
+        ["不要和 full gradient_checkpointing 或 Unsloth offload 叠加。"],
+        "Krea-2 仅支持 off/every_other；Anima LoKr/高 rank LoRA 可先试 adapter_aware 或 peak_blocks_adapter_aware。"
+    ),
+    selective_checkpoint_blocks: help(
+        "定点重算的 DiT block 编号列表。",
+        "只在 peak_blocks_adapter_aware / peak_blocks_mlp_layer1 / peak_blocks_mlp 模式下使用。支持 25-27 或 24,25,26,27；留空/auto 表示最后 3 个 block。",
+        ["可以只重算峰值最高的后段 block，减少速度损失。"],
+        ["填错范围会启动失败，Anima 当前有效 block 是 0-27。"],
+        ["对 off、adapter_aware、mlp_layer1_only、mlp_only、every_other 没有效果。"],
+        "当前 LoKr 16G 消融优先填 25-27。"
+    ),
+    block_swap_profile_jsonl: help(
+        "记录每个交换块的搬运和等待耗时。",
+        "off 关闭；auto 在 WebUI 训练时写入当前任务目录的 block_swap_profile.jsonl。",
+        ["能判断 block swap 是否真的卡在 H2D/D2H 或等待同步。"],
+        ["会增加少量 I/O，长训通常只在调参阶段开启。"],
+        ["显式路径写错会让 profile 无法落盘，但不应影响训练。"],
+        "Balanced 16G 和 LoKr 16G 排查时用 auto；稳定后可关掉。"
+    ),
+    disable_block_swap_for_eval: help(
+        "验证和训练中预览图阶段临时暂停块交换。",
+        "开启后会先把交换到 CPU 的 DiT 块恢复到 GPU，评估结束后再恢复训练时的 block swap 布局。",
+        ["评估/预览可能更快，适合训练需要换块但评估显存够用的机器。"],
+        ["如果评估阶段放不下完整 DiT，会直接 OOM。"],
+        ["只影响验证和预览，不改变训练 step 的块交换数量。"],
+        "不确定就保持 false；只有 eval 明显慢且显存有余量时再打开。"
+    ),
+    memory_probe_jsonl: help(
+        "记录训练级 CUDA 显存和 adapter/optimizer 摘要。",
+        "off 关闭；auto 在 WebUI 训练时写入当前任务目录的 memory_probe.jsonl。",
+        ["能定位 before_forward、backward、optimizer 等阶段的显存峰值。"],
+        ["详细快照会带来少量开销，不建议长期每步记录。"],
+        ["它是诊断工具，不会直接降低显存。"],
+        "OOM 排查时设 auto，并把探针步数设为 1~3。"
+    ),
+    memory_probe_max_steps: help(
+        "显存探针记录详细 step 快照的步数上限。",
+        "0 表示每步记录；setup 摘要不受这个限制。",
+        ["短跑定位时可以减少日志体积。"],
+        ["设为 0 会产生大量 JSONL，不适合长训。"],
+        ["步数太少可能错过后续才出现的峰值。"],
+        "一般填 1、2 或 3；长训稳定后关闭显存探针。"
+    ),
+    peak_probe_jsonl: help(
+        "记录更细粒度的 DiT block / LoKr 峰值显存事件。",
+        "off 关闭；auto 在 WebUI 训练时写入当前任务目录的 peak_probe.jsonl。",
+        ["能定位具体 block、MLP 或 LoKr delta apply 附近的峰值。"],
+        ["ops/lokr/full 粒度会扰动 compiled graph，只适合短跑定位。"],
+        ["它只做观测，不改变训练数学结果。"],
+        "常规 50-step 定位用 block；只在短跑深查时改 ops、lokr 或 full。"
+    ),
+    peak_probe_max_steps: help(
+        "峰值探针记录详细事件的步数上限。",
+        "0 表示每步记录；峰值探针通常比普通显存探针更细。",
+        ["控制 JSONL 体积和额外观测开销。"],
+        ["设太大可能明显干扰速度统计。"],
+        ["设太小可能只看到 warmup，不代表稳定阶段。"],
+        "建议短跑填 1~2；需要跨 warmup 再填 5。"
+    ),
+    peak_probe_level: help(
+        "峰值探针的事件粒度。",
+        "block 只记录 DiT block 边界；ops 加 block 内 attention/MLP；lokr 加 LoKr delta；full 全开。",
+        ["block 对 torch.compile 扰动最小。"],
+        ["full 信息最多，但最容易影响速度和编译缓存。"],
+        ["不要把 full 粒度的速度当成真实性能。"],
+        "默认 block；只有确认 LoKr/MLP 峰值时再临时提高粒度。"
+    ),
+    qwen_text_encoder_cache_policy: help(
+        "仅影响 Qwen3-VL 文本/图文条件缓存阶段；CPU 卸载节省显存但较慢，全部 GPU 可能显存不足，与 DiT 块交换独立；已有有效缓存复用时不会重新编码。",
+        "auto 自动选择；cpu_offload 在 GPU 计算并卸载到 CPU；gpu 全部驻留 GPU；cpu 仅使用 CPU。",
+        ["CPU 卸载节省显存，但编码更慢。"],
+        ["全部驻留 GPU 可能显存不足。"],
+        ["与 DiT 块交换独立；已有有效缓存复用时不会重新编码。"],
+        "一般保持自动（推荐）；仅在缓存阶段显存不足时调整。"
+    ),
+    preprocess_memory_profile: help(
+        "预处理阶段的自动批大小或固定预设。",
+        "只影响 WebUI/任务链触发的 VAE latent cache 和文本缓存批大小；不改变训练 batch size。",
+        ["low_vram 会降低预处理峰值显存。"],
+        ["auto 从 1 开始探测，结合显存与吞吐上调；CUDA OOM 时减小批次重试。模型本身装不下时无法靠减批解决。"],
+        ["手动填写 VAE 或文本缓存批大小时，会覆盖这个预设对应的值。"],
+        "显存峰值卡在预处理时选 low_vram；正常机器保持 auto。"
+    ),
+    preprocess_vae_cache_batch_size: help(
+        "VAE latent cache 的批大小。",
+        "auto 跟随显存模式；显存模式也是 auto 时，各分辨率从 1 开始探测批大小，显存充足时上调，CUDA OOM 时退避。",
+        ["直接针对 Caching latents 阶段的显存峰值。"],
+        ["更大批次不一定更快；auto 会在吞吐收益不明显时收敛。正整数保持固定，不自动重试。"],
+        ["这不是训练 batch size，不影响训练 step 的有效批量。"],
+        "低显存优先填 1；显存够用保持 auto。"
+    ),
+    preprocess_text_cache_batch_size: help(
+        "文本编码缓存的批大小。",
+        "auto 跟随显存模式；显存模式也是 auto 时，从 1 开始探测实际编码 caption 的批大小，变体展开后仍受控制，CUDA OOM 时退避。",
+        ["文本缓存阶段 OOM 时可单独调低。"],
+        ["探测值只用于本次运行，不写回配置。正整数保持固定，不自动重试。"],
+        ["不会改变 caption 内容或训练时的文本缓存读取方式。"],
+        "只有文本缓存阶段显存高或 OOM 时再改；通常保持 auto。"
+    ),
+    preprocess_precision_preference: help(
+        "预处理阶段优先采用哪种计算精度。",
+        "只影响 WebUI/任务链触发的 VAE latent cache 和文本缓存计算精度；不会改训练时的 mixed_precision。",
+        ["bf16 适合支持 bf16 的新卡，通常兼顾速度、显存和稳定性。"],
+        ["fp16 适合旧卡无 bf16 支持时继续跑预处理，但数值稳定性通常不如 bf16。"],
+        ["fp32 最稳，但更慢、也更占显存。"],
+        "默认先用 bf16；旧卡不支持 bf16 时改成 fp16；只有排查精度问题时再考虑 fp32。"
+    ),
+    torch_compile: help(
+        "是否让 PyTorch 先编译模型计算图再训练。",
+        "开启后会使用上游新的 native flatten + compile_blocks 路径。第一次启动会花时间编译；编译完成后通常更快。遇到 torch.compile/inductor 报错时可以关闭。",
+        ["长时间训练时可能提高速度。"],
+        ["首次启动更慢，还会在缓存目录写入编译缓存。"],
+        ["block swap、梯度检查点和不同显卡驱动组合仍可能触发编译问题。"],
+        "新手保持默认；如果报 torch.compile/inductor/triton 相关错误，再关闭排查。"
+    ),
+    compile_dynamic_seq: help(
+        "让 Anima 的多种图片尺寸共用一套编译结果。",
+        "它只在已开启 torch.compile 时有用。Anima 同时训练多种宽高比时，开启它可以少编译几套重复结果。",
+        ["Anima 多尺寸训练时，可能减少重复编译和编译缓存。"],
+        ["第一次编译和报错排查会更复杂。"],
+        ["Krea-2 使用自己的固定编译方式，预检会关闭此项；Z-Image 目前不支持 torch.compile，也不应开启此项。"],
+        "只有 Anima 在开启 torch.compile 后才保持配方默认。Krea-2 和 Z-Image 都保持关闭。"
+    ),
+    compile_seq_bands: help(
+        "把 Anima 的动态 token 长度拆成多个紧凑分带编译。",
+        "只在 torch_compile=true 且 compile_dynamic_seq=true 时有意义。分带由当前数据桶和启动时采样尺寸的实际 token 数自动推导，不会把中间空档并入一张 union 图。",
+        ["多个相距较远的 token tier 可以获得更紧的 Dynamo guard。"],
+        ["每个 band 首次命中都要编译，会增加启动成本；单 tier 时等价于 union。"],
+        ["Krea-2 和 Z-Image 不使用 Anima native-flatten band，预检会自动关闭。"],
+        "默认保持 false。只在有明确多 band 数据池并接受更高首次编译成本时开启。"
+    ),
+    activation_memory_budget: help(
+        "限制 torch.compile AOT 分割器为反向传播保存的激活预算。",
+        "1.0 表示不额外限制；如 0.85 的较小值会让编译器在反向时重算更多便宜中间量。只在 torch.compile 且未启用梯度检查点时有效。",
+        ["可在不改变模型权重精度的情况下降低 compiled backward 显存。"],
+        ["预算越低，反向重算越多，速度可能下降。"],
+        ["与 gradient_checkpointing 组合可能导致前向/重算图不一致，因此检查点开启时会被忽略。"],
+        "默认 1.0；只在无梯度检查点的 compile 路径接近 OOM 时尝试 0.85。"
+    ),
+    train_adaln: help(
+        "除常规 attention/MLP 外，也训练 DiT block 的 AdaLN 调制投影适配器。",
+        "true 会将 adaln_up_* 线性层加入训练目标，可配合 adaln_rank 和 adaln_alpha；false 保持历史配方的常规目标集。",
+        ["给时间步调制分支额外容量，可学习 shift/scale/gate 的低秩变化。"],
+        ["可训练参数、激活显存和权重体积都会增加。"],
+        ["现有 recipe 大多按关闭状态调优；Soft Tokens/EasyControl 等冻结 DiT 方法中该项不生效。"],
+        "默认关闭；明确要扩展 AdaLN 学习面时再开启，并从 adaln_rank=16 开始。"
+    ),
+    model_family: help(
+        "选择当前配置所训练的底模家族和对应运行时路由。",
+        "anima、krea2_raw 和 z_image 分别使用不同的模型加载、文本缓存、训练 forward 和推理能力集。它必须与基础模型权重匹配。",
+        ["显式选择家族能让训练、缓存和保存元数据走正确实现。"],
+        ["切换家族通常需要不同模型文件、文本编码器和重建缓存。"],
+        ["家族与权重、network_args 或文本缓存 schema 不一致时会明确拒绝启动，不能只改这一项就复用旧缓存。"],
+        "使用 Anima 权重选 anima，Krea-2 Raw 选 krea2_raw，Z-Image 选 z_image；优先从对应方法变体带入。"
+    ),
+    compile_block_scope: help(
+        "block swap 开启时，哪些 DiT block 参与 torch.compile。",
+        "resident 只编译常驻 GPU 的头部 block，交换到 CPU 的尾部 block 走 eager；all 会把交换 block 也编译，接近旧版全量编译行为。",
+        ["all 有时能借助 Inductor 降低第一步前向激活峰值，适合 10GB 这类极限显存排查。"],
+        ["all 可能让交换 block 因 CPU/GPU 权重迁移触发更多重编译，速度可能变慢或启动更久。"],
+        ["只在 torch_compile=true 且 blocks_to_swap>0 时有明显意义。"],
+        "默认 resident；遇到 block swap 后第一步仍 OOM，可临时改 all 做对照。"
+    ),
+    compile_inductor_mode: help(
+        "Inductor 编译器优化模式。",
+        "default 最稳；reduce-overhead 更偏减少运行开销。",
+        ["可影响 compile 后性能。"],
+        ["不同环境收益不稳定。"],
+        ["模式不兼容时会导致编译失败。"],
+        "Krea-2 必须保持 default；Anima 保持变体默认。"
+    ),
+    cache_llm_adapter_outputs: help(
+        "把 LLM adapter 输出缓存到磁盘。",
+        "Hydra/FeRA 等路由方法通常需要开启。",
+        ["避免每轮重复计算文本投影，支持部分路由特征。"],
+        ["占用磁盘并依赖缓存有效性。"],
+        ["配置或 tokenizer 变化后旧缓存可能不匹配。"],
+        "LoRA 变体通常保持 true；改文本处理后重建缓存。"
+    ),
+    masked_loss: help(
+        "只在非遮罩区域计算损失。",
+        "有 masks/merged、masks/sam 或 masks/mit 时开启。",
+        ["可减少文字气泡等区域污染训练。"],
+        ["需要额外生成并维护 mask。"],
+        ["mask 错误会忽略本该学习的区域。"],
+        "漫画/带字数据推荐 true；无 mask 或普通图集可关闭。"
+    ),
+    mixed_precision: help(
+        "训练使用的数值精度。",
+        "现代 NVIDIA GPU 优先 bf16；旧显卡不支持 bf16 时才考虑 fp16。",
+        ["能降低显存占用，并提升训练吞吐。"],
+        ["依赖显卡和 PyTorch 支持。"],
+        ["fp16 更容易数值不稳定；bf16 在旧卡上可能不可用。"],
+        "新手优先用 bf16；启动时报不支持再换 fp16。"
+    ),
+    adaptive_precision: help(
+        "实验性自适应精度。关闭时不改变现有训练；开启后按当前实验契约使用 FP16/FP32 混合路径。",
+        "auto 按 GPU compute capability 选择 BF16、FP16/FP32 岛屿或纯 FP32；fp16_fp32 固定使用 FP16/FP32 岛屿。三类已注册 DiT 均走统一训练入口，但仍受兼容矩阵限制。",
+        ["在旧显卡上保留敏感残差和指定 Linear 的 FP32，同时让普通 Linear 使用 FP16。"],
+        ["首次启动需要额外检查；FP16/FP32 岛屿会关闭 compile、量化和复杂 adapter 组合。"],
+        ["当前不是质量自动认证；不满足模型族合同时启动预检会拒绝。"],
+        "先用 off 验证普通配置；在单卡、普通 LoRA、完整 checkpoint 条件下再尝试 auto。"
+    ),
+    adaptive_fp32_modules: help(
+        "显式指定需要保持 FP32 的 Linear 名称或 glob；留空不代表已完成敏感层校准。",
+        "匹配模型中的完整模块路径，例如 blocks.0.*；只接受普通 Linear，未知模式会在启动前拒绝。",
+        ["可以把已知数值敏感的投影固定在 FP32。"],
+        ["FP32 模块越多，显存和计算开销越高。"],
+        ["模块名随模型族变化，错误模式不会静默忽略。"],
+        "没有校准证据时保持空数组，先使用默认残差 FP32 保护。"
+    ),
+    adaptive_loss_scale: help(
+        "FP16/FP32 实验路径的初始梯度缩放值；普通 BF16 训练不使用 scaler。",
+        "传给 Accelerate GradScaler 的 init_scale，必须是大于 1 的有限数。",
+        ["减少 FP16 梯度下溢。"],
+        ["过大可能放大溢出和重试次数。"],
+        ["只影响 FP16/FP32 岛屿路径。"],
+        "默认 1024；出现 scaler 溢出时再降低。"
+    ),
+    adaptive_oom_retry: help(
+        "训练启动或允许阶段发生 CUDA OOM 时，在新进程中有限增加 block swap 后重试。",
+        "每次重试冻结同一份配置，只增加授权范围内的交换块；不会在已有 optimizer 状态中原地重试。",
+        ["显存临界时可以自动找到能启动的交换块数量。"],
+        ["重试会重复加载模型并延长启动时间。"],
+        ["仅支持自适应 FP16/FP32 岛屿的单卡实验合同；普通配置不会被隐式重试。"],
+        "先关闭确认普通训练稳定，再在可恢复的实验目录启用。"
+    ),
+    adaptive_oom_retry_max_attempts: help(
+        "OOM 自动重试的总尝试上限。",
+        "包含第一次训练尝试；每次失败后才进入下一次 fresh worker。",
+        ["限制最坏情况下的重复启动时间。"],
+        ["过小可能在找到可行交换值前提前停止。"],
+        ["过大不会突破最大交换块数或其他合同限制。"],
+        "默认 4；显存波动明显时再小幅提高。"
+    ),
+    adaptive_oom_retry_swap_increment: help(
+        "每次 OOM 重试增加的 block swap 数量。",
+        "仅在模型加载、forward 或 backward 阶段的结构化 CUDA OOM 后增加。",
+        ["较大的步长能更快避开显存临界点。"],
+        ["交换越多通常越慢，且可能增加 CPU 内存和 PCIe 压力。"],
+        ["不会修改正在运行的 offloader；每次都在新进程重建。"],
+        "默认 2；显存余量很小时保持较小步长。"
+    ),
+    adaptive_oom_retry_max_swap: help(
+        "OOM 重试允许达到的最大交换块数量。",
+        "必须落在当前模型族 block swap 合法范围内。",
+        ["为重试提供明确的显存上限。"],
+        ["上限越高，最慢的重试方案越可能被尝试。"],
+        ["不会绕过 Z-Image 或 Anima 的块范围校验。"],
+        "按显存和 CPU 内存设置；不要盲目填满模型块数。"
+    ),
+    adaptive_oom_retry_timeout: help(
+        "单个隔离训练尝试的最长运行时间（秒）。",
+        "超时的 worker 视为非 CUDA 失败，不会继续无限重试。",
+        ["防止异常 worker 长时间占住 GPU。"],
+        ["过小会误杀首次加载较慢的机器。"],
+        ["超时不会生成可恢复的 optimizer checkpoint。"],
+        "默认 3600 秒；按模型大小和磁盘速度调整。"
+    ),
+    precision_preference: help(
+        "训练时优先采用哪种数值精度方案。",
+        "bf16 是默认推荐；fp16 表示 fp16/32 混合精度；fp32 表示关闭混合精度、全程使用 fp32。",
+        ["bf16 通常兼顾显存、速度和稳定性，适合大多数新卡。"],
+        ["fp16 会进一步压显存，但数值稳定性通常不如 bf16。"],
+        ["fp32 最稳、最直观，但显存占用最高，速度也往往更慢。"],
+        "默认先用 bf16；旧卡不支持 bf16 时试 fp16；只有排查数值问题或显存充足时再考虑 fp32。"
+    ),
+    vae_chunk_size: help(
+        "VAE 解码/编码时的分块大小。",
+        "常用 64；显存不足时降低。",
+        ["越大通常越快。"],
+        ["越大显存峰值越高。"],
+        ["太大可能在预处理或采样时 OOM。"],
+        "默认 64；OOM 时逐步降低。"
+    ),
+    vae_disable_cache: help(
+        "禁用 VAE 内部缓存。",
+        "显存紧张时保持 true。",
+        ["降低 VAE 阶段显存占用。"],
+        ["可能牺牲少量速度。"],
+        ["关闭后预处理/采样阶段可能占更多显存。"],
+        "推荐 true。"
+    ),
+    use_vae_cache: help(
+        "使用 VAE latent 缓存。",
+        "开启后训练读取预处理生成的 latent 缓存。",
+        ["避免每轮重复编码图像。"],
+        ["需要磁盘保存缓存。"],
+        ["图像或预处理参数变化后必须重建缓存。"],
+        "推荐 true。"
+    ),
+    use_text_cache: help(
+        "使用文本编码器输出缓存。",
+        "开启后训练读取预处理生成的文本缓存。",
+        ["编码后可释放文本编码器，给 DiT 腾显存。"],
+        ["caption 改动后需要重新缓存。"],
+        ["缓存和 caption 不一致会导致训练内容不对。"],
+        "推荐 true。"
+    ),
+    skip_cache_check: help(
+        "启动时跳过缓存完整性检查。",
+        "确认缓存有效时可开启。",
+        ["启动更快。"],
+        ["不会提前发现缺失或过期缓存。"],
+        ["缓存坏了可能训练中途才报错。"],
+        "稳定复训可 true；刚改数据/配置时建议 false 或重建缓存。"
+    ),
+    use_custom_down_autograd: help(
+        "使用自定义 LoRA down 矩阵反向实现。",
+        "保持 base 默认 false；只有确认需要时再打开。",
+        ["可能降低显存或改善性能。"],
+        ["属于底层优化，不方便调试。"],
+        ["若遇到 autograd 异常，需要作为排错开关。"],
+        "默认 false；确认收益后再打开。"
+    ),
+    log_every_n_steps: help(
+        "每多少训练步记录一次日志。",
+        "数值越小日志越密。",
+        ["便于观察 loss 和速度变化。"],
+        ["日志过密会略增 I/O 和界面刷新压力。"],
+        ["太大则难以及时发现异常。"],
+        "默认 2；长训可适当调大。"
+    ),
+    dataloader_pin_memory: help(
+        "DataLoader 是否使用 pinned memory。",
+        "GPU 训练通常开启。",
+        ["加快 CPU 到 GPU 的数据传输。"],
+        ["占用更多主机内存。"],
+        ["低内存机器上可能增加系统压力。"],
+        "默认 true。"
+    ),
+    persistent_data_loader_workers: help(
+        "DataLoader worker 是否跨 epoch 常驻。",
+        "多轮训练保持开启。",
+        ["减少每轮重启 worker 的开销。"],
+        ["会持续占用进程和内存。"],
+        ["数据加载逻辑变化时，常驻 worker 不利于调试。"],
+        "默认 true；调试数据加载时可关闭。"
+    ),
+    pretrained_model_name_or_path: help(
+        "基础 DiT 模型权重路径，也就是 LoRA 要挂在哪个底模上训练。",
+        "填写本机已有的 .safetensors 文件路径，通常在 models/diffusion_models 下。Krea-2 在 base_compute=nf4 时可直接选择自包含 NF4 v2；旧 NF4 v1 只是 overlay，不能单独作为底模。",
+        ["决定训练结果依附的底模，路径正确是启动训练的前提。"],
+        ["模型文件很大，首次下载和读取都需要时间。"],
+        ["路径错会启动失败；Krea-2 旧 NF4 v1 直接放在此处会被明确拒绝。"],
+        "新手先在“全局模型配置”维护常用模型，再回配置页选择并填入。"
+    ),
+    qwen3: help(
+        "Qwen3 文本编码器路径，用来把 caption 和提示词变成模型能理解的条件。",
+        "保持下载脚本或全局设置里填写的默认路径。普通 LoRA 不需要更换文本编码器。",
+        ["caption 能否被正确编码，直接影响训练内容是否学对。"],
+        ["模型较大，会占用磁盘和加载时间。"],
+        ["路径错误会让预处理或训练启动失败；换编码器后旧文本缓存需要重建。"],
+        "新手在“全局设置”填好 Qwen3 路径后，用按钮带入当前配置。"
+    ),
+    vae: help(
+        "VAE 模型路径，负责把图片和训练用 latent 互相转换。",
+        "保持 models/vae 下的默认权重路径。普通训练不需要频繁换 VAE。",
+        ["VAE 正确时，预处理缓存和训练样张才能正常生成。"],
+        ["更换 VAE 后，需要重新生成 latent 缓存。"],
+        ["路径错会导致预处理、训练或采样失败；旧缓存也可能不兼容。"],
+        "新手使用默认 qwen_image_vae，并通过全局设置自动填入。"
+    ),
+    output_dir: help(
+        "旧配置里的训练输出目录字段。",
+        "在 WebUI 启动训练时，真实输出目录会被全局设置里的“输出文件夹”自动接管，并写入本次运行目录的 training_output。直接编辑 TOML 时仍能看到这个旧字段。",
+        ["保留它可以兼容命令行、旧配置和历史 TOML。"],
+        ["Web 训练里改它通常不会改变最终产物位置。"],
+        ["如果以为 Web 会使用这里的路径，可能会找错权重和样张目录。"],
+        "WebUI 用户去“全局设置”改输出文件夹；这里不用改。"
+    ),
+    output_name: help(
+        "保存权重文件时使用的文件名前缀。",
+        "用简短英文、数字或下划线命名，避免空格和特殊符号。例如 roleA_lora、style_test。",
+        ["以后在预览图、下载权重和历史任务里更容易认出是哪次训练。"],
+        ["名字太长会让文件列表难读。"],
+        ["同一个运行目录里如果前缀混乱，后面挑权重会很痛苦。"],
+        "新手建议写“角色或数据集简称 + 方法”，例如 rokkotsu_lora。"
+    ),
+    save_model_as: help(
+        "模型保存格式。",
+        "保持 safetensors。",
+        ["加载快，格式更安全。"],
+        ["与只支持其他格式的旧工具可能不兼容。"],
+        ["改成不支持格式会保存失败。"],
+        "推荐 safetensors。"
+    ),
+    save_precision: help(
+        "保存权重时使用的精度。",
+        "通常 bf16。",
+        ["减小文件体积，匹配训练精度。"],
+        ["低精度会丢失少量数值细节。"],
+        ["不支持的推理环境可能需要转换。"],
+        "推荐 bf16。"
+    ),
+};

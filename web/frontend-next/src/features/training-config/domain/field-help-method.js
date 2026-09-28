@@ -1,0 +1,541 @@
+import { help } from './help-builder.js';
+
+export const FIELD_HELP_METHOD_ZH = {
+    network_dim: help(
+        "LoRA 的容量大小，也叫 rank 或秩。",
+        "它决定 LoRA 能学习多少新特征。常用 16/32/64：数据少、显存小用 16-32；画风复杂、角色细节很多时再考虑 64。",
+        ["数值越高，越能记住细节、画风和角色差异。"],
+        ["显存、训练时间和最终权重文件都会变大。"],
+        ["小数据集设太高容易过拟合，把训练图里的噪声、构图和瑕疵也学进去。"],
+        "新手从 32 开始；8GB 显存或少量图片优先用 16-32。"
+    ),
+    network_alpha: help(
+        "LoRA 的缩放强度，影响训练结果最终作用有多猛。",
+        "最简单的填法是和 network_dim 填一样，例如 dim=32 时 alpha=32。想让 LoRA 更保守时，可以填 dim 的一半。",
+        ["可以控制 LoRA 对底模的影响幅度。"],
+        ["太低会学得慢，可能需要更多轮数才看得出效果。"],
+        ["太高容易风格过冲、颜色变脏，或让提示词服从性变差。"],
+        "新手推荐 alpha = dim；只有效果明显太重、太像训练图时再降低。"
+    ),
+    network_module: help(
+        "训练时加载的网络实现模块。",
+        "普通 LoRA 家族保持 networks.lora_anima；IP-Adapter、EasyControl、Soft Tokens 等变体由对应 TOML 自动填写。",
+        ["允许不同训练方法共用同一个 Web 表单。"],
+        ["改错模块会导致启动失败，或加载到不匹配的参数。"],
+        ["不要手动改成未注册/不存在的 Python 模块。"],
+        "新手不要手动改；选择方法/变体后保持默认。"
+    ),
+    network_args: help(
+        "传给 network_module 的额外参数列表。",
+        "按 TOML 字符串数组填写，例如 [\"mode=cond\", \"cond_hidden_dim=256\"]。",
+        ["让实验方法可以暴露内部开关，不必新增表单控件。"],
+        ["格式比普通字段更容易写错。"],
+        ["key 拼错通常不会得到预期行为；值类型错误可能在训练启动后才暴露。"],
+        "优先选择已有变体自动填充；手改前先看对应方法 TOML。"
+    ),
+    network_train_unet_only: help(
+        "只训练 DiT 主模型侧的适配器，冻结文本编码器。",
+        "普通 LoRA 训练保持 true。",
+        ["显存更稳，训练结果更容易复用。"],
+        ["无法直接微调文本编码器本身的语言理解。"],
+        ["关闭后训练面更大，资源和失控风险都明显上升。"],
+        "新手保持 true；本项目的常规 LoRA 训练不需要改文本编码器。"
+    ),
+    network_weights: help(
+        "从已有适配器检查点热启动训练。",
+        "普通新训练留空；续训或二次微调用已有 .safetensors 路径。",
+        ["能在已有效果上继续细化，节省从零训练时间。"],
+        ["继承旧模型的偏差和过拟合。"],
+        ["检查点方法或 rank 不匹配会加载失败或效果异常。"],
+        "新手留空；热启动时配合 dim_from_weights 使用。"
+    ),
+    dim_from_weights: help(
+        "从热启动检查点读取 rank/alpha，并覆盖表单里的 network_dim/network_alpha。",
+        "只有填写 network_weights 时才开启。",
+        ["避免 rank 不一致导致加载失败。"],
+        ["会同时忽略当前表单的 network_dim 和 network_alpha。"],
+        ["误开时可能让你以为改了 dim，但实际沿用了旧检查点。"],
+        "热启动推荐 true；从零训练保持 false。"
+    ),
+    use_ortho: help(
+        "启用 OrthoLoRA，用正交参数化约束 LoRA 更新。",
+        "想减少概念互相污染时开启；普通 LoRA 可以关闭。",
+        ["更新更结构化，通常更不容易干扰无关概念。"],
+        ["训练计算略重，实验解释成本更高。"],
+        ["并不保证一定更好，小数据或很简单的风格可能收益不明显。"],
+        "泛用训练可选 tlora_ortho 或 ortholora 变体。"
+    ),
+    use_timestep_mask: help(
+        "启用 T-LoRA，让有效 rank 随去噪时间步变化。",
+        "想把容量集中在高噪声结构阶段时开启，并设置 min_rank。",
+        ["结构学习更集中，保存结果仍是可合并的普通 LoRA。"],
+        ["多一个时间步相关超参，调试复杂度上升。"],
+        ["min_rank 太低可能削弱低噪声阶段的细节修正。"],
+        "推荐直接使用 tlora 或 tlora_ortho 变体。"
+    ),
+    lora_adapter_kind: help(
+        "选择当前训练使用的 LoRA 家族结构。",
+        "普通 LoRA 会关闭 use_glora/use_loha/use_lokr/use_vera；LoHa、LoKr、GLoRA、VeRA 会分别写入对应开关。DoRA 不是这里的结构变体，它由“启用 DoRA”单独控制。",
+        ["把互斥 adapter 开关合并成一个选择，避免同时打开多个结构。"],
+        ["切换结构会改变权重格式和推理兼容性，不只是改 UI 文案。"],
+        ["LoHa/LoKr/GLoRA/VeRA 与 OrthoLoRA、Hydra/FeRA、ChimeraHydra 等结构互斥，保存前要确认当前变体支持。"],
+        "不需要特殊格式时保持普通 LoRA；想训练方向/幅度分解时保持普通 LoRA 并打开 DoRA。"
+    ),
+    dora_wd: help(
+        "在普通 LoRA 上启用 DoRA（Weight-Decomposed LoRA）。",
+        "开启后会写入 dora_wd=true，训练模块仍沿用 LoRA 的低秩方向，同时额外学习输出通道幅度。",
+        ["比同 rank 普通 LoRA 多一个幅度分解自由度，可能提升拟合能力。"],
+        ["前向更重，导出的权重会带 dora_scale，需要兼容 DoRA 的加载/继续训练路径。"],
+        ["当前仅支持叠加在普通 LoRA 上；不要和 LoHa、LoKr、GLoRA、VeRA、OrthoLoRA、Hydra/FeRA、ChimeraHydra 混开。"],
+        "想要原项目 DoRA 用法时，LoRA 结构保持“普通 LoRA”，再打开这个开关。"
+    ),
+    use_glora: help(
+        "启用 GLoRA（Generalized LoRA）。",
+        "用低秩 A 路径先调制 Linear 输入，再叠加低秩 B 路径；保存为 a1/a2/b1/b2/alpha。",
+        ["比普通 LoRA 多一条依赖底模权重的输入调制路径，表达方式更接近 LyCORIS GLoRA。"],
+        ["不能无损改写成普通 lora_up/lora_down，推理和继续训练都需要 GLoRA 兼容加载器。"],
+        ["与 DoRA、LoHa、LoKr、VeRA、OrthoLoRA、Hydra/FeRA、ChimeraHydra 等结构互斥。"],
+        "明确需要 GLoRA/LyCORIS 兼容格式时选择 glora 变体；普通训练仍优先 LoRA。"
+    ),
+    use_vera: help(
+        "启用 VeRA（Vector-based Random Matrix Adaptation）。",
+        "共享冻结随机投影 A/B，只训练每层缩放向量，通常使用更高 rank 但参数量很低。",
+        ["参数量远小于普通 LoRA/LoKr，适合短期消融和多种 rank 对照。"],
+        ["推理和继续训练需要 VeRA 兼容加载路径；不等价于普通 LoRA 权重。"],
+        ["与 LoHa、LoKr、OrthoLoRA、Hydra/FeRA 等结构互斥。"],
+        "推荐直接选 VeRA 变体；短测可用 rank 256/512，并固定投影随机种子。"
+    ),
+    use_lokr: help(
+        "启用 LoKr（Low-Rank Kronecker Product）。",
+        "用 Kronecker 积分解 ΔW = kron(W1, W2)，保存为 lokr_w1/lokr_w2。",
+        ["参数效率高，常适合复杂画风或多角色训练。"],
+        ["不是普通 LoRA 的低秩矩阵形式，推理侧需要 LyCORIS/LoKr 兼容加载器。"],
+        ["与 OrthoLoRA、Hydra/FeRA、DoRA 互斥；小数据更要注意过拟合。"],
+        "推荐使用 lokr 变体默认值：learning_rate=1e-4，factor=8。"
+    ),
+    use_loha: help(
+        "启用 LoHa（Low-Rank Hadamard Product）。",
+        "用两组低秩矩阵的 Hadamard product 形成 ΔW，保存为 hada_w1/hada_w2。",
+        ["兼容可用、非主力：可导出 PEFT/LyCORIS 兼容权重，也能走静态 merge。"],
+        ["参数量约 2× 同 rank LoRA；大层前向会物化临时 ΔW，显存紧时优先降 rank 或改用 LoRA/LoKr。"],
+        ["与 LoKr、VeRA、GLoRA、DoRA、OrthoLoRA、Hydra/FeRA、ChimeraHydra 互斥；热启动仅 LoHa→LoHa。"],
+        "推荐直接使用 loha 变体默认值；不需要 LoHa 兼容格式时选普通 LoRA。详见 docs/methods/loha.md。"
+    ),
+    lokr_factor: help(
+        "LoKr 的 Kronecker 分解因子。",
+        "W1 为 factor×factor，W2 为 (out/factor)×(in/factor)。",
+        ["factor 越大，W2 越小，结构约束越强。"],
+        ["factor 必须能整除输入/输出维度，否则运行时会自动降级。"],
+        ["过大可能限制表达，过小则更接近大矩阵更新、参数量上升。"],
+        "Anima DiT 默认用 8；不确定时保持默认。"
+    ),
+    lokr_factor_group_size: help(
+        "LoKr 自定义反向一次计算的输出 factor 组数。",
+        "值越大，重复投影越少，速度更快，但临时激活会变大。",
+        ["8 在 16GB LoKr 10-step 短跑中继续稳定，速度明显快于 4。"],
+        ["它会一次计算完整 LoKr delta 输出，显存不稳或 OOM 时先退回 4，再退 2/1。"],
+        ["只影响训练时 custom LoKr apply，不改变保存权重格式。"],
+        "当前推荐 8；追求更稳时使用 4。"
+    ),
+    lokr_use_einsum: help(
+        "LoKr 是否使用结构化 einsum 计算路径。",
+        "开启后仍然可以使用完整 lokr_w2，只是不再显式构造完整 Kronecker 大矩阵。",
+        ["默认开启，保持老 LoKr 容量，同时走更省临时张量的 no-kron 路径。"],
+        ["关闭后回到更传统的 custom LoKr 路径，主要用于兼容性排查。"],
+        ["这个开关本身不决定权重大小；权重大小由“LoKr 轻量分解 W2”决定。"],
+        "正式训练保持开启。"
+    ),
+
+    lokr_full_factor: help(
+        "显式声明 LoKr 全因子布局，并替代旧 network_dim=114514 哨兵。",
+        "anima_lora 默认已是完整 lokr_w2；这个开关主要负责正规化配置、写入元数据，并与 lokr_decompose_w2 互斥。",
+        ["新训练推荐开启，保持完整因子 + 正常 alpha/dim 缩放。"],
+        ["默认关闭 decompose 时，打开它不会突然改变参数量或训练动力学。"],
+        ["与 lokr_decompose_w2=true 互斥；不要再写 network_dim=114514。"],
+        "推荐：network_dim=network_alpha=32，lokr_full_factor=true，lokr_decompose_w2=false。"
+    ),
+    lokr_allow_legacy_dim: help(
+        "是否允许旧版 network_dim=114514 全因子哨兵。",
+        "只给历史状态续训用；它会把缩放压到 alpha/114514，新训练不要开。",
+        ["续训旧哨兵 checkpoint 时必须显式开启。"],
+        ["会保留被压扁的历史缩放。"],
+        ["新训练若误开，容易学不动。"],
+        "新训练请改用 lokr_full_factor=true。"
+    ),
+    lokr_decompose_w2: help(
+        "是否把大的 lokr_w2 再拆成 lokr_w2_a/lokr_w2_b。",
+        "关闭时保存完整 lokr_w2，容量和旧版 LoKr 一致；开启后文件更小，但表达能力也会下降。",
+        ["默认关闭，用来复现老 LoKr 文件大小和训练效果。"],
+        ["开启适合低容量、低体积实验，不应和旧 full LoKr 效果直接对比。"],
+        ["如果开启后权重从约 55MB 变成约 11MB，这是预期的容量变化。"],
+        "想要老效果保持关闭。"
+    ),
+    lokr_project_chunk_bytes: help(
+        "LoKr 投影内部 row chunk 的字节阈值。",
+        "默认 4194304，也就是 4MiB。调小会把 LoKr delta apply 切得更碎，降低单次临时张量峰值；调大会减少循环次数、可能更快。",
+        ["1MiB/2MiB 适合 16GB 下显存只剩几十 MiB 的救场测试。"],
+        ["阈值越小 Python/autograd 循环越多，速度可能下降。"],
+        ["阈值越大峰值越高，可能重新触发 LoKr MLP OOM。"],
+        "默认 4MiB；仍然 OOM 时先试 2MiB，再试 1MiB。"
+    ),
+    vera_projection_prng_key: help(
+        "VeRA 冻结随机投影 A/B 的生成种子。",
+        "相同 rank、层形状和种子会确定性重建同一组投影矩阵。",
+        ["便于消融实验中只改变 rank、学习率或 mask，不改变随机基底。"],
+        ["换种子会改变投影子空间，结果不应和旧实验直接混为一次重复。"],
+        ["如果保存投影矩阵为 false，加载端必须使用相同种子重建。"],
+        "短期测试默认 0；做多种子稳定性时再用 1/2/3。"
+    ),
+    vera_d_initial: help(
+        "VeRA 中 lambda_d 缩放向量的初始值。",
+        "默认 0.1，控制随机投影路径一开始的有效更新幅度。",
+        ["较小初值更保守，训练初期更稳。"],
+        ["过大可能让随机投影路径一开始就扰动过强。"],
+        ["不同 rank 下最优值可能不同，消融时要固定其它变量。"],
+        "推荐 0.1；不稳定时先试 0.05 或 0.01。"
+    ),
+    vera_save_projection: help(
+        "是否把 VeRA 冻结随机投影矩阵也写进 checkpoint。",
+        "关闭时只保存可训练向量和随机种子，加载时确定性重建投影。",
+        ["关闭可显著减小权重文件体积。"],
+        ["开启后文件更大，但对非确定性加载器或迁移排错更直接。"],
+        ["关闭时必须保留 projection_prng_key 元数据。"],
+        "默认关闭；调试加载兼容性时再开启。"
+    ),
+    min_rank: help(
+        "T-LoRA 在低噪声时间步保留的最小活跃 rank。",
+        "常用 1/2/4。rank 总量较低时不要设太低。",
+        ["能减少低噪声阶段的无效更新。"],
+        ["过低会牺牲细节和局部修正能力。"],
+        ["与 network_dim 差距过大时，训练行为会更激进。"],
+        "默认 1 适合现有 T-LoRA 变体；不稳定时升到 2 或 4。"
+    ),
+    alpha_rank_scale: help(
+        "T-LoRA 有效 rank 日程的幂指数 α。",
+        "r(t) ∝ (1-t)^α；1.0 为线性，>1 更把容量压向高噪声端，<1 更平坦。",
+        ["控制噪声端与干净端之间的 rank 过渡形状。"],
+        ["不是 network_alpha 的缩放系数。"],
+        ["过大可能让中低噪声阶段过早掉到 min_rank。"],
+        "推荐保持 1.0。"
+    ),
+    use_moe_style: help(
+        "选择 MoE 专家结构，false 表示不用专家路由。",
+        "shared_A 是 HydraLoRA；independent_A 是 FeRA 风格。",
+        ["让不同专家学习不同条件或时间步下的更新。"],
+        ["参数、显存、训练时间和解释成本都高于普通 LoRA。"],
+        ["专家可能坍缩到少数分支，或推理兼容性变差。"],
+        "新手先用普通 LoRA；需要 Hydra/FeRA 时选择对应变体后保持默认。"
+    ),
+    route_per_layer: help(
+        "控制路由器是每层独立，还是全模型共享。",
+        "true 更细粒度；false 更稳定、更接近全局路由。",
+        ["每层路由能给不同层分配不同专家偏好。"],
+        ["路由器更多，训练更慢，也更容易需要均衡约束。"],
+        ["小数据下 per-layer 可能过拟合或专家利用不均。"],
+        "Hydra 实验变体可用 true；FeRA 通常用 false。"
+    ),
+    router_source: help(
+        "专家路由使用的信号来源。",
+        "sigma 按去噪时间步路由；fei 按 FEI 特征路由；input 按输入特征；none 关闭路由信号。",
+        ["让专家分工跟时间步或内容特征绑定。"],
+        ["不同来源需要不同缓存或特征，调参成本较高。"],
+        ["选错来源会削弱专家分化，甚至让 MoE 只增加成本不增益。"],
+        "Hydra Sigma 选 sigma；Hydra FEI/FeRA 选 fei。"
+    ),
+    num_experts: help(
+        "MoE/Hydra/FeRA 的专家数量。",
+        "常用 4；简单任务 2-4，复杂实验可到 6-8。",
+        ["专家越多，容量和分工空间越大。"],
+        ["显存、参数量、训练速度成本随专家数上升。"],
+        ["专家过多容易数据不够分，出现空专家或不稳定路由。"],
+        "默认 4；只有明确需要更多分工时再升。"
+    ),
+    balance_loss_weight: help(
+        "专家负载均衡损失权重。",
+        "MoE 变体中保持 TOML 默认；普通 LoRA 无需设置。",
+        ["降低路由器只用单一专家的概率。"],
+        ["过高会强迫平均分配，影响专家自然分化。"],
+        ["过低可能专家坍缩，MoE 退化为单专家。"],
+        "Hydra/FeRA 用默认值；除非观察到专家坍缩再调。"
+    ),
+    balance_loss_warmup_ratio: help(
+        "训练前多少比例的步数暂不启用均衡损失。",
+        "填 0.3-0.5 表示先让专家自由分化，再开始约束。",
+        ["减少一开始就被强制平均导致的分工不足。"],
+        ["训练早期专家可能短暂不均衡。"],
+        ["太晚开启会来不及纠正专家坍缩。"],
+        "MoE 变体推荐 0.4 左右；不懂就保持默认。"
+    ),
+    network_router_lr_scale: help(
+        "路由器学习率相对主学习率的倍率。",
+        "MoE/FeRA 变体按默认值填写，普通训练不要改。",
+        ["让路由器更快学会分配专家。"],
+        ["倍率越高越可能震荡。"],
+        ["过高会让路由变化压过专家权重学习。"],
+        "FeRA 默认 10；只有路由明显不动时再调整。"
+    ),
+    router_targets: help(
+        "限制哪些线性层参与路由适配的正则表达式。",
+        "常见值是 .*(mlp\\.layer[12])$，把 MoE 限在 FFN 子层。",
+        ["控制 MoE 影响范围，减少显存和干扰。"],
+        ["正则写错会匹配不到层，或匹配过多层。"],
+        ["范围过宽可能训练慢且不稳定。"],
+        "除非你清楚网络层名，否则保持变体默认。"
+    ),
+    sigma_feature_dim: help(
+        "sigma 路由器的时间步特征维度。",
+        "Hydra Sigma 默认通常 16 或 128，按变体保留。",
+        ["维度更高能表达更复杂的时间步偏置。"],
+        ["维度越高，路由器计算和过拟合风险略增。"],
+        ["小数据集用太高维度可能没有实际收益。"],
+        "使用当前 Hydra Sigma 变体默认值。"
+    ),
+    per_bucket_balance_weight: help(
+        "每个 sigma 桶内部的额外负载均衡权重。",
+        "常用 0.3，配合 num_sigma_buckets 使用。",
+        ["鼓励不同时间步桶内也保持专家多样性。"],
+        ["增加一项路由约束，过高会削弱专家专门化。"],
+        ["与 balance_loss_weight 叠加后可能约束过强。"],
+        "默认 0.3；不观察路由统计时不要频繁改。"
+    ),
+    num_sigma_buckets: help(
+        "把时间步划分成多少个 sigma 桶。",
+        "常用 3，分别近似低/中/高噪声。",
+        ["让路由均衡和专家分工更贴近扩散阶段。"],
+        ["桶越多，每个桶的数据越少。"],
+        ["桶太多会让统计噪声变大，专家更难稳定分化。"],
+        "推荐 3。"
+    ),
+    specialize_experts_by_sigma_buckets: help(
+        "是否把专家硬分配给不同 sigma 桶。",
+        "Hydra Sigma 实验中可开启；普通 MoE 不需要。",
+        ["强制专家按去噪阶段分工，效果更可解释。"],
+        ["减少路由自由度，可能牺牲整体最优。"],
+        ["专家数和桶数不匹配时，部分专家利用会不均。"],
+        "只在 Hydra Sigma 实验变体中保持默认。"
+    ),
+    sigma_bucket_boundaries: help(
+        "自定义 sigma 桶边界。",
+        "填写递增数组，长度为 num_sigma_buckets + 1，例如 [0.0, 0.5, 0.8, 1.0]。",
+        ["能把专家分工压到你关心的噪声区间。"],
+        ["需要理解 sigma 分布，调参成本高。"],
+        ["边界不递增或长度不对会导致配置错误。"],
+        "不确定就使用变体默认边界或留给代码默认。"
+    ),
+    add_reft: help(
+        "启用 ReFT，在 DiT 块残差流上添加可训练干预。",
+        "想做更强的局部/语义干预时开启，通常直接选 reft 变体。",
+        ["表达力强，可和 LoRA 叠加。"],
+        ["不一定能合并进普通 LoRA 推理路径，兼容性成本更高。"],
+        ["过强时可能破坏底模已有能力。"],
+        "需要 ReFT 时选 reft 或 tlora_ortho_reft；普通训练关闭。"
+    ),
+    reft_dim: help(
+        "ReFT 干预秩。",
+        "常用 32-64；越大越强。",
+        ["提高 ReFT 干预容量。"],
+        ["参数和过拟合风险增加。"],
+        ["小数据用太大可能学到偶然噪声。"],
+        "默认 32 或 64，跟随变体。"
+    ),
+    reft_alpha: help(
+        "ReFT 缩放因子。",
+        "通常填得和 reft_dim 一样。",
+        ["让干预强度有清晰比例。"],
+        ["过低收敛慢，过高干预过强。"],
+        ["和 reft_dim 不匹配时更难判断实际强度。"],
+        "推荐 reft_alpha = reft_dim。"
+    ),
+    reft_layers: help(
+        "哪些 DiT 块启用 ReFT。",
+        "可填 last_8、first_4、stride_2、all，或逗号分隔层号。",
+        ["能控制干预位置，减少不必要的参数。"],
+        ["层选得越多，成本和风险越高。"],
+        ["选错层可能效果弱，或影响整体构图。"],
+        "默认 last_8；想更强再扩大范围。"
+    ),
+    layer_start: help(
+        "从第几层开始应用 LoRA。",
+        "0 表示从开头应用；较大值会跳过前面层。",
+        ["可减少参数和低层干扰。"],
+        ["跳过层越多，表达力越低。"],
+        ["跳过关键早期层可能导致风格学不进去。"],
+        "普通训练保持默认。"
+    ),
+    use_ip_adapter: help(
+        "启用 IP-Adapter 图像条件训练。",
+        "只有 ip_adapter 变体中开启，并准备参考图像/图像条件数据。",
+        ["让模型学习图像条件，而不只依赖文本。"],
+        ["需要额外视觉特征缓存，训练路径不同。"],
+        ["数据准备不匹配时，训练会失败或条件无效。"],
+        "新手普通训练保持关闭；需要图像参考训练时选择 ip_adapter 变体后保持默认。"
+    ),
+    ip_image_drop_p: help(
+        "训练时丢弃图像条件的概率。",
+        "常用 0.1；想让模型更能无条件工作可略升。",
+        ["提升模型在缺失图像条件时的鲁棒性。"],
+        ["过高会削弱图像条件的绑定强度。"],
+        ["图像条件本来就弱时，过高会让适配器学不到。"],
+        "默认 0.1。"
+    ),
+    ip_features_cache_to_disk: help(
+        "是否把 IP-Adapter 图像特征缓存到磁盘。",
+        "数据集较大或内存有限时开启。",
+        ["降低内存占用，复用预处理结果。"],
+        ["增加磁盘占用和 I/O。"],
+        ["缓存过期时需要重新预处理，否则会使用旧特征。"],
+        "推荐 true。"
+    ),
+    validation_baselines: help(
+        "验证时额外运行方法专属的基线对照。",
+        "开启后，IP-Adapter 会在同一批数据上额外比较无 IP 条件和打乱参考图等情况；关闭可跳过这些额外 forward。",
+        ["能分离观察适配器是否真正使用了图像条件。"],
+        ["每个基线都会增加一次完整验证前向，验证耗时明显上升。"],
+        ["FM-MSE 对照只是必要诊断，不能代替样张质量和 CMMD 验收。"],
+        "普通长训保持变体默认；排查 IP-Adapter 条件是否生效时再开启。"
+    ),
+    ip_pair_mode: help(
+        "选择 IP-Adapter 参考图与训练目标图的配对方式。",
+        "self 使用同一张图；identity 按角色→作品→画师层级查找同身份的不同图；identity_cross_artist 还要求参考图来自不同画师。",
+        ["异图配对能减少复制目标图的捷径，迫使图像通道学习身份不变特征。"],
+        ["异图模式需要磁盘 PE 特征缓存和 caption_index.json。"],
+        ["数据索引层级错误会配到无关图像；异图模式与 PE-LoRA 实时编码路径不兼容。"],
+        "普通复现用 self；身份学习优先用 identity，需要去除画风影响时再用 identity_cross_artist。"
+    ),
+    ip_pair_prob: help(
+        "每个训练步使用异图身份对的概率。",
+        "取值 0-1。例如 0.8 表示 80% 的步使用异图参考，其余 20% 保留 self 配对。",
+        ["保留少量 self 配对可以稳定早期训练，同时仍以身份迁移为主。"],
+        ["数值越高，训练越依赖配对索引的质量。"],
+        ["设为 1 且可用异图过少时，会频繁回退 self，实际比例可能与表单不同。"],
+        "identity 模式从 0.8 开始；数据少或配对质量不稳时降到 0.5。"
+    ),
+    ip_pair_min_level: help(
+        "身份对查找失败时允许回退到的最宽松层级。",
+        "character 只接受同角色；copyright 允许同作品；artist 还允许同画师。找不到时最终回退 self。",
+        ["可在配对数量和身份一致性之间取得平衡。"],
+        ["层级越宽松，候选更多，但身份一致性越弱。"],
+        ["artist 层级可能把“同画风”误当成“同身份”，需检查 caption 索引标签。"],
+        "强角色数据先用 character；缺少同角色异图时再放宽到 copyright 或 artist。"
+    ),
+    ip_pair_caption_strip_p: help(
+        "异图配对步中移除目标 caption 里角色/作品标签的概率。",
+        "取值 0-1。大于 0 时要关闭 use_text_cache，否则已缓存的文本 embedding 仍包含身份信息，该开关不会生效。",
+        ["可迫使身份信息通过 IP 图像通道传入，减少文本泄漏捷径。"],
+        ["关闭文本缓存会增加训练时编码成本。"],
+        ["移除概率过高会削弱文本可控性；在 use_text_cache=true 时误以为已启用是常见误区。"],
+        "快速缓存训练保持 0；做文本泄漏对照时先关闭文本缓存，再从小概率开始。"
+    ),
+    use_easycontrol: help(
+        "启用 EasyControl 图像条件方法。",
+        "只有 easycontrol 变体中开启。",
+        ["提供更直接的图像控制信号。"],
+        ["需要专用数据集和缓存目录。"],
+        ["普通 LoRA 数据目录无法直接替代 EasyControl 数据。"],
+        "新手普通训练保持关闭；需要 EasyControl 时选择 easycontrol 变体后保持默认。"
+    ),
+    easycontrol_drop_p: help(
+        "训练时丢弃 EasyControl 条件的概率。",
+        "常用 0.1。",
+        ["让模型不完全依赖条件图。"],
+        ["过高会削弱条件控制能力。"],
+        ["条件本来稀疏时会进一步降低有效训练信号。"],
+        "默认 0.1。"
+    ),
+    easycontrol_cond_noise_max: help(
+        "给 EasyControl 条件图加入噪声的最大强度。",
+        "0.0 表示不加噪；想让条件变成更粗的提示时才升高。",
+        ["可提升对低质量/有噪条件图的鲁棒性。"],
+        ["条件越模糊，控制越弱。"],
+        ["过高会让条件退化成不可靠提示。"],
+        "默认 0.0；除非明确需要鲁棒性实验。"
+    ),
+    use_hydra: help(
+        "旧式 HydraLoRA 开关。",
+        "新配置优先使用 use_moe_style/router_source 三轴字段；如果旧变体出现该项，按原 TOML 保持。",
+        ["兼容旧配置理解。"],
+        ["和新三轴字段混用会增加心智负担。"],
+        ["手动混搭可能得到未预期路由结构。"],
+        "新配置不要手动添加；直接用 Hydra 变体。"
+    ),
+    use_sigma_router: help(
+        "旧式 sigma 路由开关。",
+        "新配置优先用 router_source = \"sigma\"。",
+        ["表达专家随时间步变化的意图。"],
+        ["旧字段与新字段共存时容易混淆。"],
+        ["配置迁移不完整可能导致行为和预期不一致。"],
+        "使用现有 Hydra Sigma 变体，不手动新增。"
+    ),
+    fera_num_bands: help(
+        "FeRA 将 sigma/FEI 空间划分的带数。",
+        "通常用 3。",
+        ["帮助专家按阶段或特征带分工。"],
+        ["带数越多，每个带的数据越少。"],
+        ["过多会让路由统计不稳定。"],
+        "FeRA 默认 3。"
+    ),
+    fei_feature_dim: help(
+        "FEI 路由特征维度。",
+        "按 FeRA/Hydra FEI 变体默认填写。",
+        ["控制 FEI 信号输入路由器的大小。"],
+        ["维度越高越复杂，收益不一定增加。"],
+        ["改错可能让路由器输入不匹配。"],
+        "推荐 2。"
+    ),
+    fei_sigma_low_div: help(
+        "FEI 中低 sigma 区域的缩放除数。",
+        "保持默认 4.0。",
+        ["帮助平衡不同 sigma 区间的 FEI 信号。"],
+        ["属于方法内部调参，直觉不强。"],
+        ["随意改会改变路由分布。"],
+        "推荐 4.0。"
+    ),
+    router_hidden_dim: help(
+        "路由器隐藏层宽度。",
+        "MoE/FeRA 默认 64，复杂任务可实验性上调。",
+        ["提升路由器表达能力。"],
+        ["参数和过拟合风险略增。"],
+        ["路由器过强可能学习到数据偏差。"],
+        "默认 64。"
+    ),
+    router_tau: help(
+        "路由温度，控制专家分配尖锐程度。",
+        "较低更尖锐，较高更平均。保持默认最稳。",
+        ["可调节专家选择的确定性。"],
+        ["偏离默认后需要观察专家利用率。"],
+        ["过低会早早坍缩，过高会分工不清。"],
+        "默认 0.7。"
+    ),
+    fera_fecl_weight: help(
+        "FeRA 的 FECL 辅助损失权重。",
+        "默认 0.0 表示关闭。",
+        ["可用于进一步约束特征/专家关系。"],
+        ["增加额外训练目标。"],
+        ["非零值未经验证时可能影响主目标。"],
+        "保持 0.0，除非正在复现实验。"
+    ),
+    content_router_source: help(
+        "选择 ChimeraHydra 内容专家路由器的输入信号。",
+        "input 使用每层输入做局部路由；crossattn_emb 使用池化后的文本 cross-attention embedding 做全局内容路由。",
+        ["crossattn_emb 能让同一步的内容专家分配直接受提示词语义驱动。"],
+        ["全局路由增加文本特征传递和路由器计算。"],
+        ["crossattn_emb 只支持 ChimeraHydra；非 Chimera 方法需改用 router_source。"],
+        "ChimeraHydra 现有变体保持 crossattn_emb；复现旧的逐层路由时才用 input。"
+    ),
+    content_router_init_std: help(
+        "ChimeraHydra 内容路由器权重的初始化标准差。",
+        "普通路由初始化可使用如 0.001 的小正数；开启 chimera_centered_gate 时路由器会内部零初始化，此值会被忽略。",
+        ["非零小初值可以在普通 gate 下打破专家完全对称。"],
+        ["数值越大，训练起点的专家偏置越强。"],
+        ["过大可能让路由早期过快尖锐化；centered gate 开启时修改它不会产生效果。"],
+        "保持 Chimera 变体默认；centered gate 开启时无需单独调整。"
+    ),
+    content_router_layer_norm: help(
+        "在送入 ChimeraHydra 内容路由器前对池化特征应用无参数 LayerNorm。",
+        "true 会先标准化 crossattn_emb 特征尺度；false 保留原始幅度。",
+        ["减少不同 prompt 长度和特征幅度对路由分配的非预期影响。"],
+        ["会移除特征整体幅度信息，与旧 checkpoint 的路由分布可能不同。"],
+        ["继续训练时改变该开关会改变路由器输入分布，应与 checkpoint 元数据保持一致。"],
+        "新 ChimeraHydra 训练保持 true；只在复现旧配置时关闭。"
+    ),
+};
