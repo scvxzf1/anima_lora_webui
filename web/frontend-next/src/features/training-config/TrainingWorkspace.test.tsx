@@ -40,6 +40,9 @@ function createFetchMock() {
   let merged = {
     output_name: "dragon-run",
     model_family: "krea2_raw",
+    pretrained_model_name_or_path: "models/old-dit",
+    qwen3: "models/old-qwen",
+    vae: "models/old-vae",
     max_train_steps: 1600,
     train_batch_size: 1,
     dataset_config: "configs/datasets/alpha.toml",
@@ -64,7 +67,16 @@ function createFetchMock() {
         });
       if (url === "/api/settings/model-configs")
         return jsonResponse({
-          items: [],
+          items: [
+            {
+              id: "anima-main",
+              name: "Anima 主模型",
+              model_family: "anima",
+              pretrained_model_name_or_path: "models/anima/dit",
+              qwen3: "models/anima/qwen3",
+              vae: "models/anima/vae",
+            },
+          ],
           groups: [],
           revision: "test",
           default_id: "",
@@ -271,6 +283,42 @@ describe("TrainingWorkspace", () => {
     expect(await screen.findByText("需要处理")).toBeInTheDocument();
     expect(screen.getByText("Qwen3 文本编码器 不存在")).toBeInTheDocument();
     expect(screen.getByText("源图像目录 存在")).toBeInTheDocument();
+  });
+
+  it("applies a model combination to the draft and saves all four model fields", async () => {
+    const fetchMock = createFetchMock();
+    vi.stubGlobal("fetch", fetchMock);
+    const user = userEvent.setup();
+    renderWorkspace();
+
+    const picker = await screen.findByLabelText("快速选择模型组合");
+    await waitFor(() => expect(picker).toBeEnabled());
+    await waitFor(() =>
+      expect(
+        picker,
+      ).toContainElement(screen.getByRole("option", { name: /Anima 主模型/ })),
+    );
+    await user.selectOptions(picker, "anima-main");
+    expect(await screen.findByText("有未保存修改")).toBeInTheDocument();
+    expect(
+      screen.getByText("4", { selector: ".training-config-source strong" }),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "保存配置" }));
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.some(
+          ([url, init]) =>
+            String(url) === "/api/config/raw" && init?.method === "PATCH",
+        ),
+      ).toBe(true),
+    );
+    expect(requestBody(fetchMock, "/api/config/raw", "PATCH").values).toEqual({
+      model_family: "anima",
+      pretrained_model_name_or_path: "models/anima/dit",
+      qwen3: "models/anima/qwen3",
+      vae: "models/anima/vae",
+    });
   });
 
   it("keeps a stale training draft and blocks repeat saves after 409", async () => {
