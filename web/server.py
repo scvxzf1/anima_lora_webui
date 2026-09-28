@@ -30,8 +30,9 @@ class _WebAccessLogger(AccessLogger):
 
 async def index_handler(request: web.Request) -> web.StreamResponse:
     # Legacy UI selectors are compatibility inputs only; the active entry is Next.
-    query = dict(request.rel_url.query)
-    query.pop("ui", None)
+    query = request.rel_url.query.copy()
+    if "ui" in query:
+        query.popall("ui")
     raise web.HTTPFound(location=request.rel_url.with_path("/next").with_query(query))
 
 

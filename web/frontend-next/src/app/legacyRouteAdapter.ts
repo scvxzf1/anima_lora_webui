@@ -6,25 +6,39 @@ const HASH_ROUTES: Array<[RegExp, string]> = [
   [/^(?:page\/)?(?:captioning|tagging)(?:\/.*)?$/, "/captioning"],
 ];
 
-export function legacyHashPath(hash: string): string | undefined {
+export function legacyHashTarget(hash: string): { path: string; view?: string } | undefined {
+  const raw = hash.replace(/^#/, "").replace(/^\/+/, "");
+  const rawHistoryMatch = raw.match(/^history\/([^/]+)(?:\/(overview|metrics|artifacts|logs|config))?$/);
+  if (rawHistoryMatch) {
+    try {
+      return { path: `/history/${encodeURIComponent(decodeURIComponent(rawHistoryMatch[1]))}`, view: rawHistoryMatch[2] };
+    } catch {
+      return undefined;
+    }
+  }
   let value: string;
   try {
     value = decodeURIComponent(hash.replace(/^#/, "")).replace(/^\/+/, "");
   } catch {
     return undefined;
   }
-  if (!value || value === "dashboard") return "/training";
-  if (value === "config/training-config" || value.startsWith("config/training-config/")) return "/training";
-  if (value === "history") return "/history";
-  const historyMatch = value.match(/^history\/(.+)$/);
-  if (historyMatch) return `/history/${encodeURIComponent(historyMatch[1])}`;
-  for (const [pattern, path] of HASH_ROUTES) if (pattern.test(value)) return path;
+  if (!value || value === "dashboard") return { path: "/training" };
+  if (value === "config/training-config" || value.startsWith("config/training-config/")) return { path: "/training" };
+  if (value === "history") return { path: "/history" };
+  for (const [pattern, path] of HASH_ROUTES) if (pattern.test(value)) return { path };
   return undefined;
 }
 
+export function legacyHashPath(hash: string): string | undefined {
+  return legacyHashTarget(hash)?.path;
+}
+
 export function redirectLegacyHash(location: Location = window.location): boolean {
-  const path = legacyHashPath(location.hash);
-  if (!path || !location.hash) return false;
-  window.history.replaceState(null, "", `${path}${location.search}`);
+  const target = legacyHashTarget(location.hash);
+  if (!target || !location.hash) return false;
+  const query = new URLSearchParams(location.search);
+  if (target.view) query.set("view", target.view);
+  const base = location.pathname === "/next" || location.pathname.startsWith("/next/") ? "/next" : "";
+  window.history.replaceState(null, "", `${base}${target.path}${query.size ? `?${query}` : ""}`);
   return true;
 }

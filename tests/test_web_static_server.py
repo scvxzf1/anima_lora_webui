@@ -38,6 +38,13 @@ def test_web_index_maps_legacy_frontend_entrypoints_to_next(mode: str) -> None:
     assert str(exc_info.value.location) == "/next?token=example"
 
 
+def test_web_index_preserves_repeated_query_values() -> None:
+    with pytest.raises(web.HTTPFound) as exc_info:
+        _run(index_handler(_StaticRequest("/?ui=classic&task=one&task=two")))
+
+    assert str(exc_info.value.location) == "/next?task=one&task=two"
+
+
 def test_next_frontend_reports_missing_build(monkeypatch) -> None:
     monkeypatch.setattr(web_server, "STATIC_DIR", web_server.STATIC_DIR / "missing-next")
 

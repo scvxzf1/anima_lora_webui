@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { legacyHashPath } from "./legacyRouteAdapter";
+import { legacyHashPath, legacyHashTarget } from "./legacyRouteAdapter";
 
 describe("legacy route adapter", () => {
   it.each([
@@ -13,4 +13,8 @@ describe("legacy route adapter", () => {
   ])("maps %s to %s", (hash, expected) => expect(legacyHashPath(hash)).toBe(expected));
 
   it("leaves unknown hashes for the Next router", () => expect(legacyHashPath("#unknown")).toBeUndefined());
+
+  it("keeps the history view separate from the task id", () => {
+    expect(legacyHashTarget("#history/task%2Fone/metrics")).toEqual({ path: "/history/task%2Fone", view: "metrics" });
+  });
 });
