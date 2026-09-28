@@ -268,6 +268,40 @@ def test_matrix_accepts_krea2_plain_lora() -> None:
 
 
 @pytest.mark.parametrize(
+    ("arguments", "code"),
+    [
+        (["dora_wd=true"], "family_plain_lora_only"),
+        (["use_ortho=true"], "family_plain_lora_only"),
+        (["train_adaln=true"], "family_plain_lora_only"),
+        (["num_registers=4"], "family_plain_lora_only"),
+    ],
+)
+def test_qwen_plain_lora_gate_checks_effective_network_args(arguments, code) -> None:
+    result = check_training_compat(
+        {
+            "model_family": "qwen_image_2_1",
+            "network_module": "networks.lora_anima",
+            "network_args": arguments,
+        }
+    )
+
+    assert code in _codes(result.errors)
+
+
+def test_qwen_plain_lora_gate_uses_network_args_precedence() -> None:
+    result = check_training_compat(
+        {
+            "model_family": "qwen_image_2_1",
+            "network_module": "networks.lora_anima",
+            "num_registers": 4,
+            "network_args": ["num_registers=0"],
+        }
+    )
+
+    assert "family_plain_lora_only" not in _codes(result.errors)
+
+
+@pytest.mark.parametrize(
     "override",
     [
         {"network_module": "networks.methods.ip_adapter"},

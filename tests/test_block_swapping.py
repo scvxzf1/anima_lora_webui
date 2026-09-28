@@ -13,6 +13,7 @@ from library.runtime.device import is_weight_swap_excluded, should_move_weight_t
 from library.runtime.convrot.free_base import free_linear_weight_storage
 from library.runtime.offloading import (
     Int8BlockSwapCpuMaster,
+    Int8BlockSwapCpuSlab,
     ModelOffloader,
     normalize_block_swap_int8_scope,
     normalize_block_swap_int8_restore_mode,
@@ -22,8 +23,10 @@ from library.runtime.offloading import (
 )
 from library.runtime.block_swap_masters import (
     _can_swap_frozen_weight_to_cpu,
+    _capture_cpu_master,
     _ensure_weight_on_device,
 )
+from library.runtime.int8_linear import classify_frozen_linear_module
 from library.runtime.block_swap_payload import (
     BlockSwapManagedTensor,
     block_swap_payload_residency,
@@ -635,7 +638,19 @@ def test_int8_block_swap_cpu_master_quantizes_only_candidate_frozen_linears(
     assert isinstance(masters["adaln_up_mlp"], torch.Tensor)
     assert "adapter" not in masters
     assert offloader._cpu_weight_master_slabs is not None
-    assert offloader._cpu_weight_master_slabs[0] is None
+    packed_slab = offloader._cpu_weight_master_slabs[0]
+    assert isinstance(packed_slab, Int8BlockSwapCpuSlab)
+    assert packed_slab.quantized.numel() > 0
+    assert packed_slab.scale.numel() > 0
+    assert set(packed_slab.plan) == {
+        "mlp.layer1",
+        "mlp.layer2",
+        "self_attn.qkv_proj",
+        "self_attn.output_proj",
+    }
+    assert masters["mlp.layer1"].quantized.untyped_storage().data_ptr() == (
+        packed_slab.quantized.untyped_storage().data_ptr()
+    )
 
     offloader.submit_move_blocks(blocks, 0)
     offloader.wait_for_block(2)
@@ -663,6 +678,21 @@ def test_int8_block_swap_cpu_master_quantizes_only_candidate_frozen_linears(
     assert len(config["int8_relative_l2_by_block"]) == 3
     assert max(config["int8_relative_l2_by_block"]) < 0.03
     assert config["fp8_master_bytes"] == 0
+
+
+@pytest.mark.parametrize(
+    ("name", "family"),
+    [
+        ("img_mlp.gate_layer", "mlp"),
+        ("img_mlp.proj", "mlp"),
+        ("attn.to_q", "attention"),
+        ("attn.to_k", "attention"),
+        ("attn.to_v", "attention"),
+        ("attn.to_out.0", "attention"),
+    ],
+)
+def test_int8_block_swap_recognizes_qwen_image_2_1_linears(name, family) -> None:
+    assert classify_frozen_linear_module(f"blocks.0.{name}", scope="all") == (0, family)
 
 
 def test_int8_block_swap_cpu_master_respects_scope(tmp_path) -> None:
@@ -2000,6 +2030,71 @@ def test_block_swap_backward_hooks_work_with_standard_checkpointing(tmp_path) ->
         and event["submit_phase"] == "backward_prefetch"
         for event in events
     )
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA INT8 packed block swap")
+def test_int8_packed_slab_checkpoint_swap_matches_quantized_reference() -> None:
+    import copy
+
+    torch.manual_seed(20260927)
+    device = torch.device("cuda")
+    baseline = nn.ModuleList([_Int8CandidateBlock().to(device) for _ in range(6)])
+    swapped = copy.deepcopy(baseline)
+    reference = copy.deepcopy(baseline)
+    for block in reference:
+        for name, module in block.named_modules():
+            if isinstance(module, nn.Linear) and not module.weight.requires_grad:
+                master, _ = _capture_cpu_master(
+                    module.weight.detach().cpu(),
+                    module_name=name,
+                    pin_memory=False,
+                    transfer_dtype="int8",
+                    int8_scope="all",
+                )
+                if isinstance(master, Int8BlockSwapCpuMaster):
+                    module.weight.data = master.to_tensor(
+                        device=device, dtype=module.weight.dtype, non_blocking=False
+                    )
+
+    offloader = ModelOffloader(
+        swapped,
+        blocks_to_swap=4,
+        device=device,
+        supports_backward=True,
+        transfer_dtype="int8",
+        restore_mode="slab",
+    )
+    offloader.prepare_block_devices_before_forward(swapped, free_cache=False)
+    x = torch.randn(2, 8, device=device, requires_grad=True)
+    x_reference = x.detach().clone().requires_grad_(True)
+
+    y = x
+    for index, block in enumerate(swapped):
+        offloader.wait_for_block(index)
+        y = torch_checkpoint(block, y, use_reentrant=False)
+        offloader.submit_move_blocks(swapped, index)
+    y_reference = x_reference
+    for block in reference:
+        y_reference = torch_checkpoint(block, y_reference, use_reentrant=False)
+
+    y.square().mean().backward()
+    y_reference.square().mean().backward()
+
+    torch.testing.assert_close(y, y_reference, rtol=1e-4, atol=1e-5)
+    torch.testing.assert_close(x.grad, x_reference.grad, rtol=2e-3, atol=2e-4)
+    for swapped_block, reference_block in zip(swapped, reference):
+        torch.testing.assert_close(
+            swapped_block.adapter.weight.grad,
+            reference_block.adapter.weight.grad,
+            rtol=2e-3,
+            atol=2e-4,
+        )
+    assert offloader._cpu_weight_master_slabs is not None
+    assert all(
+        isinstance(slab, Int8BlockSwapCpuSlab)
+        for slab in offloader._cpu_weight_master_slabs
+    )
+    offloader.thread_pool.shutdown(wait=True)
 
 
 def test_backward_hooks_prefetch_from_completed_tail_block() -> None:

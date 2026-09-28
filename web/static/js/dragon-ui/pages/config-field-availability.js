@@ -6,7 +6,7 @@ import {
     NETWORK_ARG_FIELD_MAP,
     SPD_UI_DEFAULT_FIELDS,
     VERA_SCOPED_FIELD_KEYS,
-} from '../../config/catalog/defaults.js?v=auto-block-swap-20260908-v3';
+} from '../../config/catalog/defaults.js?v=qwen-cache-policy-20260928';
 import { normalizeBooleanConfigValue } from './config-field-types.js?v=auto-block-swap-20260908-v3';
 import {
     modelFamilyCapability,

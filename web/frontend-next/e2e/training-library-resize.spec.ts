@@ -1,15 +1,31 @@
 import { expect, test } from "@playwright/test";
 import { mockWorkspace } from "./fixtures";
 
-test("training library keeps bounded side and top sizes independently", async ({ page }) => {
+test("training library keeps bounded side and top sizes independently", async ({ page }, info) => {
   await page.setViewportSize({ width: 1600, height: 900 });
   const mocks = await mockWorkspace(page);
   await page.goto("/next/training");
+  await expect(page.getByText("已同步", { exact: true })).toBeVisible();
 
   const layout = page.locator(".training-workspace-layout");
   const library = page.getByRole("complementary", { name: "训练配置库" });
   const side = page.getByRole("separator", { name: "调整配置库宽度" });
   const top = page.getByRole("separator", { name: "调整配置库高度" });
+  const editGroups = page.locator(".training-edit-groups");
+  for (const [width, height, minEditorHeight] of [
+    [1440, 900, 420],
+    [1280, 720, 300],
+    [768, 1024, 0],
+  ]) {
+    await page.setViewportSize({ width, height });
+    await page.screenshot({ path: info.outputPath(`training-layout-${width}x${height}.png`) });
+    const box = await editGroups.boundingBox();
+    expect(box, `Editor is visible at ${width}x${height}`).not.toBeNull();
+    expect(box!.height, `Editor height at ${width}x${height}`).toBeGreaterThanOrEqual(minEditorHeight);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1),
+      `No horizontal overflow at ${width}x${height}`).toBe(true);
+  }
+  await page.setViewportSize({ width: 1600, height: 900 });
   await expect(side).toBeVisible();
   await expect(top).toBeHidden();
 
@@ -19,8 +35,8 @@ test("training library keeps bounded side and top sizes independently", async ({
   await page.mouse.down();
   await page.mouse.move(sideLayout.x + sideLayout.width * 0.95, sideHandle.y + 50, { steps: 5 });
   await page.mouse.up();
-  await expect(side).toHaveAttribute("aria-valuenow", "80");
-  expect((await library.boundingBox())!.width / (await layout.boundingBox())!.width).toBeCloseTo(0.8, 2);
+  await expect(side).toHaveAttribute("aria-valuenow", "42");
+  expect((await library.boundingBox())!.width / (await layout.boundingBox())!.width).toBeCloseTo(0.42, 2);
 
   await side.focus();
   await page.keyboard.press("Home");
@@ -50,7 +66,9 @@ test("training library keeps bounded side and top sizes independently", async ({
   expect((await library.boundingBox())!.height / (await layout.boundingBox())!.height).toBeCloseTo(0.15, 2);
   await page.setViewportSize({ width: 1600, height: 900 });
   await expect(side).toBeVisible();
-  expect((await library.boundingBox())!.width / (await layout.boundingBox())!.width).toBeCloseTo(0.11, 2);
+  expect(await layout.evaluate((node) => getComputedStyle(node).getPropertyValue("--training-library-side-size").trim())).toBe("11%");
+  expect((await library.boundingBox())!.width).toBeGreaterThanOrEqual(260);
+  expect((await library.boundingBox())!.width / (await layout.boundingBox())!.width).toBeLessThanOrEqual(0.42);
   await side.dblclick();
   expect(await page.evaluate(() => localStorage.getItem("dragon-next.training-library-side-percent"))).toBeNull();
   expect(await page.evaluate(() => localStorage.getItem("dragon-next.training-library-top-percent"))).toBe("15");

@@ -57,6 +57,7 @@ from library.training.metrics import MetricContext, collect_metrics
 from library.training.validation import run_validation
 from library.training.adaptive_personalization import metrics as personalization_metrics
 from library.training.adaptive_runtime.training_runtime import notify as adaptive_notify
+from library.training.sample_preview_common import should_sample
 
 logger = logging.getLogger(__name__)
 
@@ -128,6 +129,65 @@ def _probe_step(probe, state, label: str, **fields: Any) -> None:
         sync_gradients=state.accelerator.sync_gradients,
         **fields,
     )
+
+
+def _sample_probe_snapshot(
+    trainer,
+    accelerator,
+    args,
+    epoch,
+    steps: int,
+    label: str,
+    **fields: Any,
+) -> bool:
+    """Record a sampling boundary without changing the sampling path."""
+    probe = getattr(trainer, "memory_probe", None)
+    if probe is None:
+        return False
+    try:
+        scheduled = should_sample(args, epoch, steps)
+    except AttributeError:
+        scheduled = False
+    if not scheduled:
+        return False
+    if not probe.should_record_step(steps):
+        return False
+    probe.snapshot(
+        label,
+        device=accelerator.device,
+        step=steps,
+        phase="sample",
+        sample_epoch=epoch,
+        **fields,
+    )
+    return True
+
+
+def _run_sample_with_probe(trainer, accelerator, args, epoch, steps: int, callback) -> None:
+    probed = _sample_probe_snapshot(
+        trainer, accelerator, args, epoch, steps, "sample_before"
+    )
+    try:
+        callback()
+    except Exception as exc:
+        if probed:
+            _sample_probe_snapshot(
+                trainer,
+                accelerator,
+                args,
+                epoch,
+                steps,
+                "sample_exception",
+                exception_type=type(exc).__name__,
+                exception_message=str(exc)[:1000],
+                is_cuda_oom="out of memory" in str(exc).lower(),
+            )
+        raise
+    else:
+        if probed:
+            _sample_probe_snapshot(
+                trainer, accelerator, args, epoch, steps, "sample_after"
+            )
 
 
 @dataclass
@@ -301,17 +361,24 @@ def build_loop_state(
 
     # --sample_at_first
     optimizer_eval_fn()
-    trainer.sample_images(
+    _run_sample_with_probe(
+        trainer,
         accelerator,
         args,
         0,
         0,
-        accelerator.device,
-        vae,
-        tokenizers,
-        text_encoder,
-        unet,
-        network=network,
+        lambda: trainer.sample_images(
+            accelerator,
+            args,
+            0,
+            0,
+            accelerator.device,
+            vae,
+            tokenizers,
+            text_encoder,
+            unet,
+            network=network,
+        ),
     )
     optimizer_train_fn()
     is_tracking = len(accelerator.trackers) > 0
@@ -478,17 +545,24 @@ def run_training_loop(trainer, state: LoopState) -> None:
             state.network, state.global_step, epoch, state.num_train_epochs
         )
 
-        trainer.sample_images(
+        _run_sample_with_probe(
+            trainer,
             accelerator,
             args,
             epoch + 1,
             state.global_step,
-            accelerator.device,
-            state.vae,
-            state.tokenizers,
-            state.text_encoder,
-            state.unet,
-            network=state.network,
+            lambda: trainer.sample_images(
+                accelerator,
+                args,
+                epoch + 1,
+                state.global_step,
+                accelerator.device,
+                state.vae,
+                state.tokenizers,
+                state.text_encoder,
+                state.unet,
+                network=state.network,
+            ),
         )
         state.optimizer_train_fn()
 
@@ -936,17 +1010,24 @@ def _maybe_scale_norm(state: LoopState):
 
 def _sample_at_step(trainer, state: LoopState) -> None:
     state.optimizer_eval_fn()
-    trainer.sample_images(
+    _run_sample_with_probe(
+        trainer,
         state.accelerator,
         state.args,
         None,
         state.global_step,
-        state.accelerator.device,
-        state.vae,
-        state.tokenizers,
-        state.text_encoder,
-        state.unet,
-        network=state.network,
+        lambda: trainer.sample_images(
+            state.accelerator,
+            state.args,
+            None,
+            state.global_step,
+            state.accelerator.device,
+            state.vae,
+            state.tokenizers,
+            state.text_encoder,
+            state.unet,
+            network=state.network,
+        ),
     )
 
 

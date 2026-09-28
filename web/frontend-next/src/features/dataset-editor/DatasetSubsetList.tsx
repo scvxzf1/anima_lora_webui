@@ -17,13 +17,11 @@ import { SortableDatasetSubset } from './SortableDatasetSubset';
 export function DatasetSubsetList({
   form,
   disabled,
-  qwenEditIssue,
   workbenchDisabled,
   onOpenWorkbench,
 }: {
   form: UseFormReturn<DatasetFormValues>;
   disabled: boolean;
-  qwenEditIssue: string | null;
   workbenchDisabled: boolean;
   onOpenWorkbench?: (index: number) => void;
 }) {
@@ -128,11 +126,6 @@ export function DatasetSubsetList({
           </button>
         </div>
       </header>
-      {editEnabled && qwenEditIssue ? (
-        <p className="dataset-command-error" role="alert">
-          当前训练配置不兼容：{qwenEditIssue}；数据集可继续编辑，应用时需选择兼容配置。
-        </p>
-      ) : null}
       {editEnabled && rows.fields.some((_field, index) => form.watch(`datasets.${index}.is_reg`)) ? (
         <p className="dataset-command-error" role="alert">编辑 LoRA 首版不支持正则数据，请先移除正则子集。</p>
       ) : null}

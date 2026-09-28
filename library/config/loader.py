@@ -214,6 +214,7 @@ class ConfigSanitizer:
         "alpha_mask": bool,
         "mask_mode": str,
         "cache_dir": str,
+        "reference_image_dir": str,
         "cond_cache_dir": str,
         "text_cache_dir": str,
         "mask_dir": str,

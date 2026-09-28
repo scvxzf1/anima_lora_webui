@@ -6,23 +6,24 @@ export const RESOURCE_GROUPS = [
   ["residency", "块交换与内存卸载"],
   ["activation", "梯度检查点"],
   ["compile", "编译加速"],
+  ["adaptive_precision", "自适应精度"],
+  ["oom_retry", "OOM 重试"],
   ["diagnostics", "诊断与预检"],
   ["topology", "流水线参数（实验审计）"],
   ["other", "其他资源参数"],
 ] as const;
 
 export function resourceGroup(key: string) {
+  if (["mixed_precision"].includes(key)) return "compute";
+  if (["adaptive_precision", "adaptive_fp32_modules", "adaptive_loss_scale"].includes(key))
+    return "adaptive_precision";
   if ([
-    "mixed_precision",
-    "adaptive_precision",
-    "adaptive_fp32_modules",
-    "adaptive_loss_scale",
     "adaptive_oom_retry",
     "adaptive_oom_retry_max_attempts",
     "adaptive_oom_retry_swap_increment",
     "adaptive_oom_retry_max_swap",
     "adaptive_oom_retry_timeout",
-  ].includes(key)) return "compute";
+  ].includes(key)) return "oom_retry";
   if (key === "debug_finite_checks" || key === "v100_flash_stability") return "diagnostics";
   const cluster = CONFIG_FIELD_CATALOG[key]?.cluster;
   return RESOURCE_GROUPS.some(([id]) => id === cluster) ? cluster : "other";
@@ -44,6 +45,12 @@ export function resourceSummary(id: string, draft: TrainingDraft) {
   switch (id) {
     case "compute":
       return `${value("mixed_precision")} · ${value("base_compute")} · ${value("attn_mode")}`;
+    case "adaptive_precision":
+      return value("adaptive_precision");
+    case "oom_retry":
+      return enabled("adaptive_oom_retry")
+        ? `开启 · ${value("adaptive_oom_retry_max_attempts")} 次 · +${value("adaptive_oom_retry_swap_increment")} 块`
+        : "关闭";
     case "residency":
       return enabled("auto_block_swap")
         ? `AUTO · ${value("auto_block_swap_mode")}`

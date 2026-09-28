@@ -154,8 +154,7 @@ class TrainingBootstrap:
 
     @staticmethod
     def validate_qwen_dataset_config(args, user_config: dict) -> None:
-        if getattr(args, "model_family", None) != "qwen_image_2_1":
-            return
+        """Legacy hook name; validate loaded datasets for every model family."""
         from library.training.compat_matrix import check_training_compat
 
         result = check_training_compat({
@@ -651,6 +650,12 @@ class TrainingBootstrap:
         # Optional ConvRot W8A* base path — MUST run after org_forward capture
         # (apply_to/load/grad-ckpt/fp32 residual) and before compile_blocks.
         self.maybe_apply_convrot_base(args, network, unet=unet)
+
+        from library.models.qwen_image_2_1.training_blocks import install_training_block_projections
+
+        mlp_count, qkv_count = install_training_block_projections(args, unet, network)
+        if mlp_count or qkv_count:
+            logger.info("Qwen Image 2.1 experimental projection packing: %s MLP, %s QKV blocks", mlp_count, qkv_count)
 
         # Native-shape flattening + per-block torch.compile. COMPILE LAST:
         # after adapter monkey-patches, optional weight load, and checkpoint

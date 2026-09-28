@@ -13,6 +13,8 @@ save_model_as = "safetensors"
 # MMDiT). CLI --model_family / presets / methods may override. Drives DiT loader,
 # text-strategy, and forward_for_loss dispatch in train.py + generation.py.
 model_family = "anima"
+# Qwen3-VL cache phase only: auto | cpu_offload | gpu | cpu.
+qwen_text_encoder_cache_policy = "auto"
 
 network_module = "networks.lora_anima"
 network_train_unet_only = true

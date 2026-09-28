@@ -534,7 +534,7 @@ describe('DatasetWorkspace', () => {
     expect(screen.getByLabelText('编辑前图片目录')).toBeEnabled();
     expect(screen.getByLabelText('目标图原始目录（编辑后）')).toHaveValue('image_dataset/alpha');
     expect(screen.getByLabelText('目标图训练目录（编辑后）')).toHaveValue('post_image_dataset/alpha');
-    expect(screen.getByText(/当前训练配置不兼容/)).toBeInTheDocument();
+    expect(screen.queryByText(/当前训练配置不兼容/)).not.toBeInTheDocument();
   });
 
   it('edits and saves stage scheduling without any legacy bridge', async () => {

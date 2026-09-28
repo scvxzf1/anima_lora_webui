@@ -70,6 +70,10 @@ class ModelFamilySpec:
     automatic_flow_shift: bool
     supports_anima_selective_lora: bool
     pipeline_parallel: PipelineParallelFamilySpec | None
+    supported_tasks: frozenset[str] = frozenset({"t2i"})
+    training_task_key: str | None = None
+    supported_preview_tasks: frozenset[str] = frozenset({"t2i"})
+    max_preview_references: int = 0
 
 
 MODEL_FAMILY_REGISTRY: dict[str, ModelFamilySpec] = {
@@ -178,6 +182,10 @@ MODEL_FAMILY_REGISTRY: dict[str, ModelFamilySpec] = {
         supported_network_specs=frozenset({"lora"}),
         supports_method_adapters=False,
         plain_lora_only=True,
+        supported_tasks=frozenset({"t2i", "edit"}),
+        training_task_key="qwen_image_2_1_task",
+        supported_preview_tasks=frozenset({"t2i", "edit"}),
+        max_preview_references=4,
         supported_inference_modes=frozenset(),
         supported_inference_samplers=frozenset(),
         supported_attention_modes=frozenset({"torch", "sdpa", "flash"}),
@@ -255,6 +263,9 @@ def model_family_capability_catalog() -> tuple[dict[str, object], ...]:
                 ),
                 "supports_method_adapters": spec.supports_method_adapters,
                 "plain_lora_only": spec.plain_lora_only,
+                "supported_tasks": sorted(spec.supported_tasks),
+                "supported_preview_tasks": sorted(spec.supported_preview_tasks),
+                "max_preview_references": spec.max_preview_references,
                 "supported_attention_modes": sorted(spec.supported_attention_modes),
                 "pipeline_parallel": pipeline_payload,
             }

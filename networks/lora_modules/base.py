@@ -163,7 +163,12 @@ class BaseLoRAModule(torch.nn.Module):
         if not self.enabled or getattr(self, "_fused", False):
             return self.org_forward(x)
 
-        org_forwarded = self.org_forward(x)
+        return BaseLoRAModule.forward_with_base(self, x, self.org_forward(x))
+
+    def forward_with_base(self, x: torch.Tensor, org_forwarded: torch.Tensor) -> torch.Tensor:
+        """Apply this adapter to a base output computed by a shared projection."""
+        if not self.enabled or getattr(self, "_fused", False):
+            return org_forwarded
 
         if not self.training:
             delta = self._eval_delta(x, org_forwarded)

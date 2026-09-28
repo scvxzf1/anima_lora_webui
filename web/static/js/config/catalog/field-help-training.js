@@ -592,6 +592,14 @@ export const FIELD_HELP_TRAINING_ZH = {    learning_rate: help(
         ["不要把 full 粒度的速度当成真实性能。"],
         "默认 block；只有确认 LoKr/MLP 峰值时再临时提高粒度。"
     ),
+    qwen_text_encoder_cache_policy: help(
+        "Qwen3-VL 文本/图文条件缓存阶段的编码器驻留策略。",
+        "auto 自动选择；cpu_offload 在 GPU 计算并卸载到 CPU；gpu 全部驻留 GPU；cpu 仅使用 CPU。",
+        ["CPU 卸载节省显存，但编码更慢。"],
+        ["全部驻留 GPU 可能显存不足。"],
+        ["与 DiT 块交换独立；已有有效缓存复用时不会重新编码。"],
+        "一般保持自动（推荐）；仅在缓存阶段显存不足时调整。"
+    ),
     preprocess_memory_profile: help(
         "预处理阶段的自动批大小或固定预设。",
         "只影响 WebUI/任务链触发的 VAE latent cache 和文本缓存批大小；不改变训练 batch size。",

@@ -22,6 +22,7 @@ from web.services.training.runtime_paths import (
 )
 
 _RUNTIME_ROW_SEMANTIC_KEYS = (
+    "reference_image_dir",
     "mask_mode",
     "mask_dir",
     "alpha_mask",

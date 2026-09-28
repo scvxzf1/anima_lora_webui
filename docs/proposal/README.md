@@ -9,7 +9,8 @@
 
 | 文档 | 状态 | 说明 |
 | --- | --- | --- |
-| [dev_push_audit_plan_20260927.md](dev_push_audit_plan_20260927.md) | 待执行 | 待推 13 个提交与工作区更新的分域审计、隔离验证、候选放行及 origin/dev 推送验收计划 |
+| [qwen_image_2_1_90hx_optimization_20260927.md](qwen_image_2_1_90hx_optimization_20260927.md) | 实验 / 阶段 3 开发中 | INT8 首轮热测、32-head 与 GPU wait 证据修正、PCIe 传输预算及结构性优化排序 |
+| [qwen_image_2_1_training_block_stage3_20260927.md](qwen_image_2_1_training_block_stage3_20260927.md) | 开发中 | 冻结 MLP/QKV 融合、独立 LoRA 梯度与保存契约、激活预算及分段重算验收 |
 | [dragon_next_training_config_plan.md](dragon_next_training_config_plan.md) | 活跃 / 待实施 | Next 训练配置的字段对账、选择规则、排列、补充入口与 T0–T5 分阶段验收计划 |
 | [adaptive_training_roadmap.md](adaptive_training_roadmap.md) | 活跃 / P1、P2 推进中 | FP16/FP32 实际训练、数据游标、OOM 恢复、自动精度选择与双卡多模型分阶段验收计划 |
 | [dragon_frontend_rebuild_plan.md](dragon_frontend_rebuild_plan.md) | 已实施 / 独立入口验收 | FocusFlow 多栏结构与 Zaptix 监控层级；八页新前端已构建，默认切换与真实使用签收待批准 |

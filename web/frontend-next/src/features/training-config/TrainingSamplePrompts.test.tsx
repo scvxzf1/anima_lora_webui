@@ -55,7 +55,7 @@ describe.sequential("training sample prompts", () => {
     <TrainingSamplePrompts file={{ path: "configs/imported/test.toml", method: "lora" }} promptFile="" onClose={onClose} onSaved={async () => {}} />
   </QueryClientProvider>);
   await screen.findByRole("button", { name: "样张 1: old prompt" }, { timeout: 5000 });
-  expect(String(apiRequestMock.mock.calls[0][0])).toContain("configs%2Fsample-prompts%2Fimported%2Ftest.txt");
+  expect(apiRequestMock.mock.calls.some(([input]) => String(input).includes("configs%2Fsample-prompts%2Fimported%2Ftest.txt"))).toBe(true);
   expect(apiRequestMock.mock.calls.every(([, init]) => !init?.method)).toBe(true);
   const user = userEvent.setup();
   await user.click(screen.getByRole("button", { name: "原文" }));

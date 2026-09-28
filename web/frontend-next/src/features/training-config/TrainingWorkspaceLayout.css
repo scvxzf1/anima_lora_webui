@@ -21,7 +21,11 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  padding-bottom: 16px;
+  padding-top: 16px;
+  padding-bottom: 8px;
+}
+.training-config-header {
+  padding-bottom: 12px;
 }
 .training-config-page > :not(.training-workspace-layout) {
   flex-shrink: 0;
@@ -30,16 +34,45 @@
   display: flex;
   justify-content: flex-end;
   gap: 8px;
-  padding-top: 10px;
+  padding-top: 0;
+}
+.training-command-bar {
+  margin-top: 8px;
+  gap: 5px;
+}
+.training-command-bar > button {
+  padding-inline: 8px;
+}
+.training-field-search {
+  margin-bottom: 6px;
+}
+.training-stage-nav {
+  margin-bottom: 6px;
+}
+.training-command-bar .training-tools {
+  align-items: center;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+.training-command-bar .training-tool-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  min-width: 34px;
+  padding: 0;
+}
+.training-command-bar .training-tool-action span {
+  display: none;
 }
 .training-workspace-layout {
   flex: 1;
   min-height: 0;
-  grid-template-columns: clamp(10%, var(--training-library-side-size, 320px), 80%) 10px minmax(0, 1fr);
+  grid-template-columns: minmax(260px, min(42%, max(260px, var(--training-library-side-size, 320px)))) 10px minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr);
   align-items: stretch;
   gap: 0;
-  margin-top: 10px;
+  margin-top: 6px;
 }
 .training-workspace-layout > .training-config-library {
   grid-column: 1;
@@ -137,6 +170,8 @@
 }
 @media (max-width: 800px) {
   .training-config-page { overflow: auto; }
+  .training-config-page { padding-top: 20px; padding-bottom: 24px; }
+  .training-config-header { padding-bottom: 18px; }
   .training-workspace-layout { flex: none; }
   .training-workspace-layout .training-library-resizer { display: none; }
   .training-workspace-layout:not(:has(.training-config-library[hidden])) {
@@ -148,6 +183,12 @@
     margin-top: 0;
   }
   .training-edit-groups { flex: none; overflow: visible; }
+  .training-command-bar .training-tool-action {
+    width: auto;
+    min-width: 0;
+    padding: 0 10px;
+  }
+  .training-command-bar .training-tool-action span { display: inline; }
   .next-layout[data-training-workspace="true"] {
     display: flex;
     flex-direction: column;

@@ -39,7 +39,23 @@ it("places supplemental fields with their related settings", () => {
   expect(preprocessing[0].group).toBe("input");
   expect(groupStageFields("input", preprocessing)[0].title).toBe("预处理与数据加载");
   expect(groupStageFields("input", fields.filter((field) => field.group === "input"))
+    .find((group) => group.id === "preprocess")!.fields.map((field) => field.key))
+    .toContain("qwen_text_encoder_cache_policy");
+  expect(groupStageFields("input", fields.filter((field) => field.group === "input"))
     .find((group) => group.id === "captions")!.fields.map((field) => field.key)).toContain("caption_extension");
   expect(groupStageFields("training", fields.filter((field) => field.group === "training"))
     .find((group) => group.id === "output")!.fields.map((field) => field.key)).toEqual(expect.arrayContaining(["output_dir", "save_every_n_steps"]));
+});
+
+it("places capacity immediately below the base method", () => {
+  const groups = groupStageFields(
+    "method",
+    fields.filter((field) => field.group === "method"),
+  );
+  expect(groups.map((group) => group.id).slice(0, 4)).toEqual([
+    "contract",
+    "capacity",
+    "adapter",
+    "warm-start",
+  ]);
 });

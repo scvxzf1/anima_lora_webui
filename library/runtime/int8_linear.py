@@ -18,6 +18,8 @@ BLOCK_MODULE_RE = re.compile(r"^(?:net\.)?blocks\.(?P<block>\d+)\.(?P<name>.+)$"
 MLP_LINEAR_MODULES = {
     "mlp.layer1",
     "mlp.layer2",
+    "img_mlp.gate_layer",
+    "img_mlp.proj",
 }
 
 ATTENTION_LINEAR_MODULES = {
@@ -32,6 +34,10 @@ ATTENTION_LINEAR_MODULES = {
     "cross_attn.v_proj",
     "cross_attn.kv_proj",
     "cross_attn.output_proj",
+    "attn.to_q",
+    "attn.to_k",
+    "attn.to_v",
+    "attn.to_out.0",
 }
 
 SELF_ATTENTION_QKV_MODULES = {

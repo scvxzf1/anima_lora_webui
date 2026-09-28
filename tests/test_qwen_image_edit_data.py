@@ -214,7 +214,7 @@ def test_edit_target_cache_path_is_rechecked_and_rebuilt(tmp_path: Path, monkeyp
 
 @pytest.mark.parametrize("task,subset,match", [
     ("edit", {"flip_aug": True}, "deterministic reference/target"),
-    ("t2i", {"reference_image_dir": "reference"}, "reference_image_dir is configured"),
+    ("t2i", {"reference_image_dir": "reference"}, "训练任务为 t2i"),
 ])
 def test_loaded_qwen_dataset_config_rechecks_task_contract(task, subset, match) -> None:
     from library.training.bootstrap import TrainingBootstrap

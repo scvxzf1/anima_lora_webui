@@ -487,6 +487,8 @@ def _resize_bucket_args(settings: dict[str, Any] | None = None) -> list[str]:
         settings = merged
 
     out: list[str] = []
+    if _model_family() == "qwen_image_2_1":
+        out.extend(["--model_family", "qwen_image_2_1"])
     mapping = (
         ("resolution", "--resolution"),
         ("min_bucket_reso", "--min_bucket_reso"),
@@ -558,7 +560,7 @@ def _run_caption_backup(row: dict[str, Any]) -> None:
     )
 
 
-def _run_preprocess_resize(row: dict[str, Any], extra: list[str]) -> None:
+def _run_preprocess_resize(row: dict[str, Any], extra: list[str], *, copy_captions: bool = False) -> None:
     mp_args, extra = _resolve_lowres_filter(extra)
     src = str(row.get("source_image_dir") or _path("source_image_dir", "image_dataset"))
     dst = str(row.get("resized_image_dir") or _path("resized_image_dir", "post_image_dataset/resized"))
@@ -574,7 +576,7 @@ def _run_preprocess_resize(row: dict[str, Any], extra: list[str]) -> None:
             src,
             "--dst",
             dst,
-            "--no_copy_captions",
+            *([] if copy_captions else ["--no_copy_captions"]),
             *_recursive_args(row),
             *_path_pattern_args(row),
             *_resize_bucket_args(row),
@@ -615,6 +617,10 @@ def _run_preprocess_vae(row: dict[str, Any], extra: list[str]) -> None:
 
 
 def cmd_preprocess_te(extra):
+    from .qwen_edit_preprocess import uses_qwen_edit
+
+    if uses_qwen_edit(_model_family(), _path_overrides_value()):
+        raise ValueError("Qwen Image 2.1 Edit requires the full `preprocess` task; preprocess-te is unsupported")
     from library.preprocess.caption_cache_settings import resolve_caption_cache_settings
 
     shuffle_variants, tag_dropout_rate = resolve_caption_cache_settings(
@@ -653,6 +659,9 @@ def _run_preprocess_te_qwen_image_2_1(
     row: dict[str, Any], extra: list[str],
     shuffle_variants: str | None = None, tag_dropout_rate: str | None = None,
 ) -> None:
+    from library.models.qwen_image_2_1.cache_policy import validate_cache_policy
+
+    policy = validate_cache_policy(_path_overrides_value().get("qwen_text_encoder_cache_policy", "auto"))
     if float(tag_dropout_rate or 0):
         raise ValueError("Qwen Image 2.1 caption tag dropout is not supported")
     mp_args, extra = _resolve_lowres_filter(extra)
@@ -666,6 +675,7 @@ def _run_preprocess_te_qwen_image_2_1(
     source_mode = os.environ.get("CAPTION_SOURCE_MODE") or row.get("caption_source_mode")
     run([
         PY, "-m", "scripts.qwen_image_2_1.preprocess_te_cache",
+        "--cache_policy", policy,
         "--dir", str(row.get("source_image_dir") or _path("source_image_dir", "image_dataset")),
         "--cache_dir", _text_cache_dir_for_row(row),
         "--qwen3", _path("qwen3", "models/text_encoders/Qwen-Image-2.1"),
@@ -904,6 +914,10 @@ def cmd_preprocess_resize(extra):
 
 
 def cmd_preprocess_vae(extra):
+    from .qwen_edit_preprocess import uses_qwen_edit
+
+    if uses_qwen_edit(_model_family(), _path_overrides_value()):
+        raise ValueError("Qwen Image 2.1 Edit requires the full `preprocess` task; preprocess-vae is unsupported")
     for row in _preprocess_rows():
         _run_preprocess_vae(row, extra)
 
@@ -996,6 +1010,30 @@ def cmd_preprocess(extra):
     # `exp-ip-adapter-preprocess`). Leaving PE out keeps the default LoRA
     # preprocess fast on machines that won't ever use the vision tower.
     non_te_extra, explicit_dop_args = _split_diff_output_preservation_args(list(extra))
+    from .qwen_edit_preprocess import (
+        run_edit_preprocess, snapshot_edit_captions, split_edit_options, uses_qwen_edit,
+    )
+
+    overrides = _path_overrides_value()
+    if uses_qwen_edit(_model_family(), overrides):
+        rows = _preprocess_rows()
+        resize_extra, _ = split_edit_options(non_te_extra)
+        rebuild = {kind: any(_reuse_overwrite_args({**overrides, **row}, kind=kind) for row in rows)
+                   for kind in ("vae", "te")}
+        if rebuild["vae"] != rebuild["te"] and "--overwrite" not in extra:
+            raise ValueError("Qwen Image 2.1 Edit cannot rebuild only VAE or TE caches; use `preprocess --overwrite` to rebuild both")
+        for row in rows:
+            _run_caption_backup(row)
+            _run_preprocess_resize(row, resize_extra, copy_captions=True)
+            snapshot_edit_captions(
+                row["source_image_dir"], row["resized_image_dir"], _caption_extension_for_row(row),
+            )
+        run_edit_preprocess(
+            overrides, run=run, python=PY, path=_path,
+            dtype=_preprocess_precision_dtype(),
+            extra=[*extra, *(["--overwrite"] if rebuild["vae"] else [])],
+        )
+        return
     _, vae_extra = _resolve_lowres_filter(non_te_extra)
     for row in _preprocess_rows():
         _run_caption_backup(row)

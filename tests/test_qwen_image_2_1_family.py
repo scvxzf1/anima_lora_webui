@@ -20,6 +20,7 @@ def test_registry_isolated_cache_and_plain_lora() -> None:
     assert spec.latent_space.cache_suffix == "_qwen_image_2_1.npz"
     assert spec.text_cache.hidden_width == 4096
     assert spec.supported_network_specs == frozenset({"lora"})
+    assert spec.supported_tasks == frozenset({"t2i", "edit"})
     assert spec.plain_lora_only
     assert spec.supported_attention_modes == frozenset({"torch", "sdpa", "flash"})
     assert spec.flash_runtime_dtypes == frozenset({"bf16"})
@@ -106,6 +107,42 @@ def test_edit_dit_forward_packs_reference_then_target_and_returns_target_tail() 
     )
     expected = torch.arange(11, 35, dtype=prediction.dtype).view(1, 1, 4, 6).expand_as(prediction)
     torch.testing.assert_close(prediction, expected)
+
+
+def test_multi_edit_dit_preserves_reference_shapes_order_and_target_tail() -> None:
+    class FakeEditDiT(torch.nn.Module):
+        def forward(self, **kwargs):
+            assert kwargs["hidden_states"].shape == (1, 56, 64)
+            assert kwargs["img_shapes"] == [[(1, 2, 4), (1, 4, 6), (1, 4, 6)]]
+            assert kwargs["img_mask"].shape == (1, 18)
+            assert kwargs["img_mask"].sum().item() == 14
+            torch.testing.assert_close(kwargs["hidden_states"][0, :8], torch.ones(8, 64))
+            torch.testing.assert_close(kwargs["hidden_states"][0, 8:32], torch.full((24, 64), 2.0))
+            sequence = torch.arange(12 - 8 + 56, dtype=torch.float32).view(1, -1, 1)
+            return (sequence.expand(1, -1, 64),)
+
+    target = torch.zeros(1, 64, 4, 6)
+    references = [torch.ones(1, 64, 2, 4), torch.full((1, 64, 4, 6), 2.0)]
+    hiddens = torch.zeros(1, 12, 4096)
+    mask = torch.ones(1, 12, dtype=torch.bool)
+    # 2x4 and 4x6 references contribute 2+6 image slots.
+    slots = torch.tensor([[False] + [True] * 8 + [False] * 3])
+    prediction = forward_for_loss(
+        FakeEditDiT(), target, hiddens, mask, torch.tensor([0.5]),
+        reference_latents=references, image_slot_mask=slots,
+    )
+    expected = torch.arange(36, 60, dtype=prediction.dtype).view(1, 1, 4, 6).expand_as(prediction)
+    torch.testing.assert_close(prediction, expected)
+
+
+def test_multi_edit_rejects_aggregate_slot_mismatch() -> None:
+    with pytest.raises(ValueError, match="image-slot count"):
+        forward_for_loss(
+            torch.nn.Identity(), torch.zeros(1, 64, 4, 6), torch.zeros(1, 9, 4096),
+            torch.ones(1, 9, dtype=torch.bool), torch.tensor([0.5]),
+            reference_latents=(torch.zeros(1, 64, 2, 4), torch.zeros(1, 64, 4, 6)),
+            image_slot_mask=torch.tensor([[True] * 7 + [False] * 2]),
+        )
 
 
 def test_edit_dit_rejects_output_with_unexpected_sequence_length() -> None:

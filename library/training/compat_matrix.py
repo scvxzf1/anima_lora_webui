@@ -103,6 +103,27 @@ def _get(config: Mapping[str, Any] | object, key: str, default: Any = None) -> A
     return getattr(config, key, default)
 
 
+def _with_network_args(config: Mapping[str, Any] | object) -> Mapping[str, Any] | object:
+    """Overlay network_args using the same precedence as training bootstrap."""
+    if isinstance(config, Mapping):
+        values = dict(config)
+    else:
+        try:
+            values = vars(config).copy()
+        except TypeError:
+            return config
+    arguments = values.get("network_args")
+    if not isinstance(arguments, (list, tuple)):
+        return values
+    for argument in arguments:
+        if not isinstance(argument, str) or "=" not in argument:
+            continue
+        key, value = argument.split("=", 1)
+        if key not in {"model_family", "network_module"}:
+            values[key] = value
+    return values
+
+
 def _bool_value(value: Any, fallback: bool = False) -> bool:
     if isinstance(value, bool):
         return value
@@ -165,53 +186,6 @@ def _check_qwen_image_2_1_contract(out: _CompatBuilder, config, *,
 
     task = str(_get(config, "qwen_image_2_1_task", "t2i") or "t2i").strip().lower()
     family = "Qwen Image 2.1 Edit LoRA" if task == "edit" else "Qwen Image 2.1 T2I LoRA"
-    forbid("task", task not in {"t2i", "edit"},
-           "qwen_image_2_1_task must be 't2i' or 'edit'")
-    if task == "edit":
-        dataset_general = _get(config, "general", {})
-        forbid("edit_augmentation", any(
-            _bool_value(_get(source, key))
-            for source in (config, dataset_general)
-            for key in ("flip_aug", "color_aug", "random_crop")
-        ), f"{family} requires deterministic reference/target transforms")
-        forbid("edit_text_cache", not _bool_value(_get(config, "cache_text_encoder_outputs")),
-               "Qwen Image 2.1 Edit requires cached Qwen3-VL prompt/reference outputs")
-        forbid("edit_latent_cache", not _bool_value(_get(config, "cache_latents")),
-               "Qwen Image 2.1 Edit requires VAE latent caching before DiT loading")
-        datasets = _get(config, "datasets", None)
-        if isinstance(datasets, (list, tuple)):
-            edit_rows = [
-                subset
-                for dataset in datasets if isinstance(dataset, Mapping)
-                for subset in (_get(dataset, "subsets", []) or [])
-                if isinstance(subset, Mapping)
-            ]
-            forbid("edit_subsets", not edit_rows and not _get(config, "dataset_config"),
-                   "Qwen Image 2.1 Edit requires at least one dataset subset")
-            for index, subset in enumerate(edit_rows):
-                prefix = f"datasets.subsets[{index}]"
-                forbid("edit_regularization", _bool_value(_get(subset, "is_reg")),
-                       f"{family} does not support regularization subsets ({prefix})")
-                forbid("edit_reference_dir", not str(_get(subset, "reference_image_dir", "") or "").strip(),
-                       f"{family} requires reference_image_dir for every subset ({prefix})")
-                forbid("edit_augmentation", any(_bool_value(_get(subset, key)) for key in ("flip_aug", "color_aug", "random_crop")),
-                       f"{family} requires deterministic reference/target transforms ({prefix})")
-            for index, dataset in enumerate(datasets):
-                if isinstance(dataset, Mapping):
-                    forbid("edit_batch_size", _int_value(_get(dataset, "batch_size"), 1) != 1,
-                           f"{family} currently requires batch_size=1 (datasets[{index}])")
-        elif not _get(config, "dataset_config"):
-            forbid("edit_subsets", True, "Qwen Image 2.1 Edit requires a dataset config")
-    elif isinstance(_get(config, "datasets"), (list, tuple)):
-        has_edit_reference = any(
-            str(_get(subset, "reference_image_dir", "") or "").strip()
-            for dataset in _get(config, "datasets", [])
-            if isinstance(dataset, Mapping)
-            for subset in (_get(dataset, "subsets", []) or [])
-            if isinstance(subset, Mapping)
-        )
-        forbid("edit_task_mismatch", has_edit_reference,
-               "reference_image_dir is configured but qwen_image_2_1_task is 't2i'")
     forbid("mixed_precision", str(_get(config, "mixed_precision", "bf16") or "bf16").lower() != "bf16",
            f"{family} requires mixed_precision=bf16")
     forbid("base_compute", str(_get(config, "base_compute", "bf16") or "bf16").lower() != "bf16",
@@ -250,10 +224,11 @@ def _check_qwen_image_2_1_contract(out: _CompatBuilder, config, *,
            f"{family} uses uniformly sampled dynamic-shift sigmas")
     forbid("weighting_scheme", str(_get(config, "weighting_scheme", "none") or "none").lower() != "none",
            f"{family} requires weighting_scheme=none")
-    forbid("sample_at_first", any(_bool_value(_get(config, key)) if key == "sample_at_first"
-                                  else _int_value(_get(config, key)) > 0
-                                  for key in ("sample_at_first", "sample_every_n_steps", "sample_every_n_epochs")),
-           f"{family} sample preview is not implemented; disable sample scheduling")
+    sampling = any(_bool_value(_get(config, key)) if key == "sample_at_first"
+                   else _int_value(_get(config, key)) > 0
+                   for key in ("sample_at_first", "sample_every_n_steps", "sample_every_n_epochs"))
+    forbid("preview_text_cache", sampling and not _bool_value(_get(config, "cache_text_encoder_outputs")),
+           f"{family} preview requires cached text encoder outputs")
     forbid("layer_start", _get(config, "layer_start") is not None or _get(config, "layer_end") is not None,
            f"{family} layer-range targeting is not implemented")
     forbid("t_min", _get(config, "t_min") is not None or _get(config, "t_max") is not None,
@@ -268,6 +243,7 @@ def check_training_compat(
     """Validate optimization-flag combinations used by training and Web preflight."""
 
     out = _CompatBuilder()
+    config = _with_network_args(config)
 
     from library.training.auto_block_swap.config import configuration_errors
 
@@ -308,9 +284,38 @@ def check_training_compat(
     except ValueError as exc:
         out.error("invalid_model_family", "model_family", str(exc))
         return out.build()
+    from library.training.task_contracts import check_training_task
+
+    check_training_task(out, config, family_spec)
     krea2_family = family_spec.name == "krea2_raw"
     z_image_family = family_spec.name == "z_image"
     qwen_image_2_1_family = family_spec.name == "qwen_image_2_1"
+    fused_projections = str(_get(config, "qwen_fused_projections", "off") or "off").strip().lower()
+    saved_blocks = _get(config, "qwen_saved_projection_blocks", 0) or 0
+    projection_budget = _get(config, "qwen_projection_budget_mib", 0) or 0
+    if not isinstance(saved_blocks, int) or isinstance(saved_blocks, bool) or saved_blocks < 0:
+        out.error("invalid_qwen_saved_projection_blocks", "qwen_saved_projection_blocks", "Expected a nonnegative integer")
+    if not isinstance(projection_budget, int) or isinstance(projection_budget, bool) or projection_budget < 0:
+        out.error("invalid_qwen_projection_budget_mib", "qwen_projection_budget_mib", "Expected a nonnegative integer")
+    if isinstance(saved_blocks, int) and isinstance(projection_budget, int) and (
+        bool(saved_blocks) != bool(projection_budget) or (saved_blocks > 0 and fused_projections != "all")
+    ):
+        out.error("qwen_saved_projection_contract", "qwen_saved_projection_blocks", "Saved projections require mode=all, a positive block count and MiB budget")
+    if fused_projections not in {"off", "mlp", "qkv", "all"}:
+        out.error("invalid_qwen_fused_projections", "qwen_fused_projections", "Expected off, mlp, qkv, or all")
+    elif fused_projections != "off":
+        if not qwen_image_2_1_family:
+            out.error("qwen_fused_projections_family", "qwen_fused_projections", "Projection packing requires qwen_image_2_1")
+        for key, active, detail in (
+            ("mixed_precision", str(_get(config, "mixed_precision", "bf16") or "bf16").lower() != "bf16", "BF16 mixed precision"),
+            ("base_compute", str(_get(config, "base_compute", "bf16") or "bf16").lower() != "bf16", "BF16 base compute"),
+            ("block_swap_transfer_dtype", str(_get(config, "block_swap_transfer_dtype", "bf16") or "bf16").lower() != "bf16", "BF16 block-swap transfer"),
+            ("gradient_checkpointing", not gradient_checkpointing, "full gradient checkpointing"),
+            ("selective_checkpoint", selective_checkpoint != "off", "selective checkpoint off"),
+            ("cpu_offload_checkpointing", cpu_offload_checkpointing or unsloth_offload_checkpointing, "checkpoint offload disabled"),
+        ):
+            if active:
+                out.error("qwen_fused_projections_" + key, key, "Experimental projection packing requires " + detail)
     pipeline_parallel_error: ValueError | None = None
     try:
         pipeline_parallel = PipelineParallelConfig.from_config(config).enabled
@@ -386,6 +391,16 @@ def check_training_compat(
         adapter_conflicts = []
         if network_module not in {"", "networks.lora_anima"}:
             adapter_conflicts.append(f"network_module={network_module!r}")
+        if family_spec.supported_network_specs is not None:
+            from networks.registry import resolve_network_spec
+
+            try:
+                network_spec = resolve_network_spec(config)
+            except ValueError as exc:
+                adapter_conflicts.append(f"network_args ({exc})")
+            else:
+                if network_spec.name not in family_spec.supported_network_specs:
+                    adapter_conflicts.append(f"network_spec={network_spec.name!r}")
         adapter_conflicts.extend(
             flag
             for flag in KREA2_UNSUPPORTED_ADAPTER_FLAGS
@@ -403,10 +418,14 @@ def check_training_compat(
         )
         if router_source != "none":
             adapter_conflicts.append(f"router_source={router_source!r}")
-        if _float_value(_get(config, "dora_wd"), 0.0) > 0:
+        if _bool_value(_get(config, "dora_wd"), False):
             adapter_conflicts.append("dora_wd")
         if _int_value(_get(config, "step_expert_K"), 0) > 1:
             adapter_conflicts.append("step_expert_K")
+        if _bool_value(_get(config, "train_adaln"), False):
+            adapter_conflicts.append("train_adaln")
+        if _int_value(_get(config, "num_registers"), 0) > 0:
+            adapter_conflicts.append("num_registers")
         if functional_loss_weight > 0:
             adapter_conflicts.append("functional_loss_weight")
         if adapter_conflicts:

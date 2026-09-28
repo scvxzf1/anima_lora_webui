@@ -1,6 +1,6 @@
 .training-config-page
   .training-workspace-layout:not(:has(.training-config-library[hidden])) {
-  grid-template-columns: clamp(10%, var(--training-library-side-size, 320px), 80%) 10px minmax(0, 1fr);
+  grid-template-columns: minmax(260px, min(42%, max(260px, var(--training-library-side-size, 320px)))) 10px minmax(0, 1fr);
 }
 .training-config-library > * {
   flex-shrink: 0;

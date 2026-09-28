@@ -41,6 +41,50 @@ def test_preflight_uses_shared_matrix_for_unsloth_cpu_conflict(
     )
 
 
+def test_preflight_rejects_qwen_network_args_outside_plain_lora(
+    tmp_path: Path, monkeypatch
+) -> None:
+    _write_selected_checkpoint_preflight_config(
+        tmp_path,
+        monkeypatch,
+        [
+            'model_family = "qwen_image_2_1"',
+            'network_module = "networks.lora_anima"',
+            'network_args = ["dora_wd=true"]',
+        ],
+    )
+
+    result = _preflight()
+
+    assert result["ok"] is False
+    assert any(
+        "plain LoRA" in message
+        for message in _messages(result, "errors", "network_module")
+    )
+
+
+def test_preflight_rejects_qwen_register_tokens_before_network_creation(
+    tmp_path: Path, monkeypatch
+) -> None:
+    _write_selected_checkpoint_preflight_config(
+        tmp_path,
+        monkeypatch,
+        [
+            'model_family = "qwen_image_2_1"',
+            'network_module = "networks.lora_anima"',
+            'network_args = ["num_registers=4"]',
+        ],
+    )
+
+    result = _preflight()
+
+    assert result["ok"] is False
+    assert any(
+        "num_registers" in message
+        for message in _messages(result, "errors", "network_module")
+    )
+
+
 def test_preflight_uses_shared_matrix_for_block_swap_soft_tokens_and_functional_loss(
     tmp_path: Path, monkeypatch
 ) -> None:

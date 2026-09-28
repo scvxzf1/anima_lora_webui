@@ -1,9 +1,21 @@
 # Dragon Next 训练配置整理与分阶段验收计划
 
-状态：活跃提案 / 审查完成，功能待实施
+状态：活跃提案 / T0 基线切片、T1 依赖切片、T2 布局与键盘基线、T3 Qwen 首批切片已落地，持续验收中
 审查日期：2026-09-27
 适用范围：`/next/training`，React Next 训练配置工作台
 基线：当前本地 `dev` 工作树及 `http://127.0.0.1:20203/next/training`；包含已有未提交开发，不等同于线上分支快照。
+
+本轮落地（隔离开发服务 `http://127.0.0.1:20522/next/training`）：
+
+- T1：统一 `visible/enabled/reason/code`，合并共享披露规则；epochs→steps 冲突禁用，搜索不绕过适用性，不适用分支和未知键仅在审计中可见且不可编辑；预检定位禁用控件时聚焦字段行。
+- T2：方法簇顺序固定为“方法契约 → Adapter → 热启动 → 容量”，资源区拆出“自适应精度”和“OOM 重试”，配置库侧宽度上限 42%，保留窄屏纵向布局。
+- T3 首批：Qwen `t2i/edit` 成为正式输入字段；旧配置缺失时默认 `t2i`，模型族不匹配时默认隐藏并禁用，后端 capability catalog 暴露 `supported_tasks`。
+- T0 增量：从 Anima、Krea-2、Z-Image、Qwen 四个真实方法 TOML 构建逐键 manifest，比较公共字段的类型、页面分组及 catalog owner；修正 `use_moe_style`、检查点间隔、Flow 偏移、CPU 检查点卸载和运行时布尔字段的类型漂移；`dim_from_weights=false` 保持布尔语义，未知键进入审计 owner。
+- T1 增量：覆盖 AUTO／手动 swap 双向切换、compile 子项依赖、旧值保留和仅父项变更时的 patch；禁用原因与 UI 控件状态均有测试。
+- T2 增量：浏览器验证配置库宽度 42% 上限、260px 最小宽度、侧／顶布局持久化；编辑区在 1440×900 达到 420px、1280×720 达到 300px；768×1024 与 390×844 无横溢出；1280×720 明暗主题、200% 缩放与调整器键盘操作通过。
+- 证据：`web-next-check src/features/training-config`、`tests/test_dragon_config_boolean_controls_frontend.py`、`training-field-availability.spec.ts`、`training-preflight-locate.spec.ts`、`training-library-resize.spec.ts`、`scale-keyboard.spec.ts`、`training-draft-flow.spec.ts` 和 `model-task-capabilities.spec.ts` 定向检查通过。mock E2E 未连接真实训练写接口；未修改配置、运行真实预检、启动训练或入队。
+
+仍未完成：T0 完整字段 schema（选项、默认／未设置、依赖、序列化位置和来源）及持久化差异产物；T1 自适应精度 × family × OOM retry 完整矩阵；T2 训练字段完整键盘遍历；T3 其余确认缺项；T4 字段级 provenance、恢复继承 API 和隐藏修改摘要；T5 综合签收。
 
 ## 目标与推荐顺序
 
@@ -17,15 +29,15 @@
 该提案主要描述旧 Dragon，不能把其「已实现」直接当作 Next 的验收证据，也不沿用其中历史字段数量和已经变化的 family 限制。
 Next 现有四阶段采用 tab 切换；本计划保留这个交互，不同时改为长页滚动导航。
 
-## 已核实的现状
+## 实施前基线与当前验证
 
-审查包括真实页面只读操作、源码交叉检查和既有测试入口核对。未修改训练配置、运行预检、启动训练或加入队列。
-本次未运行产品自动化测试；文中列出的产品测试是后续执行入口，既有测试存在不代表本次已经通过。
+审查包括真实页面只读操作、源码交叉检查、前端定向测试、代表 TOML 字段 manifest 和 mock 浏览器回归。未修改训练配置、运行真实预检、启动训练或加入队列。下表记录实施前问题；当前处理状态以上方落地记录和实时源码、测试为准，不能将表中观察当作尚存缺陷。
+本轮未把完整浏览器套件或生产构建当作通过依据；缓存 token 相关旧 Dragon 套件仍有与本切片无关的基线失败，详见最终验收记录。
 
 页面加载稳定后，当前 Krea-2 配置显示 `163 / 249`。这是该配置与 preset 下的一次观测，不能作为全局字段常量。
-真实截图核对了当前默认视口、`1280×720` 和 `390×844` 的浅色界面；尚未验收暗色、键盘全流程、缩放和所有模型族组合。
+自动化视口覆盖了 `1440×900`（编辑区 ≥420px）、`1280×720`（编辑区 ≥300px、明暗主题、200% 缩放）、`768×1024`、`390×844` 无整页横溢出，以及 `1600×900`／`1200×900` 的配置库拖拽和键盘调整。尚未覆盖训练字段完整键盘遍历和全部模型族组合。
 
-| 优先级 | 已核实的观察 | 对使用的影响 | 建议处理 |
+| 优先级 | 实施前观察 | 对使用的影响 | 处理方向 |
 | --- | --- | --- | --- |
 | P1 | `max_train_epochs` 已设置时，搜索 `max_train_steps` 可以找到并编辑该项，旁边同时提示该值将被覆盖 | 用户改了数值却不生效 | 将可见、可编辑、有效值三种语义分开；被覆盖项禁用并能定位控制项 |
 | P1 | 搜索会越过「当前适用／已修改」过滤；编辑器的 `disabled` 只接收页面 busy 等状态，没有合并字段 availability | 搜索可重新打开不可用字段；「已修改」搜索也可能混入未改项 | 搜索只负责匹配，适用性和编辑权限独立判定；审计入口显式展示不适用结果 |
@@ -121,8 +133,8 @@ Next 现有四阶段采用 tab 切换；本计划保留这个交互，不同时�
 T2 的高度是本次提出的设计验收目标，不是现有性能数据。若硬件列表、缩放使固定高度目标不合理，应以可收起上下文保证编辑区，并记录调整后的基准。
 T4 若需要后端提供来源链或删除覆盖操作，拆成单独接口变更验收；不能用写入空串、`false` 或 `null` 假装恢复继承。
 
-第一批可评审切片应包含：字段基线、epochs／steps 和 AUTO／手动 swap 两组联动、方法选择前置、顶部布局收紧。
-这些完成后即可验证新规范是否有效，再推广到 Qwen、optimizer 与实验参数。
+第一批可评审切片已包含：epochs／steps 联动、方法选择前置、资源分组拆分和顶部布局收紧；Qwen 任务入口已作为补充切片落地。
+下一批先完成 T0 完整 schema/差异产物、T1 自适应精度与 OOM retry 矩阵，以及 T2 训练字段键盘遍历；然后设计并单独验证 T4 provenance 与恢复继承 API，最后进入 T5 综合签收。
 
 ## 验收场景与证据
 
@@ -148,13 +160,13 @@ T4 若需要后端提供来源链或删除覆盖操作，拆成单独接口变�
 
 | 领域 | 现有入口 | 本轮需要补充 |
 | --- | --- | --- |
-| 字段与分组 | `trainingForm.test.ts`、`stageGroups.test.tsx`、`TrainingResourceGroups.test.tsx` | 显式类型、选项合法性、依赖拓扑、逐键顺序、未知键 owner |
+| 字段与分组 | `trainingForm.test.ts`、`stageGroups.test.tsx`、`TrainingResourceGroups.test.tsx` | 四族真实 TOML 的 key/type/group/owner 差异、完整字段 schema、选项合法性、依赖拓扑、未知键审计 |
 | 草稿／提交 | `TrainingWorkspace.test.tsx`、`TrainingLaunchDialog.test.tsx` | 隐藏修改摘要、禁用不写、恢复继承、同值显式覆盖 |
 | 旧共享目录／披露 | `tests/test_dragon_config_stage_catalog_frontend.py`、`tests/test_dragon_config_disclosure_frontend.py` | Next 与共享纯规则的一致性；不能只跑旧 Dragon 测试 |
 | 真实 Python 契约 | `tests/test_dragon_next_training_config_acceptance.py`、`tests/test_web_preflight_compat_matrix.py`、`tests/test_model_family_variant_selection.py` | 临时根保存后的 merged 与预检一致、Qwen task／能力边界 |
-| Qwen 数据 | `qwenImage21Edit.test.ts`、`DatasetApplyDialog.test.tsx`、`tests/test_web_qwen_image_edit_dataset.py` | 训练页任务选择与已有 dataset apply 的一致性 |
+| Qwen 数据 | `editDataset.test.ts`、`DatasetApplyDialog.test.tsx`、`tests/test_web_qwen_image_edit_dataset.py` | 训练页任务选择与已有 dataset apply 的一致性 |
 | 实验精度 | `tests/test_adaptive_training_precision.py`、`tests/test_adaptive_precision_contract.py` | 前端选项／禁用与后端模式解析、OOM retry 契约一致；需要补相应 React 测试 |
-| 浏览器 | `training-draft-flow.spec.ts`、`training-preflight-locate.spec.ts`、`training-devices.spec.ts`、`training-root-isolation.spec.ts` | 三态字段、恢复搜索、禁用焦点、补项与模型切换矩阵、编辑空间 |
+| 浏览器 | `training-draft-flow.spec.ts`、`training-preflight-locate.spec.ts`、`training-library-resize.spec.ts`、`scale-keyboard.spec.ts`、`model-task-capabilities.spec.ts` | 三态字段、恢复搜索、禁用焦点、补项与模型切换矩阵、编辑区高度、训练字段键盘路径 |
 
 下列命令供后续实施执行，从仓库根目录运行；逐阶段选择相关文件，避免每次都跑完整前端。
 
@@ -198,13 +210,13 @@ DRAGON_VERIFY_URL=http://127.0.0.1:20203 DRAGON_VERIFY_OUTPUT=/tmp/dragon-next-t
 | --- | --- |
 | [fieldCatalog.ts](../../web/frontend-next/src/features/training-config/fieldCatalog.ts) | `fieldsForConfig` 动态字段集合／类型；`fieldAvailability`；选项过滤 |
 | [trainingForm.ts](../../web/frontend-next/src/features/training-config/trainingForm.ts) | 显式基础字段、草稿类型、dirty 比较、patch 与 own-key 标签 |
-| [TrainingFieldEditor.tsx](../../web/frontend-next/src/features/training-config/TrainingFieldEditor.tsx) | 只提示不可用原因，控件 disabled 未合并 availability |
+| [TrainingFieldEditor.tsx](../../web/frontend-next/src/features/training-config/TrainingFieldEditor.tsx) | 控件禁用状态和不可用原因由合并后的字段规则驱动 |
 | [useTrainingWorkspace.ts](../../web/frontend-next/src/features/training-config/useTrainingWorkspace.ts) | `visibleFields` 中搜索与视图条件、保存与执行状态 |
 | [TrainingEditor.tsx](../../web/frontend-next/src/features/training-config/TrainingEditor.tsx) | 搜索计数、tab 切换、上下文与字段编辑器 |
 | [stageGroups.ts](../../web/frontend-next/src/features/training-config/stageGroups.ts)、[resourceGroups.ts](../../web/frontend-next/src/features/training-config/resourceGroups.ts) | 簇顺序、默认展开、实验字段归组 |
 | [family_registry.py](../../library/models/family_registry.py)、[compat_matrix.py](../../library/training/compat_matrix.py) | 当前模型族选择能力与最终训练组合约束 |
-| [model-family.js](../../web/static/js/features/config-form/model-family.js)、[config-field-availability.js](../../web/static/js/dragon-ui/pages/config-field-availability.js) | 共享能力数据与字段依赖；不等同于完整 Next 披露流程 |
-| [DatasetApplyDialog.tsx](../../web/frontend-next/src/features/dataset-editor/DatasetApplyDialog.tsx)、[qwenImage21Edit.ts](../../web/frontend-next/src/features/dataset-editor/qwenImage21Edit.ts) | 已有 Edit 配对及写入 task 的确认流程 |
+| [model-family.js](../../web/static/js/features/config-form/model-family.js)、[config-field-availability.js](../../web/static/js/dragon-ui/pages/config-field-availability.js)、[config-field-disclosure-rules.js](../../web/static/js/dragon-ui/pages/config-field-disclosure-rules.js) | 共享能力、字段依赖与披露；Next 另保留未进旧 catalog 的正式字段 |
+| [DatasetApplyDialog.tsx](../../web/frontend-next/src/features/dataset-editor/DatasetApplyDialog.tsx)、[editDataset.ts](../../web/frontend-next/src/features/dataset-editor/editDataset.ts) | 已有 Edit 配对及写入 task 的确认流程 |
 | [training-preflight-locate.spec.ts](../../web/frontend-next/e2e/training-preflight-locate.spec.ts) | 已有定位流程与焦点断言，禁用改造需要同步扩展 |
 | [前端工程说明](../../web/frontend-next/README.md)、[任务 wrapper](../../scripts/tasks/web.py) | 隔离测试、构建发布、生产只读检查边界 |
 

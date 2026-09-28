@@ -2,7 +2,9 @@ import {
   FIELD_LABEL_ZH,
   FIELD_OPTIONS,
 } from "../../../../static/js/config/catalog/labels-options.js";
+import { configFieldInputKind, normalizeBooleanConfigValue } from "../../../../static/js/dragon-ui/pages/config-field-types.js?v=training-field-types-20260927";
 import { CONFIG_FIELD_CATALOG } from "../../../../static/js/dragon-ui/pages/config-field-catalog.js";
+import { configFieldDisclosure } from "../../../../static/js/dragon-ui/pages/config-field-disclosure-rules.js?v=auto-block-swap-20260908-v3";
 import { displayConfigValue } from "../../../../static/js/dragon-ui/pages/config-values.js";
 import {
   configFieldAvailability,
@@ -11,9 +13,37 @@ import {
 import {
   configureModelFamilyCapabilities,
   modelFamilyOptionSupported,
+  normalizeModelFamily,
 } from "../../../../static/js/features/config-form/model-family.js?v=qwen-image-21-v2";
 import { apiRequest } from "../../api/client";
-import { TRAINING_FIELDS, type TrainingFieldSpec } from "./trainingForm";
+import {
+  sameTrainingValue,
+  TRAINING_FIELDS,
+  type TrainingDraft,
+  type TrainingFieldSpec,
+} from "./trainingForm";
+
+export type FieldAvailability = {
+  visible: boolean;
+  enabled: boolean;
+  reason: string;
+  code: string | null;
+};
+
+// These branches are unrelated to the current method/adapter and belong in
+// the audit view. Conflicts that a user can resolve stay visible but disabled.
+const HIDDEN_AVAILABILITY_CODES = new Set([
+  "method-context",
+  "method-scope",
+  "spd-method",
+  "chimera-method",
+  "ip-adapter-method",
+  "adapter-family",
+  "lokr-adapter",
+  "vera-adapter",
+  "dora-adapter",
+]);
+const EXPLICIT_TRAINING_FIELD_KEYS = new Set(TRAINING_FIELDS.map((field) => field.key));
 
 // Reuse metadata only; none of the legacy DOM runtime is mounted in React.
 export function fieldsForConfig(
@@ -28,22 +58,14 @@ export function fieldsForConfig(
     if (key === "general" || key === "datasets" || key.includes(".")) continue;
     const value = displayConfigValue(key, config);
     const options = FIELD_OPTIONS[key];
+    const kind = configFieldInputKind(key, value, options);
     fields.set(key, {
       key,
       label: FIELD_LABEL_ZH[key] || key,
       group: CONFIG_FIELD_CATALOG[key]?.stage || "training",
-      kind:
-        typeof value === "boolean"
-          ? "boolean"
-          : typeof value === "number"
-            ? "number"
-            : value !== null && typeof value === "object"
-              ? "json"
-              : options?.every((v) => typeof v === "string")
-                ? "select"
-                : "text",
+      kind,
       options: options?.map(String),
-      step: typeof value === "number" ? "any" : undefined,
+      step: kind === "number" ? "any" : undefined,
     });
   }
   return [...fields.values()].map((field) => {
@@ -69,17 +91,43 @@ export function fieldAvailability(
   key: string,
   values: Record<string, unknown>,
   method: string,
-) {
-  return configFieldAvailability(key, {
+): FieldAvailability {
+  if (key === "qwen_image_2_1_task" && normalizeModelFamily(values.model_family) !== "qwen_image_2_1") {
+    return {
+      visible: false,
+      enabled: false,
+      reason: "Qwen 任务仅适用于 qwen_image_2_1；先选择该模型族。",
+      code: "qwen-task-family",
+    };
+  }
+  const context = {
     values,
     method,
     adapter: resolveConfigAdapterKind(values),
     modelFamily: values.model_family || "anima",
     baseCompute: values.base_compute || "bf16",
     maxTrainEpochsConfigured: Number(values.max_train_epochs) > 0,
-    dimFromWeights: Boolean(values.dim_from_weights),
+    dimFromWeights: normalizeBooleanConfigValue("dim_from_weights", values.dim_from_weights),
     networkWeights: String(values.network_weights || ""),
-  });
+  };
+  const result = configFieldAvailability(key, context) as {
+    visible?: boolean;
+    enabled?: boolean;
+    reason?: string;
+    code?: string | null;
+  };
+  const disclosure = CONFIG_FIELD_CATALOG[key] || !EXPLICIT_TRAINING_FIELD_KEYS.has(key)
+    ? configFieldDisclosure(key, context)
+    : { visible: true, reason: "", code: null };
+  const hidden = disclosure.visible === false;
+  const code = hidden ? disclosure.code : result.code || null;
+  const visible = !hidden && (result.visible ?? !HIDDEN_AVAILABILITY_CODES.has(code || ""));
+  return {
+    visible,
+    enabled: visible && result.enabled !== false,
+    reason: hidden ? disclosure.reason : result.reason || "",
+    code,
+  };
 }
 
 export function availableFieldOptions(
@@ -89,4 +137,29 @@ export function availableFieldOptions(
   return field.options?.filter((option) =>
     modelFamilyOptionSupported(field.key, family, option),
   );
+}
+
+export function filterTrainingFields(
+  fields: TrainingFieldSpec[],
+  draft: TrainingDraft,
+  baseline: TrainingDraft,
+  search: string,
+  view: string,
+  method: string,
+) {
+  const query = search.trim().toLowerCase();
+  return fields.filter((field) => {
+    const changed = !sameTrainingValue(
+      draft[field.key],
+      baseline[field.key],
+      field.kind,
+    );
+    const availability = fieldAvailability(field.key, draft, method);
+    const matches = !query || `${field.label} ${field.key}`.toLowerCase().includes(query);
+    if (!matches) return false;
+    if (availability.code === "auto-block-swap-disabled") return false;
+    if (view === "all") return true;
+    if (view === "changed") return changed;
+    return availability.visible;
+  });
 }

@@ -28,8 +28,14 @@ def _apply_runtime_env(env: dict[str, str], runtime: dict[str, Any] | None) -> N
     if not runtime:
         return
     env["ANIMA_RUNTIME_CONFIG"] = str(runtime.get("runtime_config_file") or "")
-    env["TORCHINDUCTOR_CACHE_DIR"] = str(runtime.get("torchinductor_cache_dir") or "")
-    env["TRITON_CACHE_DIR"] = str(runtime.get("triton_cache_dir") or "")
+    # Compiler subprocesses may change cwd; display-relative paths are not
+    # safe for generated sources, shared libraries or compiler cache roots.
+    for env_key, runtime_key in (
+        ("TORCHINDUCTOR_CACHE_DIR", "torchinductor_cache_dir"),
+        ("TRITON_CACHE_DIR", "triton_cache_dir"),
+    ):
+        path = _resolve_display_path(str(runtime.get(runtime_key) or ""))
+        env[env_key] = str(path) if path is not None else ""
 
 
 def _runtime_meta(runtime: dict[str, Any] | None) -> dict[str, str]:

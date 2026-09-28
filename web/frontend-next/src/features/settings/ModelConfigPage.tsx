@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { ApiError } from "../../api/client";
+import { capabilityLabels, findModelCapability, previewCapabilityLabels, useModelCapabilities } from "../../api/modelCapabilities";
 import { useServerDraft } from "../../components/useServerDraft";
 import { QueryFeedback } from "../../components/QueryFeedback";
 import {
@@ -39,6 +40,9 @@ export function ModelConfigPage() {
   const editor = useServerDraft(query.data);
   const [selectedId, setSelectedId] = useState("");
   const [search, setSearch] = useState("");
+  const [taskFilter, setTaskFilter] = useState("");
+  const capabilities = useModelCapabilities();
+  const modelCapability = (family: string) => findModelCapability(capabilities.data?.items, family);
   const [notice, setNotice] = useState("");
   const save = useMutation({
     mutationFn: (submitted: ModelConfigResponse) => saveModelConfigs(submitted),
@@ -171,6 +175,17 @@ export function ModelConfigPage() {
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                 />
+                <select aria-label="筛选训练能力" value={taskFilter} onChange={(e) => setTaskFilter(e.target.value)}>
+                  <option value="">全部训练能力</option>
+                  <option value="edit">编辑训练</option>
+                  <option value="t2i">普通文生图</option>
+                </select>
+                {taskFilter && capabilities.error && (
+                  <small role="alert">模型能力读取失败，暂不应用能力筛选，已保留全部模型配置。</small>
+                )}
+                {taskFilter && capabilities.isPending && (
+                  <small role="status">模型能力读取中，暂时显示全部模型配置。</small>
+                )}
                 {groups.map((group) => (
                   <section key={group.id}>
                     <div className="library-group-heading">
@@ -205,11 +220,17 @@ export function ModelConfigPage() {
                     {group.item_ids
                       .map((id) => draft.items.find((entry) => entry.id === id))
                       .filter(
-                        (entry) =>
-                          entry &&
-                          `${entry.name} ${entry.model_family}`
-                            .toLowerCase()
-                            .includes(search.toLowerCase()),
+                        (entry) => {
+                          if (!entry) return false;
+                          const capability = capabilities.error ? undefined : modelCapability(entry.model_family);
+                          const supportsTask = capability?.supported_tasks?.includes(taskFilter);
+                          return (
+                            (!taskFilter || !capability?.supported_tasks || supportsTask) &&
+                            `${entry.name} ${entry.model_family} ${capabilityLabels(capability).join(" ")}`
+                              .toLowerCase()
+                              .includes(search.toLowerCase())
+                          );
+                        },
                       )
                       .map((entry) => (
                         <button
@@ -224,6 +245,7 @@ export function ModelConfigPage() {
                             {entry!.model_family}
                             {draft.default_id === entry!.id ? " · 默认" : ""}
                           </small>
+                          <small>{capabilityLabels(modelCapability(entry!.model_family)).join(" · ")}</small>
                         </button>
                       ))}
                   </section>
@@ -272,6 +294,19 @@ export function ModelConfigPage() {
                   </div>
                 </header>
                 <div className="settings-grid">
+                  <div className="full-width" aria-label="模型训练能力" aria-live="polite">
+                    <span>训练能力</span>
+                    <div className="model-capability-tags">
+                      {capabilityLabels(modelCapability(item.model_family)).map((label) => <span key={label}>{label}</span>)}
+                    </div>
+                    {capabilities.error && <small role="alert">模型能力读取失败：{capabilities.error.message}<button type="button" onClick={() => void capabilities.refetch()} title="重新读取模型能力" aria-label="重新读取模型能力"><RotateCcw size={16} /></button></small>}
+                  </div>
+                  <div className="full-width" aria-label="模型采样能力" aria-live="polite">
+                    <span>采样能力</span>
+                    <div className="model-capability-tags">
+                      {previewCapabilityLabels(modelCapability(item.model_family)).map((label) => <span key={label}>{label}</span>)}
+                    </div>
+                  </div>
                   <label>
                     <span>名称</span>
                     <input
@@ -284,6 +319,7 @@ export function ModelConfigPage() {
                   <label>
                     <span>模型族</span>
                     <select
+                      aria-label="模型族"
                       value={item.model_family}
                       onChange={(e) => update({ model_family: e.target.value })}
                     >

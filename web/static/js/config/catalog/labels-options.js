@@ -130,6 +130,8 @@ export const FIELD_LABEL_ZH = {
     max_data_loader_n_workers: 'DataLoader 进程数',
     min_snr_gamma: 'Min-SNR Gamma',
     model_family: '模型家族',
+    qwen_image_2_1_task: 'Qwen 任务',
+    qwen_text_encoder_cache_policy: '文本编码器缓存策略',
     max_bucket_reso: '最大桶边长',
     min_rank: '最小秩',
     min_bucket_reso: '最小桶边长',
@@ -265,6 +267,8 @@ export const FIELD_LABEL_ZH = {
 };
 
 export const FIELD_OPTIONS = {
+    qwen_image_2_1_task: ['t2i', 'edit'],
+    qwen_text_encoder_cache_policy: ['auto', 'cpu_offload', 'gpu', 'cpu'],
     auto_block_swap_mode: ['startup', 'dynamic'],
     auto_block_swap_preference: ['balanced', 'vram', 'ram'],
     pipeline_parallel_stages: [2],

@@ -16,7 +16,7 @@ import {
 } from "./api";
 import {
   fieldsForConfig,
-  fieldAvailability,
+  filterTrainingFields,
   fetchFieldCapabilities,
 } from "./fieldCatalog";
 import {
@@ -255,27 +255,14 @@ export function useTrainingWorkspace() {
     Boolean(launchMode) ||
     Boolean(rawMode) ||
     promptsOpen;
-  const visibleFields = fields.filter((field) => {
-    const changed = !sameTrainingValue(
-      draft[field.key],
-      baseline[field.key],
-      field.kind,
-    );
-    const applicable = fieldAvailability(
-      field.key,
-      draft,
-      selectedFile?.method || "lora",
-    ).enabled;
-    return (
-      `${field.label} ${field.key}`
-        .toLowerCase()
-        .includes(fieldSearch.toLowerCase()) &&
-      (fieldSearch ||
-        fieldView === "all" ||
-        changed ||
-        (fieldView === "applicable" && applicable))
-    );
-  });
+  const visibleFields = filterTrainingFields(
+    fields,
+    draft,
+    baseline,
+    fieldSearch,
+    fieldView,
+    selectedFile?.method || "lora",
+  );
   const commandBlocked =
     !selectedFile ||
     busy ||

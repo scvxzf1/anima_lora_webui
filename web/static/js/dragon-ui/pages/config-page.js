@@ -5,9 +5,9 @@
  * Language: Chinese labels and descriptions, English config keys hidden by default.
  */
 
-import { FIELD_LABEL_ZH, FIELD_OPTIONS } from '../../config/catalog/labels-options.js?v=auto-block-swap-20260908-v3';
+import { FIELD_LABEL_ZH, FIELD_OPTIONS } from '../../config/catalog/labels-options.js?v=qwen-cache-policy-20260928';
 import { RESOURCE_NUMBER_CONSTRAINTS, resourceOptionLabel } from '../../config/catalog/resource-controls.js?v=auto-block-swap-20260908-v3';
-import { FIELD_HELP_SUMMARY_ZH } from '../../config/catalog/field-help-summary.js?v=auto-block-swap-20260908-v3';
+import { FIELD_HELP_SUMMARY_ZH } from '../../config/catalog/field-help-summary.js?v=qwen-cache-policy-20260928';
 import { configFieldPlaceholder } from '../../config/catalog/field-placeholders.js?v=dragon-ui-20260830v2';
 import {
     ALL_LORA_ADAPTER_SCOPED_FIELD_KEYS,
@@ -19,7 +19,7 @@ import {
     LOKR_SCOPED_FIELD_KEYS,
     RETIRED_CONFIG_FORM_FIELDS,
     VERA_SCOPED_FIELD_KEYS,
-} from '../../config/catalog/defaults.js?v=auto-block-swap-20260908-v3';
+} from '../../config/catalog/defaults.js?v=qwen-cache-policy-20260928';
 import { VARIANT_METHOD_FAMILY } from '../../config/catalog/form-layout.js?v=auto-block-swap-20260908-v3';
 import { createApiClient } from '../../shared/api.js?v=dragon-ui-20260812v35';
 import {
@@ -56,7 +56,7 @@ import {
     uniqueConfigEntries,
 } from './config-all-view.js?v=auto-block-swap-20260908-v3';
 import { buildConfigBlocks } from './config-block-metadata.js?v=auto-block-swap-20260908-v3';
-import { configFieldDisclosure } from './config-field-disclosure-rules.js?v=auto-block-swap-20260908-v3';
+import { configFieldDisclosure } from './config-field-disclosure-rules.js?v=qwen-cache-policy-20260928';
 import {
     configFieldAvailability,
     resolveConfigAdapterKind,

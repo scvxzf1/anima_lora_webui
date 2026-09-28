@@ -141,5 +141,6 @@ def test_public_model_family_catalog_exposes_runtime_relevant_capabilities():
         "sdpa",
         "torch",
     }
+    assert catalog["qwen_image_2_1"]["supported_tasks"] == ["edit", "t2i"]
     assert catalog["z_image"]["text_cache_suffix"] == "_z_image_te.safetensors"
     assert catalog["z_image"]["pipeline_parallel"]["runtime_available"] is False

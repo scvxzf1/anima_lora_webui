@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections import OrderedDict
 from dataclasses import dataclass
 from enum import Enum
 from typing import Callable
@@ -19,90 +18,6 @@ class _DiffusersAttentionApi:
     processor_type: type[object]
     prepare_qkv: Callable
     dispatch_attention: Callable
-
-
-@dataclass
-class _FlashMaskMetadata:
-    mask: torch.Tensor | None
-    mask_version: int | None
-    lengths: torch.Tensor
-    cu_q: torch.Tensor
-    cu_k: torch.Tensor
-    valid_indices: torch.Tensor
-    max_key_length: int
-    all_valid: bool
-
-
-_FLASH_MASK_METADATA_CACHE: OrderedDict[tuple[object, ...], _FlashMaskMetadata] = OrderedDict()
-_FLASH_MASK_METADATA_CACHE_MAXSIZE = 32
-
-
-def _cache_flash_mask_metadata(
-    valid: torch.Tensor | None,
-    *,
-    batch: int,
-    query_length: int,
-    key_length: int,
-    device: torch.device,
-) -> _FlashMaskMetadata:
-    """Reuse mask-derived varlen metadata across layers and checkpoint recomputes."""
-    if valid is None:
-        cache_key = ("all", device, batch, query_length, key_length)
-        cached = _FLASH_MASK_METADATA_CACHE.get(cache_key)
-        if cached is not None:
-            _FLASH_MASK_METADATA_CACHE.move_to_end(cache_key)
-            return cached
-        lengths = torch.full((batch,), key_length, dtype=torch.int32, device=device)
-        metadata = _FlashMaskMetadata(
-            mask=None,
-            mask_version=None,
-            lengths=lengths,
-            cu_q=torch.arange(batch + 1, device=device, dtype=torch.int32) * query_length,
-            cu_k=torch.arange(batch + 1, device=device, dtype=torch.int32) * key_length,
-            valid_indices=torch.arange(batch * key_length, device=device, dtype=torch.long),
-            max_key_length=key_length,
-            all_valid=True,
-        )
-    else:
-        if valid.shape != (batch, key_length):
-            raise ValueError(
-                "Qwen Image 2.1 FlashAttention metadata expects a normalized key-valid mask "
-                f"of shape {(batch, key_length)}, got {tuple(valid.shape)}"
-            )
-        mask_version = int(getattr(valid, "_version", 0))
-        cache_key = ("mask", id(valid), batch, query_length, key_length)
-        cached = _FLASH_MASK_METADATA_CACHE.get(cache_key)
-        if cached is not None and cached.mask is valid and cached.mask_version == mask_version:
-            _FLASH_MASK_METADATA_CACHE.move_to_end(cache_key)
-            return cached
-
-        lengths = valid.sum(dim=1, dtype=torch.int32)
-        min_length = int(lengths.min().item())
-        if min_length == 0:
-            raise ValueError("Qwen Image 2.1 FlashAttention does not accept empty key sequences")
-        cu_k = torch.zeros(batch + 1, device=device, dtype=torch.int32)
-        cu_k[1:] = lengths.cumsum(dim=0)
-        metadata = _FlashMaskMetadata(
-            mask=valid,
-            mask_version=mask_version,
-            lengths=lengths,
-            cu_q=torch.arange(batch + 1, device=device, dtype=torch.int32) * query_length,
-            cu_k=cu_k,
-            valid_indices=valid.reshape(-1).nonzero(as_tuple=True)[0],
-            max_key_length=int(lengths.max().item()),
-            all_valid=bool(int(lengths.sum().item()) == batch * key_length),
-        )
-
-    _FLASH_MASK_METADATA_CACHE[cache_key] = metadata
-    _FLASH_MASK_METADATA_CACHE.move_to_end(cache_key)
-    while len(_FLASH_MASK_METADATA_CACHE) > _FLASH_MASK_METADATA_CACHE_MAXSIZE:
-        _FLASH_MASK_METADATA_CACHE.popitem(last=False)
-    return metadata
-
-
-def clear_qwen_image_2_1_attention_metadata_cache() -> None:
-    """Clear cached mask metadata after a caller discards a shape family."""
-    _FLASH_MASK_METADATA_CACHE.clear()
 
 
 def normalize_qwen_image_2_1_attention_mode(value: object) -> str:
@@ -143,8 +58,9 @@ class QwenImage21FlashAttnProcessor:
 
     _parallel_config = None
 
-    def __init__(self, api: _DiffusersAttentionApi) -> None:
+    def __init__(self, api: _DiffusersAttentionApi, *, prepare_qkv: Callable | None = None) -> None:
         self._api = api
+        self._prepare_qkv = prepare_qkv or api.prepare_qkv
         self._native_backend = api.backend_names.NATIVE
         self._flash_backend = api.backend_names.FLASH_VARLEN
         self._attention_backend = self._flash_backend
@@ -177,12 +93,8 @@ class QwenImage21FlashAttnProcessor:
                 dim=1,
             )[None, None]
         if key_valid is not None:
-            valid_mask = key_valid[:, :end]
-            segment_mask = (
-                valid_mask
-                if segment_mask is None
-                else (segment_mask & valid_mask[:, None, None, :])
-            )
+            valid_mask = key_valid[:, None, None, :end]
+            segment_mask = valid_mask if segment_mask is None else (segment_mask & valid_mask)
 
         backend = self._native_backend if is_text else self._flash_backend
         return self._attend(query[:, start:end], key[:, :end], value[:, :end], segment_mask, backend)
@@ -199,9 +111,16 @@ class QwenImage21FlashAttnProcessor:
         segments=None,
         key_valid=None,
     ) -> torch.Tensor:
-        query, key, value, seq_len_q = self._api.prepare_qkv(
+        query, key, value, seq_len_q = self._prepare_qkv(
             attn, hidden_states, rotary_emb, layer_cache, kv_cache_mode, cache_write_slice
         )
+        return self.attend_prepared(
+            attn, query, key, value, seq_len_q, attention_mask, segments, key_valid
+        )
+
+    def attend_prepared(
+        self, attn, query, key, value, seq_len_q, attention_mask, segments, key_valid
+    ) -> torch.Tensor:
 
         if segments is None:
             backend = (
@@ -216,7 +135,7 @@ class QwenImage21FlashAttnProcessor:
                 self._attend_prefix_segment(query, key, value, segment, key_valid)
                 for segment in segments
             ]
-            target_mask = key_valid
+            target_mask = None if key_valid is None else key_valid[:, None, None, :]
             outputs.append(
                 self._attend(query[:, prefix_len:], key, value, target_mask, self._flash_backend)
             )
@@ -235,8 +154,6 @@ def _is_key_padding_mask(mask: object, *, batch: int, key_length: int) -> bool:
         return False
     if mask.ndim == 1:
         return batch == 1 and mask.shape[0] == key_length
-    if mask.ndim == 2:
-        return tuple(mask.shape) == (batch, key_length)
     return (
         mask.ndim == 4
         and mask.shape[0] == batch
@@ -251,6 +168,11 @@ def _normalize_key_valid_mask(mask, *, batch: int, key_length: int, device) -> t
         return torch.ones((batch, key_length), dtype=torch.bool, device=device)
     if not isinstance(mask, torch.Tensor) or mask.dtype != torch.bool:
         raise ValueError("Qwen Image 2.1 FlashAttention requires a boolean key-valid mask")
+    if mask.device != device:
+        raise ValueError(
+            "Qwen Image 2.1 FlashAttention requires the key-valid mask on the same device "
+            f"as Q/K/V; got mask on {mask.device} and Q/K/V on {device}"
+        )
     if mask.ndim == 1 and batch == 1 and mask.shape[0] == key_length:
         return mask[None, :]
     if mask.ndim == 2 and tuple(mask.shape) == (batch, key_length):
@@ -289,33 +211,28 @@ def _flash_varlen_attention(query, key, value, *, mask):
 
     batch, query_length, heads, head_dim = query.shape
     key_length = key.shape[1]
-    valid = None if mask is None else _normalize_key_valid_mask(
+    valid = _normalize_key_valid_mask(
         mask, batch=batch, key_length=key_length, device=query.device
     )
-    metadata = _cache_flash_mask_metadata(
-        valid,
-        batch=batch,
-        query_length=query_length,
-        key_length=key_length,
-        device=query.device,
-    )
+    lengths = valid.sum(dim=1, dtype=torch.int32)
+    if bool((lengths == 0).any()):
+        raise ValueError("Qwen Image 2.1 FlashAttention does not accept empty key sequences")
+
+    cu_q = torch.arange(batch + 1, device=query.device, dtype=torch.int32) * query_length
+    cu_k = torch.zeros(batch + 1, device=query.device, dtype=torch.int32)
+    cu_k[1:] = lengths.cumsum(dim=0)
     q_packed = query.reshape(batch * query_length, heads, head_dim).contiguous()
-    if metadata.all_valid:
-        k_packed = key.reshape(batch * key_length, heads, head_dim).contiguous()
-        v_packed = value.reshape(batch * key_length, heads, head_dim).contiguous()
-    else:
-        flat_key = key.reshape(batch * key_length, heads, head_dim)
-        flat_value = value.reshape(batch * key_length, heads, head_dim)
-        k_packed = flat_key.index_select(0, metadata.valid_indices)
-        v_packed = flat_value.index_select(0, metadata.valid_indices)
+    k_packed = key[valid].contiguous()
+    v_packed = value[valid].contiguous()
+    max_key_length = int(lengths.max().item())
     output = attention_dispatch.flash_attn_varlen_func(
         q_packed,
         k_packed,
         v_packed,
-        metadata.cu_q,
-        metadata.cu_k,
+        cu_q,
+        cu_k,
         query_length,
-        metadata.max_key_length,
+        max_key_length,
         dropout_p=0.0,
     )
     return output.reshape(batch, query_length, heads, head_dim)
@@ -374,7 +291,6 @@ def prepare_qwen_image_2_1_attention(
 __all__ = [
     "QWEN_IMAGE_21_ATTENTION_MODES",
     "QwenImage21FlashAttnProcessor",
-    "clear_qwen_image_2_1_attention_metadata_cache",
     "normalize_qwen_image_2_1_attention_mode",
     "prepare_qwen_image_2_1_attention",
 ]

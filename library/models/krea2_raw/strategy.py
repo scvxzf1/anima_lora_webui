@@ -445,8 +445,14 @@ class Krea2TextEncoderOutputsCachingStrategy(TextEncoderOutputsCachingStrategy):
             from library.preprocess.adaptive_batch import AutoBatcher
 
             if self._preprocess_batcher is None:
+                configured_device = getattr(models[0], "_qwen_execution_device", None)
+                device = (
+                    torch.device(configured_device)
+                    if configured_device is not None
+                    else next(models[0].parameters()).device
+                )
                 self._preprocess_batcher = AutoBatcher(
-                    next(models[0].parameters()).device, label=f"{self.MODEL_FAMILY}/text",
+                    device, label=f"{self.MODEL_FAMILY}/text",
                 )
 
             def encode(group):

@@ -41,6 +41,12 @@ console.log(JSON.stringify({{
   missingOrtho: values.displayConfigValue('use_ortho', {{}}),
   missingTLoRA: values.displayConfigValue('use_timestep_mask', {{}}),
   missingRoute: values.displayConfigValue('route_per_layer', {{}}),
+  missingDimensionSwitch: values.displayConfigValue('dim_from_weights', {{}}),
+  missingCustomDown: values.displayConfigValue('use_custom_down_autograd', {{}}),
+  dimensionSwitchKind: types.configFieldInputKind('dim_from_weights', undefined),
+  customDownKind: types.configFieldInputKind('use_custom_down_autograd', undefined),
+  cacheKind: types.configFieldInputKind('cache_latents', true),
+  weightedCaptionKind: types.configFieldInputKind('weighted_captions', false),
   yes: types.normalizeBooleanConfigValue('use_ortho', 'yes'),
   no: types.normalizeBooleanConfigValue('use_ortho', 'no', true),
   booleanOptionKeys,
@@ -63,6 +69,12 @@ console.log(JSON.stringify({{
     assert payload["missingOrtho"] is False
     assert payload["missingTLoRA"] is False
     assert payload["missingRoute"] is False
+    assert payload["missingDimensionSwitch"] is False
+    assert payload["missingCustomDown"] is False
+    assert payload["dimensionSwitchKind"] == "boolean"
+    assert payload["customDownKind"] == "boolean"
+    assert payload["cacheKind"] == "boolean"
+    assert payload["weightedCaptionKind"] == "boolean"
     assert payload["yes"] is True
     assert payload["no"] is False
     assert {"use_cmmd", "route_per_layer", "reuse_vae_latents"}.issubset(

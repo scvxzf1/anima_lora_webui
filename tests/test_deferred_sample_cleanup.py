@@ -125,11 +125,7 @@ def test_sample_prompts_without_schedule_do_not_trigger_qwen3_or_te_cache() -> N
     session_source = (ROOT / "library" / "training" / "train_session.py").read_text(encoding="utf-8")
     bootstrap_source = (ROOT / "library" / "training" / "train_bootstrap.py").read_text(encoding="utf-8")
 
-    cache_fn = _section(
-        cache_source,
-        "def cache_text_encoder_outputs_if_needed(",
-        "accelerator.wait_for_everyone()",
-    )
+    cache_fn = cache_source[cache_source.index("def cache_text_encoder_outputs_if_needed(") :]
     encoder_decision = _section(
         session_source,
         "sampling_enabled = sample_preview_enabled(args)",
@@ -168,11 +164,7 @@ def test_cached_sample_prompt_snapshot_survives_prompt_file_edits() -> None:
     train_source = TRAIN_PY.read_text(encoding="utf-8")
     cache_source = (ROOT / "library" / "training" / "text_encoder_cache.py").read_text(encoding="utf-8")
     anima_source = ANIMA_TRAINING.read_text(encoding="utf-8")
-    cache_fn = _section(
-        cache_source,
-        "def cache_text_encoder_outputs_if_needed(",
-        "accelerator.wait_for_everyone()",
-    )
+    cache_fn = cache_source[cache_source.index("def cache_text_encoder_outputs_if_needed(") :]
     sample_images_fn = _section(anima_source, "def sample_images(", "def _sample_image_inference(")
 
     assert "self.sample_prompts_snapshot = None" in train_source

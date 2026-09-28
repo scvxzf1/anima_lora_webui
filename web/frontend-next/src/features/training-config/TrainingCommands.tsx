@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import type { useTrainingWorkspace } from "./useTrainingWorkspace";
 import {
   Save,
@@ -16,10 +17,12 @@ export function TrainingCommands({
   state,
   libraryExpanded,
   onToggleLibrary,
+  children,
 }: {
   state: ReturnType<typeof useTrainingWorkspace>;
   libraryExpanded: boolean;
   onToggleLibrary: () => void;
+  children?: ReactNode;
 }) {
   const {
     capabilities,
@@ -123,13 +126,13 @@ export function TrainingCommands({
         <button
           type="button"
           className="compact-tool"
-          title="样张提示词"
-          aria-label="样张提示词"
+          title="采样样张"
+          aria-label="采样样张"
           onClick={() => beforeAction("prompts")}
           disabled={commandBlocked || locked}
         >
           <Image size={16} />
-          <span>样张提示词</span>
+          <span>采样样张</span>
         </button>
         <button
           type="button"
@@ -142,6 +145,7 @@ export function TrainingCommands({
           <FileCode size={16} />
           <span>TOML</span>
         </button>
+        {children}
       </div>
       {notice ? (
         <p className="training-notice" role="status">

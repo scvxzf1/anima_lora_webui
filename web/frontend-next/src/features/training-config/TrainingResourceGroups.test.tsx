@@ -1,9 +1,11 @@
 import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, it, vi } from "vitest";
-import { fieldAvailability, fieldsForConfig } from "./fieldCatalog";
+import { fieldAvailability, fieldsForConfig, filterTrainingFields } from "./fieldCatalog";
 import { groupResourceFields, resourceSummary } from "./resourceGroups";
 import { TrainingResourceGroups } from "./TrainingResourceGroups";
+import { TrainingFieldEditor } from "./TrainingFieldEditor";
+import { draftFromMerged } from "./trainingForm";
 
 afterEach(cleanup);
 const draft = { mixed_precision: "bf16", auto_block_swap: false, blocks_to_swap: 20, torch_compile: false };
@@ -21,20 +23,239 @@ it("groups every resource exactly once, with AUTO before manual swap", () => {
   expect(groupResourceFields([{ key: "future", label: "Future", kind: "text", group: "resources" }])[0].id).toBe("other");
 });
 
-it("exposes adaptive controls for every registered model family", () => {
+it("keeps adaptive precision and OOM retry in separate resource groups", () => {
   const keys = [
     "adaptive_precision", "adaptive_fp32_modules", "adaptive_loss_scale",
     "adaptive_oom_retry", "adaptive_oom_retry_max_attempts",
     "adaptive_oom_retry_swap_increment", "adaptive_oom_retry_max_swap",
     "adaptive_oom_retry_timeout",
   ];
-  const compute = groupResourceFields(fields).find((group) => group.id === "compute")!;
-  expect(compute.fields.map((field) => field.key)).toEqual(expect.arrayContaining(keys));
+  const groups = groupResourceFields(fields);
+  const adaptive = groups.find((group) => group.id === "adaptive_precision")!;
+  const retry = groups.find((group) => group.id === "oom_retry")!;
+  expect(adaptive.fields.map((field) => field.key)).toEqual([
+    "adaptive_precision", "adaptive_fp32_modules", "adaptive_loss_scale",
+  ]);
+  expect(retry.fields.map((field) => field.key)).toEqual([
+    "adaptive_oom_retry", "adaptive_oom_retry_max_attempts",
+    "adaptive_oom_retry_swap_increment", "adaptive_oom_retry_max_swap",
+    "adaptive_oom_retry_timeout",
+  ]);
+  expect(groups.find((group) => group.id === "compute")!.fields.map((field) => field.key))
+    .not.toEqual(expect.arrayContaining(keys));
+  expect(groups.map((group) => group.id).slice(0, 6)).toEqual([
+    "compute", "residency", "activation", "compile", "adaptive_precision", "oom_retry",
+  ]);
   for (const model_family of ["anima", "krea2_raw", "z_image"]) {
-    for (const key of keys) {
+    for (const key of ["adaptive_precision", "adaptive_fp32_modules", "adaptive_loss_scale"]) {
       expect(fieldAvailability(key, { model_family }, "lora").enabled).toBe(true);
     }
   }
+  expect(resourceSummary("adaptive_precision", { adaptive_precision: "auto" })).toBe("auto");
+  expect(resourceSummary("oom_retry", { adaptive_oom_retry: false })).toBe("关闭");
+});
+
+it("labels Qwen task options and explains the Edit dataset contract", () => {
+  const field = fieldsForConfig({ model_family: "qwen_image_2_1" }).find(
+    (candidate) => candidate.key === "qwen_image_2_1_task",
+  )!;
+  render(
+    <TrainingFieldEditor
+      fields={[field]}
+      draft={{ model_family: "qwen_image_2_1", qwen_image_2_1_task: "t2i" }}
+      ownKeys={new Set()}
+      disabled={false}
+      onChange={vi.fn()}
+      method="lora"
+    />,
+  );
+  expect(screen.getByLabelText("Qwen 任务")).toHaveValue("t2i");
+  expect(screen.getByRole("option", { name: "普通文生图 (t2i)" })).toBeInTheDocument();
+  expect(screen.getByRole("option", { name: "编辑数据集 (edit)" })).toBeInTheDocument();
+  expect(screen.getByText(/Edit 需要已保存的编辑前\/编辑后配对数据集/)).toBeInTheDocument();
+});
+
+it("keeps disabled conflicts visible in the default field view", () => {
+  const availability = fieldAvailability(
+    "max_train_steps",
+    { model_family: "krea2_raw", max_train_epochs: 2 },
+    "lora",
+  );
+  expect(availability.visible).toBe(true);
+  expect(availability.enabled).toBe(false);
+});
+
+it("disables a field when its value is controlled by another field", () => {
+  const field = fieldsForConfig({ max_train_steps: 1600 }).find(
+    (candidate) => candidate.key === "max_train_steps",
+  )!;
+  render(
+    <TrainingFieldEditor
+      fields={[field]}
+      draft={{ model_family: "krea2_raw", max_train_epochs: 2, max_train_steps: 1600 }}
+      ownKeys={new Set(["max_train_steps"])}
+      disabled={false}
+      onChange={vi.fn()}
+      method="lora"
+    />,
+  );
+  expect(screen.getByLabelText("最大训练步数")).toBeDisabled();
+  expect(screen.getByText(/max_train_epochs 已设置/)).toBeInTheDocument();
+});
+
+it("disables undisclosed and unknown fields even when shown for audit", () => {
+  const source = { model_family: "anima", use_ip_adapter: false, resampler_heads: 8, __future_runtime_field__: 7 };
+  const fields = fieldsForConfig(source).filter((field) =>
+    ["use_ip_adapter", "resampler_heads", "__future_runtime_field__"].includes(field.key),
+  );
+  render(
+    <TrainingFieldEditor
+      fields={fields}
+      draft={draftFromMerged(source, fields)}
+      ownKeys={new Set(Object.keys(source))}
+      disabled={false}
+      onChange={vi.fn()}
+      method="ip_adapter"
+    />,
+  );
+  expect(screen.getByLabelText("启用 IP-Adapter")).toBeEnabled();
+  expect(screen.getByLabelText("IP Resampler 头数")).toBeDisabled();
+  expect(screen.getByLabelText("__future_runtime_field__")).toBeDisabled();
+  expect(screen.getByText("该参数不进入常规训练流，仅在候选审计中显示。")).toBeInTheDocument();
+});
+
+it("keeps swap and compile child values while their controlling fields change", () => {
+  const source = {
+    model_family: "krea2_raw",
+    auto_block_swap: false,
+    auto_block_swap_mode: "dynamic",
+    blocks_to_swap: 20,
+    torch_compile: false,
+    compile_block_scope: "resident",
+    compile_dynamic_seq: false,
+    compile_seq_bands: true,
+  };
+  const fields = fieldsForConfig(source).filter((field) =>
+    [
+      "auto_block_swap_mode",
+      "blocks_to_swap",
+      "torch_compile",
+      "compile_block_scope",
+      "compile_dynamic_seq",
+      "compile_seq_bands",
+    ].includes(field.key),
+  );
+  const baseline = draftFromMerged(source, fields);
+  const onChange = vi.fn();
+  const view = render(
+    <TrainingFieldEditor
+      fields={fields}
+      draft={baseline}
+      ownKeys={new Set(Object.keys(source))}
+      disabled={false}
+      onChange={onChange}
+      method="lora"
+    />,
+  );
+
+  const autoModeRow = document.getElementById("training-field-auto_block_swap_mode")!;
+  const manualSwapRow = document.getElementById("training-field-blocks_to_swap")!;
+  const compileScopeRow = document.getElementById("training-field-compile_block_scope")!;
+  const compileBandsRow = document.getElementById("training-field-compile_seq_bands")!;
+  expect(within(autoModeRow).getByLabelText("AUTO 调整模式")).toBeDisabled();
+  expect(within(autoModeRow).getByText("请先启用 AUTO 块交换。")).toBeInTheDocument();
+  expect(within(manualSwapRow).getByLabelText("Block swap 数量")).toBeEnabled();
+  expect(within(manualSwapRow).getByLabelText("Block swap 数量")).toHaveValue(20);
+  expect(within(compileScopeRow).getByLabelText("编译块范围")).toBeDisabled();
+  expect(within(compileScopeRow).getByText("请先启用 torch.compile。")).toBeInTheDocument();
+
+  const parentsEnabled = {
+    ...baseline,
+    auto_block_swap: true,
+    torch_compile: true,
+  };
+  view.rerender(
+    <TrainingFieldEditor
+      fields={fields}
+      draft={parentsEnabled}
+      ownKeys={new Set(Object.keys(source))}
+      disabled={false}
+      onChange={onChange}
+      method="lora"
+    />,
+  );
+  expect(within(autoModeRow).getByLabelText("AUTO 调整模式")).toBeEnabled();
+  expect(within(manualSwapRow).getByLabelText("Block swap 数量")).toBeDisabled();
+  expect(within(manualSwapRow).getByLabelText("Block swap 数量")).toHaveValue(20);
+  expect(within(compileScopeRow).getByLabelText("编译块范围")).toBeEnabled();
+  expect(within(compileBandsRow).getByLabelText("分带动态序列编译")).toBeDisabled();
+  expect(within(compileBandsRow).getByText("请先启用动态序列编译。")).toBeInTheDocument();
+
+  view.rerender(
+    <TrainingFieldEditor
+      fields={fields}
+      draft={{ ...parentsEnabled, compile_dynamic_seq: true }}
+      ownKeys={new Set(Object.keys(source))}
+      disabled={false}
+      onChange={onChange}
+      method="lora"
+    />,
+  );
+  expect(within(compileBandsRow).getByLabelText("分带动态序列编译")).toBeEnabled();
+  expect(onChange).not.toHaveBeenCalled();
+});
+
+it("omits AUTO swap children until AUTO is enabled in every field view", () => {
+  const source = {
+    model_family: "krea2_raw",
+    auto_block_swap: false,
+    auto_block_swap_mode: "startup",
+    auto_block_swap_interval: 8,
+    auto_block_swap_max_trials: 6,
+    auto_block_swap_timeout: 120,
+    auto_block_swap_swap_io_limit_mb: 512,
+    auto_block_swap_vram_reserve_percent: 10,
+    auto_block_swap_preference: "balanced",
+    blocks_to_swap: 20,
+  };
+  const allFields = fieldsForConfig(source);
+  const childKeys = allFields.map((field) => field.key).filter((key) =>
+    key.startsWith("auto_block_swap_")
+  );
+  expect(childKeys).toHaveLength(7);
+  const baseline = {
+    ...source,
+    auto_block_swap: true,
+    auto_block_swap_mode: "dynamic",
+    auto_block_swap_interval: 4,
+  };
+
+  for (const view of ["applicable", "all", "changed"]) {
+    const hidden = filterTrainingFields(allFields, source, baseline, "", view, "lora");
+    expect(hidden.map((field) => field.key)).not.toEqual(expect.arrayContaining(childKeys));
+    expect(hidden.map((field) => field.key)).toContain("auto_block_swap");
+    if (view !== "changed") expect(hidden.map((field) => field.key)).toContain("blocks_to_swap");
+
+    const enabled = filterTrainingFields(allFields, baseline, source, "", view, "lora");
+    expect(enabled.map((field) => field.key)).toContain("auto_block_swap_mode");
+    expect(enabled.map((field) => field.key)).toContain("auto_block_swap_interval");
+  }
+
+  const hidden = filterTrainingFields(allFields, source, baseline, "", "all", "lora");
+  render(
+    <TrainingFieldEditor
+      fields={hidden.filter((field) => ["auto_block_swap", "blocks_to_swap", ...childKeys].includes(field.key))}
+      draft={source}
+      ownKeys={new Set(Object.keys(source))}
+      disabled={false}
+      onChange={vi.fn()}
+      method="lora"
+    />,
+  );
+  expect(screen.getByLabelText("AUTO 块交换（实验）")).toBeInTheDocument();
+  expect(screen.getByLabelText("Block swap 数量")).toBeEnabled();
+  expect(screen.queryByText("请先启用 AUTO 块交换。")).not.toBeInTheDocument();
+  expect(document.getElementById("training-field-auto_block_swap_mode")).not.toBeInTheDocument();
 });
 
 it("shows summaries, expands groups without edits, and reveals search matches", async () => {

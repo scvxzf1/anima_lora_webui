@@ -1,4 +1,5 @@
 import type { TrainingPreflightResponse } from "./api";
+import { taskLabel } from "../../api/modelCapabilities";
 
 type Props = {
   result?: TrainingPreflightResponse;
@@ -40,6 +41,12 @@ export function TrainingPreflightPanel({
       ) : null}
       {result ? (
         <>
+          {result.training_task && <dl className="command-summary" aria-label="模型与数据集能力检查">
+            <dt>当前模型</dt><dd>{result.training_task.model_name}</dd>
+            <dt>训练能力</dt><dd>{result.training_task.supported_tasks.map(taskLabel).join("、")}</dd>
+            <dt>当前任务</dt><dd>{taskLabel(result.training_task.configured_task)}</dd>
+            <dt>数据集任务</dt><dd>{taskLabel(result.training_task.dataset_task)}</dd>
+          </dl>}
           <div className="training-preflight-summary">
             <span>
               <strong>{result.summary.errors}</strong>错误

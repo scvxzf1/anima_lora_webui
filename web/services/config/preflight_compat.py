@@ -466,6 +466,12 @@ def _check_network_weights(
     add("ok", "network_weights", message, weight_path)
 
 def _check_training_sample_config(cfg: dict[str, Any], add) -> None:
+    from library.training.preview_spec import validate_preview_file
+
+    try:
+        validate_preview_file(cfg)
+    except (ValueError, OSError, TypeError) as exc:
+        add("error", "sample_prompts", str(exc))
     sample_prompts = str(cfg.get("sample_prompts") or "").strip()
     epoch_freq = _positive_int_or_none(cfg.get("sample_every_n_epochs"))
     step_freq = _positive_int_or_none(cfg.get("sample_every_n_steps"))

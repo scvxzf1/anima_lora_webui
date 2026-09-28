@@ -55,6 +55,28 @@ def add_sd_models_arguments(parser: argparse.ArgumentParser):
         help="Qwen Image 2.1 task mode: text-to-image (default) or paired-reference edit LoRA.",
     )
     parser.add_argument(
+        "--qwen_text_encoder_cache_policy",
+        type=str,
+        choices=("auto", "cpu_offload", "gpu", "cpu"),
+        default="auto",
+        help="Qwen3-VL cache execution policy only; does not control VAE or DiT placement.",
+    )
+    parser.add_argument(
+        "--qwen_fused_projections",
+        type=str,
+        choices=("off", "mlp", "qkv", "all"),
+        default="off",
+        help="[EXPERIMENTAL] Qwen Image 2.1 BF16 frozen-base projection packing; default off.",
+    )
+    parser.add_argument(
+        "--qwen_saved_projection_blocks", type=int, default=0,
+        help="[EXPERIMENTAL] Retain packed projection outputs in the final N Qwen blocks; default off.",
+    )
+    parser.add_argument(
+        "--qwen_projection_budget_mib", type=int, default=0,
+        help="[EXPERIMENTAL] Maximum raw QKV plus gate/up payload in MiB; required when blocks are selected.",
+    )
+    parser.add_argument(
         "--tokenizer_cache_dir",
         type=str,
         default=None,

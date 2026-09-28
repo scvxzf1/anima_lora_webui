@@ -196,6 +196,8 @@ class LoRAModule(BaseLoRAModule):
         if self._fused:
             return
         org_module = self.org_module_ref[0]
+        if org_module is None:
+            raise RuntimeError("cannot fuse LoRA into packed QKV base weights")
         delta = self.get_weight().to(org_module.weight.dtype)
         org_module.weight.data += delta
         self._fused = True
@@ -205,6 +207,8 @@ class LoRAModule(BaseLoRAModule):
         if not self._fused:
             return
         org_module = self.org_module_ref[0]
+        if org_module is None:
+            raise RuntimeError("cannot unfuse LoRA from packed QKV base weights")
         delta = self.get_weight().to(org_module.weight.dtype)
         org_module.weight.data -= delta
         self._fused = False

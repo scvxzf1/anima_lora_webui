@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { apiRequest, ApiError } from "../../api/client";
+import { findModelCapability, useModelCapabilities } from "../../api/modelCapabilities";
 import type { TrainingConfigFile } from "../../api/trainingContext";
 import { CommandDialog } from "../../components/CommandDialog";
 import { useServerDraftState } from "../../components/useServerDraft";
@@ -56,7 +57,7 @@ export function TrainingModelPicker({
               value={item.id}
               disabled={item.complete === false}
             >
-              {item.name} · {item.model_family}
+              {item.name} · {item.model_family}{item.capability_labels?.length ? ` · ${item.capability_labels.join(" / ")}` : ""}
             </option>
           ))}
         </select>
@@ -75,16 +76,22 @@ export function TrainingSamplePrompts({
   file,
   promptFile,
   configRevision,
+  modelFamily = "anima",
+  trainingTask = "t2i",
   onClose,
   onSaved,
 }: {
   file: TrainingConfigFile;
   promptFile: string;
   configRevision?: string;
+  modelFamily?: string;
+  trainingTask?: string;
   onClose: () => void;
   onSaved: () => Promise<void>;
 }) {
   const qc = useQueryClient();
+  const capabilities = useModelCapabilities();
+  const capability = findModelCapability(capabilities.data?.items, modelFamily);
   const key = ["training-config", "sample-prompts", promptFile, file.path];
   const query = useQuery({
     queryKey: key,
@@ -153,7 +160,7 @@ export function TrainingSamplePrompts({
     setConfirmClose(true);
   };
   return (
-    <CommandDialog title={confirmClose ? "放弃样张提示词修改？" : "样张提示词"} busy={save.isPending} onClose={close}>
+    <CommandDialog title={confirmClose ? "放弃样张提示词修改？" : "采样样张"} busy={save.isPending} onClose={close}>
       {confirmClose && <section>
         <p>存在未保存的修改，放弃后无法恢复。</p>
         <footer className="toolbar">
@@ -163,7 +170,13 @@ export function TrainingSamplePrompts({
       </section>}
       <div hidden={confirmClose}>
       <p className="effective-path">{promptFile ? "已关联" : "未关联 · 保存后关联当前配置"}: {query.data?.file || "正在读取"}</p>
+      <p className="effective-path">采样模型：{capability?.display_name || modelFamily}</p>
+      {capabilities.error && <p role="alert">采样能力读取失败，图像编辑暂不可用。<button type="button" onClick={() => void capabilities.refetch()}>重试</button></p>}
       <PromptVisualEditor
+        modelFamily={modelFamily}
+        supportedPreviewTasks={capabilities.error ? ["t2i"] : (capability?.supported_preview_tasks || ["t2i"])}
+        maxPreviewReferences={capability?.max_preview_references ?? 4}
+        defaultTask={trainingTask}
         content={editor.draft ?? ""}
         disabled={query.isPending || save.isPending || Boolean(query.error)}
         onChange={editor.setDraft}

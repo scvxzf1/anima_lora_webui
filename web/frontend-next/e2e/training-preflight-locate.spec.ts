@@ -24,7 +24,9 @@ for (const width of [1440, 390]) {
       await expect(page.getByLabel("参数视图")).toHaveValue("all");
       const field = page.locator(`#training-field-${key}`);
       await expect(field).toBeVisible();
-      await expect(field.locator("input, select, textarea")).toBeFocused();
+      const control = field.locator("input, select, textarea");
+      if (await control.isDisabled()) await expect(field).toBeFocused();
+      else await expect(control).toBeFocused();
       await expect(page.getByText("当前分类没有符合筛选条件的配置项。")).toHaveCount(0);
       await page.screenshot({ path: info.outputPath(`${key}.png`) });
       await page.getByRole("tab", { name: /输入准备/ }).click();

@@ -30,6 +30,7 @@ from library.runtime.block_swap_config import (
 from library.runtime.block_swap_masters import (
     _bind_captured_cpu_weights,
     Int8BlockSwapCpuMaster,
+    Int8BlockSwapCpuSlab,
     Params4bitBlockSwapCpuMaster,
     _bind_params4bit_master,
     _can_swap_frozen_weight_to_cpu,
@@ -268,6 +269,36 @@ _SwapSlabView = Tuple[int, int, Tuple[int, ...], torch.dtype]
 _SwapSlabPlan = tuple[tuple[tuple[str, _SwapSlabView], ...], int]
 
 
+def _restore_packed_int8_slab(
+    cpu_slab: Int8BlockSwapCpuSlab,
+    gpu_slab: torch.Tensor,
+    gpu_scale_slab: torch.Tensor,
+    gpu_views: dict[str, torch.Tensor],
+    output_plan: tuple[tuple[str, _SwapSlabView], ...],
+    *,
+    chunk_rows: int,
+) -> None:
+    """Restore packed weights in place, reusing the BF16 slot as INT8 staging."""
+    byte_slab = gpu_slab.view(torch.uint8)
+    byte_slab[: cpu_slab.quantized.numel()].copy_(
+        cpu_slab.quantized.view(torch.uint8), non_blocking=True
+    )
+    gpu_scale_slab.copy_(cpu_slab.scale, non_blocking=True)
+
+    offsets = {name: entry[0] for name, entry in output_plan}
+    ordered_names = sorted(cpu_slab.plan, key=lambda name: offsets[name], reverse=True)
+    for name in ordered_names:
+        q_offset, numel, shape, scale_offset, rows = cpu_slab.plan[name]
+        q_view = byte_slab.narrow(0, q_offset, numel).view(torch.int8).view(shape)
+        destination = gpu_views[name].view(rows, -1)
+        scales = gpu_scale_slab.narrow(0, scale_offset, rows)
+        for row_end in range(rows, 0, -chunk_rows):
+            row_start = max(0, row_end - chunk_rows)
+            q_rows = q_view[row_start:row_end].to(torch.float32)
+            restored = q_rows * scales[row_start:row_end, None]
+            destination[row_start:row_end].copy_(restored)
+
+
 class Offloader:
     """
     common offloading class
@@ -316,7 +347,9 @@ class Offloader:
         self.profile_step = 0
         self._cpu_weight_masters: Optional[list[dict[str, _CpuMaster]]] = None
         self._cpu_weight_master_dtypes: Optional[list[dict[str, torch.dtype]]] = None
-        self._cpu_weight_master_slabs: Optional[list[Optional[torch.Tensor]]] = None
+        self._cpu_weight_master_slabs: Optional[
+            list[Optional[Union[torch.Tensor, Int8BlockSwapCpuSlab]]]
+        ] = None
         self._cpu_weight_master_slab_plans: Optional[
             list[Optional[dict[str, _SwapSlabView]]]
         ] = None
@@ -328,6 +361,8 @@ class Offloader:
         self._swap_gpu_slab_cache: dict[
             int, tuple[torch.Tensor, tuple[tuple[str, torch.Tensor], ...]]
         ] = {}
+        self._swap_gpu_scale_slab_cache: dict[int, torch.Tensor] = {}
+        self._int8_resident_materialized: set[int] = set()
         # A slab slot follows its physical GPU storage as blocks rotate through
         # it. Logical block indices stop matching ``idx % slot_count`` after a
         # forward-only wrap when num_blocks is not divisible by slot_count.
@@ -466,7 +501,11 @@ class Offloader:
                 block_masters,
                 pin_memory=pin_memory,
             )
-            _bind_captured_cpu_weights(block, block_masters)
+            _bind_captured_cpu_weights(
+                block,
+                block_masters,
+                use_int8_master=self.device.type == "cuda",
+            )
             masters.append(block_masters)
             master_dtypes.append(block_dtypes)
             master_slabs.append(block_master_slab)
@@ -597,11 +636,45 @@ class Offloader:
     ]:
         if not block_masters:
             return block_masters, None, None
-        if any(
-            isinstance(master, (Int8BlockSwapCpuMaster, Params4bitBlockSwapCpuMaster))
-            for master in block_masters.values()
-        ):
+        if any(isinstance(master, Params4bitBlockSwapCpuMaster) for master in block_masters.values()):
             return block_masters, None, None
+        int8_masters = {
+            name: master
+            for name, master in block_masters.items()
+            if isinstance(master, Int8BlockSwapCpuMaster)
+        }
+        if int8_masters:
+            q_numel = sum(master.numel for master in int8_masters.values())
+            scale_numel = sum(int(master.scale.numel()) for master in int8_masters.values())
+            try:
+                quantized_slab = torch.empty(
+                    q_numel, dtype=torch.int8, pin_memory=pin_memory
+                )
+                scale_slab = torch.empty(
+                    scale_numel, dtype=torch.float32, pin_memory=pin_memory
+                )
+            except RuntimeError:
+                quantized_slab = torch.empty(q_numel, dtype=torch.int8)
+                scale_slab = torch.empty(scale_numel, dtype=torch.float32)
+            plan: dict[str, tuple[int, int, tuple[int, ...], int, int]] = {}
+            q_offset = 0
+            scale_offset = 0
+            for name, master in int8_masters.items():
+                numel = master.numel
+                rows = int(master.shape[0])
+                quantized_view = quantized_slab.narrow(0, q_offset, numel).view(master.shape)
+                scale_view = scale_slab.narrow(0, scale_offset, rows)
+                quantized_view.copy_(master.quantized, non_blocking=False)
+                scale_view.copy_(master.scale.view(-1), non_blocking=False)
+                block_masters[name] = Int8BlockSwapCpuMaster(
+                    quantized=quantized_view,
+                    scale=scale_view,
+                    shape=master.shape,
+                )
+                plan[name] = (q_offset, numel, master.shape, scale_offset, rows)
+                q_offset += numel
+                scale_offset += rows
+            return block_masters, Int8BlockSwapCpuSlab(quantized_slab, scale_slab, plan), None
         dtypes = {tensor.dtype for tensor in block_masters.values()}
         if len(dtypes) != 1:
             return block_masters, None, None
@@ -733,12 +806,14 @@ class Offloader:
         slab_entries: list[tuple[str, _SwapSlabView]] = []
         slab_numel = 0
         for module_name, _, target_master, _, target_dtype in weight_swap_jobs:
-            if isinstance(target_master, Int8BlockSwapCpuMaster):
-                return (), 0
             if isinstance(target_master, Params4bitBlockSwapCpuMaster):
                 # NF4 master 不进 slab (复合容器, 体积/shape 不匹配 bf16 slab).
                 return (), 0
-            flat_numel = int(target_master.numel())
+            flat_numel = (
+                target_master.numel
+                if isinstance(target_master, Int8BlockSwapCpuMaster)
+                else int(target_master.numel())
+            )
             slab_entries.append(
                 (
                     module_name,
@@ -773,14 +848,18 @@ class Offloader:
         swap_plan: _SwapPlan,
         *,
         slot_id: Optional[int] = None,
-    ) -> Optional[tuple[torch.Tensor, torch.Tensor, tuple[tuple[str, torch.Tensor], ...]]]:
+    ) -> Optional[
+        tuple[
+            Union[torch.Tensor, Int8BlockSwapCpuSlab],
+            torch.Tensor,
+            tuple[tuple[str, torch.Tensor], ...],
+        ]
+    ]:
         if self.restore_mode != "slab":
             return None
         weight_swap_jobs, _fallback, _nf4_jobs = swap_plan
         if any(
-            isinstance(source_master, Int8BlockSwapCpuMaster)
-            or isinstance(target_master, Int8BlockSwapCpuMaster)
-            or isinstance(source_master, Params4bitBlockSwapCpuMaster)
+            isinstance(source_master, Params4bitBlockSwapCpuMaster)
             or isinstance(target_master, Params4bitBlockSwapCpuMaster)
             for _, source_master, target_master, _, _ in weight_swap_jobs
         ):
@@ -789,7 +868,10 @@ class Offloader:
             return None
         cpu_slab = self._cpu_weight_master_slabs[block_idx_to_cuda]
         cpu_slab_plan = self._cpu_weight_master_slab_plans[block_idx_to_cuda]
-        if cpu_slab is None or cpu_slab_plan is None:
+        if cpu_slab is None:
+            return None
+        packed_int8 = isinstance(cpu_slab, Int8BlockSwapCpuSlab)
+        if not packed_int8 and cpu_slab_plan is None:
             return None
         slot_count = self.num_blocks - self.blocks_to_swap
         if slot_count <= 0:
@@ -808,13 +890,34 @@ class Offloader:
         target_dtypes = {dtype for _, (_, _, _, dtype) in slab_entries}
         if len(target_dtypes) != 1:
             return None
-        for module_name, (offset, numel, shape, _) in slab_entries:
-            cpu_view = cpu_slab_plan.get(module_name)
-            if cpu_view is None:
+        if packed_int8:
+            target_names = {
+                name
+                for name, source_master, target_master, _, _ in weight_swap_jobs
+                if isinstance(source_master, Int8BlockSwapCpuMaster)
+                and isinstance(target_master, Int8BlockSwapCpuMaster)
+            }
+            if target_names != set(cpu_slab.plan):
                 return None
-            cpu_offset, cpu_numel, cpu_shape, _cpu_dtype = cpu_view
-            if cpu_offset != offset or cpu_numel != numel or cpu_shape != shape:
-                return None
+            for module_name, (_q_offset, numel, shape, _scale_offset, _rows) in cpu_slab.plan.items():
+                target_master = next(
+                    (entry[2] for entry in weight_swap_jobs if entry[0] == module_name),
+                    None,
+                )
+                if (
+                    not isinstance(target_master, Int8BlockSwapCpuMaster)
+                    or target_master.numel != numel
+                    or target_master.shape != shape
+                ):
+                    return None
+        else:
+            for module_name, (offset, numel, shape, _) in slab_entries:
+                cpu_view = cpu_slab_plan.get(module_name)
+                if cpu_view is None:
+                    return None
+                cpu_offset, cpu_numel, cpu_shape, _cpu_dtype = cpu_view
+                if cpu_offset != offset or cpu_numel != numel or cpu_shape != shape:
+                    return None
         cached = self._swap_gpu_slab_cache.get(slot_id)
         slab_dtype = next(iter(target_dtypes))
         if cached is not None:
@@ -1306,7 +1409,40 @@ class Offloader:
                     module_to_cpu.weight.data = _parked_cpu_master_tensor(source_master)
                     cuda_bindings.append((module_to_cuda, gpu_views[module_name]))
                 gpu_slab.record_stream(stream)
-                gpu_slab.copy_(cpu_slab, non_blocking=True)
+                if isinstance(cpu_slab, Int8BlockSwapCpuSlab):
+                    gpu_scale_slab = self._swap_gpu_scale_slab_cache.get(slot_id)
+                    if gpu_scale_slab is None or gpu_scale_slab.numel() != cpu_slab.scale.numel():
+                        gpu_scale_slab = torch.empty(
+                            cpu_slab.scale.numel(),
+                            dtype=torch.float32,
+                            device=self.device,
+                        )
+                        self._swap_gpu_scale_slab_cache[slot_id] = gpu_scale_slab
+                    gpu_scale_slab.record_stream(stream)
+                    _restore_packed_int8_slab(
+                        cpu_slab,
+                        gpu_slab,
+                        gpu_scale_slab,
+                        gpu_views,
+                        self._get_swap_slab_plan(
+                            block_idx_to_cpu,
+                            block_idx_to_cuda,
+                            swap_plan,
+                        )[0],
+                        chunk_rows=max(1, self.int8_restore_chunk_rows or 64),
+                    )
+                    for (
+                        module_name,
+                        _source_master,
+                        target_master,
+                        _source_dtype,
+                        _target_dtype,
+                    ) in weight_swap_jobs:
+                        if isinstance(target_master, Int8BlockSwapCpuMaster):
+                            continue
+                        gpu_views[module_name].copy_(target_master, non_blocking=True)
+                else:
+                    gpu_slab.copy_(cpu_slab, non_blocking=True)
             else:
                 cuda_dsts: list[torch.Tensor] = []
                 cpu_srcs: list[torch.Tensor] = []
@@ -1836,6 +1972,24 @@ class ModelOffloader(Offloader):
         for b in blocks[0 : self.num_blocks - self.blocks_to_swap]:
             b.to(self.device)
             weighs_to_device(b, self.device)  # make sure weights are on device
+
+        if self.device.type == "cuda" and self._cpu_weight_masters is not None:
+            for block_idx, block in enumerate(blocks[: self.num_blocks - self.blocks_to_swap]):
+                if block_idx in self._int8_resident_materialized:
+                    continue
+                for name, master in self._cpu_weight_masters[block_idx].items():
+                    if not isinstance(master, Int8BlockSwapCpuMaster):
+                        continue
+                    module = block.get_submodule(name)
+                    weight = getattr(module, "weight", None)
+                    if weight is None:
+                        continue
+                    weight.data = master.to_tensor(
+                        device=self.device,
+                        dtype=self._cpu_weight_master_dtypes[block_idx][name],
+                        non_blocking=True,
+                    )
+                self._int8_resident_materialized.add(block_idx)
 
         for block_index in range(self.num_blocks - self.blocks_to_swap, self.num_blocks):
             b = blocks[block_index]

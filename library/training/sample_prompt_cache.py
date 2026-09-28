@@ -202,6 +202,9 @@ def load_sample_prompt_cache(args, *, cache_root=None):
 
 
 def restore_sample_prompt_cache(trainer, args, *, cache_root=None) -> bool:
+    # Qwen preview conditions include reference images; never reuse text-only caches.
+    if resolve_model_family(args) == "qwen_image_2_1":
+        return False
     cached = load_sample_prompt_cache(args, cache_root=cache_root)
     if cached is None:
         return False

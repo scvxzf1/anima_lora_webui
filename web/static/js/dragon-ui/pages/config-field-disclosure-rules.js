@@ -1,9 +1,9 @@
 import {
     LOKR_SCOPED_FIELD_KEYS,
     VERA_SCOPED_FIELD_KEYS,
-} from '../../config/catalog/defaults.js?v=auto-block-swap-20260908-v3';
+} from '../../config/catalog/defaults.js?v=qwen-cache-policy-20260928';
 import { modelFamilyCapability, normalizeModelFamily } from '../../features/config-form/model-family.js?v=qwen-image-21-v2';
-import { configFieldCatalogEntry } from './config-field-catalog.js?v=auto-block-swap-20260908-v3';
+import { configFieldCatalogEntry } from './config-field-catalog.js?v=qwen-cache-policy-20260928';
 import { normalizeBooleanConfigValue } from './config-field-types.js?v=auto-block-swap-20260908-v3';
 
 const ORTHOGONAL_METHODS = new Set(['ortholora', 'tlora']);
@@ -99,6 +99,10 @@ export function configFieldDisclosure(key, context = {}) {
     const adapter = String(context.adapter || 'lora').trim().toLowerCase();
     const modelFamily = normalizeModelFamily(context.modelFamily || 'anima');
     const familyCapability = modelFamilyCapability(modelFamily);
+
+    if (key === 'qwen_text_encoder_cache_policy' && modelFamily !== 'qwen_image_2_1') {
+        return hidden(catalog, '文本编码器缓存策略仅适用于 qwen_image_2_1。', 'qwen-cache-family');
+    }
 
     if (catalog.location === 'audit_only' && !(catalog.cluster === 'spd-audit' && method === 'spd')) {
         return hidden(catalog, '该参数不进入常规训练流，仅在候选审计中显示。', 'audit-only');

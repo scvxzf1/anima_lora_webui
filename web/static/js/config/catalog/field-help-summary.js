@@ -9,6 +9,7 @@ export const FIELD_HELP_SUMMARY_ZH = Object.freeze({
     "adaptive_oom_retry_swap_increment": "每次 OOM 重试增加的 block swap 数量。",
     "adaptive_oom_retry_max_swap": "OOM 重试允许达到的最大交换块数量。",
     "adaptive_oom_retry_timeout": "单个隔离训练尝试的最长运行时间（秒）。",
+    "qwen_text_encoder_cache_policy": "仅影响 Qwen3-VL 文本/图文条件缓存阶段；CPU 卸载节省显存但较慢，全部 GPU 可能显存不足，与 DiT 块交换独立；已有有效缓存复用时不会重新编码。",
     "network_dim": "LoRA 的容量大小，也叫 rank 或秩。",
     "network_alpha": "LoRA 的缩放强度，影响训练结果最终作用有多猛。",
     "network_module": "训练时加载的网络实现模块。",

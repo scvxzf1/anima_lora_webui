@@ -22,13 +22,25 @@ export function TrainingTools({
   return (
     <>
       <div className="training-tools" aria-label="训练辅助工具">
-        <button type="button" onClick={() => setOpen("estimate")}>
+        <button
+          type="button"
+          className="training-tool-action"
+          title="训练量估算"
+          aria-label="训练量估算"
+          onClick={() => setOpen("estimate")}
+        >
           <Calculator size={16} />
-          训练量估算
+          <span>训练量估算</span>
         </button>
-        <button type="button" onClick={() => setOpen("validation")}>
+        <button
+          type="button"
+          className="training-tool-action"
+          title="预览与预检"
+          aria-label="预览与预检"
+          onClick={() => setOpen("validation")}
+        >
           <ClipboardCheck size={16} />
-          预览与预检
+          <span>预览与预检</span>
         </button>
       </div>
       {open && (
@@ -82,9 +94,9 @@ export function TrainingTools({
                       `training-field-${key}`,
                     );
                     field?.scrollIntoView({ block: "center" });
-                    field
-                      ?.querySelector<HTMLElement>("input, select, textarea")
-                      ?.focus({ preventScroll: true });
+                    const control = field?.querySelector<HTMLElement>("input, select, textarea");
+                    if (control && !control.matches(":disabled")) control.focus({ preventScroll: true });
+                    else field?.focus({ preventScroll: true });
                   });
                 }}
               />

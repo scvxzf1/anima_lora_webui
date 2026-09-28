@@ -75,8 +75,45 @@ def test_web_runtime_config_creates_run_directory_and_overrides_paths(tmp_path, 
     env = {}
     training_service._apply_runtime_env(env, runtime)
     assert env["ANIMA_RUNTIME_CONFIG"] == "output/runs/522-20260523-114514/config.runtime.toml"
-    assert env["TORCHINDUCTOR_CACHE_DIR"].endswith("model_cache/torchinductor")
-    assert env["TRITON_CACHE_DIR"].endswith("model_cache/triton")
+    assert env["TORCHINDUCTOR_CACHE_DIR"] == str(run_dir / "model_cache/torchinductor")
+    assert env["TRITON_CACHE_DIR"] == str(run_dir / "model_cache/triton")
+
+
+def test_compiler_cache_env_stays_absolute_after_working_directory_change(tmp_path, monkeypatch):
+    _patch_runtime_service_paths(monkeypatch, tmp_path)
+    other_cwd = tmp_path / "compiler-worker"
+    other_cwd.mkdir()
+    monkeypatch.chdir(other_cwd)
+    external_triton = tmp_path / "external-cache" / "triton"
+    runtime = {
+        "torchinductor_cache_dir": "output/runs/example/model_cache/torchinductor",
+        "triton_cache_dir": str(external_triton),
+    }
+    env = {}
+    training_service._apply_runtime_env(env, runtime)
+    assert env["TORCHINDUCTOR_CACHE_DIR"] == str(
+        tmp_path / "output/runs/example/model_cache/torchinductor"
+    )
+    assert env["TRITON_CACHE_DIR"] == str(external_triton)
+
+
+def test_web_runtime_config_preserves_edit_reference_directory(tmp_path, monkeypatch):
+    _write_runtime_config_tree(tmp_path)
+    _patch_runtime_service_paths(monkeypatch, tmp_path)
+    dataset_path = tmp_path / "configs" / "datasets" / "522.toml"
+    dataset_doc = toml.loads(dataset_path.read_text(encoding="utf-8"))
+    dataset_doc["datasets"][0]["subsets"][0]["reference_image_dir"] = "image_dataset/a_before"
+    dataset_path.write_text(toml.dumps(dataset_doc), encoding="utf-8")
+
+    runtime = training_service._prepare_web_runtime_config(
+        "522", "default", "imported", source_config_file="configs/imported/522.toml"
+    )
+    runtime_dataset = toml.loads(
+        (tmp_path / runtime["dataset_config_file"]).read_text(encoding="utf-8")
+    )
+    subsets = [dataset["subsets"][0] for dataset in runtime_dataset["datasets"]]
+    assert subsets[0]["reference_image_dir"] == "image_dataset/a_before"
+    assert "reference_image_dir" not in subsets[1]
 
 def test_runtime_config_main_paths_do_not_depend_on_bind_legacy(tmp_path, monkeypatch):
     _write_runtime_config_tree(tmp_path)

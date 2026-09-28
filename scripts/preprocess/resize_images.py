@@ -25,6 +25,9 @@ def main() -> None:
     parser.add_argument("--src", type=str, required=True, help="Source image directory")
     parser.add_argument("--dst", type=str, required=True, help="Output directory")
     parser.add_argument(
+        "--model_family", default="anima", help="Model family for pixel alignment (default: anima)"
+    )
+    parser.add_argument(
         "--resolution", type=int, default=1024, help="Max resolution (default: 1024)"
     )
     parser.add_argument(
@@ -123,6 +126,7 @@ def main() -> None:
         recursive=args.recursive,
         path_pattern=args.path_pattern,
         progress=tqdm_progress("Resizing"),
+        model_family=args.model_family,
     )
 
 

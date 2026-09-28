@@ -32,6 +32,13 @@ DEFAULT_MODEL_CONFIG_GROUP_ID = "ungrouped"
 DEFAULT_MODEL_CONFIG_GROUP_LABEL = "未分组"
 MODEL_CONFIG_ID_PATTERN = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$")
 
+# These labels are presentation metadata only.  The task codes themselves stay
+# canonical and come from ModelFamilySpec.supported_tasks.
+_TRAINING_TASK_LABELS = {
+    "t2i": "文生图",
+    "edit": "编辑训练",
+}
+
 
 class ModelConfigConflictError(ValueError):
     """Raised when the settings file changed after the client loaded it."""
@@ -345,8 +352,7 @@ def _normalize_family(value: Any) -> str:
         )
     except ValueError as exc:
         raise ValueError(
-            f"模型格式仅支持 anima、krea2_raw 或 z_image；注册值: "
-            f"{', '.join(MODEL_FAMILY_REGISTRY)}: {exc}"
+            f"模型格式仅支持 {', '.join(MODEL_FAMILY_REGISTRY)}；{exc}"
         ) from exc
 
 
@@ -371,6 +377,7 @@ def _response(
             {
                 **item,
                 "complete": all(bool(item.get(key)) for key in MODEL_PATH_KEYS),
+                **_derived_capabilities(item["model_family"]),
             }
             for item in items
         ],
@@ -382,4 +389,25 @@ def _response(
         "revision": revision,
         "migrated": migrated,
         "groups_migrated": groups_migrated,
+    }
+
+
+def _derived_capabilities(family: str) -> dict[str, list[str]]:
+    """Return response-only capability metadata for a canonical model family.
+
+    ``training_tasks`` and ``capability_labels`` intentionally do not belong to
+    ``MODEL_CONFIG_FIELDS``: clients may send an older response back unchanged,
+    but user-provided tags must never become the source of truth for capabilities.
+    """
+
+    spec = get_model_family_spec(family, source="WebUI model config family")
+    training_tasks = sorted(spec.supported_tasks)
+    capability_labels = [
+        _TRAINING_TASK_LABELS.get(task, task) for task in training_tasks
+    ]
+    if spec.plain_lora_only:
+        capability_labels.append("仅支持 LoRA")
+    return {
+        "training_tasks": training_tasks,
+        "capability_labels": capability_labels,
     }

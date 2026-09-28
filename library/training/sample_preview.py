@@ -23,9 +23,9 @@ def _z_image_sample_images(*args, **kwargs):
 
 
 def _qwen_image_2_1_sample_images(*args, **kwargs):
-    options = args[1]
-    if any(getattr(options, key, None) for key in ("sample_at_first", "sample_every_n_steps", "sample_every_n_epochs")):
-        raise NotImplementedError("Qwen Image 2.1 training preview is not implemented")
+    from library.models.qwen_image_2_1.training_preview import sample_images
+
+    return sample_images(*args, **kwargs)
 
 
 def sample_images(

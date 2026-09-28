@@ -19,6 +19,10 @@ from library.datasets.image_utils import glob_images
 from library.datasets.qwen_image_edit import inspect_edit_pairs, require_complete_edit_pairs
 from library.datasets.subsets import filter_paths_by_glob
 from library.preprocess.captions import normalize_caption_source_mode
+from library.models.family_registry import (
+    normalize_registered_family,
+)
+from library.training.task_contracts import task_config_values
 from web.services.config import paths as _config_paths
 from web.services.config.dataset_edit_pairs import project_edit_rows, restore_edit_rows
 from web.services.config.revisioned_text import text_revision
@@ -533,22 +537,24 @@ def apply_dataset_preset_to_training_config(
         )
     except toml.TomlDecodeError as exc:
         raise ValueError(f"训练配置 TOML 无法解析: {exc}") from exc
-    model_family = str(training_values.get("model_family") or "anima").strip().lower()
+    try:
+        model_family = normalize_registered_family(
+            training_values.get("model_family") or "anima",
+            source="训练配置 model_family",
+            allow_aliases=True,
+        )
+    except ValueError as exc:
+        raise ValueError(str(exc)) from exc
     qwen_edit_enabled = bool(edit_layout) or bool(defaults.get("qwen_edit_enabled", False))
+    task_values = task_config_values(model_family, "edit" if qwen_edit_enabled else "t2i")
     if qwen_edit_enabled:
-        if model_family != "qwen_image_2_1":
-            raise ValueError(
-                "Qwen Image 2.1 编辑数据只能应用到 model_family=qwen_image_2_1 的训练配置"
-            )
         dataset_path = _safe_resolve(dataset_rel)
         if dataset_path is None:
             raise ValueError("数据集预设路径不合法")
         dataset_values = toml.loads(dataset_path.read_text(encoding="utf-8"))
-        _validate_qwen_edit_training_config(training_values, dataset_values, dataset_rel)
-        _validate_qwen_edit_rows(runtime_rows, defaults)
-    elif model_family == "qwen_image_2_1" and any(
-        str(row.get("reference_image_dir") or "").strip() for row in runtime_rows
-    ):
+        _validate_edit_training_config({**training_values, "model_family": model_family, **task_values}, dataset_values, dataset_rel)
+        _validate_edit_pair_paths(runtime_rows)
+    elif any(str(row.get("reference_image_dir") or "").strip() for row in runtime_rows):
         raise ValueError("数据集仍包含参考图目录（编辑前）；请启用编辑 LoRA 或移除该目录")
     values = {
         "dataset_config": dataset_rel,
@@ -557,8 +563,9 @@ def apply_dataset_preset_to_training_config(
         "lora_cache_dir": first["cache_dir"],
         "prior_loss_weight": compatibility_defaults["prior_loss_weight"],
     }
-    if model_family == "qwen_image_2_1":
-        values["qwen_image_2_1_task"] = "edit" if qwen_edit_enabled else "t2i"
+    values.update(task_values)
+    if str(training_values.get("model_family") or "anima").strip() != model_family:
+        values["model_family"] = model_family
     # Bind stage schedule from dataset preset into the training config so runtime
     # and preflight still see the schedule after apply.
     if "stage_schedule_enabled" in preset:
@@ -584,27 +591,13 @@ def apply_dataset_preset_to_training_config(
     }
 
 
-def _validate_qwen_edit_training_config(
+def _validate_edit_training_config(
     training_values: dict[str, Any], dataset_values: dict[str, Any], dataset_rel: str,
 ) -> None:
     from library.training.compat_matrix import check_training_compat
 
-    if not _bool_value(
-        training_values.get("cache_latents", training_values.get("use_vae_cache")), False
-    ):
-        raise ValueError("Qwen Image 2.1 Edit 需要启用 VAE latent 缓存")
-    if not _bool_value(
-        training_values.get(
-            "cache_text_encoder_outputs", training_values.get("use_text_cache")
-        ),
-        False,
-    ):
-        raise ValueError("Qwen Image 2.1 Edit 需要启用 Qwen3-VL 条件缓存")
-
     result = check_training_compat({
         **training_values,
-        "model_family": "qwen_image_2_1",
-        "qwen_image_2_1_task": "edit",
         "dataset_config": dataset_rel,
         "general": dataset_values.get("general", {}),
         "datasets": dataset_values.get("datasets", []),
@@ -614,28 +607,16 @@ def _validate_qwen_edit_training_config(
         None,
     )
     if issue is not None:
-        raise ValueError(f"Qwen Image 2.1 Edit 仅支持 plain LoRA：{issue.message}")
+        raise ValueError(f"当前模型仅支持 plain LoRA：{issue.message}")
     if result.errors:
-        raise ValueError(f"Qwen Image 2.1 Edit 训练配置不兼容：{result.errors[0].message}")
+        raise ValueError(f"编辑训练配置不兼容：{result.errors[0].message}")
 
 
-def _validate_qwen_edit_rows(rows: list[dict[str, Any]], defaults: dict[str, Any]) -> None:
-    training_rows = [row for row in rows if not _bool_value(row.get("is_reg"), False)]
-    if not training_rows:
-        raise ValueError("Qwen Image 2.1 Edit 至少需要一个普通训练子集")
-    if len(training_rows) != len(rows):
-        raise ValueError("Qwen Image 2.1 Edit 首版不支持正则数据子集")
-
-    for index, row in enumerate(training_rows):
+def _validate_edit_pair_paths(rows: list[dict[str, Any]]) -> None:
+    for index, row in enumerate(rows):
         reference_value = str(row.get("reference_image_dir") or "").strip()
         if not reference_value:
             raise ValueError(f"子集 {index + 1} 缺少参考图目录（编辑前）")
-        settings = dict(defaults)
-        if isinstance(row.get("settings"), dict):
-            settings.update(row["settings"])
-        if int(settings.get("batch_size", 1) or 1) != 1:
-            raise ValueError("Qwen Image 2.1 Edit 首版要求所有数据子集 batch_size=1")
-
         target_dir = _resolve_project_path(str(row.get("image_dir") or ""))
         reference_dir = _resolve_project_path(reference_value)
         if not target_dir.is_dir():

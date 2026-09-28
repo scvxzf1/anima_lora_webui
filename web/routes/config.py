@@ -64,6 +64,9 @@ from web.services.config_service import (
 
 
 def setup_config_routes(app: web.Application) -> None:
+    from web.routes.sample_references import setup_sample_reference_routes
+
+    setup_sample_reference_routes(app)
     app.router.add_get("/api/methods", handle_methods)
     app.router.add_get("/api/methods/{method}/variants", handle_variants)
     app.router.add_get("/api/presets", handle_presets)

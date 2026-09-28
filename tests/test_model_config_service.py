@@ -27,6 +27,11 @@ def _item(
     }
 
 
+def test_invalid_model_family_error_lists_registered_families() -> None:
+    with pytest.raises(ValueError, match="qwen_image_2_1"):
+        model_config_service._normalize_family("not-a-registered-family")
+
+
 def test_model_config_get_migrates_legacy_values_without_writing(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -73,6 +78,8 @@ def test_model_config_get_migrates_legacy_values_without_writing(
             "qwen3": "base/qwen.safetensors",
             "vae": "base/vae.safetensors",
             "complete": True,
+            "training_tasks": ["t2i"],
+            "capability_labels": ["文生图"],
         }
     ]
     assert payload["groups"] == [
@@ -292,6 +299,39 @@ def test_model_config_saves_z_image_family(
     assert raw["global"]["model_family"] == "z_image"
 
 
+def test_model_config_capabilities_come_from_registry_and_are_not_persisted(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings_file = tmp_path / "web-ui-settings.toml"
+    _patch_settings_file(monkeypatch, settings_file)
+    revision = model_config_service.get_model_configs()["revision"]
+
+    result = model_config_service.save_model_configs(
+        {
+            "revision": revision,
+            "default_id": "qwen",
+            "items": [
+                {
+                    **_item("qwen", "Qwen Image", "qwen_image_2_1"),
+                    "training_tasks": ["spoof"],
+                    "capability_labels": ["用户标签"],
+                }
+            ],
+        }
+    )
+
+    assert result["items"][0]["training_tasks"] == ["edit", "t2i"]
+    assert result["items"][0]["capability_labels"] == [
+        "编辑训练",
+        "文生图",
+        "仅支持 LoRA",
+    ]
+    serialized = settings_file.read_text(encoding="utf-8")
+    assert "spoof" not in serialized
+    assert "用户标签" not in serialized
+
+
 @pytest.mark.parametrize(
     ("patch", "message"),
     [
@@ -304,7 +344,7 @@ def test_model_config_saves_z_image_family(
         ),
         (
             {"items": [{**_item("one", "One"), "model_family": "unknown"}]},
-            "仅支持 anima、krea2_raw 或 z_image",
+            "qwen_image_2_1",
         ),
         (
             {"groups": [{"id": "a", "label": "A", "item_ids": []}]},

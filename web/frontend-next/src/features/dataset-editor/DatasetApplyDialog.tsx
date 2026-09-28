@@ -8,7 +8,8 @@ import { useDialogLifecycle } from './useDialogLifecycle';
 type Props = {
   datasetFile: string;
   trainFile: TrainingConfigFile;
-  qwenTaskMode: 't2i' | 'edit' | null;
+  taskMode: 't2i' | 'edit' | null;
+  compatibilityIssue?: string | null;
   busy: boolean;
   error?: string;
   onCancel: () => void;
@@ -18,7 +19,8 @@ type Props = {
 export function DatasetApplyDialog({
   datasetFile,
   trainFile,
-  qwenTaskMode,
+  taskMode,
+  compatibilityIssue,
   busy,
   error,
   onCancel,
@@ -58,19 +60,21 @@ export function DatasetApplyDialog({
         <dl className="dataset-apply-summary">
           <div><dt>数据集预设</dt><dd>{datasetFile}</dd></div>
           <div><dt>训练配置</dt><dd>{trainFile.label || trainFile.filename || trainFile.path}</dd></div>
-          {qwenTaskMode ? (
-            <div><dt>Qwen Image 2.1 任务</dt><dd>{qwenTaskMode === 'edit' ? '编辑 LoRA' : 'T2I'}</dd></div>
+          {taskMode ? (
+            <div><dt>数据集任务</dt><dd>{taskMode === 'edit' ? '编辑 LoRA' : '普通文生图'}</dd></div>
           ) : null}
           <div><dt>写入路径</dt><dd>{trainFile.path}</dd></div>
         </dl>
-        {qwenTaskMode === 'edit' ? (
-          <p className="dataset-apply-warning">确认后会写入 qwen_image_2_1_task = "edit"。</p>
+        {compatibilityIssue ? (
+          <p className="dataset-command-error" role="alert">
+            {compatibilityIssue}
+          </p>
         ) : null}
         <p className="dataset-apply-warning">只会应用磁盘中已保存的数据集版本；当前未保存草稿不会被写入。</p>
         {error ? <p className="dataset-command-error" role="alert">{error}</p> : null}
         <footer>
           <button type="button" onClick={onCancel} disabled={busy}>取消</button>
-          <button ref={confirmRef} type="button" className="primary-command" onClick={onConfirm} disabled={busy}>
+          <button ref={confirmRef} type="button" className="primary-command" onClick={onConfirm} disabled={busy || Boolean(compatibilityIssue)}>
             {busy ? '应用中' : '确认应用'}
           </button>
         </footer>

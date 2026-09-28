@@ -32,11 +32,15 @@ export function TrainingFieldEditor({
           field,
           String(draft.model_family || "anima"),
         );
+        const controlDisabled = disabled || !availability.enabled;
         return (
           <label
             key={field.key}
             id={`training-field-${field.key}`}
+            tabIndex={-1}
             data-available={availability.enabled}
+            data-visible={availability.visible}
+            data-availability-code={availability.code || undefined}
             onClick={(event) => {
               // Keep the large field row clickable for text inputs, but do not let
               // an incidental click in the checkbox row toggle its value.
@@ -49,7 +53,7 @@ export function TrainingFieldEditor({
               <span>{field.label}</span>
               <code className="training-field-tag">{field.key}</code>
             {field.key === "sample_prompts" && onEditPrompts && (
-              <button type="button" title="编辑样张提示词" aria-label="编辑样张提示词" disabled={disabled} onClick={(event) => { event.preventDefault(); onEditPrompts(); }}><FilePenLine size={16} /></button>
+              <button type="button" title="编辑样张提示词" aria-label="编辑样张提示词" disabled={controlDisabled} onClick={(event) => { event.preventDefault(); onEditPrompts(); }}><FilePenLine size={16} /></button>
             )}
             </span>
             {field.kind === "json" ? (
@@ -57,7 +61,7 @@ export function TrainingFieldEditor({
                 aria-label={field.label}
                 rows={5}
                 value={String(draft[field.key] ?? "")}
-                disabled={disabled}
+                disabled={controlDisabled}
                 onChange={(event) => onChange(field.key, event.target.value)}
               />
             ) : field.kind === "boolean" ? (
@@ -65,14 +69,14 @@ export function TrainingFieldEditor({
                 type="checkbox"
                 aria-label={field.label}
                 checked={Boolean(draft[field.key])}
-                disabled={disabled}
+                disabled={controlDisabled}
                 onChange={(event) => onChange(field.key, event.target.checked)}
               />
             ) : field.kind === "select" ? (
               <select
                 aria-label={field.label}
                 value={String(draft[field.key] ?? "")}
-                disabled={disabled}
+                disabled={controlDisabled}
                 onChange={(event) => onChange(field.key, event.target.value)}
               >
                 {!options?.includes(String(draft[field.key] ?? "")) && (
@@ -82,7 +86,7 @@ export function TrainingFieldEditor({
                 )}
                 {options?.map((option) => (
                   <option key={option} value={option}>
-                    {option}
+                    {field.optionLabels?.[option] || option}
                   </option>
                 ))}
               </select>
@@ -93,7 +97,7 @@ export function TrainingFieldEditor({
                 value={String(draft[field.key] ?? "")}
                 min={field.min}
                 step={field.step}
-                disabled={disabled}
+                disabled={controlDisabled}
                 onChange={(event) =>
                   onChange(
                     field.key,
@@ -107,9 +111,9 @@ export function TrainingFieldEditor({
             <small data-source={ownKeys.has(field.key) ? "file" : "merged"}>
               {ownKeys.has(field.key) ? "当前文件" : "继承/预设"}
             </small>
-            {FIELD_HELP_SUMMARY_ZH[field.key] && (
+            {(field.help || FIELD_HELP_SUMMARY_ZH[field.key]) && (
               <small className="training-field-help">
-                {FIELD_HELP_SUMMARY_ZH[field.key]}
+                {field.help || FIELD_HELP_SUMMARY_ZH[field.key]}
               </small>
             )}
             {!availability.enabled && (

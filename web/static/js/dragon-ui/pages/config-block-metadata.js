@@ -6,8 +6,8 @@ import {
     CONFIG_STAGE_META,
     configFieldCatalogEntry,
     sortConfigCatalogItems,
-} from './config-field-catalog.js?v=auto-block-swap-20260908-v3';
-import { configFieldDisclosure } from './config-field-disclosure-rules.js?v=auto-block-swap-20260908-v3';
+} from './config-field-catalog.js?v=qwen-cache-policy-20260928';
+import { configFieldDisclosure } from './config-field-disclosure-rules.js?v=qwen-cache-policy-20260928';
 
 const STAGE_BY_ID = new Map(CONFIG_STAGE_META.map((stage) => [stage.id, stage]));
 const CLUSTER_BY_ID = new Map(CONFIG_STAGE_META.flatMap((stage) =>

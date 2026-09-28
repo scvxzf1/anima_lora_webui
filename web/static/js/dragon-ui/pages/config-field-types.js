@@ -5,7 +5,7 @@
  * Keep those fields typed here so an omitted value never degrades into a
  * free-form text input.
  */
-import { FORM_UI_DEFAULTS } from '../../config/catalog/defaults.js?v=auto-block-swap-20260908-v3';
+import { FORM_UI_DEFAULTS } from '../../config/catalog/defaults.js?v=qwen-cache-policy-20260928';
 
 const BOOLEAN_METHOD_DEFAULTS = Object.freeze({
     // Network flags omitted by plain/imported method files.
@@ -17,15 +17,18 @@ const BOOLEAN_METHOD_DEFAULTS = Object.freeze({
     route_per_layer: false,
     specialize_experts_by_sigma_buckets: false,
     use_chimera_hydra: false,
+    dim_from_weights: false,
 
     // Base/network flags that can also be absent in imported files.
     network_train_unet_only: true,
+    cpu_offload_checkpointing: false,
     unsloth_offload_checkpointing: false,
     disable_block_swap_for_eval: false,
     dataloader_pin_memory: true,
     persistent_data_loader_workers: true,
     vae_disable_cache: true,
     torch_compile: true,
+    use_custom_down_autograd: false,
     train_adaln: false,
     freq_router_layer_norm: true,
     content_router_layer_norm: true,
@@ -44,6 +47,21 @@ const BOOLEAN_DEFAULTS = Object.freeze({
 
 export const BOOLEAN_CONFIG_DEFAULTS = BOOLEAN_DEFAULTS;
 export const BOOLEAN_CONFIG_KEYS = new Set(Object.keys(BOOLEAN_DEFAULTS));
+
+const NUMBER_CONFIG_KEYS = new Set([
+    ...Object.entries(FORM_UI_DEFAULTS)
+        .filter(([, value]) => typeof value === 'number')
+        .map(([key]) => key),
+    'alpha_rank_scale',
+    'balance_loss_warmup_ratio',
+    'balance_loss_weight',
+    'checkpointing_epochs',
+    'discrete_flow_shift',
+    'network_router_lr_scale',
+    'num_experts',
+    'save_every_n_epochs',
+    'sigma_feature_dim',
+]);
 
 function booleanLiteral(value) {
     if (typeof value === 'boolean') return value;
@@ -64,6 +82,20 @@ export function isBooleanConfigField(key, value, options = null) {
     if (BOOLEAN_CONFIG_KEYS.has(key)) return true;
     if (isBooleanOptionList(options)) return true;
     return typeof value === 'boolean' && !options;
+}
+
+export function configFieldInputKind(key, value, options = null) {
+    if (isBooleanOptionList(options)) return 'boolean';
+    if (Array.isArray(options) && options.length) {
+        if (options.every((item) => typeof item === 'string')) return 'select';
+        if (options.every((item) => typeof item === 'number')) return 'number';
+    }
+    if (BOOLEAN_CONFIG_KEYS.has(key)) return 'boolean';
+    if (typeof value === 'boolean') return 'boolean';
+    if (NUMBER_CONFIG_KEYS.has(key) || typeof value === 'number') return 'number';
+    if (Array.isArray(FORM_UI_DEFAULTS[key]) || Array.isArray(value)
+        || (value !== null && typeof value === 'object')) return 'json';
+    return 'text';
 }
 
 export function booleanDefaultForKey(key, fallback = false) {

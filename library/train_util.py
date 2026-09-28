@@ -263,7 +263,9 @@ def load_prompts(prompt_file: str) -> List[Dict]:
     for i in range(len(prompts)):
         prompt_dict = prompts[i]
         if isinstance(prompt_dict, str):
-            prompt_dict = line_to_prompt_dict(prompt_dict)
+            from library.training.preview_spec import parse_structured_prompt
+
+            prompt_dict = parse_structured_prompt(prompt_dict) or line_to_prompt_dict(prompt_dict)
             prompts[i] = prompt_dict
         assert isinstance(prompt_dict, dict)
 

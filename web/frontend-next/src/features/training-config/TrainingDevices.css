@@ -15,6 +15,23 @@
 .training-device-detail { display: flex; gap: 8px; flex-wrap: wrap; padding: 12px 0; font-size: 13px; }
 .training-device-detail small { color: var(--muted); }
 .training-devices .form-error { margin: 6px 0 0; font-size: 12px; }
+@media (min-width: 1200px) {
+  .training-devices[aria-label="训练设备快捷选择"] {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+    align-items: center;
+    gap: 6px;
+    padding: 2px 0;
+  }
+  .training-device-heading { flex-wrap: nowrap; gap: 4px; }
+  .training-device-heading > strong,
+  .training-device-options,
+  .training-device-options > label { gap: 4px; }
+  .training-device-modes button { padding-inline: 6px; }
+  .training-device-options { min-width: 0; margin-top: 0; }
+  .training-device-options > label { padding-inline: 6px; }
+  .training-devices[aria-label="训练设备快捷选择"] > .form-error { grid-column: 1 / -1; }
+}
 @media (max-width: 800px) {
   .training-device-heading { gap: 6px; }
   .training-device-options > label { flex-wrap: wrap; gap: 4px; }

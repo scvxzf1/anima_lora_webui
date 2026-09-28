@@ -103,6 +103,15 @@ class Int8BlockSwapCpuMaster:
 
 
 @dataclass(frozen=True)
+class Int8BlockSwapCpuSlab:
+    """Packed INT8 payload and per-row scales for one transformer block."""
+
+    quantized: torch.Tensor
+    scale: torch.Tensor
+    plan: dict[str, tuple[int, int, tuple[int, ...], int, int]]
+
+
+@dataclass(frozen=True)
 class Params4bitBlockSwapCpuMaster:
     """CPU master for a frozen NF4 Linear4bit weight.
 
@@ -285,7 +294,11 @@ def _parked_cpu_master_tensor(master: _CpuMaster) -> torch.Tensor:
 
 
 def _bind_captured_cpu_weights(
-    block: nn.Module, masters: dict[str, _CpuMaster], *, allow_cuda: bool = False,
+    block: nn.Module,
+    masters: dict[str, _CpuMaster],
+    *,
+    allow_cuda: bool = False,
+    use_int8_master: bool = False,
 ) -> None:
     """Release duplicate CPU payload after a block's native masters are captured.
 
@@ -298,7 +311,15 @@ def _bind_captured_cpu_weights(
         weight = getattr(module, "weight", None)
         if (type(weight) is not nn.Parameter or weight.requires_grad
                 or weight.device.type not in (("cpu", "cuda") if allow_cuda else ("cpu",))
-                or not isinstance(master, torch.Tensor)):
+                ):
+            continue
+        if isinstance(master, Int8BlockSwapCpuMaster):
+            if (use_int8_master and weight.device.type == "cpu") or (
+                allow_cuda and weight.device.type == "cuda"
+            ):
+                weight.data = master.quantized
+            continue
+        if not isinstance(master, torch.Tensor):
             continue
         if master.device.type == "cpu" and weight.dtype == master.dtype and weight.shape == master.shape:
             weight.data = master

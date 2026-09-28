@@ -45,6 +45,7 @@ export const FORM_UI_DEFAULTS = {
     pipeline_parallel_split: 'balanced',
     compile_block_scope: 'resident',
     preprocess_memory_profile: 'auto',
+    qwen_text_encoder_cache_policy: 'auto',
     reuse_dataset_cache_copy: true,
     reuse_vae_latents: true,
     reuse_text_encoder_cache: true,

@@ -64,6 +64,9 @@ def run_training_session(trainer, args) -> None:
     session_id = random.randint(0, 2**32)
     training_started_at = time.time()
     normalize_sample_args(args)
+    from library.training.preview_spec import validate_preview_file
+
+    validate_preview_file(args)
     verify_training_args(args)
     train_util.prepare_dataset_args(args, True)
     setup_logging(args, reset=True)
@@ -355,6 +358,11 @@ def run_training_session(trainer, args) -> None:
             text_encoders,
             val_dataset_group,
         )
+
+    if sampling_enabled and getattr(args, "model_family", "") == "qwen_image_2_1":
+        from library.models.qwen_image_2_1.preview_conditions import cache_preview_references
+
+        cache_preview_references(trainer, args, accelerator, vae)
 
     if unet is None:
         # lazy load unet if needed. text encoders may be freed or replaced with dummy models for saving memory

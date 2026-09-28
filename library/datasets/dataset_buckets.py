@@ -33,6 +33,8 @@ class DatasetBucketsMixin:
         datasets such as 768 — native shapes, no padding.
         """
         self._constant_token_buckets = constant_token_buckets
+        qwen = any(getattr(subset, "model_family", "") == "qwen_image_2_1" for subset in self.subsets)
+        from library.datasets.qwen_image_geometry import align_qwen_bucket_manager, align_qwen_resolution
         logger.info("loading image sizes.")
         for info in tqdm(self.image_data.values()):
             if info.image_size is None:
@@ -51,6 +53,8 @@ class DatasetBucketsMixin:
                 self.bucket_manager.make_buckets(
                     constant_token_buckets=constant_token_buckets
                 )
+                if qwen:
+                    align_qwen_bucket_manager(self.bucket_manager)
             else:
                 self.bucket_manager.set_predefined_resos([])
 
@@ -59,6 +63,8 @@ class DatasetBucketsMixin:
             image_width, image_height = image_info.image_size
             if not self.enable_bucket:
                 bucket_reso = (self.resolution, self.resolution)
+                if qwen:
+                    bucket_reso = align_qwen_resolution(bucket_reso)
                 resized_size = self._cover_resized_size(
                     image_width, image_height, bucket_reso
                 )
@@ -68,9 +74,11 @@ class DatasetBucketsMixin:
                 image_info.resized_size = resized_size
             elif self.bucket_no_upscale:
                 bucket_reso = (image_width, image_height)
+                if qwen:
+                    bucket_reso = align_qwen_resolution(bucket_reso)
                 self.bucket_manager.add_if_new_reso(bucket_reso)
                 image_info.bucket_reso = bucket_reso
-                image_info.resized_size = bucket_reso
+                image_info.resized_size = self._cover_resized_size(image_width, image_height, bucket_reso)
                 ar_error = 0
             else:
                 image_info.bucket_reso, image_info.resized_size, ar_error = (

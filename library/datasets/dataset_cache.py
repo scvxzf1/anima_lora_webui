@@ -202,7 +202,7 @@ class DatasetCacheMixin:
         try:
             # iterate images
             logger.info("caching latents...")
-            for i, info in enumerate(tqdm(image_infos)):
+            for i, info in enumerate(tqdm(image_infos, desc="Caching latents")):
                 subset = self.image_to_subset[info.image_key]
 
                 has_edit_reference = bool(getattr(info, "reference_image_path", None))
@@ -399,7 +399,7 @@ class DatasetCacheMixin:
         process_index = accelerator.process_index
 
         logger.info("checking cache validity...")
-        for i, info in enumerate(tqdm(image_infos)):
+        for i, info in enumerate(tqdm(image_infos, desc="Checking text cache")):
             subset = self.image_to_subset.get(info.image_key)
             # check disk cache exists and size of text encoder outputs
             if caching_strategy.cache_to_disk:
@@ -445,7 +445,7 @@ class DatasetCacheMixin:
 
         # iterate batches
         logger.info("caching Text Encoder outputs...")
-        for batch in tqdm(batches, smoothing=1, total=len(batches)):
+        for batch in tqdm(batches, smoothing=1, total=len(batches), desc="Caching text encoder"):
             caching_strategy.cache_batch_outputs(
                 tokenize_strategy, models, text_encoding_strategy, batch
             )

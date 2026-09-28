@@ -35,10 +35,14 @@ def compile_qwen_image_2_1_blocks(
     if adapter is not None and scope == "resident":
         count -= model.blocks_to_swap
     source = adapter.inner_forwards if adapter is not None else [block.forward for block in blocks]
-    compiled = [
-        torch.compile(forward, backend=backend, mode=mode, dynamic=dynamic_seq)
-        for forward in source[:count]
-    ]
+    compiled = []
+    for block, forward in zip(blocks[:count], source[:count]):
+        segmented = getattr(block, "_qwen_segmented_forward", None)
+        if segmented is not None:
+            segmented.compile_segments(backend=backend, mode=mode, dynamic=dynamic_seq)
+            compiled.append(forward)
+        else:
+            compiled.append(torch.compile(forward, backend=backend, mode=mode, dynamic=dynamic_seq))
     if adapter is not None:
         adapter.inner_forwards[:count] = compiled
     else:

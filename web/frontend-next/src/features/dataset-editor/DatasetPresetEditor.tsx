@@ -11,7 +11,8 @@ import { DatasetDefaultsEditor } from './DatasetDefaultsEditor';
 import { DatasetSubsetList } from './DatasetSubsetList';
 import { datasetPresetStem } from './datasetForm';
 import { DatasetNameDialog, type DatasetNameAction } from './DatasetNameDialog';
-import { isQwenImage21Config, qwenImage21DatasetApplyIssue, qwenImage21EditApplyIssue, qwenImage21PlainLoraIssue } from './qwenImage21Edit';
+import { editCapabilityIssue, findModelCapability, useModelCapabilities } from '../../api/modelCapabilities';
+import { editDatasetIssue } from './editDataset';
 import { StageScheduleEditor } from './StageScheduleEditor';
 import type { DatasetPresetEditorController } from './useDatasetPresetEditor';
 
@@ -45,16 +46,18 @@ export function DatasetPresetEditor({
   const canOpenWorkbench = persisted && !editor.hasUnsavedChanges;
   const summary = summarizeRows(watchedRows.filter((row) => row.edit_role !== 'before'));
   const targetTrainingFile = trainingContext.selectedFile;
-  const qwenEditAvailable = isQwenImage21Config(trainingContext.mergedConfig);
-  const qwenEditIssue = qwenImage21PlainLoraIssue(trainingContext.mergedConfig);
-  const qwenEditApplyIssue = (qwenEditEnabled
-    ? qwenImage21EditApplyIssue(trainingContext.mergedConfig)
-    : null) || qwenImage21DatasetApplyIssue(trainingContext.mergedConfig, qwenEditEnabled, watchedRows);
+  const capabilities = useModelCapabilities(applyOpen && qwenEditEnabled);
+  const capability = findModelCapability(capabilities.data?.items, trainingContext.mergedConfig?.model_family);
+  const qwenEditConfigIssue = (qwenEditEnabled
+    ? !trainingContext.mergedConfig ? '训练配置尚未读取完成'
+      : capabilities.isFetching ? '正在读取模型能力' : capabilities.error?.message || editCapabilityIssue(capability)
+    : null);
+  const qwenEditDatasetIssue = editDatasetIssue(qwenEditEnabled, watchedRows);
   const canApply = persisted
     && !editor.hasUnsavedChanges
     && Boolean(targetTrainingFile)
     && !targetTrainingFile?.locked
-    && !qwenEditApplyIssue
+    && !qwenEditDatasetIssue
     && !editor.form.formState.errors.datasets
     && !busy;
   const applyPreset = useMutation({
@@ -167,7 +170,7 @@ export function DatasetPresetEditor({
             dirty: editor.hasUnsavedChanges,
             hasTrainingFile: Boolean(targetTrainingFile),
             trainingFileLocked: Boolean(targetTrainingFile?.locked),
-            qwenEditIssue: qwenEditApplyIssue,
+            datasetIssue: qwenEditDatasetIssue,
           })}
         >
           应用到当前训练配置
@@ -191,7 +194,6 @@ export function DatasetPresetEditor({
       <DatasetSubsetList
         form={editor.form}
         disabled={editor.readonly || busy}
-        qwenEditIssue={qwenEditIssue}
         workbenchDisabled={!canOpenWorkbench || busy}
         onOpenWorkbench={onOpenWorkbench}
       />
@@ -210,7 +212,8 @@ export function DatasetPresetEditor({
         <DatasetApplyDialog
           datasetFile={editor.selectedFile}
           trainFile={targetTrainingFile}
-          qwenTaskMode={qwenEditAvailable ? (qwenEditEnabled ? 'edit' : 't2i') : null}
+          taskMode={qwenEditEnabled ? 'edit' : 't2i'}
+          compatibilityIssue={qwenEditConfigIssue}
           busy={applyPreset.isPending}
           error={applyPreset.error?.message}
           onCancel={() => {
@@ -251,18 +254,18 @@ function applyDisabledReason({
   dirty,
   hasTrainingFile,
   trainingFileLocked,
-  qwenEditIssue,
+  datasetIssue,
 }: {
   persisted: boolean;
   dirty: boolean;
   hasTrainingFile: boolean;
   trainingFileLocked: boolean;
-  qwenEditIssue: string | null;
+  datasetIssue: string | null;
 }) {
   if (!persisted) return '请先保存数据集预设';
   if (dirty) return '请先保存当前数据集修改';
   if (!hasTrainingFile) return '没有可用的训练配置';
   if (trainingFileLocked) return '当前训练配置为只读，请先选择可编辑配置';
-  if (qwenEditIssue) return qwenEditIssue;
+  if (datasetIssue) return datasetIssue;
   return '将已保存的数据集预设应用到当前训练配置';
 }

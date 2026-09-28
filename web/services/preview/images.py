@@ -496,9 +496,14 @@ def _sample_image_meta(
     step_index: dict[int, int],
 ) -> dict[str, Any]:
     parsed = _parse_sample_image_name(path)
+    png_meta = _read_png_metadata(path)
+    if "qwen_preview" in png_meta:
+        from web.services.preview.edit_metadata import merge_edit_preview_metadata
+
+        base = _sample_meta_from_filename(parsed, sample_config, prompt_entries, step_index) if parsed else {}
+        return merge_edit_preview_metadata(base, png_meta)
     if parsed:
         return _sample_meta_from_filename(parsed, sample_config, prompt_entries, step_index)
-    png_meta = _read_png_metadata(path)
     if png_meta:
         return _sample_meta_from_png(png_meta, path)
     return {}

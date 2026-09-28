@@ -6,7 +6,6 @@ import os
 from pathlib import Path
 from typing import Any, List, Optional, Union
 
-import numpy as np
 import torch
 from PIL import Image
 from safetensors import safe_open
@@ -30,6 +29,42 @@ from library.datasets.qwen_image_edit import (
 
 SYSTEM_PROMPT = "Comprehend and analyze the provided prompt."
 MAX_PROMPT_LENGTH = 512
+
+
+def _qwen_execution_device(model: Any) -> torch.device:
+    """Resolve the device used by a normal or Accelerate-offloaded encoder.
+
+    ``accelerate.cpu_offload`` intentionally replaces parameters with meta
+    tensors.  Looking at ``next(model.parameters()).device`` therefore gives
+    ``meta`` and sends inputs to an unusable device.  The cache runtime stores
+    the real execution device on the outer model; regular eager models keep
+    the historical parameter based fallback.
+    """
+    configured = getattr(model, "_qwen_execution_device", None)
+    if configured is not None:
+        return torch.device(configured)
+    try:
+        return next(model.parameters()).device
+    except StopIteration as exc:  # pragma: no cover - malformed test double
+        raise ValueError("Qwen Image 2.1 text encoder has no parameters") from exc
+
+
+def _qwen_encoder_forward(model: Any, kwargs: dict[str, Any]) -> Any:
+    """Run the core encoder while retaining compatibility with tiny test doubles."""
+    core = getattr(model, "model", None)
+    if callable(core):
+        return core(**kwargs)
+    return model(**kwargs)
+
+
+def _qwen_last_hidden_state(outputs: Any) -> torch.Tensor:
+    hidden = getattr(outputs, "last_hidden_state", None)
+    if hidden is not None:
+        return hidden
+    states = getattr(outputs, "hidden_states", None)
+    if states:
+        return states[-1]
+    raise ValueError("Qwen3-VL encoder returned no last hidden state")
 
 
 def resolve_tokenizer_path(text_encoder_path: str) -> str:
@@ -105,28 +140,38 @@ def encode_edit_prompt(
     model: Any,
     tokenize_strategy: QwenImage21EditTokenizeStrategy,
     instruction: str,
-    image,
+    image: Image.Image | list[Image.Image] | tuple[Image.Image, ...],
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     processor = tokenize_strategy.processor
+    images = [image] if isinstance(image, Image.Image) else list(image)
+    if not images or any(not isinstance(item, Image.Image) for item in images):
+        raise ValueError("Qwen Image 2.1 Edit requires one or more PIL reference images")
+    if len(images) == 1:
+        image_prefix = "<|vision_start|><|image_pad|><|vision_end|>"
+    else:
+        image_prefix = " ".join(
+            f"<image{index}><|vision_start|><|image_pad|><|vision_end|>"
+            for index in range(1, len(images) + 1)
+        )
     prompt = (
         f"<|im_start|>system\n{SYSTEM_PROMPT}<|im_end|>\n"
-        "<|im_start|>user\n<|vision_start|><|image_pad|><|vision_end|>"
+        f"<|im_start|>user\n{image_prefix}"
         f"{instruction or ' '}<|im_end|>\n<|im_start|>assistant\n"
     )
     inputs = processor(
         text=[prompt],
-        images=[image],
+        images=images,
         padding=True,
         padding_side="left",
         return_tensors="pt",
         images_kwargs={"do_resize": False},
     )
-    device = next(model.parameters()).device
+    device = _qwen_execution_device(model)
     inputs = inputs.to(device)
     forward_kwargs = {
         "input_ids": inputs.input_ids,
         "attention_mask": inputs.attention_mask,
-        "output_hidden_states": True,
+        "output_hidden_states": False,
         "use_cache": False,
     }
     for key in ("pixel_values", "image_grid_thw", "mm_token_type_ids"):
@@ -140,13 +185,13 @@ def encode_edit_prompt(
     )
     try:
         with torch.no_grad():
-            outputs = model(**forward_kwargs)
+            outputs = _qwen_encoder_forward(model, forward_kwargs)
     finally:
         handle.remove()
 
     valid = inputs.attention_mask[0].bool()
     ids = inputs.input_ids[0][valid][tokenize_strategy.drop_idx:]
-    hiddens = outputs.hidden_states[-1][0][valid][tokenize_strategy.drop_idx:]
+    hiddens = _qwen_last_hidden_state(outputs)[0][valid][tokenize_strategy.drop_idx:]
     slots = ids.eq(tokenize_strategy.image_token_id)
     if not slots.any():
         raise ValueError("Qwen Image 2.1 Edit processor emitted no reference image slots")
@@ -172,24 +217,24 @@ class QwenImage21TextEncodingStrategy(TextEncodingStrategy):
     ) -> List[torch.Tensor]:
         model = models[0]
         input_ids, attention_mask = tokens
-        device = next(model.parameters()).device
+        device = _qwen_execution_device(model)
         input_ids = input_ids.to(device)
         attention_mask = attention_mask.to(device)
         text_model = model.model.language_model
         handle = text_model.norm.register_forward_hook(lambda _module, args, _output: args[0])
         try:
             with torch.no_grad():
-                outputs = model(
-                    input_ids=input_ids,
-                    attention_mask=attention_mask,
-                    output_hidden_states=True,
-                    use_cache=False,
-                )
+                outputs = _qwen_encoder_forward(model, {
+                    "input_ids": input_ids,
+                    "attention_mask": attention_mask,
+                    "output_hidden_states": False,
+                    "use_cache": False,
+                })
         finally:
             handle.remove()
         rows = [
             hidden[valid.bool()][tokenize_strategy.drop_idx:]
-            for hidden, valid in zip(outputs.hidden_states[-1], attention_mask)
+            for hidden, valid in zip(_qwen_last_hidden_state(outputs), attention_mask)
         ]
         if any(row.shape[0] == 0 for row in rows):
             raise ValueError("Qwen Image 2.1 prompt became empty after system-prefix removal")

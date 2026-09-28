@@ -41,6 +41,13 @@ export type TrainingPreflightResponse = {
   checks: PreflightCheck[];
   errors: PreflightCheck[];
   warnings: PreflightCheck[];
+  training_task?: {
+    model_family: string;
+    model_name: string;
+    supported_tasks: string[];
+    configured_task: string;
+    dataset_task: string;
+  } | null;
 };
 
 export const trainingConfigKeys = {

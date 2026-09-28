@@ -52,6 +52,7 @@
 
 ## Runtime 和能力边界
 
+- [Qwen Image 2.1 Edit 50 对数据热训练](qwen_edit_hot_training_20260928.md)：Qwen3-VL 低显存缓存、32px 对齐和编译缓存路径修复；CMP 90HX swap24+compile 完成 50 步并通过权重 CPU 严格重载。
 - [预处理 Auto Batch 实测与消融](preprocess_auto_batch_20260906.md)：从1起步、预测上拉、OOM退避、吞吐收敛，以及真实模型/缓存验收边界。
 - [AUTO 块交换真实 GPU 热测与消融](auto_block_swap_hot_20260908.md)：Krea-2 真实缓存、显存竞争、OOM 回退、安全余量和速度排序的时变边界。
 - [全程动态 AUTO 块交换验收](auto_block_swap_dynamic_20260908.md)：运行时显存压力退避、释放后再探索、A/B/A 决策、NF4 存储复用和策略消融。
@@ -60,7 +61,10 @@
 - [Adaptive runtime 实测与失败记录](adaptive_runtime_20260921.md)：自适应运行时实测、失败路径与能力边界。
 - [Adaptive training 实测结论](adaptive_training_20260922.md)：自适应训练实测与训练运行时结论。
 - [Qwen Image 2.1 CMP 90HX 热测](qwen_image_2_1_90hx_hot_test_20260926.md)：full checkpoint + swap24 + per-block compile 的 60-step 单图短测和硬件遥测。
-- [Qwen Image 2.1 Flash CMP 90HX 热测](qwen_image_2_1_flash_90hx_20260927.md)：左填充 mask 正确性、Flash/torch A/B/A 与 60-step 复测、单层 attention 和 block-swap 剖析及 profiling 限制。
+- [Qwen Image 2.1 Flash CMP 90HX 热测](qwen_image_2_1_flash_90hx_20260927.md)：左填充 mask 正确性、Flash/torch A/B/A 与 60-step 复测、缓存候选未采纳；24/32-head 探针差异、GPU wait 未测及 PCIe 传输预算修正。
+- [Qwen Image 2.1 INT8 packed block-swap CMP 90HX 热测](qwen_image_2_1_int8_swap_90hx_20260927.md)：INT8 packed swap 与 BF16 各 60-step 单轮对照，步时约快 3.7%；因顺序运行和温频差异，仍需交替复测及质量验收。
+- [Qwen Image 2.1 阶段 3 开发验收](qwen_image_2_1_stage3_acceptance_20260928.md)：MLP/QKV 融合与投影保留已集成，独立数值与完整模型短测通过，确定性诊断下恢复首步梯度逐位一致，性能未验收、默认关闭。
+- [Qwen Image 2.1 编辑采样多参考图热测](qwen_edit_sampling_hot_20260928.md)：CMP 90HX 10 GiB 上单/双/四参考图与 CFG 编辑采样、采样后恢复训练和低显存 Qwen3-VL 缓存验收。
 
 | 文档 | 说明 |
 | --- | --- |

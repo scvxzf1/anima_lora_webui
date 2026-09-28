@@ -84,7 +84,8 @@ def test_edit_roles_reject_invalid_groups(tmp_path: Path, monkeypatch, mutate, m
         config_service.save_dataset_preset("configs/datasets/pairs.toml", rows, {"batch_size": 1})
 
 
-def test_apply_multiple_edit_pairs_uses_target_rows_only(tmp_path: Path, monkeypatch) -> None:
+@pytest.mark.parametrize("family", ["qwen_image_2_1", "qwen21", "qwen_image_21"])
+def test_apply_multiple_edit_pairs_uses_target_rows_only(tmp_path: Path, monkeypatch, family) -> None:
     configs, _ = _write_minimal_config_tree(tmp_path)
     _patch_config_service_paths(monkeypatch, tmp_path)
     for number in (1, 2):
@@ -95,7 +96,7 @@ def test_apply_multiple_edit_pairs_uses_target_rows_only(tmp_path: Path, monkeyp
     )
     train_path = configs / "imported/qwen.toml"
     train_path.write_text(
-        'model_family = "qwen_image_2_1"\n'
+        f'model_family = "{family}"\n'
         'network_module = "networks.lora_anima"\n'
         'cache_latents = true\ncache_text_encoder_outputs = true\n',
         encoding="utf-8",
@@ -284,4 +285,22 @@ def test_apply_qwen_t2i_rejects_leftover_reference_dir(tmp_path: Path, monkeypat
         config_service.apply_dataset_preset_to_training_config(
             "configs/datasets/qwen_t2i.toml", "configs/imported/qwen.toml",
         )
+    assert train_path.read_text(encoding="utf-8") == original
+
+
+@pytest.mark.parametrize("family", ["anima", "krea2", "z_image"])
+def test_apply_edit_rejects_unsupported_capability_without_writing(tmp_path, monkeypatch, family):
+    configs, _ = _write_minimal_config_tree(tmp_path)
+    _patch_config_service_paths(monkeypatch, tmp_path)
+    config_service.save_dataset_preset(
+        "configs/datasets/pairs.toml", _paired_rows(1), {"batch_size": 1},
+    )
+    train_path = configs / "imported/other.toml"
+    original = f'model_family = "{family}"\n'
+    train_path.write_text(original, encoding="utf-8")
+    with pytest.raises(ValueError, match="不支持编辑数据集训练") as error:
+        config_service.apply_dataset_preset_to_training_config(
+            "configs/datasets/pairs.toml", "configs/imported/other.toml",
+        )
+    assert "Qwen" not in str(error.value)
     assert train_path.read_text(encoding="utf-8") == original

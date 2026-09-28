@@ -91,9 +91,14 @@ class QwenImage21BlockSwapAdapter:
     ) -> Any:
         index = self.block_indices.get(id(function))
         if index is None or not getattr(self.model, "blocks_to_swap", 0):
+            if index is not None and hasattr(function, "_qwen_segmented_forward"):
+                return function(*args, **kwargs)
             return self._original_checkpoint_func(function, *args, **kwargs)
         self.offloader.wait_for_block(index)
-        output = self._original_checkpoint_func(function, *args, **kwargs)
+        if hasattr(function, "_qwen_segmented_forward"):
+            output = function(*args, **kwargs)
+        else:
+            output = self._original_checkpoint_func(function, *args, **kwargs)
         self.offloader.submit_move_blocks(self.blocks, index)
         return output
 

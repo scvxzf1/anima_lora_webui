@@ -3,6 +3,19 @@
   margin: 0 auto;
   padding: 28px 28px 64px;
 }
+.model-capability-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.model-capability-tags > span {
+  padding: 3px 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  font-size: 12px;
+  color: var(--muted);
+}
 .settings-section {
   margin: 16px 0;
   padding: 20px 0;

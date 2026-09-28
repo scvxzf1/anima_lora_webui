@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, Callable, Iterable
 
 from PIL import Image
@@ -16,6 +17,11 @@ from library.datasets.mask_mode import (
 )
 from library.io.cache_names import pe_cache_suffix
 from library.datasets.buckets import BucketManager
+from library.datasets.qwen_image_geometry import align_qwen_bucket_manager, align_qwen_resolution
+from library.datasets.qwen_image_edit import (
+    edit_cache_suffix, edit_condition_fingerprint, inspect_edit_pairs,
+)
+from library.datasets.dreambooth import read_caption
 from library.models.family_registry import (
     get_model_family_spec,
     normalize_registered_family,
@@ -61,7 +67,7 @@ def audit_dataset_row_caches(
                     strategy=latent_strategy,
                     flip_aug=_bool_value(row.get("flip_aug"), False),
                     embedded_alpha=mask_config.mode == "embedded",
-                    bucket_reso=_bucket_reso(image, row),
+                    bucket_reso=_bucket_reso(image, row, family),
                 ),
             )
         )
@@ -81,7 +87,7 @@ def audit_dataset_row_caches(
                     suffix=family_spec.latent_space.cache_suffix,
                     strategy=latent_strategy,
                     flip_aug=_bool_value(row.get("flip_aug"), False),
-                    bucket_reso=_bucket_reso(image, row),
+                    bucket_reso=_bucket_reso(image, row, family),
                 ),
             )
         )
@@ -92,21 +98,50 @@ def audit_dataset_row_caches(
         "cache_text_encoder_outputs_to_disk",
     ):
         text_strategy = _text_strategy(family, skip_check)
-        results.append(
-            _audit_files(
-                "text_cache",
-                "文本编码器缓存",
-                images,
-                text_cache_dir or image_dir,
-                lambda image: _validate_text(
-                    image,
-                    image_dir=image_dir,
-                    cache_dir=text_cache_dir,
-                    suffix=family_spec.text_cache.suffix,
-                    strategy=text_strategy,
-                ),
+        if _is_qwen_edit(cfg, family):
+            from library.models.qwen_image_2_1.strategy import QwenImage21EditTextCache
+
+            text_strategy = QwenImage21EditTextCache(True, 1, skip_check)
+            edit_infos, _reference_root = _edit_infos(cfg, row, images, image_dir, resolve_path)
+            results.append(
+                _audit_files(
+                    "text_cache",
+                    "文本编码器缓存",
+                    images,
+                    text_cache_dir or image_dir,
+                    lambda image: _validate_edit_text(
+                        image, edit_infos.get(image), text_cache_dir, image_dir, text_strategy
+                    ),
+                )
             )
-        )
+            latent_strategy = _latent_strategy(family, skip_check)
+            results.append(
+                _audit_files(
+                    "edit_reference_latent_cache",
+                    "Edit 参考图 latent 缓存",
+                    images,
+                    cache_dir or image_dir,
+                    lambda image: _validate_edit_reference(
+                        image, edit_infos.get(image), cache_dir, image_dir, latent_strategy
+                    ),
+                )
+            )
+        else:
+            results.append(
+                _audit_files(
+                    "text_cache",
+                    "文本编码器缓存",
+                    images,
+                    text_cache_dir or image_dir,
+                    lambda image: _validate_text(
+                        image,
+                        image_dir=image_dir,
+                        cache_dir=text_cache_dir,
+                        suffix=family_spec.text_cache.suffix,
+                        strategy=text_strategy,
+                    ),
+                )
+            )
 
     if _bool_value(cfg.get("ip_features_cache_to_disk"), False):
         encoder = str(cfg.get("ip_encoder") or "pe").strip() or "pe"
@@ -225,6 +260,48 @@ def _text_strategy(family: str, skip_check: bool):
     raise ValueError(f"Unsupported cache audit family: {family}")
 
 
+def _is_qwen_edit(cfg: dict[str, Any], family: str) -> bool:
+    return family == "qwen_image_2_1" and str(
+        cfg.get("qwen_image_2_1_task") or cfg.get("task") or "t2i"
+    ).strip().lower() == "edit"
+
+
+def _edit_infos(
+    cfg: dict[str, Any],
+    row: dict[str, Any],
+    images: list[Path],
+    image_dir: Path,
+    resolve_path: Callable[[str], Path],
+) -> tuple[dict[Path, Any], Path]:
+    reference_root = resolve_path(str(row.get("reference_image_dir") or ""))
+    report = inspect_edit_pairs(
+        [os.fspath(path) for path in images],
+        target_dir=os.fspath(image_dir),
+        reference_dir=os.fspath(reference_root),
+        recursive=_bool_value(row.get("recursive"), True),
+    )
+    settings = row.get("settings") if isinstance(row.get("settings"), dict) else {}
+    extension = str(settings.get("caption_extension") or cfg.get("caption_extension") or ".txt")
+    if not extension.startswith("."):
+        extension = f".{extension}"
+    infos: dict[Path, Any] = {}
+    for image in images:
+        reference = report.pairs.get(os.fspath(image))
+        caption = read_caption(
+            os.fspath(image), extension,
+            _bool_value(settings.get("enable_wildcard", cfg.get("enable_wildcard")), False),
+        )
+        if caption is None:
+            caption = row.get("class_tokens") or ""
+        infos[image] = SimpleNamespace(
+            absolute_path=os.fspath(image),
+            reference_image_path=reference,
+            caption=caption,
+            bucket_reso=_bucket_reso(image, row, cfg.get("model_family") or "anima"),
+        )
+    return infos, reference_root
+
+
 def _audit_files(
     kind: str,
     label: str,
@@ -314,19 +391,22 @@ def _validate_condition_latent(
     return ("valid" if valid else "invalid"), os.fspath(path)
 
 
-def _bucket_reso(image: Path, row: dict[str, Any]) -> tuple[int, int]:
+def _bucket_reso(
+    image: Path, row: dict[str, Any], model_family: str = "anima"
+) -> tuple[int, int]:
     """Mirror DatasetBucketsMixin for raw image dirs when preprocess settings exist."""
 
     with Image.open(image) as opened:
         width, height = opened.size
+    qwen = normalize_registered_family(model_family, allow_aliases=True) == "qwen_image_2_1"
     settings = row.get("settings") if isinstance(row.get("settings"), dict) else {}
     if not settings:
-        return width, height
+        return align_qwen_resolution((width, height)) if qwen else (width, height)
     resolution = _positive_int(settings.get("resolution"), max(width, height))
     if not _bool_value(settings.get("enable_bucket"), True):
-        return resolution, resolution
+        return align_qwen_resolution((resolution, resolution)) if qwen else (resolution, resolution)
     if _bool_value(settings.get("bucket_no_upscale"), False):
-        return width, height
+        return align_qwen_resolution((width, height)) if qwen else (width, height)
     min_size = _positive_int(settings.get("min_bucket_reso"), 256)
     max_size = _positive_int(settings.get("max_bucket_reso"), max(resolution, 2048))
     max_size = max(max_size, resolution)
@@ -338,6 +418,8 @@ def _bucket_reso(image: Path, row: dict[str, Any]) -> tuple[int, int]:
         reso_steps=steps,
     )
     manager.make_buckets(constant_token_buckets=True)
+    if qwen:
+        align_qwen_bucket_manager(manager)
     bucket, _resized, _error = manager.select_bucket(width, height)
     return bucket
 
@@ -366,6 +448,63 @@ def _validate_text(
     except Exception:
         valid = False
     return ("valid" if valid else "invalid"), os.fspath(path)
+
+
+def _validate_edit_text(
+    image: Path,
+    info: Any,
+    cache_dir: Path | None,
+    image_dir: Path,
+    strategy: Any,
+) -> tuple[str, str]:
+    if info is None or not info.reference_image_path:
+        return "invalid", os.fspath(image)
+    try:
+        path = _edit_cache_path(image, info, "te", cache_dir, image_dir)
+        if not Path(path).is_file():
+            return "missing", os.fspath(path)
+        valid = strategy.is_expected_for_info(path, info)
+    except Exception:
+        path = os.fspath(image)
+        valid = False
+    return ("valid" if valid else "invalid"), os.fspath(path)
+
+
+def _validate_edit_reference(
+    image: Path,
+    info: Any,
+    cache_dir: Path | None,
+    image_dir: Path,
+    strategy: Any,
+) -> tuple[str, str]:
+    if info is None or not info.reference_image_path:
+        return "invalid", os.fspath(image)
+    subset = SimpleNamespace(
+        cache_dir=os.fspath(cache_dir) if cache_dir else None,
+        image_dir=os.fspath(image_dir),
+    )
+    try:
+        path = _edit_cache_path(image, info, "ref", cache_dir, image_dir)
+        if not Path(path).is_file():
+            return "missing", os.fspath(path)
+        valid = strategy.is_edit_reference_cache_expected(info, subset)
+    except Exception:
+        path = os.fspath(image)
+        valid = False
+    return ("valid" if valid else "invalid"), os.fspath(path)
+
+
+def _edit_cache_path(
+    image: Path, info: Any, task: str, cache_dir: Path | None, image_dir: Path,
+) -> Path:
+    # Training's path resolver creates directories; a preflight must stay read-only.
+    fingerprint = edit_condition_fingerprint(
+        info.reference_image_path, info.caption, info.bucket_reso,
+    )
+    suffix = edit_cache_suffix(
+        task=task, fingerprint=fingerprint, target_bucket=info.bucket_reso,
+    )
+    return _mirrored_cache_path(image, suffix, cache_dir, image_dir)
 
 
 def _validate_pe(

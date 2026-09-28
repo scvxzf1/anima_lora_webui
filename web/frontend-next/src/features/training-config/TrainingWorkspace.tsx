@@ -114,8 +114,9 @@ export function TrainingWorkspace() {
               </div>
             </section>
 
-            <TrainingCommands state={state} libraryExpanded={libraryExpanded} onToggleLibrary={toggleLibrary} />
-            <TrainingTools state={state} />
+            <TrainingCommands state={state} libraryExpanded={libraryExpanded} onToggleLibrary={toggleLibrary}>
+              <TrainingTools state={state} />
+            </TrainingCommands>
             <TrainingWorkspaceLayout>
               <TrainingConfigLibrary
                 expanded={libraryExpanded}
@@ -141,6 +142,8 @@ export function TrainingWorkspace() {
             mergedConfig.sample_prompts || "",
           )}
           configRevision={rawQuery.data?.revision}
+          modelFamily={String(state.draft.model_family ?? mergedConfig.model_family ?? "anima")}
+          trainingTask={String(state.draft.qwen_image_2_1_task ?? mergedConfig.qwen_image_2_1_task ?? "t2i")}
           onClose={() => setPromptsOpen(false)}
           onSaved={async () => {
             await invalidateTrainingQueries(

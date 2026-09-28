@@ -3,6 +3,7 @@ import {
   displayConfigValue,
   prepareConfigPatch,
 } from "../../../../static/js/dragon-ui/pages/config-values.js";
+import { normalizeBooleanConfigValue } from "../../../../static/js/dragon-ui/pages/config-field-types.js?v=training-field-types-20260927";
 
 export type TrainingFieldKind =
   "text" | "number" | "boolean" | "select" | "json";
@@ -13,6 +14,9 @@ export type TrainingFieldSpec = {
   group: "input" | "method" | "training" | "resources";
   kind: TrainingFieldKind;
   options?: string[];
+  optionLabels?: Record<string, string>;
+  help?: string;
+  defaultValue?: string | number | boolean;
   min?: number;
   step?: number | "any";
 };
@@ -24,6 +28,34 @@ export const TRAINING_FIELDS: TrainingFieldSpec[] = [
     group: "input",
     kind: "select",
     options: ["anima", "krea2_raw", "z_image", "qwen_image_2_1"],
+  },
+  {
+    key: "qwen_image_2_1_task",
+    label: "Qwen 任务",
+    group: "input",
+    kind: "select",
+    options: ["t2i", "edit"],
+    optionLabels: {
+      t2i: "普通文生图 (t2i)",
+      edit: "编辑数据集 (edit)",
+    },
+    help: "Edit 需要已保存的编辑前/编辑后配对数据集；更改此项不会自动改写数据集。",
+    defaultValue: "t2i",
+  },
+  {
+    key: "qwen_text_encoder_cache_policy",
+    label: "文本编码器缓存策略",
+    group: "input",
+    kind: "select",
+    options: ["auto", "cpu_offload", "gpu", "cpu"],
+    optionLabels: {
+      auto: "自动（推荐）",
+      cpu_offload: "GPU 计算＋CPU 卸载",
+      gpu: "全部驻留 GPU",
+      cpu: "仅 CPU",
+    },
+    help: "仅影响 Qwen3-VL 文本/图文条件缓存阶段；CPU 卸载节省显存但较慢，全部 GPU 可能显存不足，与 DiT 块交换独立；已有有效缓存复用时不会重新编码。",
+    defaultValue: "auto",
   },
   {
     key: "pretrained_model_name_or_path",
@@ -363,12 +395,16 @@ function formValue(
   field: TrainingFieldSpec,
   value: unknown,
 ): string | number | boolean {
-  if (field.kind === "json") return JSON.stringify(value ?? [], null, 2);
-  if (field.kind === "boolean") return Boolean(value);
+  const resolved = value === undefined || value === null ||
+    (value === "" && field.defaultValue !== undefined)
+    ? field.defaultValue
+    : value;
+  if (field.kind === "json") return JSON.stringify(resolved ?? [], null, 2);
+  if (field.kind === "boolean") return normalizeBooleanConfigValue(field.key, resolved);
   if (field.kind === "number")
-    return value === undefined || value === null || value === ""
+    return resolved === undefined || resolved === null || resolved === ""
       ? ""
-      : Number(value);
-  if (value === undefined || value === null) return "";
-  return String(value);
+      : Number(resolved);
+  if (resolved === undefined || resolved === null) return "";
+  return String(resolved);
 }

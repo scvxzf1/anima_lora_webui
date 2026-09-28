@@ -21,6 +21,13 @@ def _network_has_convrot_base(network) -> bool:
     return False
 
 
+def _network_has_packed_qkv_base(network) -> bool:
+    return any(
+        getattr(lora, "org_module_ref", (object(),))[0] is None
+        for lora in _all_loras(network)
+    )
+
+
 def _raise_if_convrot_merge(network, *, context: str) -> None:
     if _network_has_convrot_base(network):
         raise RuntimeError(
@@ -30,15 +37,22 @@ def _raise_if_convrot_merge(network, *, context: str) -> None:
         )
 
 
+def _raise_if_packed_qkv_merge(network, *, context: str) -> None:
+    if _network_has_packed_qkv_base(network):
+        raise RuntimeError(f"{context}: packed QKV base weights cannot be merged or fused")
+
+
 def fuse_weights(network) -> None:
     """Merge all LoRA deltas into base model weights for zero-overhead inference."""
     _raise_if_convrot_merge(network, context="fuse_weights")
+    _raise_if_packed_qkv_merge(network, context="fuse_weights")
     for lora in _all_loras(network):
         lora.fuse_weight()
 
 
 def unfuse_weights(network) -> None:
     """Remove all LoRA deltas from base model weights."""
+    _raise_if_packed_qkv_merge(network, context="unfuse_weights")
     for lora in _all_loras(network):
         lora.unfuse_weight()
 
@@ -49,7 +63,7 @@ def is_mergeable(network) -> bool:
     Register tokens, ReFT hooks, MoE/routing layouts, and Chimera dual-pool
     routers all need live forward hooks and must not claim bakeability.
     """
-    if _network_has_convrot_base(network):
+    if _network_has_convrot_base(network) or _network_has_packed_qkv_base(network):
         return False
     cfg = network.cfg
     if int(getattr(cfg, "num_registers", 0) or 0) != 0:
@@ -71,6 +85,7 @@ def is_mergeable(network) -> bool:
 
 def merge_lora_weights(network, text_encoders, unet, weights_sd, dtype=None, device=None):
     _raise_if_convrot_merge(network, context="merge_lora_weights")
+    _raise_if_packed_qkv_merge(network, context="merge_lora_weights")
     apply_text_encoder = apply_unet = False
     for key in weights_sd.keys():
         if key.startswith(network.LORA_PREFIX_TEXT_ENCODER):
@@ -108,6 +123,7 @@ def merge_lora_weights(network, text_encoders, unet, weights_sd, dtype=None, dev
 
 
 def backup_weights(network) -> None:
+    _raise_if_packed_qkv_merge(network, context="backup_weights")
     for lora in _all_loras(network):
         org_module = lora.org_module_ref[0]
         if not hasattr(org_module, "_lora_org_weight"):
@@ -116,6 +132,7 @@ def backup_weights(network) -> None:
 
 
 def restore_weights(network) -> None:
+    _raise_if_packed_qkv_merge(network, context="restore_weights")
     with torch.no_grad():
         for lora in _all_loras(network):
             org_module = lora.org_module_ref[0]
@@ -126,6 +143,7 @@ def restore_weights(network) -> None:
 
 def pre_calculation(network) -> None:
     _raise_if_convrot_merge(network, context="pre_calculation")
+    _raise_if_packed_qkv_merge(network, context="pre_calculation")
     with torch.no_grad():
         for lora in _all_loras(network):
             org_module = lora.org_module_ref[0]

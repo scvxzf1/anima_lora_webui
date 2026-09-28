@@ -11,7 +11,6 @@ afterEach(cleanup);
 function Harness({
   disabled = false,
   workbenchDisabled = false,
-  qwenEditIssue = null,
   twoRows = true,
   onOpenWorkbench = vi.fn(),
 }) {
@@ -19,7 +18,6 @@ function Harness({
   if (twoRows) values.datasets.push(emptyDatasetRow());
   const form = useForm<DatasetFormValues>({ defaultValues: values });
   return <DatasetSubsetList form={form} disabled={disabled} workbenchDisabled={workbenchDisabled}
-    qwenEditIssue={qwenEditIssue}
     onOpenWorkbench={onOpenWorkbench} />;
 }
 
@@ -65,13 +63,13 @@ it('keeps edit source and target paths editable when the selected training famil
     ];
     const form = useForm<DatasetFormValues>({ defaultValues: values });
     return <DatasetSubsetList form={form} disabled={false} workbenchDisabled={false}
-      qwenEditIssue="需要 Qwen Image 2.1 训练配置" />;
+      />;
   }
 
   render(<ExistingEditHarness />);
   const reference = screen.getByDisplayValue('image_dataset/reference');
   expect(reference).toBeEnabled();
-  expect(screen.getByRole('alert')).toHaveTextContent('当前训练配置不兼容');
+  expect(screen.queryByText(/当前目标训练配置不支持/)).not.toBeInTheDocument();
 });
 
 it('clears an outdated incomplete-pair error when the matching subset is added', async () => {
@@ -83,7 +81,7 @@ it('clears an outdated incomplete-pair error when the matching subset is added',
     });
     return <>
       <button type="button" onClick={() => form.trigger('datasets')}>校验</button>
-      <DatasetSubsetList form={form} disabled={false} workbenchDisabled={false} qwenEditIssue={null} />
+      <DatasetSubsetList form={form} disabled={false} workbenchDisabled={false} />
     </>;
   }
 
@@ -107,7 +105,7 @@ it('clears the pair error when an existing subset is manually assigned the match
     });
     return <>
       <button type="button" onClick={() => form.trigger('datasets')}>校验</button>
-      <DatasetSubsetList form={form} disabled={false} workbenchDisabled={false} qwenEditIssue={null} />
+      <DatasetSubsetList form={form} disabled={false} workbenchDisabled={false} />
     </>;
   }
 

@@ -1,0 +1,14 @@
+.sample-reference-input { grid-column: 1 / -1; display: grid; gap: 8px; min-width: 0; padding: 10px 0; border-block: 1px solid var(--line); }
+.sample-reference-input.is-dragging { outline: 2px solid var(--accent); outline-offset: 2px; }
+.sample-reference-list { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; min-width: 0; }
+.sample-reference-list li { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.sample-reference-list img, .sample-reference-placeholder { width: 56px; height: 56px; flex: 0 0 56px; object-fit: contain; background: var(--surface); }
+.sample-reference-placeholder { display: grid; place-items: center; }
+.sample-reference-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sample-reference-list button { flex: 0 0 auto; }
+.sample-reference-actions, .sample-reference-actions [role="status"], .sample-reference-path { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.sample-reference-actions { flex-wrap: wrap; }
+.sample-reference-path input { flex: 1; min-width: 0; }
+.sample-reference-path button { flex-shrink: 0; }
+.sample-reference-input p { margin: 0; overflow-wrap: anywhere; }
+@media (max-width: 600px) { .sample-reference-list li { flex-wrap: wrap; } .sample-reference-name { flex-basis: calc(100% - 62px); } }

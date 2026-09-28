@@ -21,6 +21,7 @@
 | [fera.md](fera.md) | FeRA / FEI 路由实验 |
 | [ip-adapter.md](ip-adapter.md) | IP-Adapter 图像 cross-attention 条件 |
 | [postfix.md](postfix.md) | Postfix 兼容入口，当前用户入口见训练参考 |
+| [qwen_image_2_1_fused_projections.md](qwen_image_2_1_fused_projections.md) | Qwen Image 2.1 冻结投影融合与定额保留实验，默认关闭 |
 | [soft_tokens.md](soft_tokens.md) | Soft Tokens / SoftREPA 风格 per-layer token bank |
 | [spd.md](spd.md) | SPD：Spectral Progressive Diffusion 推理实验 |
 | [vera_ablation.md](vera_ablation.md) | VeRA 短期消融计划 |

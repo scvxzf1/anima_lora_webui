@@ -32,6 +32,7 @@ const FALLBACK_MODEL_FAMILIES = Object.freeze([
         supported_network_specs: ['lora'],
         supports_method_adapters: false,
         plain_lora_only: true,
+        supported_tasks: ['t2i', 'edit'],
         supported_attention_modes: ['torch', 'sdpa', 'flash'],
         pipeline_parallel: null,
     },
@@ -115,6 +116,12 @@ export function modelFamilyOptionSupported(fieldKey, family, option) {
     const value = String(option ?? '').trim();
     if (fieldKey === 'attn_mode') {
         return (capability.supported_attention_modes || []).includes(value.toLowerCase());
+    }
+    if (fieldKey === 'qwen_image_2_1_task') {
+        const supportedTasks = Array.isArray(capability.supported_tasks)
+            ? capability.supported_tasks
+            : capability.name === 'qwen_image_2_1' ? ['t2i', 'edit'] : [];
+        return supportedTasks.includes(value.toLowerCase());
     }
     if (capability.name === 'qwen_image_2_1' && capability.plain_lora_only) {
         if (fieldKey === 'lora_adapter_kind') return value.toLowerCase() === 'lora';

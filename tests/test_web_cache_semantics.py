@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 from dataclasses import asdict
 
 import numpy as np
@@ -14,6 +15,10 @@ from library.config.loader import DreamBoothSubsetParams
 from library.datasets.subsets import DreamBoothSubset
 from library.io.cache_names import classify_cache_file, count_preprocess_caches
 from web.services.config.cache_audit import audit_dataset_row_caches
+from library.models.qwen_image_2_1.strategy import (
+    QwenImage21EditTextCache, QwenImage21LatentCache,
+)
+from library.datasets.qwen_image_edit import edit_condition_fingerprint
 
 
 def _image(root: Path, name: str = "sample.png") -> Path:
@@ -108,6 +113,151 @@ def test_cache_audit_rejects_partial_runtime_cache(tmp_path: Path):
     assert [Path(path).name for path in latent["missing"]] == [
         "second_0008x0008_anima.npz"
     ]
+
+
+def _edit_audit_fixture(tmp_path: Path):
+    image_dir = tmp_path / "images"
+    image = _image(image_dir / "nested", "sample.png")
+    reference_dir = tmp_path / "references"
+    reference = _image(reference_dir / "nested", "sample.png")
+    caption = image.with_suffix(".txt")
+    caption.write_text("make it blue", encoding="utf-8")
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+    row = {
+        "image_dir": str(image_dir),
+        "source_dir": str(image_dir),
+        "reference_image_dir": str(reference_dir),
+        "cache_dir": str(cache_dir),
+        "mask_mode": "none",
+        "settings": {"enable_bucket": False, "resolution": 64},
+    }
+    info = SimpleNamespace(absolute_path=str(image), reference_image_path=str(reference),
+                           caption="make it blue", bucket_reso=(64, 64))
+    subset = SimpleNamespace(cache_dir=str(cache_dir), image_dir=str(image_dir))
+    strategy = QwenImage21EditTextCache(True, 1, False)
+    path = Path(strategy.get_outputs_npz_path_for_info(info, subset))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fingerprint = edit_condition_fingerprint(str(reference), info.caption, info.bucket_reso)
+    slots = torch.zeros(8, dtype=torch.bool)
+    slots[:4] = True  # 64x64 reference -> 4x4 latent -> four packed image slots.
+    tensors = {
+        "hiddens": torch.zeros(8, 4096, dtype=torch.bfloat16),
+        "mask": torch.ones(8, dtype=torch.bool),
+        "image_slots": slots,
+        "caption_dropout_rate": torch.tensor(0.0),
+    }
+    metadata = {"edit_cache_schema": strategy.EDIT_CACHE_SCHEMA,
+                "edit_condition_fingerprint": fingerprint}
+    save_file(tensors, str(path), metadata=metadata)
+    latent_strategy = QwenImage21LatentCache(True, 1, False)
+    reference_path = Path(latent_strategy.get_edit_reference_latent_path(info, subset))
+    save_file(
+        {"latent": torch.zeros(64, 4, 4)}, str(reference_path),
+        metadata={"edit_cache_schema": latent_strategy.EDIT_LATENT_CACHE_SCHEMA,
+                  "edit_condition_fingerprint": fingerprint},
+    )
+    cfg = {"model_family": "qwen_image_2_1", "qwen_image_2_1_task": "edit",
+           "use_vae_cache": False, "use_text_cache": True}
+    return cfg, row, image, reference, path, reference_path, tensors, metadata
+
+
+def _edit_results(cfg, row, image):
+    return {result["kind"]: result for result in audit_dataset_row_caches(
+        cfg, row, [image], resolve_path=Path,
+    )}
+
+
+def test_qwen_edit_cache_audit_accepts_valid_nested_runtime_sidecar(tmp_path: Path):
+    cfg, row, image, *_ = _edit_audit_fixture(tmp_path)
+    source_dir = tmp_path / "source"
+    source_dir.mkdir()
+    (source_dir / "sample.txt").write_text("wrong source caption")
+    row["source_dir"] = str(source_dir)
+    results = _edit_results(cfg, row, image)
+    for result in results.values():
+        assert result["valid"] == result["total"] == 1
+        assert result["missing"] == result["invalid"] == []
+
+
+def test_qwen_edit_cache_audit_missing_directory_is_read_only(tmp_path: Path):
+    cfg, row, image, *_ = _edit_audit_fixture(tmp_path)
+    missing_cache_dir = tmp_path / "absent-cache"
+    row["cache_dir"] = str(missing_cache_dir)
+    for result in _edit_results(cfg, row, image).values():
+        assert result["valid"] == 0
+        assert len(result["missing"]) == 1
+    assert not missing_cache_dir.exists()
+
+
+@pytest.mark.parametrize("changed", ["caption", "reference", "bucket"])
+def test_qwen_edit_cache_audit_rejects_changed_condition(tmp_path: Path, changed: str):
+    cfg, row, image, reference, *_ = _edit_audit_fixture(tmp_path)
+    if changed == "caption":
+        image.with_suffix(".txt").write_text("make it red")
+    elif changed == "reference":
+        Image.new("RGB", (8, 8), color=(200, 40, 60)).save(reference)
+    else:
+        row["settings"]["resolution"] = 128
+    for result in _edit_results(cfg, row, image).values():
+        assert result["valid"] == 0
+        assert len(result["missing"]) == 1
+
+
+@pytest.mark.parametrize("changed", ["stale", "slots", "slot_shape", "missing"])
+def test_qwen_edit_cache_audit_rejects_invalid_text_cache(tmp_path: Path, changed: str):
+    cfg, row, image, _, path, _, tensors, metadata = _edit_audit_fixture(tmp_path)
+    if changed == "stale":
+        metadata["edit_condition_fingerprint"] = "stale"
+    elif changed == "slots":
+        tensors["image_slots"] = torch.ones(8, dtype=torch.bool)
+    elif changed == "slot_shape":
+        tensors["image_slots"] = torch.ones(7, dtype=torch.bool)
+    if changed == "missing":
+        path.unlink()
+    else:
+        save_file(tensors, str(path), metadata=metadata)
+    results = _edit_results(cfg, row, image)
+    text = results["text_cache"]
+    assert text["valid"] == 0
+    assert len(text["missing"] if changed == "missing" else text["invalid"]) == 1
+    assert results["edit_reference_latent_cache"]["valid"] == 1
+
+
+@pytest.mark.parametrize("changed", ["stale", "shape", "missing"])
+def test_qwen_edit_cache_audit_rejects_invalid_reference_cache(tmp_path: Path, changed: str):
+    cfg, row, image, _, _, path, _, metadata = _edit_audit_fixture(tmp_path)
+    metadata["edit_cache_schema"] = QwenImage21LatentCache.EDIT_LATENT_CACHE_SCHEMA
+    if changed == "stale":
+        metadata["edit_condition_fingerprint"] = "stale"
+    if changed == "missing":
+        path.unlink()
+    else:
+        save_file(
+            {"latent": torch.zeros(64, 8 if changed == "shape" else 4, 4)},
+            str(path), metadata=metadata,
+        )
+    results = _edit_results(cfg, row, image)
+    reference_result = results["edit_reference_latent_cache"]
+    assert reference_result["valid"] == 0
+    assert len(reference_result["missing"] if changed == "missing" else reference_result["invalid"]) == 1
+    assert results["text_cache"]["valid"] == 1
+
+
+def test_qwen_t2i_audit_keeps_plain_text_suffix(tmp_path: Path):
+    image_dir = tmp_path / "images"
+    image = _image(image_dir)
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+    plain = cache_dir / "sample_qwen_image_2_1_te.safetensors"
+    plain.write_bytes(b"not a structured cache")
+    result = audit_dataset_row_caches(
+        {"model_family": "qwen_image_2_1", "use_vae_cache": False, "use_text_cache": True},
+        {"image_dir": str(image_dir), "cache_dir": str(cache_dir), "mask_mode": "none"},
+        [image], resolve_path=lambda value: Path(value),
+    )
+    assert result[0]["kind"] == "text_cache"
+    assert result[0]["valid"] == 0
 
 
 def test_ip_cache_is_required_only_for_disk_mode_and_uses_encoder(tmp_path: Path):

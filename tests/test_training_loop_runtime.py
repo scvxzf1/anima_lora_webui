@@ -10,6 +10,7 @@ from library.training.loop import (
     _log_step,
     _recent_step_seconds,
     _record_recent_step_seconds,
+    _run_sample_with_probe,
 )
 
 
@@ -99,6 +100,54 @@ def test_log_step_adds_recent_rate_postfix_without_step_unit() -> None:
     assert progress_bar.postfix["refresh"] is False
     assert progress_bar.postfix["recent_s_per_step"] == "1.92"
     assert "s/step" not in progress_bar.postfix["recent_s_per_step"]
+
+
+def test_sample_memory_probe_records_boundaries_and_exceptions() -> None:
+    events: list[dict] = []
+
+    class Probe:
+        def should_record_step(self, _step):
+            return True
+
+        def snapshot(self, label, **fields):
+            events.append({"label": label, **fields})
+
+    args = SimpleNamespace(
+        sample_at_first=True,
+        sample_every_n_steps=2,
+        sample_every_n_epochs=None,
+    )
+    accelerator = SimpleNamespace(device="cpu")
+    trainer = SimpleNamespace(memory_probe=Probe())
+
+    _run_sample_with_probe(
+        trainer,
+        accelerator,
+        args,
+        None,
+        0,
+        lambda: events.append({"label": "callback"}),
+    )
+    assert [event["label"] for event in events] == [
+        "sample_before",
+        "callback",
+        "sample_after",
+    ]
+    assert events[0]["phase"] == "sample"
+    assert events[0]["sample_epoch"] is None
+
+    events.clear()
+    with pytest.raises(RuntimeError, match="sample failed"):
+        _run_sample_with_probe(
+            trainer,
+            accelerator,
+            args,
+            None,
+            2,
+            lambda: (_ for _ in ()).throw(RuntimeError("sample failed")),
+        )
+    assert [event["label"] for event in events] == ["sample_before", "sample_exception"]
+    assert events[-1]["exception_type"] == "RuntimeError"
 
 
 class _FakeAccelerator:

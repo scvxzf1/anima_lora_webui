@@ -17,6 +17,8 @@ from PIL import Image
 from PIL.PngImagePlugin import PngInfo
 
 from library.datasets.buckets import BucketManager
+from library.datasets.qwen_image_geometry import align_qwen_bucket_manager, align_qwen_resolution
+from library.models.family_registry import normalize_registered_family
 from library.preprocess._dataset import PreprocessStats, walk_images
 from library.preprocess._progress import ProgressFn
 from library.preprocess.bucket_geometry import select_resize_bucket
@@ -62,12 +64,14 @@ def process_image(
     bucket_args: tuple,
     copy_captions: bool = True,
     rel_dir: str = "",
+    model_family: str = "anima",
 ) -> tuple[str, tuple[int, int]]:
     """Worker — receives bucket params (not a BucketManager) to stay picklable.
 
     ``rel_dir`` is the (possibly empty) relative subdir under the source root;
     the output mirrors it as ``out_dir / rel_dir / stem.png``. Empty ``rel_dir``
     collapses to the flat layout.
+    Qwen Image 2.1 targets use its required 32-pixel latent patch alignment.
     """
     if len(bucket_args) == 7:
         max_reso, min_size, max_size, reso_steps, use_constant, bucket_no_upscale, enable_bucket = bucket_args
@@ -85,6 +89,9 @@ def process_image(
         reso_steps=reso_steps,
     )
     bucket_mgr.make_buckets(constant_token_buckets=use_constant)
+    qwen = normalize_registered_family(model_family, allow_aliases=True) == "qwen_image_2_1"
+    if qwen:
+        align_qwen_bucket_manager(bucket_mgr)
 
     src_img = Image.open(image_path)
     save_kwargs = _collect_metadata(src_img)
@@ -95,6 +102,12 @@ def process_image(
         bucket_mgr, w, h,
         enable_bucket=enable_bucket, bucket_no_upscale=bucket_no_upscale,
     )
+    if qwen:
+        if enable_bucket and bucket_no_upscale:
+            # Training keeps the source dimensions in no-upscale mode;
+            # only the Qwen patch alignment may reduce them.
+            bucket_reso = (w, h)
+        bucket_reso = align_qwen_resolution(bucket_reso)
     bw, bh = bucket_reso
 
     # Resize preserving aspect ratio so the image covers the bucket.
@@ -147,6 +160,7 @@ def resize_to_buckets(
     path_pattern: str | None = None,
     verbose: bool = True,
     progress: ProgressFn | None = None,
+    model_family: str = "anima",
 ) -> tuple[PreprocessStats, dict[tuple[int, int], int]]:
     """Resize+crop every image under ``src`` into bucket resolutions under ``dst``.
 
@@ -154,6 +168,7 @@ def resize_to_buckets(
     below ``min_pixels``. Returns ``(stats, bucket_counts)`` where
     ``bucket_counts`` maps each ``(W, H)`` bucket to its image count. Pass
     ``progress`` for a per-image bar.
+    ``model_family`` selects family-specific pixel alignment (Anima by default).
     """
     dst.mkdir(parents=True, exist_ok=True)
 
@@ -240,6 +255,7 @@ def resize_to_buckets(
                 bucket_args,
                 copy_captions,
                 _rel_for(img_path),
+                model_family=model_family,
             ): img_path
             for img_path in image_files
         }

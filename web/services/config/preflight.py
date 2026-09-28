@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any
 
 from library.models.family_registry import normalize_registered_family
+from web.services.config.preflight_tasks import task_check_config, training_task_summary
 
 from web.services.config.preflight_compat import (
     _check_checkpointing_config,
@@ -323,6 +324,7 @@ def preflight_training_config(
                 root,
             )
 
+    family_valid = True
     try:
         family = normalize_registered_family(
             cfg.get("model_family") or "anima",
@@ -330,6 +332,7 @@ def preflight_training_config(
         )
     except ValueError as exc:
         add("error", "model_family", str(exc))
+        family_valid = False
         family = "anima"
     cfg = dict(cfg)
     cfg["model_family"] = family
@@ -338,7 +341,8 @@ def preflight_training_config(
         add("error", "output_name", "输出名称未填写")
     dataset_rows = _dataset_rows_for_estimate(cfg)
     _check_core_training_semantics(cfg, add, dataset_rows=dataset_rows)
-    _check_checkpointing_config(cfg, add, world_size=world_size)
+    task_cfg = task_check_config(cfg, _dataset_config_path_from_cfg(cfg), add)
+    _check_checkpointing_config(task_cfg, add, world_size=world_size)
     _check_no_dataset_regularization_config(cfg, add)
     _check_output_dir_history_reuse(cfg, add)
     if family == "z_image":
@@ -385,6 +389,7 @@ def preflight_training_config(
 
     return {
         "ok": not errors,
+        "training_task": training_task_summary(task_cfg) if family_valid else None,
         "variant": variant,
         "preset": preset,
         "methods_subdir": methods_subdir,

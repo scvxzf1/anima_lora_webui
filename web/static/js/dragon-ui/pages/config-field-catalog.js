@@ -78,6 +78,7 @@ export const CONFIG_STAGE_META = Object.freeze([
 const FIELD_GROUPS = Object.freeze([
     group('input', 'models', [
         'model_family',
+        'qwen_image_2_1_task',
         'pretrained_model_name_or_path',
         'qwen3',
         'vae',
@@ -351,6 +352,7 @@ const FIELD_GROUPS = Object.freeze([
         'debug_finite_checks',
     ]),
     group('resources', 'preprocess', [
+        'qwen_text_encoder_cache_policy',
         'preprocess_vae_cache_batch_size',
         'preprocess_text_cache_batch_size',
         'preprocess_memory_profile',

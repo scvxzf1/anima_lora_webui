@@ -18,7 +18,7 @@ export function TrainingDatasetField({
 }: Props) {
   const [open, setOpen] = useState(false);
   return (
-    <div className="training-dataset-field" id="training-field-dataset_config">
+    <div className="training-dataset-field" id="training-field-dataset_config" tabIndex={-1}>
       <div className="training-dataset-heading">
         <div>
           <strong>数据集配置</strong>

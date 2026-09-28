@@ -8,5 +8,5 @@
 .prompt-fields input { width: 100%; min-width: 0; }
 .prompt-fields select, .prompt-fields textarea { width: 100%; min-width: 0; }
 .training-field-label > button { justify-self: start; width: 32px; height: 32px; padding: 4px; }
-.prompt-fields label:first-of-type, .prompt-fields label:nth-of-type(2), .prompt-fields label:last-of-type { grid-column: 1 / -1; }
+.prompt-fields .prompt-wide-field, .prompt-fields .prompt-task, .prompt-fields [role="alert"] { grid-column: 1 / -1; }
 @media (max-width: 600px) { .prompt-row { flex-direction: column; } }

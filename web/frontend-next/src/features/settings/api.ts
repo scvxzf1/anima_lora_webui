@@ -17,6 +17,8 @@ export type ModelConfigItem = {
   qwen3: string;
   vae: string;
   complete?: boolean;
+  training_tasks?: string[];
+  capability_labels?: string[];
 };
 export type ModelConfigResponse = {
   ok?: boolean;

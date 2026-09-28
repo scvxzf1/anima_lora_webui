@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from collections.abc import Sequence
 
 import torch
 from torch import Tensor
@@ -23,7 +24,7 @@ def forward_for_loss(
     mask: Tensor,
     sigmas: Tensor,
     *,
-    reference_latents: Tensor | None = None,
+    reference_latents: Tensor | Sequence[Tensor] | None = None,
     image_slot_mask: Tensor | None = None,
 ) -> Tensor:
     if latents.ndim != 4 or latents.shape[1] != 64:
@@ -50,30 +51,37 @@ def forward_for_loss(
     else:
         if batch != 1:
             raise ValueError("Qwen Image 2.1 Edit currently requires batch_size=1")
-        if (
-            reference_latents.ndim != 4
-            or reference_latents.shape[:2] != (batch, channels)
-            or reference_latents.shape[-2] % 2
-            or reference_latents.shape[-1] % 2
-        ):
-            raise ValueError(
-                "Qwen Image 2.1 Edit reference latents must be [1,64,H,W] with even H/W"
-            )
+        references = (reference_latents,) if isinstance(reference_latents, Tensor) else tuple(reference_latents)
+        if not references:
+            raise ValueError("Qwen Image 2.1 Edit requires at least one reference latent")
+        for reference in references:
+            if (
+                not isinstance(reference, Tensor)
+                or reference.ndim != 4
+                or reference.shape[:2] != (batch, channels)
+                or reference.shape[-2] % 2
+                or reference.shape[-1] % 2
+            ):
+                raise ValueError(
+                    "Qwen Image 2.1 Edit reference latents must be [1,64,H,W] with even H/W"
+                )
         if image_slot_mask is None or image_slot_mask.shape != mask.shape:
             raise ValueError("Qwen Image 2.1 Edit requires an image-slot mask matching text mask")
-        reference_height, reference_width = reference_latents.shape[-2:]
-        expected_slots = reference_height * reference_width // 4
+        expected_slots = sum(reference.shape[-2] * reference.shape[-1] // 4 for reference in references)
         actual_slots = image_slot_mask.bool().sum(dim=1)
         if not torch.all(actual_slots == expected_slots):
             raise ValueError(
                 "Qwen Image 2.1 Edit image-slot count does not match reference latent shape: "
                 f"slots={actual_slots.tolist()}, expected={expected_slots}"
             )
-        reference_tokens = reference_latents.flatten(2).transpose(1, 2)
+        reference_tokens = torch.cat(
+            [reference.flatten(2).transpose(1, 2) for reference in references], dim=1
+        )
         image_token_count = int(actual_slots[0].item())
         tokens = torch.cat([reference_tokens, target_tokens], dim=1)
         img_shapes = [
-            [(1, reference_height, reference_width), (1, height, width)]
+            [(1, reference.shape[-2], reference.shape[-1]) for reference in references]
+            + [(1, height, width)]
             for _ in range(batch)
         ]
         img_mask = torch.cat(

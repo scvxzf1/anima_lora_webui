@@ -1,4 +1,4 @@
-import { FORM_UI_DEFAULTS, NETWORK_ARG_FIELD_MAP } from '../../config/catalog/defaults.js?v=auto-block-swap-20260908-v3';
+import { FORM_UI_DEFAULTS, NETWORK_ARG_FIELD_MAP } from '../../config/catalog/defaults.js?v=qwen-cache-policy-20260928';
 import { coerceNetworkArgValue, formatNetworkArg, parseNetworkArgEntry } from '../../features/anima-app/helpers/network-args.js?v=dragon-ui-20260812v35';
 import { loraAdapterFlagsForKind, loraAdapterKindFromConfig, precisionPreferenceFromConfig, precisionPreferencePatch } from '../../features/anima-app/helpers/config-values.js?v=dragon-ui-20260812v35';
 import { isBooleanConfigField, normalizeBooleanConfigValue } from './config-field-types.js?v=auto-block-swap-20260908-v3';

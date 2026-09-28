@@ -65,7 +65,7 @@ def test_flash_routes_causal_text_to_native_and_image_to_varlen(monkeypatch) -> 
     assert [backend for backend, _ in routed] == ["native", "flash_varlen"]
     text_mask = routed[0][1][0, 0]
     assert not text_mask.triu(1).any()
-    flash_mask = routed[1][1][0]
+    flash_mask = routed[1][1][0, 0, 0]
     assert not flash_mask[:4].any() and flash_mask[4:].all()
     torch.testing.assert_close(actual, expected)
 
@@ -79,6 +79,17 @@ def test_flash_requires_bf16_before_provider_probe(monkeypatch) -> None:
     with pytest.raises(RuntimeError, match="only for bf16"):
         attention_backend.prepare_qwen_image_2_1_attention(
             object(), "flash", dtype=torch.float16
+        )
+
+
+def test_flash_rejects_key_valid_mask_on_different_device() -> None:
+    mask = torch.ones((1, 8), dtype=torch.bool)
+    with pytest.raises(ValueError, match="same device"):
+        attention_backend._normalize_key_valid_mask(
+            mask,
+            batch=1,
+            key_length=8,
+            device=torch.device("cuda"),
         )
 
 

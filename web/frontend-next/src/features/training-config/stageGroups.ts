@@ -15,7 +15,7 @@ const TITLES: Record<string, string> = {
   raw: "网络额外参数", identity: "任务与输出名称", volume: "训练量与批次",
 };
 const SUMMARY_KEYS: Record<string, string[]> = {
-  models: ["model_family"], dataset: ["dataset_config"], captions: ["caption_extension"],
+  models: ["model_family", "qwen_image_2_1_task"], dataset: ["dataset_config"], captions: ["caption_extension"],
   cache: ["use_vae_cache", "use_text_cache"], contract: ["network_module"],
   capacity: ["network_dim", "network_alpha"], "warm-start": ["network_weights"],
   identity: ["output_name"], volume: ["max_train_epochs", "max_train_steps", "train_batch_size"],
@@ -24,10 +24,40 @@ const SUMMARY_KEYS: Record<string, string[]> = {
   observability: ["log_with"],
 };
 
+const CLUSTER_ORDER_OVERRIDES: Record<string, string[]> = {
+  // Keep the training capacity controls immediately below the method contract.
+  method: [
+    "contract",
+    "capacity",
+    "adapter",
+    "warm-start",
+    "orthogonal",
+    "reft",
+    "routing",
+    "fei",
+    "chimera",
+    "ip-adapter",
+    "easycontrol",
+    "soft-tokens",
+    "raw",
+    "spd-audit",
+    "other",
+  ],
+};
+
 export function groupStageFields(stage: string, fields: TrainingFieldSpec[]) {
   if (stage === "resources") return groupResourceFields(fields);
-  const clusters = [...(CONFIG_STAGE_META.find((item) => item.id === stage)?.clusters || []),
+  const declaredClusters = [...(CONFIG_STAGE_META.find((item) => item.id === stage)?.clusters || []),
     ...(stage === "input" ? [{ id: "preprocess", label: "预处理与数据加载" }] : [])];
+  const order = CLUSTER_ORDER_OVERRIDES[stage];
+  const clusters = order
+    ? [...declaredClusters].sort((left, right) => {
+        const leftIndex = order.indexOf(left.id);
+        const rightIndex = order.indexOf(right.id);
+        return (leftIndex < 0 ? order.length : leftIndex) -
+          (rightIndex < 0 ? order.length : rightIndex);
+      })
+    : declaredClusters;
   const owner = (key: string) => {
     const id = OVERRIDES[key] || CONFIG_FIELD_CATALOG[key]?.cluster;
     return clusters.some((cluster) => cluster.id === id) ? id : "other";
@@ -49,6 +79,7 @@ export function stageSummary(stage: string, id: string, draft: TrainingDraft) {
       if (key === "max_train_epochs") return `${value} 轮`;
       if (key === "max_train_steps") return `${value} 步`;
       if (key === "train_batch_size") return `batch ${value}`;
+      if (key === "qwen_image_2_1_task") return `Qwen ${value === "edit" ? "Edit" : "T2I"}`;
       if (key === "sample_every_n_steps") return `每 ${value} 步`;
       if (key === "sample_every_n_epochs") return `每 ${value} 轮`;
       if (typeof value === "boolean") return `${key === "use_vae_cache" ? "VAE" : "文本"}缓存${value ? "开启" : "关闭"}`;

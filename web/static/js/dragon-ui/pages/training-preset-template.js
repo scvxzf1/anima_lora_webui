@@ -1,4 +1,4 @@
-import { BLANK_PRESET_TEMPLATE_FILE, GLOBAL_MODEL_PATH_FIELDS } from '../../config/catalog/defaults.js?v=auto-block-swap-20260908-v3';
+import { BLANK_PRESET_TEMPLATE_FILE, GLOBAL_MODEL_PATH_FIELDS } from '../../config/catalog/defaults.js?v=qwen-cache-policy-20260928';
 
 export async function loadBlankTrainingPreset(api, file) {
     const template = await api(`/api/config/raw?file=${encodeURIComponent(BLANK_PRESET_TEMPLATE_FILE)}`);

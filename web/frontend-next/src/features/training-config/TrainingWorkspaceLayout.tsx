@@ -8,10 +8,10 @@ const STORAGE_KEYS: Record<Axis, string> = {
   top: "dragon-next.training-library-top-percent",
 };
 const MIN_PERCENT = 10;
-const MAX_PERCENT = 80;
+const MAX_PERCENT: Record<Axis, number> = { side: 42, top: 80 };
 
-function clampPercent(value: number) {
-  return Math.max(MIN_PERCENT, Math.min(MAX_PERCENT, Math.round(value)));
+function clampPercent(axis: Axis, value: number) {
+  return Math.max(MIN_PERCENT, Math.min(MAX_PERCENT[axis], Math.round(value)));
 }
 
 function readSize(axis: Axis) {
@@ -19,7 +19,7 @@ function readSize(axis: Axis) {
     const stored = localStorage.getItem(STORAGE_KEYS[axis]);
     if (stored === null) return null;
     const value = Number(stored);
-    return Number.isFinite(value) ? clampPercent(value) : null;
+    return Number.isFinite(value) ? clampPercent(axis, value) : null;
   } catch {
     return null;
   }
@@ -36,8 +36,8 @@ function useMeasuredSize(layoutRef: RefObject<HTMLDivElement | null>) {
       const libraryBounds = library.getBoundingClientRect();
       if (!bounds.width || !bounds.height) return;
       const next = {
-        side: clampPercent((libraryBounds.width / bounds.width) * 100),
-        top: clampPercent((libraryBounds.height / bounds.height) * 100),
+        side: clampPercent("side", (libraryBounds.width / bounds.width) * 100),
+        top: clampPercent("top", (libraryBounds.height / bounds.height) * 100),
       };
       setMeasured((current) => current.side === next.side && current.top === next.top ? current : next);
     };
@@ -60,7 +60,7 @@ function useLibrarySizes(layoutRef: RefObject<HTMLDivElement | null>) {
   const measured = useMeasuredSize(layoutRef);
 
   function setSize(axis: Axis, value: number) {
-    const next = { ...sizesRef.current, [axis]: clampPercent(value) };
+    const next = { ...sizesRef.current, [axis]: clampPercent(axis, value) };
     sizesRef.current = next;
     setSizes(next);
   }
@@ -101,7 +101,7 @@ function useLibrarySizes(layoutRef: RefObject<HTMLDivElement | null>) {
     if (sizesRef.current[axis] === null && !extent) return;
     const current = sizesRef.current[axis] ?? Math.round((libraryExtent / extent) * 100);
     setSize(axis, event.key === "Home" ? MIN_PERCENT
-      : event.key === "End" ? MAX_PERCENT
+      : event.key === "End" ? MAX_PERCENT[axis]
         : current + (event.key === increment ? 1 : -1) * (event.shiftKey ? 5 : 1));
     saveSize(axis);
   }
@@ -120,7 +120,7 @@ function LibraryResizer({ axis, controls }: { axis: Axis; controls: ResizeContro
       aria-label={axis === "side" ? "调整配置库宽度" : "调整配置库高度"}
       aria-orientation={axis === "side" ? "vertical" : "horizontal"}
       aria-valuemin={MIN_PERCENT}
-      aria-valuemax={MAX_PERCENT}
+      aria-valuemax={MAX_PERCENT[axis]}
       aria-valuenow={sizes[axis] ?? measured[axis] ?? undefined}
       tabIndex={0}
       title={axis === "side" ? "拖动调整宽度，双击恢复默认" : "拖动调整高度，双击恢复默认"}
