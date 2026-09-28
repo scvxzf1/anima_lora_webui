@@ -61,4 +61,42 @@ describe("backend-derived model capabilities", () => {
     expect(screen.getByRole("button", { name: /Model A/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Model B/ })).toBeInTheDocument();
   });
+
+  it("shows configured group order and selects the clicked model", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input).includes("model-families")) return jsonResponse({ items });
+      return jsonResponse({
+        revision: "r1",
+        default_id: "a",
+        groups: [
+          { id: "second", label: "第二组", item_ids: ["c"] },
+          { id: "first", label: "第一组", item_ids: ["b", "a"] },
+        ],
+        items: [
+          { id: "a", name: "Model A", model_family: "anima", pretrained_model_name_or_path: "a", qwen3: "qa", vae: "va" },
+          { id: "b", name: "Model B", model_family: "anima", pretrained_model_name_or_path: "b", qwen3: "qb", vae: "vb" },
+          { id: "c", name: "Model C", model_family: "anima", pretrained_model_name_or_path: "c", qwen3: "qc", vae: "vc" },
+        ],
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const user = userEvent.setup();
+    renderInApp(<ModelConfigPage />);
+
+    const modelA = await screen.findByRole("button", { name: /Model A/ });
+    const rows = screen.getAllByRole("button").filter((button) =>
+      button.classList.contains("object-row"),
+    );
+    expect(rows.map((row) => row.querySelector("span")?.textContent)).toEqual([
+      "Model C",
+      "Model B",
+      "Model A",
+    ]);
+    expect(screen.getByRole("button", { name: "第二组" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "第一组" })).toBeInTheDocument();
+
+    expect(screen.getByRole("heading", { name: "Model A" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /Model B/ }));
+    expect(screen.getByRole("heading", { name: "Model B" })).toBeInTheDocument();
+  });
 });

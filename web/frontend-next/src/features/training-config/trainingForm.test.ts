@@ -149,6 +149,32 @@ describe("training config form domain", () => {
     expect(draftFromMerged({ dim_from_weights: "false" }, fields).dim_from_weights).toBe(false);
   });
 
+  it("keeps boolean controls boolean from interaction through config patching", () => {
+    const source = {
+      model_family: "anima",
+      use_ortho: false,
+      route_per_layer: false,
+      reuse_vae_latents: true,
+      use_moe_style: "false",
+    };
+    const fields = fieldsForConfig(source);
+    const baseline = draftFromMerged(source, fields);
+    expect(baseline.use_ortho).toBe(false);
+    expect(baseline.route_per_layer).toBe(false);
+    expect(fields.find((field) => field.key === "use_ortho")?.kind).toBe("boolean");
+    expect(fields.find((field) => field.key === "use_moe_style")?.kind).not.toBe("boolean");
+
+    expect(
+      trainingPatchValues(
+        { ...baseline, use_ortho: true, reuse_vae_latents: false },
+        baseline,
+        fields,
+        source,
+      ),
+    ).toEqual({ use_ortho: true, reuse_vae_latents: false });
+    expect(trainingPatchValues(baseline, baseline, fields, source)).toEqual({});
+  });
+
   it("covers the live catalog once and retains unknown network arguments", () => {
     const original = {
       network_args: ["custom_extension=keep", "resampler_heads=8"],
