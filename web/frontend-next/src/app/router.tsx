@@ -1,4 +1,4 @@
-import { createBrowserRouter, Navigate } from "react-router-dom";
+import { createBrowserRouter, Navigate, useLocation } from "react-router-dom";
 import { lazy, Suspense, type ReactNode } from "react";
 import { AppShell, RouteError } from "./AppShell";
 
@@ -81,6 +81,11 @@ function lazyPage(children: ReactNode) {
   );
 }
 
+function RootRedirect() {
+  const { search, hash } = useLocation();
+  return <Navigate to={{ pathname: "/training", search, hash }} replace />;
+}
+
 export const router = createBrowserRouter(
   [
     {
@@ -89,7 +94,7 @@ export const router = createBrowserRouter(
       children: [
         {
           path: "/",
-          element: <Navigate to="/training" replace />,
+          element: <RootRedirect />,
         },
         {
           path: "/datasets",
