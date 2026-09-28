@@ -1,5 +1,5 @@
-import type { TrainingDraft, TrainingFieldSpec } from "./trainingForm";
-import { FilePenLine } from "lucide-react";
+import { sameTrainingValue, type TrainingDraft, type TrainingFieldSpec } from "./trainingForm";
+import { FilePenLine, Undo2 } from "lucide-react";
 import { TrainingDatasetField } from "./TrainingDatasetField";
 import { availableFieldOptions, fieldAvailability } from "./fieldCatalog";
 import { FIELD_HELP_SUMMARY_ZH } from "./domain/field-help-summary.js";
@@ -7,6 +7,7 @@ import { FIELD_HELP_SUMMARY_ZH } from "./domain/field-help-summary.js";
 type Props = {
   fields: TrainingFieldSpec[];
   draft: TrainingDraft;
+  baseline?: TrainingDraft;
   ownKeys: Set<string>;
   disabled: boolean;
   onChange: (key: string, value: string | number | boolean) => void;
@@ -17,6 +18,7 @@ type Props = {
 export function TrainingFieldEditor({
   fields,
   draft,
+  baseline = draft,
   ownKeys,
   disabled,
   onChange,
@@ -26,7 +28,8 @@ export function TrainingFieldEditor({
   return (
     <div className="training-edit-fields">
       {fields.map((field) => {
-        if (field.key === "dataset_config") return <TrainingDatasetField key={field.key} value={String(draft.dataset_config ?? "")} disabled={disabled} own={ownKeys.has(field.key)} onChange={(value) => onChange(field.key, value)} />;
+        const dirty = !sameTrainingValue(draft[field.key], baseline[field.key], field.kind);
+        if (field.key === "dataset_config") return <TrainingDatasetField key={field.key} value={String(draft.dataset_config ?? "")} dirty={dirty} disabled={disabled} own={ownKeys.has(field.key)} onChange={(value) => onChange(field.key, value)} onUndo={() => onChange(field.key, baseline.dataset_config ?? "")} />;
         const availability = fieldAvailability(field.key, draft, method);
         const options = availableFieldOptions(
           field,
@@ -52,6 +55,8 @@ export function TrainingFieldEditor({
             <span className="training-field-label">
               <span>{field.label}</span>
               <code className="training-field-tag">{field.key}</code>
+            {dirty && <span className="training-field-dirty" role="status">已修改</span>}
+            {dirty && <button type="button" className="training-field-undo" aria-label={`撤销${field.label}修改`} title={`撤销 ${field.label} 修改`} disabled={controlDisabled} onClick={(event) => { event.preventDefault(); event.stopPropagation(); onChange(field.key, baseline[field.key] ?? ""); }}><Undo2 size={15} aria-hidden="true" /></button>}
             {field.key === "sample_prompts" && onEditPrompts && (
               <button type="button" title="编辑样张提示词" aria-label="编辑样张提示词" disabled={controlDisabled} onClick={(event) => { event.preventDefault(); onEditPrompts(); }}><FilePenLine size={16} /></button>
             )}

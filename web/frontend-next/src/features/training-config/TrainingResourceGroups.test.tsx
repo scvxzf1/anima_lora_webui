@@ -1,4 +1,5 @@
 import { cleanup, render, screen, within } from "@testing-library/react";
+import { useState } from "react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, it, vi } from "vitest";
 import { fieldAvailability, fieldsForConfig, filterTrainingFields } from "./fieldCatalog";
@@ -6,6 +7,7 @@ import { groupResourceFields, resourceSummary } from "./resourceGroups";
 import { TrainingResourceGroups } from "./TrainingResourceGroups";
 import { TrainingFieldEditor } from "./TrainingFieldEditor";
 import { draftFromMerged } from "./trainingForm";
+import type { TrainingDraft } from "./trainingForm";
 
 afterEach(cleanup);
 const draft = { mixed_precision: "bf16", auto_block_swap: false, blocks_to_swap: 20, torch_compile: false };
@@ -73,6 +75,37 @@ it("labels Qwen task options and explains the Edit dataset contract", () => {
   expect(screen.getByRole("option", { name: "普通文生图 (t2i)" })).toBeInTheDocument();
   expect(screen.getByRole("option", { name: "编辑数据集 (edit)" })).toBeInTheDocument();
   expect(screen.getByText(/Edit 需要已保存的编辑前\/编辑后配对数据集/)).toBeInTheDocument();
+});
+
+it("undoes individual numeric and boolean drafts without affecting other fields, and clears undo after save", async () => {
+  const user = userEvent.setup();
+  const testFields = fieldsForConfig({ network_dim: 16, network_train_unet_only: false })
+    .filter((field) => ["network_dim", "network_train_unet_only"].includes(field.key));
+  function Harness() {
+    const [baseline, setBaseline] = useState<TrainingDraft>({ network_dim: 16, network_train_unet_only: false });
+    const [draft, setDraft] = useState<TrainingDraft>(baseline);
+    return <>
+      <TrainingFieldEditor fields={testFields} baseline={baseline} draft={draft} ownKeys={new Set()} disabled={false} onChange={(key, value) => setDraft((current) => ({ ...current, [key]: value }))} />
+      <button type="button" onClick={() => setBaseline({ ...draft })}>保存配置</button>
+    </>;
+  }
+  render(<Harness />);
+
+  await user.clear(screen.getByLabelText("LoRA rank"));
+  await user.type(screen.getByLabelText("LoRA rank"), "32");
+  await user.click(screen.getByLabelText("仅训练 DiT"));
+  expect(screen.getAllByText("已修改")).toHaveLength(2);
+  const undoNumber = screen.getByRole("button", { name: "撤销LoRA rank修改" });
+  const undoBoolean = screen.getByRole("button", { name: "撤销仅训练 DiT修改" });
+  await user.click(undoNumber);
+  expect(screen.getByLabelText("LoRA rank")).toHaveValue(16);
+  expect(screen.queryByRole("button", { name: "撤销LoRA rank修改" })).not.toBeInTheDocument();
+  expect(undoBoolean).toBeInTheDocument();
+  expect(screen.getByLabelText("仅训练 DiT")).toBeChecked();
+
+  await user.click(screen.getByRole("button", { name: "保存配置" }));
+  expect(screen.queryByRole("button", { name: "撤销仅训练 DiT修改" })).not.toBeInTheDocument();
+  expect(screen.queryByText("已修改")).not.toBeInTheDocument();
 });
 
 it("keeps disabled conflicts visible in the default field view", () => {

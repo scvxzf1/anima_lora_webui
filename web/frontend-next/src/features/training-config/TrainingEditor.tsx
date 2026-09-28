@@ -14,6 +14,7 @@ export function TrainingEditor({
     selectedFile,
     rawQuery,
     draft,
+    baseline,
     setDraft,
     activeStage,
     setActiveStage,
@@ -134,6 +135,7 @@ export function TrainingEditor({
                 view={fieldView}
                 fields={visibleFields.filter((field) => field.group === group)}
                 draft={draft}
+                baseline={baseline}
                 ownKeys={ownKeys}
                 method={selectedFile?.method}
                 disabled={

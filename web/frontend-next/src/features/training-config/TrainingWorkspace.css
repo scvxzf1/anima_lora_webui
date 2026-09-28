@@ -328,8 +328,9 @@
   border-top: 1px solid var(--line);
 }
 .training-field-label {
-  display: grid;
-  gap: 5px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
   min-width: 0;
 }
 .training-field-label > span {
@@ -346,6 +347,30 @@
   color: var(--muted);
   font-size: 10px;
   overflow-wrap: anywhere;
+}
+.training-field-dirty {
+  flex: 0 0 auto;
+  color: var(--warning, #8a4b08);
+  font-size: 11px;
+  font-weight: 600;
+}
+.training-field-undo {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  margin-left: auto;
+  padding: 0;
+  color: var(--ink);
+  background: transparent;
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  cursor: pointer;
+}
+.training-field-undo:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
 }
 .training-edit-fields input:not([type="checkbox"]),
 .training-edit-fields select {
