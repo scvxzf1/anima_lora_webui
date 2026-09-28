@@ -120,6 +120,8 @@ export function PreviewWorkspace() {
     </section>
     <PreviewSettings settings={draftSettings} dirty={settingsDirty} saving={save.isPending} onChange={setDraft} onSave={() => save.mutate()} onDefaults={() => setDraft({ ...draftSettings, ...(draftSettings.defaults || {}) })} />
     {notice && <p role="status" className="preview-notice">{notice}</p>}
+    {settings.error && <p role="alert">预览路径设置读取失败：{settings.error.message} <button type="button" disabled={settings.isFetching} onClick={() => void settings.refetch()}>重试设置</button></p>}
+    {history.isPending && <p role="status">正在读取训练任务与配置分组…</p>}
     {history.error && <p role="alert">{history.error.message} <button type="button" onClick={() => void history.refetch()}>重试任务列表</button></p>}
     {images.error && <p role="alert">{images.error.message} <button type="button" onClick={() => void images.refetch()}>重试图片</button></p>}
     {weights.error && <p role="alert">{weights.error.message} <button type="button" onClick={() => void weights.refetch()}>重试权重</button></p>}
