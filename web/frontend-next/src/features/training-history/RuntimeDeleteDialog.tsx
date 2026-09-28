@@ -55,7 +55,7 @@ export function RuntimeDeleteDialog({
     setSubmitting(true);
     setSubmitError("");
     try {
-      const value = await confirmRuntimeDelete(taskIds);
+      const value = await confirmRuntimeDelete(taskIds, preview);
       setResult(value);
       onSuccess(value);
     } catch (error) {
@@ -155,6 +155,19 @@ export function RuntimeDeleteDialog({
                       </li>
                     ),
                   )}
+                </ul>
+              </>
+            )}
+            {Object.entries(result.cleanup_errors || {}).length > 0 && (
+              <>
+                <h4>未能清理的历史目录</h4>
+                <ul>
+                  {Object.entries(result.cleanup_errors || {}).map(([path, error]) => (
+                    <li key={path}>
+                      <code>{path}</code>
+                      <span>{error}</span>
+                    </li>
+                  ))}
                 </ul>
               </>
             )}

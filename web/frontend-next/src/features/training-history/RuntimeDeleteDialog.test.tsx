@@ -109,6 +109,7 @@ describe("RuntimeDeleteDialog", () => {
         deleted_task_ids: ["task-1"],
         deleted_runtime_dirs: ["output/runs/one"],
         runtime_cleanup_errors: { "output/runs/two": "permission denied" },
+        cleanup_errors: { "history/task-2": "history permission denied" },
         preview,
       },
     });
@@ -117,12 +118,15 @@ describe("RuntimeDeleteDialog", () => {
     await user.click(screen.getByRole("checkbox"));
     await user.click(screen.getByRole("button", { name: "确认彻底删除" }));
     await screen.findByText("permission denied");
+    expect(screen.getByText("history permission denied")).toBeInTheDocument();
     expect(app.writes).toHaveLength(2);
     expect(app.writes[1].body).toEqual({
       action: "delete",
       task_ids: ["task-1"],
       delete_runtime_dirs: true,
       confirmed: true,
+      expected_task_ids: ["task-1", "task-2"],
+      expected_runtime_dirs: ["output/runs/run-1"],
     });
     expect(app.onSuccess).toHaveBeenCalledTimes(1);
     expect(app.onSuccess).toHaveBeenCalledWith(

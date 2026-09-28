@@ -31,12 +31,11 @@ def test_web_index_redirects_to_next_by_default() -> None:
 
 
 @pytest.mark.parametrize("mode", ["dragon", "classic"])
-def test_web_index_preserves_legacy_frontend_entrypoints(mode: str) -> None:
-    response = _run(index_handler(_StaticRequest(f"/?ui={mode}")))
+def test_web_index_maps_legacy_frontend_entrypoints_to_next(mode: str) -> None:
+    with pytest.raises(web.HTTPFound) as exc_info:
+        _run(index_handler(_StaticRequest(f"/?ui={mode}&token=example")))
 
-    assert response.status == 200
-    assert response.headers["Cache-Control"] == "no-cache"
-    assert response._path.name == "index.html"
+    assert str(exc_info.value.location) == "/next?token=example"
 
 
 def test_next_frontend_reports_missing_build(monkeypatch) -> None:

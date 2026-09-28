@@ -133,7 +133,7 @@ test("wide top bar stays on one row and preserves an unsaved settings field", as
   expect(await links.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
   await expect(output).toHaveValue("output/unsaved-navigation-layout");
   await navigation.locator("summary").click();
-  await expect(navigation.getByRole("link", { name: "旧版界面" })).toBeVisible();
+  await expect(navigation.getByRole("link", { name: "旧版界面" })).toHaveCount(0);
 
   await page.setViewportSize({ width: 1024, height: 900 });
   expect((await navigation.boundingBox())!.height).toBeGreaterThan(65);
@@ -162,8 +162,8 @@ test("narrow sidebar keeps icon navigation usable and can reset its width", asyn
   await resizer.focus();
   await page.keyboard.press("Home");
   expect((await sidebar.boundingBox())!.width).toBeCloseTo(81, 0);
-  await expect(sidebar.locator(".nav-legacy-link span")).toBeHidden();
-  await expect(sidebar.getByRole("link", { name: "旧版界面" })).toBeVisible();
+  await expect(sidebar.locator(".nav-legacy-link span")).toHaveCount(0);
+  await expect(sidebar.getByRole("link", { name: "旧版界面" })).toHaveCount(0);
   await expect(sidebar.getByRole("link", { name: "生图测试" })).toBeVisible();
 
   await page.setViewportSize({ width: 1280, height: 720 });

@@ -61,8 +61,6 @@ export function RouteError() {
       </p>
       <div className="toolbar">
         <Link to="/training">训练配置</Link>
-        <a href="/?ui=dragon">旧 Dragon 界面</a>
-        <a href="/?ui=classic">Classic 界面</a>
       </div>
     </main>
   );

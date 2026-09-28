@@ -8,6 +8,7 @@ from urllib.parse import quote
 from aiohttp import web
 
 from web.services.preview_service import (
+    PreviewSettingsConflictError,
     delete_preview_images,
     get_preview_settings,
     list_config_group_preview_images,
@@ -48,6 +49,13 @@ async def handle_preview_settings_put(request: web.Request) -> web.Response:
     data = await request.json()
     try:
         return web.json_response(save_preview_settings(data))
+    except PreviewSettingsConflictError as e:
+        return web.json_response({
+            "ok": False,
+            "error": str(e),
+            "settings": e.current_settings,
+            "revision": e.revision,
+        }, status=409)
     except ValueError as e:
         return web.json_response({"ok": False, "error": str(e)}, status=400)
 

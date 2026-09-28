@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import shutil
 import time
+from collections import Counter
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -122,6 +123,18 @@ def _batch_delete_history_tasks(self, payload: dict[str, Any], task_ids: list[st
     plan = self._plan_history_delete(task_ids, delete_runtime_dirs=delete_runtime_dirs)
     if payload.get("dry_run", False):
         return {"ok": True, "dry_run": True, **plan}
+    expected_fields = ("expected_task_ids", "expected_runtime_dirs")
+    if any(field in payload for field in expected_fields):
+        expected_tasks = payload.get("expected_task_ids")
+        expected_dirs = payload.get("expected_runtime_dirs")
+        if not isinstance(expected_tasks, list) or not isinstance(expected_dirs, list):
+            raise RuntimeError("删除预览已变化，请重新预览后确认")
+        if not all(isinstance(value, str) for value in expected_tasks + expected_dirs):
+            raise RuntimeError("删除预览已变化，请重新预览后确认")
+        current_tasks = [str(item.get("id") or "") for item in plan["tasks"]]
+        current_dirs = [str(item.get("path") or "") for item in plan["runtime_dirs"]]
+        if Counter(expected_tasks) != Counter(current_tasks) or Counter(expected_dirs) != Counter(current_dirs):
+            raise RuntimeError("删除预览已变化，请重新预览后确认")
     if plan["blocked"]:
         raise RuntimeError("存在不能删除的任务或运行目录，请先处理阻止项")
     if delete_runtime_dirs and payload.get("confirmed") is not True:

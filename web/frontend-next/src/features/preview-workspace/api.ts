@@ -8,6 +8,7 @@ export type PreviewSettings = {
   custom_dir?: string;
   effective_training_dir?: string;
   defaults?: Record<string, string>;
+  revision?: string;
 };
 export type PreviewImage = {
   file: string;
@@ -51,13 +52,16 @@ export const previewKeys = {
 export const fetchPreviewSettings = (signal?: AbortSignal) =>
   apiRequest<PreviewSettings>("/api/preview/settings", { signal });
 
-export const savePreviewSettings = (settings: Pick<PreviewSettings, "training_dir" | "inference_dir" | "custom_dir">) =>
-  apiRequest<{ ok?: boolean; message?: string }>("/api/preview/settings", {
+export const savePreviewSettings = (settings: Pick<PreviewSettings, "training_dir" | "inference_dir" | "custom_dir" | "revision">) =>
+  apiRequest<PreviewSettings & { ok?: boolean; message?: string }>("/api/preview/settings", {
     method: "PUT", body: JSON.stringify(settings),
   });
 
-export const fetchPreviewTasks = (signal?: AbortSignal) =>
-  apiRequest<{ tasks?: HistoryTaskSummary[] }>("/api/training/history?limit=100", { signal });
+export const fetchPreviewTasks = (cursor = "", signal?: AbortSignal) => {
+  const params = new URLSearchParams({ limit: "100", include_archived: "1" });
+  if (cursor) params.set("cursor", cursor);
+  return apiRequest<{ tasks?: HistoryTaskSummary[]; next_cursor?: string | null }>(`/api/training/history?${params}`, { signal });
+};
 
 export function makePreviewGroups(tasks: HistoryTaskSummary[]): PreviewGroup[] {
   const groups = new Map<string, PreviewGroup>();
@@ -93,19 +97,25 @@ function scopeParams(scope: string, taskId: string, group?: PreviewGroup) {
   return params;
 }
 
-export function fetchPreviewImages(source: PreviewSource, scope: string, taskId: string, group: PreviewGroup | undefined, days: string, signal?: AbortSignal) {
+export function fetchPreviewImages(source: PreviewSource, scope: string, taskId: string, group: PreviewGroup | undefined, days: string, offset = 0, signal?: AbortSignal) {
   const params = scopeParams(scope, taskId, group);
   params.set("source", source);
   params.set("limit", "200");
   params.set("days", days);
-  return apiRequest<{ images: PreviewImage[]; count?: number; total?: number; directory?: string; message?: string }>(
+  if (offset && scope !== "group") params.set("offset", String(offset));
+  return apiRequest<{ images: PreviewImage[]; count?: number; total?: number; next_offset?: number | null; directory?: string; message?: string }>(
     `/api/preview/images?${params}`, { signal },
   );
 }
 
-export function fetchPreviewWeights(scope: string, taskId: string, group: PreviewGroup | undefined, signal?: AbortSignal) {
+export function fetchPreviewWeights(scope: string, taskId: string, group: PreviewGroup | undefined, offset = 0, signal?: AbortSignal) {
   const params = scopeParams(scope, taskId, group);
-  return apiRequest<{ weights: PreviewWeight[]; directory?: string; message?: string }>(`/api/preview/weights?${params}`, { signal });
+  if (scope !== "group") {
+    params.set("limit", "100");
+    params.set("sort", "recent");
+    if (offset) params.set("offset", String(offset));
+  }
+  return apiRequest<{ weights: PreviewWeight[]; total?: number; next_offset?: number | null; truncated?: boolean; directory?: string; message?: string }>(`/api/preview/weights?${params}`, { signal });
 }
 
 export function previewImageUrl(file: string, taskId?: string) {

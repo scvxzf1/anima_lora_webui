@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { deletePreviewImages, fetchPreviewImages, makePreviewGroups } from "./api";
+import { deletePreviewImages, fetchPreviewImages, fetchPreviewTasks, fetchPreviewWeights, makePreviewGroups, savePreviewSettings } from "./api";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -14,6 +14,20 @@ describe("preview workspace API", () => {
     expect(url.searchParams.get("days")).toBe("14");
   });
 
+  it("uses stable history cursors and asset offsets for later pages", async () => {
+    const fetchMock = vi.fn().mockImplementation(async () => new Response(JSON.stringify({ tasks: [], images: [], weights: [] })));
+    vi.stubGlobal("fetch", fetchMock);
+    await fetchPreviewTasks("cursor/next");
+    await fetchPreviewImages("training", "task", "task-1", undefined, "all", 200);
+    await fetchPreviewWeights("task", "task-1", undefined, 100);
+    const urls = fetchMock.mock.calls.map(([url]) => new URL(url, "http://localhost"));
+    expect(urls[0].searchParams.get("cursor")).toBe("cursor/next");
+    expect(urls[0].searchParams.get("include_archived")).toBe("1");
+    expect(urls[1].searchParams.get("offset")).toBe("200");
+    expect(urls[2].searchParams.get("offset")).toBe("100");
+    expect(urls[2].searchParams.get("sort")).toBe("recent");
+  });
+
   it("passes deletion scope and filenames to the bounded server endpoint", async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ ok: true })));
     vi.stubGlobal("fetch", fetchMock);
@@ -22,6 +36,13 @@ describe("preview workspace API", () => {
     expect(fetchMock.mock.calls[0][1]).toMatchObject({
       method: "DELETE", body: JSON.stringify({ source: "training", files: ["sample.png"] }),
     });
+  });
+
+  it("sends the loaded settings revision with a save", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ ok: true, revision: "new" })));
+    vi.stubGlobal("fetch", fetchMock);
+    await savePreviewSettings({ training_dir: "output/ckpt", inference_dir: "output/tests", custom_dir: "", revision: "loaded" });
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({ revision: "loaded" });
   });
 
   it("groups only training tasks and preserves grouped task references", () => {

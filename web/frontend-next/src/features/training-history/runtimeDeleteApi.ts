@@ -33,6 +33,7 @@ export type RuntimeDeleteResult = {
   deleted_task_ids?: string[];
   deleted_runtime_dirs?: string[];
   runtime_cleanup_errors?: Record<string, string>;
+  cleanup_errors?: Record<string, string>;
   preview?: RuntimeDeletePreview;
   message?: string;
 };
@@ -51,7 +52,7 @@ export function previewRuntimeDelete(taskIds: string[]) {
   });
 }
 
-export function confirmRuntimeDelete(taskIds: string[]) {
+export function confirmRuntimeDelete(taskIds: string[], preview: RuntimeDeletePreview) {
   return apiRequest<RuntimeDeleteResult>(endpoint, {
     method: "POST",
     body: JSON.stringify({
@@ -59,6 +60,8 @@ export function confirmRuntimeDelete(taskIds: string[]) {
       task_ids: taskIds,
       delete_runtime_dirs: true,
       confirmed: true,
+      expected_task_ids: preview.tasks.map((task) => task.id),
+      expected_runtime_dirs: preview.runtime_dirs.map((dir) => dir.path),
     }),
   });
 }

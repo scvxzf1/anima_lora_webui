@@ -6,7 +6,7 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { useMemo, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Layers, List } from "lucide-react";
 import {
   batchUpdateHistoryTasks,
@@ -18,7 +18,7 @@ import {
 import { HistoryCollections } from "./HistoryCollections";
 import { HistoryConfigGroups } from "./HistoryConfigGroups";
 import { HistoryComparison } from "./HistoryComparison";
-import { HistoryTimeline } from "./HistoryTimeline";
+import { RuntimeDeleteDialog } from "./RuntimeDeleteDialog";
 import {
   orderedHistoryTasks,
   historyConfigKey,
@@ -55,6 +55,7 @@ function filterTasks(
 
 export function HistoryPage() {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const search = params.get("q") || "";
   const state = params.get("state") || "all";
@@ -73,7 +74,7 @@ export function HistoryPage() {
   const stacked = params.get("layout") !== "list";
   const busy = useIsMutating({ mutationKey: ["training-history"] }) > 0;
   const [comparison, setComparison] = useState<string[]>([]);
-  const [timeline, setTimeline] = useState<string[]>([]);
+  const [runtimeDeleteIds, setRuntimeDeleteIds] = useState<string[]>([]);
   const collections = useQuery({
     queryKey: historyKeys.collections,
     queryFn: ({ signal }) => fetchHistoryCollections(signal),
@@ -106,6 +107,9 @@ export function HistoryPage() {
     retry: false,
   });
   const tasks = query.data?.pages.flatMap((pageData) => pageData.tasks || []) || [];
+  const selectedTraining = selected.filter((id) =>
+    tasks.some((task) => task.id === id && task.job === "training"),
+  );
   const restore = useHistoryRestore(query, params.toString());
   const listSearch = historyReturnSearch(params.toString(), query.data?.pages.length || 1);
   const missingAnchor = useHistoryAnchor(params.toString(), Boolean(query.data) && !query.isFetching && !query.error && !restore.restoring);
@@ -180,7 +184,7 @@ export function HistoryPage() {
     if (!selected.length || commandLock.current || busy) return;
     const message =
       action === "delete"
-        ? `确定彻底删除已选 ${selected.length} 条历史记录吗？该操作不会删除运行目录和权重。`
+        ? `确定删除已选 ${selected.length} 条历史记录吗？该操作不会删除运行目录和权重。`
         : `确定${action === "archive" ? "归档" : "取消归档"}已选 ${selected.length} 条历史记录吗？`;
     if (!window.confirm(message)) return;
     commandLock.current = true;
@@ -340,8 +344,17 @@ export function HistoryPage() {
               >
                 对比记录 (2-4)
               </button>
-              <button type="button" disabled={selected.length < 2 || busy} onClick={() => setTimeline([...selected])}>
-                合并查看
+              <button
+                type="button"
+                disabled={selectedTraining.length < 2 || busy}
+                onClick={() => {
+                  const target = new URLSearchParams();
+                  selectedTraining.forEach((id) => target.append("task", id));
+                  target.set("from", params.toString());
+                  navigate(`/history/aggregate?${target}`);
+                }}
+              >
+                合并训练 ({selectedTraining.length})
               </button>
               <button
                 type="button"
@@ -381,7 +394,15 @@ export function HistoryPage() {
                 className="history-danger"
                 onClick={() => runBatch("delete")}
               >
-                彻底删除
+                仅删除历史记录
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                className="history-danger"
+                onClick={() => setRuntimeDeleteIds([...selected])}
+              >
+                删除记录及运行目录
               </button>
             </div>
           ) : null}
@@ -545,7 +566,17 @@ export function HistoryPage() {
       {comparison.length > 0 && (
         <HistoryComparison ids={comparison} onClose={() => setComparison([])} />
       )}
-      {timeline.length > 0 && <HistoryTimeline taskIds={timeline} onClose={() => setTimeline([])} />}
+      {runtimeDeleteIds.length > 0 && (
+        <RuntimeDeleteDialog
+          taskIds={runtimeDeleteIds}
+          onClose={() => setRuntimeDeleteIds([])}
+          onSuccess={(result) => {
+            setSelected([]);
+            setNotice(result.message || "历史与运行目录删除请求已处理，请核对结果。");
+            void queryClient.invalidateQueries({ queryKey: ["training-history"] });
+          }}
+        />
+      )}
     </div>
   );
 }

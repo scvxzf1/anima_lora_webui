@@ -24,6 +24,17 @@ describe("PreviewAssets", () => {
     expect(onDelete).toHaveBeenCalledWith(["a.png"]);
   });
 
+  it("cannot delete a selection after that image leaves the current result", () => {
+    const onDelete = vi.fn();
+    const view = render(<PreviewAssets images={[{ file: "a.png", name: "A" }]} weights={[]} readOnlyGroup={false} onDelete={onDelete} onHotstart={vi.fn()} />);
+    fireEvent.click(screen.getByRole("checkbox"));
+    view.rerender(<PreviewAssets images={[{ file: "b.png", name: "B" }]} weights={[]} readOnlyGroup={false} onDelete={onDelete} onHotstart={vi.fn()} />);
+    const button = screen.getByRole("button", { name: /删除所选/ });
+    expect(button).toBeDisabled();
+    fireEvent.click(button);
+    expect(onDelete).not.toHaveBeenCalled();
+  });
+
   it("locks path settings until the existing settings have loaded", () => {
     render(<PreviewSettings settings={{ training_dir: "sample" }} dirty saving={false} locked onChange={vi.fn()} onSave={vi.fn()} onDefaults={vi.fn()} />);
     expect(screen.getByLabelText("训练样张目录")).toBeDisabled();

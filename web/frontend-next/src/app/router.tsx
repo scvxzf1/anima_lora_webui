@@ -37,6 +37,11 @@ const HistoryPage = lazy(async () => {
   return { default: module.HistoryPage };
 });
 
+const HistoryTimelinePage = lazy(async () => {
+  const module = await import("../features/training-history/HistoryTimelinePage");
+  return { default: module.HistoryTimelinePage };
+});
+
 const HistoryDetailPage = lazy(async () => {
   const module = await import("../features/training-history/HistoryDetailPage");
   return { default: module.HistoryDetailPage };
@@ -107,6 +112,10 @@ export const router = createBrowserRouter(
         {
           path: "/history",
           element: lazyPage(<HistoryPage />),
+        },
+        {
+          path: "/history/aggregate",
+          element: lazyPage(<HistoryTimelinePage />),
         },
         {
           path: "/history/:taskId",

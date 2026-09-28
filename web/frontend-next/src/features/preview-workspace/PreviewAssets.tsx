@@ -8,10 +8,12 @@ export function PreviewAssets({ images, weights, taskId, readOnlyGroup, onDelete
   const [selected, setSelected] = useState<string[]>([]);
   const [active, setActive] = useState<PreviewImage>();
   const [copyNotice, setCopyNotice] = useState("");
+  const visibleFiles = new Set(images.map((image) => image.file));
+  const selectedFiles = selected.filter((file) => visibleFiles.has(file));
   const toggle = (file: string) => setSelected((current) => current.includes(file) ? current.filter((item) => item !== file) : [...current, file]);
   return <>
     <section className="preview-section">
-      <header><div><p className="eyebrow">SAMPLES</p><h2>图片预览</h2></div><button type="button" className="danger-button" disabled={readOnlyGroup || !selected.length} onClick={() => onDelete(selected)}>删除所选（{selected.length}）</button></header>
+      <header><div><p className="eyebrow">SAMPLES</p><h2>图片预览</h2></div><button type="button" className="danger-button" disabled={readOnlyGroup || !selectedFiles.length} onClick={() => onDelete(selectedFiles)}>删除所选（{selectedFiles.length}）</button></header>
       {readOnlyGroup && <p className="preview-note">配置组聚合多个目录，只能浏览；切换到单个任务后可删除。</p>}
       {images.length ? <div className="preview-image-grid">{images.map((image) => <figure key={image.file}>
         <label><input type="checkbox" checked={selected.includes(image.file)} disabled={readOnlyGroup} onChange={() => toggle(image.file)} />选择</label>

@@ -99,7 +99,10 @@ def _build_config_group_timeline(
         ]
         if group_key and tasks:
             group = _history_group_from_task(tasks[0])
-    tasks.sort(key=lambda item: (float(item.get("started_at") or 0), str(item.get("id") or "")))
+    # Manual selections are already ordered by the user's task_ids; only automatic
+    # config-group aggregation needs chronological ordering.
+    if not selected_ids:
+        tasks.sort(key=lambda item: (float(item.get("started_at") or 0), str(item.get("id") or "")))
     if not tasks:
         if selected_ids:
             raise FileNotFoundError("没有找到可合并的已选训练任务")

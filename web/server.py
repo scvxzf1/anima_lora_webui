@@ -29,13 +29,10 @@ class _WebAccessLogger(AccessLogger):
 
 
 async def index_handler(request: web.Request) -> web.StreamResponse:
-    if request.rel_url.query.get("ui") not in {"dragon", "classic"}:
-        raise web.HTTPFound(
-            location=request.rel_url.with_path("/next").with_query(request.rel_url.query)
-        )
-    response = web.FileResponse(STATIC_DIR / "index.html")
-    response.headers["Cache-Control"] = "no-cache"
-    return response
+    # Legacy UI selectors are compatibility inputs only; the active entry is Next.
+    query = dict(request.rel_url.query)
+    query.pop("ui", None)
+    raise web.HTTPFound(location=request.rel_url.with_path("/next").with_query(query))
 
 
 async def next_index_handler(request: web.Request) -> web.FileResponse:

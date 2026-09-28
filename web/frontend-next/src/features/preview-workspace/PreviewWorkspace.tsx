@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useBlocker, useNavigate } from "react-router-dom";
 import { useTrainingContext } from "../../app/useTrainingContext";
-import { ApiError } from "../../api/client";
+import { ApiError, apiRequest } from "../../api/client";
 import { fetchRawTrainingConfig, saveTrainingConfigPatch, trainingConfigKeys } from "../training-config/api";
 import { PreviewAssets } from "./PreviewAssets";
 import { PreviewSettings } from "./PreviewSettings";
@@ -25,10 +25,18 @@ export function PreviewWorkspace() {
   const [draft, setDraft] = useState<Settings | null>(null);
   const [notice, setNotice] = useState("");
   const settings = useQuery({ queryKey: previewKeys.settings, queryFn: ({ signal }) => fetchPreviewSettings(signal) });
-  const history = useQuery({ queryKey: previewKeys.tasks, queryFn: ({ signal }) => fetchPreviewTasks(signal) });
-  const tasks = useMemo(() => (history.data?.tasks || []).filter((task) => task.job === "training"), [history.data]);
+  const history = useInfiniteQuery({
+    queryKey: previewKeys.tasks,
+    queryFn: ({ pageParam, signal }) => fetchPreviewTasks(pageParam, signal),
+    initialPageParam: "",
+    getNextPageParam: (last) => last.next_cursor || undefined,
+  });
+  const tasks = useMemo(() => (history.data?.pages.flatMap((page) => page.tasks || []) || []).filter((task) => task.job === "training"), [history.data]);
   const groups = useMemo(() => makePreviewGroups(tasks), [tasks]);
   const selectedGroup = groups.find((group) => group.key === groupKey);
+  useEffect(() => {
+    if (scope === "group" && groupKey && !selectedGroup) setGroupKey("");
+  }, [groupKey, scope, selectedGroup]);
   const draftSettings = draft || settings.data || {};
   const settingsDirty = Boolean(draft) && ["training_dir", "inference_dir", "custom_dir"].some((key) =>
     String(draftSettings[key as keyof Settings] || "").trim() !== String(settings.data?.[key as keyof Settings] || "").trim());
@@ -52,24 +60,33 @@ export function PreviewWorkspace() {
   }, [settingsDirty]);
   const selectedTaskId = scope === "task" ? taskId : "";
   const assetsKey = previewKeys.assets(source, `${scope}:${selectedTaskId}:${groupKey}`, days);
-  const images = useQuery({
+  const images = useInfiniteQuery({
     queryKey: [...assetsKey, "images"],
-    queryFn: ({ signal }) => fetchPreviewImages(source, scope, taskId, selectedGroup, days, signal),
-    enabled: (source !== "training" || scope !== "task" || Boolean(taskId)) && (scope !== "group" || Boolean(groupKey)),
+    queryFn: ({ pageParam, signal }) => fetchPreviewImages(source, scope, taskId, selectedGroup, days, pageParam, signal),
+    initialPageParam: 0,
+    getNextPageParam: (last) => scope === "group" ? undefined : last.next_offset ?? undefined,
+    enabled: source !== "training" || ((scope !== "task" || Boolean(taskId)) && (scope !== "group" || Boolean(selectedGroup))),
   });
-  const weights = useQuery({
+  const weights = useInfiniteQuery({
     queryKey: [...assetsKey, "weights"],
-    queryFn: ({ signal }) => fetchPreviewWeights(scope, taskId, selectedGroup, signal),
-    enabled: source === "training" && (scope !== "task" || Boolean(taskId)) && (scope !== "group" || Boolean(groupKey)),
+    queryFn: ({ pageParam, signal }) => fetchPreviewWeights(scope, taskId, selectedGroup, pageParam, signal),
+    initialPageParam: 0,
+    getNextPageParam: (last) => scope === "group" ? undefined : last.next_offset ?? undefined,
+    enabled: source === "training" && (scope !== "task" || Boolean(taskId)) && (scope !== "group" || Boolean(selectedGroup)),
   });
   const save = useMutation({
-    mutationFn: () => savePreviewSettings({ training_dir: draftSettings.training_dir, inference_dir: draftSettings.inference_dir, custom_dir: draftSettings.custom_dir }),
+    mutationFn: () => savePreviewSettings({ training_dir: draftSettings.training_dir, inference_dir: draftSettings.inference_dir, custom_dir: draftSettings.custom_dir, revision: settings.data?.revision }),
     onSuccess: async (result) => {
-      await queryClient.invalidateQueries({ queryKey: previewKeys.settings });
+      const normalized = { ...settings.data, ...result };
+      setDraft(normalized);
+      queryClient.setQueryData(previewKeys.settings, normalized);
       setNotice(result.message || "预览路径设置已保存。");
+      await queryClient.invalidateQueries({ queryKey: previewKeys.settings });
       await queryClient.invalidateQueries({ queryKey: assetsKey });
     },
-    onError: (error) => setNotice(error.message),
+    onError: (error) => setNotice(error instanceof ApiError && error.status === 409
+      ? "预览路径已由其他操作更新，请先刷新页面核对最新设置。"
+      : error.message),
   });
   const remove = useMutation({
     mutationFn: (files: string[]) => deletePreviewImages(source, files, source === "training" && scope === "task" ? taskId : undefined),
@@ -79,8 +96,10 @@ export function PreviewWorkspace() {
     },
     onError: (error) => setNotice(error.message),
   });
-  const imagesData = images.data?.images || [];
-  const weightsData = weights.data?.weights || [];
+  const imagesData = images.data?.pages.flatMap((page) => page.images || []) || [];
+  const weightsData = weights.data?.pages.flatMap((page) => page.weights || []) || [];
+  const imageSummary = images.data?.pages[0];
+  const weightSummary = weights.data?.pages[0];
   const effectiveDirectory = source === "training"
     ? settings.data?.effective_training_dir || draftSettings.training_dir
     : source === "inference" ? draftSettings.inference_dir : draftSettings.custom_dir;
@@ -93,10 +112,10 @@ export function PreviewWorkspace() {
     }
     if (!window.confirm(`检查兼容性并将此权重写入 ${file.path}？此操作会立即保存配置。`)) return;
     try {
-      const check = await fetch("/api/training/continue-lora/inspect", {
+      const check = await apiRequest<{ ok?: boolean; compatible?: boolean; message?: string; error?: string; abs_path?: string }>("/api/training/continue-lora/inspect", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ path, variant: file.method || "lora", preset: context.selectedPreset, methods_subdir: file.methods_subdir || "gui-methods", config_file: file.path }),
-      }).then((response) => response.json());
+      });
       if (!check.compatible || check.ok === false) throw new Error(check.message || check.error || "权重与训练配置不兼容");
       const raw = await fetchRawTrainingConfig(file.path);
       const saved = await saveTrainingConfigPatch(file.path, { network_weights: check.abs_path || path, dim_from_weights: true }, raw.revision);
@@ -115,6 +134,7 @@ export function PreviewWorkspace() {
       <label>训练范围<select value={scope} disabled={source !== "training"} onChange={(event) => setScope(event.target.value)}><option value="latest">最新任务</option><option value="task">指定任务</option><option value="group">配置分组</option></select></label>
       {source === "training" && scope === "task" && <label>任务<select value={taskId} onChange={(event) => setTaskId(event.target.value)}><option value="">选择训练任务</option>{tasks.map((task) => <option key={task.id} value={task.id}>{task.name || task.variant || task.id}</option>)}</select></label>}
       {source === "training" && scope === "group" && <label>分组<select value={groupKey} onChange={(event) => setGroupKey(event.target.value)}><option value="">选择配置分组</option>{groups.map((group) => <option key={group.key} value={group.key}>{group.label} · {group.tasks.length} 次</option>)}</select></label>}
+      {source === "training" && history.hasNextPage && <button type="button" disabled={history.isFetchingNextPage} onClick={() => void history.fetchNextPage()}>{history.isFetchingNextPage ? "读取任务中…" : "载入更多训练任务"}</button>}
       <label>图片时间<select value={days} onChange={(event) => setDays(event.target.value)}><option value="7">最近 7 天</option><option value="14">最近 14 天</option><option value="30">最近 30 天</option><option value="all">全部时间</option></select></label>
       <button type="button" onClick={() => { void images.refetch(); if (source === "training") void weights.refetch(); }}>刷新</button>
     </section>
@@ -126,11 +146,15 @@ export function PreviewWorkspace() {
     {images.error && <p role="alert">{images.error.message} <button type="button" onClick={() => void images.refetch()}>重试图片</button></p>}
     {weights.error && <p role="alert">{weights.error.message} <button type="button" onClick={() => void weights.refetch()}>重试权重</button></p>}
     {(images.isPending || (source === "training" && weights.isPending)) && <p role="status">正在读取预览资源…</p>}
-    {!images.isPending && !images.error && <p className="preview-note">{images.data?.message || `${images.data?.count ?? imagesData.length} / ${images.data?.total ?? imagesData.length} 张 · ${images.data?.directory || effectiveDirectory || "目录未设置"}`}</p>}
-    {!weights.isPending && source === "training" && !weights.error && weights.data?.message && <p className="preview-note">{weights.data.message}</p>}
-    <PreviewAssets images={imagesData} weights={source === "training" ? weightsData : []} taskId={selectedTaskId || undefined} readOnlyGroup={source === "training" && scope === "group"} onDelete={(files) => {
+    {!images.isPending && !images.error && <p className="preview-note">{imageSummary?.message || `${imagesData.length} / ${imageSummary?.total ?? imagesData.length} 张 · ${imageSummary?.directory || effectiveDirectory || "目录未设置"}`}</p>}
+    {!weights.isPending && source === "training" && !weights.error && weightSummary?.message && <p className="preview-note">{weightSummary.message}</p>}
+    {source === "training" && scope === "group" && weightSummary?.truncated && <p className="preview-note">配置组中部分任务的权重超过单任务显示上限；切换到单个任务后可继续浏览。</p>}
+    {source === "training" && scope === "group" && imageSummary?.total != null && imagesData.length < imageSummary.total && <p className="preview-note">配置组显示最近 {imagesData.length} 张；可选择单个任务继续浏览。</p>}
+    <PreviewAssets key={`${source}:${scope}:${selectedTaskId}:${groupKey}:${days}`} images={imagesData} weights={source === "training" ? weightsData : []} taskId={selectedTaskId || undefined} readOnlyGroup={source === "training" && scope === "group"} onDelete={(files) => {
       if (source === "training" && scope === "group") return;
       if (window.confirm(`永久删除所选 ${files.length} 张图片？此操作无法撤销。`)) remove.mutate(files);
     }} onHotstart={(path) => void hotstart(path)} />
+    {images.hasNextPage && <button type="button" disabled={images.isFetchingNextPage} onClick={() => void images.fetchNextPage()}>{images.isFetchingNextPage ? "读取图片中…" : "载入更多图片"}</button>}
+    {source === "training" && weights.hasNextPage && <button type="button" disabled={weights.isFetchingNextPage} onClick={() => void weights.fetchNextPage()}>{weights.isFetchingNextPage ? "读取权重中…" : "载入更多权重"}</button>}
   </main>;
 }

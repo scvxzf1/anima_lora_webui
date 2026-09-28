@@ -254,6 +254,86 @@ def test_history_batch_delete_blocks_current_task_and_queue_references(tmp_path,
         })
     assert run_dir.exists()
 
+def test_history_batch_delete_rejects_plan_changed_after_preview(tmp_path, monkeypatch):
+    history_dir = tmp_path / "history"
+    output_root = tmp_path / "runs"
+    run_dir = _write_web_runtime_dir(output_root, "changed-run")
+    first_id = "20260524-225152-training-imported-first"
+    later_id = "20260524-225153-training-imported-later"
+    history_meta = {"run_dir": str(run_dir), "training_output_dir": str(run_dir / "training_output")}
+    _write_group_task(history_dir, first_id, job="training", history_meta=history_meta)
+    monkeypatch.setattr(training_service, "HISTORY_DIR", history_dir)
+    monkeypatch.setattr(training_service, "resolve_output_root", lambda: output_root)
+    svc = TrainingService(web.Application())
+    preview = svc.batch_update_history_tasks({
+        "action": "delete", "task_ids": [first_id], "delete_runtime_dirs": True, "dry_run": True,
+    })
+    _write_group_task(history_dir, later_id, job="training", history_meta=history_meta)
+
+    with pytest.raises(RuntimeError, match="预览已变化"):
+        svc.batch_update_history_tasks({
+            "action": "delete",
+            "task_ids": [first_id],
+            "delete_runtime_dirs": True,
+            "confirmed": True,
+            "expected_task_ids": [task["id"] for task in preview["tasks"]],
+            "expected_runtime_dirs": [item["path"] for item in preview["runtime_dirs"]],
+        })
+
+    assert run_dir.exists()
+    assert (history_dir / first_id).exists()
+    assert (history_dir / later_id).exists()
+
+def test_history_batch_delete_accepts_matching_expected_plan(tmp_path, monkeypatch):
+    history_dir = tmp_path / "history"
+    output_root = tmp_path / "runs"
+    run_dir = _write_web_runtime_dir(output_root, "matching-run")
+    task_id = "20260524-225152-training-imported-match"
+    _write_group_task(history_dir, task_id, job="training", history_meta={"run_dir": str(run_dir)})
+    monkeypatch.setattr(training_service, "HISTORY_DIR", history_dir)
+    monkeypatch.setattr(training_service, "resolve_output_root", lambda: output_root)
+    svc = TrainingService(web.Application())
+    preview = svc.batch_update_history_tasks({
+        "action": "delete", "task_ids": [task_id], "delete_runtime_dirs": True, "dry_run": True,
+    })
+
+    deleted = svc.batch_update_history_tasks({
+        "action": "delete",
+        "task_ids": [task_id],
+        "delete_runtime_dirs": True,
+        "confirmed": True,
+        "expected_task_ids": [task["id"] for task in preview["tasks"]],
+        "expected_runtime_dirs": [item["path"] for item in preview["runtime_dirs"]],
+    })
+
+    assert deleted["ok"] is True
+    assert not run_dir.exists()
+
+def test_history_batch_delete_rejects_incomplete_expected_plan(tmp_path, monkeypatch):
+    history_dir = tmp_path / "history"
+    output_root = tmp_path / "runs"
+    run_dir = _write_web_runtime_dir(output_root, "incomplete-run")
+    task_id = "20260524-225152-training-imported-incomplete"
+    _write_group_task(history_dir, task_id, job="training", history_meta={"run_dir": str(run_dir)})
+    monkeypatch.setattr(training_service, "HISTORY_DIR", history_dir)
+    monkeypatch.setattr(training_service, "resolve_output_root", lambda: output_root)
+    svc = TrainingService(web.Application())
+    preview = svc.batch_update_history_tasks({
+        "action": "delete", "task_ids": [task_id], "delete_runtime_dirs": True, "dry_run": True,
+    })
+
+    with pytest.raises(RuntimeError, match="预览已变化"):
+        svc.batch_update_history_tasks({
+            "action": "delete",
+            "task_ids": [task_id],
+            "delete_runtime_dirs": True,
+            "confirmed": True,
+            "expected_task_ids": [task["id"] for task in preview["tasks"]],
+        })
+
+    assert run_dir.exists()
+    assert (history_dir / task_id).exists()
+
 def test_history_batch_route_calls_service():
     class FakeService:
         def __init__(self):
@@ -275,4 +355,3 @@ def test_history_batch_route_calls_service():
     assert response.status == 200
     assert payload["updated"] == 2
     assert svc.payload == {"action": "archive", "task_ids": ["a", "b"]}
-

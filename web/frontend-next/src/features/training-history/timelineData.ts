@@ -34,6 +34,6 @@ function segmentRank(segment: { task?: { id?: string } }, rank: Map<string, numb
   return rank.get(String(segment.task?.id || "")) ?? Number.MAX_SAFE_INTEGER;
 }
 
-export function timelineLogText(log: { line?: string; source_task_index?: number }) {
-  return `[任务${log.source_task_index || "?"}] ${log.line || ""}`;
+export function timelineLogText(log: { line?: string; source_task_index?: number; source_task_label?: string }) {
+  return `[${log.source_task_label || `任务${log.source_task_index || "?"}`}] ${log.line || ""}`;
 }

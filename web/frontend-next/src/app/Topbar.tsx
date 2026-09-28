@@ -12,7 +12,6 @@ import {
   Sun,
   Moon,
   Menu,
-  ExternalLink,
   PanelLeft,
   PanelTop,
   Wrench,
@@ -218,7 +217,6 @@ export function Topbar() {
             <NavLink to="/image-test" aria-label="生图测试" title="生图测试" onClick={() => setExpanded(false)}><Image size={16} aria-hidden="true" /><span>生图测试</span></NavLink>
             <NavLink to="/weight-analysis" aria-label="权重分析" title="权重分析" onClick={() => setExpanded(false)}><ScanSearch size={16} aria-hidden="true" /><span>权重分析</span></NavLink>
             <NavLink to="/environment" aria-label="环境检测" title="环境检测" onClick={() => setExpanded(false)}><Activity size={16} aria-hidden="true" /><span>环境检测</span></NavLink>
-            <a className="nav-aux-legacy" href="/?ui=dragon" aria-label="旧版界面" title="旧版界面"><ExternalLink size={16} aria-hidden="true" /><span>旧版界面</span></a>
           </div>
         </details>
         <div className="nav-appearance-controls">
@@ -241,9 +239,6 @@ export function Topbar() {
             {navigationLayout === "sidebar" ? <PanelTop size={17} /> : <PanelLeft size={17} />}
           </Button>
         </div>
-        <a className="nav-legacy-link" href="/?ui=dragon" aria-label="旧版界面" title="旧版界面">
-          <span>旧版界面</span> <ExternalLink size={13} />
-        </a>
       </div>
     </aside>
   );

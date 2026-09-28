@@ -20,6 +20,7 @@ describe("ordered history timeline", () => {
     ]);
     expect(result.logs?.map((log) => log.line)).toEqual(["first", "second"]);
     expect(timelineLogText(result.logs![0])).toBe("[任务1] first");
+    expect(timelineLogText({ source_task_label: "训练 A", line: "saved" })).toBe("[训练 A] saved");
   });
 
   it("handles empty metrics and unknown tasks without fabricating points", () => {

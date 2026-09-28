@@ -15,6 +15,8 @@ export function HistoryTimeline({ taskIds, onClose }: { taskIds: string[]; onClo
   const data = query.data ? orderHistoryTimeline(query.data, ids) : undefined;
   const loss = (data?.metrics || []).filter((point) => typeof point.loss === "number" && Number.isFinite(point.loss));
   const logs = data?.logs || [];
+  const availableMetricCount = (data?.segments || []).reduce((sum, segment) => sum + Number(segment.metric_count || 0), 0);
+  const availableLogCount = (data?.segments || []).reduce((sum, segment) => sum + Number(segment.log_count || 0), 0);
   return <section className="history-timeline" aria-label="训练合并时间线">
     <header><div><p className="eyebrow">SEQUENTIAL HISTORY</p><h2>合并查看</h2><p>按已选顺序串接训练阶段；与并列任务对比独立。</p></div>
       <button type="button" title="关闭合并查看" aria-label="关闭合并查看" onClick={onClose}><X size={16} /></button></header>
@@ -22,12 +24,17 @@ export function HistoryTimeline({ taskIds, onClose }: { taskIds: string[]; onClo
     {query.isPending && ids.length >= 2 ? <p role="status">正在读取合并时间线…</p> : null}
     {query.error || (query.data && query.data.ok === false) ? <p className="history-error" role="alert">{query.error?.message || query.data?.error || "读取合并时间线失败。"} <button type="button" disabled={query.isFetching} onClick={() => void query.refetch()}>重试</button></p> : null}
     {data && data.ok !== false ? <>
+      {(availableMetricCount > (data.metrics?.length || 0) || availableLogCount > logs.length) && (
+        <p className="history-notice" role="status">
+          服务端限制了时间线记录数：指标 {data.metrics?.length || 0} / {availableMetricCount}，日志 {logs.length} / {availableLogCount}。较早阶段可能不完整。
+        </p>
+      )}
       <ol className="history-timeline-stages">{(data.segments || []).map((segment, index) => <li key={segment.task?.id || index}>
         <strong>{index + 1}. {segment.task?.label || segment.task?.name || segment.task?.id || "训练任务"}</strong>
-        <span>{segment.metric_count ? `${segment.metric_count} 个指标 · ${segment.log_count || 0} 行日志` : `无指标 · ${segment.log_count || 0} 行日志`}</span>
+        <span>{segment.metric_count ? `${segment.metric_count} 个指标 · ${segment.log_count || 0} 行日志` : `无指标 · ${segment.log_count || 0} 行日志`}{segment.start_display_step != null ? ` · 训练步数 ${segment.start_display_step}–${segment.end_display_step}` : ""}</span>
       </li>)}</ol>
       <section className="history-timeline-chart" aria-label="串接 Loss 曲线">
-        <h3>Loss · 串接显示步数</h3>
+        <h3>Loss · 串接指标序号</h3>
         {loss.length ? <TimelineChart points={loss} /> : <p>所选任务没有可绘制的 Loss 指标。</p>}
       </section>
       <section className="history-timeline-logs"><h3>聚合日志 <small>{logs.length} 行 · 已过滤进度事件</small></h3>
@@ -47,6 +54,6 @@ function TimelineChart({ points }: { points: Array<Record<string, unknown>> }) {
   return <svg viewBox="0 0 1000 220" role="img" aria-label={`合并 Loss 曲线，共 ${points.length} 个点`}>
     {separators.map((x, index) => <g key={`${x}-${index}`}><line x1={x} x2={x} y1="10" y2="195" /><text x={x + 5} y="16">阶段分界</text></g>)}
     <polyline points={coords} />
-    <text x="8" y="212">1</text><text x="960" y="212">{points.length}</text>
+    <text x="8" y="212">1</text><text x="940" y="212">{points.length}</text>
   </svg>;
 }

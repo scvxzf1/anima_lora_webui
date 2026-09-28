@@ -93,9 +93,11 @@ def list_config_group_training_weights(
     group_label = f"{methods_subdir} / {variant} / {preset or 'default'}"
     weights_by_path: dict[str, dict[str, Any]] = {}
     directories: list[str] = []
+    truncated = False
 
     for task in tasks:
         listing = list_training_weights(task, allow_latest_fallback=False)
+        truncated = truncated or listing.get("next_offset") is not None
         directory = str(listing.get("directory") or "")
         if directory and directory not in directories:
             directories.append(directory)
@@ -136,6 +138,7 @@ def list_config_group_training_weights(
         "total": len(weights),
         "task_count": task_weight_count,
         "weights": weights,
+        "truncated": truncated,
         "message": "" if weights else "这个训练分组还没有可显示的权重文件",
         "group": {
             "methods_subdir": methods_subdir,

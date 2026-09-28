@@ -7,6 +7,8 @@ and tests.
 
 from __future__ import annotations
 
+import hashlib
+import json
 from typing import Any
 
 import toml
@@ -88,6 +90,21 @@ _weight_scope = _preview_weights._weight_scope
 _empty_weights_listing = _preview_weights._empty_weights_listing
 
 
+class PreviewSettingsConflictError(ValueError):
+    """Raised when preview settings changed since the client loaded them."""
+
+    def __init__(self, current_settings: dict[str, str], revision: str) -> None:
+        super().__init__("预览图路径设置已被其他操作修改，请重新加载后再保存")
+        self.current_settings = current_settings
+        self.revision = revision
+
+
+def _preview_settings_revision(settings: dict[str, str]) -> str:
+    canonical = {key: settings[key] for key in ("training_dir", "inference_dir", "custom_dir")}
+    encoded = json.dumps(canonical, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
 def get_preview_settings(
     current_task_sample_dir: str | None = None,
     *,
@@ -114,6 +131,7 @@ def get_preview_settings(
         "training_dir": settings["training_dir"],
         "inference_dir": settings["inference_dir"],
         "custom_dir": settings["custom_dir"],
+        "revision": _preview_settings_revision(settings),
         "training_output_root": settings_service.display_path(output_root),
         "current_task_sample_dir": task_dir,
         "latest_run_dir": latest_run["run_dir"] if latest_run else "",
@@ -131,6 +149,10 @@ def get_preview_settings(
 
 def save_preview_settings(data: dict[str, Any]) -> dict[str, Any]:
     current = _load_settings()
+    expected_revision = data.get("revision")
+    current_revision = _preview_settings_revision(current)
+    if expected_revision is not None and expected_revision != current_revision:
+        raise PreviewSettingsConflictError(current, current_revision)
     next_settings = {
         "training_dir": _normalize_project_dir(
             data.get("training_dir", current["training_dir"]) or DEFAULT_TRAINING_DIR,
@@ -145,4 +167,9 @@ def save_preview_settings(data: dict[str, Any]) -> dict[str, Any]:
     raw = _load_raw_settings()
     raw["preview"] = next_settings
     atomic_write_text(SETTINGS_FILE, toml.dumps(raw), encoding="utf-8")
-    return {"ok": True, "message": "预览图路径设置已保存", **next_settings}
+    return {
+        "ok": True,
+        "message": "预览图路径设置已保存",
+        **next_settings,
+        "revision": _preview_settings_revision(next_settings),
+    }

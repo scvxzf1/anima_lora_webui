@@ -215,6 +215,62 @@ def test_preview_settings_allow_absolute_inference_and_custom_dirs(tmp_path, mon
     assert preview_service.get_preview_settings()["custom_dir"] == custom_dir.resolve().as_posix()
 
 
+def test_preview_settings_revision_rejects_stale_write_without_overwriting(tmp_path, monkeypatch):
+    settings_file = tmp_path / "web-ui-settings.toml"
+    _patch_preview_settings_file(monkeypatch, settings_file)
+    baseline = preview_service.get_preview_settings()["revision"]
+
+    saved = preview_service.save_preview_settings({
+        "training_dir": "output/ckpt/new",
+        "inference_dir": "output/tests",
+        "custom_dir": "",
+        "revision": baseline,
+    })
+    assert saved["training_dir"] == "output/ckpt/new"
+
+    with pytest.raises(preview_service.PreviewSettingsConflictError) as exc_info:
+        preview_service.save_preview_settings({
+            "training_dir": "output/ckpt/stale",
+            "revision": baseline,
+        })
+
+    assert exc_info.value.current_settings["training_dir"] == "output/ckpt/new"
+    data = toml.loads(settings_file.read_text(encoding="utf-8"))
+    assert data["preview"]["training_dir"] == "output/ckpt/new"
+
+
+def test_preview_settings_save_returns_normalized_values_and_revision(tmp_path, monkeypatch):
+    settings_file = tmp_path / "web-ui-settings.toml"
+    inference_dir = tmp_path / "inference"
+    _patch_preview_settings_file(monkeypatch, settings_file)
+
+    saved = preview_service.save_preview_settings({
+        "training_dir": "output/ckpt/sample",
+        "inference_dir": str(inference_dir),
+        "custom_dir": "",
+    })
+
+    current = preview_service.get_preview_settings()
+    assert saved["inference_dir"] == inference_dir.resolve().as_posix()
+    assert saved["revision"] == current["revision"]
+    assert saved["training_dir"] == current["training_dir"]
+    assert saved["custom_dir"] == current["custom_dir"]
+
+
+def test_preview_settings_legacy_save_without_revision_remains_supported(tmp_path, monkeypatch):
+    settings_file = tmp_path / "web-ui-settings.toml"
+    _patch_preview_settings_file(monkeypatch, settings_file)
+
+    saved = preview_service.save_preview_settings({
+        "training_dir": "output/ckpt/legacy",
+        "inference_dir": "output/tests",
+        "custom_dir": "",
+    })
+
+    assert saved["training_dir"] == "output/ckpt/legacy"
+    assert saved["revision"] == preview_service.get_preview_settings()["revision"]
+
+
 def test_training_preview_defaults_to_latest_runtime_run(tmp_path, monkeypatch):
     settings_file = tmp_path / "configs" / "web-ui-settings.toml"
     settings_file.parent.mkdir(parents=True)
@@ -959,6 +1015,7 @@ def test_config_group_training_weights_merge_and_dedupe(tmp_path, monkeypatch):
     assert payload["count"] == 2
     assert payload["group_task_count"] == 3
     assert payload["task_count"] == 2
+    assert payload["truncated"] is False
     assert {item["source_task"]["id"] for item in payload["weights"]} == {"task-a", "task-b"}
     assert all("source_task" in item for item in payload["weights"])
 
