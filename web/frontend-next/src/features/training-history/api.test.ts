@@ -4,6 +4,7 @@ import {
   batchUpdateHistoryTasks,
   fetchHistoryTaskDetail,
   fetchHistoryTasks,
+  fetchHistoryTimeline,
 } from "./api";
 
 describe("training history API", () => {
@@ -41,6 +42,16 @@ describe("training history API", () => {
       "/api/training/history/abc%2F123",
       expect.objectContaining({ signal: undefined }),
     );
+  });
+
+  it("sends selected timeline task ids in order and includes archived records", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    await fetchHistoryTimeline(["task-b", "task/a"]);
+    const url = new URL(fetchMock.mock.calls[0][0], "http://localhost");
+    expect(url.pathname).toBe("/api/training/history/config-group/timeline");
+    expect(url.searchParams.getAll("task_id")).toEqual(["task-b", "task/a"]);
+    expect(url.searchParams.get("include_archived")).toBe("1");
   });
 
   it("passes an opaque cursor and search without interpreting the cursor", async () => {

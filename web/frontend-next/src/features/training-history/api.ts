@@ -78,6 +78,37 @@ export type HistoryTaskDetail = {
   config_toml?: string;
 };
 
+export type HistoryTimelineTask = HistoryTaskSummary & { label?: string };
+export type HistoryTimelinePoint = HistoryMetricPoint & {
+  source_task_id?: string;
+  source_task_index?: number;
+  source_task_label?: string;
+  visual_step?: number;
+  display_step?: number;
+  stage_break_before?: boolean;
+};
+export type HistoryTimelineLog = HistoryLogRecord & {
+  kind?: string;
+  source_task_id?: string;
+  source_task_index?: number;
+  source_task_label?: string;
+};
+export type HistoryTimeline = {
+  ok?: boolean;
+  error?: string;
+  tasks?: HistoryTimelineTask[];
+  segments?: Array<Record<string, unknown> & { task?: HistoryTimelineTask; index?: number }>;
+  metrics?: HistoryTimelinePoint[];
+  logs?: HistoryTimelineLog[];
+  summary?: Record<string, unknown>;
+};
+
+export function fetchHistoryTimeline(taskIds: string[], signal?: AbortSignal) {
+  const params = new URLSearchParams({ include_archived: "1" });
+  taskIds.forEach((id) => params.append("task_id", id));
+  return apiRequest<HistoryTimeline>(`/api/training/history/config-group/timeline?${params}`, { signal });
+}
+
 export type HistoryBatchPayload = {
   action: "archive" | "unarchive" | "set_group" | "delete";
   task_ids: string[];

@@ -18,6 +18,7 @@ import {
 import { HistoryCollections } from "./HistoryCollections";
 import { HistoryConfigGroups } from "./HistoryConfigGroups";
 import { HistoryComparison } from "./HistoryComparison";
+import { HistoryTimeline } from "./HistoryTimeline";
 import {
   orderedHistoryTasks,
   historyConfigKey,
@@ -72,6 +73,7 @@ export function HistoryPage() {
   const stacked = params.get("layout") !== "list";
   const busy = useIsMutating({ mutationKey: ["training-history"] }) > 0;
   const [comparison, setComparison] = useState<string[]>([]);
+  const [timeline, setTimeline] = useState<string[]>([]);
   const collections = useQuery({
     queryKey: historyKeys.collections,
     queryFn: ({ signal }) => fetchHistoryCollections(signal),
@@ -338,6 +340,9 @@ export function HistoryPage() {
               >
                 对比记录 (2-4)
               </button>
+              <button type="button" disabled={selected.length < 2 || busy} onClick={() => setTimeline([...selected])}>
+                合并查看
+              </button>
               <button
                 type="button"
                 disabled={busy}
@@ -540,6 +545,7 @@ export function HistoryPage() {
       {comparison.length > 0 && (
         <HistoryComparison ids={comparison} onClose={() => setComparison([])} />
       )}
+      {timeline.length > 0 && <HistoryTimeline taskIds={timeline} onClose={() => setTimeline([])} />}
     </div>
   );
 }
