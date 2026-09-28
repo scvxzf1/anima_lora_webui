@@ -23,6 +23,8 @@ const LEGACY_ADVANCED_FIELDS = [
 
 describe("Next field help catalog", () => {
   it("keeps all detailed help summaries aligned with the summary catalog", () => {
+    expect(Object.keys(FIELD_HELP_ZH).sort()).toEqual(Object.keys(FIELD_HELP_SUMMARY_ZH).sort());
+    expect(Object.keys(FIELD_HELP_ZH)).toHaveLength(263);
     for (const [field, help] of Object.entries(FIELD_HELP_ZH)) {
       expect(FIELD_HELP_SUMMARY_ZH[field as keyof typeof FIELD_HELP_SUMMARY_ZH]).toBe(help.summary);
     }
