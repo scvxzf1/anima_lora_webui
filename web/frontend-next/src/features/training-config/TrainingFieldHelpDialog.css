@@ -43,8 +43,8 @@
 .training-field-help-context > div { min-width: 0; padding: 10px 20px; background: var(--surface-subtle); }
 .training-field-help-context dt { color: var(--muted); font-size: 11px; }
 .training-field-help-context dd { margin: 4px 0 0; overflow-wrap: anywhere; font-size: 13px; }
-.training-field-help-context .training-field-help-unavailable { grid-column: 1 / -1; background: #fff5e8; }
-.training-field-help-unavailable dd { color: #834400; }
+.training-field-help-context .training-field-help-unavailable { grid-column: 1 / -1; background: var(--warning-soft); }
+.training-field-help-unavailable dd { color: var(--warning); }
 .training-field-help-content { display: grid; gap: 0; padding: 4px 20px 16px; }
 .training-field-help-section { padding: 12px 0; border-bottom: 1px solid var(--line); }
 .training-field-help-section:last-child { border-bottom: 0; }

@@ -29,7 +29,7 @@ for (const stage of ["input", "method", "training"]) {
     const target = groups.at(-1)!.fields[0];
     view.rerender(<TrainingStageFields {...props} search={target.key} fields={[target]} />);
     expect(screen.getAllByRole("heading", { level: 3 })).toHaveLength(1);
-    expect(screen.getByRole("button")).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("button", { name: new RegExp(groups.at(-1)!.title) })).toHaveAttribute("aria-expanded", "true");
     expect(screen.getByLabelText(target.label)).toBeVisible();
   });
 }
