@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { createMemoryRouter, Link, RouterProvider } from "react-router-dom";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AppShell } from "./AppShell";
 
 const { fetchSettings } = vi.hoisted(() => ({ fetchSettings: vi.fn() }));
@@ -43,6 +43,8 @@ function renderShell() {
 }
 
 describe("AppShell UI scale", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
   beforeEach(() => {
     fetchSettings.mockResolvedValue({
       ui_scale: 150,
