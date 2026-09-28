@@ -4,6 +4,7 @@ import {
   prepareConfigPatch,
 } from "./domain/config-values.js";
 import { normalizeBooleanConfigValue } from "./domain/config-field-types.js";
+import { FORM_UI_DEFAULTS } from "./domain/defaults.js";
 
 export type TrainingFieldKind =
   "text" | "number" | "boolean" | "select" | "json";
@@ -341,6 +342,26 @@ export function draftFromMerged(
       formValue(field, displayConfigValue(field.key, config)),
     ]),
   ) as TrainingDraft;
+}
+
+export function restoreKnownFormDefaults(
+  draft: TrainingDraft,
+  fields: TrainingFieldSpec[],
+  editableKeys: ReadonlySet<string>,
+): TrainingDraft {
+  const defaults = FORM_UI_DEFAULTS as Record<string, unknown>;
+  const changes = Object.fromEntries(
+    fields
+      .filter((field) => editableKeys.has(field.key) && Object.hasOwn(defaults, field.key))
+      .map((field) => {
+        const value = defaults[field.key];
+        return [
+          field.key,
+          field.kind === "json" ? JSON.stringify(value, null, 2) : value,
+        ];
+      }),
+  ) as TrainingDraft;
+  return { ...draft, ...changes };
 }
 
 export function trainingPatchValues(

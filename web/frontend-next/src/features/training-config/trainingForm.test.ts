@@ -9,6 +9,7 @@ import {
   rawConfigOwnKeys,
   trainingPatchValues,
   sameTrainingValue,
+  restoreKnownFormDefaults,
   type TrainingDraft,
 } from "./trainingForm";
 import {
@@ -62,6 +63,34 @@ function diffFieldManifests(
 }
 
 describe("training config form domain", () => {
+  it("restores only known defaults for supplied editable fields and keeps unrelated draft keys", () => {
+    const draft = {
+      max_train_steps: 1600,
+      adaptive_fp32_modules: '["custom"]',
+      output_name: "keep me",
+      unknown_extension: "untouched",
+    };
+    const restored = restoreKnownFormDefaults(
+      draft,
+      [
+        { key: "max_train_steps", kind: "number", label: "steps", group: "training" },
+        { key: "adaptive_fp32_modules", kind: "json", label: "modules", group: "resources" },
+        { key: "unknown_extension", kind: "text", label: "extension", group: "training" },
+      ],
+      new Set(["max_train_steps", "adaptive_fp32_modules", "unknown_extension"]),
+    );
+    expect(restored).toEqual({
+      ...draft,
+      max_train_steps: 0,
+      adaptive_fp32_modules: "[]",
+    });
+    expect(
+      restoreKnownFormDefaults(draft, [
+        { key: "max_train_steps", kind: "number", label: "steps", group: "training" },
+      ], new Set()),
+    ).toEqual(draft);
+  });
+
   it("ignores equivalent numeric and JSON formatting changes", () => {
     expect(sameTrainingValue("1.0", 1, "number")).toBe(true);
     expect(sameTrainingValue("", 0, "number")).toBe(false);

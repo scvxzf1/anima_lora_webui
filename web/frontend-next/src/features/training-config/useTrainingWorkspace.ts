@@ -18,6 +18,7 @@ import {
   fieldsForConfig,
   filterTrainingFields,
   fetchFieldCapabilities,
+  fieldAvailability,
 } from "./fieldCatalog";
 import {
   draftFromMerged,
@@ -25,6 +26,7 @@ import {
   rawConfigOwnKeys,
   trainingPatchValues,
   sameTrainingValue,
+  restoreKnownFormDefaults,
   type TrainingDraft,
 } from "./trainingForm";
 
@@ -214,6 +216,21 @@ export function useTrainingWorkspace() {
     );
   }
 
+  function restorePageDefaults() {
+    if (busy || !selectedFile) return;
+    if (!window.confirm("恢复当前可编辑字段的页面默认值？这只会修改未保存草稿，恢复后仍需保存才生效。")) return;
+    const editableKeys = new Set(
+      fields
+        .filter((field) =>
+          fieldAvailability(field.key, draft, selectedFile.method || "lora").enabled,
+        )
+        .map((field) => field.key),
+    );
+    setDraft((current) => restoreKnownFormDefaults(current, fields, editableKeys));
+    preview.reset();
+    preflight.reset();
+  }
+
   async function beforeAction(
     action: "preflight" | "start" | "queue" | "prompts",
   ) {
@@ -315,6 +332,7 @@ export function useTrainingWorkspace() {
     saveAs,
     preflight,
     confirmDiscard,
+    restorePageDefaults,
     beforeAction,
     guardedContext,
     locked,

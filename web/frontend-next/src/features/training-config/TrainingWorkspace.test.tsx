@@ -443,6 +443,41 @@ describe("TrainingWorkspace", () => {
     expect(router.state.location.pathname).toBe("/training");
   });
 
+  it("restores known page defaults to the draft only after confirmation, then saves explicitly", async () => {
+    const fetchMock = createFetchMock();
+    vi.stubGlobal("fetch", fetchMock);
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    const user = userEvent.setup();
+    renderWorkspace();
+    await user.click(screen.getByRole("tab", { name: "训练计划" }));
+    const steps = await screen.findByLabelText("最大训练步数");
+    await waitFor(() => expect(steps).toBeEnabled());
+
+    const restore = screen.getByRole("button", { name: "恢复页面默认值" });
+    await user.click(restore);
+    expect(confirm).toHaveBeenCalledWith(
+      "恢复当前可编辑字段的页面默认值？这只会修改未保存草稿，恢复后仍需保存才生效。",
+    );
+    expect(steps).toHaveValue(1600);
+    expect(screen.getByRole("button", { name: "保存配置" })).toBeDisabled();
+
+    confirm.mockReturnValue(true);
+    await user.click(restore);
+    expect(steps).toHaveValue(0);
+    expect(screen.getByRole("button", { name: "保存配置" })).toBeEnabled();
+    expect(fetchMock.mock.calls.some(([, init]) => init?.method === "PATCH")).toBe(false);
+
+    await user.click(screen.getByRole("button", { name: "保存配置" }));
+    await waitFor(() =>
+      expect(requestBody(fetchMock, "/api/config/raw", "PATCH").values).toEqual(
+        expect.objectContaining({ max_train_steps: 0 }),
+      ),
+    );
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "保存配置" })).toBeDisabled(),
+    );
+  });
+
   it("blocks execution after a failed save and retains the draft", async () => {
     const base = createFetchMock();
     const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) =>

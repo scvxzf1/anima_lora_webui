@@ -11,6 +11,7 @@ import {
   ListPlus,
   PanelLeftClose,
   PanelLeftOpen,
+  RotateCcw,
 } from "lucide-react";
 
 export function TrainingCommands({
@@ -44,6 +45,7 @@ export function TrainingCommands({
     locked,
     busy,
     commandBlocked,
+    restorePageDefaults,
   } = state;
   return (
     <>
@@ -58,6 +60,17 @@ export function TrainingCommands({
           onClick={onToggleLibrary}
         >
           {libraryExpanded ? <PanelLeftClose size={16} /> : <PanelLeftOpen size={16} />}
+        </button>
+        <button
+          type="button"
+          className="compact-tool"
+          title="恢复页面默认值"
+          aria-label="恢复页面默认值"
+          onClick={restorePageDefaults}
+          disabled={!selectedFile || busy || locked}
+        >
+          <RotateCcw size={16} />
+          <span>恢复页面默认值</span>
         </button>
         <button
           type="button"
