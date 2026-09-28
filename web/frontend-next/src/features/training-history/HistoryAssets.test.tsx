@@ -1,4 +1,4 @@
-import { cleanup, screen } from "@testing-library/react";
+import { cleanup, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { renderInApp } from "../../test/renderInApp";
@@ -67,5 +67,43 @@ describe("history asset path copying", () => {
 
     expect(await screen.findByRole("button", { name: "复制 step-10.safetensors 的本地路径" })).toBeDisabled();
     expect(screen.getByRole("link", { name: "step-10.safetensors" })).toBeInTheDocument();
+  });
+
+  it("navigates the open sample set with controls and arrow keys, respecting both ends", async () => {
+    const user = userEvent.setup();
+    const samples = ["sample-1.png", "sample-2.png", "sample-3.png"].map((file) => ({
+      file,
+      name: file,
+      sample: { step: Number(file.match(/\d/)?.[0]) },
+    }));
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      const payload = url.includes("/artifacts")
+        ? { artifacts: [] }
+        : url.includes("/api/preview/weights")
+        ? { weights: [] }
+        : { images: samples, total: samples.length };
+      return new Response(JSON.stringify(payload), { status: 200, headers: { "Content-Type": "application/json" } });
+    }));
+    renderInApp(<HistoryAssets taskId="task-1" />);
+
+    await user.click(await screen.findByText("sample-1.png", { selector: ".history-image-grid span" }));
+    const dialog = within(screen.getByRole("dialog"));
+    expect(screen.getByRole("button", { name: "上一张样张" })).toBeDisabled();
+    expect(dialog.getByRole("img", { name: "sample-1.png" })).toBeInTheDocument();
+    expect(screen.getByText("1 / 3")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "下一张样张" }));
+    expect(dialog.getByRole("img", { name: "sample-2.png" })).toBeInTheDocument();
+    await user.keyboard("{ArrowRight}");
+    expect(dialog.getByRole("img", { name: "sample-3.png" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "下一张样张" })).toBeDisabled();
+    await user.keyboard("{ArrowRight}");
+    expect(dialog.getByRole("img", { name: "sample-3.png" })).toBeInTheDocument();
+    await user.keyboard("{ArrowLeft}");
+    expect(dialog.getByRole("img", { name: "sample-2.png" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "关闭" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 });

@@ -5,7 +5,7 @@ import { ResilientImage } from "../../components/ResilientImage";
 import { AssetPagination } from "./AssetPagination";
 import { HistoryImageDialog } from "./HistoryImageDialog";
 import { HistoryArtifacts } from "./HistoryArtifacts";
-import { fetchHistoryImages, fetchHistoryWeights, historyAssetUrl, type HistoryImage } from "./api";
+import { fetchHistoryImages, fetchHistoryWeights, historyAssetUrl } from "./api";
 
 export function HistoryAssets({ taskId }: { taskId: string }) {
   return <TaskAssets key={taskId} taskId={taskId} />;
@@ -15,7 +15,7 @@ function TaskAssets({ taskId }: { taskId: string }) {
   const [imageOffset, setImageOffset] = useState(0);
   const [weightOffset, setWeightOffset] = useState(0);
   const [sort, setSort] = useState("recent");
-  const [selected, setSelected] = useState<HistoryImage>();
+  const [selectedIndex, setSelectedIndex] = useState<number>();
   const [copyStatus, setCopyStatus] = useState("");
   const images = useQuery({
     queryKey: ["history-images", taskId, imageOffset],
@@ -32,7 +32,7 @@ function TaskAssets({ taskId }: { taskId: string }) {
     {images.isPending && <p role="status">正在读取样张</p>}
     {images.error && <p role="alert">{images.error.message} <button type="button" onClick={() => images.refetch()}>重试样张</button></p>}
     <div className="history-image-grid">
-      {images.data?.images.map((image) => <button key={image.file} type="button" onClick={() => setSelected(image)}>
+      {images.data?.images.map((image, index) => <button key={image.file} type="button" onClick={() => setSelectedIndex(index)}>
         <ResilientImage className="history-thumbnail" src={historyAssetUrl(taskId, image.file)} alt={image.name} loading="lazy" /><span>{image.name}</span>
       </button>)}
     </div>
@@ -53,7 +53,14 @@ function TaskAssets({ taskId }: { taskId: string }) {
     <p className="history-copy-status" role="status" aria-live="polite">{copyStatus}</p>
     {weights.data?.weights.length === 0 && <p>{weights.data.message || "本页暂无权重"}</p>}
     <AssetPagination label="权重" offset={weightOffset} count={weights.data?.weights.length ?? 0} total={weights.data?.total ?? 0} size={100} next={weights.data?.next_offset} pending={weights.isFetching} onChange={setWeightOffset} />
-    {selected && <HistoryImageDialog image={selected} taskId={taskId} onClose={() => setSelected(undefined)} />}
+    {selectedIndex !== undefined && images.data?.images[selectedIndex] && <HistoryImageDialog
+      image={images.data.images[selectedIndex]}
+      images={images.data.images}
+      index={selectedIndex}
+      taskId={taskId}
+      onIndexChange={setSelectedIndex}
+      onClose={() => setSelectedIndex(undefined)}
+    />}
   </section>;
 }
 

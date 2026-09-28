@@ -250,6 +250,27 @@
   object-fit: contain;
 }
 .history-asset-full.image-fallback { min-height: 240px; }
+.history-image-navigation {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  min-height: 40px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.history-image-navigation button {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  color: var(--button-ink);
+  background: var(--button-bg);
+  border: 1px solid var(--button-border);
+  border-radius: 4px;
+}
+.history-image-navigation button:disabled { opacity: 0.45; cursor: not-allowed; }
 .weight-list > div {
   display: flex;
   justify-content: space-between;
