@@ -565,12 +565,27 @@
     margin-left: 10px;
     padding-left: 8px;
   }
+  .history-stack-tasks .history-card > .history-card-link {
+    grid-column: 2;
+    min-width: 0;
+  }
+  .history-stack-tasks .history-card > .history-card-meta {
+    grid-column: 2;
+  }
   .history-stack-tasks {
     display: block;
   }
   .history-stack-tasks .history-card-link {
     flex-wrap: wrap;
     gap: 4px 8px;
+  }
+  .history-stack-tasks .history-card-link h3 {
+    flex: 0 1 40%;
+    min-width: 64px;
+  }
+  .history-stack-tasks .history-card-link p {
+    flex: 1 1 40%;
+    min-width: 80px;
   }
   .history-stack-tasks .history-card-meta {
     flex-wrap: wrap;
