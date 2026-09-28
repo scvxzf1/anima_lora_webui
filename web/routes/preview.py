@@ -65,6 +65,7 @@ async def handle_preview_images(request: web.Request) -> web.Response:
     try:
         limit = int(request.query.get("limit", "200") or 200)
         offset = int(request.query.get("offset", "0") or 0)
+        cursor = str(request.query.get("cursor") or "") or None
         if offset < 0:
             raise ValueError("offset 不能为负数")
         days = _preview_days_filter(request)
@@ -79,6 +80,7 @@ async def handle_preview_images(request: web.Request) -> web.Response:
                 limit=limit,
                 days=days,
                 offset=offset,
+                cursor=cursor,
             )
             return web.json_response(payload)
 

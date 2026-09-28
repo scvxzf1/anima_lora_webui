@@ -63,8 +63,8 @@ export function PreviewWorkspace() {
   const images = useInfiniteQuery({
     queryKey: [...assetsKey, "images"],
     queryFn: ({ pageParam, signal }) => fetchPreviewImages(source, scope, taskId, selectedGroup, days, pageParam, signal),
-    initialPageParam: 0,
-    getNextPageParam: (last) => last.next_offset ?? undefined,
+    initialPageParam: scope === "group" ? "" : 0,
+    getNextPageParam: (last) => scope === "group" ? last.next_cursor ?? undefined : last.next_offset ?? undefined,
     enabled: source !== "training" || ((scope !== "task" || Boolean(taskId)) && (scope !== "group" || Boolean(selectedGroup))),
   });
   const weights = useInfiniteQuery({

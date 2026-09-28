@@ -960,19 +960,63 @@ def test_config_group_preview_pages_across_directories_and_deduplicates_shared_d
         tasks, methods_subdir="imported", variant="demo", preset="default", limit=2,
     )
     second = preview_service.list_config_group_preview_images(
-        tasks, methods_subdir="imported", variant="demo", preset="default", limit=2, offset=2,
+        tasks, methods_subdir="imported", variant="demo", preset="default", limit=2, cursor=first["next_cursor"],
     )
     final = preview_service.list_config_group_preview_images(
-        tasks, methods_subdir="imported", variant="demo", preset="default", limit=2, offset=4,
+        tasks, methods_subdir="imported", variant="demo", preset="default", limit=2, cursor=second["next_cursor"],
     )
 
     assert first["total"] == second["total"] == final["total"] == 6
-    assert first["next_offset"] == 2
-    assert second["next_offset"] == 4
-    assert final["next_offset"] is None
+    assert first["next_cursor"]
+    assert second["next_cursor"]
+    assert final["next_cursor"] is None
     assert [image["name"] for image in first["images"] + second["images"] + final["images"]] == [
         "b-2.png", "b-1.png", "b-0.png", "a-2.png", "a-1.png", "a-0.png",
     ]
+
+
+def test_config_group_cursor_pages_are_stable_when_directory_changes(tmp_path, monkeypatch):
+    sample = tmp_path / "task" / "sample"
+    sample.mkdir(parents=True)
+    for name, mtime in (("a.png", 30), ("b.png", 20), ("c.png", 10)):
+        path = sample / name
+        Image.new("RGB", (4, 4)).save(path)
+        os.utime(path, (mtime, mtime))
+    monkeypatch.setattr(preview_service, "_training_step_index", lambda _task: {})
+    tasks = [{"id": "task", "job": "training", "sample_dir": str(sample)}]
+
+    first = preview_service.list_config_group_preview_images(
+        tasks, methods_subdir="m", variant="v", preset="default", limit=1, cursor="",
+    )
+    (sample / "a.png").unlink()
+    new_image = sample / "new.png"
+    Image.new("RGB", (4, 4)).save(new_image)
+    os.utime(new_image, (40, 40))
+    second = preview_service.list_config_group_preview_images(
+        tasks, methods_subdir="m", variant="v", preset="default", limit=1, cursor=first["next_cursor"],
+    )
+
+    assert first["images"][0]["name"] == "a.png"
+    assert second["images"][0]["name"] == "b.png"
+    assert second["images"][0]["name"] != first["images"][0]["name"]
+
+
+def test_config_group_preview_rejects_unbounded_legacy_offset(tmp_path, monkeypatch):
+    sample = tmp_path / "task" / "sample"
+    sample.mkdir(parents=True)
+    monkeypatch.setattr(preview_images, "get", lambda name: 500 if name == "MAX_IMAGE_LIMIT" else {".png"})
+    with pytest.raises(ValueError, match="使用 cursor"):
+        preview_service.list_config_group_preview_images(
+            [{"id": "task", "job": "training", "sample_dir": str(sample)}],
+            methods_subdir="m", variant="v", preset="default", limit=500, offset=10**9,
+        )
+
+
+def test_config_group_preview_rejects_malformed_cursor(tmp_path):
+    with pytest.raises(ValueError, match="cursor 无效"):
+        preview_service.list_config_group_preview_images(
+            [], methods_subdir="m", variant="v", preset="default", cursor="%%%",
+        )
 
 
 def test_config_group_training_weights_merge_and_dedupe(tmp_path, monkeypatch):

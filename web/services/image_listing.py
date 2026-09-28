@@ -19,6 +19,7 @@ def select_recent_files(
     limit: int,
     min_mtime: float | None = None,
     offset: int = 0,
+    before_key: tuple[float, str, str] | None = None,
 ) -> tuple[list[RecentFile], int]:
     """Return one newest-first page, retaining at most ``offset + limit`` candidates.
 
@@ -57,6 +58,8 @@ def select_recent_files(
             if bounded_limit == 0:
                 continue
             sort_key = (float(stat_result.st_mtime), path.name, path.as_posix())
+            if before_key is not None and sort_key >= before_key:
+                continue
             item = (sort_key, path, stat_result)
             if len(heap) < bounded_limit:
                 heappush(heap, item)

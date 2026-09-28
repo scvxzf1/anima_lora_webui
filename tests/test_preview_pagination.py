@@ -64,6 +64,21 @@ def test_config_group_image_route_forwards_nonnegative_offset(monkeypatch):
     assert captured["limit"] == 25
 
 
+def test_config_group_image_route_forwards_cursor(monkeypatch):
+    captured = {}
+
+    def list_page(tasks, **kwargs):
+        captured.update(kwargs)
+        return {"ok": True, "mode": "config_group", "images": [], "next_cursor": "opaque"}
+
+    monkeypatch.setattr(preview_routes, "_selected_config_group_tasks", lambda _request: [{"id": "task"}])
+    monkeypatch.setattr(preview_routes, "list_config_group_preview_images", list_page)
+    request = SimpleNamespace(query={"source": "training", "mode": "config_group", "cursor": "abc"}, app={})
+    response = asyncio.run(preview_routes.handle_preview_images(request))
+    assert response.status == 200
+    assert captured["cursor"] == "abc"
+
+
 def test_config_group_image_route_rejects_negative_offset():
     request = SimpleNamespace(
         query={"source": "training", "mode": "config_group", "offset": "-1"},

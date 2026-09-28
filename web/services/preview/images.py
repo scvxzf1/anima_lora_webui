@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 from datetime import datetime
+import base64
+import binascii
+import json
 from heapq import nlargest
 import os
 from pathlib import Path
@@ -10,6 +13,7 @@ import stat as stat_module
 from typing import Any
 from urllib.parse import quote
 import re
+import math
 
 import toml
 from PIL import Image
@@ -220,12 +224,19 @@ def list_config_group_preview_images(
     limit: int = 200,
     days: int | None = None,
     offset: int = 0,
+    cursor: str | None = None,
 ) -> dict[str, Any]:
     group_label = f"{methods_subdir} / {variant} / {preset or 'default'}"
     label = f"训练分组合并采样结果 · {group_label} · {len(tasks)} 次训练"
     limit = max(1, min(int(limit or 200), get("MAX_IMAGE_LIMIT")))
     offset = max(0, int(offset))
-    candidate_limit = offset + limit
+    if offset + limit > get("MAX_IMAGE_LIMIT"):
+        raise ValueError("配置组 offset 分页超过上限，请使用 cursor")
+    if cursor and offset:
+        raise ValueError("cursor 分页不能同时使用 offset")
+    keyset = cursor is not None or offset == 0
+    before_key = _decode_preview_cursor(cursor) if cursor else None
+    candidate_limit = (limit + 1) if keyset else (offset + limit)
     days = _normalize_preview_days(days)
     cutoff = _preview_days_cutoff(days)
     candidate_contexts: dict[str, dict[str, Any]] = {}
@@ -252,6 +263,7 @@ def list_config_group_preview_images(
                 suffixes=get("IMAGE_EXTS"),
                 limit=candidate_limit,
                 min_mtime=cutoff,
+                before_key=before_key,
             )
             scanned_directories[resolved_key] = candidates
             total += directory_total
@@ -301,7 +313,8 @@ def list_config_group_preview_images(
             item["path"].as_posix(),
         ),
     )
-    page_items = selected[offset:offset + limit]
+    page_items = selected[:limit] if keyset else selected[offset:offset + limit]
+    has_more = len(selected) > limit if keyset else offset + limit < total
     images: list[dict[str, Any]] = []
     for item in page_items:
         meta = _available_image_meta(
@@ -326,7 +339,8 @@ def list_config_group_preview_images(
         "count": len(images),
         "total": total,
         "offset": offset,
-        "next_offset": offset + limit if offset + limit < total else None,
+        "next_offset": offset + limit if not keyset and has_more else None,
+        "next_cursor": _encode_preview_cursor(page_items[-1]) if keyset and has_more and page_items else None,
         "images": images,
         "message": "" if images else "这个训练分组还没有可显示的样张",
         "sample_config": {},
@@ -339,6 +353,36 @@ def list_config_group_preview_images(
         },
         "task_count": len(tasks),
     }
+
+
+def _preview_sort_key(item: dict[str, Any]) -> tuple[float, str, str]:
+    stat_result = item["stat"]
+    path = item["path"]
+    return float(stat_result.st_mtime), path.name, path.as_posix()
+
+
+def _encode_preview_cursor(item: dict[str, Any]) -> str:
+    raw = json.dumps(_preview_sort_key(item), ensure_ascii=True, separators=(",", ":")).encode("utf-8")
+    return base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
+
+
+def _decode_preview_cursor(value: str) -> tuple[float, str, str]:
+    if len(value) > 4096:
+        raise ValueError("cursor 无效")
+    try:
+        raw = base64.urlsafe_b64decode(value + "=" * (-len(value) % 4))
+        decoded = json.loads(raw.decode("utf-8"))
+        if not isinstance(decoded, list) or len(decoded) != 3:
+            raise ValueError
+        mtime, name, path = decoded
+        mtime = float(mtime)
+        if not math.isfinite(mtime) or not isinstance(name, str) or not isinstance(path, str):
+            raise ValueError
+        if len(name) > 1024 or len(path) > 2048:
+            raise ValueError
+        return mtime, name, path
+    except (ValueError, TypeError, UnicodeError, binascii.Error) as exc:
+        raise ValueError("cursor 无效") from exc
 
 
 def resolve_preview_image(rel_path: str, allowed_sample_dir: str | None = None) -> Path:

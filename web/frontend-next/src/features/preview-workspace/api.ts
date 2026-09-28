@@ -97,13 +97,15 @@ function scopeParams(scope: string, taskId: string, group?: PreviewGroup) {
   return params;
 }
 
-export function fetchPreviewImages(source: PreviewSource, scope: string, taskId: string, group: PreviewGroup | undefined, days: string, offset = 0, signal?: AbortSignal) {
+export function fetchPreviewImages(source: PreviewSource, scope: string, taskId: string, group: PreviewGroup | undefined, days: string, pageParam: number | string = 0, signal?: AbortSignal) {
   const params = scopeParams(scope, taskId, group);
   params.set("source", source);
   params.set("limit", "200");
   params.set("days", days);
-  if (offset) params.set("offset", String(offset));
-  return apiRequest<{ images: PreviewImage[]; count?: number; total?: number; next_offset?: number | null; directory?: string; message?: string }>(
+  if (scope === "group") {
+    if (pageParam) params.set("cursor", String(pageParam));
+  } else if (pageParam) params.set("offset", String(pageParam));
+  return apiRequest<{ images: PreviewImage[]; count?: number; total?: number; next_offset?: number | null; next_cursor?: string | null; directory?: string; message?: string }>(
     `/api/preview/images?${params}`, { signal },
   );
 }
