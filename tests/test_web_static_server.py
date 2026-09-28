@@ -7,6 +7,7 @@ from types import SimpleNamespace
 
 import pytest
 from aiohttp import web
+from aiohttp.test_utils import TestClient, TestServer
 from yarl import URL
 
 from web.server import index_handler, next_index_handler, static_handler
@@ -62,28 +63,43 @@ def test_next_frontend_handler_serves_spa_nested_paths() -> None:
     assert response._path.name == "index.html"
 
 
-@pytest.mark.parametrize(
-    "path",
-    [
-        "style.css",
-        "css/00-tokens.css",
-        "css/40-weight-analysis.css",
-        "css/42-image-test.css",
-        "css/dragon-style.css",
-        "app.js",
-        "js/ui-bootstrap.js",
-        "js/dragon-ui/index.js",
-        "js/features/app-shell/tabs.js",
-        "js/features/sample-prompts/model.js",
-        "js/features/toml-manager/group-state.js",
-    ],
-)
-def test_web_static_serves_split_frontend_assets(path: str) -> None:
+@pytest.mark.parametrize("path", ["favicon.svg", "dragon-next/index.html", "dragon-next/assets/app.js"])
+def test_web_static_serves_next_and_shared_assets(path: str, tmp_path, monkeypatch) -> None:
+    asset = tmp_path / path
+    asset.parent.mkdir(parents=True, exist_ok=True)
+    asset.write_text("test asset", encoding="utf-8")
+    monkeypatch.setattr(web_server, "STATIC_DIR", tmp_path)
     response = _run(static_handler(_StaticRequest(path)))
 
     assert response.status == 200
-    assert response.headers["Cache-Control"] == "no-cache"
+    if asset.suffix in {".js", ".css", ".html"}:
+        assert response.headers["Cache-Control"] == "no-cache"
     assert response._path.is_file()
+
+
+def test_legacy_query_redirects_through_real_aiohttp_routes(tmp_path, monkeypatch) -> None:
+    next_index = tmp_path / "dragon-next" / "index.html"
+    next_index.parent.mkdir(parents=True)
+    next_index.write_text("<main>Next UI</main>", encoding="utf-8")
+    monkeypatch.setattr(web_server, "STATIC_DIR", tmp_path)
+
+    async def check() -> None:
+        app = web.Application()
+        app.router.add_get("/", index_handler)
+        app.router.add_get("/next", next_index_handler)
+        app.router.add_get("/next/{path:.*}", next_index_handler)
+        async with TestClient(TestServer(app)) as client:
+            response = await client.get("/?ui=dragon&task=one&task=two", allow_redirects=False)
+            assert response.status == 302
+            assert response.headers["Location"] == "/next?task=one&task=two"
+            response = await client.get(response.headers["Location"])
+            assert response.status == 200
+            assert await response.text() == "<main>Next UI</main>"
+            response = await client.get("/next/history/task-1")
+            assert response.status == 200
+            assert await response.text() == "<main>Next UI</main>"
+
+    _run(check())
 
 
 @pytest.mark.parametrize("path", ["missing.css", "../server.py", "css/../../server.py"])
