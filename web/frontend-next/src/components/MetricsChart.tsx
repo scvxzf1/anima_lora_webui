@@ -9,7 +9,8 @@ export function MetricsChart({ points, metric = "loss", label = "Loss 趋势", t
   const [smoothing, setSmoothing] = useState(0);
   const [limit, setLimit] = useState(2000);
   const series = useMemo(() => metricSeries(points, metric, limit, smoothing, timeAxis), [points, metric, limit, smoothing, timeAxis]);
-  useMetricsCanvas(ref, series.data, timeAxis);
+  const metricName = label.replace(/\s*趋势$/, "");
+  useMetricsCanvas(ref, series.data, timeAxis, metricName);
   return <section className="chart-section" aria-label={label}>
     <div className="chart-heading">
       <h2>{label}</h2>

@@ -1,8 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { mockWorkspace } from "./fixtures";
 
-// ECharts richText paints tooltip text into canvas pixels, so the current UI exposes no text node or STEP/Loss labels to assert.
-test("history loss chart opens its canvas tooltip on pointer hover", async ({ page }, info) => {
+test("history loss chart exposes labeled tooltip text on pointer hover", async ({ page }, info) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   const mocks = await mockWorkspace(page);
   await page.route((url) => url.pathname === "/api/training/history/fixture-run", (route) => route.fulfill({ json: {
@@ -21,14 +20,19 @@ test("history loss chart opens its canvas tooltip on pointer hover", async ({ pa
   await expect(chart).toBeVisible();
   await expect(chart.locator("canvas")).toBeVisible();
   const canvas = chart.locator("canvas");
-  const beforeHover = await canvas.evaluate((element) => (element as HTMLCanvasElement).toDataURL());
   const box = await chart.boundingBox();
   expect(box).not.toBeNull();
   await page.mouse.move(box!.x + box!.width * 0.65, box!.y + box!.height * 0.5);
-  await page.waitForTimeout(250);
-  const afterHover = await canvas.evaluate((element) => (element as HTMLCanvasElement).toDataURL());
-  expect(afterHover).not.toBe(beforeHover);
+  await expect(page.getByText("STEP: 40", { exact: true })).toBeVisible();
+  await expect(page.getByText("Loss: 0.1600", { exact: true })).toBeVisible();
   await page.screenshot({ path: info.outputPath("history-loss-hover.png"), fullPage: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  const mobileBox = await chart.boundingBox();
+  expect(mobileBox).not.toBeNull();
+  await page.mouse.move(mobileBox!.x + mobileBox!.width * 0.65, mobileBox!.y + mobileBox!.height * 0.5);
+  await expect(page.getByText("STEP: 40", { exact: true })).toBeVisible();
+  await expect(page.getByText("Loss: 0.1600", { exact: true })).toBeVisible();
+  await page.screenshot({ path: info.outputPath("history-loss-hover-mobile.png"), fullPage: true });
   expect(mocks.writes).toEqual([]);
   expect(mocks.unhandled).toEqual([]);
 });
