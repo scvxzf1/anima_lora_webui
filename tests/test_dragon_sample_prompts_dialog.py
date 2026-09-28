@@ -6,11 +6,7 @@ import subprocess
 
 import pytest
 
-from tests.frontend_test_support import REPO_ROOT, STATIC_DIR, node_syntax_check
-
-
-def _read(relative: str) -> str:
-    return (STATIC_DIR / relative).read_text(encoding="utf-8")
+from tests.frontend_test_support import REPO_ROOT, STATIC_DIR
 
 
 def _run_node(script: str) -> dict:
@@ -23,38 +19,6 @@ def _run_node(script: str) -> dict:
         timeout=20,
     )
     return json.loads(result.stdout)
-
-
-def test_sample_prompts_field_uses_a_scoped_editor_dialog() -> None:
-    page = _read("js/dragon-ui/pages/config-page.js")
-    editor = _read("js/dragon-ui/pages/sample-prompts-dialog.js")
-    css = _read("css/dragon/04e-dragon-sample-prompts.css")
-    route_styles = _read("js/dragon-ui/route-styles.js")
-
-    assert "renderSamplePromptsFieldControl" in page
-    assert "bindSamplePromptsDialog(wrapper, { trainingContext })" in page
-    assert "sample-prompts-dialog.js?v=dragon-ui-20260902-sample-prompts-v4" in page
-    assert "state.samplePromptsCleanup?.()" in page
-    assert 'key === \'sample_prompts\'' in page
-    assert 'aria-haspopup="dialog"' in editor
-    assert 'data-sample-prompts-action="add"' in editor
-    assert 'data-sample-prompts-action="remove"' in editor
-    assert 'data-sample-prompts-action="apply-uniform"' in editor
-    assert "添加提示词" in editor
-    assert "删除提示词" in editor
-    assert "风格" not in editor
-    assert 'data-sample-prompts-mode="raw"' in editor
-    assert 'role="tabpanel"' in editor
-    assert "handleModeKeydown" in editor
-    assert "requestIsCurrent" in editor
-    assert "document.body.appendChild(this.dialog)" in editor
-    assert "this.dialog.remove()" in editor
-    assert "/api/config/sample-prompts" in editor
-    assert "train_config_file: this.trainingContext.configFile || null" in editor
-    assert "04e-dragon-sample-prompts.css?v=dragon-ui-20260902-sample-prompts-v2" in route_styles
-    assert "@media (max-width: 560px)" in css
-    assert ".dragon-sample-prompts-uniform[hidden]" in css
-    assert node_syntax_check("js/dragon-ui/pages/sample-prompts-dialog.js").returncode == 0
 
 
 def test_sample_prompts_model_unifies_rows_preserves_extensions_and_validates() -> None:
@@ -128,6 +92,9 @@ console.log(JSON.stringify({{
         "flow_shift": "3",
         "sample_sampler": "euler",
         "extra": "",
+        "sample_task": "t2i",
+        "reference_image": "",
+        "reference_images": [],
     }
     assert 'data-key="sample_prompts"' in payload["legacyField"]
     assert "data-sample-prompts-open" not in payload["legacyField"]

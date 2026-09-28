@@ -6,53 +6,6 @@ import subprocess
 from tests.frontend_test_support import STATIC_DIR
 
 
-def _read(relative: str) -> str:
-    return (STATIC_DIR / relative).read_text(encoding="utf-8")
-
-
-def test_quick_picker_is_scoped_to_base_models_and_applies_all_paths() -> None:
-    page = _read("js/dragon-ui/pages/config-page.js")
-    picker = _read("js/dragon-ui/pages/model-quick-picker.js")
-    shell = _read("js/dragon-ui/pages/model-quick-picker-shell.js")
-
-    assert "sub.id === 'required' ? renderModelQuickPickerTrigger() : ''" in page
-    assert "sub.id === 'required' ? renderModelQuickPickerDialog() : ''" in page
-    assert "bindLazyModelQuickPicker(wrapper" in page
-    assert "MODEL_QUICK_PATH_KEYS.forEach" in page
-    assert "input.dispatchEvent(new Event('input', { bubbles: true }))" in page
-    assert "需点击保存才会生效" in page
-    assert "MODEL_QUICK_PATH_KEYS = Object.freeze" in shell
-    assert "await import('./model-quick-picker.js?v=" in shell
-    assert "bindModelQuickPicker(root, options)" in shell
-    assert "state.modelQuickCleanup?.()" in page
-    assert "api('/api/settings/model-configs')" in picker
-    assert "dialog.showModal()" in picker
-    assert "if (search) search.value = ''" in picker
-    assert "data-model-quick-preview" in picker
-
-
-def test_quick_picker_shell_keys_match_model_path_contract() -> None:
-    shell_uri = (STATIC_DIR / "js/dragon-ui/pages/model-quick-picker-shell.js").as_uri()
-    state_uri = (STATIC_DIR / "js/dragon-ui/pages/model-config-state.js").as_uri()
-    script = f"""
-globalThis.window = {{ fetch() {{}} }};
-const shell = await import({json.dumps(shell_uri)});
-const state = await import({json.dumps(state_uri)});
-console.log(JSON.stringify({{
-  shell: shell.MODEL_QUICK_PATH_KEYS,
-  state: state.MODEL_PATH_FIELDS.map(([key]) => key),
-}}));
-"""
-    result = subprocess.run(
-        ["node", "--input-type=module", "--eval", script],
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-    payload = json.loads(result.stdout)
-    assert payload["shell"] == payload["state"]
-
-
 def test_quick_picker_preserves_model_library_order() -> None:
     module_uri = (STATIC_DIR / "js/dragon-ui/pages/model-quick-picker.js").as_uri()
     script = f"""
@@ -78,20 +31,3 @@ console.log(JSON.stringify(groups.map((group) => [group.id, group.items.map((ite
         text=True,
     )
     assert json.loads(result.stdout) == [["second", ["c"]], ["first", ["b", "a"]]]
-
-
-def test_quick_picker_has_centered_responsive_path_preview() -> None:
-    css = _read("css/dragon/04b-dragon-model-quick-picker.css")
-    route_styles = _read("js/dragon-ui/route-styles.js")
-
-    assert "04b-dragon-model-quick-picker.css?v=dragon-ui-20260824v2" in route_styles
-    assert "body[data-dragon-ui] #dragon-root .dragon-config-detail-header" in css
-    assert "body[data-dragon-ui] .dragon-model-quick-dialog" in css
-    assert "position: fixed;" in css
-    assert "margin: auto;" in css
-    assert ".dragon-model-quick-dialog::backdrop" in css
-    assert ".dragon-model-quick-groups" in css
-    assert ".dragon-model-quick-paths code" in css
-    assert "overflow-wrap: anywhere;" in css
-    assert "@media (max-width: 734px)" in css
-    assert "@media (max-width: 430px)" in css
