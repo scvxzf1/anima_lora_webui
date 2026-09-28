@@ -29,12 +29,12 @@ export function useMonitorRefresh() {
     try {
       await client.invalidateQueries({ queryKey: liveMonitorKeys.status }, { cancelRefetch: false });
       if (!isVisible() || generation !== visibilityGeneration.current) return;
+      void client.invalidateQueries({ queryKey: liveMonitorKeys.gpus }, { cancelRefetch: false });
       const status = client.getQueryState<TrainingStatus>(liveMonitorKeys.status);
       if (status?.status !== "success" || !status.data?.task_id) return;
       for (const key of [liveMonitorKeys.metrics, liveMonitorKeys.logs]) {
         void client.invalidateQueries({ queryKey: [...key, status.data.task_id] }, { cancelRefetch: false });
       }
-      void client.invalidateQueries({ queryKey: liveMonitorKeys.gpus }, { cancelRefetch: false });
     } finally {
       active.current = false;
       if (rerun.current && isVisible()) {

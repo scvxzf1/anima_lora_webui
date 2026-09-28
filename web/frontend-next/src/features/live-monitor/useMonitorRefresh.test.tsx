@@ -35,8 +35,8 @@ describe("monitor event refresh", () => {
     expect(mocks.invalidateQueries).not.toHaveBeenCalled();
     await act(() => vi.advanceTimersByTimeAsync(1));
     expect(mocks.invalidateQueries.mock.calls.map(([filter]) => filter.queryKey)).toEqual([
-      ["live-monitor", "status"], ["live-monitor", "metrics", "run-B"], ["live-monitor", "logs", "run-B"],
-      ["live-monitor", "gpus"],
+      ["live-monitor", "status"], ["live-monitor", "gpus"],
+      ["live-monitor", "metrics", "run-B"], ["live-monitor", "logs", "run-B"],
     ]);
   });
 
@@ -45,7 +45,7 @@ describe("monitor event refresh", () => {
     mocks.getQueryState.mockReturnValue({ status: "error", data: { task_id: "run-A" } });
     await act(async () => mocks.open());
     expect(mocks.invalidateQueries.mock.calls.map(([filter]) => filter.queryKey)).toEqual([
-      ["live-monitor", "status"], ["training-queue"],
+      ["live-monitor", "status"], ["training-queue"], ["live-monitor", "gpus"],
     ]);
   });
 

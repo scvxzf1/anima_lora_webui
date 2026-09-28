@@ -94,3 +94,32 @@ it("pauses hidden polling and refreshes a stale snapshot on resume without leaki
   await waitFor(() => expect([metricsCalls, logsCalls, gpuCalls]).toEqual([2, 2, 2]));
   client.clear();
 });
+
+it("refreshes GPU inventory after an idle monitor becomes visible", async () => {
+  let statusCalls = 0;
+  let gpuCalls = 0;
+  vi.stubGlobal("WebSocket", class { close() {} });
+  vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => {
+    const path = String(input);
+    if (path === "/api/training/status") {
+      statusCalls += 1;
+      return Promise.resolve(jsonResponse({ status: "idle" }));
+    }
+    if (path === "/api/training/gpus") {
+      gpuCalls += 1;
+      return Promise.resolve(jsonResponse({ gpus: [] }));
+    }
+    throw new Error(`Unexpected ${path}`);
+  }));
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 15_000 } } });
+  const router = createMemoryRouter([{ path: "/", element: <LiveMonitorPage /> }]);
+  render(<QueryClientProvider client={client}><RouterProvider router={router} /></QueryClientProvider>);
+  await waitFor(() => expect([statusCalls, gpuCalls]).toEqual([1, 1]));
+
+  Object.defineProperty(document, "visibilityState", { configurable: true, value: "hidden" });
+  act(() => document.dispatchEvent(new Event("visibilitychange")));
+  Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
+  act(() => document.dispatchEvent(new Event("visibilitychange")));
+  await waitFor(() => expect([statusCalls, gpuCalls]).toEqual([2, 2]));
+  client.clear();
+});
