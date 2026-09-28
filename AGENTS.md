@@ -457,9 +457,9 @@ T-LoRA mask 是共享 buffer，每个 denoising step 更新一次。
 - sample prompts 默认 `configs/sample_prompts.txt`，按配置分叉到
   `configs/sample-prompts/<methods_subdir>/<config-stem>.txt`。保留注释、空行和用户格式。
 - 历史任务模式只保留 `collection` / `collections`，不要恢复旧 `config` / `flat` 模式。
-- Dragon tagging 工作台实现在 `web/static/js/dragon-ui/pages/tagging*.js`；`captioning.js`
-  只保留兼容导出。前端以 `/api/captioning` 为 canonical 路径，后端同时注册
-  `/api/tagging` alias；provider 凭据与调用必须留在服务端，审核草稿和写回任务不并入训练队列。
+- 当前 WebUI 用户入口为 `web/frontend-next/`，使用 Next 工作台和共享 HTTP API；旧
+  `web/static/js/dragon-ui/` 与 classic 前端仅作为遗留静态源码保留，不是用户回退入口。
+  打标 provider 凭据与调用必须留在服务端，审核草稿和写回任务不并入训练队列。
 
 常用 WebUI 验证入口见
 [前端健康度评分卡](docs/features/frontend-health-scorecard.md)和
@@ -544,6 +544,8 @@ T-LoRA mask 是共享 buffer，每个 denoising step 更新一次。
 ## 文档维护
 
 - 文档入口是 `docs/README.md`。
+- 当前 WebUI 用户与开发入口是 `web/frontend-next/README.md`；旧 Dragon/classic 文档只能作为
+  明确标注的历史记录，不得将其描述为当前可用入口或故障回退路径。
 - 根 `README.md` 只做项目介绍、部署快照和最高频入口；完整文档必须从根 README 明确链接到
   `docs/README.md`。
 - 用户安装、WebUI 流程和启动命令变更：更新根 `README.md`。

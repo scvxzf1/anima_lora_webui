@@ -232,20 +232,14 @@ source .venv/bin/activate
 make web ARGS="--host 127.0.0.1 --port 20102"
 ```
 
-首次启动加载后端依赖时可能需要约 10–40 秒。默认打开 Dragon UI：
+首次启动加载后端依赖时可能需要约 10–40 秒。访问服务根路径会进入 Next WebUI：
 
 ```text
 http://127.0.0.1:20102/
-http://127.0.0.1:20102/?ui=dragon
+http://127.0.0.1:20102/next
 ```
 
-classic 兼容界面：
-
-```text
-http://127.0.0.1:20102/?ui=classic
-```
-
-界面按钮会把选择保存到浏览器 `localStorage.anima_ui_mode`。两套界面共用后端、配置、训练队列、历史和模型文件；`Dragon trainer` 只是界面品牌，不是模型族。完整说明见 [Dragon UI 与 classic 兼容界面](../features/dragon-ui.md)。
+历史 `/?ui=dragon` 和 `/?ui=classic` 地址目前会重定向到 Next，并不启动旧界面。用户使用、开发和验证说明见 [Next 前端 README](../../web/frontend-next/README.md)。
 
 项目根目录的 Linux 一键脚本也可以启动 WebUI：
 
@@ -280,16 +274,16 @@ http://服务器IP:20102/?token=你的令牌
 首次使用建议按这个顺序：
 
 1. 打开 WebUI。
-2. Dragon UI 进入「模型与系统 → 全局模型配置」，classic UI 进入「全局模型配置」，检查模型路径是否存在。
-3. 进入「配置文件」或 classic「配置」页。
+2. 在 Next「模型」工作区检查模型路径是否存在。
+3. 进入 Next「训练」工作区。
 4. 设置 `source_image_dir`。
 5. 点击「自动填入缩放图和缓存目录」。
 6. 保存当前配置。
-7. 进入 Dragon「训练 → 实时训练」或 classic「训练」页。
+7. 在 Next「训练」工作区检查任务配置。
 8. 如果提示需要预处理，先执行预处理。
 9. 预处理完成后启动训练。
-10. 在「训练」页查看日志、loss 曲线和任务配置快照。
-11. 在 Dragon「模型与系统 → 预览工作区」或 classic 当前预览中查看训练样张和推理预览图。
+10. 在 Next「历史」和训练监控中查看日志、loss 曲线和任务配置快照。
+11. 在 Next「预览」工作区查看训练样张和推理预览图。
 
 训练任务快照中会记录：
 
@@ -603,21 +597,13 @@ PNG；只有一行提示词时，仅一张 GPU 执行采样，其余 rank 等待
 如果网络环境无法直连 Hugging Face，需要自行配置代理。
 
 
-### 15.7 Dragon UI 空白或自动回到 classic
+### 15.7 Next WebUI 无法加载
 
-先等待首次启动的 10–40 秒并查看服务终端。然后直接打开：
-
-```text
-http://127.0.0.1:20102/?ui=classic
-```
-
-classic 正常时，打开浏览器开发者工具检查 Console 和 Network：
-
-- `[dragon-ui] failed to start; falling back to classic UI`：Dragon 初始化失败，系统已尝试 classic 回退。
-- `[ui-bootstrap] failed to start any UI`：两套入口都没有成功启动。
-- `/static/js/ui-bootstrap.js`、Dragon JS 或 `/static/css/dragon-style.css` 返回 404：检查当前代码是否完整，并重启后端。
-
-模式会保存在 `localStorage.anima_ui_mode`；可直接使用 `?ui=dragon` / `?ui=classic` 覆盖。更完整的清理和维护测试见 [Dragon UI 与 classic 兼容界面](../features/dragon-ui.md)。
+确认服务终端已完成启动，访问 `/` 或 `/next`，并检查浏览器开发者工具中的网络错误。
+Next 工作台提供返回训练配置的恢复入口；部署、静态构建和隔离验收步骤见
+[Next 前端 README](../../web/frontend-next/README.md)。旧 `ui=dragon` / `ui=classic`
+查询参数只会重定向到 Next，不应作为故障回退或排查入口。旧界面背景记录见
+[已退役 Dragon UI 历史记录](../features/dragon-ui.md)。
 
 
 ## 16. 更新项目

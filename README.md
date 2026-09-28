@@ -17,17 +17,17 @@
 常用入口：
 
 - 新手部署和 WebUI 使用：[Linux 部署启动](#linux-部署启动)、[Windows 部署启动](#windows-部署启动)
-- 默认 Dragon UI、classic 回退与空白页排查：[docs/features/dragon-ui.md](docs/features/dragon-ui.md)
+- Next WebUI 使用与维护入口：[web/frontend-next/README.md](web/frontend-next/README.md)
 - Next 数据集图片工作台：在 `/next/datasets` 对应子集进入「图片工作台」，统一提供图片预览、手动蒙版编辑和打标，见 [蒙版使用说明](docs/features/manual-mask-editor.md)。
 - Linux 部署：[docs/guidelines/linux-deployment.zh.md](docs/guidelines/linux-deployment.zh.md)
 - 训练参考：[docs/guidelines/training.md](docs/guidelines/training.md)
-- AUTO 块交换（实验，默认关闭）：Dragon「资源与预检 / 模型驻留」开启，先独立预热再固定交换数；限制和验证状态见 [配置说明](docs/configuration/auto-block-swap.md)。
+- AUTO 块交换（实验，默认关闭）：在 Next「设备与性能」配置，先独立预热再固定交换数；限制和验证状态见 [配置说明](docs/configuration/auto-block-swap.md)。
 - 推理参考：[docs/guidelines/inference.md](docs/guidelines/inference.md)
 - 文档归档：[docs/archive-index.md](docs/archive-index.md)
 
 ## 项目内容物预览：锚点 `4ea68b3`
 
-以下截图来自稳态锚点附近的 classic UI 状态，用于快速预览主要功能。当前默认界面已切换为 Dragon UI，布局会不同，但两套界面共用后端、配置、历史任务和模型文件。
+以下截图来自稳态锚点附近的旧版 classic UI，仅作为项目历史界面截图；当前推荐使用 Next WebUI。截图不代表当前页面布局或可用入口。
 
 <table>
   <tr>
@@ -152,7 +152,7 @@ uv sync
 ./webui.sh
 ```
 
-该快捷脚本默认监听 `127.0.0.1:20203`，等待服务就绪后自动打开 `/next`。只启动服务、不打开浏览器时使用 `ANIMA_WEB_OPEN_BROWSER=0 ./webui.sh`。
+当前代码中的快捷脚本 `webui.sh` 默认监听 `127.0.0.1:20203`，等待 Next 就绪后打开 `/next`；这是本仓库脚本行为，不代表线上该端口已部署或切换。只启动服务、不打开浏览器时使用 `ANIMA_WEB_OPEN_BROWSER=0 ./webui.sh`。
 
 也可以手动指定监听地址和端口：
 
@@ -166,7 +166,7 @@ uv sync
 http://127.0.0.1:20102/
 ```
 
-默认进入 Next UI。首次启动加载后端依赖时可能需要等待约 10–40 秒；旧版 Dragon 和 classic 兼容入口分别是 `http://127.0.0.1:20102/?ui=dragon` 与 `http://127.0.0.1:20102/?ui=classic`。
+访问根路径会进入 Next UI。首次启动加载后端依赖时可能需要等待约 10–40 秒。旧 `/?ui=dragon` 和 `/?ui=classic` 地址目前仅作为兼容输入重定向到 Next，不会启动旧界面。
 
 需要局域网访问时：
 
@@ -236,30 +236,13 @@ uv sync
 http://127.0.0.1:20102/
 ```
 
-默认进入 Next UI；旧版 Dragon 和 classic 兼容入口分别是 `http://127.0.0.1:20102/?ui=dragon` 与 `http://127.0.0.1:20102/?ui=classic`。
+默认进入 Next UI。旧 `/?ui=dragon` 和 `/?ui=classic` 地址仅会重定向到 Next，不提供旧界面。
 
 如果 PowerShell 禁止激活脚本，不需要激活虚拟环境，直接使用上面的 `.\.venv\Scripts\python.exe` 命令即可。
 
-## macOS Dragon UI 预览
-
-先按项目依赖说明准备好 `.venv`，然后在 Finder 双击项目根目录的 `preview-dragon-ui.command`，或在终端运行：
-
-```bash
-./preview-dragon-ui.command
-```
-
-脚本会在 `20102`–`20120` 中选择首个未监听端口，等待 WebUI 可访问后尝试自动打开 Dragon UI。关闭该终端窗口或按 `Ctrl+C` 会停止脚本启动的预览进程。
-
 ## 启动后怎么用
 
-默认是 Next UI。旧版 Dragon 左上角 `Dragon trainer` 菜单可切换到 **经典界面**；classic 顶部可点 **新版界面** 返回。旧版界面也可以直接使用：
-
-```text
-/?ui=dragon
-/?ui=classic
-```
-
-浏览器会把选择保存到 `localStorage.anima_ui_mode`。两套界面共用同一套配置、训练队列、历史、模型和输出；`Dragon trainer` 只是界面品牌，不是模型族。详细排查见 [Dragon UI 与 classic 兼容界面](docs/features/dragon-ui.md)。
+当前用户界面为 Next。Next 页面中的错误恢复入口用于返回训练配置；界面使用说明和开发、验收命令见 [Next 前端 README](web/frontend-next/README.md)。旧版 Dragon/classic 的实现记录保留在[退役指南](docs/features/dragon-ui.md)，仅供维护历史参考。
 
 1. 在 WebUI 里确认基础模型、文本编码器和 VAE 路径。
 2. 导入或创建数据集配置。
