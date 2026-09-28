@@ -32,6 +32,10 @@ test("history loss chart exposes labeled tooltip text on pointer hover", async (
   await page.mouse.move(mobileBox!.x + mobileBox!.width * 0.65, mobileBox!.y + mobileBox!.height * 0.5);
   await expect(page.getByText("STEP: 40", { exact: true })).toBeVisible();
   await expect(page.getByText("Loss: 0.1600", { exact: true })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await chart.focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(page.locator(".chart-inspection")).toContainText("STEP: 0");
   await page.screenshot({ path: info.outputPath("history-loss-hover-mobile.png"), fullPage: true });
   expect(mocks.writes).toEqual([]);
   expect(mocks.unhandled).toEqual([]);

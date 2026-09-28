@@ -643,6 +643,8 @@ fieldset {
   width: 100%;
   height: 320px;
 }
+.metric-chart:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.chart-inspection { min-height: 1.5em; margin: 4px 0 0; color: var(--muted); font-size: 13px; }
 .chart-section {
   padding: 18px 0;
   border-bottom: 1px solid var(--line);

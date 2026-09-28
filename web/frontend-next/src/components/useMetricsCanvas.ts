@@ -1,6 +1,6 @@
 import { useEffect, type RefObject } from "react";
 
-export function useMetricsCanvas(ref: RefObject<HTMLDivElement | null>, data: [number, number][], timeAxis: boolean, metricName: string) {
+export function useMetricsCanvas(ref: RefObject<HTMLDivElement | null>, data: [number, number][], timeAxis: boolean, metricName: string, axis: string) {
   useEffect(() => {
     const node = ref.current;
     if (!node || !node.clientWidth || !data.length) return;
@@ -17,17 +17,19 @@ export function useMetricsCanvas(ref: RefObject<HTMLDivElement | null>, data: [n
           tooltip: {
             trigger: "axis",
             renderMode: "html",
+            confine: true,
             formatter: (items: { value?: unknown }[] | { value?: unknown }) => {
               const item = Array.isArray(items) ? items[0] : items;
               const value = Array.isArray(item?.value) ? item.value : [];
               const axisValue = value[0];
               const metricValue = value[1];
               const content = document.createElement("div");
-              const axis = document.createElement("div");
+              const axisRow = document.createElement("div");
               const metric = document.createElement("div");
-              axis.textContent = `${timeAxis ? "时间" : "STEP"}: ${timeAxis && typeof axisValue === "number" ? new Date(axisValue).toLocaleString() : String(axisValue ?? "")}`;
+              const axisName = axis === "time" ? "时间" : axis === "step" ? "STEP" : "采样序号";
+              axisRow.textContent = `${axisName}: ${axis === "time" && typeof axisValue === "number" ? new Date(axisValue).toLocaleString() : String(axisValue ?? "")}`;
               metric.textContent = `${metricName}: ${typeof metricValue === "number" ? metricValue.toPrecision(4) : String(metricValue ?? "")}`;
-              content.append(axis, metric);
+              content.append(axisRow, metric);
               return content;
             },
           },
