@@ -30,6 +30,7 @@ export type HistoryTaskSummary = {
   methods_subdir?: string;
   preset?: string;
   run_dir?: string;
+  absolute_paths?: Record<string, string>;
   output_dir?: string;
   training_output_dir?: string;
   log_count?: number;

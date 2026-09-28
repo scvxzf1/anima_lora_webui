@@ -318,6 +318,7 @@ def _history_summary(meta: dict[str, Any], task_dir: Path) -> dict[str, Any]:
         out[key] = str(out.get(key) or data_dirs.get(key) or "")
     _fill_history_runtime_meta(out)
     out["run_dir_abs"] = _absolute_display_path(out.get("run_dir"))
+    out["absolute_paths"] = _history_absolute_paths(out, task_dir)
     _fill_history_group_meta(out)
     if not out["name"]:
         out["name"] = _default_preprocess_history_name(out)
@@ -335,6 +336,55 @@ def _history_summary(meta: dict[str, Any], task_dir: Path) -> dict[str, Any]:
     out["base_compute"] = chips["base_compute"]
     out["precision_preference"] = chips["precision_preference"]
     return out
+
+
+_HISTORY_PATH_FIELDS = (
+    "run_dir_abs",
+    "history_dir_abs",
+    "runtime_config_file",
+    "original_config_file",
+    "dataset_config_file",
+    "model_cache_dir",
+    "dataset_cache_dir",
+    "training_output_dir",
+    "sample_dir",
+    "logs_dir",
+    "logs_path",
+    "metrics_path",
+    "system_path",
+    "config_snapshot",
+)
+
+
+def _history_absolute_paths(task: dict[str, Any], task_dir: Path) -> dict[str, str]:
+    """Resolve detail-copy paths on the server using configured path roots."""
+    run_dir = _resolve_display_path(str(task.get("run_dir") or ""))
+    absolute: dict[str, str] = {}
+    for key in _HISTORY_PATH_FIELDS:
+        raw = str(task.get(key) or "").strip()
+        if key == "run_dir_abs":
+            raw = str(task.get("run_dir") or "")
+        elif key == "history_dir_abs":
+            raw = str(task_dir)
+        elif key in {"logs_path", "metrics_path", "system_path", "config_snapshot"}:
+            raw = str(task_dir / {
+                "logs_path": "logs.jsonl",
+                "metrics_path": "metrics.jsonl",
+                "system_path": "system.jsonl",
+                "config_snapshot": "config.snapshot.toml",
+            }[key])
+        if not raw:
+            continue
+        is_run_file = key in {
+            "runtime_config_file", "original_config_file", "dataset_config_file",
+        } and Path(raw).name == raw
+        if is_run_file and run_dir is not None:
+            resolved = (run_dir / raw).resolve()
+        else:
+            resolved = _resolve_display_path(raw)
+        if resolved is not None:
+            absolute[key] = str(resolved)
+    return absolute
 
 
 def _linked_preprocess_task_for_training(task: dict[str, Any]) -> dict[str, Any] | None:

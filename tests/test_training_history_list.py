@@ -66,6 +66,30 @@ def test_history_summary_includes_runtime_info(tmp_path, monkeypatch):
     assert task["archived"] is True
     assert task["name"] == "522-20260523-114514"
 
+
+def test_history_absolute_paths_use_configured_roots_and_run_dir(tmp_path, monkeypatch):
+    from web.services import config_service
+    from web.services.training import history_store
+
+    config_root = tmp_path / "external-configs"
+    run_root = tmp_path / "custom-output" / "runs" / "task-1"
+    history_dir = tmp_path / "external-history" / "task-1"
+    monkeypatch.setattr(config_service, "CONFIGS_DIR", config_root)
+    run_root.mkdir(parents=True)
+    history_dir.mkdir(parents=True)
+    task = {
+        "run_dir": str(run_root),
+        "runtime_config_file": "configs/imported/runtime.toml",
+        "original_config_file": "config.original.toml",
+        "history_source_config_file": "configs/imported/source.toml",
+    }
+
+    paths = history_store._history_absolute_paths(task, history_dir)
+
+    assert paths["runtime_config_file"] == str(config_root / "imported/runtime.toml")
+    assert paths["original_config_file"] == str(run_root / "config.original.toml")
+    assert paths["history_dir_abs"] == str(history_dir)
+
 def test_history_store_keeps_direct_history_meta_helpers(tmp_path, monkeypatch):
     from web.services.training import history_store as history_store_impl
 
