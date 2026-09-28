@@ -1,4 +1,4 @@
-import { CONFIG_FIELD_CATALOG } from "../../../../static/js/dragon-ui/pages/config-field-catalog.js";
+import { CONFIG_FIELD_CATALOG } from "./domain/config-field-catalog.js";
 import type { TrainingDraft, TrainingFieldSpec } from "./trainingForm";
 
 export const RESOURCE_GROUPS = [

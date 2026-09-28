@@ -1,20 +1,20 @@
 import {
   FIELD_LABEL_ZH,
   FIELD_OPTIONS,
-} from "../../../../static/js/config/catalog/labels-options.js";
-import { configFieldInputKind, normalizeBooleanConfigValue } from "../../../../static/js/dragon-ui/pages/config-field-types.js?v=training-field-types-20260927";
-import { CONFIG_FIELD_CATALOG } from "../../../../static/js/dragon-ui/pages/config-field-catalog.js";
-import { configFieldDisclosure } from "../../../../static/js/dragon-ui/pages/config-field-disclosure-rules.js?v=auto-block-swap-20260908-v3";
-import { displayConfigValue } from "../../../../static/js/dragon-ui/pages/config-values.js";
+} from "./domain/labels-options.js";
+import { configFieldInputKind, normalizeBooleanConfigValue } from "./domain/config-field-types.js";
+import { CONFIG_FIELD_CATALOG } from "./domain/config-field-catalog.js";
+import { configFieldDisclosure } from "./domain/config-field-disclosure-rules.js";
+import { displayConfigValue } from "./domain/config-values.js";
 import {
   configFieldAvailability,
   resolveConfigAdapterKind,
-} from "../../../../static/js/dragon-ui/pages/config-field-availability.js";
+} from "./domain/config-field-availability.js";
 import {
   configureModelFamilyCapabilities,
   modelFamilyOptionSupported,
   normalizeModelFamily,
-} from "../../../../static/js/features/config-form/model-family.js?v=qwen-image-21-v2";
+} from "./domain/model-family.js";
 import { apiRequest } from "../../api/client";
 import {
   sameTrainingValue,

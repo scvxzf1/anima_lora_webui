@@ -16,11 +16,11 @@ import {
   fieldsForConfig,
   filterTrainingFields,
 } from "./fieldCatalog";
-import { displayConfigValue } from "../../../../static/js/dragon-ui/pages/config-values.js";
+import { displayConfigValue } from "./domain/config-values.js";
 import {
   CONFIG_FIELD_CATALOG,
   configFieldCatalogEntry,
-} from "../../../../static/js/dragon-ui/pages/config-field-catalog.js";
+} from "./domain/config-field-catalog.js";
 
 function readConfig(relativePath: string) {
   return parseToml(

@@ -2,8 +2,8 @@ import { parse } from "smol-toml";
 import {
   displayConfigValue,
   prepareConfigPatch,
-} from "../../../../static/js/dragon-ui/pages/config-values.js";
-import { normalizeBooleanConfigValue } from "../../../../static/js/dragon-ui/pages/config-field-types.js?v=training-field-types-20260927";
+} from "./domain/config-values.js";
+import { normalizeBooleanConfigValue } from "./domain/config-field-types.js";
 
 export type TrainingFieldKind =
   "text" | "number" | "boolean" | "select" | "json";

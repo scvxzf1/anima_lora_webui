@@ -1,4 +1,4 @@
-import { CONFIG_FIELD_CATALOG, CONFIG_STAGE_META } from "../../../../static/js/dragon-ui/pages/config-field-catalog.js";
+import { CONFIG_FIELD_CATALOG, CONFIG_STAGE_META } from "./domain/config-field-catalog.js";
 import type { TrainingDraft, TrainingFieldSpec } from "./trainingForm";
 import { groupResourceFields, resourceSummary } from "./resourceGroups";
 

@@ -2,7 +2,7 @@ import type { TrainingDraft, TrainingFieldSpec } from "./trainingForm";
 import { FilePenLine } from "lucide-react";
 import { TrainingDatasetField } from "./TrainingDatasetField";
 import { availableFieldOptions, fieldAvailability } from "./fieldCatalog";
-import { FIELD_HELP_SUMMARY_ZH } from "../../../../static/js/config/catalog/field-help-summary.js";
+import { FIELD_HELP_SUMMARY_ZH } from "./domain/field-help-summary.js";
 
 type Props = {
   fields: TrainingFieldSpec[];
