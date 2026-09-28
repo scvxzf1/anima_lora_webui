@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Copy } from "lucide-react";
 import { ResilientImage } from "../../components/ResilientImage";
 import { AssetPagination } from "./AssetPagination";
@@ -15,7 +15,7 @@ function TaskAssets({ taskId }: { taskId: string }) {
   const [imageOffset, setImageOffset] = useState(0);
   const [weightOffset, setWeightOffset] = useState(0);
   const [sort, setSort] = useState("recent");
-  const [selectedIndex, setSelectedIndex] = useState<number>();
+  const [selectedFile, setSelectedFile] = useState<string>();
   const [copyStatus, setCopyStatus] = useState("");
   const images = useQuery({
     queryKey: ["history-images", taskId, imageOffset],
@@ -25,6 +25,10 @@ function TaskAssets({ taskId }: { taskId: string }) {
     queryKey: ["history-weights", taskId, weightOffset, sort],
     queryFn: ({ signal }) => fetchHistoryWeights(taskId, signal, 100, weightOffset, sort),
   });
+  const selectedIndex = images.data?.images.findIndex((image) => image.file === selectedFile) ?? -1;
+  useEffect(() => {
+    if (selectedFile && images.isSuccess && selectedIndex < 0) setSelectedFile(undefined);
+  }, [images.isSuccess, selectedFile, selectedIndex]);
   return <section className="history-assets">
     <HistoryArtifacts taskId={taskId} />
     <h2>训练样张</h2>
@@ -32,12 +36,12 @@ function TaskAssets({ taskId }: { taskId: string }) {
     {images.isPending && <p role="status">正在读取样张</p>}
     {images.error && <p role="alert">{images.error.message} <button type="button" onClick={() => images.refetch()}>重试样张</button></p>}
     <div className="history-image-grid">
-      {images.data?.images.map((image, index) => <button key={image.file} type="button" onClick={() => setSelectedIndex(index)}>
+      {images.data?.images.map((image) => <button key={image.file} type="button" onClick={() => setSelectedFile(image.file)}>
         <ResilientImage className="history-thumbnail" src={historyAssetUrl(taskId, image.file)} alt={image.name} loading="lazy" /><span>{image.name}</span>
       </button>)}
     </div>
     {images.data?.images.length === 0 && <p>{images.data.message || "本页暂无样张"}</p>}
-    <AssetPagination label="样张" offset={imageOffset} count={images.data?.images.length ?? 0} total={images.data?.total ?? 0} size={60} next={images.data?.next_offset} pending={images.isFetching} onChange={setImageOffset} />
+    <AssetPagination label="样张" offset={imageOffset} count={images.data?.images.length ?? 0} total={images.data?.total ?? 0} size={60} next={images.data?.next_offset} pending={images.isFetching} onChange={(offset) => { setSelectedFile(undefined); setImageOffset(offset); }} />
     <div className="toolbar"><h2>权重</h2><label>排序 <select value={sort} onChange={(event) => { setSort(event.target.value); setWeightOffset(0); }}><option value="recent">最新文件优先</option><option value="name">文件名</option></select></label></div>
     {weights.isPending && <p role="status">正在读取权重</p>}
     {weights.error && <p role="alert">{weights.error.message} <button type="button" onClick={() => weights.refetch()}>重试权重</button></p>}
@@ -53,13 +57,13 @@ function TaskAssets({ taskId }: { taskId: string }) {
     <p className="history-copy-status" role="status" aria-live="polite">{copyStatus}</p>
     {weights.data?.weights.length === 0 && <p>{weights.data.message || "本页暂无权重"}</p>}
     <AssetPagination label="权重" offset={weightOffset} count={weights.data?.weights.length ?? 0} total={weights.data?.total ?? 0} size={100} next={weights.data?.next_offset} pending={weights.isFetching} onChange={setWeightOffset} />
-    {selectedIndex !== undefined && images.data?.images[selectedIndex] && <HistoryImageDialog
+    {selectedIndex >= 0 && images.data?.images[selectedIndex] && <HistoryImageDialog
       image={images.data.images[selectedIndex]}
       images={images.data.images}
       index={selectedIndex}
       taskId={taskId}
-      onIndexChange={setSelectedIndex}
-      onClose={() => setSelectedIndex(undefined)}
+      onIndexChange={(index) => setSelectedFile(images.data?.images[index]?.file)}
+      onClose={() => setSelectedFile(undefined)}
     />}
   </section>;
 }

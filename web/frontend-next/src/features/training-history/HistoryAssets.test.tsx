@@ -1,4 +1,4 @@
-import { cleanup, screen, within } from "@testing-library/react";
+import { act, cleanup, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { renderInApp } from "../../test/renderInApp";
@@ -105,5 +105,31 @@ describe("history asset path copying", () => {
 
     await user.click(screen.getByRole("button", { name: "关闭" }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("keeps the selected file stable when refreshed images change order", async () => {
+    const user = userEvent.setup();
+    const samples = ["sample-1.png", "sample-2.png", "sample-3.png"].map((file) => ({ file, name: file }));
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      const payload = url.includes("/artifacts") ? { artifacts: [] }
+        : url.includes("/api/preview/weights") ? { weights: [] }
+        : { images: samples, total: samples.length };
+      return new Response(JSON.stringify(payload), { status: 200, headers: { "Content-Type": "application/json" } });
+    }));
+    const { client } = renderInApp(<HistoryAssets taskId="task-1" />);
+
+    await user.click(await screen.findByText("sample-2.png", { selector: ".history-image-grid span" }));
+    expect(within(screen.getByRole("dialog")).getByRole("img", { name: "sample-2.png" })).toBeInTheDocument();
+    act(() => client.setQueryData(["history-images", "task-1", 0], {
+      images: [{ file: "new.png", name: "new.png" }, ...samples], total: 4,
+    }));
+    expect(within(screen.getByRole("dialog")).getByRole("img", { name: "sample-2.png" })).toBeInTheDocument();
+    expect(await screen.findByText("3 / 4")).toBeInTheDocument();
+
+    act(() => client.setQueryData(["history-images", "task-1", 0], {
+      images: samples.filter((image) => image.file !== "sample-2.png"), total: 2,
+    }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
   });
 });
