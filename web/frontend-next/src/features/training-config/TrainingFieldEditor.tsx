@@ -55,11 +55,15 @@ export function TrainingFieldEditor({
             <span className="training-field-label">
               <span>{field.label}</span>
               <code className="training-field-tag">{field.key}</code>
-            {dirty && <span className="training-field-dirty" role="status">已修改</span>}
-            {dirty && <button type="button" className="training-field-undo" aria-label={`撤销${field.label}修改`} title={`撤销 ${field.label} 修改`} disabled={controlDisabled} onClick={(event) => { event.preventDefault(); event.stopPropagation(); onChange(field.key, baseline[field.key] ?? ""); }}><Undo2 size={15} aria-hidden="true" /></button>}
-            {field.key === "sample_prompts" && onEditPrompts && (
-              <button type="button" title="编辑样张提示词" aria-label="编辑样张提示词" disabled={controlDisabled} onClick={(event) => { event.preventDefault(); onEditPrompts(); }}><FilePenLine size={16} /></button>
-            )}
+              {dirty && <span className="training-field-dirty" role="status">已修改</span>}
+              {(dirty || (field.key === "sample_prompts" && onEditPrompts)) && (
+                <span className="training-field-actions">
+                  {dirty && <button type="button" className="training-field-undo" aria-label={`撤销${field.label}修改`} title={`撤销 ${field.label} 修改`} disabled={disabled} onClick={(event) => { event.preventDefault(); event.stopPropagation(); onChange(field.key, baseline[field.key] ?? ""); }}><Undo2 size={15} aria-hidden="true" /></button>}
+                  {field.key === "sample_prompts" && onEditPrompts && (
+                    <button type="button" title="编辑样张提示词" aria-label="编辑样张提示词" disabled={controlDisabled} onClick={(event) => { event.preventDefault(); onEditPrompts(); }}><FilePenLine size={16} /></button>
+                  )}
+                </span>
+              )}
             </span>
             {field.kind === "json" ? (
               <textarea

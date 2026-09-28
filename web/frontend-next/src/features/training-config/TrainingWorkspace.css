@@ -328,13 +328,24 @@
   border-top: 1px solid var(--line);
 }
 .training-field-label {
-  display: flex;
-  align-items: center;
-  gap: 6px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 3px 6px;
   min-width: 0;
 }
-.training-field-label > span {
+.training-field-label > span:first-child {
   font-size: 13px;
+}
+.training-field-label > span:not(.training-field-actions),
+.training-field-label > code {
+  grid-column: 1;
+}
+.training-field-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  grid-column: 2;
+  grid-row: 1 / span 3;
 }
 .training-edit-fields label:first-child {
   border-top: 0;
@@ -349,7 +360,6 @@
   overflow-wrap: anywhere;
 }
 .training-field-dirty {
-  flex: 0 0 auto;
   color: var(--warning, #8a4b08);
   font-size: 11px;
   font-weight: 600;
@@ -360,7 +370,6 @@
   width: 28px;
   height: 28px;
   flex: 0 0 28px;
-  margin-left: auto;
   padding: 0;
   color: var(--ink);
   background: transparent;
@@ -871,7 +880,7 @@
     grid-column: 1;
   }
   .training-field-label {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
   }
 }

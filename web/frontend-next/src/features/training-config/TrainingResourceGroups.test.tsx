@@ -108,6 +108,45 @@ it("undoes individual numeric and boolean drafts without affecting other fields,
   expect(screen.queryByText("已修改")).not.toBeInTheDocument();
 });
 
+it("can undo a dirty field after another setting disables its input", async () => {
+  const user = userEvent.setup();
+  const field = fieldsForConfig({ blocks_to_swap: 20 }).find((item) => item.key === "blocks_to_swap")!;
+  const onChange = vi.fn();
+  render(
+    <TrainingFieldEditor
+      fields={[field]}
+      baseline={{ blocks_to_swap: 20 }}
+      draft={{ model_family: "anima", blocks_to_swap: 24, auto_block_swap: true }}
+      ownKeys={new Set(["blocks_to_swap"])}
+      disabled={false}
+      onChange={onChange}
+    />,
+  );
+  expect(screen.getByLabelText("Block swap 数量")).toBeDisabled();
+  await user.click(screen.getByRole("button", { name: "撤销Block swap 数量修改" }));
+  expect(onChange).toHaveBeenCalledWith("blocks_to_swap", 20);
+});
+
+it("restores the dataset config field without changing another draft", async () => {
+  const user = userEvent.setup();
+  const onChange = vi.fn();
+  const field = fieldsForConfig({ dataset_config: "configs/datasets/base.toml" })
+    .find((item) => item.key === "dataset_config")!;
+  render(
+    <TrainingFieldEditor
+      fields={[field]}
+      baseline={{ dataset_config: "configs/datasets/base.toml" }}
+      draft={{ dataset_config: "configs/datasets/edited.toml", network_dim: 32 }}
+      ownKeys={new Set(["dataset_config"])}
+      disabled={false}
+      onChange={onChange}
+    />,
+  );
+  await user.click(screen.getByRole("button", { name: "撤销数据集配置修改" }));
+  expect(onChange).toHaveBeenCalledWith("dataset_config", "configs/datasets/base.toml");
+  expect(onChange).toHaveBeenCalledTimes(1);
+});
+
 it("keeps disabled conflicts visible in the default field view", () => {
   const availability = fieldAvailability(
     "max_train_steps",
