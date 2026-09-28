@@ -29,16 +29,12 @@ export function HistoryResultSummary({ taskId }: { taskId: string }) {
 }
 
 function ResultRow({ label, total, items, missing }: {
-  label: string; total?: number; items?: { name: string }[]; missing: boolean;
+  label: string; total?: number; items?: { name: string; kind?: string }[]; missing: boolean;
 }) {
   if (!items) return null;
   const count = finiteNumber(total);
   return <div><dt>{label}</dt><dd>
     {missing ? "目录不存在" : count !== undefined ? `${count} 项` : `已发现 ${items.length} 项（总数未记录）`}
-    {items[0] && <span> · 最近：{items[0].name}{label === "权重" && isNamedFinalModel(items[0].name) && <span className="history-final-model"> Final Model</span>}</span>}
+    {items[0] && <span> · 最近：{items[0].name}{label === "权重" && items[0].kind === "final" && <span className="history-final-model"> Final Model</span>}</span>}
   </dd></div>;
-}
-
-function isNamedFinalModel(name: string) {
-  return /(?:^|[_\-.])(final|last)(?:[_\-.]|$)/i.test(name);
 }

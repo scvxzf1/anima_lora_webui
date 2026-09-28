@@ -40,7 +40,7 @@ function TaskAssets({ taskId }: { taskId: string }) {
       {images.data?.images.map((image) => {
         const sampleStep = finiteNumber(image.sample?.step);
         const label = sampleStep !== undefined && sampleStep >= 0 ? `Step ${sampleStep}` : image.name;
-        return <button key={image.file} type="button" aria-label={`查看 ${label} 的生成参数`} onClick={() => setSelectedFile(image.file)}>
+        return <button key={image.file} type="button" aria-label={`查看 ${label} ${image.name} 的生成参数`} onClick={() => setSelectedFile(image.file)}>
           <ResilientImage className="history-thumbnail" src={historyAssetUrl(taskId, image.file)} alt={image.name} loading="lazy" /><span>{label}</span>
         </button>;
       })}
@@ -54,6 +54,7 @@ function TaskAssets({ taskId }: { taskId: string }) {
       {weights.data?.weights.map((weight) => <div key={weight.file}>
         <div className="history-weight-file"><a href={historyAssetUrl(taskId, weight.file, true)} download>{weight.name}</a><code>{weight.abs_path || weight.file}</code></div>
         <span>{(weight.size_bytes / 1048576).toFixed(1)} MB · {weight.scope_label}</span>
+        {weight.kind === "final" && <span className="history-final-model">Final Model</span>}
         <button type="button" aria-label={`复制 ${weight.name} 的本地路径`} title={weight.abs_path ? "复制本地路径" : "本地绝对路径不可用"} disabled={!weight.abs_path} onClick={() => void copyWeightPath(weight.abs_path || "", weight.name, setCopyStatus)}>
           <Copy aria-hidden="true" size={15} />
         </button>

@@ -9,11 +9,11 @@ describe("history result summary final model label", () => {
     vi.unstubAllGlobals();
   });
 
-  it("labels a final model only when its returned filename says final or last", async () => {
+  it("labels the latest weight when backend metadata marks it final", async () => {
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       const payload = url.includes("/api/preview/weights")
-        ? { weights: [{ file: "adapter-final.safetensors", name: "adapter-final.safetensors", size_bytes: 1024, scope_label: "本任务" }], total: 1 }
+        ? { weights: [{ file: "adapter.safetensors", name: "adapter.safetensors", kind: "final", size_bytes: 1024, scope_label: "本任务" }], total: 1 }
         : { images: [], total: 0 };
       return new Response(JSON.stringify(payload), { status: 200, headers: { "Content-Type": "application/json" } });
     }));
@@ -21,21 +21,24 @@ describe("history result summary final model label", () => {
     renderInApp(<HistoryResultSummary taskId="task-1" />);
 
     expect(await screen.findByText("Final Model")).toBeInTheDocument();
-    expect(screen.getByText(/adapter-final\.safetensors/)).toBeInTheDocument();
+    expect(screen.getByText(/adapter\.safetensors/)).toBeInTheDocument();
   });
 
-  it("does not infer a final model from a checkpoint filename", async () => {
+  it("does not infer final from names or scan older items when the latest weight is not final", async () => {
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       const payload = url.includes("/api/preview/weights")
-        ? { weights: [{ file: "step-2500.safetensors", name: "step-2500.safetensors", size_bytes: 1024, scope_label: "本任务" }], total: 1 }
+        ? { weights: [
+            { file: "adapter-final.safetensors", name: "adapter-final.safetensors", kind: "checkpoint", size_bytes: 1024, scope_label: "本任务" },
+            { file: "older.safetensors", name: "older.safetensors", kind: "final", size_bytes: 1024, scope_label: "本任务" },
+          ], total: 2 }
         : { images: [], total: 0 };
       return new Response(JSON.stringify(payload), { status: 200, headers: { "Content-Type": "application/json" } });
     }));
 
     renderInApp(<HistoryResultSummary taskId="task-1" />);
 
-    expect(await screen.findByText(/step-2500\.safetensors/)).toBeInTheDocument();
+    expect(await screen.findByText(/adapter-final\.safetensors/)).toBeInTheDocument();
     expect(screen.queryByText("Final Model")).not.toBeInTheDocument();
   });
 });

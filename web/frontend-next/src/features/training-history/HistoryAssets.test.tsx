@@ -87,7 +87,7 @@ describe("history asset path copying", () => {
     }));
     renderInApp(<HistoryAssets taskId="task-1" />);
 
-    await user.click(await screen.findByRole("button", { name: "查看 Step 1 的生成参数" }));
+    await user.click(await screen.findByRole("button", { name: "查看 Step 1 sample-1.png 的生成参数" }));
     const dialog = within(screen.getByRole("dialog"));
     expect(screen.getByRole("button", { name: "上一张样张" })).toBeDisabled();
     expect(dialog.getByRole("img", { name: "sample-1.png" })).toBeInTheDocument();
@@ -122,9 +122,29 @@ describe("history asset path copying", () => {
     renderInApp(<HistoryAssets taskId="task-1" />);
 
     expect(await screen.findByText("Step 2500", { selector: ".history-image-grid span" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "查看 Step 2500 的生成参数" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "查看 Step 2500 sample-step.png 的生成参数" })).toBeInTheDocument();
     expect(screen.getByText("sample-unknown.png", { selector: ".history-image-grid span" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "查看 sample-unknown.png 的生成参数" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "查看 sample-unknown.png sample-unknown.png 的生成参数" })).toBeInTheDocument();
+  });
+
+  it("distinguishes same-step variants by filename and tags each final weight", async () => {
+    const samples = ["variant-a.png", "variant-b.png"].map((name) => ({ file: name, name, sample: { step: 500 } }));
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      const payload = url.includes("/artifacts") ? { artifacts: [] }
+        : url.includes("/api/preview/weights") ? { weights: [
+          { file: "final.safetensors", name: "final.safetensors", kind: "final", size_bytes: 1024, scope_label: "本任务" },
+          { file: "checkpoint.safetensors", name: "checkpoint.safetensors", kind: "checkpoint", size_bytes: 1024, scope_label: "本任务" },
+        ] }
+        : { images: samples, total: samples.length };
+      return new Response(JSON.stringify(payload), { status: 200, headers: { "Content-Type": "application/json" } });
+    }));
+    renderInApp(<HistoryAssets taskId="task-1" />);
+
+    expect(await screen.findByRole("button", { name: "查看 Step 500 variant-a.png 的生成参数" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "查看 Step 500 variant-b.png 的生成参数" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "final.safetensors" }).parentElement?.parentElement).toHaveTextContent("Final Model");
+    expect(screen.getByRole("link", { name: "checkpoint.safetensors" }).parentElement?.parentElement).not.toHaveTextContent("Final Model");
   });
 
   it("keeps the selected file stable when refreshed images change order", async () => {

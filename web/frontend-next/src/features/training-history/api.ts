@@ -234,6 +234,7 @@ export type HistoryWeight = {
   file: string;
   abs_path?: string;
   name: string;
+  kind?: string;
   size_bytes: number;
   scope_label: string;
 };
