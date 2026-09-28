@@ -285,6 +285,26 @@ describe("TrainingWorkspace", () => {
     expect(screen.getByText("源图像目录 存在")).toBeInTheDocument();
   });
 
+  it("saves boolean field edits as JSON booleans through the workspace handler", async () => {
+    const fetchMock = createFetchMock();
+    vi.stubGlobal("fetch", fetchMock);
+    const user = userEvent.setup();
+    renderWorkspace();
+
+    const vaeCache = await screen.findByLabelText("使用 VAE 缓存");
+    await waitFor(() => expect(vaeCache).toBeEnabled());
+    expect(vaeCache).not.toBeChecked();
+    await user.click(vaeCache);
+    expect(vaeCache).toBeChecked();
+
+    await user.click(screen.getByRole("button", { name: "保存配置" }));
+    await waitFor(() => expect(screen.getByText("保存成功")).toBeInTheDocument());
+
+    const values = requestBody(fetchMock, "/api/config/raw", "PATCH").values;
+    expect(values).toHaveProperty("use_vae_cache", true);
+    expect(typeof values.use_vae_cache).toBe("boolean");
+  });
+
   it("applies a model combination to the draft and saves all four model fields", async () => {
     const fetchMock = createFetchMock();
     vi.stubGlobal("fetch", fetchMock);
