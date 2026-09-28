@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Plus, Copy, Trash2, ArrowUp, ArrowDown } from "lucide-react";
-import { parseSamplePromptLine } from "../../../../static/js/features/sample-prompts/model.js";
+import { parseSamplePromptLine } from "./samplePromptCodec";
 import { isQwenSampleFamily, movePromptLine, promptLines, promptRowError, supportsEditSamples, updatePromptLine } from "./promptDocument";
 import { SampleReferenceInput } from "./SampleReferenceInput";
 import "./PromptVisualEditor.css";

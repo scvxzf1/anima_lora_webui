@@ -1,6 +1,6 @@
 import { expect, it } from "vitest";
 import { promptLines, updatePromptLine, movePromptLine, promptRowError } from "./promptDocument";
-import { samplePromptsContentNeedsTextMode } from "../../../../static/js/features/sample-prompts/model.js";
+import { samplePromptsContentNeedsTextMode } from "./samplePromptCodec";
 
 it("preserves comments, blank lines, untouched prompts and unknown options", () => {
   const text = "# note\r\n\r\nfirst --w 512 --custom yes\r\n second --l 7  \r\n";

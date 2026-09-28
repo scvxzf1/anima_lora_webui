@@ -1,4 +1,4 @@
-import { parseSamplePromptLine, serializeSamplePromptRow, type SamplePromptRow } from "../../../../static/js/features/sample-prompts/model.js";
+import { parseSamplePromptLine, serializeSamplePromptRow, type SamplePromptRow } from "./samplePromptCodec";
 
 export function promptLines(content: string) {
   return content.split(/(?<=\n)/).map((raw, index) => ({ raw, index, row: parseSamplePromptLine(raw) }))
