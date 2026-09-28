@@ -124,7 +124,7 @@ describe("history asset path copying", () => {
     expect(await screen.findByText("Step 2500", { selector: ".history-image-grid span" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "查看 Step 2500 sample-step.png 的生成参数" })).toBeInTheDocument();
     expect(screen.getByText("sample-unknown.png", { selector: ".history-image-grid span" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "查看 sample-unknown.png sample-unknown.png 的生成参数" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "查看 sample-unknown.png 的生成参数" })).toBeInTheDocument();
   });
 
   it("distinguishes same-step variants by filename and tags each final weight", async () => {

@@ -40,7 +40,8 @@ function TaskAssets({ taskId }: { taskId: string }) {
       {images.data?.images.map((image) => {
         const sampleStep = finiteNumber(image.sample?.step);
         const label = sampleStep !== undefined && sampleStep >= 0 ? `Step ${sampleStep}` : image.name;
-        return <button key={image.file} type="button" aria-label={`查看 ${label} ${image.name} 的生成参数`} onClick={() => setSelectedFile(image.file)}>
+        const accessibleLabel = label === image.name ? image.name : `${label} ${image.name}`;
+        return <button key={image.file} type="button" aria-label={`查看 ${accessibleLabel} 的生成参数`} onClick={() => setSelectedFile(image.file)}>
           <ResilientImage className="history-thumbnail" src={historyAssetUrl(taskId, image.file)} alt={image.name} loading="lazy" /><span>{label}</span>
         </button>;
       })}
