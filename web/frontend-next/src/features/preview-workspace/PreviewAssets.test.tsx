@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PreviewAssets } from "./PreviewAssets";
+import { PreviewSettings } from "./PreviewSettings";
 
 vi.mock("../../components/ResilientImage", () => ({ ResilientImage: (props: { alt: string }) => <img alt={props.alt} /> }));
 afterEach(cleanup);
@@ -21,5 +22,11 @@ describe("PreviewAssets", () => {
     expect(button).toBeEnabled();
     fireEvent.click(button);
     expect(onDelete).toHaveBeenCalledWith(["a.png"]);
+  });
+
+  it("locks path settings until the existing settings have loaded", () => {
+    render(<PreviewSettings settings={{ training_dir: "sample" }} dirty saving={false} locked onChange={vi.fn()} onSave={vi.fn()} onDefaults={vi.fn()} />);
+    expect(screen.getByLabelText("训练样张目录")).toBeDisabled();
+    expect(screen.getByRole("button", { name: "保存路径设置" })).toBeDisabled();
   });
 });

@@ -118,7 +118,7 @@ export function PreviewWorkspace() {
       <label>图片时间<select value={days} onChange={(event) => setDays(event.target.value)}><option value="7">最近 7 天</option><option value="14">最近 14 天</option><option value="30">最近 30 天</option><option value="all">全部时间</option></select></label>
       <button type="button" onClick={() => { void images.refetch(); if (source === "training") void weights.refetch(); }}>刷新</button>
     </section>
-    <PreviewSettings settings={draftSettings} dirty={settingsDirty} saving={save.isPending} onChange={setDraft} onSave={() => save.mutate()} onDefaults={() => setDraft({ ...draftSettings, ...(draftSettings.defaults || {}) })} />
+    <PreviewSettings settings={draftSettings} dirty={settingsDirty} saving={save.isPending} locked={!settings.data || Boolean(settings.error)} onChange={setDraft} onSave={() => save.mutate()} onDefaults={() => setDraft({ ...draftSettings, ...(draftSettings.defaults || {}) })} />
     {notice && <p role="status" className="preview-notice">{notice}</p>}
     {settings.error && <p role="alert">预览路径设置读取失败：{settings.error.message} <button type="button" disabled={settings.isFetching} onClick={() => void settings.refetch()}>重试设置</button></p>}
     {history.isPending && <p role="status">正在读取训练任务与配置分组…</p>}
