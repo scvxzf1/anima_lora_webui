@@ -41,7 +41,7 @@ export function HistoryTimeline({ taskIds, onClose }: { taskIds: string[]; onClo
       )}
       <ol className="history-timeline-stages">{(data.segments || []).map((segment, index) => <li key={segment.task?.id || index}>
         <strong>{index + 1}. {segment.task?.label || segment.task?.name || segment.task?.id || "训练任务"}</strong>
-        <span>{visibleMetricsByTask.get(String(segment.task?.id || "")) || 0}/{segment.metric_count || 0} 个指标 · {visibleLogsByTask.get(String(segment.task?.id || "")) || 0}/{segment.log_count || 0} 行日志{segment.start_display_step != null ? ` · 训练步数 ${segment.start_display_step}–${segment.end_display_step}` : ""}</span>
+        <span>{visibleMetricsByTask.get(String(segment.task?.id || "")) || 0}/{String(segment.metric_count || 0)} 个指标 · {visibleLogsByTask.get(String(segment.task?.id || "")) || 0}/{String(segment.log_count || 0)} 行日志{segment.start_display_step != null ? ` · 训练步数 ${segment.start_display_step}–${segment.end_display_step}` : ""}</span>
       </li>)}</ol>
       <section className="history-timeline-chart" aria-label="串接 Loss 曲线">
         <h3>Loss · 串接指标序号</h3>
