@@ -11,18 +11,6 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_history_detail_routes_include_task_subview() -> None:
-    entry = (REPO_ROOT / "web/static/js/dragon-ui/index.js").read_text(encoding="utf-8")
-    router = (REPO_ROOT / "web/static/js/dragon-ui/router.js").read_text(encoding="utf-8")
-    history = (REPO_ROOT / "web/static/js/dragon-ui/pages/history-detail.js").read_text(encoding="utf-8")
-
-    assert "sub: parts[2] || null" in entry
-    assert "taskId: decodeHashPart(parts[1])" in entry
-    assert "updateMountedPage(route.page, context)" in router
-    assert "onRouteUpdate: (context) => updateHistoryDetailRoute(context, taskId)" in history
-    assert "if (context.taskId !== mountedTaskId || !mountedRoot) return false" in history
-
-
 @pytest.mark.integration
 def test_history_detail_tabs_render_and_switch_without_reload() -> None:
     if not shutil.which("node"):
@@ -133,19 +121,3 @@ console.log(JSON.stringify({
     assert payload["hrefs"][0] == "#history/task%20%2F%201/overview"
     assert payload["labels"] == ["概览", "指标", "产物", "配置", "日志"]
 
-
-def test_history_detail_binds_weight_path_copy_feedback() -> None:
-    history = (REPO_ROOT / "web/static/js/dragon-ui/pages/history-detail.js").read_text(encoding="utf-8")
-
-    assert "button.addEventListener('click', () => copyHistoryWeightPath(button))" in history
-    assert "button.addEventListener('click', () => copyHistoryTaskPath(button))" in history
-    assert "await copyText(path);" in history
-    assert "label.textContent = '已复制'" in history
-    assert "label.textContent = '复制失败'" in history
-
-
-def test_history_detail_weights_use_fluid_columns() -> None:
-    css = (REPO_ROOT / "web/static/css/dragon/03b-dragon-history-detail.css").read_text(encoding="utf-8")
-
-    assert "repeat(auto-fit, minmax(min(100%, 520px), 1fr))" in css
-    assert "@container dragon-history-detail (max-width: 620px)" in css

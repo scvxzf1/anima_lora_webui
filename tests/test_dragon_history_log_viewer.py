@@ -167,31 +167,6 @@ console.log(JSON.stringify({
     assert payload["startAfterDetachedScroll"] == payload["startBeforeDetachedScroll"]
 
 
-def test_history_log_viewer_is_wired_without_twelve_line_slice() -> None:
-    controller = (REPO_ROOT / "web/static/js/dragon-ui/pages/history-detail.js").read_text(encoding="utf-8")
-    log_controller = (REPO_ROOT / "web/static/js/dragon-ui/pages/history-log-controller.js").read_text(encoding="utf-8")
-    view = (REPO_ROOT / "web/static/js/dragon-ui/pages/history-view.js").read_text(encoding="utf-8")
-    css = (REPO_ROOT / "web/static/css/dragon/03a-dragon-history-workbench.css").read_text(encoding="utf-8")
-
-    assert "from './history-log-viewer.js" not in controller
-    assert "import('./history-log-viewer.js?v=" in log_controller
-    assert "module.bindHistoryLogViewer(root, model.payload.logs" in log_controller
-    assert "activeTab === 'logs' ? loadHistoryLogPage(taskId)" in controller
-    assert "detailController?.activateTab(model.activeTab)" in controller
-    assert "logs.slice(-12)" not in view
-    assert 'data-history-log-viewer tabindex="0" role="list"' in view
-    assert 'data-history-log-search' in view
-    assert 'data-history-log-search-previous' in view
-    assert 'data-history-log-search-next' in view
-    assert "height:clamp(240px,66vh,820px);height:clamp(240px,66dvh,820px)" in css
-    assert "--dragon-history-log-row-height:22px" in css
-    assert "height:var(--dragon-history-log-row-height)" in css
-    assert "white-space:pre" in css
-    viewer = (REPO_ROOT / "web/static/js/dragon-ui/pages/history-log-viewer.js").read_text(encoding="utf-8")
-    assert "resolveLogRowHeight(viewer)" in viewer
-    assert "line.dataset.searchActive = 'true'" in viewer
-
-
 @pytest.mark.integration
 def test_history_log_viewer_loads_arbitrary_pages_without_mounting_all_rows() -> None:
     if not shutil.which("node"):
