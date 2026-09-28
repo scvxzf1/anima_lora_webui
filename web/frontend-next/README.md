@@ -1,6 +1,6 @@
 # Dragon Next
 
-React 工作台使用 `/next` 入口，复用 aiohttp API；访问服务根路径 `/` 默认跳转到 Next，旧 Dragon/classic 仍可通过 `/?ui=dragon` 和 `/?ui=classic` 访问。
+React 工作台使用 `/next` 入口，复用 aiohttp API；访问服务根路径 `/` 默认跳转到 Next。历史 `/?ui=dragon` 和 `/?ui=classic` 地址会兼容重定向到 Next，不再加载旧 UI。
 验收状态与已知边界见 [实施记录](../../docs/features/dragon-next-implementation.md)。
 后续审阅改进见 [UI/UX 实施进度](../../docs/features/dragon-next-uiux-progress.md)。
 
@@ -57,7 +57,7 @@ DRAGON_VERIFY_URL=http://127.0.0.1:20102 node web/frontend-next/scripts/verify-p
 `/tmp/dragon-next-production-check`，可用 `DRAGON_VERIFY_OUTPUT` 指定其他目录。
 生产截图可能包含用户信息，不应提交或发送到外部评审服务。
 
-故障时可直接转到 `/?ui=dragon` 或 `/?ui=classic`，不需要重启后端或停止训练。
+故障时使用 Next 错误页中的“训练配置”恢复入口；`previous-index.html` 与旧 hashed chunks 仅用于发布回退，不是可选的旧 UI 入口。
 `web/static/dragon-next/previous-index.html` 保留上一次构建的入口文件。
 需要回退静态版本时，先备份当前 `index.html`，将 `previous-index.html` 复制到同目录临时文件，
 再原子替换 `index.html`。这只回退前端，不回滚业务数据；不要直接打开副本的静态 URL，router 仍要求 `/next`。
