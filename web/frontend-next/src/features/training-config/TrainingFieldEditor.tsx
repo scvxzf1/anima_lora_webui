@@ -1,8 +1,11 @@
 import { sameTrainingValue, type TrainingDraft, type TrainingFieldSpec } from "./trainingForm";
-import { FilePenLine, Undo2 } from "lucide-react";
+import { FilePenLine, HelpCircle, Undo2 } from "lucide-react";
+import { useState } from "react";
 import { TrainingDatasetField } from "./TrainingDatasetField";
 import { availableFieldOptions, fieldAvailability } from "./fieldCatalog";
 import { FIELD_HELP_SUMMARY_ZH } from "./domain/field-help-summary.js";
+import { FORM_UI_DEFAULTS } from "./domain/defaults.js";
+import { TrainingFieldHelpDialog } from "./TrainingFieldHelpDialog";
 
 type Props = {
   fields: TrainingFieldSpec[];
@@ -25,11 +28,14 @@ export function TrainingFieldEditor({
   method = "lora",
   onEditPrompts,
 }: Props) {
+  const [helpField, setHelpField] = useState<TrainingFieldSpec | null>(null);
+  const modelFamily = String(draft.model_family || "anima");
   return (
+    <>
     <div className="training-edit-fields">
       {fields.map((field) => {
         const dirty = !sameTrainingValue(draft[field.key], baseline[field.key], field.kind);
-        if (field.key === "dataset_config") return <TrainingDatasetField key={field.key} value={String(draft.dataset_config ?? "")} dirty={dirty} disabled={disabled} own={ownKeys.has(field.key)} onChange={(value) => onChange(field.key, value)} onUndo={() => onChange(field.key, baseline.dataset_config ?? "")} />;
+        if (field.key === "dataset_config") return <TrainingDatasetField key={field.key} value={String(draft.dataset_config ?? "")} dirty={dirty} disabled={disabled} own={ownKeys.has(field.key)} onHelp={() => setHelpField(field)} onChange={(value) => onChange(field.key, value)} onUndo={() => onChange(field.key, baseline.dataset_config ?? "")} />;
         const availability = fieldAvailability(field.key, draft, method);
         const options = availableFieldOptions(
           field,
@@ -56,14 +62,13 @@ export function TrainingFieldEditor({
               <span>{field.label}</span>
               <code className="training-field-tag">{field.key}</code>
               {dirty && <span className="training-field-dirty" role="status">已修改</span>}
-              {(dirty || (field.key === "sample_prompts" && onEditPrompts)) && (
-                <span className="training-field-actions">
+              <span className="training-field-actions">
+                  <button type="button" className="training-field-help-trigger" title={`查看${field.label}帮助`} aria-label={`查看${field.label}帮助`} onClick={(event) => { event.preventDefault(); event.stopPropagation(); setHelpField(field); }}><HelpCircle size={16} aria-hidden="true" /></button>
                   {dirty && <button type="button" className="training-field-undo" aria-label={`撤销${field.label}修改`} title={`撤销 ${field.label} 修改`} disabled={disabled} onClick={(event) => { event.preventDefault(); event.stopPropagation(); onChange(field.key, baseline[field.key] ?? ""); }}><Undo2 size={15} aria-hidden="true" /></button>}
                   {field.key === "sample_prompts" && onEditPrompts && (
                     <button type="button" title="编辑样张提示词" aria-label="编辑样张提示词" disabled={controlDisabled} onClick={(event) => { event.preventDefault(); onEditPrompts(); }}><FilePenLine size={16} /></button>
                   )}
                 </span>
-              )}
             </span>
             {field.kind === "json" ? (
               <textarea
@@ -134,5 +139,7 @@ export function TrainingFieldEditor({
         );
       })}
     </div>
+    {helpField && <TrainingFieldHelpDialog label={helpField.label} fieldKey={helpField.key} value={draft[helpField.key]} defaultValue={helpField.defaultValue ?? (FORM_UI_DEFAULTS as Record<string, unknown>)[helpField.key]} modelFamily={modelFamily} unavailableReason={fieldAvailability(helpField.key, draft, method).enabled ? undefined : fieldAvailability(helpField.key, draft, method).reason} onClose={() => setHelpField(null)} />}
+    </>
   );
 }

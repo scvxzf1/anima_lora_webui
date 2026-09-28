@@ -377,6 +377,25 @@
   border-radius: 4px;
   cursor: pointer;
 }
+.training-field-help-trigger {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  padding: 0;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.training-field-help-trigger:hover,
+.training-field-help-trigger:focus-visible {
+  color: var(--ink);
+  border-color: var(--line-strong);
+  outline: 0;
+}
 .training-field-undo:disabled {
   cursor: not-allowed;
   opacity: 0.5;

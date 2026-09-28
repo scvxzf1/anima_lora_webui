@@ -344,7 +344,7 @@ it("shows summaries, expands groups without edits, and reveals search matches", 
   expect(onChange).not.toHaveBeenCalled();
   await user.click(swap);
   view.rerender(<TrainingResourceGroups {...props} search="auto_block_swap" fields={fields.filter((field) => field.key === "auto_block_swap")} />);
-  expect(screen.getByRole("button", { name: /块交换/ })).toHaveAttribute("aria-expanded", "true");
+  expect(screen.getByRole("button", { name: /块交换与内存卸载/ })).toHaveAttribute("aria-expanded", "true");
   expect(screen.getByLabelText("AUTO 块交换（实验）")).toBeVisible();
   expect(screen.queryByRole("button", { name: /精度与计算/ })).not.toBeInTheDocument();
   expect(resourceSummary("residency", { auto_block_swap: true, auto_block_swap_mode: "dynamic" })).toBe("AUTO · dynamic");

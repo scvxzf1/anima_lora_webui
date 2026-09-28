@@ -88,6 +88,9 @@ function setup({ readonly = false, fail = false, disabled = false } = {}) {
           value={file}
           disabled={disabled}
           own
+          dirty={false}
+          onHelp={vi.fn()}
+          onUndo={vi.fn()}
           onChange={onChange}
         />
       </MemoryRouter>
