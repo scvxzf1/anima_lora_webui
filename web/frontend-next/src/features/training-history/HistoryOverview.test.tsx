@@ -14,17 +14,30 @@ describe("history overview checkpoint source", () => {
     Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
     renderInApp(<HistoryOverview detail={{ task: {
       job: "training", state: "idle", run_dir_abs: "/runs/task-1", project_root_abs: "/project",
-      logs_path: "output/logs/task.log",
+      runtime_config_file: "config.runtime.toml", history_dir_abs: "/external/history/task-1",
+      logs_path: "logs.jsonl",
     } as HistoryTaskSummary & Record<string, unknown> }} />);
 
     await user.click(screen.getByRole("button", { name: "复制基础目录" }));
     expect(writeText).toHaveBeenCalledWith("/runs/task-1");
     expect(screen.getByRole("status")).toHaveTextContent("基础目录已复制");
 
+    await user.click(screen.getByRole("button", { name: "复制实际运行配置" }));
+    expect(writeText).toHaveBeenLastCalledWith("/runs/task-1/config.runtime.toml");
+
     writeText.mockRejectedValueOnce(new Error("permission denied"));
     await user.click(screen.getByRole("button", { name: "复制历史日志文件" }));
-    expect(writeText).toHaveBeenLastCalledWith("/project/output/logs/task.log");
+    expect(writeText).toHaveBeenLastCalledWith("/external/history/task-1/logs.jsonl");
     expect(screen.getByRole("status")).toHaveTextContent("无法复制历史日志文件");
+  });
+
+  it("does not offer copying for a relative path with no known base", () => {
+    renderInApp(<HistoryOverview detail={{ task: {
+      job: "training", state: "idle", runtime_config_file: "config.runtime.toml",
+    } as HistoryTaskSummary & Record<string, unknown> }} />);
+
+    expect(screen.getByText("config.runtime.toml")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "复制实际运行配置" })).toBeDisabled();
   });
 
   it.each<[HistoryTaskSummary["resume_from"], string]>([

@@ -43,9 +43,9 @@ function TaskAssets({ taskId }: { taskId: string }) {
     {weights.error && <p role="alert">{weights.error.message} <button type="button" onClick={() => weights.refetch()}>重试权重</button></p>}
     <div className="weight-list">
       {weights.data?.weights.map((weight) => <div key={weight.file}>
-        <div className="history-weight-file"><a href={historyAssetUrl(taskId, weight.file, true)} download>{weight.name}</a><code>{(weight as typeof weight & { abs_path?: string }).abs_path || weight.file}</code></div>
+        <div className="history-weight-file"><a href={historyAssetUrl(taskId, weight.file, true)} download>{weight.name}</a><code>{weight.abs_path || weight.file}</code></div>
         <span>{(weight.size_bytes / 1048576).toFixed(1)} MB · {weight.scope_label}</span>
-        <button type="button" aria-label={`复制 ${weight.name} 的本地路径`} title="复制本地路径" onClick={() => void copyWeightPath((weight as typeof weight & { abs_path?: string }).abs_path || weight.file, weight.name, setCopyStatus)}>
+        <button type="button" aria-label={`复制 ${weight.name} 的本地路径`} title={weight.abs_path ? "复制本地路径" : "本地绝对路径不可用"} disabled={!weight.abs_path} onClick={() => void copyWeightPath(weight.abs_path || "", weight.name, setCopyStatus)}>
           <Copy aria-hidden="true" size={15} />
         </button>
       </div>)}

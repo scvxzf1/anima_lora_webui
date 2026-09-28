@@ -10,6 +10,7 @@ import { HistoryResultSummary } from "./HistoryResultSummary";
 import type { ReactNode } from "react";
 import { useState } from "react";
 import { Copy } from "lucide-react";
+import { resolveHistoryPath } from "./historyPaths";
 
 export function HistoryOverview({ detail }: { detail: HistoryTaskDetail }) {
   const [copyStatus, setCopyStatus] = useState("");
@@ -87,18 +88,16 @@ function HistoryPathList({ task, onCopyStatus }: {
 }) {
   const fields = task as (typeof task & Record<string, unknown>) | undefined;
   if (!fields) return null;
-  const root = String(fields.project_root_abs || "").trim().replace(/[\\/]+$/, "");
   const paths = HISTORY_PATH_FIELDS.flatMap(([label, key]) => {
-    const value = String(fields[key] || (key === "run_dir_abs" ? fields.run_dir : key === "training_output_dir" ? fields.output_dir : "") || "").trim();
-    if (!value) return [];
-    const absolute = /^(?:[A-Za-z]:[\\/]|\\\\|\/)/.test(value) || !root
-      ? value
-      : `${root}${root.includes("\\") && !root.includes("/") ? "\\" : "/"}${value.replace(/^[\\/]+/, "")}`;
-    return [[label, absolute] as const];
+    const fallback = key === "run_dir_abs" ? fields.run_dir : key === "training_output_dir" ? fields.output_dir : "";
+    const resolved = resolveHistoryPath(fields, key, fallback);
+    if (!resolved.value) return [];
+    return [[label, resolved.value, resolved.absolute] as const];
   });
   if (!paths.length) return null;
-  const copyPath = async (path: string, label: string) => {
+  const copyPath = async (path: string, label: string, absolute: boolean) => {
     try {
+      if (!absolute) throw new Error("Path is not absolute");
       if (!navigator.clipboard?.writeText) throw new Error("Clipboard unavailable");
       await navigator.clipboard.writeText(path);
       onCopyStatus(`${label}已复制。`);
@@ -108,9 +107,9 @@ function HistoryPathList({ task, onCopyStatus }: {
   };
   return <section className="history-paths" aria-label="文件路径">
     <h3>文件路径</h3>
-    <ul>{paths.map(([label, path]) => <li key={label}>
+    <ul>{paths.map(([label, path, absolute]) => <li key={label}>
       <span>{label}</span><code title={path}>{path}</code>
-      <button type="button" aria-label={`复制${label}`} title={`复制${label}`} onClick={() => void copyPath(path, label)}>
+      <button type="button" aria-label={`复制${label}`} title={absolute ? `复制${label}` : `${label}位置不确定，无法复制绝对路径`} disabled={!absolute} onClick={() => void copyPath(path, label, absolute)}>
         <Copy aria-hidden="true" size={15} />
       </button>
     </li>)}</ul>

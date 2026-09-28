@@ -231,6 +231,7 @@ export type HistoryImageListing = {
 };
 export type HistoryWeight = {
   file: string;
+  abs_path?: string;
   name: string;
   size_bytes: number;
   scope_label: string;
