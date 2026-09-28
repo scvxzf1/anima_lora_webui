@@ -1,11 +1,31 @@
 import { cleanup, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import userEvent from "@testing-library/user-event";
 import { renderInApp } from "../../test/renderInApp";
 import type { HistoryTaskSummary } from "./api";
 import { HistoryOverview } from "./HistoryOverview";
 
 describe("history overview checkpoint source", () => {
   afterEach(cleanup);
+
+  it("copies available task paths and reports clipboard failures accessibly", async () => {
+    const user = userEvent.setup();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
+    renderInApp(<HistoryOverview detail={{ task: {
+      job: "training", state: "idle", run_dir_abs: "/runs/task-1", project_root_abs: "/project",
+      logs_path: "output/logs/task.log",
+    } as HistoryTaskSummary & Record<string, unknown> }} />);
+
+    await user.click(screen.getByRole("button", { name: "复制基础目录" }));
+    expect(writeText).toHaveBeenCalledWith("/runs/task-1");
+    expect(screen.getByRole("status")).toHaveTextContent("基础目录已复制");
+
+    writeText.mockRejectedValueOnce(new Error("permission denied"));
+    await user.click(screen.getByRole("button", { name: "复制历史日志文件" }));
+    expect(writeText).toHaveBeenLastCalledWith("/project/output/logs/task.log");
+    expect(screen.getByRole("status")).toHaveTextContent("无法复制历史日志文件");
+  });
 
   it.each<[HistoryTaskSummary["resume_from"], string]>([
     [{}, "未记录"],

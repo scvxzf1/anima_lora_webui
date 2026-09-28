@@ -261,6 +261,10 @@
 .weight-list a {
   overflow-wrap: anywhere;
 }
+.history-weight-file { display: grid; min-width: 0; gap: 4px; }
+.history-weight-file code { display: block; max-width: 100%; overflow-wrap: anywhere; color: var(--ink); font-size: 11px; }
+.weight-list > div > button { display: grid; place-items: center; flex: 0 0 32px; width: 32px; height: 32px; padding: 0; color: var(--muted); background: transparent; border: 1px solid var(--line-strong); border-radius: 4px; }
+.weight-list > div > button:hover { color: var(--accent); }
 .weight-list span {
   color: var(--muted);
   font-size: 12px;
@@ -311,6 +315,15 @@
 .history-overview-section { min-width: 0; padding: 16px 0; }
 .history-overview-section h2 { margin: 0 0 10px; font-size: 16px; }
 .history-overview-section .history-info { padding: 0; gap: 10px; font-size: 13px; }
+.history-paths { padding: 12px 16px 0; }
+.history-paths h3 { margin: 0 0 8px; font-size: 13px; }
+.history-paths ul { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.history-paths li { display: grid; grid-template-columns: minmax(90px, 150px) minmax(0, 1fr) 32px; align-items: center; gap: 8px; font-size: 12px; }
+.history-paths li > span { color: var(--muted); }
+.history-paths code { min-width: 0; overflow-wrap: anywhere; color: var(--ink); font-size: 11px; }
+.history-paths button { display: grid; place-items: center; width: 32px; height: 32px; padding: 0; color: var(--muted); background: transparent; border: 1px solid var(--line-strong); border-radius: 4px; }
+.history-paths button:hover { color: var(--accent); }
+.history-copy-status { min-height: 1.4em; margin: 6px 16px 0; color: var(--success); font-size: 12px; }
 .history-diagnostics { margin-top: 16px; border-top: 1px solid var(--line); padding-top: 14px; }
 .history-diagnostics summary { cursor: pointer; }
 .history-missing-fields { margin-top: 12px; font-size: 13px; color: var(--muted); }
