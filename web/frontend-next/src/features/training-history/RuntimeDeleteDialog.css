@@ -1,0 +1,85 @@
+.runtime-delete-dialog {
+  display: grid;
+  gap: 14px;
+  max-height: min(72vh, 680px);
+  overflow: auto;
+  padding: 4px 20px 18px;
+}
+.runtime-delete-dialog > section {
+  min-width: 0;
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+}
+.runtime-delete-dialog h3,
+.runtime-delete-dialog h4 {
+  margin: 0 0 8px;
+  font-size: 14px;
+}
+.runtime-delete-dialog p {
+  margin: 0;
+  font-size: 13px;
+}
+.runtime-delete-warning,
+.runtime-delete-blocked {
+  color: var(--danger);
+}
+.runtime-delete-dialog ul {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding-left: 20px;
+}
+.runtime-delete-dialog li {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+}
+.runtime-delete-dialog li strong,
+.runtime-delete-dialog li small,
+.runtime-delete-dialog li span {
+  display: block;
+}
+.runtime-delete-dialog li small {
+  color: var(--muted);
+}
+.runtime-delete-dialog code {
+  overflow-wrap: anywhere;
+}
+.runtime-delete-confirm {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  font-size: 13px;
+}
+.runtime-delete-confirm input {
+  flex: 0 0 auto;
+  margin: 2px 0 0;
+}
+.runtime-delete-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.runtime-delete-actions button {
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--button-border);
+  border-radius: 6px;
+  background: var(--button-bg);
+  color: var(--button-ink);
+}
+.runtime-delete-actions .history-danger {
+  border-color: var(--danger);
+}
+@media (max-width: 600px) {
+  .runtime-delete-dialog {
+    max-height: 68vh;
+    padding-inline: 14px;
+  }
+  .runtime-delete-actions {
+    flex-wrap: wrap;
+  }
+  .runtime-delete-actions button {
+    flex: 1 1 140px;
+  }
+}
