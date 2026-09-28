@@ -6,7 +6,12 @@ export type ResolvedHistoryPath = {
 };
 
 const PROJECT_RELATIVE_ROOTS = /^(?:configs|image_dataset|library|logs|models|networks|output|post_image_dataset|scripts|tests|web)(?:[\\/]|$)/;
-const HISTORY_RELATIVE_FIELDS = new Set(["logs_path", "metrics_path", "system_path", "config_snapshot"]);
+const HISTORY_FILE_NAMES: Record<string, string> = {
+  logs_path: "logs.jsonl",
+  metrics_path: "metrics.jsonl",
+  system_path: "system.jsonl",
+  config_snapshot: "config.snapshot.toml",
+};
 const RUN_RELATIVE_FIELDS = new Set(["runtime_config_file", "original_config_file", "dataset_config_file"]);
 
 export function resolveHistoryPath(task: HistoryPathTask, field: string, fallback?: unknown): ResolvedHistoryPath {
@@ -17,10 +22,16 @@ export function resolveHistoryPath(task: HistoryPathTask, field: string, fallbac
   const clean = raw.replace(/^(?:\.\/|\.\\)+/, "").replace(/^[\\/]+/, "");
   if (!clean) return { value: raw, absolute: false };
 
-  if (HISTORY_RELATIVE_FIELDS.has(field)) {
-    return joinKnownBase(task.history_dir_abs, clean, raw);
+  if (field in HISTORY_FILE_NAMES) {
+    const name = HISTORY_FILE_NAMES[field];
+    if (clean.split(/[\\/]/).at(-1) !== name) return { value: raw, absolute: false };
+    return joinKnownBase(task.history_dir_abs, name, raw);
   }
   if (RUN_RELATIVE_FIELDS.has(field)) {
+    if (clean === "configs" || clean.startsWith("configs/") || clean.startsWith("configs\\")) {
+      return { value: raw, absolute: false };
+    }
+    if (PROJECT_RELATIVE_ROOTS.test(clean)) return joinKnownBase(task.project_root_abs, clean, raw);
     return joinKnownBase(task.run_dir_abs, clean, raw);
   }
   if (field === "run_dir_abs" || field === "history_dir_abs") {

@@ -15,7 +15,8 @@ describe("history overview checkpoint source", () => {
     renderInApp(<HistoryOverview detail={{ task: {
       job: "training", state: "idle", run_dir_abs: "/runs/task-1", project_root_abs: "/project",
       runtime_config_file: "config.runtime.toml", history_dir_abs: "/external/history/task-1",
-      logs_path: "logs.jsonl",
+      logs_path: "configs/web-training-history/task-1/logs.jsonl",
+      config_snapshot: "configs/web-training-history/task-1/config.snapshot.toml",
     } as HistoryTaskSummary & Record<string, unknown> }} />);
 
     await user.click(screen.getByRole("button", { name: "复制基础目录" }));
@@ -29,6 +30,21 @@ describe("history overview checkpoint source", () => {
     await user.click(screen.getByRole("button", { name: "复制历史日志文件" }));
     expect(writeText).toHaveBeenLastCalledWith("/external/history/task-1/logs.jsonl");
     expect(screen.getByRole("status")).toHaveTextContent("无法复制历史日志文件");
+    await user.click(screen.getByRole("button", { name: "复制历史 TOML 快照" }));
+    expect(writeText).toHaveBeenLastCalledWith("/external/history/task-1/config.snapshot.toml");
+  });
+
+  it("resolves project-relative runtime files without repeating the run directory", async () => {
+    const user = userEvent.setup();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
+    renderInApp(<HistoryOverview detail={{ task: {
+      job: "training", state: "idle", project_root_abs: "/project", run_dir_abs: "/project/output/runs/task-1",
+      runtime_config_file: "output/runs/task-1/config.runtime.toml",
+    } as HistoryTaskSummary & Record<string, unknown> }} />);
+
+    await user.click(screen.getByRole("button", { name: "复制实际运行配置" }));
+    expect(writeText).toHaveBeenCalledWith("/project/output/runs/task-1/config.runtime.toml");
   });
 
   it("does not offer copying for a relative path with no known base", () => {
