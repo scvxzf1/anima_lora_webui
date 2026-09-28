@@ -28,6 +28,18 @@ describe("preview workspace API", () => {
     expect(urls[2].searchParams.get("sort")).toBe("recent");
   });
 
+  it("includes offsets for later config-group image pages", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ images: [] })));
+    vi.stubGlobal("fetch", fetchMock);
+    await fetchPreviewImages("training", "group", "", {
+      key: "group", historyGroupKey: "", methodsSubdir: "gui-methods", variant: "lora",
+      preset: "default", label: "group", tasks: [],
+    }, "all", 200);
+    const url = new URL(fetchMock.mock.calls[0][0], "http://localhost");
+    expect(url.searchParams.get("mode")).toBe("config_group");
+    expect(url.searchParams.get("offset")).toBe("200");
+  });
+
   it("passes deletion scope and filenames to the bounded server endpoint", async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ ok: true })));
     vi.stubGlobal("fetch", fetchMock);

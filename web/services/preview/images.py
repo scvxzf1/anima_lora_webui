@@ -219,10 +219,13 @@ def list_config_group_preview_images(
     preset: str,
     limit: int = 200,
     days: int | None = None,
+    offset: int = 0,
 ) -> dict[str, Any]:
     group_label = f"{methods_subdir} / {variant} / {preset or 'default'}"
     label = f"训练分组合并采样结果 · {group_label} · {len(tasks)} 次训练"
     limit = max(1, min(int(limit or 200), get("MAX_IMAGE_LIMIT")))
+    offset = max(0, int(offset))
+    candidate_limit = offset + limit
     days = _normalize_preview_days(days)
     cutoff = _preview_days_cutoff(days)
     candidate_contexts: dict[str, dict[str, Any]] = {}
@@ -247,7 +250,7 @@ def list_config_group_preview_images(
             candidates, directory_total = select_recent_files(
                 resolved,
                 suffixes=get("IMAGE_EXTS"),
-                limit=limit,
+                limit=candidate_limit,
                 min_mtime=cutoff,
             )
             scanned_directories[resolved_key] = candidates
@@ -290,7 +293,7 @@ def list_config_group_preview_images(
             }
 
     selected = nlargest(
-        limit,
+        candidate_limit,
         candidate_contexts.values(),
         key=lambda item: (
             float(item["stat"].st_mtime),
@@ -298,8 +301,9 @@ def list_config_group_preview_images(
             item["path"].as_posix(),
         ),
     )
+    page_items = selected[offset:offset + limit]
     images: list[dict[str, Any]] = []
-    for item in selected:
+    for item in page_items:
         meta = _available_image_meta(
             item["path"],
             task_id=item["task_id"],
@@ -321,6 +325,8 @@ def list_config_group_preview_images(
         "directory_exists": bool(directories),
         "count": len(images),
         "total": total,
+        "offset": offset,
+        "next_offset": offset + limit if offset + limit < total else None,
         "images": images,
         "message": "" if images else "这个训练分组还没有可显示的样张",
         "sample_config": {},

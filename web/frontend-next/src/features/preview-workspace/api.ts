@@ -102,7 +102,7 @@ export function fetchPreviewImages(source: PreviewSource, scope: string, taskId:
   params.set("source", source);
   params.set("limit", "200");
   params.set("days", days);
-  if (offset && scope !== "group") params.set("offset", String(offset));
+  if (offset) params.set("offset", String(offset));
   return apiRequest<{ images: PreviewImage[]; count?: number; total?: number; next_offset?: number | null; directory?: string; message?: string }>(
     `/api/preview/images?${params}`, { signal },
   );

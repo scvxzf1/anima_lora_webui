@@ -889,6 +889,7 @@ def test_config_group_preview_images_merge_training_tasks(tmp_path, monkeypatch)
 
     assert payload["mode"] == "config_group"
     assert payload["count"] == 2
+    assert payload["total"] == 2
     assert payload["task_count"] == 3
     assert {item["source_task"]["id"] for item in payload["images"]} == {"task-a", "task-b"}
     assert all("task_id=" in item["url"] for item in payload["images"])
@@ -935,6 +936,42 @@ def test_config_group_preview_limits_metadata_to_global_top_k(tmp_path, monkeypa
         "image-1-4.png",
         "image-1-3.png",
         "image-1-2.png",
+    ]
+
+
+def test_config_group_preview_pages_across_directories_and_deduplicates_shared_directory(tmp_path, monkeypatch):
+    sample_a = tmp_path / "task-a" / "sample"
+    sample_b = tmp_path / "task-b" / "sample"
+    sample_a.mkdir(parents=True)
+    sample_b.mkdir(parents=True)
+    for directory, prefix, base in ((sample_a, "a", 100), (sample_b, "b", 200)):
+        for index in range(3):
+            path = directory / f"{prefix}-{index}.png"
+            Image.new("RGB", (8, 8)).save(path)
+            os.utime(path, (base + index, base + index))
+    monkeypatch.setattr(preview_service, "_training_step_index", lambda _task: {})
+    tasks = [
+        {"id": "task-a", "job": "training", "sample_dir": str(sample_a)},
+        {"id": "task-b", "job": "training", "sample_dir": str(sample_b)},
+        {"id": "task-b-copy", "job": "training", "sample_dir": str(sample_b)},
+    ]
+
+    first = preview_service.list_config_group_preview_images(
+        tasks, methods_subdir="imported", variant="demo", preset="default", limit=2,
+    )
+    second = preview_service.list_config_group_preview_images(
+        tasks, methods_subdir="imported", variant="demo", preset="default", limit=2, offset=2,
+    )
+    final = preview_service.list_config_group_preview_images(
+        tasks, methods_subdir="imported", variant="demo", preset="default", limit=2, offset=4,
+    )
+
+    assert first["total"] == second["total"] == final["total"] == 6
+    assert first["next_offset"] == 2
+    assert second["next_offset"] == 4
+    assert final["next_offset"] is None
+    assert [image["name"] for image in first["images"] + second["images"] + final["images"]] == [
+        "b-2.png", "b-1.png", "b-0.png", "a-2.png", "a-1.png", "a-0.png",
     ]
 
 

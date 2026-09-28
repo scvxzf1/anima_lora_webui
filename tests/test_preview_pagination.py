@@ -1,9 +1,13 @@
+import asyncio
+import json
 import os
+from types import SimpleNamespace
 import pytest
 
 from PIL import Image
 
 from tests.test_preview_service import _patch_preview_settings_file
+from web.routes import preview as preview_routes
 from web.services import preview_service
 
 
@@ -35,6 +39,41 @@ def test_images_offset_only_reads_page_metadata(tmp_path, monkeypatch):
     assert page["count"] == 5
     assert page["next_offset"] is None
     assert seen == [f"image-{index}.png" for index in range(4, -1, -1)]
+
+
+def test_config_group_image_route_forwards_nonnegative_offset(monkeypatch):
+    captured = {}
+
+    def list_page(tasks, **kwargs):
+        captured["tasks"] = tasks
+        captured.update(kwargs)
+        return {"ok": True, "mode": "config_group", "images": [], "offset": kwargs["offset"]}
+
+    monkeypatch.setattr(preview_routes, "_selected_config_group_tasks", lambda _request: [{"id": "task-a"}])
+    monkeypatch.setattr(preview_routes, "list_config_group_preview_images", list_page)
+    request = SimpleNamespace(
+        query={"source": "training", "mode": "config_group", "limit": "25", "offset": "50"},
+        app={},
+    )
+
+    response = asyncio.run(preview_routes.handle_preview_images(request))
+
+    assert response.status == 200
+    assert json.loads(response.text)["offset"] == 50
+    assert captured["offset"] == 50
+    assert captured["limit"] == 25
+
+
+def test_config_group_image_route_rejects_negative_offset():
+    request = SimpleNamespace(
+        query={"source": "training", "mode": "config_group", "offset": "-1"},
+        app={},
+    )
+
+    response = asyncio.run(preview_routes.handle_preview_images(request))
+
+    assert response.status == 400
+    assert "offset" in json.loads(response.text)["error"]
 
 
 def test_weights_beyond_500_are_paged_with_bounded_header_reads(tmp_path, monkeypatch):

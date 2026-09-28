@@ -64,7 +64,7 @@ export function PreviewWorkspace() {
     queryKey: [...assetsKey, "images"],
     queryFn: ({ pageParam, signal }) => fetchPreviewImages(source, scope, taskId, selectedGroup, days, pageParam, signal),
     initialPageParam: 0,
-    getNextPageParam: (last) => scope === "group" ? undefined : last.next_offset ?? undefined,
+    getNextPageParam: (last) => last.next_offset ?? undefined,
     enabled: source !== "training" || ((scope !== "task" || Boolean(taskId)) && (scope !== "group" || Boolean(selectedGroup))),
   });
   const weights = useInfiniteQuery({
@@ -146,10 +146,9 @@ export function PreviewWorkspace() {
     {images.error && <p role="alert">{images.error.message} <button type="button" onClick={() => void images.refetch()}>重试图片</button></p>}
     {weights.error && <p role="alert">{weights.error.message} <button type="button" onClick={() => void weights.refetch()}>重试权重</button></p>}
     {(images.isPending || (source === "training" && weights.isPending)) && <p role="status">正在读取预览资源…</p>}
-    {!images.isPending && !images.error && <p className="preview-note">{imageSummary?.message || `${imagesData.length} / ${imageSummary?.total ?? imagesData.length} 张 · ${imageSummary?.directory || effectiveDirectory || "目录未设置"}`}</p>}
+    {!images.isPending && !images.error && <p className="preview-note">{imageSummary?.message || `${imagesData.length} / ${imageSummary?.total ?? imagesData.length} 张${scope === "group" ? "（符合筛选的唯一文件数）" : ""} · ${imageSummary?.directory || effectiveDirectory || "目录未设置"}`}</p>}
     {!weights.isPending && source === "training" && !weights.error && weightSummary?.message && <p className="preview-note">{weightSummary.message}</p>}
     {source === "training" && scope === "group" && weightSummary?.truncated && <p className="preview-note">配置组中部分任务的权重超过单任务显示上限；切换到单个任务后可继续浏览。</p>}
-    {source === "training" && scope === "group" && imageSummary?.total != null && imagesData.length < imageSummary.total && <p className="preview-note">配置组显示最近 {imagesData.length} 张；可选择单个任务继续浏览。</p>}
     <PreviewAssets key={`${source}:${scope}:${selectedTaskId}:${groupKey}:${days}`} images={imagesData} weights={source === "training" ? weightsData : []} taskId={selectedTaskId || undefined} readOnlyGroup={source === "training" && scope === "group"} onDelete={(files) => {
       if (source === "training" && scope === "group") return;
       if (window.confirm(`永久删除所选 ${files.length} 张图片？此操作无法撤销。`)) remove.mutate(files);

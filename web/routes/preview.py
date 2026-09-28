@@ -69,8 +69,6 @@ async def handle_preview_images(request: web.Request) -> web.Response:
             raise ValueError("offset 不能为负数")
         days = _preview_days_filter(request)
         if source == "training" and request.query.get("mode") == "config_group":
-            if offset:
-                raise ValueError("配置组预览尚不支持 offset 分页")
             tasks = _selected_config_group_tasks(request)
             payload = await asyncio.to_thread(
                 list_config_group_preview_images,
@@ -80,6 +78,7 @@ async def handle_preview_images(request: web.Request) -> web.Response:
                 preset=str(request.query.get("preset") or "default"),
                 limit=limit,
                 days=days,
+                offset=offset,
             )
             return web.json_response(payload)
 
