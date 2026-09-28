@@ -40,5 +40,6 @@ export function redirectLegacyHash(location: Location = window.location): boolea
   if (target.view) query.set("view", target.view);
   const base = location.pathname === "/next" || location.pathname.startsWith("/next/") ? "/next" : "";
   window.history.replaceState(null, "", `${base}${target.path}${query.size ? `?${query}` : ""}`);
+  window.dispatchEvent(new PopStateEvent("popstate"));
   return true;
 }
