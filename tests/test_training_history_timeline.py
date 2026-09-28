@@ -237,6 +237,45 @@ def test_config_group_timeline_can_merge_selected_tasks_across_groups(tmp_path, 
         "20260517-000002-training-imported-other",
     ]
 
+def test_manual_timeline_limits_after_preserving_selected_task_order(tmp_path, monkeypatch):
+    history_dir = tmp_path / "history"
+    first_id = "20260517-000001-training-imported-first"
+    second_id = "20260517-000002-training-imported-second"
+    first_dir = _write_group_task(
+        history_dir,
+        first_id,
+        started_at=2000.0,
+        steps=[(1, 0.3), (2, 0.2)],
+    )
+    second_dir = _write_group_task(
+        history_dir,
+        second_id,
+        started_at=1000.0,
+        steps=[(1, 0.19), (2, 0.18)],
+    )
+    for task_id, task_dir, timestamp in (
+        (first_id, first_dir, 2000.0),
+        (second_id, second_dir, 1000.0),
+    ):
+        (task_dir / "logs.jsonl").write_text(
+            "\n".join(json.dumps({"id": index, "kind": "message", "line": f"{task_id}-{index}", "ts": timestamp + index}) for index in (1, 2)) + "\n",
+            encoding="utf-8",
+        )
+    monkeypatch.setattr(training_service, "HISTORY_DIR", history_dir)
+    monkeypatch.setattr(training_service, "MAX_TIMELINE_LOG_RECORDS", 2)
+    monkeypatch.setattr(training_service, "MAX_TIMELINE_METRIC_RECORDS", 2)
+
+    payload = TrainingService(web.Application()).get_config_group_timeline(
+        "imported",
+        "first",
+        "default",
+        task_ids=[first_id, second_id],
+    )
+
+    assert [item["source_task_id"] for item in payload["logs"]] == [second_id, second_id]
+    assert [item["source_task_id"] for item in payload["metrics"]] == [second_id, second_id]
+    assert [item["step"] for item in payload["metrics"]] == [1, 2]
+
 def test_config_group_timeline_rejects_hidden_selected_archived_task(tmp_path, monkeypatch):
     history_dir = tmp_path / "history"
     _write_group_task(
@@ -261,4 +300,3 @@ def test_config_group_timeline_rejects_hidden_selected_archived_task(tmp_path, m
         assert "已隐藏" in str(e)
     else:
         raise AssertionError("隐藏的归档任务不应参与手动合并")
-

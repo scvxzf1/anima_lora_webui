@@ -118,7 +118,9 @@ def _build_config_group_timeline(
         task_dir = _history_task_dir(task_id)
         task_logs = _read_jsonl(task_dir / "logs.jsonl")
         visible_logs = [record for record in task_logs if record.get("kind") != "progress"]
+        visible_logs.sort(key=lambda item: (float(item.get("ts") or 0), int(item.get("id") or 0)))
         task_metrics = _timeline_training_metrics(_history_metrics_for_task(task_dir, logs=task_logs))
+        task_metrics.sort(key=lambda item: (float(item.get("ts") or 0), int(item.get("step") or 0)))
         if task_metrics:
             start_visual_step = next_visual_step
             next_visual_step = _assign_visual_steps(task_metrics, next_visual_step)
@@ -170,17 +172,6 @@ def _build_config_group_timeline(
             "start_raw_step": start_raw_step,
             "end_raw_step": end_raw_step,
         })
-
-    logs.sort(key=lambda item: (
-        float(item.get("ts") or 0),
-        int(item.get("source_task_index") or 0),
-        int(item.get("id") or 0),
-    ))
-    metrics.sort(key=lambda item: (
-        float(item.get("ts") or 0),
-        int(item.get("source_task_index") or 0),
-        int(item.get("visual_step") or 0),
-    ))
 
     max_logs = _max_timeline_log_records()
     max_metrics = _max_timeline_metric_records()

@@ -17,6 +17,16 @@ export function HistoryTimeline({ taskIds, onClose }: { taskIds: string[]; onClo
   const logs = data?.logs || [];
   const availableMetricCount = (data?.segments || []).reduce((sum, segment) => sum + Number(segment.metric_count || 0), 0);
   const availableLogCount = (data?.segments || []).reduce((sum, segment) => sum + Number(segment.log_count || 0), 0);
+  const visibleMetricsByTask = new Map<string, number>();
+  const visibleLogsByTask = new Map<string, number>();
+  for (const point of data?.metrics || []) {
+    const id = String(point.source_task_id || "");
+    visibleMetricsByTask.set(id, (visibleMetricsByTask.get(id) || 0) + 1);
+  }
+  for (const log of logs) {
+    const id = String(log.source_task_id || "");
+    visibleLogsByTask.set(id, (visibleLogsByTask.get(id) || 0) + 1);
+  }
   return <section className="history-timeline" aria-label="训练合并时间线">
     <header><div><p className="eyebrow">SEQUENTIAL HISTORY</p><h2>合并查看</h2><p>按已选顺序串接训练阶段；与并列任务对比独立。</p></div>
       <button type="button" title="关闭合并查看" aria-label="关闭合并查看" onClick={onClose}><X size={16} /></button></header>
@@ -31,7 +41,7 @@ export function HistoryTimeline({ taskIds, onClose }: { taskIds: string[]; onClo
       )}
       <ol className="history-timeline-stages">{(data.segments || []).map((segment, index) => <li key={segment.task?.id || index}>
         <strong>{index + 1}. {segment.task?.label || segment.task?.name || segment.task?.id || "训练任务"}</strong>
-        <span>{segment.metric_count ? `${segment.metric_count} 个指标 · ${segment.log_count || 0} 行日志` : `无指标 · ${segment.log_count || 0} 行日志`}{segment.start_display_step != null ? ` · 训练步数 ${segment.start_display_step}–${segment.end_display_step}` : ""}</span>
+        <span>{visibleMetricsByTask.get(String(segment.task?.id || "")) || 0}/{segment.metric_count || 0} 个指标 · {visibleLogsByTask.get(String(segment.task?.id || "")) || 0}/{segment.log_count || 0} 行日志{segment.start_display_step != null ? ` · 训练步数 ${segment.start_display_step}–${segment.end_display_step}` : ""}</span>
       </li>)}</ol>
       <section className="history-timeline-chart" aria-label="串接 Loss 曲线">
         <h3>Loss · 串接指标序号</h3>
