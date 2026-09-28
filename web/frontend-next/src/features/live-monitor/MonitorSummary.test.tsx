@@ -15,3 +15,20 @@ it("does not expose training metrics for preprocessing", () => {
   render(<MonitorSummary status={{ job: "preprocess", latest_metric: { loss: 0.91 } }} />);
   expect(screen.queryByText("Loss")).not.toBeInTheDocument();
 });
+
+it.each([
+  [79, false],
+  [80, true],
+  [95, true],
+  [Number.NaN, false],
+])("marks GPU temperature %s with warning=%s", (temperature, warning) => {
+  render(<MonitorSummary status={{ job: "training", latest_system: { gpu_temp: temperature } }} />);
+  const metric = screen.getByText("采样最高温度").parentElement;
+  if (warning) {
+    expect(metric).toHaveTextContent("高温预警");
+    expect(metric?.querySelector('[data-tone="warning"]')).toBeInTheDocument();
+  } else {
+    expect(metric).not.toHaveTextContent("高温预警");
+    expect(metric?.querySelector('[data-tone="warning"]')).not.toBeInTheDocument();
+  }
+});

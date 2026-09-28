@@ -23,6 +23,7 @@ export function HistoryTaskCard({
 }: HistoryTaskCardProps) {
   const name = historyTaskName(task);
   const summary = historySummary(task);
+  const rawTimestamp = task.started_at ?? task.started_at_text;
   const returnSearch = historyReturnSearch(listSearch, Number(new URLSearchParams(listSearch).get("depth")) || 1, String(task.id));
   return (
     <article className="history-card" data-history-task={task.id} data-state={task.state || "unknown"}>
@@ -64,7 +65,9 @@ export function HistoryTaskCard({
       <div className="history-card-meta">
         <span>{task.job === "preprocess" ? "预处理" : task.job === "training" ? "训练" : "任务类型未记录"}</span>
         <span>{task.group || "未分类"}</span>
-        <span>{task.started_at_text || ""}</span>
+        <time dateTime={historyTimestampDateTime(rawTimestamp)} title={rawTimestamp == null ? undefined : String(rawTimestamp)}>
+          {formatHistoryTimestamp(rawTimestamp)}
+        </time>
         <span>
           {summary.step != null
             ? `STEP ${formatStep(summary.step)}`
@@ -80,6 +83,30 @@ export function HistoryTaskCard({
       </div>
     </article>
   );
+}
+
+export function formatHistoryTimestamp(value: unknown) {
+  if (value == null || value === "") return "—";
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return String(value);
+  const date = new Date(numeric > 1e12 ? numeric : numeric * 1000);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return new Intl.DateTimeFormat("zh-CN", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(date);
+}
+
+function historyTimestampDateTime(value: unknown) {
+  if (value == null || value === "") return undefined;
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return undefined;
+  const date = new Date(numeric > 1e12 ? numeric : numeric * 1000);
+  return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
 }
 
 function Sparkline({ values }: { values: number[] }) {

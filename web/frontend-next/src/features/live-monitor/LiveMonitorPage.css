@@ -160,6 +160,13 @@
   font-variant-numeric: tabular-nums;
   overflow-wrap: anywhere;
 }
+.monitor-metric strong[data-tone="warning"] { color: var(--warning); }
+.monitor-temperature-warning {
+  display: block;
+  color: var(--warning);
+  font-size: 11px;
+  font-weight: 600;
+}
 
 .monitor-workspace {
   display: grid;

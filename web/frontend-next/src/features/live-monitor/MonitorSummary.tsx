@@ -14,6 +14,8 @@ export function MonitorSummary({ status }: { status: TrainingStatus }) {
   const system = status.latest_system || {};
   const step = finiteNumber(progress.current) ?? finiteNumber(metric.step);
   const total = finiteNumber(progress.total) ?? finiteNumber(metric.total);
+  const temperature = finiteNumber(system.gpu_temp);
+  const highTemperature = temperature != null && temperature >= 80;
   const pct = step != null && total != null && total > 0
     ? Math.max(0, Math.min(100, step / total * 100)) : undefined;
   const fields = [
@@ -41,7 +43,9 @@ export function MonitorSummary({ status }: { status: TrainingStatus }) {
     </section>
     <section className="monitor-metrics" aria-label="实时指标">
       {fields.filter(([name]) => status.job !== "preprocess" || !["Loss", "学习率"].includes(name)).map(([label, value]) =>
-        <div className="monitor-metric" key={label}><span>{label}</span><strong>{value}</strong></div>)}
+        <div className="monitor-metric" key={label}><span>{label}</span><strong data-tone={label === "采样最高温度" && highTemperature ? "warning" : undefined}>{value}
+          {label === "采样最高温度" && highTemperature ? <span className="monitor-temperature-warning">高温预警</span> : null}
+        </strong></div>)}
     </section>
   </>;
 }
