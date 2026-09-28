@@ -378,7 +378,9 @@ def _history_absolute_paths(task: dict[str, Any], task_dir: Path) -> dict[str, s
         is_run_file = key in {
             "runtime_config_file", "original_config_file", "dataset_config_file",
         } and Path(raw).name == raw
-        if is_run_file and run_dir is not None:
+        if is_run_file:
+            if run_dir is None:
+                continue
             resolved = (run_dir / raw).resolve()
         else:
             resolved = _resolve_display_path(raw)

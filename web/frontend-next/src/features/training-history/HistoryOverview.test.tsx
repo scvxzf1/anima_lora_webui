@@ -64,6 +64,18 @@ describe("history overview checkpoint source", () => {
     expect(screen.getByRole("button", { name: "复制实际运行配置" })).toBeDisabled();
   });
 
+  it("still copies an absolute path from an older history API response", async () => {
+    const user = userEvent.setup();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
+    renderInApp(<HistoryOverview detail={{ task: {
+      job: "training", state: "idle", runtime_config_file: "/external/run/config.runtime.toml",
+    } as HistoryTaskSummary & Record<string, unknown> }} />);
+
+    await user.click(screen.getByRole("button", { name: "复制实际运行配置" }));
+    expect(writeText).toHaveBeenCalledWith("/external/run/config.runtime.toml");
+  });
+
   it.each<[HistoryTaskSummary["resume_from"], string]>([
     [{}, "未记录"],
     [undefined, "未记录"],

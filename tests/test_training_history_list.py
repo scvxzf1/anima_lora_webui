@@ -90,6 +90,16 @@ def test_history_absolute_paths_use_configured_roots_and_run_dir(tmp_path, monke
     assert paths["original_config_file"] == str(run_root / "config.original.toml")
     assert paths["history_dir_abs"] == str(history_dir)
 
+
+def test_history_absolute_paths_do_not_guess_run_file_without_run_dir(tmp_path):
+    from web.services.training import history_store
+
+    paths = history_store._history_absolute_paths(
+        {"runtime_config_file": "config.runtime.toml"}, tmp_path / "history" / "task-1"
+    )
+
+    assert "runtime_config_file" not in paths
+
 def test_history_store_keeps_direct_history_meta_helpers(tmp_path, monkeypatch):
     from web.services.training import history_store as history_store_impl
 

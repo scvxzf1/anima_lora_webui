@@ -12,5 +12,6 @@ export function resolveHistoryPath(task: HistoryPathTask, field: string, fallbac
   const resolved = absolutePaths && typeof absolutePaths === "object"
     ? String((absolutePaths as Record<string, unknown>)[field] || "").trim()
     : "";
-  return resolved ? { value: resolved, absolute: true } : { value: raw, absolute: false };
+  if (resolved) return { value: resolved, absolute: true };
+  return { value: raw, absolute: /^(?:[A-Za-z]:[\\/]|\\\\|\/)/.test(raw) };
 }
