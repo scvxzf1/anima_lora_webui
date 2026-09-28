@@ -1013,9 +1013,18 @@ def test_config_group_preview_rejects_unbounded_legacy_offset(tmp_path, monkeypa
 
 
 def test_config_group_preview_rejects_malformed_cursor(tmp_path):
+    import base64
+
     with pytest.raises(ValueError, match="cursor 无效"):
         preview_service.list_config_group_preview_images(
             [], methods_subdir="m", variant="v", preset="default", cursor="%%%",
+        )
+    oversized_mtime = base64.urlsafe_b64encode(
+        ("[" + "9" * 400 + ',"image.png","/tmp/image.png"]').encode("ascii")
+    ).decode("ascii")
+    with pytest.raises(ValueError, match="cursor 无效"):
+        preview_service.list_config_group_preview_images(
+            [], methods_subdir="m", variant="v", preset="default", cursor=oversized_mtime,
         )
 
 

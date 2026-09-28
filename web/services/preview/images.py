@@ -381,7 +381,7 @@ def _decode_preview_cursor(value: str) -> tuple[float, str, str]:
         if len(name) > 1024 or len(path) > 2048:
             raise ValueError
         return mtime, name, path
-    except (ValueError, TypeError, UnicodeError, binascii.Error) as exc:
+    except (ValueError, TypeError, OverflowError, UnicodeError, binascii.Error) as exc:
         raise ValueError("cursor 无效") from exc
 
 
