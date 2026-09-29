@@ -192,3 +192,28 @@ test("dataset library keeps its workspace in a loading gate until presets arrive
   expect(mocks.writes).toEqual([]);
   expect(mocks.unhandled).toEqual([]);
 });
+
+test("training dataset picker preserves group order while filtering by path", async ({ page }) => {
+  const mocks = await mockWorkspace(page);
+  const alpha = { path: "configs/datasets/a.toml", label: "Alpha", summary: { source_dir: "images/alpha" } };
+  const beta = { path: "configs/datasets/b.toml", label: "Beta", summary: { source_dir: "images/beta" } };
+  await page.route((url) => url.pathname === "/api/config/dataset-presets", (route) =>
+    route.fulfill({ json: {
+      presets: [alpha, beta],
+      groups: [
+        { id: "second", label: "第二组", files: [beta] },
+        { id: "first", label: "第一组", files: [alpha] },
+      ],
+    } }),
+  );
+  await page.goto("/next/training");
+  await page.getByRole("button", { name: "选择与配置数据集", exact: true }).click();
+  const library = page.getByRole("complementary", { name: "数据集蓝图库" });
+  await expect(library.locator("section h3")).toHaveText(["第二组", "第一组"]);
+  await library.getByRole("searchbox", { name: "搜索数据集蓝图" }).fill("alpha");
+  await expect(library.locator("section h3")).toHaveText(["第一组"]);
+  await expect(library.getByRole("button", { name: /Alpha/ })).toContainText("configs/datasets/a.toml");
+  await expect(library.getByText("Beta", { exact: true })).toHaveCount(0);
+  expect(mocks.writes).toEqual([]);
+  expect(mocks.unhandled).toEqual([]);
+});
