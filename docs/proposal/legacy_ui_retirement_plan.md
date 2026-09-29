@@ -236,6 +236,8 @@ P0–P3 代码已按原提交顺序 cherry-pick 至本地 `dev`，后续时间�
 
 旧模型配置前端测试只依赖 Classic/Dragon DOM、CSS、旧 JS 排序 helper 和选择弹窗。Next 用组内 `item_ids` 排序而非重排全局 `items`；已补精确组内排序与跨组归属断言，并沿用模型组合写入训练草稿的组件测试、模型库顺序和长路径 E2E。定向组件 **27 项通过**、浏览器 **1 项通过**，旧 `test_global_model_config_frontend.py` 已删除；不把旧拖拽数组顺序误称为 Next 契约。
 
+旧 `test_dragon_dataset_runtime.py` 仅验证 Dragon DOM 查询次数、预览按钮批量禁用和旧行摘要字符串，已随该运行时退役删除。Next 数据集弹窗的脏草稿保护、取消确认与预览交互由前述整份 **7 项浏览器测试**覆盖；不把旧 DOM 性能计数作为新版验收标准。
+
 ## 退役验收范围
 
 | 领域 | 核心验收内容 |
