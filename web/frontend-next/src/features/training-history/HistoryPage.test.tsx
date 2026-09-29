@@ -58,3 +58,36 @@ it("returns from a task detail to the filtered list and restores its task anchor
   expect(screen.getByRole("link", { name: /Needle training/ })).toBeInTheDocument();
   expect(screen.getByRole("combobox", { name: "状态" })).toHaveValue("error");
 });
+
+it("searches history on the server and resets pagination without clearing other filters", async () => {
+  const requests: URL[] = [];
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+    const url = new URL(String(input), "http://localhost");
+    if (url.pathname === "/api/training/history/collections/settings") {
+      return jsonResponse({ collection_order: [], config_group_order: {} });
+    }
+    if (url.pathname === "/api/training/history") {
+      requests.push(url);
+      return jsonResponse({ tasks: [], total: 0, next_cursor: null });
+    }
+    throw new Error(`Unexpected request: ${url}`);
+  }));
+
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const router = createMemoryRouter([
+    { path: "/history", element: <HistoryPage /> },
+  ], { initialEntries: ["/history?state=error&page=3&anchor=task-old"] });
+  render(<QueryClientProvider client={client}><RouterProvider router={router} /></QueryClientProvider>);
+
+  await screen.findByRole("combobox", { name: "状态" });
+  await userEvent.setup().type(screen.getByRole("searchbox", { name: "搜索历史记录" }), " portrait ");
+
+  await waitFor(() => {
+    expect(requests.some((url) => url.searchParams.get("q") === "portrait")).toBe(true);
+  });
+  const params = new URLSearchParams(router.state.location.search);
+  expect(params.get("q")).toBe(" portrait ");
+  expect(params.get("state")).toBe("error");
+  expect(params.has("page")).toBe(false);
+  expect(params.has("anchor")).toBe(false);
+});
