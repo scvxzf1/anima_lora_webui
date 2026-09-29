@@ -168,6 +168,45 @@ def test_history_store_search_prefixes_message_and_pagination(monkeypatch):
     assert history_store._list_history_tasks(search="group:missing") == []
     assert [task["id"] for task in history_store._list_history_tasks(search="group:landscape", limit=1, cursor=1)] == ["message-hit"]
 
+
+@pytest.mark.parametrize(
+    ("field", "value", "query", "snapshot"),
+    [
+        ("output_name", "output-needle", "output-needle", ""),
+        ("task_name", "task-needle", "task-needle", ""),
+        ("model_family", "krea2_raw", "krea2_raw", 'model_family = "krea2_raw"\n'),
+        ("variant", "variant-needle", "variant-needle", ""),
+        ("training_variant", "lora", "lora", 'network_module = "networks.lora_anima"\n'),
+        ("preset", "preset-needle", "preset-needle", ""),
+        ("methods_subdir", "methodpath-needle", "methodpath-needle", ""),
+        ("state", "compiling", "编译中", ""),
+    ],
+)
+def test_history_global_search_covers_summary_fields_before_pagination(
+    tmp_path, monkeypatch, field, value, query, snapshot
+):
+    from web.services.training import history_store
+
+    records = []
+    for task_id, started_at, metadata in (
+        ("newest", 30, {"name": "unmatched"}),
+        ("matching", 20, {field: value, "state": "compiling"}),
+        ("oldest", 10, {"name": "also-unmatched"}),
+    ):
+        task_dir = tmp_path / task_id
+        task_dir.mkdir()
+        if task_id == "matching" and snapshot:
+            (task_dir / "config.snapshot.toml").write_text(snapshot, encoding="utf-8")
+        meta = {"job": "training", "started_at": started_at, "archived": False, **metadata}
+        records.append({"path": task_dir / "meta.json", "meta": meta})
+
+    monkeypatch.setattr(history_store, "_history_meta_records", lambda *args, **kwargs: records)
+    monkeypatch.setattr(history_store, "_sync_bound_history_collection_groups", lambda **kwargs: 0)
+    monkeypatch.setattr(history_store, "_max_history_items", lambda: 100)
+
+    assert [task["id"] for task in history_store._list_history_tasks(search=query, limit=1)] == ["matching"]
+
+
 def test_preprocess_history_summary_archives_legacy_placeholder_by_default(tmp_path, monkeypatch):
     history_dir = tmp_path / "history"
     _write_group_task(

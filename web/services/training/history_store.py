@@ -175,23 +175,44 @@ def _history_search_query(search: str) -> tuple[str, str]:
 
 def _history_task_matches_search(task: dict[str, Any], search: str) -> bool:
     mode, needle = _history_search_query(search)
+    return _history_task_matches_query(task, mode, needle)
+
+
+def _history_task_matches_query(task: dict[str, Any], mode: str, needle: str) -> bool:
     if not needle:
         return True
     fields = {
         "group": ("group", "collection", "history_collection"),
         "config": ("history_group_label", "history_source_config_file", "config_group", "variant", "preset"),
         "global": (
-            "id", "name", "history_run_label", "group", "history_group_label",
-            "history_source_config_file", "source_task_name", "run_dir", "output_dir", "message",
+            "id", "name", "output_name", "task_name", "history_run_label", "group",
+            "history_group_label", "history_source_config_file", "source_task_name",
+            "model_family", "variant", "training_variant", "preset", "methods_subdir",
+            "run_dir", "output_dir", "message",
         ),
     }[mode]
-    return any(needle in str(task.get(key) or "").casefold() for key in fields)
+    if any(needle in str(task.get(key) or "").casefold() for key in fields):
+        return True
+    if mode == "global":
+        state = str(task.get("state") or task.get("status") or "unknown").casefold()
+        if needle in state:
+            return True
+        state_text = {
+            "idle": "已完成", "completed": "已完成", "done": "已完成",
+            "running": "训练中", "training": "训练中", "compiling": "编译中",
+            "queued": "排队中", "interrupted": "已中断", "stopped": "已停止",
+            "canceled": "已取消", "cancelled": "已取消", "error": "失败",
+            "failed": "失败", "unknown": "未知",
+        }.get(state, state)
+        return needle in state_text.casefold()
+    return False
 
 
 def _list_history_tasks(*, include_archived: bool = False, limit: int | None = None, search: str = "", cursor: int = 0) -> list[dict[str, Any]]:
     meta_paths = _history_meta_paths()
     records = _history_meta_records(meta_paths, repair=True)
     _sync_bound_history_collection_groups(records=records)
+    search_mode, search_needle = _history_search_query(search)
 
     tasks = []
     for record in records:
@@ -200,7 +221,7 @@ def _list_history_tasks(*, include_archived: bool = False, limit: int | None = N
         if task is None:
             continue
         if include_archived or not task.get("archived"):
-            if not _history_task_matches_search(task, search):
+            if not _history_task_matches_query(task, search_mode, search_needle):
                 continue
             tasks.append(task)
     tasks.sort(key=lambda item: item.get("started_at") or 0, reverse=True)
