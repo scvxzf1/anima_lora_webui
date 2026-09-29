@@ -1,8 +1,9 @@
 import { MetricsChart } from "./MetricsChart";
+import { metricSeries } from "./metricSeries";
 import { finiteNumber } from "./trainingNumbers";
 
 export function TrainingMetricsCharts({ points, total }: { points: Record<string, unknown>[]; total?: number }) {
-  const hasLearningRate = points.some((point) => point.kind !== "val" && point.ev !== "val" && finiteNumber(point.lr) !== undefined);
+  const hasLearningRate = metricSeries(points, "lr", 2000, 0, false).data.length > 0;
   return <>
     <MetricsChart points={points} total={total} />
     {hasLearningRate && <MetricsChart points={points} total={total} metric="lr" label="学习率趋势" />}

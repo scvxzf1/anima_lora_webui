@@ -59,3 +59,13 @@ it("labels fallback coordinates and exposes keyboard point inspection", async ()
   fireEvent.keyDown(chart, { key: "ArrowRight" });
   expect(getByText("检查点 2/2 · 采样序号: 2 · Loss: 0.2500")).toBeTruthy();
 });
+
+it("draws learning-rate data and announces inspected values in scientific notation", async () => {
+  mockChartWidth();
+  const { getByRole, getByText } = render(<MetricsChart points={[{ step: 4, lr: 0.00001234 }]} metric="lr" label="学习率趋势" />);
+  await waitFor(() => expect(setOption).toHaveBeenCalled());
+  expect(setOption.mock.calls[0][0].series[0].data).toEqual([[4, 0.00001234]]);
+  const chart = getByRole("group", { name: /学习率趋势，1 个点/ });
+  fireEvent.keyDown(chart, { key: "ArrowRight" });
+  expect(getByText("检查点 1/1 · STEP: 4 · 学习率: 1.234e-5")).toBeTruthy();
+});
