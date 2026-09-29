@@ -215,7 +215,7 @@ test("task metrics and logs pause while the status snapshot is unconfirmed", asy
   });
   await page.goto("/next/monitor");
   await expect(page.getByRole("log")).toContainText("last confirmed log");
-  await expect(page.getByRole("img", { name: /Loss 趋势/ })).toBeVisible();
+  await expect(page.getByRole("group", { name: /Loss 趋势，1 个点/ })).toBeVisible();
   fails = true;
   await expect(page.locator(".monitor-stale")).toBeVisible();
   await page.screenshot({ path: info.outputPath("monitor-stale.png"), fullPage: true });
