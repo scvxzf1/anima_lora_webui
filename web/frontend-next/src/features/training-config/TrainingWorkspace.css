@@ -462,6 +462,11 @@
   border-color: var(--success-line);
   background: var(--success-soft);
 }
+.training-preflight-state[data-tone="warning"] {
+  color: var(--warning);
+  border-color: var(--warning-line);
+  background: var(--warning-soft);
+}
 .training-preflight-state[data-tone="danger"] {
   color: var(--danger);
   border-color: #e3a6a1;

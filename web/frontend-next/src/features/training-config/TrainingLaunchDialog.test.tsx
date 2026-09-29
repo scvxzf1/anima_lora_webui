@@ -11,6 +11,9 @@ const file = {
 };
 const preflight = (ok = true) => ({
   ok,
+  variant: "lora",
+  preset: "default",
+  methods_subdir: "imported",
   summary: { errors: ok ? 0 : 1, warnings: 0, checks: 1 },
   checks: [
     {
@@ -19,6 +22,8 @@ const preflight = (ok = true) => ({
       message: ok ? "检查通过" : "模型不存在",
     },
   ],
+  errors: ok ? [] : [{ level: "error", key: "model", message: "模型不存在" }],
+  warnings: [],
 });
 
 describe("launch command boundary", () => {
@@ -122,14 +127,22 @@ describe("launch command boundary", () => {
         { level: "warning", key: "output_dir", message: "输出目录将被创建" },
         { level: "ok", key: "model", message: "模型检查通过" },
       ],
+      warnings: [
+        { level: "warning", key: "output_dir", message: "输出目录将被创建" },
+      ],
     };
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) =>
+      jsonResponse(
+        String(input).endsWith("gpus")
+          ? { gpus: [] }
+          : String(input).endsWith("preflight")
+            ? warningResult
+            : { ok: true, message: "已启动" },
+      ),
+    );
     vi.stubGlobal(
       "fetch",
-      vi.fn(async (input: RequestInfo | URL) =>
-        jsonResponse(
-          String(input).endsWith("gpus") ? { gpus: [] } : warningResult,
-        ),
-      ),
+      fetchMock,
     );
     renderInApp(
       <TrainingLaunchDialog
@@ -144,17 +157,26 @@ describe("launch command boundary", () => {
     );
 
     expect(await screen.findByText("输出目录将被创建")).toBeInTheDocument();
-    expect(screen.getByText("存在警告")).toHaveAttribute(
-      "data-tone",
-      "warning",
-    );
-    expect(screen.getByRole("button", { name: "确认启动" })).toBeDisabled();
+    const status = screen.getByText("存在警告");
+    expect(status).toHaveAttribute("data-tone", "warning");
+    const confirm = screen.getByRole("button", { name: "确认启动" });
+    expect(confirm).toBeDisabled();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("checkbox"));
+    expect(confirm).toBeEnabled();
+    await user.click(confirm);
+    expect(await screen.findByRole("status")).toHaveTextContent("已启动");
+    expect(
+      fetchMock.mock.calls.filter(
+        ([url]) => String(url) === "/api/training/start",
+      ),
+    ).toHaveLength(1);
   });
 
   it("orders mixed preflight checks by severity and preserves ties", async () => {
     const mixed = {
       ...preflight(false),
-      summary: { errors: 1, warnings: 1, checks: 4 },
+      summary: { errors: 1, warnings: 1, checks: 5 },
       checks: [
         { level: "ok", key: "ok-first", message: "通过一" },
         { level: "info", key: "info", message: "提示" },
@@ -162,6 +184,8 @@ describe("launch command boundary", () => {
         { level: "error", key: "error", message: "错误" },
         { level: "ok", key: "ok-second", message: "通过二" },
       ],
+      errors: [{ level: "error", key: "error", message: "错误" }],
+      warnings: [{ level: "warning", key: "warning", message: "警告" }],
     };
     vi.stubGlobal(
       "fetch",
