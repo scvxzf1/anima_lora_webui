@@ -6,6 +6,7 @@ for (const width of [1285, 390]) {
     await page.setViewportSize({ width, height: 1054 });
     const mocks = await mockWorkspace(page);
     const offsets: number[] = [];
+    const searches: URL[] = [];
     const total = 2000000;
     await page.route((url) => url.pathname.endsWith("/fixture-run/logs"), (route) => {
       const params = new URL(route.request().url()).searchParams;
@@ -14,9 +15,14 @@ for (const width of [1285, 390]) {
       offsets.push(offset);
       return route.fulfill({ json: { total, offset, logs: Array.from({ length: Math.min(limit, total - offset) }, (_, i) => ({ line: `training row ${offset + i + 1} | loss=0.123 | ${"model/path/".repeat(20)}` })) } });
     });
-    await page.route((url) => url.pathname.endsWith("/logs/search"), (route) => route.fulfill({ json: {
-      match_index: 1234566, match_ordinal: 1, matches_total: 1, total,
-    } }));
+    await page.route((url) => url.pathname.endsWith("/logs/search"), (route) => {
+      const requestUrl = new URL(route.request().url());
+      searches.push(requestUrl);
+      const cursor = Number(requestUrl.searchParams.get("cursor"));
+      const direction = requestUrl.searchParams.get("direction");
+      const match_index = Math.max(0, Math.min(total - 1, cursor + (direction === "backward" ? -3 : 7)));
+      return route.fulfill({ json: { match_index, match_ordinal: 1, matches_total: 2, total } });
+    });
     await page.goto("/next/history/fixture-run?view=logs");
     await expect(page.getByRole("log")).toContainText("training row 2000000");
     await expect(page.getByLabel("下一页", { exact: true })).toBeDisabled();
@@ -34,10 +40,26 @@ for (const width of [1285, 390]) {
     await page.getByLabel("跳转位置").fill("2000");
     await page.getByLabel("跳转", { exact: true }).click();
     await expect(page.getByRole("log")).toContainText("training row 799601 |");
+    expect(offsets).toContain(799600);
     await page.getByLabel("搜索全部日志", { exact: true }).fill("global needle");
     await page.getByLabel("执行全局搜索").click();
-    await expect(page.locator('[data-match="true"]')).toContainText("training row 1234567 |");
-    await expect(page.getByText("1 / 1 匹配", { exact: true })).toBeVisible();
+    await expect(page.locator('[data-match="true"]')).toContainText("training row 799608 |");
+    await expect(page.getByText("1 / 2 匹配", { exact: true })).toBeVisible();
+    expect(searches).toHaveLength(1);
+    expect(searches[0].searchParams.get("query")).toBe("global needle");
+    expect(searches[0].searchParams.get("cursor")).toBe("799600");
+    expect(searches[0].searchParams.get("direction")).toBe("forward");
+    expect(offsets).toContain(799600);
+    await page.getByLabel("搜索全部日志", { exact: true }).fill("second needle");
+    await page.getByLabel("执行全局搜索").click();
+    await expect(page.locator('[data-match="true"]')).toContainText("training row 799615 |");
+    await expect.poll(() => searches.length).toBe(2);
+    expect(searches[1].searchParams.get("cursor")).toBe("799607");
+    await page.getByLabel("上一匹配", { exact: true }).click();
+    await expect(page.locator('[data-match="true"]')).toContainText("training row 799611 |");
+    await expect.poll(() => searches.length).toBe(3);
+    expect(searches[2].searchParams.get("cursor")).toBe("799613");
+    expect(searches[2].searchParams.get("direction")).toBe("backward");
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     const box = await page.getByRole("log").boundingBox();
     expect(box!.height).toBeGreaterThan(width === 390 ? 400 : 650);
@@ -62,6 +84,17 @@ test("log page failure can be retried and empty search is explicit", async ({ pa
   fail = false;
   await page.getByRole("button", { name: "重试", exact: true }).click();
   await expect(page.getByRole("log")).toContainText("recovered log");
+  await page.getByLabel("搜索全部日志", { exact: true }).fill("missing");
+  await page.getByLabel("执行全局搜索").click();
+  await expect(page.getByText("0 / 0 匹配", { exact: true })).toBeVisible();
+});
+
+test("empty logs report zero search matches", async ({ page }) => {
+  await mockWorkspace(page);
+  await page.route((url) => url.pathname.endsWith("/fixture-run/logs"), (route) => route.fulfill({ json: { total: 0, offset: 0, logs: [] } }));
+  await page.route((url) => url.pathname.endsWith("/logs/search"), (route) => route.fulfill({ json: { match_index: null, match_ordinal: 0, matches_total: 0, total: 0 } }));
+  await page.goto("/next/history/fixture-run?view=logs");
+  await expect(page.getByRole("log")).toContainText("暂无日志");
   await page.getByLabel("搜索全部日志", { exact: true }).fill("missing");
   await page.getByLabel("执行全局搜索").click();
   await expect(page.getByText("0 / 0 匹配", { exact: true })).toBeVisible();

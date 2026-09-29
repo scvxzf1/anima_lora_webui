@@ -65,7 +65,8 @@ export function HistoryLogs({ taskId, running = false }: { taskId: string; runni
     setSearching(true);
     setSearchError("");
     try {
-      const cursor = match?.match_index == null ? (direction === "forward" ? 0 : total - 1)
+      const visibleTop = Math.max(0, Math.min(total - 1, base + Math.floor(top / ROW_HEIGHT)));
+      const cursor = match?.match_index == null ? visibleTop
         : match.match_index + (direction === "forward" ? 1 : -1);
       const result = await searchLogs(taskId, search, cursor, direction, controller.signal);
       if (controller.signal.aborted) return;
