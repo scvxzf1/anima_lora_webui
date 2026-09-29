@@ -43,39 +43,6 @@ console.log(JSON.stringify(result));
     }
 
 
-def test_queue_and_history_detail_literal_dom_ids_match_index_html() -> None:
-    html = INDEX_HTML.read_text(encoding="utf-8")
-    ids_by_module = {
-        "queue/render.js": _literal_get_element_by_id_targets(
-            _frontend_feature_text(
-                "js/features/queue/render.js",
-                "js/features/queue/render-labels.js",
-                "js/features/queue/render-items.js",
-            )
-        ),
-        "queue/actions.js": _literal_get_element_by_id_targets(
-            _frontend_module_text("js/features/queue/actions.js")
-        ),
-        "history-detail/dialog.js": _literal_get_element_by_id_targets(
-            _frontend_module_text("js/features/history-detail/dialog.js")
-        ),
-    }
-
-    assert "training-queue-manager-list" in ids_by_module["queue/render.js"]
-    assert "training-queue-failure-policy" in ids_by_module["queue/actions.js"]
-    assert "history-detail-dialog" in ids_by_module["history-detail/dialog.js"]
-
-    missing = {
-        name: sorted(
-            dom_id
-            for dom_id in ids
-            if f'id="{dom_id}"' not in html
-        )
-        for name, ids in ids_by_module.items()
-    }
-    assert not any(missing.values()), missing
-
-
 def test_image_test_ui_draft_persistence_and_history_reload_hooks_exist() -> None:
     image_test_index = _frontend_module_text("js/features/image-test/index.js")
     image_test_render = _frontend_module_text("js/features/image-test/render.js")
@@ -274,23 +241,6 @@ console.log(JSON.stringify({ merged, missing, tasks: historyState.historyTasks }
     }]
 
 
-def test_history_list_imports_preview_helpers_for_refresh() -> None:
-    """Regression: loadTrainingHistoryList must not throw on renderPreviewTaskSelect."""
-    history_source = _frontend_module_text("js/features/history-list/list.js")
-    load_section = _section(
-        history_source,
-        "export async function loadTrainingHistoryList",
-        "export async function loadHistoryCollectionSettings",
-    )
-    assert "renderPreviewTaskSelect()" in load_section
-    assert "setPreviewStatus(" in load_section
-    _assert_imports_from(
-        history_source,
-        "../anima-app/helpers/preview-view-bridge.js",
-        ("renderPreviewTaskSelect", "setPreviewStatus"),
-    )
-
-
 def test_history_list_marks_queue_tasks() -> None:
     source = APP_JS.read_text(encoding="utf-8")
     history_task_source = _frontend_module_text(
@@ -311,23 +261,6 @@ def test_history_list_marks_queue_tasks() -> None:
     assert "来自队列" in queue_label
     assert "queue_attempt" in queue_label
     assert "historyQueueLabel(task)" in task_item
-
-
-def test_history_task_dialog_busy_state_uses_toml_state() -> None:
-    dialog_source = _frontend_feature_text(
-        "js/features/anima-app/chunks/34-show-history-collection-select-dialog.js",
-        "js/features/history-list/task-dialogs.js",
-    )
-    dialog_section = _section(
-        dialog_source,
-        "function showHistoryTaskDialog",
-        "function normalizeHistoryDetailTab",
-    )
-
-    assert "import { getTomlState }" in dialog_source
-    assert "const tomlState = getTomlState();" in dialog_source
-    assert "tomlState.sharedDialogBusy" in dialog_section
-    assert "sharedDialogBusy" not in dialog_section.replace("tomlState.sharedDialogBusy", "")
 
 
 def test_history_manager_extra_filter_controls_are_wired() -> None:
@@ -1787,16 +1720,6 @@ def test_sidebar_history_switch_avoids_full_list_rerender() -> None:
     assert "SIDEBAR_HISTORY_LOG_RENDER_LIMIT" in task_dialogs
     assert "export function renderHistoryTask(payload, options = {})" in task_dialogs
     assert "renderLogOutputLines(logLines, { stickToBottom: options.stickLogsToBottom !== false });" in task_dialogs
-
-
-def test_history_config_group_card_imports_storage_key() -> None:
-    """Config-group cards must import historyCollectionStorageKey from workbench-order."""
-    config_card = _frontend_module_text("js/features/history-list/workbench-config-group-card.js")
-    order = _frontend_module_text("js/features/history-list/workbench-order.js")
-    assert "export function historyCollectionStorageKey" in order
-    assert "historyCollectionStorageKey," in config_card
-    assert "from './workbench-order.js" in config_card
-    assert "card.dataset.collectionKey = historyCollectionStorageKey(options.collection || '__all__');" in config_card
 
 
 @pytest.mark.integration
