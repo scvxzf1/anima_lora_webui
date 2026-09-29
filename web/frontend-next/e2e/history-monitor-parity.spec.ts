@@ -38,9 +38,14 @@ test("history loss and learning-rate charts expose labeled metric values", async
   await expect(lrSection.getByText("检查点 1/4 · STEP: 0 · 学习率: 1.000e-4", { exact: true })).toBeVisible();
   await page.screenshot({ path: info.outputPath("history-loss-inspection.png"), fullPage: true });
 
+  const tooltip = lossChart.locator(':scope > div[style*="z-index: 9999999"]');
+  await lossChart.scrollIntoViewIfNeeded();
+  const resizeBox = await lossChart.boundingBox();
+  expect(resizeBox).not.toBeNull();
+  await page.mouse.move(resizeBox!.x + resizeBox!.width * 0.65, resizeBox!.y + resizeBox!.height * 0.5);
+  await expect(tooltip).toBeVisible();
   await page.setViewportSize({ width: 390, height: 844 });
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-  const tooltip = lossChart.locator(':scope > div[style*="z-index: 9999999"]');
   await expect(tooltip).toBeHidden();
   const mobileBox = await lossChart.boundingBox();
   expect(mobileBox).not.toBeNull();
