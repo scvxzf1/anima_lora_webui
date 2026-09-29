@@ -7,6 +7,11 @@ for (const width of [1440, 390]) {
   }, info) => {
     await page.setViewportSize({ width, height: 900 });
     const mocks = await mockWorkspace(page);
+    const nativeDialogs: string[] = [];
+    page.on("dialog", async (dialog) => {
+      nativeDialogs.push(dialog.type());
+      await dialog.dismiss();
+    });
     await page.goto("/next/training");
     const saveAs = page.getByRole("button", { name: "另存配置", exact: true });
     await saveAs.click();
@@ -33,6 +38,7 @@ for (const width of [1440, 390]) {
     expect(mocks.writes.map((entry) => entry.path)).toEqual([
       "/api/training/preflight",
     ]);
+    expect(nativeDialogs).toEqual([]);
     expect(mocks.unhandled).toEqual([]);
   });
 
@@ -70,7 +76,7 @@ for (const width of [1440, 390]) {
     await page.screenshot({ path: info.outputPath("caption-source.png") });
     await page.goto("/next/history/fixture-run?view=artifacts");
     await expect(
-      page.getByText("model.safetensors", { exact: true }),
+      page.getByRole("link", { name: "model.safetensors", exact: true }),
     ).toBeVisible();
     await expect(page.locator("img").first()).toBeVisible();
     const status = page.locator(".history-detail-state");
