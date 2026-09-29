@@ -261,6 +261,11 @@ Next 配置库现通过现有 ZIP API 导出训练配置分组；无需打开详
 - `test_training_frontend_history.py` 中四个仅验证 Classic DOM ID、preview bridge 导入、共享 dialog busy 状态来源和配置组 storage key 导入的接线测试已删除；其余 19 项保留。独立 Sol 复审确认没有移除独立的用户数据或 API 契约，且 storage key 断言仍在现存拖拽测试中。该 Python 文件 **19 项通过**。
 - 该文件的实时历史计数、配置筛选、队列来源标记、曲线/日志和配置文件查看仍需逐项核对 Next 行为；不能因四个纯接线测试删除而整文件退役。旧静态树尚未删除。
 
+## P4 实时旧测试首批拆除（2026-09-30）
+
+- `test_training_frontend_live.py` 删除两项仅验证旧 JS 进度文本 parser/helper 和 `returnToLiveTraining` 游标赋值的测试，保留 ETA、状态 DOM fixture、空闲快照、REST fallback、历史联动和最新载荷回放六项。独立 Sol 复审确认 Next 从服务端结构化 `latest_progress` 读取进度，历史详情与实时监控使用独立路由；服务端进度解析测试保留。旧文件 **6 项通过**，相关 Next 定向 **23 项通过**、类型检查通过。
+- 剩余六项的用户契约仍需迁移或明确取舍，尤其断线恢复后的进度/日志、实时状态与历史计数联动；此批未删除旧静态 JS。审计期间误触发的全量 Vitest 出现懒加载与字段帮助时序失败，定向复跑通过，P5 必须再次进行稳定的全量验收。
+
 ## 退役验收范围
 
 | 领域 | 核心验收内容 |

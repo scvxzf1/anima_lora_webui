@@ -80,83 +80,6 @@ console.log(JSON.stringify(cases));
 
 
 @pytest.mark.integration
-def test_live_training_progress_helpers_parse_runtime_text() -> None:
-    if not shutil.which("node"):
-        pytest.skip("node is required for live-training ES module behavior checks")
-    script = r"""
-import {
-    formatLr,
-    isLiveRunningState,
-    lastValue,
-    parseMetricsFromProgressLine,
-    parseProgressRateSeconds,
-    readConfigNumber,
-} from './web/static/js/features/live-training/index.js';
-
-const results = {
-    rates: [
-        parseProgressRateSeconds('1.5s/it'),
-        parseProgressRateSeconds('500ms/it'),
-        parseProgressRateSeconds('2it/s'),
-        parseProgressRateSeconds('3s/step'),
-        parseProgressRateSeconds('4 IT/S'),
-        parseProgressRateSeconds('bad'),
-    ],
-    metrics: [
-        parseMetricsFromProgressLine('| 12/100 [00:10<01:00, 1.25s/it, loss=0.1234, lr=1e-4]'),
-        parseMetricsFromProgressLine('| 7/100 [00:10<01:00, 19.83s/it, recent_s_per_step=1.92, avr_loss=0.151]'),
-        parseMetricsFromProgressLine('step: 8 recent_s_per_step=1.92 avr_loss=0.150'),
-        parseMetricsFromProgressLine('step: 7 avr_loss: nan learning_rate: inf'),
-        parseMetricsFromProgressLine('nothing useful here'),
-    ],
-    lastValue: lastValue([{ loss: '' }, { loss: null }, { loss: 0 }], 'loss'),
-    configNumbers: [
-        readConfigNumber('max_train_steps = 1200\nlr = "0.0001"\nx.y = 5\n', 'max_train_steps'),
-        readConfigNumber('max_train_steps = 1200\nlr = "0.0001"\nx.y = 5\n', 'lr'),
-        readConfigNumber('max_train_steps = 1200\nlr = "0.0001"\nx.y = 5\n', 'x.y'),
-        readConfigNumber('max_train_steps = 1200\n', 'missing'),
-    ],
-    learningRates: [
-        formatLr(0.0001),
-        formatLr('bad'),
-        formatLr(null),
-    ],
-    liveStates: [
-        isLiveRunningState('running'),
-        isLiveRunningState('compiling'),
-        isLiveRunningState('idle'),
-        isLiveRunningState(''),
-    ],
-};
-console.log(JSON.stringify(results));
-"""
-    result = subprocess.run(
-        ["node", "--input-type=module", "-e", script],
-        cwd=Path(__file__).resolve().parents[1],
-        text=True,
-        capture_output=True,
-        timeout=20,
-    )
-
-    assert result.returncode == 0, result.stderr or result.stdout
-    results = json.loads(result.stdout)
-    assert results == {
-        "rates": [1.5, 0.5, 0.5, 3, 0.25, None],
-        "metrics": [
-            {"step": 12, "loss": "0.1234", "lr": 0.0001, "rate": "1.25s/it"},
-            {"step": 7, "loss": "0.151", "rate": "19.83s/it"},
-            {"step": 8, "loss": "0.150"},
-            {"step": 7, "loss": "nan"},
-            None,
-        ],
-        "lastValue": 0,
-        "configNumbers": [1200, 0.0001, 5, None],
-        "learningRates": ["1.00e-4", "-", "-"],
-        "liveStates": [True, True, False, False],
-    }
-
-
-@pytest.mark.integration
 def test_live_training_status_and_progress_update_dom_fixture() -> None:
     if not shutil.which("node"):
         pytest.skip("node is required for live-training DOM fixture checks")
@@ -724,23 +647,6 @@ console.log(JSON.stringify({
             {"sampleDir": "", "sampleConfig": None},
         ],
     }
-
-
-def test_return_to_live_training_clears_runtime_cursor() -> None:
-    source = APP_JS.read_text(encoding="utf-8")
-    timeline_impl = _frontend_module_text("js/features/anima-app/chunks/35-render-config-group-timeline.js")
-    body = _section(timeline_impl, "function returnToLiveTraining", "async function loadResumeOptionsForTask")
-
-    for snippet in (
-        "historyState.viewingHistoryTaskId = '';",
-        "historyState.historyViewMode = 'live';",
-        "trainingState.trainingRuntime.lastLogId = 0;",
-        "trainingState.trainingRuntime.logLineCount = 0;",
-        "trainingState.stepCounter = 0;",
-        "trainingState.lossChart?.clear();",
-        "recoverLiveTrainingState();",
-    ):
-        assert snippet in body
 
 
 def test_live_training_rest_fallbacks_are_wired() -> None:
