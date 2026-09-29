@@ -434,6 +434,24 @@ describe('DatasetWorkspace', () => {
     expect(screen.getByRole('button', { name: '复制' })).toBeEnabled();
   }, 15_000);
 
+  it('does not load merged training config or GPU inventory on initial load, then loads merged config after context use', async () => {
+    const { fetchMock } = createFetchMock();
+    vi.stubGlobal('fetch', fetchMock);
+    const user = userEvent.setup();
+    renderWorkspace();
+
+    expect(await screen.findByRole('heading', { name: 'alpha.toml' })).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByLabelText('当前训练配置')).toHaveValue('configs/imported/train.toml'));
+    expect(fetchMock.mock.calls.some(([input]) => String(input).startsWith('/api/config/merged?'))).toBe(false);
+    expect(fetchMock.mock.calls.some(([input]) => String(input).startsWith('/api/training/gpus'))).toBe(false);
+
+    await user.selectOptions(screen.getByLabelText('当前硬件预设'), 'low_vram');
+    await waitFor(() => {
+      expect(fetchMock.mock.calls.filter(([input]) => String(input).startsWith('/api/config/merged?'))).toHaveLength(1);
+    });
+    expect(await screen.findByText('1200 steps')).toBeInTheDocument();
+  }, 15_000);
+
   it('blocks browser unload and SPA navigation while the dataset draft is dirty', async () => {
     const { fetchMock } = createFetchMock();
     vi.stubGlobal('fetch', fetchMock);
@@ -499,7 +517,7 @@ describe('DatasetWorkspace', () => {
 
     expect(screen.getByLabelText('当前训练配置')).toHaveValue('configs/imported/train.toml');
     expect(screen.getByLabelText('当前硬件预设')).toHaveValue('default');
-    expect(screen.getByText('1200 steps')).toBeInTheDocument();
+    expect(screen.getByText('— steps')).toBeInTheDocument();
 
     const applyButton = screen.getByRole('button', { name: '应用到当前训练配置' });
     await user.click(applyButton);
@@ -518,6 +536,89 @@ describe('DatasetWorkspace', () => {
     await user.type(screen.getByLabelText('原始图片目录'), '-dirty');
     expect(applyButton).toBeDisabled();
     expect(applyButton).toHaveAttribute('title', '请先保存当前数据集修改');
+  });
+
+  it('loads merged config when applying an edit LoRA dataset before enabling confirmation', async () => {
+    const { fetchMock: baseFetch } = createFetchMock();
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.startsWith('/api/config/merged?')) {
+        return jsonResponse({ max_train_steps: 1200, model_family: 'qwen_image_2_1' });
+      }
+      if (url === '/api/config/model-families') {
+        return jsonResponse({ items: [{
+          name: 'qwen_image_2_1',
+          display_name: 'Qwen Image 2.1',
+          aliases: [],
+          supported_tasks: ['t2i', 'edit'],
+        }] });
+      }
+      return baseFetch(input, init);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const user = userEvent.setup();
+    renderWorkspace();
+    await screen.findByRole('heading', { name: 'alpha.toml' });
+    await user.click(screen.getByRole('button', { name: '添加编辑配对' }));
+    await user.type(screen.getByLabelText('编辑前图片目录'), 'image_dataset/alpha-before');
+    await user.click(screen.getByRole('button', { name: '保存' }));
+    await screen.findByText('已保存数据集预设 alpha.toml');
+
+    const applyButton = screen.getByRole('button', { name: '应用到当前训练配置' });
+    await user.click(applyButton);
+    const dialog = await screen.findByRole('alertdialog', { name: '应用数据集到训练配置' });
+    await waitFor(() => expect(fetchMock.mock.calls.filter(([input]) => String(input).startsWith('/api/config/merged?'))).toHaveLength(1));
+    await waitFor(() => expect(within(dialog).getByRole('button', { name: '确认应用' })).toBeEnabled());
+    expect(fetchMock.mock.calls.some(([input]) => String(input) === '/api/config/dataset-presets/apply')).toBe(false);
+    await user.click(within(dialog).getByRole('button', { name: '确认应用' }));
+    await screen.findByText('已应用数据集预设');
+    expect(requestBody(fetchMock, '/api/config/dataset-presets/apply')).toEqual({
+      dataset_file: 'configs/datasets/alpha.toml',
+      train_file: 'configs/imported/train.toml',
+    });
+  });
+
+  it('recovers from a merged config error when the apply dialog is reopened', async () => {
+    const { fetchMock: baseFetch } = createFetchMock();
+    let mergedAttempts = 0;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.startsWith('/api/config/merged?')) {
+        mergedAttempts += 1;
+        return mergedAttempts === 1
+          ? jsonResponse({ ok: false, error: 'merged offline' }, 503)
+          : jsonResponse({ max_train_steps: 1200, model_family: 'qwen_image_2_1' });
+      }
+      if (url === '/api/config/model-families') {
+        return jsonResponse({ items: [{
+          name: 'qwen_image_2_1',
+          display_name: 'Qwen Image 2.1',
+          aliases: [],
+          supported_tasks: ['t2i', 'edit'],
+        }] });
+      }
+      return baseFetch(input, init);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const user = userEvent.setup();
+    renderWorkspace();
+    await screen.findByRole('heading', { name: 'alpha.toml' });
+    await user.click(screen.getByRole('button', { name: '添加编辑配对' }));
+    await user.type(screen.getByLabelText('编辑前图片目录'), 'image_dataset/alpha-before');
+    await user.click(screen.getByRole('button', { name: '保存' }));
+    await screen.findByText('已保存数据集预设 alpha.toml');
+
+    await user.click(screen.getByRole('button', { name: '应用到当前训练配置' }));
+    const firstDialog = await screen.findByRole('alertdialog', { name: '应用数据集到训练配置' });
+    expect(await within(firstDialog).findByText('merged offline')).toBeInTheDocument();
+    expect(within(firstDialog).getByRole('button', { name: '确认应用' })).toBeDisabled();
+    expect(fetchMock.mock.calls.some(([input]) => String(input) === '/api/config/dataset-presets/apply')).toBe(false);
+    await user.click(within(firstDialog).getByRole('button', { name: '取消' }));
+
+    await user.click(screen.getByRole('button', { name: '应用到当前训练配置' }));
+    const secondDialog = await screen.findByRole('alertdialog', { name: '应用数据集到训练配置' });
+    await waitFor(() => expect(mergedAttempts).toBe(2));
+    await waitFor(() => expect(within(secondDialog).getByRole('button', { name: '确认应用' })).toBeEnabled());
   });
 
   it('allows preparing reference and target data independently of the selected training family', async () => {

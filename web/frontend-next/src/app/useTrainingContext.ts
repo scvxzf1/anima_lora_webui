@@ -9,7 +9,8 @@ import {
 } from "../api/trainingContext";
 import { useTrainingContextStore } from "./trainingContextStore";
 
-export function useTrainingContext() {
+export function useTrainingContext(options: { loadMergedConfig?: boolean; retryMergedConfig?: boolean } = {}) {
+  const loadMergedConfig = options.loadMergedConfig ?? true;
   const selection = useTrainingContextStore();
   const groupsQuery = useQuery({
     queryKey: trainingContextKeys.files(),
@@ -64,7 +65,8 @@ export function useTrainingContext() {
     ),
     queryFn: ({ signal }) =>
       fetchMergedTrainingConfig(selectedFile!, selectedPreset, signal),
-    enabled: Boolean(selectedFile),
+    enabled: loadMergedConfig && Boolean(selectedFile),
+    retry: options.retryMergedConfig,
   });
 
   return {
@@ -76,10 +78,13 @@ export function useTrainingContext() {
     selectConfigFile: selection.selectConfigFile,
     selectPreset: selection.selectPreset,
     mergedConfig: mergedQuery.data,
+    mergedConfigPending: mergedQuery.isPending || mergedQuery.isFetching,
+    mergedConfigError: mergedQuery.error,
+    refetchMergedConfig: mergedQuery.refetch,
     maxTrainSteps: positiveSteps(mergedQuery.data?.max_train_steps),
     isPending:
-      groupsQuery.isPending || presetsQuery.isPending || mergedQuery.isPending,
-    error: groupsQuery.error || presetsQuery.error || mergedQuery.error,
+      groupsQuery.isPending || presetsQuery.isPending || (loadMergedConfig && mergedQuery.isPending),
+    error: groupsQuery.error || presetsQuery.error || (loadMergedConfig && mergedQuery.error),
   };
 }
 

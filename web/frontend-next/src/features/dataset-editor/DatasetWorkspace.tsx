@@ -93,7 +93,23 @@ export function DatasetWorkspace() {
     [location.state, location.search],
   );
   const returnRestored = useRef(false);
-  const trainingContext = useTrainingContext();
+  const [loadMergedTrainingConfig, setLoadMergedTrainingConfig] = useState(false);
+  const context = useTrainingContext({ loadMergedConfig: loadMergedTrainingConfig, retryMergedConfig: false });
+  const trainingContext = {
+    ...context,
+    ensureMergedConfig: () => {
+      setLoadMergedTrainingConfig(true);
+      if (loadMergedTrainingConfig) void context.refetchMergedConfig();
+    },
+    selectConfigFile: (path: string) => {
+      setLoadMergedTrainingConfig(true);
+      context.selectConfigFile(path);
+    },
+    selectPreset: (preset: string) => {
+      setLoadMergedTrainingConfig(true);
+      context.selectPreset(preset);
+    },
+  };
   const library = useQuery(datasetLibraryQuery);
   const [search, setSearch] = useState(() => restoredReturn?.search || '');
   const [detailedManagement, setDetailedManagement] = useState(readDetailedManagement);
@@ -345,6 +361,7 @@ export function DatasetWorkspace() {
                 trainingContext={trainingContext}
                 onExport={(file) => exportPreset.mutate(file)}
                 onOpenWorkbench={(index) => void openWorkbench(index)}
+                onEnsureMergedConfig={trainingContext.ensureMergedConfig}
               />
             </section>
           </div>

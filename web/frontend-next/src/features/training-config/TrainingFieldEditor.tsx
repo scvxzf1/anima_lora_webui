@@ -1,11 +1,12 @@
 import { sameTrainingValue, type TrainingDraft, type TrainingFieldSpec } from "./trainingForm";
 import { FilePenLine, HelpCircle, Undo2 } from "lucide-react";
-import { useState } from "react";
+import { lazy, Suspense, useState } from "react";
 import { TrainingDatasetField } from "./TrainingDatasetField";
 import { availableFieldOptions, fieldAvailability } from "./fieldCatalog";
 import { FIELD_HELP_SUMMARY_ZH } from "./domain/field-help-summary.js";
 import { FORM_UI_DEFAULTS } from "./domain/defaults.js";
-import { TrainingFieldHelpDialog } from "./TrainingFieldHelpDialog";
+
+const TrainingFieldHelpDialog = lazy(() => import("./TrainingFieldHelpDialog").then((module) => ({ default: module.TrainingFieldHelpDialog })));
 
 type Props = {
   fields: TrainingFieldSpec[];
@@ -140,7 +141,9 @@ export function TrainingFieldEditor({
         );
       })}
     </div>
-    {helpField && <TrainingFieldHelpDialog label={helpField.label} fieldKey={helpField.key} value={draft[helpField.key]} defaultValue={helpField.defaultValue ?? (FORM_UI_DEFAULTS as Record<string, unknown>)[helpField.key]} modelFamily={modelFamily} unavailableReason={fieldAvailability(helpField.key, draft, method).enabled ? undefined : fieldAvailability(helpField.key, draft, method).reason} onClose={() => setHelpField(null)} />}
+    {helpField && <Suspense fallback={<p role="status">正在加载字段说明</p>}>
+      <TrainingFieldHelpDialog label={helpField.label} fieldKey={helpField.key} value={draft[helpField.key]} defaultValue={helpField.defaultValue ?? (FORM_UI_DEFAULTS as Record<string, unknown>)[helpField.key]} modelFamily={modelFamily} unavailableReason={fieldAvailability(helpField.key, draft, method).enabled ? undefined : fieldAvailability(helpField.key, draft, method).reason} onClose={() => setHelpField(null)} />
+    </Suspense>}
     </>
   );
 }

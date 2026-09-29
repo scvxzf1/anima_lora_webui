@@ -43,6 +43,28 @@ describe("history detail navigation", () => {
     );
   });
 
+  it("loads the log viewer only after navigating to the logs tab", async () => {
+    vi.stubGlobal("ResizeObserver", class {
+      observe() {}
+      disconnect() {}
+    });
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/logs")) return jsonResponse({ total: 0, lines: [] });
+      return jsonResponse({ task: { id: "task-1", job: "training", state: "done", name: "History task" }, metrics: [] });
+    }));
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const router = createMemoryRouter([
+      { path: "/history/:taskId", element: <HistoryDetailPage /> },
+    ], { initialEntries: ["/history/task-1?view=overview"] });
+    render(<QueryClientProvider client={client}><RouterProvider router={router} /></QueryClientProvider>);
+
+    await screen.findByRole("heading", { name: "History task" });
+    expect(screen.queryByRole("log")).not.toBeInTheDocument();
+    await userEvent.setup().click(screen.getByRole("link", { name: /^日志$/ }));
+    expect(await screen.findByRole("log")).toBeInTheDocument();
+  });
+
   it("switches tabs through the URL and opens the resume shortcut", async () => {
     const detailReads: string[] = [];
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {

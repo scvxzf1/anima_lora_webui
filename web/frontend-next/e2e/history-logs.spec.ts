@@ -10,6 +10,23 @@ async function expectBoundedRows(page: import("@playwright/test").Page) {
     .toBeLessThan(100);
 }
 
+test("history overview defers log requests until the logs view opens", async ({ page }) => {
+  const mocks = await mockWorkspace(page);
+  let logReads = 0;
+  await page.route((url) => url.pathname.endsWith("/fixture-run/logs"), (route) => {
+    logReads += 1;
+    return route.fulfill({ json: { total: 1, offset: 0, logs: [{ line: "deferred log row" }] } });
+  });
+  await page.goto("/next/history/fixture-run?view=overview");
+  await expect(page.getByRole("heading", { name: "Studio portrait / rank 32" })).toBeVisible();
+  expect(logReads).toBe(0);
+  await page.getByRole("link", { name: "日志", exact: true }).click();
+  await expect(page.getByRole("log")).toContainText("deferred log row");
+  expect(logReads).toBeGreaterThan(0);
+  expect(mocks.writes).toEqual([]);
+  expect(mocks.unhandled).toEqual([]);
+});
+
 for (const width of [1285, 390]) {
   test(`full log navigation and bounded rendering ${width}`, async ({
     page,

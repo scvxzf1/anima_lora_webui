@@ -1,18 +1,19 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams, useLocation, useSearchParams } from "react-router-dom";
-import { useState } from "react";
+import { lazy, Suspense, useState } from "react";
 import { RotateCcw } from "lucide-react";
 import { fetchHistoryTaskDetail, historyKeys, type HistoryTaskDetail } from "./api";
-import { TrainingMetricsCharts } from "../../components/TrainingMetricsCharts";
-import { HistoryGpuMetrics } from "./HistoryGpuMetrics";
-import { HistoryLogs } from "./HistoryLogs";
-import { HistoryResume } from "./HistoryResume";
-import { HistoryAssets } from "./HistoryAssets";
-import { HistoryOverview } from "./HistoryOverview";
-import { HistoryArtifacts } from "./HistoryArtifacts";
 import { historyStateLabel, historyTaskName } from "./historySummary";
 import { finiteNumber } from "../../components/trainingNumbers";
 import "./HistoryDetailPage.css";
+
+const TrainingMetricsCharts = lazy(() => import("../../components/TrainingMetricsCharts").then((module) => ({ default: module.TrainingMetricsCharts })));
+const HistoryGpuMetrics = lazy(() => import("./HistoryGpuMetrics").then((module) => ({ default: module.HistoryGpuMetrics })));
+const HistoryLogs = lazy(() => import("./HistoryLogs").then((module) => ({ default: module.HistoryLogs })));
+const HistoryResume = lazy(() => import("./HistoryResume").then((module) => ({ default: module.HistoryResume })));
+const HistoryAssets = lazy(() => import("./HistoryAssets").then((module) => ({ default: module.HistoryAssets })));
+const HistoryOverview = lazy(() => import("./HistoryOverview").then((module) => ({ default: module.HistoryOverview })));
+const HistoryArtifacts = lazy(() => import("./HistoryArtifacts").then((module) => ({ default: module.HistoryArtifacts })));
 
 const VIEWS = [["overview", "概览"], ["metrics", "指标"], ["artifacts", "产物"], ["logs", "日志"], ["config", "配置"]];
 
@@ -57,9 +58,13 @@ export function HistoryDetailPage() {
         <button type="button" disabled={query.isFetching} onClick={() => void query.refetch()}>重新读取</button>
       </section>}
       {query.isPending && <p role="status">正在读取历史任务</p>}
-      {query.data && <HistoryDetailContent key={taskId} detail={query.data} taskId={taskId} tab={tab} />}
+      {query.data && <Suspense fallback={<p role="status">正在加载视图</p>}>
+        <HistoryDetailContent key={taskId} detail={query.data} taskId={taskId} tab={tab} />
+      </Suspense>}
     </main>
-    {resumeOpen && <HistoryResume key={taskId} taskId={taskId} onClose={() => setResumeOpen(false)} />}
+    {resumeOpen && <Suspense fallback={<p role="status">正在加载续训信息</p>}>
+      <HistoryResume key={taskId} taskId={taskId} onClose={() => setResumeOpen(false)} />
+    </Suspense>}
   </div>;
 }
 

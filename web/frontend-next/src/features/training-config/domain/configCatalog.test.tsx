@@ -1,8 +1,8 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, expect, it } from "vitest";
 
-import { TrainingFieldEditor } from "../TrainingFieldEditor";
 import { fieldAvailability, fieldsForConfig } from "../fieldCatalog";
+import { TrainingFieldEditor } from "../TrainingFieldEditor";
 import { FIELD_HELP_SUMMARY_ZH } from "./field-help-summary.js";
 // @ts-expect-error Legacy domain JS modules do not yet ship TypeScript declarations.
 import { FIELD_OPTIONS } from "./labels-options.js";

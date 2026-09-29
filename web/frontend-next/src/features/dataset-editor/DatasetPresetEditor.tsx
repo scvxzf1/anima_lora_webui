@@ -23,6 +23,7 @@ type Props = {
   trainingContext: TrainingContextController;
   onExport: (file: string) => void;
   onOpenWorkbench: (index: number) => void;
+  onEnsureMergedConfig: () => void;
 };
 
 export function DatasetPresetEditor({
@@ -32,6 +33,7 @@ export function DatasetPresetEditor({
   trainingContext,
   onExport,
   onOpenWorkbench,
+  onEnsureMergedConfig,
 }: Props) {
   const queryClient = useQueryClient();
   const [nameAction, setNameAction] = useState<DatasetNameAction | null>(null);
@@ -49,8 +51,10 @@ export function DatasetPresetEditor({
   const capabilities = useModelCapabilities(applyOpen && qwenEditEnabled);
   const capability = findModelCapability(capabilities.data?.items, trainingContext.mergedConfig?.model_family);
   const qwenEditConfigIssue = (qwenEditEnabled
-    ? !trainingContext.mergedConfig ? '训练配置尚未读取完成'
+    ? trainingContext.mergedConfigPending ? '正在读取训练配置'
+      : trainingContext.mergedConfigError?.message || (!trainingContext.mergedConfig ? '训练配置尚未读取完成'
       : capabilities.isFetching ? '正在读取模型能力' : capabilities.error?.message || editCapabilityIssue(capability)
+    )
     : null);
   const qwenEditDatasetIssue = editDatasetIssue(qwenEditEnabled, watchedRows);
   const canApply = persisted
@@ -162,6 +166,7 @@ export function DatasetPresetEditor({
           className="apply-command"
           onClick={() => {
             applyPreset.reset();
+            onEnsureMergedConfig();
             setApplyOpen(true);
           }}
           disabled={!canApply}

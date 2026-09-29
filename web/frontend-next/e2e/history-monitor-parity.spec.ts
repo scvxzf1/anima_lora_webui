@@ -95,6 +95,7 @@ for (const viewport of [{ width: 1280, height: 800 }, { width: 390, height: 844 
     await page.goto("/next/monitor");
     await expect(page.getByText("高温预警", { exact: true })).toBeVisible();
     await expect(page.getByRole("region", { name: "实时指标" })).toContainText("84°C");
+    await expect(page.getByRole("progressbar", { name: "任务进度" })).toHaveCount(1);
     await expect(page.getByRole("progressbar", { name: "任务进度" })).toBeVisible();
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await page.screenshot({ path: info.outputPath(`monitor-warning-${viewport.width}.png`), fullPage: true });
