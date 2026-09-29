@@ -18,6 +18,10 @@ it("keeps a Chinese IME search focused and filters after composition ends", () =
         expanded
         files={[file]}
         selectedPath="configs/imported/人像训练.toml"
+        preset="default"
+        gpuIds={["0"]}
+        deviceSummary="GPU 0"
+        deviceIssue=""
         onSelect={() => {}}
         onCreate={() => {}}
       />

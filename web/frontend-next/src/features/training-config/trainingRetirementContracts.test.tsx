@@ -29,6 +29,10 @@ it("shows both full paths when configuration filenames collide", async () => {
   renderInApp(
     <TrainingConfigLibrary
       expanded
+      preset="default"
+      gpuIds={["0"]}
+      deviceSummary="GPU 0"
+      deviceIssue=""
       files={paths.map((path) => ({
         path,
         filename: "train.toml",
@@ -41,8 +45,8 @@ it("shows both full paths when configuration filenames collide", async () => {
   );
 
   const user = userEvent.setup();
-  await user.click(screen.getByRole("button", { name: /imported/ }));
-  await user.click(screen.getByRole("button", { name: /gui-methods/ }));
+  await user.click(screen.getByText("imported", { selector: "strong" }).closest(".training-library-group-toggle")!);
+  await user.click(screen.getByText("gui-methods", { selector: "strong" }).closest(".training-library-group-toggle")!);
   expect(screen.getAllByText("train.toml")).toHaveLength(2);
   for (const path of paths) expect(screen.getByText(path)).toBeInTheDocument();
   await user.click(screen.getByTitle(paths[1]));

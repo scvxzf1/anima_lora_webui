@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { ArrowDown, ArrowUp, Download, FolderPlus, Pencil, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, Download, FolderPlus, ListPlus, Pencil, Trash2 } from "lucide-react";
 import { apiRequest } from "../../api/client";
 import { useState } from "react";
 import { createPortal } from "react-dom";
@@ -13,6 +13,8 @@ import {
   type TrainingConfigGroup,
 } from "../../api/trainingContext";
 import { downloadTrainingGroup } from "./downloadTrainingGroup";
+import { TrainingGroupQueueDialog } from "./TrainingGroupQueueDialog";
+import { queueableTrainingFiles } from "./trainingGroupQueue";
 
 const request = (path: string, body?: unknown, method = "POST") =>
   apiRequest<{ file?: string }>(path, {
@@ -29,6 +31,10 @@ export function TrainingLibraryActions({
   targetGroup,
   detailedManagement,
   onDetailedManagementChange,
+  preset = "",
+  gpuIds = [],
+  deviceSummary = "",
+  deviceIssue = "",
 }: {
   groups: TrainingConfigGroup[];
   file?: TrainingConfigFile;
@@ -38,9 +44,14 @@ export function TrainingLibraryActions({
   targetGroup?: TrainingConfigGroup;
   detailedManagement?: boolean;
   onDetailedManagementChange?: (enabled: boolean) => void;
+  preset?: string;
+  gpuIds?: string[];
+  deviceSummary?: string;
+  deviceIssue?: string;
 }) {
   const qc = useQueryClient();
   const [nameAction, setNameAction] = useState<LibraryNameAction | null>(null);
+  const [queueGroup, setQueueGroup] = useState<TrainingConfigGroup | null>(null);
   const mutation = useMutation({
     mutationFn: (operation: () => Promise<{ file?: string }>) => operation(),
     retry: false,
@@ -51,7 +62,7 @@ export function TrainingLibraryActions({
     },
   });
   const exportGroup = useMutation({ mutationFn: downloadTrainingGroup, retry: false });
-  const busy = disabled || mutation.isPending || exportGroup.isPending || Boolean(nameAction);
+  const busy = disabled || mutation.isPending || exportGroup.isPending || Boolean(nameAction) || Boolean(queueGroup);
   function openNameAction(action: LibraryNameAction) {
     mutation.reset();
     setNameAction(action);
@@ -148,6 +159,15 @@ export function TrainingLibraryActions({
         )}
         {scope === "group" && group && (
           <div className="toolbar">
+            <button
+              type="button"
+              disabled={!queueableTrainingFiles(group).length}
+              title="整组加入队列"
+              aria-label={`整组加入队列 ${group.label}`}
+              onClick={() => setQueueGroup(group)}
+            >
+              <ListPlus size={16} />
+            </button>
             <button
               type="button"
               disabled={!group.files.some((entry) => entry.path.toLowerCase().endsWith(".toml"))}
@@ -289,6 +309,17 @@ export function TrainingLibraryActions({
           />,
           document.body,
         )}
+      {queueGroup && createPortal(
+        <TrainingGroupQueueDialog
+          group={queueGroup}
+          preset={preset}
+          gpuIds={gpuIds}
+          deviceSummary={deviceSummary}
+          deviceIssue={deviceIssue}
+          onClose={() => setQueueGroup(null)}
+        />,
+        document.body,
+      )}
     </div>
   );
 }

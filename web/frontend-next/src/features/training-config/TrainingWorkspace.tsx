@@ -137,6 +137,10 @@ export function TrainingWorkspace() {
                 expanded={libraryExpanded}
                 files={context.files}
                 libraryGroups={context.groups}
+                preset={context.selectedPreset}
+                gpuIds={state.deviceState.gpuIds}
+                deviceSummary={state.deviceState.summary}
+                deviceIssue={state.deviceState.issue}
                 dirty={dirty}
                 selectedPath={selectedFile?.path}
                 disabled={context.isPending || rawQuery.isPending || busy}

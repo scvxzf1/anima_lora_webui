@@ -24,6 +24,10 @@ type Props = {
   groups: TrainingConfigGroup[];
   searchActive: boolean;
   detailedManagement: boolean;
+  preset: string;
+  gpuIds: string[];
+  deviceSummary: string;
+  deviceIssue: string;
 };
 
 export function TrainingLibraryGroup({
@@ -36,6 +40,10 @@ export function TrainingLibraryGroup({
   groups,
   searchActive,
   detailedManagement,
+  preset,
+  gpuIds,
+  deviceSummary,
+  deviceIssue,
 }: Props) {
   const [open, setOpen] = useState(
     () =>
@@ -83,6 +91,10 @@ export function TrainingLibraryGroup({
           groups={groups}
           targetGroup={group}
           detailedManagement={detailedManagement}
+          preset={preset}
+          gpuIds={gpuIds}
+          deviceSummary={deviceSummary}
+          deviceIssue={deviceIssue}
           disabled={Boolean(disabled || dirty || searchActive)}
           onRenamed={onSelect}
         />

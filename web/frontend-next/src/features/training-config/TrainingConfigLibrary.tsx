@@ -20,6 +20,10 @@ type Props = {
   onCreate: () => void;
   libraryGroups?: TrainingConfigGroup[];
   dirty?: boolean;
+  preset: string;
+  gpuIds: string[];
+  deviceSummary: string;
+  deviceIssue: string;
 };
 
 export const TRAINING_DETAILED_MANAGEMENT_KEY = "dragon-next:training-configs:detailed-management:v1";
@@ -38,6 +42,10 @@ export function TrainingConfigLibrary({
   onCreate,
   libraryGroups = [],
   dirty,
+  preset,
+  gpuIds,
+  deviceSummary,
+  deviceIssue,
 }: Props) {
   const [query, setQuery] = useState("");
   const [detailedManagement, setDetailedManagement] = useState(readDetailedManagement);
@@ -158,6 +166,10 @@ export function TrainingConfigLibrary({
                   groups={libraryGroups}
                   searchActive={Boolean(query.trim())}
                   detailedManagement={detailedManagement}
+                  preset={preset}
+                  gpuIds={gpuIds}
+                  deviceSummary={deviceSummary}
+                  deviceIssue={deviceIssue}
                 />
               ))}
               {!groups.length ? (
