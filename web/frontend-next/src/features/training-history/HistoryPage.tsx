@@ -32,6 +32,17 @@ import { renderedHistoryIds } from "./historySelectionScope";
 import { historyReturnSearch, useHistoryRestore } from "./useHistoryRestore";
 import "./HistoryPage.css";
 
+const HISTORY_REFRESH_INTERVAL_MS = 15_000;
+const ACTIVE_HISTORY_STATES = new Set([
+  "queued",
+  "starting",
+  "running",
+  "training",
+  "compiling",
+  "caching",
+  "saving",
+]);
+
 function filterTasks(
   tasks: HistoryTaskSummary[],
   state: string,
@@ -76,6 +87,9 @@ export function HistoryPage() {
   const [comparison, setComparison] = useState<string[]>([]);
   const [runtimeDeleteIds, setRuntimeDeleteIds] = useState<string[]>([]);
   const [runtimeDeleteScope, setRuntimeDeleteScope] = useState("");
+  const [documentVisible, setDocumentVisible] = useState(
+    () => document.visibilityState === "visible",
+  );
   const collections = useQuery({
     queryKey: historyKeys.collections,
     queryFn: ({ signal }) => fetchHistoryCollections(signal),
@@ -88,6 +102,10 @@ export function HistoryPage() {
   const verificationPending = useRef(false);
   const [verifyingSelection, setVerifyingSelection] = useState(false);
   const queryScope = `${limit}\u0000${search}`;
+  const historyQueryKey = useMemo(
+    () => [...historyKeys.list, limit, search] as const,
+    [limit, search],
+  );
   const selectionScope = JSON.stringify([
     limit, search, state, archived, collection, configGroup,
     advanced.base, advanced.variant, advanced.source, advanced.precision,
@@ -107,6 +125,11 @@ export function HistoryPage() {
   useEffect(() => {
     setRuntimeDeleteIds([]);
   }, [selectionScope]);
+  useEffect(() => {
+    const updateVisibility = () => setDocumentVisible(document.visibilityState === "visible");
+    document.addEventListener("visibilitychange", updateVisibility);
+    return () => document.removeEventListener("visibilitychange", updateVisibility);
+  }, []);
   function filter(key: string, value: string) {
     verificationRun.current += 1;
     verificationPending.current = false;
@@ -130,16 +153,27 @@ export function HistoryPage() {
   const [notice, setNotice] = useState("");
 
   const query = useInfiniteQuery({
-    queryKey: [...historyKeys.list, limit, search],
+    queryKey: historyQueryKey,
     queryFn: ({ signal, pageParam }) => fetchHistoryTasks(limit, signal, search, pageParam),
     initialPageParam: "" as string | number,
     getNextPageParam: (last) => last.next_cursor ?? undefined,
+    refetchOnMount: "always",
     retry: false,
   });
   useEffect(() => {
     if (query.isFetching) setRuntimeDeleteIds([]);
   }, [query.isFetching]);
   const tasks = query.data?.pages.flatMap((pageData) => pageData.tasks || []) || [];
+  const hasActiveTasks = tasks.some((task) => ACTIVE_HISTORY_STATES.has(task.state || ""));
+  useEffect(() => {
+    if (!documentVisible || !hasActiveTasks || runtimeDeleteIds.length) return;
+    const timer = window.setInterval(() => {
+      const fetching = queryClient.getQueryState(historyQueryKey)?.fetchStatus === "fetching";
+      if (document.visibilityState !== "visible" || fetching || busy || runtimeDeleteIds.length) return;
+      void query.refetch();
+    }, HISTORY_REFRESH_INTERVAL_MS);
+    return () => window.clearInterval(timer);
+  }, [busy, documentVisible, hasActiveTasks, historyQueryKey, query.refetch, queryClient, runtimeDeleteIds.length]);
   const selectedTraining = selected.filter((id) =>
     tasks.some((task) => task.id === id && task.job === "training"),
   );

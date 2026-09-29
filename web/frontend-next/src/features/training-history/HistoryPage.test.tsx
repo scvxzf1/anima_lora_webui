@@ -11,6 +11,7 @@ import { runHistoryDragConfirmation } from "./HistoryDrag";
 import { batchUpdateHistoryTasks } from "./api";
 
 const originalScrollIntoView = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollIntoView");
+const originalVisibilityState = Object.getOwnPropertyDescriptor(document, "visibilityState");
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -20,10 +21,138 @@ function deferred<T>() {
 
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
   resetHistorySelection();
+  vi.restoreAllMocks();
+  if (originalVisibilityState) Object.defineProperty(document, "visibilityState", originalVisibilityState);
+  else Reflect.deleteProperty(document, "visibilityState");
   if (originalScrollIntoView) Object.defineProperty(HTMLElement.prototype, "scrollIntoView", originalScrollIntoView);
   else delete (HTMLElement.prototype as Partial<HTMLElement>).scrollIntoView;
   vi.unstubAllGlobals();
+});
+
+it("rechecks cached history on mount while it is still inside the stale window", async () => {
+  const fetcher = vi.fn(async () => jsonResponse({
+    tasks: [{ id: "fresh", name: "Fresh from server", job: "training", state: "idle", archived: false }],
+    total: 1,
+    next_cursor: null,
+  }));
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+    if (String(input) === "/api/training/history/collections/settings") {
+      return jsonResponse({ collection_order: [], config_group_order: {} });
+    }
+    if (String(input).startsWith("/api/training/history?")) return fetcher();
+    throw new Error(`Unexpected request: ${String(input)}`);
+  }));
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false, staleTime: 15_000 } },
+  });
+  client.setQueryData(["training-history", "list", 200, ""], {
+    pages: [{ tasks: [{ id: "cached", name: "Cached history", job: "training", state: "idle", archived: false }], total: 1, next_cursor: null }],
+    pageParams: [""],
+  });
+  const router = createMemoryRouter([{ path: "/history", element: <HistoryPage /> }], {
+    initialEntries: ["/history?layout=list"],
+  });
+  render(<QueryClientProvider client={client}><RouterProvider router={router} /></QueryClientProvider>);
+
+  expect(await screen.findByRole("link", { name: /Fresh from server/ })).toBeInTheDocument();
+  expect(fetcher).toHaveBeenCalledTimes(1);
+});
+
+it("refreshes active history only while visible and stops after the task terminates", async () => {
+  vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+  let historyCalls = 0;
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url === "/api/training/history/collections/settings") {
+      return jsonResponse({ collection_order: [], config_group_order: {} });
+    }
+    if (url.startsWith("/api/training/history?")) {
+      historyCalls += 1;
+      const active = historyCalls === 1;
+      return jsonResponse({
+        tasks: [{
+          id: "active-task",
+          name: active ? "Active task" : "Completed task",
+          job: "training",
+          state: active ? "running" : "idle",
+          archived: false,
+          log_count: active ? 3 : 8,
+          metric_count: active ? 1 : 4,
+        }],
+        total: 1,
+        next_cursor: null,
+      });
+    }
+    throw new Error(`Unexpected request: ${url}`);
+  }));
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
+  const router = createMemoryRouter([{ path: "/history", element: <HistoryPage /> }], {
+    initialEntries: ["/history?layout=list"],
+  });
+  render(<QueryClientProvider client={client}><RouterProvider router={router} /></QueryClientProvider>);
+  expect(await screen.findByRole("link", { name: /Active task/ })).toBeInTheDocument();
+
+  expect(screen.getByText(/3 日志/)).toBeInTheDocument();
+  expect(screen.getByText(/1 指标/)).toBeInTheDocument();
+
+  Object.defineProperty(document, "visibilityState", { configurable: true, value: "hidden" });
+  act(() => document.dispatchEvent(new Event("visibilitychange")));
+  expect(historyCalls).toBe(1);
+  act(() => { vi.advanceTimersByTime(15_000); });
+  expect(historyCalls).toBe(1);
+
+  Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
+  act(() => document.dispatchEvent(new Event("visibilitychange")));
+  act(() => { vi.advanceTimersByTime(14_999); });
+  expect(historyCalls).toBe(1);
+  act(() => { vi.advanceTimersByTime(1); });
+  await waitFor(() => expect(historyCalls).toBe(2));
+  expect(await screen.findByRole("link", { name: /Completed task/ })).toBeInTheDocument();
+  expect(screen.getByText(/8 日志/)).toBeInTheDocument();
+  expect(screen.getByText(/4 指标/)).toBeInTheDocument();
+  expect(historyCalls).toBe(2);
+  act(() => { vi.advanceTimersByTime(15_000); });
+  expect(historyCalls).toBe(2);
+});
+
+it("pauses automatic refresh while the runtime delete preview is open", async () => {
+  vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+  const activeTask = { id: "active-task", name: "Active task", job: "training", state: "running", archived: false };
+  let historyCalls = 0;
+  const batchPayloads: Record<string, unknown>[] = [];
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    if (url === "/api/training/history/collections/settings") return jsonResponse({ collection_order: [], config_group_order: {} });
+    if (url === "/api/training/history/batch") {
+      batchPayloads.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+      return jsonResponse({ ok: true, dry_run: true, task_count: 1, runtime_dir_count: 0, tasks: [activeTask], runtime_dirs: [], blocked: [] });
+    }
+    if (url.startsWith("/api/training/history?")) {
+      historyCalls += 1;
+      return jsonResponse({ tasks: [activeTask], total: 1, next_cursor: null });
+    }
+    throw new Error(`Unexpected request: ${url}`);
+  }));
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
+  const router = createMemoryRouter([{ path: "/history", element: <HistoryPage /> }], {
+    initialEntries: ["/history?layout=list"],
+  });
+  render(<QueryClientProvider client={client}><RouterProvider router={router} /></QueryClientProvider>);
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole("checkbox", { name: "选择 Active task" }));
+  await user.click(screen.getByRole("button", { name: "删除记录及运行目录" }));
+  await screen.findByText("Active task", { selector: "strong" });
+  expect(batchPayloads).toEqual([{ action: "delete", task_ids: ["active-task"], delete_runtime_dirs: true, dry_run: true }]);
+
+  act(() => { vi.advanceTimersByTime(15_000); });
+  expect(historyCalls).toBe(1);
+  expect(screen.getByRole("button", { name: "确认彻底删除" })).toBeInTheDocument();
+
+  await user.click(screen.getByRole("button", { name: "取消" }));
+  act(() => { vi.advanceTimersByTime(15_000); });
+  await waitFor(() => expect(historyCalls).toBe(2));
 });
 
 it("rejects a captured drag confirmation after its selection scope changes", async () => {
