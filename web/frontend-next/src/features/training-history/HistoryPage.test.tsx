@@ -334,11 +334,11 @@ it("clears selected tasks when switching config groups", async () => {
   await waitFor(() => expect(batchPayloads).toEqual([{ action: "archive", task_ids: ["task-b"] }]));
 });
 
-it("keeps selection through a same-scope SPA detail round trip", async () => {
-  const task = { id: "task-back", name: "Back navigation", job: "training", state: "idle", archived: false };
+it("keeps the active collection and selection through a same-scope SPA detail round trip", async () => {
+  const task = { id: "task-back", name: "Back navigation", job: "training", state: "idle", archived: false, group: "project" };
   vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input);
-    if (url === "/api/training/history/collections/settings") return jsonResponse({ collection_order: [], config_group_order: {} });
+    if (url === "/api/training/history/collections/settings") return jsonResponse({ collection_order: ["project"], config_group_order: {} });
     if (url === "/api/training/history/task-back") return jsonResponse({ task, metrics: [] });
     if (url.startsWith("/api/training/history?")) return jsonResponse({ tasks: [task], total: 1, next_cursor: null });
     throw new Error(`Unexpected request: ${url}`);
@@ -347,7 +347,7 @@ it("keeps selection through a same-scope SPA detail round trip", async () => {
   const router = createMemoryRouter([
     { path: "/history", element: <HistoryPage /> },
     { path: "/history/:taskId", element: <HistoryDetailPage /> },
-  ], { initialEntries: ["/history?layout=list"] });
+  ], { initialEntries: ["/history?layout=list&collection=project"] });
   render(<QueryClientProvider client={client}><RouterProvider router={router} /></QueryClientProvider>);
   const user = userEvent.setup();
   await user.click(await screen.findByRole("checkbox", { name: "选择 Back navigation" }));
@@ -355,6 +355,9 @@ it("keeps selection through a same-scope SPA detail round trip", async () => {
   await screen.findByRole("heading", { name: "Back navigation" });
   await router.navigate(-1);
   expect(await screen.findByRole("checkbox", { name: "选择 Back navigation" })).toBeChecked();
+  expect(router.state.location.search).toContain("collection=project");
+  const selectedCollection = document.querySelector(".object-library .object-row[data-selected='true']");
+  expect(selectedCollection).toHaveTextContent("project");
 });
 
 it("drops selection across mounted search scopes and does not restore it on browser back", async () => {
