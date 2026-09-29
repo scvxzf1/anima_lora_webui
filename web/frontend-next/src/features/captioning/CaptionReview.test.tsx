@@ -69,6 +69,28 @@ describe("caption review write boundaries", () => {
       await screen.findByText("sample.png: TXT 已被其他程序修改"),
     ).toBeInTheDocument();
   });
+  it("shows the provider-aware running state from the job snapshot", async () => {
+    const job = {
+      id: "j1",
+      state: "running",
+      profile_name: "Fixture",
+      settings: { provider: "cltagger" },
+      total: 1,
+      completed: 0,
+      failed: 0,
+      items: [],
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) =>
+        String(input).includes("/logs?")
+          ? jsonResponse({ lines: [] })
+          : jsonResponse({ ok: true, job }),
+      ),
+    );
+    renderInApp(<CaptionReview jobId="j1" />);
+    expect(await screen.findByText("正在本地打标 · 0/1 · 失败 0")).toBeInTheDocument();
+  });
   it("rejects external and script image URLs", () => {
     expect(captionImageUrl("https://example.com/image.png")).toBe("");
     expect(captionImageUrl("javascript:alert(1)")).toBe("");

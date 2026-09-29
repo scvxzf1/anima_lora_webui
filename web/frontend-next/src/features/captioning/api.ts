@@ -40,6 +40,7 @@ export type CaptionItem = {
 export type CaptionJob = {
   id: string;
   state: string;
+  settings?: { provider?: string };
   dataset_file: string;
   dataset_index: number;
   profile_name: string;

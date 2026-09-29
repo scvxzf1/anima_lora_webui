@@ -11,6 +11,7 @@ import { useState } from "react";
 import { ApiError } from "../../api/client";
 import { CaptionTranslation } from "./CaptionTranslation";
 import { CaptionReviewContext } from "./CaptionReviewContext";
+import { captionJobStateLabel } from "./captionJobState";
 import { CaptionPreviewImage } from "./CaptionPreviewImage";
 import { QueryFeedback } from "../../components/QueryFeedback";
 import { ResilientImage } from "../../components/ResilientImage";
@@ -139,7 +140,7 @@ export function CaptionReview({ jobId }: { jobId: string }) {
         <div>
           <h2>{job.profile_name}</h2>
           <p>
-            {job.state} · {job.completed}/{job.total} · 失败 {job.failed}
+            {captionJobStateLabel(job.state, job)} · {job.completed}/{job.total} · 失败 {job.failed}
           </p>
         </div>
         <div className="toolbar">
