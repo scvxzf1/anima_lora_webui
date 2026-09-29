@@ -61,6 +61,22 @@ it("returns from a task detail to the filtered list and restores its task anchor
 
 it("searches history on the server and resets pagination without clearing other filters", async () => {
   const requests: URL[] = [];
+  const matchingTask = {
+    id: "portrait-match",
+    name: "Portrait training",
+    job: "training",
+    state: "error",
+    archived: false,
+    history_group_label: "portrait",
+  };
+  const unrelatedTask = {
+    id: "landscape-unrelated",
+    name: "Landscape training",
+    job: "training",
+    state: "error",
+    archived: false,
+    history_group_label: "landscape",
+  };
   vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
     const url = new URL(String(input), "http://localhost");
     if (url.pathname === "/api/training/history/collections/settings") {
@@ -68,7 +84,10 @@ it("searches history on the server and resets pagination without clearing other 
     }
     if (url.pathname === "/api/training/history") {
       requests.push(url);
-      return jsonResponse({ tasks: [], total: 0, next_cursor: null });
+      const tasks = url.searchParams.get("q")?.trim()
+        ? [matchingTask]
+        : [matchingTask, unrelatedTask];
+      return jsonResponse({ tasks, total: tasks.length, next_cursor: null });
     }
     throw new Error(`Unexpected request: ${url}`);
   }));
@@ -76,7 +95,7 @@ it("searches history on the server and resets pagination without clearing other 
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const router = createMemoryRouter([
     { path: "/history", element: <HistoryPage /> },
-  ], { initialEntries: ["/history?state=error&page=3&anchor=task-old"] });
+  ], { initialEntries: ["/history?state=error&layout=list&page=3&anchor=task-old"] });
   render(<QueryClientProvider client={client}><RouterProvider router={router} /></QueryClientProvider>);
 
   await screen.findByRole("combobox", { name: "状态" });
@@ -85,6 +104,8 @@ it("searches history on the server and resets pagination without clearing other 
   await waitFor(() => {
     expect(requests.some((url) => url.searchParams.get("q") === "portrait")).toBe(true);
   });
+  expect(await screen.findByRole("link", { name: /Portrait training/ })).toBeInTheDocument();
+  expect(screen.queryByRole("link", { name: /Landscape training/ })).not.toBeInTheDocument();
   const params = new URLSearchParams(router.state.location.search);
   expect(params.get("q")).toBe(" portrait ");
   expect(params.get("state")).toBe("error");
