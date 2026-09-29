@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { promptLines, updatePromptLine, movePromptLine, promptRowError } from "./promptDocument";
+import { applyUniformPromptValues, promptLines, updatePromptLine, movePromptLine, promptRowError } from "./promptDocument";
 import { samplePromptsContentNeedsTextMode } from "./samplePromptCodec";
 
 it("preserves comments, blank lines, untouched prompts and unknown options", () => {
@@ -60,4 +60,14 @@ it("rejects empty arrays, conflicting references, and t2i references", () => {
   expect(error({ sample_task: "t2i", reference_image: "/a.png" })).toContain("不能携带参考图");
   expect(error({ sample_task: "t2i", reference_images: ["/a.png"] })).toContain("不能携带参考图");
   expect(error({ sample_task: "t2i", reference_image: "" })).toBe("");
+});
+
+it("applies uniform values while retaining comments, line endings and unknown options", () => {
+  const content = "# keep\r\nfirst --w 512 --h 512 --s 20 --g 3 --custom yes\r\nsecond --w 768 --h 512 --s 30 --g 5\r\n";
+  const result = applyUniformPromptValues(content, { width: "1024", steps: "28", cfg: "4" });
+  expect(result.error).toBe("");
+  expect(result.content).toBe("# keep\r\nfirst --w 1024 --h 512 --s 28 --g 4 --custom yes\r\nsecond --w 1024 --h 512 --s 28 --g 4\r\n");
+  expect(applyUniformPromptValues(content, { width: "32" })).toEqual({ content, error: "样张 1：宽高不能小于 64。" });
+  expect(applyUniformPromptValues(content, { steps: "1001" }).error).toContain("步数须在 1 至 1000");
+  expect(applyUniformPromptValues(content, { cfg: "1e-3" }).error).toContain("必须为非负数");
 });

@@ -13,6 +13,28 @@ export function updatePromptLine(content: string, index: number, row: SampleProm
   return lines.join("");
 }
 
+export type UniformPromptValues = Partial<Pick<SamplePromptRow, "width" | "height" | "steps" | "cfg">>;
+
+export function applyUniformPromptValues(
+  content: string,
+  values: UniformPromptValues,
+  modelFamily?: string,
+  supportedPreviewTasks: readonly string[] = ["t2i"],
+  maxPreviewReferences = 4,
+): { content: string; error: string } {
+  const entries = promptLines(content);
+  const updates = entries.map(({ index, row }) => ({ index, row: { ...row, ...Object.fromEntries(
+    Object.entries(values).filter(([, value]) => value !== undefined && value !== ""),
+  ) } as SamplePromptRow }));
+  for (const { index, row } of updates) {
+    const error = promptRowError(row, modelFamily, supportedPreviewTasks, maxPreviewReferences);
+    if (error) return { content, error: `样张 ${entries.findIndex((entry) => entry.index === index) + 1}：${error}` };
+  }
+  let next = content;
+  for (const { index, row } of updates) next = updatePromptLine(next, index, row);
+  return { content: next, error: "" };
+}
+
 export function isQwenSampleFamily(modelFamily?: string) {
   return ["qwen_image_2_1", "qwen_image_21", "qwen21"].includes(modelFamily || "");
 }

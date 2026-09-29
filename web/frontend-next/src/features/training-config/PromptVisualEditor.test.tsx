@@ -19,6 +19,20 @@ it("edits graphically and retains original comments in raw mode", async () => {
   expect(screen.getByLabelText("样张提示词内容")).toHaveValue("# saved\nhello --w 768 --custom yes\n");
 });
 
+it("applies shared sample values without losing per-row extras", async () => {
+  function Test() {
+    const [content, setContent] = useState("# saved\nfirst --w 512 --custom yes\nsecond --w 768\n");
+    return <PromptVisualEditor content={content} onChange={setContent} onEditing={vi.fn()} disabled={false} />;
+  }
+  render(<Test />);
+  const user = userEvent.setup();
+  await user.click(screen.getByText("统一参数"));
+  await user.type(screen.getByLabelText("统一宽度"), "1024");
+  await user.click(screen.getByRole("button", { name: "应用统一参数" }));
+  await user.click(screen.getByRole("button", { name: "原文" }));
+  expect(screen.getByLabelText("样张提示词内容")).toHaveValue("# saved\nfirst --w 1024 --custom yes\nsecond --w 1024\n");
+});
+
 it("defaults new Qwen samples to Edit with Euler and CFG one", async () => {
   render(<PromptVisualEditor content="" onChange={vi.fn()} onEditing={vi.fn()} disabled={false} modelFamily="qwen_image_2_1" supportedPreviewTasks={["t2i", "edit"]} defaultTask="edit" />);
   await userEvent.click(screen.getByRole("button", { name: "新增样张" }));

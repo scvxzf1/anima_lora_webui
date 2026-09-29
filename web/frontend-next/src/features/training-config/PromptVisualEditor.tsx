@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Plus, Copy, Trash2, ArrowUp, ArrowDown } from "lucide-react";
 import { parseSamplePromptLine } from "./samplePromptCodec";
-import { isQwenSampleFamily, movePromptLine, promptLines, promptRowError, supportsEditSamples, updatePromptLine } from "./promptDocument";
+import { applyUniformPromptValues, isQwenSampleFamily, movePromptLine, promptLines, promptRowError, supportsEditSamples, updatePromptLine, type UniformPromptValues } from "./promptDocument";
 import { SampleReferenceInput } from "./SampleReferenceInput";
 import "./PromptVisualEditor.css";
 
@@ -13,6 +13,8 @@ export function PromptVisualEditor({ content, disabled, onChange, onEditing, mod
 }) {
   const [mode, setMode] = useState("visual");
   const [referenceBusy, setReferenceBusy] = useState(false);
+  const [uniform, setUniform] = useState<UniformPromptValues>({});
+  const [uniformError, setUniformError] = useState("");
   const [editing, updateEditing] = useState<{ index: number; row: ReturnType<typeof parseSamplePromptLine> } | null>(null);
   const setEditing = (value: typeof editing) => {
     updateEditing(value);
@@ -24,12 +26,33 @@ export function PromptVisualEditor({ content, disabled, onChange, onEditing, mod
   const error = editing ? promptRowError(editing.row, modelFamily, supportedPreviewTasks, maxPreviewReferences) : "";
   const rows = promptLines(content);
   const append = (line: string) => onChange(content + (content && !content.endsWith("\n") ? "\n" : "") + line);
+  const applyUniform = () => {
+    const result = applyUniformPromptValues(content, uniform, modelFamily, supportedPreviewTasks, maxPreviewReferences);
+    setUniformError(result.error);
+    if (!result.error && result.content !== content) {
+      onChange(result.content);
+      setUniform({});
+    }
+  };
   return <div className="prompt-visual-editor">
     <div className="toolbar" role="group" aria-label="提示词编辑模式">
       <button type="button" aria-pressed={mode === "visual"} disabled={!!editing} onClick={() => setMode("visual")}>图形化</button>
       <button type="button" aria-pressed={mode === "raw"} disabled={!!editing} onClick={() => setMode("raw")}>原文</button>
     </div>
     {mode === "raw" ? <textarea aria-label="样张提示词内容" rows={16} value={content} disabled={disabled} onChange={(e) => onChange(e.target.value)} /> : <>
+      {rows.length > 0 && !editing && <details className="prompt-uniform-controls">
+        <summary>统一参数</summary>
+        <div className="toolbar">
+          {([ ["width", "宽度"], ["height", "高度"], ["steps", "步数"], ["cfg", "CFG"] ] as const).map(([key, label]) => <label key={key}>{label}
+            <input type="number" min="0" step={key === "cfg" ? "any" : "1"} aria-label={`统一${label}`} disabled={disabled || !!editing} value={uniform[key] ?? ""} onChange={(event) => {
+              setUniform({ ...uniform, [key]: event.target.value });
+              setUniformError("");
+            }} />
+          </label>)}
+          <button type="button" disabled={disabled || !!editing || !Object.values(uniform).some(Boolean)} onClick={applyUniform}>应用统一参数</button>
+        </div>
+        {uniformError && <p role="alert">{uniformError}</p>}
+      </details>}
       {!editing && rows.map(({ index, row }, position) => <div className="prompt-row" key={index}>
         <button type="button" className="prompt-row-title" disabled={disabled || !!editing} onClick={() => setEditing({ index, row })}>样张 {position + 1}{row.sample_task === "edit" ? ` · 编辑 · ${row.reference_images.length} 图` : ""}: {row.prompt}</button>
         <div className="toolbar">

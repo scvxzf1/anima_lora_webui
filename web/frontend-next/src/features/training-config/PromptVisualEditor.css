@@ -7,6 +7,12 @@
 .prompt-fields label { display: grid; gap: 4px; min-width: 0; }
 .prompt-fields input { width: 100%; min-width: 0; }
 .prompt-fields select, .prompt-fields textarea { width: 100%; min-width: 0; }
+.prompt-uniform-controls { margin: 12px 0; }
+.prompt-uniform-controls summary { cursor: pointer; }
+.prompt-uniform-controls .toolbar { align-items: end; }
+.prompt-uniform-controls label { display: grid; gap: 4px; min-width: 88px; }
+.prompt-uniform-controls input { width: 100%; min-width: 0; }
+.prompt-uniform-controls [role="alert"] { margin: 4px 0; }
 .training-field-label > button { justify-self: start; width: 32px; height: 32px; padding: 4px; }
 .prompt-fields .prompt-wide-field, .prompt-fields .prompt-task, .prompt-fields [role="alert"] { grid-column: 1 / -1; }
 @media (max-width: 600px) { .prompt-row { flex-direction: column; } }
