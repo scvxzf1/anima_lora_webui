@@ -19,8 +19,8 @@ export function PromptVisualEditor({ content, disabled, onChange, onEditing, mod
   const canEdit = supportsEditSamples(modelFamily, supportedPreviewTasks);
   const qwen = isQwenSampleFamily(modelFamily);
   const newRow = () => ({
-    ...blankSamplePromptRow(), ...commonPromptValues(content), sample_task: defaultTask === "edit" && canEdit ? "edit" : "t2i",
-    ...(qwen ? { cfg: "1", sample_sampler: "euler" } : {}),
+    ...blankSamplePromptRow(), ...(qwen ? { cfg: "1", sample_sampler: "euler" } : {}),
+    ...commonPromptValues(content), sample_task: defaultTask === "edit" && canEdit ? "edit" : "t2i",
   });
   const setEditing = (value: typeof editing) => {
     updateEditing(value);

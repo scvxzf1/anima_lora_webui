@@ -8,12 +8,16 @@ export function MetricsChart({ points, metric = "loss", label = "Loss 趋势", t
   const ref = useRef<HTMLDivElement>(null);
   const [smoothing, setSmoothing] = useState(0);
   const [limit, setLimit] = useState(initialLimit);
+  const manuallySelectedWindow = useRef(false);
   const [focusedIndex, setFocusedIndex] = useState<number | null>(null);
   const series = useMemo(() => metricSeries(points, metric, limit, smoothing, timeAxis), [points, metric, limit, smoothing, timeAxis]);
+  const previousWindow = useRef<{ points: Record<string, unknown>[]; hasData: boolean } | null>(null);
   useEffect(() => {
-    if (autoExpandEmptyWindow && limit !== 0 && !series.data.length && metricSeries(points, metric, 0, smoothing, timeAxis).data.length) {
+    const previous = previousWindow.current;
+    if (autoExpandEmptyWindow && !manuallySelectedWindow.current && limit !== 0 && previous?.points !== points && previous?.hasData && !series.data.length && metricSeries(points, metric, 0, smoothing, timeAxis).data.length) {
       setLimit(0);
     }
+    previousWindow.current = { points, hasData: series.data.length > 0 };
   }, [autoExpandEmptyWindow, limit, metric, points, series.data.length, smoothing, timeAxis]);
   const metricName = label.replace(/\s*趋势$/, "");
   useMetricsCanvas(ref, series.data, timeAxis, metricName, series.axis);
@@ -30,7 +34,7 @@ export function MetricsChart({ points, metric = "loss", label = "Loss 趋势", t
       <h2>{label}</h2>
       <div className="chart-controls">
         <label className="checkbox-row">窗口
-          <select aria-label={`${label}数据窗口`} value={limit} onChange={(e) => setLimit(Number(e.target.value))}>
+          <select aria-label={`${label}数据窗口`} value={limit} onChange={(e) => { manuallySelectedWindow.current = true; setLimit(Number(e.target.value)); }}>
             <option value={500}>最近 500 点</option><option value={2000}>最近 2000 点</option><option value={0}>全部已读取</option>
           </select>
         </label>

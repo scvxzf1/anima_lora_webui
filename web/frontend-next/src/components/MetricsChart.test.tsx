@@ -95,3 +95,28 @@ it("expands the LR window when updated data leaves only an older readable point"
   fireEvent.keyDown(chart, { key: "ArrowRight" });
   expect(screen.getByText("检查点 1/1 · STEP: 1 · 学习率: 1.000e-5")).toBeTruthy();
 });
+
+it("preserves a manually selected empty LR window when older points exist", async () => {
+  const points = Array.from({ length: 2001 }, (_, index) => ({ step: index + 1, ...(index === 0 ? { lr: 1e-5 } : {}) }));
+  render(<MetricsChart points={points} metric="lr" label="学习率趋势" autoExpandEmptyWindow />);
+  const window = screen.getByLabelText("学习率趋势数据窗口");
+  fireEvent.change(window, { target: { value: "500" } });
+
+  expect(window).toHaveValue("500");
+  expect(screen.getByText("暂无指标记录")).toBeTruthy();
+});
+
+it("preserves a manually selected non-empty LR window as new points arrive", async () => {
+  const points = Array.from({ length: 2001 }, (_, index) => ({ step: index + 1, ...(index === 1501 ? { lr: 1e-5 } : {}) }));
+  const { rerender } = render(<MetricsChart points={points} metric="lr" label="学习率趋势" autoExpandEmptyWindow />);
+  const window = screen.getByLabelText("学习率趋势数据窗口");
+  fireEvent.change(window, { target: { value: "500" } });
+  expect(window).toHaveValue("500");
+  expect(screen.getByRole("group", { name: "学习率趋势，1 个点" })).toBeTruthy();
+
+  const appended = [...points, ...Array.from({ length: 502 }, (_, index) => ({ step: 2002 + index }))];
+  rerender(<MetricsChart points={appended} metric="lr" label="学习率趋势" autoExpandEmptyWindow />);
+
+  expect(window).toHaveValue("500");
+  expect(screen.getByText("暂无指标记录")).toBeTruthy();
+});

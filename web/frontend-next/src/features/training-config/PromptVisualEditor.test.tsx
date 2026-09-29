@@ -43,6 +43,19 @@ it("defaults new Qwen samples to Edit with Euler and CFG one", async () => {
   expect(screen.getByRole("button", { name: "应用样张" })).toBeDisabled();
 });
 
+it("inherits common CFG when adding a Qwen sample", async () => {
+  const onChange = vi.fn();
+  render(<PromptVisualEditor content={'{"prompt":"first","guidance_scale":4}\n{"prompt":"second","guidance_scale":4}'} onChange={onChange} onEditing={vi.fn()} disabled={false} modelFamily="qwen_image_2_1" />);
+  const user = userEvent.setup();
+  await user.click(screen.getByRole("button", { name: "新增样张" }));
+  expect(screen.getByLabelText("CFG")).toHaveValue(4);
+  expect(screen.getByLabelText("采样器")).toHaveValue("euler");
+  await user.type(screen.getByLabelText("正向提示词"), "third");
+  await user.click(screen.getByRole("button", { name: "应用样张" }));
+  const lines = onChange.mock.lastCall![0].trim().split("\n");
+  expect(lines[2]).toBe("third --g 4 --ss euler");
+});
+
 it("blocks unsupported edit rows without automatically rewriting content", async () => {
   const onChange = vi.fn();
   render(<PromptVisualEditor content={JSON.stringify({ prompt: "edit me", sample_task: "edit", reference_image: "/tmp/a.png" })} onChange={onChange} onEditing={vi.fn()} disabled={false} modelFamily="unknown" supportedPreviewTasks={[]} />);
