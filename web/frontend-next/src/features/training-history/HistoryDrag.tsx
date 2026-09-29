@@ -2,6 +2,7 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useRef,
   useState,
   type ReactNode,
@@ -52,12 +53,14 @@ export function HistoryDrag({
   tasks,
   settings,
   selected,
+  disabled,
   onMoved,
 }: {
   children: ReactNode;
   tasks: HistoryTaskSummary[];
   settings?: HistoryCollections;
   selected: string[];
+  disabled: boolean;
   onMoved: () => void;
 }) {
   const qc = useQueryClient();
@@ -69,6 +72,12 @@ export function HistoryDrag({
     command: () => Promise<unknown>;
     danger?: boolean;
   }>();
+  useEffect(() => {
+    if (disabled) {
+      setActive(undefined);
+      setConfirmation(undefined);
+    }
+  }, [disabled]);
   const mutation = useMutation({
     mutationKey: historyKeys.collections,
     mutationFn: (command: () => Promise<unknown>) => command(),
@@ -87,7 +96,7 @@ export function HistoryDrag({
   );
   function drop({ active, over }: DragEndEvent) {
     setActive(undefined);
-    if (!over || active.id === over.id || pending || lock.current || !settings)
+    if (!over || active.id === over.id || disabled || pending || lock.current || !settings)
       return;
     const source = active.data.current as HistoryDragData;
     const target = over.data.current as HistoryDragData;
@@ -147,7 +156,7 @@ export function HistoryDrag({
     }
   }
   return (
-    <DragBusy.Provider value={pending || !settings}>
+    <DragBusy.Provider value={disabled || pending || !settings}>
       {mutation.error && (
         <p className="history-error" role="alert">
           {mutation.error.message}
@@ -178,6 +187,7 @@ export function HistoryDrag({
           message={confirmation.message}
           onCancel={() => setConfirmation(undefined)}
           onConfirm={() => {
+            if (disabled) { setConfirmation(undefined); return; }
             const command = confirmation.command;
             setConfirmation(undefined);
             lock.current = true;

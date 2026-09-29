@@ -82,6 +82,8 @@ export function HistoryPage() {
   const page = Math.max(0, Number(params.get("page")) || 0);
   const limit = Math.max(200, Math.min(100000, Math.floor(Number(params.get("limit")) || 200)));
   const commandLock = useRef(false);
+  const verificationDepth = useRef(0);
+  const [verifyingSelection, setVerifyingSelection] = useState(false);
   function filter(key: string, value: string) {
     setSelected([]);
     setParams(
@@ -111,7 +113,7 @@ export function HistoryPage() {
     tasks.some((task) => task.id === id && task.job === "training"),
   );
   const restore = useHistoryRestore(query, params.toString());
-  const selectionReady = Boolean(query.data) && !query.isFetching && !query.error && !restore.restoring;
+  const selectionReady = Boolean(query.data) && !query.isFetching && !query.error && !restore.restoring && !verifyingSelection;
   const listSearch = historyReturnSearch(params.toString(), query.data?.pages.length || 1);
   const missingAnchor = useHistoryAnchor(params.toString(), Boolean(query.data) && !query.isFetching && !query.error && !restore.restoring);
   const visible = useMemo(
@@ -192,21 +194,26 @@ export function HistoryPage() {
     batch.mutate({ action, task_ids: selected });
   }
 
-  function refreshHistory() {
+  async function refreshHistory() {
     const hadBatchError = Boolean(batch.error);
-    const expectedPages = query.data?.pages.length || 0;
-    void query.refetch().then((result) => {
-      if (!result.isSuccess || !result.data || result.data.pages.length < expectedPages) return;
-      const loadedIds = new Set(
-        result.data.pages.flatMap((pageData) => pageData.tasks || [])
-          .map((task) => String(task.id || "")),
-      );
-      setSelected((current) => current.filter((id) => loadedIds.has(id)));
-      if (hadBatchError) {
-        batch.reset();
-        setNotice("已刷新历史记录，当前列表已核对。");
-      }
-    });
+    verificationDepth.current = Math.max(verificationDepth.current, query.data?.pages.length || 0);
+    setVerifyingSelection(true);
+    let result = await query.refetch();
+    while (result.isSuccess && result.data && result.data.pages.length < verificationDepth.current && result.hasNextPage) {
+      result = await query.fetchNextPage();
+    }
+    if (!result.isSuccess || !result.data) return;
+    const loadedIds = new Set(
+      result.data.pages.flatMap((pageData) => pageData.tasks || [])
+        .map((task) => String(task.id || "")),
+    );
+    setSelected((current) => current.filter((id) => loadedIds.has(id)));
+    verificationDepth.current = 0;
+    setVerifyingSelection(false);
+    if (hadBatchError) {
+      batch.reset();
+      setNotice("已刷新历史记录，当前列表已核对。");
+    }
   }
 
   const counts = useMemo(
@@ -228,8 +235,8 @@ export function HistoryPage() {
             <p className="eyebrow">HISTORY FORGE</p>
             <h1>历史任务</h1>
           </div>
-          <button type="button" disabled={query.isFetching || busy} onClick={refreshHistory}>
-            {query.isFetching ? "刷新中" : "刷新"}
+          <button type="button" disabled={query.isFetching || busy} onClick={() => { void refreshHistory(); }}>
+            {query.isFetching || verifyingSelection ? "刷新中" : "刷新"}
           </button>
         </header>
 
@@ -437,6 +444,7 @@ export function HistoryPage() {
           tasks={tasks}
           settings={collections.error ? undefined : collections.data}
           selected={selected}
+          disabled={!selectionReady}
           onMoved={() => setSelected([])}
         >
           <div className="model-workspace">
@@ -457,7 +465,8 @@ export function HistoryPage() {
                 tasks={tasks}
                 collection={collection}
                 selected={configGroup}
-                onSelect={(value) =>
+                onSelect={(value) => {
+                  setSelected([]);
                   setParams((current) => {
                     if (value) current.set("config", value);
                     else current.delete("config");
@@ -465,8 +474,8 @@ export function HistoryPage() {
                     current.delete("depth");
                     current.delete("anchor");
                     return current;
-                  }, { replace: true })
-                }
+                  }, { replace: true });
+                }}
               />
             </div>
             <section className="history-list" aria-label="历史任务列表">

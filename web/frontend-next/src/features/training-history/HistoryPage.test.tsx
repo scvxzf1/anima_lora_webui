@@ -105,6 +105,84 @@ it("keeps cross-page selection during refresh and disables batch actions while f
   await waitFor(() => expect(screen.getByText("已选 2 项")).toBeInTheDocument());
 });
 
+it("reconciles selection when refresh ends before the previously loaded page depth", async () => {
+  const tasks = [
+    { id: "task-1", name: "Still here", job: "training", state: "idle", archived: false },
+    { id: "task-2", name: "Middle task", job: "training", state: "idle", archived: false },
+    { id: "task-3", name: "Removed task", job: "training", state: "idle", archived: false },
+  ];
+  let refreshed = false;
+  let releaseRefresh!: () => void;
+  const batchPayloads: unknown[] = [];
+  vi.stubGlobal("confirm", vi.fn(() => true));
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    if (url === "/api/training/history/collections/settings") return jsonResponse({ collection_order: [], config_group_order: {} });
+    if (url === "/api/training/history/batch") {
+      batchPayloads.push(JSON.parse(String(init?.body)));
+      return jsonResponse({ ok: true });
+    }
+    if (url.startsWith("/api/training/history?")) {
+      const cursor = new URL(url, "http://localhost").searchParams.get("cursor");
+      if (!cursor && refreshed) await new Promise<void>((resolve) => { releaseRefresh = resolve; });
+      if (cursor === "third") return jsonResponse({ tasks: [tasks[2]], total: 3, next_cursor: null });
+      if (cursor === "second") return jsonResponse({ tasks: [tasks[1]], total: refreshed ? 2 : 3, next_cursor: refreshed ? null : "third" });
+      return jsonResponse({ tasks: [tasks[0]], total: refreshed ? 2 : 3, next_cursor: "second" });
+    }
+    throw new Error(`Unexpected request: ${url}`);
+  }));
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const router = createMemoryRouter([{ path: "/history", element: <HistoryPage /> }], { initialEntries: ["/history?layout=list"] });
+  render(<QueryClientProvider client={client}><RouterProvider router={router} /></QueryClientProvider>);
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole("checkbox", { name: "选择 Still here" }));
+  await user.click(screen.getByRole("button", { name: "载入更多记录" }));
+  await screen.findByRole("checkbox", { name: "选择 Middle task" });
+  await user.click(screen.getByRole("checkbox", { name: "选择 Middle task" }));
+  await user.click(screen.getByRole("button", { name: "载入更多记录" }));
+  await user.click(await screen.findByRole("checkbox", { name: "选择 Removed task" }));
+  refreshed = true;
+  await user.click(screen.getByRole("button", { name: "刷新" }));
+  expect(screen.getByRole("button", { name: "归档已选" })).toBeDisabled();
+  await waitFor(() => expect(releaseRefresh).toBeDefined());
+  releaseRefresh();
+  await waitFor(() => expect(screen.getByText("已选 2 项")).toBeInTheDocument());
+  expect(screen.getByRole("checkbox", { name: "选择 Still here" })).toBeChecked();
+  expect(screen.getByRole("checkbox", { name: "选择 Middle task" })).toBeChecked();
+  expect(screen.getByRole("button", { name: "归档已选" })).toBeEnabled();
+  await user.click(screen.getByRole("button", { name: "归档已选" }));
+  await waitFor(() => expect(batchPayloads).toEqual([{ action: "archive", task_ids: ["task-1", "task-2"] }]));
+});
+
+it("clears selected tasks when switching config groups", async () => {
+  const tasks = [
+    { id: "task-a", name: "Alpha task", job: "training", state: "idle", archived: false, group: "project", history_group_key: "alpha", history_group_label: "Alpha config" },
+    { id: "task-b", name: "Beta task", job: "training", state: "idle", archived: false, group: "project", history_group_key: "beta", history_group_label: "Beta config" },
+  ];
+  const batchPayloads: unknown[] = [];
+  vi.stubGlobal("confirm", vi.fn(() => true));
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    if (url === "/api/training/history/collections/settings") return jsonResponse({ collection_order: ["project"], config_group_order: {} });
+    if (url === "/api/training/history/batch") {
+      batchPayloads.push(JSON.parse(String(init?.body)));
+      return jsonResponse({ ok: true });
+    }
+    if (url.startsWith("/api/training/history?")) return jsonResponse({ tasks, total: 2, next_cursor: null });
+    throw new Error(`Unexpected request: ${url}`);
+  }));
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const router = createMemoryRouter([{ path: "/history", element: <HistoryPage /> }], { initialEntries: ["/history?layout=list&collection=project"] });
+  render(<QueryClientProvider client={client}><RouterProvider router={router} /></QueryClientProvider>);
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole("checkbox", { name: "选择 Alpha task" }));
+  await user.click(screen.getByRole("button", { name: "Beta config" }));
+  expect(screen.queryByText("已选 1 项")).not.toBeInTheDocument();
+  await user.click(screen.getByRole("checkbox", { name: "选择 Beta task" }));
+  await user.click(screen.getByRole("button", { name: "归档已选" }));
+  await waitFor(() => expect(batchPayloads).toEqual([{ action: "archive", task_ids: ["task-b"] }]));
+});
+
 it("keeps selection through browser back and starts empty after a document reload", async () => {
   const task = { id: "task-back", name: "Back navigation", job: "training", state: "idle", archived: false };
   vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
