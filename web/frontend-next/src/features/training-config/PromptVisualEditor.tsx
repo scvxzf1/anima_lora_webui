@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Plus, Copy, Trash2, ArrowUp, ArrowDown } from "lucide-react";
-import { parseSamplePromptLine } from "./samplePromptCodec";
-import { applyUniformPromptValues, isQwenSampleFamily, movePromptLine, promptLines, promptRowError, supportsEditSamples, updatePromptLine, type UniformPromptValues } from "./promptDocument";
+import { blankSamplePromptRow, parseSamplePromptLine } from "./samplePromptCodec";
+import { applyUniformPromptValues, commonPromptValues, isQwenSampleFamily, movePromptLine, promptLines, promptRowError, supportsEditSamples, updatePromptLine, type UniformPromptValues } from "./promptDocument";
 import { SampleReferenceInput } from "./SampleReferenceInput";
 import "./PromptVisualEditor.css";
 
@@ -16,13 +16,17 @@ export function PromptVisualEditor({ content, disabled, onChange, onEditing, mod
   const [uniform, setUniform] = useState<UniformPromptValues>({});
   const [uniformError, setUniformError] = useState("");
   const [editing, updateEditing] = useState<{ index: number; row: ReturnType<typeof parseSamplePromptLine> } | null>(null);
-  const setEditing = (value: typeof editing) => {
-    updateEditing(value);
-    const original = parseSamplePromptLine(value && value.index >= 0 ? content.split(/(?<=\n)/)[value.index] : "");
-    onEditing(Boolean(value), Boolean(value && JSON.stringify(original) !== JSON.stringify(value.row)));
-  };
   const canEdit = supportsEditSamples(modelFamily, supportedPreviewTasks);
   const qwen = isQwenSampleFamily(modelFamily);
+  const newRow = () => ({
+    ...blankSamplePromptRow(), ...commonPromptValues(content), sample_task: defaultTask === "edit" && canEdit ? "edit" : "t2i",
+    ...(qwen ? { cfg: "1", sample_sampler: "euler" } : {}),
+  });
+  const setEditing = (value: typeof editing) => {
+    updateEditing(value);
+    const original = value?.index === -1 ? newRow() : parseSamplePromptLine(value && value.index >= 0 ? content.split(/(?<=\n)/)[value.index] : "");
+    onEditing(Boolean(value), Boolean(value && JSON.stringify(original) !== JSON.stringify(value.row)));
+  };
   const error = editing ? promptRowError(editing.row, modelFamily, supportedPreviewTasks, maxPreviewReferences) : "";
   const rows = promptLines(content);
   const append = (line: string) => onChange(content + (content && !content.endsWith("\n") ? "\n" : "") + line);
@@ -62,10 +66,7 @@ export function PromptVisualEditor({ content, disabled, onChange, onEditing, mod
           })}
         </div>
       </div>)}
-      <button type="button" disabled={disabled || !!editing} onClick={() => setEditing({ index: -1, row: {
-        ...parseSamplePromptLine(""), sample_task: defaultTask === "edit" && canEdit ? "edit" : "t2i",
-        ...(qwen ? { cfg: "1", sample_sampler: "euler" } : {}),
-      } })}><Plus size={16} /> 新增样张</button>
+      <button type="button" disabled={disabled || !!editing} onClick={() => setEditing({ index: -1, row: newRow() })}><Plus size={16} /> 新增样张</button>
       {editing && <fieldset disabled={disabled} className="prompt-fields">
         <legend>{editing.index < 0 ? "新增样张" : "编辑样张"}</legend>
         <label className="prompt-task">样张任务<select aria-label="样张任务" value={editing.row.sample_task} onChange={(event) => setEditing({ ...editing, row: {

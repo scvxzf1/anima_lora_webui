@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { applyUniformPromptValues, promptLines, updatePromptLine, movePromptLine, promptRowError } from "./promptDocument";
+import { applyUniformPromptValues, commonPromptValues, promptLines, updatePromptLine, movePromptLine, promptRowError } from "./promptDocument";
 import { samplePromptsContentNeedsTextMode } from "./samplePromptCodec";
 
 it("preserves comments, blank lines, untouched prompts and unknown options", () => {
@@ -70,4 +70,6 @@ it("applies uniform values while retaining comments, line endings and unknown op
   expect(applyUniformPromptValues(content, { width: "32" })).toEqual({ content, error: "样张 1：宽高不能小于 64。" });
   expect(applyUniformPromptValues(content, { steps: "1001" }).error).toContain("步数须在 1 至 1000");
   expect(applyUniformPromptValues(content, { cfg: "1e-3" }).error).toContain("必须为非负数");
+  expect(commonPromptValues(result.content)).toEqual({ width: "1024", height: "512", steps: "28", cfg: "4" });
+  expect(commonPromptValues(content)).toEqual({ height: "512" });
 });

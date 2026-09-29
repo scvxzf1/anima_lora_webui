@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 const apiRequestMock = vi.hoisted(() => vi.fn());
@@ -12,6 +12,68 @@ import { ApiError } from "../../api/client";
 afterEach(() => { cleanup(); apiRequestMock.mockReset(); vi.unstubAllGlobals(); });
 
 describe.sequential("training sample prompts", () => {
+  it("applies common parameters to existing and newly added rows before saving the config link", async () => {
+    const writes: Array<{ method: string; body: Record<string, unknown> }> = [];
+    const content = "# keep\nstyle one --w 512 --h 512 --s 20 --g 3 --custom keep\nstyle two --w 768 --h 512 --s 30 --g 5\n";
+    apiRequestMock.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input) === "/api/config/model-families") return { items: [] };
+      if (init?.method) {
+        const body = JSON.parse(String(init.body)) as Record<string, unknown>;
+        writes.push({ method: init.method, body });
+        if (init.method === "PUT") return { ok: true, file: "configs/sample-prompts/imported/saved.txt", content: String(body.content), prompts: [] };
+        return { ok: true };
+      }
+      return { ok: true, exists: true, file: "configs/sample-prompts/imported/original.txt", content, prompts: [] };
+    });
+    const onClose = vi.fn();
+    render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+      <TrainingSamplePrompts file={{ path: "configs/imported/training-config.toml" }} promptFile="configs/sample-prompts/imported/original.txt" onClose={onClose} onSaved={async () => {}} />
+    </QueryClientProvider>);
+    const user = userEvent.setup();
+    await screen.findByRole("button", { name: "样张 2: style two" });
+    expect(screen.getByRole("button", { name: "保存提示词与配置引用" })).toBeDisabled();
+    await user.click(screen.getByText("统一参数"));
+    for (const [label, value] of [["统一宽度", "1024"], ["统一高度", "1024"], ["统一步数", "28"], ["统一CFG", "4"]]) {
+      await user.type(screen.getByLabelText(label), value);
+    }
+    await user.click(screen.getByRole("button", { name: "应用统一参数" }));
+    await user.click(screen.getByRole("button", { name: "新增样张" }));
+    expect(screen.getByLabelText("宽度")).toHaveValue(1024);
+    expect(screen.getByLabelText("步数")).toHaveValue(28);
+    await user.type(screen.getByLabelText("正向提示词"), "style three");
+    await user.click(screen.getByRole("button", { name: "应用样张" }));
+    await user.click(screen.getByRole("button", { name: "保存提示词与配置引用" }));
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    const put = writes.find((write) => write.method === "PUT")!;
+    const saved = String(put.body.content);
+    expect(put.body.train_config_file).toBe("configs/imported/training-config.toml");
+    expect(saved).toContain("# keep\n");
+    expect(saved).toContain("--custom keep");
+    expect(saved.match(/--w 1024 --h 1024 --s 28 --g 4/g)).toHaveLength(3);
+    expect(writes.find((write) => write.method === "PATCH")?.body.values).toEqual({ sample_prompts: "configs/sample-prompts/imported/saved.txt" });
+  });
+
+  it("ignores an older load after the dialog closes and reopens", async () => {
+    const pending: Array<(value: unknown) => void> = [];
+    apiRequestMock.mockImplementation((input: RequestInfo | URL) => {
+      if (String(input) === "/api/config/model-families") return Promise.resolve({ items: [] });
+      return new Promise((resolve) => pending.push(resolve));
+    });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const dialog = () => <TrainingSamplePrompts file={{ path: "configs/imported/test.toml" }} promptFile="configs/sample-prompts/race.txt" onClose={() => {}} onSaved={async () => {}} />;
+    const { rerender } = render(<QueryClientProvider client={client}>{dialog()}</QueryClientProvider>);
+    await waitFor(() => expect(pending).toHaveLength(1));
+    rerender(<QueryClientProvider client={client}>{null}</QueryClientProvider>);
+    rerender(<QueryClientProvider client={client}>{dialog()}</QueryClientProvider>);
+    await waitFor(() => expect(pending).toHaveLength(2));
+
+    await act(async () => pending[1]({ ok: true, file: "configs/sample-prompts/new.txt", content: "new style --w 1024", prompts: [] }));
+    expect(await screen.findByRole("button", { name: "样张 1: new style" })).toBeInTheDocument();
+    await act(async () => pending[0]({ ok: true, file: "configs/sample-prompts/old.txt", content: "old style --w 512", prompts: [] }));
+    expect(screen.getByRole("button", { name: "样张 1: new style" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "样张 1: old style" })).not.toBeInTheDocument();
+  });
+
   for (const kind of ["new", "existing", "reverted", "dirty"]) {
     it(`handles ${kind} row close without native confirmation`, async () => {
       apiRequestMock.mockResolvedValue({ ok: true, exists: true, file: "configs/sample_prompts.txt", content: "old prompt --w 512\n", prompts: [] });

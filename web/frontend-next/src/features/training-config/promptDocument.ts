@@ -15,6 +15,16 @@ export function updatePromptLine(content: string, index: number, row: SampleProm
 
 export type UniformPromptValues = Partial<Pick<SamplePromptRow, "width" | "height" | "steps" | "cfg">>;
 
+export function commonPromptValues(content: string): UniformPromptValues {
+  const rows = promptLines(content).map(({ row }) => row);
+  if (!rows.length) return {};
+  const result: UniformPromptValues = {};
+  for (const key of ["width", "height", "steps", "cfg"] as const) {
+    if (rows[0][key] && rows.every((row) => row[key] === rows[0][key])) result[key] = rows[0][key];
+  }
+  return result;
+}
+
 export function applyUniformPromptValues(
   content: string,
   values: UniformPromptValues,
