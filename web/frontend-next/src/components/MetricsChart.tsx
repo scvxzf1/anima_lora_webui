@@ -1,15 +1,20 @@
-import { useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { metricRange, metricSeries } from "./metricSeries";
 import { useMetricsCanvas } from "./useMetricsCanvas";
 
-export function MetricsChart({ points, metric = "loss", label = "Loss 趋势", timeAxis = false, total, initialLimit = 2000 }: {
-  points: Record<string, unknown>[]; metric?: string; label?: string; timeAxis?: boolean; total?: number; initialLimit?: number;
+export function MetricsChart({ points, metric = "loss", label = "Loss 趋势", timeAxis = false, total, initialLimit = 2000, autoExpandEmptyWindow = false }: {
+  points: Record<string, unknown>[]; metric?: string; label?: string; timeAxis?: boolean; total?: number; initialLimit?: number; autoExpandEmptyWindow?: boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const [smoothing, setSmoothing] = useState(0);
   const [limit, setLimit] = useState(initialLimit);
   const [focusedIndex, setFocusedIndex] = useState<number | null>(null);
   const series = useMemo(() => metricSeries(points, metric, limit, smoothing, timeAxis), [points, metric, limit, smoothing, timeAxis]);
+  useEffect(() => {
+    if (autoExpandEmptyWindow && limit !== 0 && !series.data.length && metricSeries(points, metric, 0, smoothing, timeAxis).data.length) {
+      setLimit(0);
+    }
+  }, [autoExpandEmptyWindow, limit, metric, points, series.data.length, smoothing, timeAxis]);
   const metricName = label.replace(/\s*趋势$/, "");
   useMetricsCanvas(ref, series.data, timeAxis, metricName, series.axis);
   const axisName = series.axis === "time" ? "时间" : series.axis === "step" ? "STEP" : "采样序号";

@@ -1,6 +1,7 @@
-import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { MetricsChart } from "./MetricsChart";
+import { TrainingMetricsCharts } from "./TrainingMetricsCharts";
 
 const setOption = vi.fn();
 const originalClientWidth = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "clientWidth");
@@ -80,4 +81,17 @@ it("shows and exposes an older LR point when the initial window includes all loa
   const chart = getByRole("group", { name: /学习率趋势，1 个点/ });
   fireEvent.keyDown(chart, { key: "ArrowRight" });
   expect(getByText("检查点 1/1 · STEP: 1 · 学习率: 1.000e-5")).toBeTruthy();
+});
+
+it("expands the LR window when updated data leaves only an older readable point", async () => {
+  const recent = Array.from({ length: 2001 }, (_, index) => ({ step: index + 1, ...(index === 2000 ? { lr: 1e-6 } : {}) }));
+  const older = Array.from({ length: 2001 }, (_, index) => ({ step: index + 1, ...(index === 0 ? { lr: 1e-5 } : {}) }));
+  const { rerender } = render(<TrainingMetricsCharts points={recent} />);
+  expect(screen.getByLabelText("学习率趋势数据窗口")).toHaveValue("2000");
+
+  rerender(<TrainingMetricsCharts points={older} />);
+  await waitFor(() => expect(screen.getByLabelText("学习率趋势数据窗口")).toHaveValue("0"));
+  const chart = screen.getByRole("group", { name: "学习率趋势，1 个点" });
+  fireEvent.keyDown(chart, { key: "ArrowRight" });
+  expect(screen.getByText("检查点 1/1 · STEP: 1 · 学习率: 1.000e-5")).toBeTruthy();
 });
