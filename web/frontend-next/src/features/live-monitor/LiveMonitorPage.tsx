@@ -37,7 +37,8 @@ export function LiveMonitorPage() {
     retry: false,
   });
   const status = statusQuery.data;
-  const taskId = status?.task_id;
+  // Idle snapshots retain the previous run's identity and latest_* fields for history.
+  const taskId = status?.status === "idle" ? undefined : status?.task_id;
   const metricsQuery = useQuery({
     queryKey: [...liveMonitorKeys.metrics, taskId || "none"],
     queryFn: ({ signal }) => fetchTrainingMetrics(taskId, signal),

@@ -12,6 +12,20 @@ it("does not display validation CMMD as live loss", () => {
   expect(screen.getByText("Loss").parentElement).toHaveTextContent("0.2000");
 });
 
+it.each([{}, null])("falls back to the latest training metric when progress is %s", (progress) => {
+  render(<MonitorSummary status={{
+    status: "running",
+    job: "training",
+    latest_progress: progress as never,
+    latest_metric: { kind: "train", step: 6, total: 10, loss: 0.24, lr: 0.00003 },
+  }} />);
+
+  expect(screen.getByRole("progressbar", { name: "任务进度" })).toHaveAttribute("aria-valuenow", "60");
+  expect(screen.getByText("步数").parentElement).toHaveTextContent("6 / 10");
+  expect(screen.getByText("Loss").parentElement).toHaveTextContent("0.2400");
+  expect(screen.getByText("学习率").parentElement).toHaveTextContent("3.00e-5");
+});
+
 it("does not expose training metrics for preprocessing", () => {
   render(<MonitorSummary status={{ job: "preprocess", latest_metric: { loss: 0.91 } }} />);
   expect(screen.queryByText("Loss")).not.toBeInTheDocument();
