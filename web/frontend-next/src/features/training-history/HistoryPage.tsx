@@ -502,6 +502,7 @@ export function HistoryPage() {
           tasks={tasks}
           settings={collections.error ? undefined : collections.data}
           selected={selected}
+          selectionScope={selectionScope}
           disabled={!selectionReady}
           onMoved={() => setSelected([])}
         >

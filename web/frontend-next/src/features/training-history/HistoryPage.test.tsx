@@ -7,6 +7,8 @@ import { jsonResponse } from "../../test/renderInApp";
 import { HistoryPage } from "./HistoryPage";
 import { HistoryDetailPage } from "./HistoryDetailPage";
 import { resetHistorySelection } from "./historyNavigation";
+import { runHistoryDragConfirmation } from "./HistoryDrag";
+import { batchUpdateHistoryTasks } from "./api";
 
 const originalScrollIntoView = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollIntoView");
 
@@ -22,6 +24,28 @@ afterEach(() => {
   if (originalScrollIntoView) Object.defineProperty(HTMLElement.prototype, "scrollIntoView", originalScrollIntoView);
   else delete (HTMLElement.prototype as Partial<HTMLElement>).scrollIntoView;
   vi.unstubAllGlobals();
+});
+
+it("rejects a captured drag confirmation after its selection scope changes", async () => {
+  const batchPayloads: unknown[] = [];
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    if (String(input) === "/api/training/history/batch") {
+      batchPayloads.push(JSON.parse(String(init?.body)));
+      return jsonResponse({ ok: true });
+    }
+    throw new Error(`Unexpected request: ${String(input)}`);
+  }));
+
+  const capturedScope = "client:alpha";
+  const currentScope = "client:beta";
+  const staleConfirmation = () =>
+    runHistoryDragConfirmation(capturedScope, currentScope, false, () => {
+      void batchUpdateHistoryTasks({ action: "set_group", task_ids: ["alpha"], group: "target" });
+    });
+
+  expect(staleConfirmation()).toBe(false);
+  await Promise.resolve();
+  expect(batchPayloads).toEqual([]);
 });
 
 it("returns from a task detail to the filtered list and restores its task anchor", async () => {

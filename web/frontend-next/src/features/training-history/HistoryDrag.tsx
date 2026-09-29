@@ -48,11 +48,23 @@ import {
 
 const DragBusy = createContext(false);
 
+export function runHistoryDragConfirmation(
+  capturedScope: string,
+  currentScope: string,
+  disabled: boolean,
+  command: () => void,
+) {
+  if (disabled || capturedScope !== currentScope) return false;
+  command();
+  return true;
+}
+
 export function HistoryDrag({
   children,
   tasks,
   settings,
   selected,
+  selectionScope,
   disabled,
   onMoved,
 }: {
@@ -60,16 +72,20 @@ export function HistoryDrag({
   tasks: HistoryTaskSummary[];
   settings?: HistoryCollections;
   selected: string[];
+  selectionScope: string;
   disabled: boolean;
   onMoved: () => void;
 }) {
   const qc = useQueryClient();
   const lock = useRef(false);
+  const selectionScopeRef = useRef(selectionScope);
+  selectionScopeRef.current = selectionScope;
   const pending = useIsMutating({ mutationKey: ["training-history"] }) > 0;
   const [active, setActive] = useState<HistoryDragData>();
   const [confirmation, setConfirmation] = useState<{
     message: string;
     command: () => Promise<unknown>;
+    scope: string;
     danger?: boolean;
   }>();
   useEffect(() => {
@@ -78,6 +94,10 @@ export function HistoryDrag({
       setConfirmation(undefined);
     }
   }, [disabled]);
+  useEffect(() => {
+    setActive(undefined);
+    setConfirmation(undefined);
+  }, [selectionScope]);
   const mutation = useMutation({
     mutationKey: historyKeys.collections,
     mutationFn: (command: () => Promise<unknown>) => command(),
@@ -148,6 +168,7 @@ export function HistoryDrag({
         setConfirmation({
           message: `将 ${source.taskIds?.length || 0} 条已加载记录移到“${target.collection || "未分类"}”？同配置关联的全部历史记录会一起调整，训练文件保持不变。`,
           command,
+          scope: selectionScope,
         });
         return;
       }
@@ -187,11 +208,20 @@ export function HistoryDrag({
           message={confirmation.message}
           onCancel={() => setConfirmation(undefined)}
           onConfirm={() => {
-            if (disabled) { setConfirmation(undefined); return; }
-            const command = confirmation.command;
-            setConfirmation(undefined);
-            lock.current = true;
-            mutation.mutate(command);
+            const current = runHistoryDragConfirmation(
+              confirmation.scope,
+              selectionScopeRef.current,
+              disabled,
+              () => {
+                const command = confirmation.command;
+                setConfirmation(undefined);
+                lock.current = true;
+                mutation.mutate(command);
+              },
+            );
+            if (!current) {
+              setConfirmation(undefined);
+            }
           }}
         />
       )}
