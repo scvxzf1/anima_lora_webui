@@ -159,23 +159,48 @@ def _write_json_atomic(*args, **kwargs):
     return writer(*args, **kwargs)
 
 
+def _history_search_query(search: str) -> tuple[str, str]:
+    raw = str(search or "").strip()
+    separator = min((index for mark in (":", "：") if (index := raw.find(mark)) >= 0), default=-1)
+    if separator >= 0:
+        prefix = raw[:separator].strip().casefold()
+        query = raw[separator + 1 :].strip().casefold()
+        if query:
+            if prefix in {"组", "集合", "group", "collection"}:
+                return "group", query
+            if prefix in {"配置", "配置组", "config"}:
+                return "config", query
+    return "global", raw.casefold()
+
+
+def _history_task_matches_search(task: dict[str, Any], search: str) -> bool:
+    mode, needle = _history_search_query(search)
+    if not needle:
+        return True
+    fields = {
+        "group": ("group", "collection", "history_collection"),
+        "config": ("history_group_label", "history_source_config_file", "config_group", "variant", "preset"),
+        "global": (
+            "id", "name", "history_run_label", "group", "history_group_label",
+            "history_source_config_file", "source_task_name", "run_dir", "output_dir", "message",
+        ),
+    }[mode]
+    return any(needle in str(task.get(key) or "").casefold() for key in fields)
+
+
 def _list_history_tasks(*, include_archived: bool = False, limit: int | None = None, search: str = "", cursor: int = 0) -> list[dict[str, Any]]:
     meta_paths = _history_meta_paths()
     records = _history_meta_records(meta_paths, repair=True)
     _sync_bound_history_collection_groups(records=records)
 
     tasks = []
-    needle = search.strip().casefold()
     for record in records:
         meta_path = record["path"]
         task = _safe_history_summary(record["meta"], meta_path.parent)
         if task is None:
             continue
         if include_archived or not task.get("archived"):
-            if needle and not any(
-                needle in str(task.get(key) or "").casefold()
-                for key in ("id", "name", "history_run_label", "group", "history_group_label", "history_source_config_file", "source_task_name", "run_dir", "output_dir")
-            ):
+            if not _history_task_matches_search(task, search):
                 continue
             tasks.append(task)
     tasks.sort(key=lambda item: item.get("started_at") or 0, reverse=True)

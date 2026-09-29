@@ -133,6 +133,41 @@ def test_history_store_main_paths_do_not_depend_on_bind_legacy(tmp_path, monkeyp
 
     assert [task["id"] for task in tasks] == [task_id]
 
+
+def test_history_store_search_prefixes_message_and_pagination(monkeypatch):
+    from web.services.training import history_store
+
+    tasks = [
+        {
+            "id": "group-hit", "group": "portrait", "history_group_label": "other-config",
+            "history_source_config_file": "", "name": "first", "started_at": 30,
+            "archived": False, "message": "", "run_dir": "", "output_dir": "",
+        },
+        {
+            "id": "config-hit", "group": "landscape", "history_group_label": "portrait-config",
+            "history_source_config_file": "", "name": "second", "started_at": 20,
+            "archived": False, "message": "", "run_dir": "", "output_dir": "",
+        },
+        {
+            "id": "message-hit", "group": "landscape", "history_group_label": "other-config",
+            "history_source_config_file": "", "name": "third", "started_at": 10,
+            "archived": False, "message": "portrait training stopped", "run_dir": "", "output_dir": "",
+        },
+    ]
+    records = [{"path": Path(f"/history/{task['id']}/meta.json"), "meta": task} for task in tasks]
+    monkeypatch.setattr(history_store, "_history_meta_records", lambda *args, **kwargs: records)
+    monkeypatch.setattr(history_store, "_sync_bound_history_collection_groups", lambda **kwargs: 0)
+    monkeypatch.setattr(history_store, "_safe_history_summary", lambda meta, _path: meta)
+    monkeypatch.setattr(history_store, "_max_history_items", lambda: 100)
+
+    assert [task["id"] for task in history_store._list_history_tasks(search="组：portrait")] == ["group-hit"]
+    assert [task["id"] for task in history_store._list_history_tasks(search="CONFIG: portrait")] == ["config-hit"]
+    assert [task["id"] for task in history_store._list_history_tasks(search="portrait")] == [
+        "group-hit", "config-hit", "message-hit",
+    ]
+    assert history_store._list_history_tasks(search="group:missing") == []
+    assert [task["id"] for task in history_store._list_history_tasks(search="group:landscape", limit=1, cursor=1)] == ["message-hit"]
+
 def test_preprocess_history_summary_archives_legacy_placeholder_by_default(tmp_path, monkeypatch):
     history_dir = tmp_path / "history"
     _write_group_task(
