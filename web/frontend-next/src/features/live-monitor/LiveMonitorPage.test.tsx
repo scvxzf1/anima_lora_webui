@@ -77,6 +77,8 @@ it("pauses hidden polling and refreshes a stale snapshot on resume without leaki
 
   Object.defineProperty(document, "visibilityState", { configurable: true, value: "hidden" });
   act(() => document.dispatchEvent(new Event("visibilitychange")));
+  await new Promise((resolve) => setTimeout(resolve, 2200));
+  expect([statusCalls, metricsCalls, logsCalls, gpuCalls]).toEqual([1, 1, 1, 1]);
   Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
   act(() => document.dispatchEvent(new Event("visibilitychange")));
   await waitFor(() => expect(statusCalls).toBe(2));
