@@ -7,7 +7,24 @@
   margin: 4px 0 12px;
 }
 
+.training-metric-values {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  min-height: 32px;
+  margin: -8px 0 12px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.training-metric-latest {
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
 .training-metric-visibility input,
+.training-metric-values input,
 .history-gpu-metric-visibility input {
   width: 16px;
   height: 16px;

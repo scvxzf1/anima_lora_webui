@@ -1,3 +1,76 @@
+.history-gpu-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+  gap: 8px 16px;
+  padding: 10px 0;
+  border-block: 1px solid var(--line);
+}
+
+.history-gpu-summary-item {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: baseline;
+  gap: 2px 10px;
+  min-width: 0;
+}
+
+.history-gpu-summary-item > span {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.history-gpu-summary-item > strong {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.history-gpu-summary-item > small {
+  grid-column: 1 / -1;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.history-gpu-inspection {
+  display: grid;
+  grid-template-columns: minmax(110px, auto) minmax(180px, 1fr);
+  align-items: center;
+  gap: 8px 12px;
+  margin: 12px 0;
+}
+
+.history-gpu-inspection > label {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.history-gpu-inspection > select {
+  width: 100%;
+  min-width: 0;
+}
+
+.history-gpu-inspection > dl {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 6px 14px;
+  grid-column: 1 / -1;
+  margin: 0;
+}
+
+.history-gpu-inspection > dl > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.history-gpu-inspection dt {
+  color: var(--muted);
+}
+
+.history-gpu-inspection dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
 .history-gpu-metric-visibility {
   display: flex;
   flex-wrap: wrap;
@@ -5,6 +78,16 @@
   gap: 8px 16px;
   min-height: 36px;
   margin: 12px 0;
+}
+
+@media (max-width: 600px) {
+  .history-gpu-inspection {
+    grid-template-columns: 1fr;
+  }
+
+  .history-gpu-inspection > dl {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 .history-gpu-metric-visibility input {

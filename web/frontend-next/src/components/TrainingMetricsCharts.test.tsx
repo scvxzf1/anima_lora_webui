@@ -54,8 +54,8 @@ it("allows training charts to be hidden individually and restored after all are 
 
   fireEvent.click(loss);
   fireEvent.click(cmmd);
-  expect(screen.getByText("已隐藏所有训练指标")).toBeInTheDocument();
+  expect(screen.getByText("已隐藏所有训练曲线")).toBeInTheDocument();
   fireEvent.click(learningRate);
   expect(screen.getByTestId("chart-lr")).not.toHaveAttribute("hidden");
-  expect(screen.queryByText("已隐藏所有训练指标")).not.toBeInTheDocument();
+  expect(screen.queryByText("已隐藏所有训练曲线")).not.toBeInTheDocument();
 });

@@ -61,6 +61,21 @@ it("labels fallback coordinates and exposes keyboard point inspection", async ()
   expect(getByText("检查点 2/2 · 采样序号: 2 · Loss: 0.2500")).toBeTruthy();
 });
 
+it("hides inspected metric values without hiding the chart or its coordinates", async () => {
+  mockChartWidth();
+  const { getByRole, getByText, queryByText } = render(<MetricsChart points={[{ step: 1, loss: 0.5 }]} valueVisible={false} />);
+
+  await waitFor(() => expect(setOption).toHaveBeenCalled());
+  const tooltip = setOption.mock.calls.at(-1)?.[0].tooltip;
+  const content = tooltip.formatter([{ value: [1, 0.5] }]);
+  expect(content.textContent).toContain("STEP: 1");
+  expect(content.textContent).not.toContain("Loss:");
+
+  fireEvent.keyDown(getByRole("group", { name: /Loss 趋势，1 个点/ }), { key: "ArrowRight" });
+  expect(getByText("检查点 1/1 · STEP: 1")).toBeTruthy();
+  expect(queryByText(/Loss: 0.5000/)).toBeNull();
+});
+
 it("draws learning-rate data and announces inspected values in scientific notation", async () => {
   mockChartWidth();
   const { getByRole, getByText } = render(<MetricsChart points={[{ step: 4, lr: 0.00001234 }]} metric="lr" label="学习率趋势" />);

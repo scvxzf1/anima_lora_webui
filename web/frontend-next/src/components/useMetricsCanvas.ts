@@ -1,6 +1,6 @@
 import { useEffect, type RefObject } from "react";
 
-export function useMetricsCanvas(ref: RefObject<HTMLDivElement | null>, data: [number, number][], timeAxis: boolean, metricName: string, axis: string, enabled = true) {
+export function useMetricsCanvas(ref: RefObject<HTMLDivElement | null>, data: [number, number][], timeAxis: boolean, metricName: string, axis: string, enabled = true, valueVisible = true) {
   useEffect(() => {
     const node = ref.current;
     if (!enabled || !node || !node.clientWidth || !data.length) return;
@@ -29,7 +29,8 @@ export function useMetricsCanvas(ref: RefObject<HTMLDivElement | null>, data: [n
               const axisName = axis === "time" ? "时间" : axis === "step" ? "STEP" : "采样序号";
               axisRow.textContent = `${axisName}: ${axis === "time" && typeof axisValue === "number" ? new Date(axisValue).toLocaleString() : String(axisValue ?? "")}`;
               metric.textContent = `${metricName}: ${typeof metricValue === "number" ? metricValue.toPrecision(4) : String(metricValue ?? "")}`;
-              content.append(axisRow, metric);
+              content.append(axisRow);
+              if (valueVisible) content.append(metric);
               return content;
             },
           },
@@ -49,5 +50,5 @@ export function useMetricsCanvas(ref: RefObject<HTMLDivElement | null>, data: [n
       cleanup = () => { resize.disconnect(); theme.disconnect(); chart.dispose(); };
     });
     return () => { disposed = true; cleanup?.(); };
-  }, [ref, data, timeAxis, metricName, enabled]);
+  }, [ref, data, timeAxis, metricName, enabled, valueVisible]);
 }
