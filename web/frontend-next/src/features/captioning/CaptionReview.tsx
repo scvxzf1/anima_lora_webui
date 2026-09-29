@@ -10,6 +10,7 @@ import {
 import { useState } from "react";
 import { ApiError } from "../../api/client";
 import { CaptionTranslation } from "./CaptionTranslation";
+import { CaptionTagEditor } from "./CaptionTagEditor";
 import { CaptionReviewContext } from "./CaptionReviewContext";
 import { captionJobStateLabel } from "./captionJobState";
 import { CaptionPreviewImage } from "./CaptionPreviewImage";
@@ -276,23 +277,21 @@ export function CaptionReview({ jobId }: { jobId: string }) {
                 <span>原有标注</span>
                 <textarea rows={4} value={item.caption} readOnly />
               </label>
-              <label>
-                <span>候选标注</span>
-                <textarea
-                  rows={7}
-                  value={drafts[item.id] ?? item.proposed_caption}
-                  disabled={running || busy}
-                  onChange={(e) =>
-                    setDrafts((current) => {
-                      const next = { ...current };
-                      if (e.target.value === item.proposed_caption)
-                        delete next[item.id];
-                      else next[item.id] = e.target.value;
-                      return next;
-                    })
-                  }
-                />
-              </label>
+              <CaptionTagEditor
+                key={`tags:${item.id}`}
+                itemId={item.id}
+                value={drafts[item.id] ?? item.proposed_caption}
+                tagModeAllowed={["cltagger", "wd14"].includes(job.settings?.provider || "")}
+                disabled={running || busy}
+                onChange={(text) =>
+                  setDrafts((current) => {
+                    const next = { ...current };
+                    if (text === item.proposed_caption) delete next[item.id];
+                    else next[item.id] = text;
+                    return next;
+                  })
+                }
+              />
               <button
                 type="button"
                 disabled={running || busy || query.isError || drafts[item.id] === undefined}
@@ -304,7 +303,7 @@ export function CaptionReview({ jobId }: { jobId: string }) {
                 保存候选
               </button>
               <CaptionTranslation
-                key={item.id}
+                key={`translation:${item.id}`}
                 value={drafts[item.id] ?? item.proposed_caption}
                 disabled={running || busy}
                 onApply={(text) =>
