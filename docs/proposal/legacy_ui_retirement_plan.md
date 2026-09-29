@@ -3,7 +3,7 @@
 - 状态：实施中 / 本地 dev 阶段检查点
 - 编写日期：2026-09-28
 - 适用范围：移除 Classic 和旧 Dragon，保留 Dragon Next 为唯一维护的 WebUI
-- 当前进度：P0–P3 已在本地源码与隔离候选构建验收；Next 已补字段级撤销、完整帮助及恢复已知页面默认值，P4 正在迁移旧测试契约、尚未删除旧资产，P5 未开始；未推送或发布
+- 当前进度：P0–P3 已在本地源码与隔离候选构建验收；Next 已补字段级撤销、完整帮助及恢复已知页面默认值，P4 已分批迁移旧测试与修复对应 Next 行为、尚未删除旧静态树，P5 未开始；未推送或发布
 
 ## 目标与边界
 
@@ -118,6 +118,13 @@ P0–P3 代码已按原提交顺序 cherry-pick 至本地 `dev`，后续时间�
 - 旧 bootstrap 运行时测试已删除。Next `AppShell` 真实渲染测试覆盖训练页到数据集页的全局/页面缩放，旧模式优先级和 Dragon 启动失败后退回 Classic 仅属于已废弃入口；aiohttp 旧地址重定向另由静态路由测试覆盖。独立 Sol 审计通过，定向 Next 3 项、重定向 4 项通过。
 - 旧 `training_polish` 测试已按行为迁移：EMA 序列、日志作为安全文本、样张前后导航、80°C 温度预警、`interrupted`/`failed` 错误态、后端 `kind=final` 权重标识和样张步数，均有 Next 测试。图表 tooltip 改为安全 DOM 文本，显示轴和指标标签并支持键盘逐点读取；真实 Chromium hover、1280px/390px 监控与队列导航 3 项通过，窄屏 tooltip 不产生横向溢出。
 - 明确退出旧版专属呈现：Dragon SVG 曲线/面积几何、日志 token 着色与字体规则、监控页内嵌队列侧栏不复刻。Next 使用 ECharts 曲线与 EMA、安全纯文本日志、独立队列页；这些不是训练或队列 API 的退出。旧 CSS 字面断言不迁移，窄屏可用性以浏览器视口测试验证。其余旧测试仍须逐文件迁移，不能据此删除整棵静态树。
+
+## P4 后续迁移检查点（2026-09-29）
+
+- 旧 UIUX CSS/DOM 测试已由 Next 浏览器结果测试接替：配置组长任务名和指标、手机数据集保存主操作在 1440px/390px 均可见可操作。测试先发现 390px 配置组任务标题被压到不可见；修正窄屏任务行布局后，4 项 E2E 通过，截图确认标题、路径与指标不重叠。历史时间戳格式与原值提示另有 Next 组件测试。旧 `test_dragon_uiux_review_fixes.py` 已删除。
+- 布尔配置与模型快速选择旧测试已迁到 Next 字段、工作区和模型能力测试。工作区实际点击 VAE 缓存开关后，保存 PATCH 的 `use_vae_cache` 为 JSON boolean。旧 `test_dragon_config_boolean_controls_frontend.py`、`test_dragon_model_quick_picker_frontend.py` 已删除。预设库折叠持久化在 Next 尚无等价行为，旧 `test_dragon_config_workbench_frontend.py` 仍保留，待单独处理。
+- 监控 `interrupted`/`failed` 状态已明确映射为错误视觉态；隐藏标签页停止轮询和 WebSocket 触发的 HTTP 刷新，恢复可见后确认 status 并刷新 metrics/logs/GPU，包含 status 请求途中转入后台的竞态和空闲 GPU 刷新。旧指针动画和可见性轮询测试仍保留至旧静态源码实际删除；未合入过早删除它们的隔离候选。
+- 当前集成检查：Next 单 worker 83 文件 / 377 项通过，强制 TypeScript 检查通过；静态路由 21 项通过；新历史/监控与 UIUX 浏览器测试合计 7 项通过。隔离候选构建位于 `/tmp/legacy-ui-p4-checkpoint-20260929/dragon-next`，在线 `web/static/dragon-next/index.html` 仍指向旧 hash 资源，20203 未切换。这些结果不代替 P4 旧静态树删除后的 P5 验收。
 
 ## 退役验收范围
 
