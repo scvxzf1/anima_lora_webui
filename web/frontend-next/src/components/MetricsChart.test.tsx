@@ -69,3 +69,15 @@ it("draws learning-rate data and announces inspected values in scientific notati
   fireEvent.keyDown(chart, { key: "ArrowRight" });
   expect(getByText("检查点 1/1 · STEP: 4 · 学习率: 1.234e-5")).toBeTruthy();
 });
+
+it("shows and exposes an older LR point when the initial window includes all loaded points", async () => {
+  mockChartWidth();
+  const points = Array.from({ length: 2001 }, (_, index) => ({ step: index + 1, ...(index === 0 ? { lr: 1e-5 } : {}) }));
+  const { getByRole, getByText, getByLabelText } = render(<MetricsChart points={points} metric="lr" label="学习率趋势" initialLimit={0} />);
+  expect(getByLabelText("学习率趋势数据窗口")).toHaveValue("0");
+  await waitFor(() => expect(setOption).toHaveBeenCalled());
+  expect(setOption.mock.calls.at(-1)?.[0].series[0].data).toEqual([[1, 1e-5]]);
+  const chart = getByRole("group", { name: /学习率趋势，1 个点/ });
+  fireEvent.keyDown(chart, { key: "ArrowRight" });
+  expect(getByText("检查点 1/1 · STEP: 1 · 学习率: 1.000e-5")).toBeTruthy();
+});

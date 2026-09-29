@@ -2,12 +2,12 @@ import { useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { metricRange, metricSeries } from "./metricSeries";
 import { useMetricsCanvas } from "./useMetricsCanvas";
 
-export function MetricsChart({ points, metric = "loss", label = "Loss 趋势", timeAxis = false, total }: {
-  points: Record<string, unknown>[]; metric?: string; label?: string; timeAxis?: boolean; total?: number;
+export function MetricsChart({ points, metric = "loss", label = "Loss 趋势", timeAxis = false, total, initialLimit = 2000 }: {
+  points: Record<string, unknown>[]; metric?: string; label?: string; timeAxis?: boolean; total?: number; initialLimit?: number;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const [smoothing, setSmoothing] = useState(0);
-  const [limit, setLimit] = useState(2000);
+  const [limit, setLimit] = useState(initialLimit);
   const [focusedIndex, setFocusedIndex] = useState<number | null>(null);
   const series = useMemo(() => metricSeries(points, metric, limit, smoothing, timeAxis), [points, metric, limit, smoothing, timeAxis]);
   const metricName = label.replace(/\s*趋势$/, "");
