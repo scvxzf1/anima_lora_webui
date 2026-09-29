@@ -374,6 +374,9 @@ test("training optimizer and learning-rate choices can be saved from the editor"
   await expect(schedulerHelp).toContainText("lr_warmup_steps");
   await page.getByRole("button", { name: "关闭字段说明", exact: true }).click();
   await scheduler.selectOption("constant_with_warmup");
+  await page.getByRole("button", { name: "查看预热步数帮助", exact: true }).click();
+  await expect(page.getByRole("dialog")).toContainText("0.05 表示前 5% 的训练步数逐步升到目标学习率");
+  await page.getByRole("button", { name: "关闭字段说明", exact: true }).click();
 
   mocks.saveOk();
   await page.getByRole("button", { name: "保存配置", exact: true }).click();
