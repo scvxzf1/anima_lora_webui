@@ -12,6 +12,14 @@ describe("metric semantics", () => {
     expect(metricSeries(points, "loss", 0, 0.5, false).data).toEqual([[10, 0.2], [12, 0.15000000000000002]]);
     expect(metricSeries(points.slice(1, 3), "loss", 0, 0, false).data).toEqual([]);
   });
+  it("excludes validation samples from the training learning-rate series", () => {
+    expect(metricSeries([
+      { step: 1, lr: 0.001 },
+      { kind: "val", step: 1, lr: 0.9 },
+      { ev: "val", step: 2, lr: 0.8 },
+      { step: 3, lr: 0.0001 },
+    ], "lr", 0, 0, false).data).toEqual([[1, 0.001], [3, 0.0001]]);
+  });
   it("smooths every valid training point without changing series length", () => {
     const result = metricSeries(
       [{ step: 1, loss: 1 }, { step: 2, loss: 0 }, { step: 3, loss: 1 }],

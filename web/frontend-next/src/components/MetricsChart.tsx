@@ -37,7 +37,11 @@ export function MetricsChart({ points, metric = "loss", label = "Loss 趋势", t
     <p className="data-scope">{series.data.length} 个有效点 / 已读取 {points.length} 点{total !== undefined && total > points.length ? ` / 共 ${total} 点（前段未读取）` : ""} · {metricRange(series.data, series.axis) || "无有效范围"}</p>
     {series.data.length ? <>
       <div ref={ref} className="metric-chart" role="group" tabIndex={0} aria-label={`${label}，${series.data.length} 个点`} aria-keyshortcuts="ArrowLeft ArrowRight" onKeyDown={inspectPoint} />
-      <p className="chart-inspection" aria-live="polite">{focusedPoint ? `检查点 ${focusedIndex! + 1}/${series.data.length} · ${axisName}: ${series.axis === "time" ? new Date(focusedPoint[0]).toLocaleString() : focusedPoint[0]} · ${metricName}: ${focusedPoint[1].toPrecision(4)}` : ""}</p>
+      <p className="chart-inspection" aria-live="polite">{focusedPoint ? `检查点 ${focusedIndex! + 1}/${series.data.length} · ${axisName}: ${series.axis === "time" ? new Date(focusedPoint[0]).toLocaleString() : focusedPoint[0]} · ${metricName}: ${formatMetricValue(metricName, focusedPoint[1])}` : ""}</p>
     </> : <p className="empty-state">暂无指标记录</p>}
   </section>;
+}
+
+function formatMetricValue(metricName: string, value: number) {
+  return metricName === "学习率" ? value.toExponential(3) : value.toPrecision(4);
 }

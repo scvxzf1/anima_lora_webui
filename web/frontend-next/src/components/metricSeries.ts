@@ -9,7 +9,7 @@ export function metricSeries(points: Record<string, unknown>[], metric: string, 
   let previous: number | undefined;
   const data: [number, number][] = [];
   window.forEach((point, index) => {
-    if (metric === "loss" && !isTrainingMetric(point)) return;
+    if ((metric === "loss" || metric === "lr") && !isTrainingMetric(point)) return;
     const value = finiteNumber(point[metric]);
     const x = timeAxis ? finiteNumber(point.ts) : hasSteps ? finiteNumber(point.step ?? point.current) : offset + index + 1;
     if (value === undefined || x === undefined) return;

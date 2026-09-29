@@ -50,3 +50,22 @@ it("reports an accessible empty state for missing training metrics", () => {
   expect(screen.getByRole("region", { name: "Loss 趋势" })).toBeInTheDocument();
   expect(screen.getByText("暂无指标记录")).toBeInTheDocument();
 });
+
+it("shows an aligned, keyboard-readable learning-rate chart and filters validation LR", async () => {
+  mockChartWidth();
+  const points = [
+    { step: 1, loss: 0.5, lr: 0.001 },
+    { step: 2, loss: 0.4, lr: 0.9, kind: "val" },
+    { step: 3, loss: 0.3, lr: 0.0001 },
+  ];
+  render(<TrainingMetricsCharts points={points} />);
+
+  const learningRateChart = await screen.findByRole("group", { name: "学习率趋势，2 个点" });
+  fireEvent.keyDown(learningRateChart, { key: "ArrowRight" });
+  expect(screen.getByText("检查点 1/2 · STEP: 1 · 学习率: 1.000e-3")).toBeInTheDocument();
+});
+
+it("omits the learning-rate chart when no training LR is available", () => {
+  render(<TrainingMetricsCharts points={[{ step: 1, loss: 0.5 }, { step: 2, lr: 0.9, ev: "val" }]} />);
+  expect(screen.queryByRole("region", { name: "学习率趋势" })).not.toBeInTheDocument();
+});
