@@ -10,6 +10,8 @@ import { FIELD_OPTIONS } from "./labels-options.js";
 import { collectConfigDraftChanges, displayConfigValue, prepareConfigPatch } from "./config-values.js";
 // @ts-expect-error Legacy domain JS modules do not yet ship TypeScript declarations.
 import { NETWORK_ARG_FIELD_MAP } from "./defaults.js";
+// @ts-expect-error Legacy domain JS modules do not yet ship TypeScript declarations.
+import { FORM_UI_PERSIST_DEFAULT_FIELDS, NETWORK_ARG_FIELD_SPECS } from "./defaults.js";
 
 afterEach(cleanup);
 
@@ -104,6 +106,76 @@ it("restores only declared defaults and collects field-level draft changes", () 
       },
     }),
   ).toEqual({ network_dim: 32 });
+});
+
+it("derives and persists the precision preference through training precision fields", () => {
+  expect(displayConfigValue("precision_preference", {})).toBe("bf16");
+  expect(displayConfigValue("precision_preference", { mixed_precision: "fp16" })).toBe("fp16");
+  expect(displayConfigValue("precision_preference", { full_fp16: true })).toBe("fp16");
+  expect(displayConfigValue("precision_preference", { mixed_precision: "no" })).toBe("fp32");
+  expect(FORM_UI_PERSIST_DEFAULT_FIELDS.has("precision_preference")).toBe(true);
+
+  expect(
+    collectConfigDraftChanges({
+      scopeKeys: ["precision_preference"],
+      baselineValues: { mixed_precision: "fp16" },
+      draftValues: { precision_preference: "fp16" },
+    }),
+  ).toEqual({});
+  expect(
+    collectConfigDraftChanges({
+      scopeKeys: ["precision_preference"],
+      baselineValues: { mixed_precision: "fp16" },
+      draftValues: { precision_preference: "fp32" },
+    }),
+  ).toEqual({ precision_preference: "fp32" });
+  expect(
+    prepareConfigPatch(
+      { precision_preference: "fp32" },
+      { full_fp16: true, full_bf16: true },
+    ),
+  ).toEqual({ mixed_precision: "no", full_fp16: false, full_bf16: false });
+});
+
+it("keeps Soft Tokens advanced defaults and choices in the config catalog", () => {
+  const softTokenSpecs = NETWORK_ARG_FIELD_SPECS.filter(
+    (spec: { family: string; key: string; default: unknown }) =>
+      spec.family === "soft_tokens",
+  );
+  const specDefaults = Object.fromEntries(
+    softTokenSpecs.map((spec: { key: string; default: unknown }) => [spec.key, spec.default]),
+  );
+  expect(specDefaults).toMatchObject({
+    contrastive_objective: "infonce",
+    contrastive_negative_mode: "shuffled",
+    contrastive_every_n: 1,
+    n_layers: 10,
+    n_t_buckets: 100,
+    splice_position: "end_of_sequence",
+    softrank_softness: 0.1,
+    softrank_method: "neuralsort",
+    dual_bank: false,
+  });
+  for (const spec of softTokenSpecs as { key: string; default: unknown }[]) {
+    expect(displayConfigValue(spec.key, {})).toBe(spec.default);
+  }
+  expect(FIELD_OPTIONS.contrastive_objective).toEqual(["infonce", "softrank"]);
+  expect(FIELD_OPTIONS.softrank_method).toEqual(["neuralsort", "softsort"]);
+  expect(FIELD_OPTIONS.dual_bank).toEqual([false, true]);
+  const visibleKeys = new Set(
+    fieldsForConfig({ model_family: "anima", method: "soft_tokens" }).map(
+      (field) => field.key,
+    ),
+  );
+  for (const key of ["softrank_softness", "softrank_method", "dual_bank"]) {
+    expect(visibleKeys.has(key)).toBe(true);
+  }
+  expect(
+    softTokenSpecs.some((spec: { key: string }) =>
+      spec.key.toLowerCase().includes("agsm"),
+    ),
+  ).toBe(false);
+  expect(Object.keys(FIELD_OPTIONS).some((key) => key.toLowerCase().includes("agsm"))).toBe(false);
 });
 
 it("renders the current field help summary in the Next editor", () => {
