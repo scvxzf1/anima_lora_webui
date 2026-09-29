@@ -31,6 +31,8 @@ describe.sequential("training sample prompts", () => {
     </QueryClientProvider>);
     const user = userEvent.setup();
     await screen.findByRole("button", { name: "样张 2: style two" });
+    expect(apiRequestMock.mock.calls.some(([input]) => String(input) === "/api/config/sample-prompts?file=configs%2Fsample-prompts%2Fimported%2Foriginal.txt")).toBe(true);
+    expect(screen.getByText(/已关联: configs\/sample-prompts\/imported\/original\.txt/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "保存提示词与配置引用" })).toBeDisabled();
     await user.click(screen.getByText("统一参数"));
     for (const [label, value] of [["统一宽度", "1024"], ["统一高度", "1024"], ["统一步数", "28"], ["统一CFG", "4"]]) {
