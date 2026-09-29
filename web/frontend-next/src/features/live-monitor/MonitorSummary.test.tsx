@@ -16,6 +16,18 @@ it("does not expose training metrics for preprocessing", () => {
   expect(screen.queryByText("Loss")).not.toBeInTheDocument();
 });
 
+it("shows current training steps, percentage, and sampled rate", () => {
+  render(<MonitorSummary status={{
+    job: "training",
+    latest_progress: { current: 4, total: 10, rate: "2it/s" },
+  }} />);
+
+  expect(screen.getByRole("progressbar", { name: "任务进度" })).toHaveAttribute("aria-valuenow", "40");
+  expect(screen.getByText("40.0%")).toBeInTheDocument();
+  expect(screen.getByText("步数").parentElement).toHaveTextContent("4 / 10");
+  expect(screen.getByText("最近采样速度").parentElement).toHaveTextContent("2it/s");
+});
+
 it.each([
   [79, false],
   [80, true],
