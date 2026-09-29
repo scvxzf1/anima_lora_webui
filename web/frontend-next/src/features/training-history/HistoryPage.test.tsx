@@ -310,7 +310,7 @@ it("clears selected tasks when switching config groups", async () => {
   await waitFor(() => expect(batchPayloads).toEqual([{ action: "archive", task_ids: ["task-b"] }]));
 });
 
-it("keeps selection through browser back and starts empty after a document reload", async () => {
+it("keeps selection through a same-scope SPA detail round trip", async () => {
   const task = { id: "task-back", name: "Back navigation", job: "training", state: "idle", archived: false };
   vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input);
@@ -331,8 +331,78 @@ it("keeps selection through browser back and starts empty after a document reloa
   await screen.findByRole("heading", { name: "Back navigation" });
   await router.navigate(-1);
   expect(await screen.findByRole("checkbox", { name: "选择 Back navigation" })).toBeChecked();
-  resetHistorySelection();
-  await waitFor(() => expect(screen.getByRole("checkbox", { name: "选择 Back navigation" })).not.toBeChecked());
+});
+
+it("drops selection across mounted search scopes and does not restore it on browser back", async () => {
+  const alpha = { id: "alpha", name: "Alpha task", job: "training", state: "idle", archived: false };
+  const beta = { id: "beta", name: "Beta task", job: "training", state: "idle", archived: false };
+  const batchPayloads: unknown[] = [];
+  vi.stubGlobal("confirm", vi.fn(() => true));
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    if (url === "/api/training/history/collections/settings") return jsonResponse({ collection_order: [], config_group_order: {} });
+    if (url === "/api/training/history/batch") {
+      batchPayloads.push(JSON.parse(String(init?.body)));
+      return jsonResponse({ ok: true });
+    }
+    if (url.startsWith("/api/training/history?")) {
+      const task = new URL(url, "http://localhost").searchParams.get("q") === "alpha" ? alpha : beta;
+      return jsonResponse({ tasks: [task], total: 1, next_cursor: null });
+    }
+    throw new Error(`Unexpected request: ${url}`);
+  }));
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const router = createMemoryRouter([
+    { path: "/history", element: <HistoryPage /> },
+    { path: "/outside", element: <p>Outside history</p> },
+  ], { initialEntries: ["/history?q=alpha&layout=list"] });
+  render(<QueryClientProvider client={client}><RouterProvider router={router} /></QueryClientProvider>);
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole("checkbox", { name: "选择 Alpha task" }));
+  await act(async () => { await router.navigate("/outside"); });
+  await screen.findByText("Outside history");
+  await act(async () => { await router.navigate("/history?q=beta&layout=list"); });
+  expect(await screen.findByRole("checkbox", { name: "选择 Beta task" })).not.toBeChecked();
+  expect(screen.queryByText("已选 1 项")).not.toBeInTheDocument();
+  await user.click(screen.getByRole("checkbox", { name: "选择 Beta task" }));
+  await user.click(screen.getByRole("button", { name: "归档已选" }));
+  await waitFor(() => expect(batchPayloads).toEqual([{ action: "archive", task_ids: ["beta"] }]));
+  await act(async () => { await router.navigate(-1); });
+  await act(async () => { await router.navigate(-1); });
+  expect(await screen.findByRole("checkbox", { name: "选择 Alpha task" })).not.toBeChecked();
+});
+
+it.each(["refresh", "filter"])("closes an open runtime delete preview on %s before old IDs can submit", async (change) => {
+  const alpha = { id: "alpha", name: "Alpha task", job: "training", state: "idle", archived: false };
+  const beta = { id: "beta", name: "Beta task", job: "training", state: "idle", archived: false };
+  const batchPayloads: Record<string, unknown>[] = [];
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    if (url === "/api/training/history/collections/settings") return jsonResponse({ collection_order: [], config_group_order: {} });
+    if (url === "/api/training/history/batch") {
+      const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      batchPayloads.push(body);
+      return jsonResponse({ ok: true, dry_run: true, task_count: 1, runtime_dir_count: 0, tasks: [alpha], runtime_dirs: [], blocked: [] });
+    }
+    if (url.startsWith("/api/training/history?")) {
+      const task = new URL(url, "http://localhost").searchParams.get("q") === "beta" ? beta : alpha;
+      return jsonResponse({ tasks: [task], total: 1, next_cursor: null });
+    }
+    throw new Error(`Unexpected request: ${url}`);
+  }));
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const router = createMemoryRouter([{ path: "/history", element: <HistoryPage /> }], { initialEntries: ["/history?q=alpha&layout=list"] });
+  render(<QueryClientProvider client={client}><RouterProvider router={router} /></QueryClientProvider>);
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole("checkbox", { name: "选择 Alpha task" }));
+  await user.click(screen.getByRole("button", { name: "删除记录及运行目录" }));
+  await screen.findByText("Alpha task", { selector: "strong" });
+  await user.click(screen.getByRole("checkbox", { name: "我已核对上述列表，并确认永久删除" }));
+  expect(screen.getByRole("button", { name: "确认彻底删除" })).toBeEnabled();
+  if (change === "refresh") await user.click(screen.getByRole("button", { name: "刷新" }));
+  else fireEvent.change(screen.getByRole("searchbox", { name: "搜索历史记录" }), { target: { value: "beta" } });
+  await waitFor(() => expect(screen.queryByRole("button", { name: "确认彻底删除" })).not.toBeInTheDocument());
+  expect(batchPayloads).toEqual([{ action: "delete", task_ids: ["alpha"], delete_runtime_dirs: true, dry_run: true }]);
 });
 
 it("searches history on the server and resets pagination without clearing other filters", async () => {

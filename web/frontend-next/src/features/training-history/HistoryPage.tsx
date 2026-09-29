@@ -75,6 +75,7 @@ export function HistoryPage() {
   const busy = useIsMutating({ mutationKey: ["training-history"] }) > 0;
   const [comparison, setComparison] = useState<string[]>([]);
   const [runtimeDeleteIds, setRuntimeDeleteIds] = useState<string[]>([]);
+  const [runtimeDeleteScope, setRuntimeDeleteScope] = useState("");
   const collections = useQuery({
     queryKey: historyKeys.collections,
     queryFn: ({ signal }) => fetchHistoryCollections(signal),
@@ -87,6 +88,11 @@ export function HistoryPage() {
   const verificationPending = useRef(false);
   const [verifyingSelection, setVerifyingSelection] = useState(false);
   const queryScope = `${limit}\u0000${search}`;
+  const selectionScope = JSON.stringify([
+    limit, search, state, archived, collection, configGroup,
+    advanced.base, advanced.variant, advanced.source, advanced.precision,
+    advanced.preprocess_precision, advanced.swap, advanced.compute,
+  ]);
   const queryScopeRef = useRef(queryScope);
   const previousScope = useRef(queryScope);
   queryScopeRef.current = queryScope;
@@ -98,11 +104,15 @@ export function HistoryPage() {
     verificationDepth.current = 0;
     setVerifyingSelection(false);
   }, [queryScope]);
+  useEffect(() => {
+    setRuntimeDeleteIds([]);
+  }, [selectionScope]);
   function filter(key: string, value: string) {
     verificationRun.current += 1;
     verificationPending.current = false;
     verificationDepth.current = 0;
     setVerifyingSelection(false);
+    setRuntimeDeleteIds([]);
     setSelected([]);
     setParams(
       (current) => {
@@ -116,7 +126,7 @@ export function HistoryPage() {
       { replace: true },
     );
   }
-  const { selected, setSelected } = useHistorySelected();
+  const { selected, setSelected } = useHistorySelected(selectionScope);
   const [notice, setNotice] = useState("");
 
   const query = useInfiniteQuery({
@@ -126,6 +136,9 @@ export function HistoryPage() {
     getNextPageParam: (last) => last.next_cursor ?? undefined,
     retry: false,
   });
+  useEffect(() => {
+    if (query.isFetching) setRuntimeDeleteIds([]);
+  }, [query.isFetching]);
   const tasks = query.data?.pages.flatMap((pageData) => pageData.tasks || []) || [];
   const selectedTraining = selected.filter((id) =>
     tasks.some((task) => task.id === id && task.job === "training"),
@@ -175,6 +188,7 @@ export function HistoryPage() {
     verificationPending.current = false;
     verificationDepth.current = 0;
     setVerifyingSelection(false);
+    setRuntimeDeleteIds([]);
     setSelected([]);
     setParams((current) => {
       const next = new URLSearchParams();
@@ -219,6 +233,7 @@ export function HistoryPage() {
   async function refreshHistory() {
     if (verificationPending.current || query.isFetching || busy) return;
     verificationPending.current = true;
+    setRuntimeDeleteIds([]);
     const run = ++verificationRun.current;
     const scope = queryScope;
     const hadBatchError = Boolean(batch.error);
@@ -227,7 +242,7 @@ export function HistoryPage() {
     const currentRun = () => verificationRun.current === run && queryScopeRef.current === scope;
     try {
       let result = await query.refetch();
-      while (currentRun() && result.isSuccess && result.data && result.data.pages.length < verificationDepth.current && result.hasNextPage) {
+      while (currentRun() && result.isSuccess && result.data && result.data.pages.length < verificationDepth.current && result.data.pages.at(-1)?.next_cursor != null) {
         result = await query.fetchNextPage();
       }
       if (!currentRun()) return;
@@ -449,7 +464,10 @@ export function HistoryPage() {
                 type="button"
                 disabled={!selectionReady || busy}
                 className="history-danger"
-                onClick={() => setRuntimeDeleteIds([...selected])}
+                onClick={() => {
+                  setRuntimeDeleteScope(selectionScope);
+                  setRuntimeDeleteIds([...selected]);
+                }}
               >
                 删除记录及运行目录
               </button>
@@ -617,7 +635,7 @@ export function HistoryPage() {
       {comparison.length > 0 && (
         <HistoryComparison ids={comparison} onClose={() => setComparison([])} />
       )}
-      {runtimeDeleteIds.length > 0 && (
+      {runtimeDeleteIds.length > 0 && runtimeDeleteScope === selectionScope && selectionReady && (
         <RuntimeDeleteDialog
           taskIds={runtimeDeleteIds}
           onClose={() => setRuntimeDeleteIds([])}

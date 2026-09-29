@@ -2,19 +2,30 @@ import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { create } from "zustand";
 
-type HistorySelection = { selected: string[]; setSelected: (ids: string[] | ((current: string[]) => string[])) => void };
-const useHistorySelection = create<HistorySelection>()((set) => ({
+type HistorySelection = { scope: string | null; selected: string[] };
+const useHistorySelection = create<HistorySelection>()(() => ({
+  scope: null,
   selected: [],
-  setSelected: (value) => set(({ selected }) => ({ selected: typeof value === "function" ? value(selected) : value })),
 }));
 
-export function useHistorySelected() {
+export function useHistorySelected(scope: string) {
   const state = useHistorySelection();
-  return { selected: state.selected, setSelected: state.setSelected };
+  useEffect(() => {
+    useHistorySelection.setState((current) =>
+      current.scope === scope ? current : { scope, selected: [] },
+    );
+  }, [scope]);
+  const setSelected = (value: string[] | ((current: string[]) => string[])) => {
+    useHistorySelection.setState((current) => {
+      if (current.scope !== scope) return current;
+      return { selected: typeof value === "function" ? value(current.selected) : value };
+    });
+  };
+  return { selected: state.scope === scope ? state.selected : [], setSelected };
 }
 
 export function resetHistorySelection() {
-  useHistorySelection.getState().setSelected([]);
+  useHistorySelection.setState({ scope: null, selected: [] });
 }
 
 const useHistoryAnchors = create<{ anchors: Record<string, string> }>(() => ({ anchors: {} }));
