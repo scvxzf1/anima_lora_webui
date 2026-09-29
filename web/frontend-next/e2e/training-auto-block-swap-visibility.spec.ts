@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { mockWorkspace } from "./fixtures";
 
-test("AUTO swap children render only while AUTO is enabled", async ({ page }, testInfo) => {
+test("AUTO swap controls follow the enabled mode without losing manual values", async ({ page }, testInfo) => {
   const mocks = await mockWorkspace(page);
   await page.route((url) => url.pathname === "/api/config/merged", (route) =>
     route.fulfill({ json: {
@@ -28,16 +28,47 @@ test("AUTO swap children render only while AUTO is enabled", async ({ page }, te
     await page.getByRole("button", { name: /块交换与内存卸载/ }).click();
 
     const swap = page.locator("#resource-fields-residency");
-    const toggle = page.getByLabel("AUTO 块交换（实验）");
+    const toggle = page.getByRole("checkbox", { name: "AUTO 块交换（实验）" });
     await expect(toggle).not.toBeChecked();
     await expect(swap.locator('[id^="training-field-auto_block_swap_"]')).toHaveCount(0);
-    await expect(page.getByLabel("Block swap 数量")).toBeEnabled();
-    await swap.screenshot({ path: testInfo.outputPath(`auto-swap-off-${name}.png`) });
+    const manualSwap = page.getByRole("spinbutton", { name: "Block swap 数量" });
+    await expect(manualSwap).toBeEnabled();
+    await expect(manualSwap).toHaveValue("20");
 
     await toggle.check();
-    await expect(page.getByLabel("AUTO 调整模式")).toBeVisible();
+    const mode = page.getByRole("combobox", { name: "AUTO 调整模式" });
+    await expect(mode).toBeVisible();
     await expect(swap.locator('[id^="training-field-auto_block_swap_"]')).toHaveCount(7);
-    await swap.screenshot({ path: testInfo.outputPath(`auto-swap-on-${name}.png`) });
+    await expect(manualSwap).toBeDisabled();
+    await expect(manualSwap).toHaveValue("20");
+    const reservePercent = page.getByRole("spinbutton", { name: "保留显存（总容量 %）" });
+    await expect(reservePercent).toHaveAttribute("min", "0");
+    await expect(reservePercent).toHaveAttribute("max", "90");
+    await expect(reservePercent).toHaveAttribute("step", "0.1");
+    const preference = page.getByRole("combobox", { name: "显存 / 内存倾向" });
+    await expect(preference.getByRole("option", { name: "均衡" })).toBeAttached();
+    await expect(preference.getByRole("option", { name: "优先节省显存" })).toBeAttached();
+    await expect(preference.getByRole("option", { name: "优先节省内存" })).toBeEnabled();
+    await reservePercent.scrollIntoViewIfNeeded();
+    await expect(reservePercent).toBeInViewport();
+    await page.locator("#training-field-auto_block_swap_vram_reserve_percent").screenshot({ path: testInfo.outputPath(`auto-swap-reserve-${name}.png`) });
+    await preference.scrollIntoViewIfNeeded();
+    await expect(preference).toBeInViewport();
+    await page.locator("#training-field-auto_block_swap_preference").screenshot({ path: testInfo.outputPath(`auto-swap-preference-${name}.png`) });
+
+    await mode.selectOption("dynamic");
+    await expect(page.getByRole("spinbutton", { name: "动态评估窗口（更新数）" })).toBeEnabled();
+    await expect(page.getByRole("spinbutton", { name: "AUTO 最大候选数" })).toBeDisabled();
+
+    await mode.selectOption("startup");
+    await expect(page.getByRole("spinbutton", { name: "动态评估窗口（更新数）" })).toBeDisabled();
+    await expect(page.getByRole("spinbutton", { name: "AUTO 最大候选数" })).toBeEnabled();
+
+    await toggle.uncheck();
+    await expect(toggle).not.toBeChecked();
+    await expect(swap.locator('[id^="training-field-auto_block_swap_"]')).toHaveCount(0);
+    await expect(manualSwap).toBeEnabled();
+    await expect(manualSwap).toHaveValue("20");
   }
 
   expect(mocks.writes).toEqual([]);

@@ -110,6 +110,7 @@ export function TrainingFieldEditor({
                 aria-label={field.label}
                 value={String(draft[field.key] ?? "")}
                 min={field.min}
+                max={field.max}
                 step={field.step}
                 disabled={controlDisabled}
                 onChange={(event) =>

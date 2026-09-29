@@ -7,12 +7,14 @@ import {
   draftFromMerged,
   importedTrainingPath,
   rawConfigOwnKeys,
+  TRAINING_FIELDS,
   trainingPatchValues,
   sameTrainingValue,
   restoreKnownFormDefaults,
   type TrainingDraft,
 } from "./trainingForm";
 import {
+  availableFieldOptions,
   fieldAvailability,
   fieldsForConfig,
   filterTrainingFields,
@@ -63,6 +65,48 @@ function diffFieldManifests(
 }
 
 describe("training config form domain", () => {
+  it("constrains AUTO block swap VRAM reserve to the supported percentage range", () => {
+    expect(
+      TRAINING_FIELDS.find(
+        (field) => field.key === "auto_block_swap_vram_reserve_percent",
+      ),
+    ).toMatchObject({
+      kind: "number",
+      group: "resources",
+      min: 0,
+      max: 90,
+      step: 0.1,
+    });
+  });
+
+  it("labels AUTO block swap preferences and retains family-specific option filtering", () => {
+    const field = TRAINING_FIELDS.find(
+      (candidate) => candidate.key === "auto_block_swap_preference",
+    );
+    expect(field).toMatchObject({
+      kind: "select",
+      options: ["balanced", "vram", "ram"],
+      optionLabels: {
+        balanced: "均衡",
+        vram: "优先节省显存",
+        ram: "优先节省内存",
+      },
+    });
+    expect(availableFieldOptions(field!, "anima")).toEqual([
+      "balanced",
+      "vram",
+    ]);
+    expect(availableFieldOptions(field!, "z_image")).toEqual([
+      "balanced",
+      "vram",
+    ]);
+    expect(availableFieldOptions(field!, "krea2_raw")).toEqual([
+      "balanced",
+      "vram",
+      "ram",
+    ]);
+  });
+
   it("restores only known defaults for supplied editable fields and keeps unrelated draft keys", () => {
     const draft = {
       max_train_steps: 1600,
@@ -282,6 +326,7 @@ describe("training config form domain", () => {
   });
 
   it("preserves manual and AUTO swap values while patching only the toggled mode", () => {
+    expect(draftFromMerged({}, fieldsForConfig({})).auto_block_swap).toBe(false);
     const source = {
       model_family: "krea2_raw",
       auto_block_swap: false,
@@ -302,6 +347,11 @@ describe("training config form domain", () => {
       enabled: false,
       code: "auto-block-swap-enabled",
     });
+    expect(fieldAvailability("block_swap_restore_mode", {
+      model_family: "krea2_raw",
+      auto_block_swap: true,
+      blocks_to_swap: 0,
+    }, "lora")).toMatchObject({ visible: true, enabled: true });
     expect(automatic.blocks_to_swap).toBe(20);
     expect(trainingPatchValues(automatic, manual, fields, source)).toEqual({
       auto_block_swap: true,
@@ -314,6 +364,10 @@ describe("training config form domain", () => {
       auto_block_swap: false,
     };
     expect(returnedToManual.blocks_to_swap).toBe(17);
+    expect(fieldAvailability("blocks_to_swap", returnedToManual, "lora")).toMatchObject({
+      visible: true,
+      enabled: true,
+    });
     expect(
       trainingPatchValues(
         returnedToManual,

@@ -19,6 +19,7 @@ export type TrainingFieldSpec = {
   help?: string;
   defaultValue?: string | number | boolean;
   min?: number;
+  max?: number;
   step?: number | "any";
 };
 
@@ -293,6 +294,27 @@ export const TRAINING_FIELDS: TrainingFieldSpec[] = [
     kind: "number",
     min: 0,
     step: 1,
+  },
+  {
+    key: "auto_block_swap_vram_reserve_percent",
+    label: "保留显存（总容量 %）",
+    group: "resources",
+    kind: "number",
+    min: 0,
+    max: 90,
+    step: 0.1,
+  },
+  {
+    key: "auto_block_swap_preference",
+    label: "显存 / 内存倾向",
+    group: "resources",
+    kind: "select",
+    options: ["balanced", "vram", "ram"],
+    optionLabels: {
+      balanced: "均衡",
+      vram: "优先节省显存",
+      ram: "优先节省内存",
+    },
   },
   {
     key: "torch_compile",
