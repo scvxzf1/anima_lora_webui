@@ -13,7 +13,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 @pytest.mark.integration
 def test_dragon_history_chart_hover_tracks_each_series() -> None:
-    """The Next chart has no equivalent multi-series controls yet."""
+    """Loss and LR hover markers use their own scales and visibility toggles."""
     if not shutil.which("node"):
         pytest.skip("node is required for Dragon history chart checks")
     jsdom_api = REPO_ROOT / "web/frontend-next/node_modules/jsdom/lib/api.js"
