@@ -238,6 +238,10 @@ P0–P3 代码已按原提交顺序 cherry-pick 至本地 `dev`，后续时间�
 
 旧 `test_dragon_dataset_runtime.py` 仅验证 Dragon DOM 查询次数、预览按钮批量禁用和旧行摘要字符串，已随该运行时退役删除。Next 数据集弹窗的脏草稿保护、取消确认与预览交互由前述整份 **7 项浏览器测试**覆盖；不把旧 DOM 性能计数作为新版验收标准。
 
+继续核对 `test_training_frontend_queue.py` 时发现新的 P2/P4 阻断项：旧配置库支持整组加入暂停队列及导出分组，而 Next `TrainingLibraryActions` 尚无这两个入口；后端 `/api/training/queue/batch/start` 与 `/api/config/file-groups/{group_id}/export` 仍存在。该旧测试保留，先补 Next 用户流程与失败边界，再退役其旧 DOM/JS 断言。
+
+Next 配置库现通过现有 ZIP API 导出训练配置分组；无需打开详细管理，只读/系统分组可导出，空分组禁用，服务端错误会在组操作区显示。Next 配置库整份浏览器 **6 项通过**，导出边界单项复跑通过，分组后端 **26 项通过**，类型检查通过。整组暂停入队尚未补，旧队列测试继续保留。
+
 ## 退役验收范围
 
 | 领域 | 核心验收内容 |

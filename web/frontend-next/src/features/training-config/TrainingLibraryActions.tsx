@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { ArrowDown, ArrowUp, FolderPlus, Pencil, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, Download, FolderPlus, Pencil, Trash2 } from "lucide-react";
 import { apiRequest } from "../../api/client";
 import { useState } from "react";
 import { createPortal } from "react-dom";
@@ -12,6 +12,7 @@ import {
   type TrainingConfigFile,
   type TrainingConfigGroup,
 } from "../../api/trainingContext";
+import { downloadTrainingGroup } from "./downloadTrainingGroup";
 
 const request = (path: string, body?: unknown, method = "POST") =>
   apiRequest<{ file?: string }>(path, {
@@ -49,7 +50,8 @@ export function TrainingLibraryActions({
       setNameAction(null);
     },
   });
-  const busy = disabled || mutation.isPending || Boolean(nameAction);
+  const exportGroup = useMutation({ mutationFn: downloadTrainingGroup, retry: false });
+  const busy = disabled || mutation.isPending || exportGroup.isPending || Boolean(nameAction);
   function openNameAction(action: LibraryNameAction) {
     mutation.reset();
     setNameAction(action);
@@ -148,6 +150,15 @@ export function TrainingLibraryActions({
           <div className="toolbar">
             <button
               type="button"
+              disabled={!group.files.some((entry) => entry.path.toLowerCase().endsWith(".toml"))}
+              title="导出分组"
+              aria-label={`导出分组 ${group.label}`}
+              onClick={() => exportGroup.mutate(group.id)}
+            >
+              <Download size={16} />
+            </button>
+            {detailedManagement && !groupLocked && <button
+              type="button"
               disabled={groupLocked}
               title="重命名当前分组"
               aria-label="重命名当前分组"
@@ -165,8 +176,8 @@ export function TrainingLibraryActions({
               }}
             >
               <Pencil size={16} />
-            </button>
-            <button
+            </button>}
+            {detailedManagement && !groupLocked && <button
               type="button"
               disabled={groupLocked}
               title="删除当前分组"
@@ -183,8 +194,8 @@ export function TrainingLibraryActions({
               }}
             >
               <Trash2 size={16} />
-            </button>
-            {(["up", "down"] as const).map((direction) => (
+            </button>}
+            {detailedManagement && !groupLocked && (["up", "down"] as const).map((direction) => (
               <button
                 key={direction}
                 type="button"
@@ -261,6 +272,7 @@ export function TrainingLibraryActions({
           {mutation.error.message}
         </p>
       )}
+      {exportGroup.error && <p role="alert" className="form-error">{exportGroup.error.message}</p>}
       {nameAction &&
         createPortal(
           <TrainingLibraryNameDialog

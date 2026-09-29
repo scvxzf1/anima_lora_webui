@@ -1,6 +1,37 @@
 import { expect, test } from "@playwright/test";
 import { configFile, mockWorkspace } from "./fixtures";
 
+test("training group export downloads the server archive and reports failures", async ({ page }) => {
+  const mocks = await mockWorkspace(page);
+  let fail = false;
+  await page.route("**/api/config/file-groups/imported/export?kind=training", (route) =>
+    fail
+      ? route.fulfill({ status: 400, json: { ok: false, error: "分组文件不可读取" } })
+      : route.fulfill({
+          contentType: "application/zip",
+          headers: { "Content-Disposition": "attachment; filename*=UTF-8''training-group.zip" },
+          body: "PK",
+        }),
+  );
+  await page.route("**/api/config/file-groups?kind=training", (route) => route.fulfill({ json: [
+    { id: "imported", label: "Studio presets", files: [configFile] },
+    { id: "readonly", label: "只读分组", readonly: true, files: [{ ...configFile, path: "configs/gui-methods/locked.toml", readonly: true }] },
+    { id: "empty", label: "空分组", files: [] },
+  ] }));
+  await page.goto("/next/training");
+  await expect(page.getByRole("switch", { name: "详细管理" })).not.toBeChecked();
+  await expect(page.getByRole("button", { name: "导出分组 只读分组" })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "导出分组 空分组" })).toBeDisabled();
+  const exportButton = page.getByRole("button", { name: "导出分组 Studio presets" });
+  const [download] = await Promise.all([page.waitForEvent("download"), exportButton.click()]);
+  expect(download.suggestedFilename()).toBe("training-group.zip");
+  fail = true;
+  await exportButton.click();
+  await expect(page.getByRole("alert")).toContainText("分组文件不可读取");
+  expect(mocks.writes).toEqual([]);
+  expect(mocks.unhandled).toEqual([]);
+});
+
 test("training library management is opt-in and persists", async ({ page }) => {
   await mockWorkspace(page);
   await page.goto("/next/training");
@@ -113,7 +144,7 @@ test("library collapse, pointer ordering and clean save state", async ({
   await expect(save).toBeEnabled();
   await output.fill("studio-portrait");
   await expect(save).toBeDisabled();
-  const group = page.getByRole("button", { name: /可训练方法变体/ });
+  const group = page.locator(".training-library-group-toggle", { hasText: "可训练方法变体" });
   await expect(group).toHaveAttribute("aria-expanded", "false");
   await group.click();
   await expect(

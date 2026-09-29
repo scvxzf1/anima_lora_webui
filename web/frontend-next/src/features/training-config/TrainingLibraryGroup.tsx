@@ -78,15 +78,14 @@ export function TrainingLibraryGroup({
             <small>{files.length} 个配置</small>
           </span>
         </button>
-        {detailedManagement && !(group.locked || group.readonly || group.system) && (
-          <TrainingLibraryActions
-            scope="group"
-            groups={groups}
-            targetGroup={group}
-            disabled={Boolean(disabled || dirty || searchActive)}
-            onRenamed={onSelect}
-          />
-        )}
+        <TrainingLibraryActions
+          scope="group"
+          groups={groups}
+          targetGroup={group}
+          detailedManagement={detailedManagement}
+          disabled={Boolean(disabled || dirty || searchActive)}
+          onRenamed={onSelect}
+        />
       </header>
       {(open || searchActive) && (
         <SortableContext
