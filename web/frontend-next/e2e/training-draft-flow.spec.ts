@@ -15,6 +15,11 @@ async function fixture(page: Page) {
   await page.route((url) => url.pathname === "/api/config/file-groups", (route) => route.fulfill({ json: [{ id: "imported", label: "Studio", files }] }));
   await page.route((url) => ["/api/config/raw", "/api/config/merged"].includes(url.pathname), (route) => {
     const url = new URL(route.request().url());
+    if (route.request().method() === "PUT") {
+      const body = route.request().postDataJSON(); commands.push({ path: url.pathname, body });
+      values[body.file] = parse(body.content);
+      return route.fulfill({ json: { ok: true, file: body.file, content: body.content, message: "保存成功" } });
+    }
     if (route.request().method() === "PATCH") {
       const body = route.request().postDataJSON(); commands.push({ path: url.pathname, body });
       if (saveFails) return route.fulfill({ status: 409, json: { error: "disk readonly" } });
@@ -342,6 +347,63 @@ test("training workspace loading disables context controls before fixture releas
   releaseResponse();
   await expect(page.getByText("已同步", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "立即启动", exact: true })).toBeEnabled();
+  expect(mocks.writes).toEqual([]);
+  expect(mocks.unhandled).toEqual([]);
+});
+
+test("training optimizer and learning-rate choices can be saved from the editor", async ({ page }) => {
+  const mocks = await fixture(page);
+  await page.goto("/next/training");
+  await page.getByRole("tab", { name: "训练计划", exact: true }).click();
+  await page.getByRole("button", { name: /优化器与学习率/ }).click();
+
+  const optimizer = page.getByLabel("优化器", { exact: true });
+  const optimizerOptions = await optimizer.locator("option").allTextContents();
+  expect(optimizerOptions).toContain("Automagic");
+  await page.getByRole("button", { name: "查看优化器帮助", exact: true }).click();
+  await expect(page.getByRole("dialog")).toContainText("Automagic 属于实验优化器");
+  await page.getByRole("button", { name: "关闭字段说明", exact: true }).click();
+  await optimizer.selectOption("Automagic");
+
+  const scheduler = page.getByLabel("学习率调度器", { exact: true });
+  const schedulerOptions = await scheduler.locator("option").allTextContents();
+  expect(schedulerOptions).toContain("constant_with_warmup");
+  await page.getByRole("button", { name: "查看学习率调度器帮助", exact: true }).click();
+  const schedulerHelp = page.getByRole("dialog");
+  await expect(schedulerHelp).toContainText("constant_with_warmup 表示先线性热身再固定");
+  await expect(schedulerHelp).toContainText("lr_warmup_steps");
+  await page.getByRole("button", { name: "关闭字段说明", exact: true }).click();
+  await scheduler.selectOption("constant_with_warmup");
+
+  mocks.saveOk();
+  await page.getByRole("button", { name: "保存配置", exact: true }).click();
+  await expect(page.getByText("保存成功", { exact: true })).toBeVisible();
+  const save = mocks.commands.find(({ path }) => path === "/api/config/raw");
+  expect(save?.body).toMatchObject({
+    values: { optimizer_type: "Automagic", lr_scheduler: "constant_with_warmup" },
+  });
+
+  expect(mocks.writes).toEqual([]);
+  expect(mocks.unhandled).toEqual([]);
+});
+
+test("training TOML editor saves the selected configuration", async ({ page }) => {
+  const mocks = await fixture(page);
+  await page.goto("/next/training");
+  await page.getByRole("button", { name: "TOML", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "TOML 配置" });
+  await expect(dialog).toBeVisible();
+  const editor = dialog.getByRole("textbox", { name: "TOML", exact: true });
+  await expect(editor).toContainText('output_name = "studio-portrait"');
+  const updated = (await editor.inputValue()).replace('output_name = "studio-portrait"', 'output_name = "edited-in-toml"');
+  await editor.fill(updated);
+  await dialog.getByRole("button", { name: "保存 TOML", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  const save = mocks.commands.find(({ path, body }) => path === "/api/config/raw" && "content" in body);
+  expect(save?.body).toMatchObject({ file: configFile.path, content: updated });
+  expect(mocks.values[configFile.path].output_name).toBe("edited-in-toml");
+  await page.getByRole("tab", { name: "训练计划", exact: true }).click();
+  await expect(page.getByRole("textbox", { name: "输出名称", exact: true })).toHaveValue("edited-in-toml");
   expect(mocks.writes).toEqual([]);
   expect(mocks.unhandled).toEqual([]);
 });
