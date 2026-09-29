@@ -114,6 +114,84 @@ describe("launch command boundary", () => {
     ).toBe(false);
   });
 
+  it("shows warning status for a successful preflight with warnings", async () => {
+    const warningResult = {
+      ...preflight(),
+      summary: { errors: 0, warnings: 1, checks: 2 },
+      checks: [
+        { level: "warning", key: "output_dir", message: "输出目录将被创建" },
+        { level: "ok", key: "model", message: "模型检查通过" },
+      ],
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) =>
+        jsonResponse(
+          String(input).endsWith("gpus") ? { gpus: [] } : warningResult,
+        ),
+      ),
+    );
+    renderInApp(
+      <TrainingLaunchDialog
+        file={file}
+        preset="default"
+        mode="start"
+        gpuIds={[]}
+        deviceSummary="自动选择"
+        deviceIssue=""
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByText("输出目录将被创建")).toBeInTheDocument();
+    expect(screen.getByText("存在警告")).toHaveAttribute(
+      "data-tone",
+      "warning",
+    );
+    expect(screen.getByRole("button", { name: "确认启动" })).toBeDisabled();
+  });
+
+  it("orders mixed preflight checks by severity and preserves ties", async () => {
+    const mixed = {
+      ...preflight(false),
+      summary: { errors: 1, warnings: 1, checks: 4 },
+      checks: [
+        { level: "ok", key: "ok-first", message: "通过一" },
+        { level: "info", key: "info", message: "提示" },
+        { level: "warning", key: "warning", message: "警告" },
+        { level: "error", key: "error", message: "错误" },
+        { level: "ok", key: "ok-second", message: "通过二" },
+      ],
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) =>
+        jsonResponse(String(input).endsWith("gpus") ? { gpus: [] } : mixed),
+      ),
+    );
+    renderInApp(
+      <TrainingLaunchDialog
+        file={file}
+        preset="default"
+        mode="start"
+        gpuIds={[]}
+        deviceSummary="自动选择"
+        deviceIssue=""
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findAllByText("错误")).toHaveLength(3);
+    expect(screen.getByText("需要处理")).toHaveAttribute("data-tone", "danger");
+    const levels = Array.from(
+      document.querySelectorAll(".training-preflight-checks li"),
+      (item) => item.getAttribute("data-level"),
+    );
+    expect(levels).toEqual(["error", "warning", "info", "ok", "ok"]);
+    const successes = screen.getAllByText(/^通过[一二]$/);
+    expect(successes.map((item) => item.textContent)).toEqual(["通过一", "通过二"]);
+  });
+
   it("renders untrusted preflight and completion payloads as text", async () => {
     const hostile = '<img src=x onerror="alert(1)">';
     const fetchMock = vi.fn(async (input: RequestInfo | URL) =>
@@ -162,11 +240,12 @@ describe("launch command boundary", () => {
   });
 
   it("disables dialog commands while the request is pending", async () => {
+    let resolveAction!: (response: Response) => void;
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       if (String(input).endsWith("gpus")) return jsonResponse({ gpus: [] });
       if (String(input).endsWith("preflight")) return jsonResponse(preflight());
       return new Promise<Response>((resolve) => {
-        window.setTimeout(() => resolve(jsonResponse({ ok: true })), 100);
+        resolveAction = resolve;
       });
     });
     vi.stubGlobal("fetch", fetchMock);
@@ -188,6 +267,7 @@ describe("launch command boundary", () => {
 
     expect(await screen.findByRole("button", { name: "正在提交" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "取消" })).toBeDisabled();
+    resolveAction(jsonResponse({ ok: true }));
     await screen.findByRole("status");
   });
 });

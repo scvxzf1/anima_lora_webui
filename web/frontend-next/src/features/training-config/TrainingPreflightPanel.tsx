@@ -14,6 +14,23 @@ export function TrainingPreflightPanel({
   error,
   onLocate,
 }: Props) {
+  const tone = result
+    ? result.summary.errors > 0
+      ? "danger"
+      : result.summary.warnings > 0
+        ? "warning"
+        : result.ok
+          ? "success"
+          : "danger"
+    : "neutral";
+  const orderedChecks = result?.checks
+    .map((check, index) => ({ check, index }))
+    .sort((a, b) => {
+      const rank = { error: 0, warning: 1, info: 2, ok: 3 } as const;
+      const aRank = rank[a.check.level as keyof typeof rank] ?? 2;
+      const bRank = rank[b.check.level as keyof typeof rank] ?? 2;
+      return aRank - bRank || a.index - b.index;
+    });
   return (
     <section className="training-preflight-panel" aria-live="polite">
       <header>
@@ -23,11 +40,13 @@ export function TrainingPreflightPanel({
         </div>
         <span
           className="training-preflight-state"
-          data-tone={result?.ok ? "success" : result ? "danger" : "neutral"}
+          data-tone={tone}
         >
           {pending
             ? "检测中"
-            : result?.ok
+            : result?.summary.errors === 0 && result?.summary.warnings
+              ? "存在警告"
+              : result?.ok
               ? "可以继续"
               : result
                 ? "需要处理"
@@ -59,14 +78,16 @@ export function TrainingPreflightPanel({
             </span>
           </div>
           <ul className="training-preflight-checks">
-            {result.checks.map((check, index) => (
+            {orderedChecks?.map(({ check, index }) => (
               <li key={`${check.key}-${index}`} data-level={check.level}>
                 <span>
                   {check.level === "ok"
                     ? "通过"
                     : check.level === "warning"
                       ? "警告"
-                      : "错误"}
+                      : check.level === "info"
+                        ? "提示"
+                        : "错误"}
                 </span>
                 <div>
                   <strong>{check.message}</strong>
