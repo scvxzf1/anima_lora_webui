@@ -203,6 +203,7 @@ export function TrainingSamplePrompts({
             query.isPending ||
             Boolean(query.error) ||
             saveConflict ||
+            (Boolean(promptFile) && !editor.dirty) ||
             Boolean(file.locked || file.readonly)
           }
         >
