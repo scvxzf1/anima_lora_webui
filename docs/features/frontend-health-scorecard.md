@@ -6,18 +6,18 @@
 入口命令：
 
 ```bash
-timeout 60 .venv/bin/python -m pytest \
-  tests/test_training_frontend_modules.py \
-  tests/test_training_frontend_dom.py \
-  -q
+.venv/bin/python tasks.py web-next-check
+.venv/bin/python tasks.py web-next-e2e
 ```
 
 相关代码：
 
-- `web/static/app.js`
-- `web/static/js/features/**`
-- `web/static/css/**`
-- `tests/test_training_frontend_*.py`
+- `web/frontend-next/src/main.tsx`
+- `web/frontend-next/src/app/router.tsx`
+- `web/frontend-next/src/features/**`
+- `web/frontend-next/src/styles/**`
+- `web/frontend-next/e2e/**`
+- `web/frontend-next/src/**/*.test.*`
 - `docs/superpowers/specs/2026-07-11-five-round-auto-iteration-protocol.md`
 
 ---
@@ -72,41 +72,29 @@ flowchart TD
 git status --short --branch
 git rev-parse --short HEAD
 
-# 1) 规模快照
-python3 - <<'PY2'
-from pathlib import Path
-root = Path('web/static/js/features')
-print('features', len([p for p in root.iterdir() if p.is_dir()]))
-chunks = list(Path('web/static/js/features/anima-app/chunks').glob('*.js'))
-bridges = list(Path('web/static/js/features/anima-app/helpers').glob('*-bridge.js'))
-print('chunks', len(chunks), 'lines', sum(p.read_text(errors='ignore').count('\n')+1 for p in chunks))
-print('bridges', len(bridges), 'lines', sum(p.read_text(errors='ignore').count('\n')+1 for p in bridges))
-print('dom_ids', Path('web/static/index.html').read_text().count(' id="'))
-PY2
+# 1) 规模快照：检查 Next 入口、路由、功能边界与样式组织
+sed -n '1,200p' web/frontend-next/src/main.tsx
+sed -n '1,240p' web/frontend-next/src/app/router.tsx
+find web/frontend-next/src/features -mindepth 1 -maxdepth 1 -type d | sort
+find web/frontend-next/src/styles -maxdepth 1 -type f | sort
 
-# 2) 架构护栏（快速红灯）
-timeout 60 .venv/bin/python -m pytest \
-  tests/test_training_frontend_modules.py::test_frontend_module_graph_follows_production_entrypoint \
-  tests/test_training_frontend_modules.py::test_frontend_module_cache_tokens_match_entrypoint \
-  tests/test_training_frontend_modules.py::test_frontend_css_import_cache_tokens_match_entrypoint \
-  tests/test_training_frontend_modules.py::test_anima_app_global_this_writes_do_not_grow \
-  tests/test_training_frontend_modules.py::test_split_frontend_features_do_not_write_global_this \
-  tests/test_training_frontend_dom.py \
-  -q
+# 2) Next 类型检查与 Vitest
+.venv/bin/python tasks.py web-next-check
+
+# 3) Next 浏览器验收
+.venv/bin/python tasks.py web-next-e2e
 ```
 
 ### 2.2 必看文件
 
 | 优先级 | 路径 | 看什么 |
 |---|---|---|
-| P0 | `web/static/app.js` | 是否仍只做 bootstrap |
-| P0 | `web/static/js/features/anima-app/index.js` | chunk 串行加载 / bridge 装配顺序 |
-| P0 | `web/static/js/features/anima-app/chunks/` | 是否继续堆新业务 |
-| P0 | `web/static/js/features/anima-app/helpers/*-bridge.js` | `legacyRoot = globalThis` 是否还在 |
-| P0 | `web/static/js/config/catalog/*` | 默认值、guide、命名是否可信 |
-| P1 | `web/static/style.css` | import 顺序是否把 `90-responsive` 放对 |
-| P1 | `web/static/index.html` | DOM id 契约有无大改 |
-| P1 | `tests/frontend_test_support.py` | baseline / token 护栏是否漂移 |
+| P0 | `web/frontend-next/src/main.tsx` | 应用入口和初始化职责 |
+| P0 | `web/frontend-next/src/app/router.tsx` | 路由、页面装配与边界 |
+| P0 | `web/frontend-next/src/features/` | feature 职责与跨域依赖 |
+| P0 | `web/frontend-next/src/styles/` | 全局样式与 workspace 样式组织 |
+| P1 | `web/frontend-next/src/**/*.test.*` | Vitest 行为覆盖和隔离 |
+| P1 | `web/frontend-next/e2e/` | 关键用户流程与真实浏览器契约 |
 
 ---
 
@@ -278,9 +266,9 @@ timeout 60 .venv/bin/python -m pytest \
 
 ---
 
-## 7. 2026-09-13 当前工作树快照
+## 7. 2026-09-13 历史工作树快照
 
-状态：临时审计基线；`dev @ 2e96bd0c` 工作树含大量未提交实现，分数只适用于本次磁盘状态，不代表该 commit 或发布版本。
+状态：历史审计基线；记录当时 Dragon/Classic 并存的迁移阶段。当前 Classic 模块图与 DOM 测试已删除，Next 是唯一前端入口；本节分数、计数、发现和失败统计仅描述 2026-09-13 快照，不代表当前工作树，也未因入口迁移重新评分。
 完整范围、证据、失败分类和命令见 [本轮 findings](../findings/webui_frontend_audit_20260913.md)。
 
 | 域 | 原始分 | 权重 | 加权 | 依据 |

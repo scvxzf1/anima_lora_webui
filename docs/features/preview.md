@@ -10,10 +10,8 @@
 
 相关代码：
 
-- `web/static/js/dragon-ui/pages/preview-workspace.js`
-- `web/static/js/dragon-ui/pages/history-sample-dialog.js`（历史详情样张参数弹窗）
-- `web/static/css/dragon/06b-dragon-history-sample-dialog.css`
-- `web/static/index.html`（classic 预览弹窗）
+- `web/frontend-next/src/features/preview-workspace/`
+- `web/frontend-next/src/features/training-history/HistoryAssets.tsx`（历史任务样张与权重）
 - `web/routes/preview.py`
 - `web/services/preview_service.py`
 - `web/services/preview/images.py`
@@ -25,10 +23,7 @@
 
 一句话：查看训练中采样图、推理测试图、自定义目录图片，以及对应权重文件。
 
-两套界面共用同一个预览 API 和路径设置：
-
-- Dragon UI：**模型与系统 → 预览工作区**
-- classic UI：训练页 **当前预览**、历史详情里的样张与权重
+Next 界面通过主导航的 **预览工作区** 访问预览 API 和路径设置。Next 是当前唯一前端入口。
 
 三种来源：
 
@@ -40,7 +35,7 @@
 
 ## 2. 入口
 
-1. Dragon UI 打开 **模型与系统 → 预览工作区**；classic UI 打开训练页并点 **当前预览**。
+1. 打开主导航的 **预览工作区**。
 2. 在侧边选择来源：
    - 训练中采样
    - 推理预览
@@ -96,9 +91,7 @@ timeout 60 .venv/bin/python -m pytest \
   tests/test_web_http_contracts.py \
   tests/test_image_test_service.py \
   tests/test_web_route_registry.py \
-  tests/test_training_frontend_modules.py \
-  tests/test_training_frontend_history.py \
   -q
 ```
 
-界面模式与 classic 回退见 [Dragon UI 与 classic 兼容界面](dragon-ui.md)。
+Next 预览界面测试位于 `web/frontend-next/src/features/preview-workspace/`；浏览器流程见 `web/frontend-next/e2e/legacy-retirement-p2.spec.ts` 和 `web/frontend-next/e2e/final-audit.spec.ts`。运行 `.venv/bin/python tasks.py web-next-check` 与 `.venv/bin/python tasks.py web-next-e2e`。

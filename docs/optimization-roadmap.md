@@ -12,13 +12,13 @@
 
 | 方向 | 目标 | 当前痛点 | 可能方案 | 影响范围 | 难度 | 验证方式 | 优先级 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| 统一配置命名和说明 | 让用户能区分 `low_vram`、`lora-8gb`、`balanced_16g`、`LoKr 16G`、`graft` | 硬件档、GUI 变体和快捷按钮命名来自不同层，含义容易混淆 | 在 `configs/presets.toml`、Web guide、GUI guide 和文档中统一术语：硬件 preset、方法 variant、资源快捷按钮分层说明 | 文档、WebUI catalog、GUI 文案 | 低 | `timeout 60 python -m pytest tests/test_training_frontend_config_ui.py -k "config or guide"`；人工检查 guide | P0 |
-| 清理重复/过期配置清单 | 降低维护文档与实时目录不一致风险 | 方法/变体列表散落在 `CLAUDE.md`、skill reference、Web guide、GUI guide | 以 `rg --files configs/methods configs/gui-methods` 为源生成或检查列表；文档只写“以目录实时列表为准” | 文档、测试辅助脚本 | 低 | 新增或扩展配置列表测试；检查文档无已删除变体名 | P0 |
-| 显式标注兼容边界 | 防止把互斥优化项一起打开 | block swap、Unsloth、CPU offload、selective checkpoint、Soft Tokens、functional loss 有硬边界 | 在 WebUI 字段帮助、preflight、文档矩阵中统一展示“不能同用” | WebUI preflight、训练启动、文档 | 中 | `timeout 60 python -m pytest tests/test_config.py tests/test_training_frontend_config_ui.py -k "block_swap or resource"` | P0 |
-| 对齐表单默认值与合并值 | 让用户知道当前值来自 base、preset、method 还是表单默认 | Web 表单有 `FORM_UI_DEFAULTS`，训练实际值来自 merge chain，来源不总是直观 | 在表单字段旁显示来源：base/preset/method/runtime/用户改动；保存前展示 diff | WebUI config form、runtime config | 中 | WebUI frontend state 测试；保存后 `print-config` 对比 | P0 |
+| 统一配置命名和说明 | 让用户能区分 `low_vram`、`lora-8gb`、`balanced_16g`、`LoKr 16G`、`graft` | 硬件档、方法 variant 和快捷按钮命名来自不同层，含义容易混淆 | 在 `configs/presets.toml`、Next 配置界面与文档中统一术语：硬件 preset、方法 variant、资源快捷按钮分层说明 | 文档、Next 配置界面、配置目录 | 低 | `.venv/bin/python tasks.py web-next-check`；人工检查 guide | P0 |
+| 清理重复/过期配置清单 | 降低维护文档与实时目录不一致风险 | 方法/变体列表散落在 `CLAUDE.md`、skill reference、Next guide | 以 `rg --files configs/methods configs/gui-methods` 为源生成或检查列表；文档只写“以目录实时列表为准” | 文档、测试辅助脚本 | 低 | 新增或扩展配置列表测试；检查文档无已删除变体名 | P0 |
+| 显式标注兼容边界 | 防止把互斥优化项一起打开 | block swap、Unsloth、CPU offload、selective checkpoint、Soft Tokens、functional loss 有硬边界 | 在 Next 字段帮助、preflight、文档矩阵中统一展示“不能同用” | Next preflight、训练启动、文档 | 中 | `.venv/bin/python tasks.py web-next-check`；后端规则用 `timeout 60 .venv/bin/python -m pytest tests/test_config.py -k "block_swap or resource"` | P0 |
+| 对齐表单默认值与合并值 | 让用户知道当前值来自 base、preset、method 还是表单默认 | Next 表单默认值与训练 merge chain 来源不总是直观 | 在表单字段旁显示来源：base/preset/method/runtime/用户改动；保存前展示 diff | Next config form、runtime config | 中 | `.venv/bin/python tasks.py web-next-check`；保存后 `print-config` 对比 | P0 |
 | 补齐关键 CLI-only 开关说明 | 让只在 CLI 存在的性能开关可被发现 | `dataloader_prefetch_factor`、`profile_steps`、`cpu_offload_checkpointing` 等未进入常用 UI | 文档列出 CLI-only；只把低风险字段加入高级区，危险/诊断字段留 CLI | 文档、WebUI advanced form | 低到中 | `timeout 60 python -m pytest tests/test_config.py`；手动检查 `train.py --help` | P1 |
 | 建立“事实记录”模板 | 后续新增优化项能按同一格式记录 | 当前配置字段多，新增实验容易只写 findings 不回填清单 | 在 docs 中固定字段：名称、位置、作用、默认/候选、场景、风险、UI 暴露 | 文档维护流程 | 低 | 文档 review checklist | P0 |
-| 强化 WebUI 快捷按钮提示 | 减少把实验按钮当默认训练方案 | `FP8 测试`、`OOM 兜底`、`LoKr 16G` 都是特定上下文按钮 | 快捷按钮 tooltip 加“适用方法/显存/是否实验”；应用按钮时显示将修改的字段 | WebUI config form | 中 | frontend state 测试；Playwright/手工截图 | P1 |
+| 强化 Next 快捷按钮提示 | 减少把实验按钮当默认训练方案 | `FP8 测试`、`OOM 兜底`、`LoKr 16G` 都是特定上下文按钮 | 快捷按钮 tooltip 加“适用方法/显存/是否实验”；应用按钮时显示将修改的字段 | Next config form | 中 | `.venv/bin/python tasks.py web-next-check`；Next Playwright/手工截图 | P1 |
 | 最小化 profile 默认开销 | 让正式训练默认少写诊断日志 | 已将 `balanced_16g` 和正式训练快捷按钮的 block swap profile 改为 `off`；LoKr 快捷仍保留 memory probe 用于首跑显存确认 | 后续可再拆“诊断短跑”和“长期训练”两组快捷动作 | WebUI 快捷按钮、历史 artifact | 低 | 短跑检查 artifact 是否按预期生成 | P1 |
 
 ## 中期方向：显存档位矩阵
@@ -66,7 +66,7 @@
 ## 验证原则
 
 - 文档和配置表改动：至少运行 `timeout 60 python -m pytest tests/test_config.py`。
-- WebUI 表单/文案/快捷按钮改动：运行 `timeout 60 python -m pytest tests/test_training_frontend_config_ui.py tests/test_training_frontend_dom.py`。
+- Next 表单/文案/快捷按钮改动：运行 `.venv/bin/python tasks.py web-next-check`；需要浏览器交互验收时运行 `.venv/bin/python tasks.py web-next-e2e`。共享后端配置契约仍用对应的 `tests/test_*.py` pytest 测试验证。
 - block swap runtime 改动：运行 `timeout 60 python -m pytest tests/test_block_swapping.py tests/test_training_runtime_config_core.py tests/test_training_runtime_config_start.py tests/test_training_runtime_config_probes.py tests/test_training_progress_metrics.py -k "block_swap or progress_jsonl"`。
 - LoKr 相关改动：运行 `timeout 60 python -m pytest tests/test_lokr.py tests/test_network_registry.py -k lokr`。
 - 真实 GPU 短跑或长跑会占用显卡，应单独确认后执行，不作为普通文档维护默认步骤。

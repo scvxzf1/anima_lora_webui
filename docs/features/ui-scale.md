@@ -10,9 +10,9 @@
 
 相关代码：
 
-- `web/static/index.html`（全局设置 · 界面设置）
+- `web/frontend-next/src/features/settings/`（全局设置 · 界面设置）
 - `web/services/settings_service.py`
-- `web/static/js/features/app-shell/ui-scale.js`
+- `web/frontend-next/src/app/uiPreferences.ts`（全局与页面缩放）
 - `tests/test_ui_scale_settings.py`
 
 ---
@@ -78,11 +78,9 @@ timeout 60 .venv/bin/python -m pytest \
   -q
 ```
 
-前端 DOM / 设置字段挂钩可配合：
+Next 前端交互由 `web/frontend-next/e2e/scale-keyboard.spec.ts` 覆盖；运行：
 
 ```bash
-timeout 60 .venv/bin/python -m pytest \
-  tests/test_training_frontend_config_ui.py \
-  tests/test_training_frontend_dom.py \
-  -q
+.venv/bin/python tasks.py web-next-check
+.venv/bin/python tasks.py web-next-e2e -- scale-keyboard.spec.ts
 ```
