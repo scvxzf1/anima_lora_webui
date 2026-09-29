@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, it, vi } from "vitest";
 import { createMemoryRouter, RouterProvider } from "react-router-dom";
@@ -9,6 +9,12 @@ import { HistoryDetailPage } from "./HistoryDetailPage";
 import { resetHistorySelection } from "./historyNavigation";
 
 const originalScrollIntoView = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollIntoView");
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => { resolve = done; });
+  return { promise, resolve };
+}
 
 afterEach(() => {
   cleanup();
@@ -72,17 +78,24 @@ it("keeps cross-page selection during refresh and disables batch actions while f
     { id: "task-1", name: "First training", job: "training", state: "idle", archived: false },
     { id: "task-2", name: "Second training", job: "training", state: "idle", archived: false },
   ];
-  let releaseSecondPage!: () => void;
-  let holdSecondPage = false;
-  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+  const refreshedSecond = deferred<Response>();
+  let firstPageReads = 0;
+  const batchPayloads: unknown[] = [];
+  vi.stubGlobal("confirm", vi.fn(() => true));
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     if (url === "/api/training/history/collections/settings") return jsonResponse({ collection_order: [], config_group_order: {} });
+    if (url === "/api/training/history/batch") {
+      batchPayloads.push(JSON.parse(String(init?.body)));
+      return jsonResponse({ ok: true });
+    }
     if (url.startsWith("/api/training/history?")) {
       const parsed = new URL(url, "http://localhost");
       if (parsed.searchParams.get("cursor") === "next") {
-        if (holdSecondPage) await new Promise<void>((resolve) => { releaseSecondPage = resolve; });
+        if (firstPageReads > 1) return refreshedSecond.promise;
         return jsonResponse({ tasks: [tasks[1]], total: 2, next_cursor: null });
       }
+      firstPageReads += 1;
       return jsonResponse({ tasks: [tasks[0]], total: 2, next_cursor: "next" });
     }
     throw new Error(`Unexpected request: ${url}`);
@@ -94,15 +107,129 @@ it("keeps cross-page selection during refresh and disables batch actions while f
   render(<QueryClientProvider client={client}><RouterProvider router={router} /></QueryClientProvider>);
   const user = userEvent.setup();
   await user.click(await screen.findByRole("checkbox", { name: "选择 First training" }));
-  holdSecondPage = true;
   await user.click(screen.getByRole("button", { name: "载入更多记录" }));
-  expect(screen.getByRole("button", { name: "归档已选" })).toBeDisabled();
-  releaseSecondPage();
   await screen.findByRole("checkbox", { name: "选择 Second training" });
   await user.click(screen.getByRole("checkbox", { name: "选择 Second training" }));
   expect(screen.getByText("已选 2 项")).toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: "刷新" }));
-  await waitFor(() => expect(screen.getByText("已选 2 项")).toBeInTheDocument());
+  await waitFor(() => expect(firstPageReads).toBe(2));
+  expect(screen.getByRole("button", { name: "归档已选" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "刷新中" })).toBeDisabled();
+  fireEvent.click(screen.getByRole("button", { name: "刷新中" }));
+  expect(firstPageReads).toBe(2);
+  await act(async () => refreshedSecond.resolve(jsonResponse({ tasks: [tasks[1]], total: 2, next_cursor: null })));
+  await waitFor(() => expect(screen.getByRole("button", { name: "归档已选" })).toBeEnabled());
+  expect(screen.getByText("已选 2 项")).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "归档已选" }));
+  await waitFor(() => expect(batchPayloads).toEqual([{ action: "archive", task_ids: ["task-1", "task-2"] }]));
+});
+
+it("clears unverified selection after refresh failure and allows a retry", async () => {
+  const task = { id: "task-1", name: "Retriable task", job: "training", state: "idle", archived: false };
+  const failedRefresh = deferred<Response>();
+  const batchPayloads: unknown[] = [];
+  let reads = 0;
+  vi.stubGlobal("confirm", vi.fn(() => true));
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    if (url === "/api/training/history/collections/settings") return jsonResponse({ collection_order: [], config_group_order: {} });
+    if (url === "/api/training/history/batch") {
+      batchPayloads.push(JSON.parse(String(init?.body)));
+      return jsonResponse({ ok: true });
+    }
+    if (url.startsWith("/api/training/history?")) {
+      reads += 1;
+      if (reads === 2) return failedRefresh.promise;
+      return jsonResponse({ tasks: [task], total: 1, next_cursor: null });
+    }
+    throw new Error(`Unexpected request: ${url}`);
+  }));
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const router = createMemoryRouter([{ path: "/history", element: <HistoryPage /> }], { initialEntries: ["/history?layout=list"] });
+  render(<QueryClientProvider client={client}><RouterProvider router={router} /></QueryClientProvider>);
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole("checkbox", { name: "选择 Retriable task" }));
+  await user.click(screen.getByRole("button", { name: "刷新" }));
+  await waitFor(() => expect(reads).toBe(2));
+  await act(async () => failedRefresh.resolve(new Response("failure", { status: 500 })));
+  await waitFor(() => expect(screen.queryByText("已选 1 项")).not.toBeInTheDocument());
+  expect(screen.getByText(/已清除无法核对的选择/)).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "刷新" })).toBeEnabled();
+  await user.click(screen.getByRole("button", { name: "刷新" }));
+  await waitFor(() => expect(reads).toBe(3));
+  await user.click(await screen.findByRole("checkbox", { name: "选择 Retriable task" }));
+  await user.click(screen.getByRole("button", { name: "归档已选" }));
+  await waitFor(() => expect(batchPayloads).toEqual([{ action: "archive", task_ids: ["task-1"] }]));
+});
+
+it("clears selection when the refreshed second page fails", async () => {
+  const first = { id: "first", name: "First page task", job: "training", state: "idle", archived: false };
+  const second = { id: "second", name: "Second page task", job: "training", state: "idle", archived: false };
+  const failedPage = deferred<Response>();
+  let rootReads = 0;
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url === "/api/training/history/collections/settings") return jsonResponse({ collection_order: [], config_group_order: {} });
+    if (url.startsWith("/api/training/history?")) {
+      const cursor = new URL(url, "http://localhost").searchParams.get("cursor");
+      if (cursor === "next") return rootReads > 1 ? failedPage.promise : jsonResponse({ tasks: [second], total: 2, next_cursor: null });
+      rootReads += 1;
+      return jsonResponse({ tasks: [first], total: 2, next_cursor: "next" });
+    }
+    throw new Error(`Unexpected request: ${url}`);
+  }));
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const router = createMemoryRouter([{ path: "/history", element: <HistoryPage /> }], { initialEntries: ["/history?layout=list"] });
+  render(<QueryClientProvider client={client}><RouterProvider router={router} /></QueryClientProvider>);
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole("checkbox", { name: "选择 First page task" }));
+  await user.click(screen.getByRole("button", { name: "载入更多记录" }));
+  await user.click(await screen.findByRole("checkbox", { name: "选择 Second page task" }));
+  await user.click(screen.getByRole("button", { name: "刷新" }));
+  await waitFor(() => expect(rootReads).toBe(2));
+  expect(screen.getByRole("button", { name: "刷新中" })).toBeDisabled();
+  await act(async () => failedPage.resolve(new Response("failure", { status: 500 })));
+  await waitFor(() => expect(screen.queryByText("已选 2 项")).not.toBeInTheDocument());
+  expect(screen.getByText(/已清除无法核对的选择/)).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "刷新" })).toBeEnabled();
+});
+
+it("does not apply an old refresh result after switching server search", async () => {
+  const alpha = { id: "alpha", name: "Alpha task", job: "training", state: "idle", archived: false };
+  const beta = { id: "beta", name: "Beta task", job: "training", state: "idle", archived: false };
+  const oldRefresh = deferred<Response>();
+  const batchPayloads: unknown[] = [];
+  let alphaReads = 0;
+  vi.stubGlobal("confirm", vi.fn(() => true));
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    if (url === "/api/training/history/collections/settings") return jsonResponse({ collection_order: [], config_group_order: {} });
+    if (url === "/api/training/history/batch") {
+      batchPayloads.push(JSON.parse(String(init?.body)));
+      return jsonResponse({ ok: true });
+    }
+    if (url.startsWith("/api/training/history?")) {
+      if (new URL(url, "http://localhost").searchParams.get("q") === "alpha") {
+        alphaReads += 1;
+        return alphaReads === 2 ? oldRefresh.promise : jsonResponse({ tasks: [alpha], total: 1, next_cursor: null });
+      }
+      return jsonResponse({ tasks: [beta], total: 1, next_cursor: null });
+    }
+    throw new Error(`Unexpected request: ${url}`);
+  }));
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const router = createMemoryRouter([{ path: "/history", element: <HistoryPage /> }], { initialEntries: ["/history?q=alpha&layout=list"] });
+  render(<QueryClientProvider client={client}><RouterProvider router={router} /></QueryClientProvider>);
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole("checkbox", { name: "选择 Alpha task" }));
+  await user.click(screen.getByRole("button", { name: "刷新" }));
+  await waitFor(() => expect(alphaReads).toBe(2));
+  fireEvent.change(screen.getByRole("searchbox", { name: "搜索历史记录" }), { target: { value: "beta" } });
+  await user.click(await screen.findByRole("checkbox", { name: "选择 Beta task" }));
+  await act(async () => oldRefresh.resolve(jsonResponse({ tasks: [alpha], total: 1, next_cursor: null })));
+  expect(screen.getByRole("checkbox", { name: "选择 Beta task" })).toBeChecked();
+  await user.click(screen.getByRole("button", { name: "归档已选" }));
+  await waitFor(() => expect(batchPayloads).toEqual([{ action: "archive", task_ids: ["beta"] }]));
 });
 
 it("reconciles selection when refresh ends before the previously loaded page depth", async () => {

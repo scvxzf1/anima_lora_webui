@@ -5,7 +5,7 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Layers, List } from "lucide-react";
 import {
@@ -83,8 +83,26 @@ export function HistoryPage() {
   const limit = Math.max(200, Math.min(100000, Math.floor(Number(params.get("limit")) || 200)));
   const commandLock = useRef(false);
   const verificationDepth = useRef(0);
+  const verificationRun = useRef(0);
+  const verificationPending = useRef(false);
   const [verifyingSelection, setVerifyingSelection] = useState(false);
+  const queryScope = `${limit}\u0000${search}`;
+  const queryScopeRef = useRef(queryScope);
+  const previousScope = useRef(queryScope);
+  queryScopeRef.current = queryScope;
+  useEffect(() => {
+    if (previousScope.current === queryScope) return;
+    previousScope.current = queryScope;
+    verificationRun.current += 1;
+    verificationPending.current = false;
+    verificationDepth.current = 0;
+    setVerifyingSelection(false);
+  }, [queryScope]);
   function filter(key: string, value: string) {
+    verificationRun.current += 1;
+    verificationPending.current = false;
+    verificationDepth.current = 0;
+    setVerifyingSelection(false);
     setSelected([]);
     setParams(
       (current) => {
@@ -153,6 +171,10 @@ export function HistoryPage() {
   const activeFilters = [search && `搜索：${search}`, state !== "all" && `状态：${state}`, archived !== "active" && `归档：${archived}`, collection !== "all" && `集合：${collection || "未分类"}`, configGroup && `配置组：${configGroup}`, ...advancedFields.map(([key, label]) => advanced[key] && `${label}：${advanced[key]}`)].filter(Boolean);
 
   function clearFilters() {
+    verificationRun.current += 1;
+    verificationPending.current = false;
+    verificationDepth.current = 0;
+    setVerifyingSelection(false);
     setSelected([]);
     setParams((current) => {
       const next = new URLSearchParams();
@@ -195,24 +217,42 @@ export function HistoryPage() {
   }
 
   async function refreshHistory() {
+    if (verificationPending.current || query.isFetching || busy) return;
+    verificationPending.current = true;
+    const run = ++verificationRun.current;
+    const scope = queryScope;
     const hadBatchError = Boolean(batch.error);
     verificationDepth.current = Math.max(verificationDepth.current, query.data?.pages.length || 0);
     setVerifyingSelection(true);
-    let result = await query.refetch();
-    while (result.isSuccess && result.data && result.data.pages.length < verificationDepth.current && result.hasNextPage) {
-      result = await query.fetchNextPage();
-    }
-    if (!result.isSuccess || !result.data) return;
-    const loadedIds = new Set(
-      result.data.pages.flatMap((pageData) => pageData.tasks || [])
-        .map((task) => String(task.id || "")),
-    );
-    setSelected((current) => current.filter((id) => loadedIds.has(id)));
-    verificationDepth.current = 0;
-    setVerifyingSelection(false);
-    if (hadBatchError) {
-      batch.reset();
-      setNotice("已刷新历史记录，当前列表已核对。");
+    const currentRun = () => verificationRun.current === run && queryScopeRef.current === scope;
+    try {
+      let result = await query.refetch();
+      while (currentRun() && result.isSuccess && result.data && result.data.pages.length < verificationDepth.current && result.hasNextPage) {
+        result = await query.fetchNextPage();
+      }
+      if (!currentRun()) return;
+      if (!result.isSuccess || !result.data) throw result.error || new Error("历史记录读取失败");
+      const loadedIds = new Set(
+        result.data.pages.flatMap((pageData) => pageData.tasks || [])
+          .map((task) => String(task.id || "")),
+      );
+      setSelected((current) => current.filter((id) => loadedIds.has(id)));
+      if (hadBatchError) {
+        batch.reset();
+        setNotice("已刷新历史记录，当前列表已核对。");
+      } else {
+        setNotice("");
+      }
+    } catch {
+      if (!currentRun()) return;
+      setSelected([]);
+      setNotice("刷新失败，已清除无法核对的选择。请重试刷新历史记录。");
+    } finally {
+      if (currentRun()) {
+        verificationDepth.current = 0;
+        verificationPending.current = false;
+        setVerifyingSelection(false);
+      }
     }
   }
 
@@ -235,7 +275,7 @@ export function HistoryPage() {
             <p className="eyebrow">HISTORY FORGE</p>
             <h1>历史任务</h1>
           </div>
-          <button type="button" disabled={query.isFetching || busy} onClick={() => { void refreshHistory(); }}>
+          <button type="button" disabled={query.isFetching || busy || verifyingSelection} onClick={() => { void refreshHistory(); }}>
             {query.isFetching || verifyingSelection ? "刷新中" : "刷新"}
           </button>
         </header>
