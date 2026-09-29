@@ -1,8 +1,10 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { CommandDialog } from "../../components/CommandDialog";
 import { useServerDraft } from "../../components/useServerDraft";
+import { fetchGpus } from "../live-monitor/api";
 import { LocalProfileFields } from "./LocalProfileFields";
+import { captionProfileGpuKey } from "./gpu-query";
 import {
   captioningKeys,
   saveCaptionProfile,
@@ -23,7 +25,9 @@ const SECRET_CONFIG_KEYS = new Set([
 
 function stripSecretConfig(config: Record<string, unknown>) {
   return Object.fromEntries(
-    Object.entries(config).filter(([key]) => !SECRET_CONFIG_KEYS.has(key.toLowerCase())),
+    Object.entries(config).filter(
+      ([key]) => !SECRET_CONFIG_KEYS.has(key.toLowerCase()),
+    ),
   );
 }
 
@@ -47,26 +51,65 @@ export function CaptionProfileEditor({
   const [apiKey, setApiKey] = useState("");
   const [clearKey, setClearKey] = useState(false);
   const [extra, setExtra] = useState("");
+  const extraConfig = useMemo(() => {
+    if (!extra.trim()) return { value: {} as Record<string, unknown> };
+    try {
+      const value: unknown = JSON.parse(extra);
+      if (!value || typeof value !== "object" || Array.isArray(value)) {
+        return { error: "高级配置必须是 JSON 对象" };
+      }
+      return { value: value as Record<string, unknown> };
+    } catch {
+      return { error: "高级配置 JSON 格式无效" };
+    }
+  }, [extra]);
   const editor = useServerDraft(initial, Boolean(apiKey || clearKey || extra));
   const qc = useQueryClient();
   const save = useMutation({
     mutationFn: async () => {
-      const additional: unknown = extra.trim() ? JSON.parse(extra) : {};
-      if (
-        !additional ||
-        typeof additional !== "object" ||
-        Array.isArray(additional)
-      )
-        throw new Error("高级配置必须是 JSON 对象");
-      return saveCaptionProfile(
-        {
-          ...editor.draft,
-          config: { ...editor.draft!.config, ...additional },
-          ...(apiKey ? { api_key: apiKey } : {}),
-          ...(clearKey ? { clear_api_key: true } : {}),
-        },
-        profile?.id,
-      );
+      if (extraConfig.error) throw new Error(extraConfig.error);
+      const additional = extraConfig.value || {};
+      const payload = {
+        ...editor.draft!,
+        config: { ...editor.draft!.config, ...additional },
+        ...(apiKey ? { api_key: apiKey } : {}),
+        ...(clearKey ? { clear_api_key: true } : {}),
+      };
+      if (payload.provider !== "openai_compatible") {
+        const config = payload.config as Record<string, unknown>;
+        const device = config.device ?? "auto";
+        if (device !== "auto" && device !== "cpu" && device !== "cuda") {
+          throw new Error("执行设备必须是 auto、cpu 或 cuda");
+        }
+        config.device = device;
+        if (device === "cuda") {
+          const index = config.gpu_index;
+          if (
+            (typeof index !== "number" &&
+              !(typeof index === "string" && index.trim() !== "")) ||
+            !Number.isInteger(Number(index)) ||
+            Number(index) < 0
+          ) {
+            throw new Error("CUDA 必须选择当前可用的 GPU");
+          }
+          let inventory;
+          try {
+            inventory = await fetchGpus(undefined, true);
+          } catch {
+            throw new Error("无法读取 GPU 列表，请重试后再保存 CUDA 配置");
+          }
+          if (
+            inventory.stale ||
+            !inventory.gpus?.some((gpu) => gpu.index === Number(index))
+          ) {
+            throw new Error("CUDA 必须选择当前可用的 GPU");
+          }
+          config.gpu_index = Number(index);
+        } else {
+          delete config.gpu_index;
+        }
+      }
+      return saveCaptionProfile(payload, profile?.id);
     },
     retry: false,
     gcTime: 0,
@@ -77,6 +120,39 @@ export function CaptionProfileEditor({
     },
   });
   const draft = editor.draft;
+  const effectiveConfig = useMemo(
+    () => ({ ...(draft?.config || {}), ...(extraConfig.value || {}) }),
+    [draft?.config, extraConfig.value],
+  );
+  const effectiveDraft = draft
+    ? { ...draft, config: effectiveConfig }
+    : undefined;
+  const gpuQuery = useQuery({
+    queryKey: captionProfileGpuKey,
+    queryFn: ({ signal }) => fetchGpus(signal, true),
+    retry: false,
+    staleTime: 0,
+    refetchOnMount: "always",
+    enabled: Boolean(
+      effectiveDraft &&
+      effectiveDraft.provider !== "openai_compatible" &&
+      effectiveConfig.device === "cuda",
+    ),
+  });
+  const cudaNeedsGpu = Boolean(
+    effectiveDraft &&
+    effectiveDraft.provider !== "openai_compatible" &&
+    effectiveConfig.device === "cuda",
+  );
+  const gpuIndex = Number(effectiveConfig.gpu_index);
+  const gpuAvailable = Boolean(
+    effectiveConfig.gpu_index !== "" &&
+    effectiveConfig.gpu_index != null &&
+    Number.isInteger(gpuIndex) &&
+    !gpuQuery.error &&
+    !gpuQuery.data?.stale &&
+    gpuQuery.data?.gpus?.some((gpu) => gpu.index === gpuIndex),
+  );
   function close() {
     if (
       !(editor.dirty || apiKey || extra || clearKey) ||
@@ -85,6 +161,20 @@ export function CaptionProfileEditor({
       onClose();
   }
   function update(key: string, value: unknown) {
+    setExtra((current) => {
+      if (!current.trim()) return current;
+      try {
+        const parsed: unknown = JSON.parse(current);
+        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+          return current;
+        }
+        const next = { ...(parsed as Record<string, unknown>) };
+        delete next[key];
+        return Object.keys(next).length ? JSON.stringify(next, null, 2) : "";
+      } catch {
+        return current;
+      }
+    });
     editor.setDraft((d) => ({ ...d!, config: { ...d!.config, [key]: value } }));
   }
   return (
@@ -186,7 +276,7 @@ export function CaptionProfileEditor({
             ) : (
               <LocalProfileFields
                 provider={draft.provider}
-                config={draft.config}
+                config={effectiveConfig}
                 update={update}
               />
             )}
@@ -213,7 +303,12 @@ export function CaptionProfileEditor({
             <button
               className="primary-command"
               type="submit"
-              disabled={save.isPending}
+              disabled={
+                save.isPending ||
+                (!extraConfig.error &&
+                  cudaNeedsGpu &&
+                  (gpuQuery.isPending || gpuQuery.isFetching || !gpuAvailable))
+              }
             >
               保存接入
             </button>
