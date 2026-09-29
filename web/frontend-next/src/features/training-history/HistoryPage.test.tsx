@@ -485,3 +485,136 @@ it("searches history on the server and resets pagination without clearing other 
   expect(params.has("page")).toBe(false);
   expect(params.has("anchor")).toBe(false);
 });
+
+const advancedFilterCases = [
+  { label: "训练变体", param: "variant", field: "training_variant", value: "lora", other: "loha" },
+  { label: "预处理精度", param: "preprocess_precision", field: "preprocess_precision", value: "bf16", other: "fp16" },
+  { label: "块交换精度", param: "swap", field: "block_swap_precision", value: "bf16", other: "fp16" },
+  { label: "底模计算路径", param: "compute", field: "base_compute", value: "nf4", other: "bf16" },
+  { label: "精度倾向", param: "precision", field: "precision_preference", value: "bf16", other: "fp16" },
+] as const;
+
+it.each(advancedFilterCases)("filters loaded tasks by $label and writes its URL parameter", async ({ label, param, field, value, other }) => {
+  const tasks = [
+    { id: "match", name: "Matching snapshot", job: "training", state: "idle", archived: false, [field]: value },
+    { id: "other", name: "Other snapshot", job: "training", state: "idle", archived: false, [field]: other },
+    { id: "missing", name: "Missing snapshot", job: "training", state: "idle", archived: false },
+  ];
+  const requests: URL[] = [];
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+    const url = new URL(String(input), "http://localhost");
+    if (url.pathname === "/api/training/history/collections/settings") {
+      return jsonResponse({ collection_order: [], config_group_order: {} });
+    }
+    if (url.pathname === "/api/training/history") {
+      requests.push(url);
+      return jsonResponse({ tasks, total: 30, next_cursor: "more" });
+    }
+    throw new Error(`Unexpected request: ${url}`);
+  }));
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const router = createMemoryRouter([{ path: "/history", element: <HistoryPage /> }], {
+    initialEntries: ["/history?layout=list"],
+  });
+  render(<QueryClientProvider client={client}><RouterProvider router={router} /></QueryClientProvider>);
+
+  await userEvent.setup().click(await screen.findByText("高级筛选"));
+  const select = await screen.findByRole("combobox", { name: label });
+  await userEvent.setup().selectOptions(select, value);
+
+  expect(await screen.findByRole("link", { name: /Matching snapshot/ })).toBeInTheDocument();
+  expect(screen.queryByRole("link", { name: /Other snapshot/ })).not.toBeInTheDocument();
+  expect(screen.queryByRole("link", { name: /Missing snapshot/ })).not.toBeInTheDocument();
+  expect(new URLSearchParams(router.state.location.search).get(param)).toBe(value);
+  expect(screen.getByText(/状态、集合及高级筛选仅作用于已读取记录/)).toBeInTheDocument();
+  expect(requests).toHaveLength(1);
+  expect(requests[0].searchParams.has("cursor")).toBe(false);
+});
+
+it("restores advanced filter selections from URL and does not match tasks without snapshot fields", async () => {
+  const completeSnapshot = {
+    id: "complete",
+    name: "Complete snapshot",
+    job: "training",
+    state: "idle",
+    archived: false,
+    model_family: "krea2_raw",
+    training_variant: "lora",
+    preprocess_precision: "bf16",
+    block_swap_precision: "bf16",
+    base_compute: "nf4",
+    precision_preference: "bf16",
+  };
+  const missingSnapshot = {
+    id: "missing",
+    name: "No snapshot fields",
+    job: "training",
+    state: "idle",
+    archived: false,
+  };
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+    const url = new URL(String(input), "http://localhost");
+    if (url.pathname === "/api/training/history/collections/settings") {
+      return jsonResponse({ collection_order: [], config_group_order: {} });
+    }
+    if (url.pathname === "/api/training/history") {
+      return jsonResponse({ tasks: [completeSnapshot, missingSnapshot], total: 20, next_cursor: "more" });
+    }
+    throw new Error(`Unexpected request: ${url}`);
+  }));
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const router = createMemoryRouter([{ path: "/history", element: <HistoryPage /> }], {
+    initialEntries: ["/history?layout=list&base=krea2_raw&variant=lora&preprocess_precision=bf16&swap=bf16&compute=nf4&precision=bf16"],
+  });
+  render(<QueryClientProvider client={client}><RouterProvider router={router} /></QueryClientProvider>);
+
+  await userEvent.setup().click(await screen.findByText("高级筛选"));
+  for (const { label, param } of [
+    { label: "基座模型", param: "base" },
+    { label: "训练变体", param: "variant" },
+    { label: "预处理精度", param: "preprocess_precision" },
+    { label: "块交换精度", param: "swap" },
+    { label: "底模计算路径", param: "compute" },
+    { label: "精度倾向", param: "precision" },
+  ]) {
+    expect(screen.getByRole("combobox", { name: label })).toHaveValue(new URLSearchParams(router.state.location.search).get(param));
+  }
+  expect(await screen.findByRole("link", { name: /Complete snapshot/ })).toBeInTheDocument();
+  expect(screen.queryByRole("link", { name: /No snapshot fields/ })).not.toBeInTheDocument();
+  expect(screen.getByText(/状态、集合及高级筛选仅作用于已读取记录/)).toBeInTheDocument();
+});
+
+it("keeps an unloaded URL filter visible and deduplicates it when a later page contains the value", async () => {
+  const firstPageTask = { id: "first", name: "First page", job: "training", state: "idle", archived: false, training_variant: "loha" };
+  const laterTask = { id: "later", name: "Later match", job: "training", state: "idle", archived: false, training_variant: "lora" };
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+    const url = new URL(String(input), "http://localhost");
+    if (url.pathname === "/api/training/history/collections/settings") {
+      return jsonResponse({ collection_order: [], config_group_order: {} });
+    }
+    if (url.pathname === "/api/training/history") {
+      return url.searchParams.get("cursor") === "more"
+        ? jsonResponse({ tasks: [laterTask], total: 2, next_cursor: null })
+        : jsonResponse({ tasks: [firstPageTask], total: 2, next_cursor: "more" });
+    }
+    throw new Error(`Unexpected request: ${url}`);
+  }));
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const router = createMemoryRouter([{ path: "/history", element: <HistoryPage /> }], {
+    initialEntries: ["/history?layout=list&variant=lora"],
+  });
+  render(<QueryClientProvider client={client}><RouterProvider router={router} /></QueryClientProvider>);
+
+  await userEvent.setup().click(await screen.findByText("高级筛选"));
+  const select = screen.getByRole("combobox", { name: "训练变体" });
+  await waitFor(() => expect(select).toHaveValue("lora"));
+  expect(screen.getByRole("option", { name: "lora（当前条件，尚未在已加载记录中出现）" })).toHaveValue("lora");
+  expect(screen.getByText("已加载结果中没有符合筛选条件的记录，仍有结果未加载。")).toBeInTheDocument();
+  expect(screen.getByText(/高级筛选仅作用于已读取记录/)).toBeInTheDocument();
+
+  await userEvent.setup().click(screen.getByRole("button", { name: "载入更多记录" }));
+  expect(await screen.findByRole("link", { name: /Later match/ })).toBeInTheDocument();
+  expect(select).toHaveValue("lora");
+  expect(screen.getAllByRole("option", { name: "lora" })).toHaveLength(1);
+  expect(screen.queryByRole("option", { name: "lora（当前条件，尚未在已加载记录中出现）" })).not.toBeInTheDocument();
+});

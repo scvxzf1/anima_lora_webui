@@ -109,9 +109,17 @@
 }
 .history-advanced-grid label {
   display: grid;
+  min-width: 0;
   gap: 4px;
   color: var(--muted);
   font-size: 11px;
+}
+.history-advanced-grid select {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 @media (max-width: 900px) {
   .history-advanced-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }

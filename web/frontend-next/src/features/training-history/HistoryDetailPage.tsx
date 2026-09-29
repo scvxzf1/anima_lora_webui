@@ -5,6 +5,7 @@ import { RotateCcw } from "lucide-react";
 import { fetchHistoryTaskDetail, historyKeys, type HistoryTaskDetail } from "./api";
 import { historyStateLabel, historyTaskName } from "./historySummary";
 import { finiteNumber } from "../../components/trainingNumbers";
+import { HistorySnapshot } from "./HistorySnapshot";
 import "./HistoryDetailPage.css";
 
 const TrainingMetricsCharts = lazy(() => import("../../components/TrainingMetricsCharts").then((module) => ({ default: module.TrainingMetricsCharts })));
@@ -13,7 +14,6 @@ const HistoryLogs = lazy(() => import("./HistoryLogs").then((module) => ({ defau
 const HistoryResume = lazy(() => import("./HistoryResume").then((module) => ({ default: module.HistoryResume })));
 const HistoryAssets = lazy(() => import("./HistoryAssets").then((module) => ({ default: module.HistoryAssets })));
 const HistoryOverview = lazy(() => import("./HistoryOverview").then((module) => ({ default: module.HistoryOverview })));
-const HistoryArtifacts = lazy(() => import("./HistoryArtifacts").then((module) => ({ default: module.HistoryArtifacts })));
 
 const VIEWS = [["overview", "概览"], ["metrics", "指标"], ["artifacts", "产物"], ["logs", "日志"], ["config", "配置"]];
 
@@ -81,12 +81,4 @@ function HistoryDetailContent({ detail, taskId, tab }: { detail: HistoryTaskDeta
     case "config": return <HistorySnapshot detail={detail} taskId={taskId} />;
     default: return <HistoryOverview detail={detail} />;
   }
-}
-
-function HistorySnapshot({ detail, taskId }: { detail: HistoryTaskDetail; taskId: string }) {
-  return <section className="history-overview-section">
-    <h2>配置快照</h2>
-    {detail.config_toml ? <pre className="history-detail-toml">{detail.config_toml}</pre> : <p role="status">此任务未保存配置快照。</p>}
-    <HistoryArtifacts taskId={taskId} />
-  </section>;
 }

@@ -17,6 +17,9 @@ export type HistoryTaskSummary = {
   name?: string;
   job?: string;
   state?: string;
+  from_queue?: boolean;
+  queue_item_id?: string;
+  queue_attempt?: number;
   archived?: boolean;
   group?: string;
   started_at?: number;

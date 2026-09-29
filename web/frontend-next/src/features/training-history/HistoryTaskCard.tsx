@@ -23,6 +23,12 @@ export function HistoryTaskCard({
 }: HistoryTaskCardProps) {
   const name = historyTaskName(task);
   const summary = historySummary(task);
+  const queueAttempt = task.queue_attempt;
+  const hasQueueAttempt = Number.isInteger(queueAttempt) && Number(queueAttempt) > 0;
+  const isQueueTask =
+    task.from_queue === true ||
+    Boolean(task.queue_item_id?.trim()) ||
+    hasQueueAttempt;
   const rawTimestamp = task.started_at ?? task.started_at_text;
   const returnSearch = historyReturnSearch(listSearch, Number(new URLSearchParams(listSearch).get("depth")) || 1, String(task.id));
   return (
@@ -54,6 +60,15 @@ export function HistoryTaskCard({
         <span className="history-state" data-state={task.state || "unknown"}>
           {historyStateLabel(task.state)}
         </span>
+        {isQueueTask ? (
+          <span
+            className="history-state"
+            data-state="unknown"
+            title={hasQueueAttempt ? `队列尝试 ${queueAttempt}` : undefined}
+          >
+            来自队列
+          </span>
+        ) : null}
         <h3>{name}</h3>
         <p>
           {task.history_source_config_file ||

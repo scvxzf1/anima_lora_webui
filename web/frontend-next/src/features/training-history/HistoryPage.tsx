@@ -160,8 +160,15 @@ export function HistoryPage() {
     [tasks, search, state, archived, collection, configGroup, advanced.base, advanced.variant, advanced.source, advanced.precision, advanced.preprocess_precision, advanced.swap, advanced.compute, collections.data],
   );
 
-  const options = (read: (task: HistoryTaskSummary) => string | undefined) =>
-    [...new Set(tasks.map(read).filter(Boolean) as string[])].sort();
+  const options = (read: (task: HistoryTaskSummary) => string | undefined, selected: string) => {
+    const loaded = new Set(tasks.map(read).filter(Boolean) as string[]);
+    return [...new Set([...loaded, ...(selected ? [selected] : [])])]
+      .sort()
+      .map((value) => ({
+        value,
+        label: loaded.has(value) ? value : `${value}（当前条件，尚未在已加载记录中出现）`,
+      }));
+  };
   const advancedFields = [
     ["base", "基座模型", (task: HistoryTaskSummary) => task.model_family],
     ["variant", "训练变体", (task: HistoryTaskSummary) => task.training_variant || task.variant],
@@ -347,8 +354,8 @@ export function HistoryPage() {
                     onChange={(event) => filter(key, event.target.value)}
                   >
                     <option value="">全部</option>
-                    {options(read).map((value) => (
-                      <option key={value} value={value}>{value}</option>
+                    {options(read, advanced[key]).map(({ value, label: optionLabel }) => (
+                      <option key={value} value={value}>{optionLabel}</option>
                     ))}
                   </select>
                 </label>

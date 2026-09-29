@@ -32,3 +32,39 @@ it("falls back to saved text or a dash for missing and invalid timestamps", () =
   render(<MemoryRouter><HistoryTaskCard {...props} task={{ ...props.task, started_at_text: "时间未记录" }} /></MemoryRouter>);
   expect(screen.getByText("时间未记录")).toHaveAttribute("title", "时间未记录");
 });
+
+it("marks tasks with a valid queue attempt and shows its attempt count", () => {
+  render(
+    <MemoryRouter>
+      <HistoryTaskCard {...props} task={{ ...props.task, queue_attempt: 2 }} />
+    </MemoryRouter>,
+  );
+  expect(screen.getByText("来自队列")).toHaveAttribute("title", "队列尝试 2");
+});
+
+it.each([
+  { from_queue: true },
+  { queue_item_id: "queue-1" },
+])("marks tasks with queue origin metadata without inventing an attempt count", (queueFields) => {
+  render(
+    <MemoryRouter>
+      <HistoryTaskCard {...props} task={{ ...props.task, ...queueFields }} />
+    </MemoryRouter>,
+  );
+  expect(screen.getByText("来自队列")).not.toHaveAttribute("title");
+});
+
+it.each([
+  {},
+  { from_queue: false },
+  { queue_item_id: "   " },
+  { queue_attempt: 0 },
+  { queue_attempt: 1.5 },
+])("does not mark tasks without a valid queue origin signal", (queueFields) => {
+  render(
+    <MemoryRouter>
+      <HistoryTaskCard {...props} task={{ ...props.task, ...queueFields }} />
+    </MemoryRouter>,
+  );
+  expect(screen.queryByText("来自队列")).not.toBeInTheDocument();
+});
