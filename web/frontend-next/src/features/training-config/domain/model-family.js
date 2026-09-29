@@ -114,6 +114,13 @@ export function modelFamilyOptionSupported(fieldKey, family, option) {
     const capability = modelFamilyCapability(family);
     if (!capability) return true;
     const value = String(option ?? '').trim();
+    if (capability.name === 'krea2_raw') {
+        if (fieldKey === 'selective_checkpoint') {
+            return ['off', 'every_other'].includes(value.toLowerCase());
+        }
+        if (fieldKey === 'compile_inductor_mode') return value.toLowerCase() === 'default';
+        if (fieldKey === 'v100_flash_stability') return value.toLowerCase() === 'off';
+    }
     if (fieldKey === 'attn_mode') {
         return (capability.supported_attention_modes || []).includes(value.toLowerCase());
     }

@@ -1,17 +1,8 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 
 from web.services import image_test_service
-
-
-ROOT = Path(__file__).resolve().parents[1]
-
-
-def _text(relative_path: str) -> str:
-    return (ROOT / relative_path).read_text(encoding="utf-8")
 
 
 def _image_payload(*, attn_mode: str, runtime_dtype: str = "bf16") -> dict:
@@ -43,41 +34,6 @@ def _stub_image_paths(monkeypatch) -> None:
         "get_global_settings",
         lambda: {"model_family": "krea2_raw"},
     )
-
-
-def test_training_form_filters_and_locks_krea2_attention_options() -> None:
-    form = _text("web/static/js/features/config-form/form-fields-ui.js")
-    live = _text("web/static/js/features/config-form/live-compat.js")
-
-    assert "attn_mode: new Set(['torch', 'flash', 'sdpa'])" in form
-    assert "selective_checkpoint: new Set(['off', 'every_other'])" in form
-    assert "key === 'compile_dynamic_seq'" in form
-    assert "key === 'compile_seq_bands'" in form
-    assert "key === 'compile_inductor_mode'" in form
-    assert "key === 'v100_flash_stability'" in form
-    assert "option.disabled = true" in form
-    assert "input.disabled = true" in form
-    assert "krea2_invalid_attn_mode" in live
-    assert "krea2_compile_dynamic_seq" in live
-    assert "krea2_compile_seq_bands" in live
-
-
-def test_image_test_options_are_family_aware() -> None:
-    state = _text("web/static/js/features/image-test/state.js")
-    feature = _text("web/static/js/features/image-test/index.js")
-    bridge = _text(
-        "web/static/js/features/anima-app/chunks/01a-image-test-feature.js"
-    )
-
-    assert "imageTestAttnModeOptionsForFamily" in state
-    assert "['torch', 'flash'].includes(item.value)" in state
-    assert "imageTestSamplerOptionsForFamily" in state
-    assert "item.value === 'euler'" in state
-    assert "renderer.setAttentionModeOptions(modelFamily" in feature
-    assert "renderer.setSamplerOptions(modelFamily" in feature
-    assert "flowShiftInput.disabled = isKrea2" in feature
-    assert "getModelFamily" in bridge
-    assert "configState.currentConfig?.model_family" in bridge
 
 
 def test_image_service_canonicalizes_krea2_sdpa_alias(monkeypatch) -> None:

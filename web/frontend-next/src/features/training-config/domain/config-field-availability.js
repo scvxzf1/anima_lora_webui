@@ -167,6 +167,31 @@ export function configFieldAvailability(key, context = {}) {
         );
     }
 
+    if (modelFamily === 'krea2_raw') {
+        const fixedKrea2Values = {
+            compile_dynamic_seq: [false, 'Krea-2 使用固定 token-family 编译图，不支持动态序列编译。', 'krea2-compile-dynamic-seq'],
+            compile_seq_bands: [false, 'Krea-2 使用固定 token-family 编译图，不支持分带动态序列编译。', 'krea2-compile-seq-bands'],
+            compile_inductor_mode: ['default', 'Krea-2 仅支持 default Inductor mode。', 'krea2-compile-inductor-mode'],
+            v100_flash_stability: ['off', 'V100 Flash 稳定性诊断仅适用于 Anima；Krea-2 必须保持 off。', 'krea2-v100-flash-stability'],
+        }[key];
+        if (fixedKrea2Values) {
+            const [requiredValue, reason, code] = fixedKrea2Values;
+            const currentValue = contextValue(context, key, key === 'compile_dynamic_seq' || key === 'compile_seq_bands' ? false : requiredValue);
+            const isCurrentValueFixed = typeof requiredValue === 'boolean'
+                ? normalizeBooleanConfigValue(key, currentValue, false) === requiredValue
+                : String(currentValue ?? '').trim().toLowerCase() === requiredValue;
+            return isCurrentValueFixed
+                ? unavailable(reason, code)
+                : { enabled: true, reason: '', code: null };
+        }
+        if (key === 'selective_checkpoint') {
+            const mode = String(contextValue(context, key, 'off') ?? 'off').trim().toLowerCase();
+            if (!['off', 'every_other'].includes(mode)) {
+                return { enabled: true, reason: '', code: null };
+            }
+        }
+    }
+
     if (key === 'lora_adapter_kind') {
         if (!LORA_ADAPTER_METHODS.has(method)) {
             return unavailable(

@@ -11,7 +11,7 @@ it("starts inference with a saved merged configuration", async () => {
     const path = String(input);
     if (path.includes("/api/config/file-groups")) return jsonResponse([{ id: "local", label: "Local", files: [{ path: "configs/gui-methods/test.toml", label: "Test", method: "lora", methods_subdir: "gui-methods" }] }]);
     if (path === "/api/presets") return jsonResponse(["default"]);
-    if (path.includes("/api/config/merged")) return jsonResponse({ model_family: "krea2_raw", pretrained_model_name_or_path: "model.safetensors" });
+    if (path.includes("/api/config/merged")) return jsonResponse({ model_family: "krea2_raw", pretrained_model_name_or_path: "model.safetensors", attn_mode: "sdpa", sample_sampler: "er_sde", flow_shift: 3 });
     if (path === "/api/image-test/status") return jsonResponse({ ok: true, status: "idle", running: false, output_count: 0 });
     if (path === "/api/analysis/weights") return jsonResponse({ weights: [] });
     if (path.startsWith("/api/preview/images")) return jsonResponse({ ok: true, images: [] });
@@ -26,6 +26,11 @@ it("starts inference with a saved merged configuration", async () => {
   await user.selectOptions(screen.getByLabelText("训练配置"), "configs/gui-methods/test.toml");
   await screen.findByRole("button", { name: "开始生成" });
   await waitFor(() => expect(screen.getByRole("button", { name: "开始生成" })).toBeEnabled());
+  await waitFor(() => expect(screen.getByLabelText("注意力后端")).toHaveValue("torch"));
+  expect(screen.getByLabelText("采样器")).toHaveValue("euler");
+  expect(screen.getByLabelText("采样器")).toBeDisabled();
+  const attention = screen.getByLabelText("注意力后端") as HTMLSelectElement;
+  expect(Array.from(attention.options, (option) => option.value)).toEqual(["flash", "torch"]);
   await user.type(screen.getByLabelText("正向提示词"), "test prompt");
   await user.click(screen.getByRole("button", { name: "开始生成" }));
   await waitFor(() => expect(fetcher).toHaveBeenCalledWith("/api/image-test/start", expect.objectContaining({ method: "POST" })));
@@ -33,5 +38,7 @@ it("starts inference with a saved merged configuration", async () => {
   const body = JSON.parse(call[1]!.body as string);
   expect(body.config.model_family).toBe("krea2_raw");
   expect(body.sampler).toBe("euler");
+  expect(body.attn_mode).toBe("torch");
+  expect(body.flow_shift).toBe("");
   expect(body.prompt).toBe("test prompt");
 });

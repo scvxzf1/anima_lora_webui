@@ -11,7 +11,7 @@ from library.models.family_registry import MODEL_FAMILY_REGISTRY
 
 
 ROOT = Path(__file__).resolve().parents[1]
-STATIC = ROOT / "web/static/js"
+NEXT_DOMAIN = ROOT / "web/frontend-next/src/features/training-config/domain"
 VARIANT_TOKEN = "auto-block-swap-20260908-v3"
 
 
@@ -26,9 +26,9 @@ def test_registered_models_have_no_blanket_network_variant_gate(family):
 def test_variant_options_and_selected_parameters_are_open_for_every_model(stale_catalog):
     if not shutil.which("node"):
         pytest.skip("node is required for frontend checks")
-    family_uri = (STATIC / "features/config-form/model-family.js").as_uri()
-    availability_uri = (STATIC / "dragon-ui/pages/config-field-availability.js").as_uri()
-    disclosure_uri = (STATIC / "dragon-ui/pages/config-field-disclosure-rules.js").as_uri()
+    family_uri = (NEXT_DOMAIN / "model-family.js").as_uri()
+    availability_uri = (NEXT_DOMAIN / "config-field-availability.js").as_uri()
+    disclosure_uri = (NEXT_DOMAIN / "config-field-disclosure-rules.js").as_uri()
     script = f"""
 const family = await import({json.dumps(family_uri + '?v=' + VARIANT_TOKEN)});
 const availability = await import({json.dumps(availability_uri)});
@@ -95,7 +95,7 @@ console.log(JSON.stringify(names.map(modelFamily => ({{
 def test_qwen_image_2_1_plain_lora_options_are_filtered():
     if not shutil.which("node"):
         pytest.skip("node is required for frontend checks")
-    family_uri = (STATIC / "features/config-form/model-family.js").as_uri()
+    family_uri = (NEXT_DOMAIN / "model-family.js").as_uri()
     script = f"""
 const family = await import({json.dumps(family_uri + '?v=qwen-image-21-v2')});
 const selected = {{
