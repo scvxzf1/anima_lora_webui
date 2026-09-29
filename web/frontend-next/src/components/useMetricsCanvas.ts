@@ -39,7 +39,10 @@ export function useMetricsCanvas(ref: RefObject<HTMLDivElement | null>, data: [n
         });
       };
       render();
-      const resize = new ResizeObserver(() => chart.resize());
+      const resize = new ResizeObserver(() => {
+        chart.dispatchAction({ type: "hideTip" });
+        chart.resize();
+      });
       resize.observe(node);
       const theme = new MutationObserver(render);
       theme.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });

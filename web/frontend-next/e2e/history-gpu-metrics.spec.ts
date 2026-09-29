@@ -26,11 +26,17 @@ for (const width of [1440, 390]) {
     const region = page.getByRole("region", { name: "GPU 资源历史" });
     await expect(region.getByRole("group", { name: "GPU 资源范围" }).getByRole("button")).toHaveCount(3);
     await expect(region.getByRole("button", { name: "汇总" })).toHaveAttribute("aria-pressed", "true");
-    await expect(region.getByRole("img", { name: /显存 \(GB\)，2 个点/ })).toBeVisible();
+    await expect(region.getByRole("group", { name: "显存 (GB)，2 个点" })).toBeVisible();
     await region.getByRole("button", { name: "GPU 1" }).click();
     await expect(region).toContainText("GPU 1 · GPU Beta · 任务已选");
-    await expect(region.getByRole("img", { name: /GPU 利用率 \(%\)，2 个点，最新 0/ })).toBeVisible();
-    await expect(region.getByRole("img", { name: /GPU 温度 \(°C\)，2 个点，最新 49/ })).toBeVisible();
+    const utilization = region.getByRole("group", { name: "GPU 利用率 (%)，2 个点" });
+    await expect(utilization).toBeVisible();
+    await utilization.focus();
+    await page.keyboard.press("ArrowRight");
+    await expect(region.getByText(/检查点 1\/2 · 时间: .* · GPU 利用率 \(%\): 40\.00/, { exact: false })).toBeVisible();
+    await page.keyboard.press("ArrowRight");
+    await expect(region.getByText(/检查点 2\/2 · 时间: .* · GPU 利用率 \(%\): 0\.000/, { exact: false })).toBeVisible();
+    await expect(region.getByRole("group", { name: "GPU 温度 (°C)，2 个点" })).toBeVisible();
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await page.screenshot({ path: info.outputPath(`history-gpu-${width}.png`), fullPage: true });
     expect(mocks.writes).toEqual([]);
@@ -48,8 +54,23 @@ test("legacy history keeps its aggregate chart without inventing GPU identities"
   const region = page.getByRole("region", { name: "GPU 资源历史" });
   await expect(region).toContainText("仅有汇总记录");
   await expect(region.getByRole("group", { name: "GPU 资源范围" })).toHaveCount(0);
-  await expect(region.getByRole("img", { name: /显存 \(GB\)，2 个点/ })).toBeVisible();
-  await expect(region.getByRole("img", { name: /GPU 利用率/ })).toHaveCount(0);
+  await expect(region.getByRole("group", { name: "显存 (GB)，2 个点" })).toBeVisible();
+  await expect(region.getByRole("group", { name: /GPU 利用率/ })).toHaveCount(0);
+  expect(mocks.writes).toEqual([]);
+  expect(mocks.unhandled).toEqual([]);
+});
+
+test("history GPU charts expose an empty state when no system metrics were recorded", async ({ page }) => {
+  const mocks = await mockWorkspace(page);
+  await page.route((url) => url.pathname === "/api/training/history/fixture-run", (route) => route.fulfill({ json: {
+    task: { id: "fixture-run", job: "training", state: "done" },
+    metrics: [{ step: 1, loss: 0.2 }],
+    system: [],
+  } }));
+  await page.goto("/next/history/fixture-run?view=metrics");
+  const region = page.getByRole("region", { name: "GPU 资源历史" });
+  await expect(region.getByText("暂无 GPU 资源记录")).toBeVisible();
+  await expect(region.getByRole("group", { name: "GPU 资源范围" })).toHaveCount(0);
   expect(mocks.writes).toEqual([]);
   expect(mocks.unhandled).toEqual([]);
 });

@@ -642,6 +642,7 @@ fieldset {
 .metric-chart {
   width: 100%;
   height: 320px;
+  overflow: hidden;
 }
 .metric-chart:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .chart-inspection { min-height: 1.5em; margin: 4px 0 0; color: var(--muted); font-size: 13px; }
