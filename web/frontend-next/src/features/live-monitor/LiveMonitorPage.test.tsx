@@ -77,7 +77,7 @@ it("pauses hidden polling and refreshes a stale snapshot on resume without leaki
 
   Object.defineProperty(document, "visibilityState", { configurable: true, value: "hidden" });
   act(() => document.dispatchEvent(new Event("visibilitychange")));
-  await new Promise((resolve) => setTimeout(resolve, 2200));
+  await new Promise((resolve) => setTimeout(resolve, 5200));
   expect([statusCalls, metricsCalls, logsCalls, gpuCalls]).toEqual([1, 1, 1, 1]);
   Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
   act(() => document.dispatchEvent(new Event("visibilitychange")));
@@ -93,9 +93,11 @@ it("pauses hidden polling and refreshes a stale snapshot on resume without leaki
   Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
   act(() => document.dispatchEvent(new Event("visibilitychange")));
   await waitFor(() => expect(statusCalls).toBe(3));
-  await waitFor(() => expect([metricsCalls, logsCalls, gpuCalls]).toEqual([2, 2, 2]));
+  await waitFor(() => expect(metricsCalls).toBe(2));
+  await waitFor(() => expect(logsCalls).toBe(2));
+  await waitFor(() => expect(gpuCalls).toBe(2));
   client.clear();
-});
+}, 10_000);
 
 it("refreshes GPU inventory after an idle monitor becomes visible", async () => {
   let statusCalls = 0;
