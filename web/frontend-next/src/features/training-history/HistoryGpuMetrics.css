@@ -1,0 +1,16 @@
+.history-gpu-metric-visibility {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  min-height: 36px;
+  margin: 12px 0;
+}
+
+.history-gpu-metric-visibility input {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  margin: 0;
+  accent-color: var(--accent);
+}

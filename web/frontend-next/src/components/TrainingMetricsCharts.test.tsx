@@ -1,9 +1,9 @@
-import { cleanup, render } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { TrainingMetricsCharts } from "./TrainingMetricsCharts";
 
 vi.mock("./MetricsChart", () => ({
-  MetricsChart: ({ metric, initialLimit }: { metric?: string; initialLimit?: number }) => <div data-testid={`chart-${metric ?? "loss"}`} data-initial-limit={initialLimit} />,
+  MetricsChart: ({ metric, initialLimit, hidden }: { metric?: string; initialLimit?: number; hidden?: boolean }) => <div data-testid={`chart-${metric ?? "loss"}`} data-initial-limit={initialLimit} hidden={hidden} />,
 }));
 
 afterEach(cleanup);
@@ -38,4 +38,24 @@ it("uses sample indices when no points have steps", () => {
   const points = Array.from({ length: 2001 }, (_, index) => ({ loss: 1, ...(index === 2000 ? { lr: 1e-5 } : {}) }));
   const { queryByTestId } = render(<TrainingMetricsCharts points={points} />);
   expect(queryByTestId("chart-lr")).toBeTruthy();
+});
+
+it("allows training charts to be hidden individually and restored after all are hidden", () => {
+  const points = [{ step: 1, loss: 0.5, lr: 0.001, cmmd: 0.4 }];
+  render(<TrainingMetricsCharts points={points} />);
+
+  const loss = screen.getByRole("checkbox", { name: "Loss 趋势" });
+  const learningRate = screen.getByRole("checkbox", { name: "学习率趋势" });
+  const cmmd = screen.getByRole("checkbox", { name: "验证 CMMD" });
+  fireEvent.click(learningRate);
+  expect(screen.getByTestId("chart-lr")).toHaveAttribute("hidden");
+  expect(screen.getByTestId("chart-loss")).toBeInTheDocument();
+  expect(screen.getByTestId("chart-cmmd")).toBeInTheDocument();
+
+  fireEvent.click(loss);
+  fireEvent.click(cmmd);
+  expect(screen.getByText("已隐藏所有训练指标")).toBeInTheDocument();
+  fireEvent.click(learningRate);
+  expect(screen.getByTestId("chart-lr")).not.toHaveAttribute("hidden");
+  expect(screen.queryByText("已隐藏所有训练指标")).not.toBeInTheDocument();
 });

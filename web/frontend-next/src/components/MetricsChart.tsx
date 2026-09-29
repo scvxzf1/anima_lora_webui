@@ -2,8 +2,8 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react"
 import { metricRange, metricSeries } from "./metricSeries";
 import { useMetricsCanvas } from "./useMetricsCanvas";
 
-export function MetricsChart({ points, metric = "loss", label = "Loss 趋势", timeAxis = false, total, initialLimit = 2000, autoExpandEmptyWindow = false }: {
-  points: Record<string, unknown>[]; metric?: string; label?: string; timeAxis?: boolean; total?: number; initialLimit?: number; autoExpandEmptyWindow?: boolean;
+export function MetricsChart({ points, metric = "loss", label = "Loss 趋势", timeAxis = false, total, initialLimit = 2000, autoExpandEmptyWindow = false, hidden = false }: {
+  points: Record<string, unknown>[]; metric?: string; label?: string; timeAxis?: boolean; total?: number; initialLimit?: number; autoExpandEmptyWindow?: boolean; hidden?: boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const [smoothing, setSmoothing] = useState(0);
@@ -20,7 +20,7 @@ export function MetricsChart({ points, metric = "loss", label = "Loss 趋势", t
     previousWindow.current = { points, hasData: series.data.length > 0 };
   }, [autoExpandEmptyWindow, limit, metric, points, series.data.length, smoothing, timeAxis]);
   const metricName = label.replace(/\s*趋势$/, "");
-  useMetricsCanvas(ref, series.data, timeAxis, metricName, series.axis);
+  useMetricsCanvas(ref, series.data, timeAxis, metricName, series.axis, !hidden);
   const axisName = series.axis === "time" ? "时间" : series.axis === "step" ? "STEP" : "采样序号";
   const focusedPoint = focusedIndex === null ? undefined : series.data[focusedIndex];
   const inspectPoint = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -29,7 +29,7 @@ export function MetricsChart({ points, metric = "loss", label = "Loss 趋势", t
     const current = focusedIndex ?? (event.key === "ArrowRight" ? -1 : series.data.length);
     setFocusedIndex(Math.max(0, Math.min(series.data.length - 1, current + (event.key === "ArrowRight" ? 1 : -1))));
   };
-  return <section className="chart-section" aria-label={label}>
+  return <section className="chart-section" aria-label={label} hidden={hidden}>
     <div className="chart-heading">
       <h2>{label}</h2>
       <div className="chart-controls">

@@ -1,9 +1,9 @@
 import { useEffect, type RefObject } from "react";
 
-export function useMetricsCanvas(ref: RefObject<HTMLDivElement | null>, data: [number, number][], timeAxis: boolean, metricName: string, axis: string) {
+export function useMetricsCanvas(ref: RefObject<HTMLDivElement | null>, data: [number, number][], timeAxis: boolean, metricName: string, axis: string, enabled = true) {
   useEffect(() => {
     const node = ref.current;
-    if (!node || !node.clientWidth || !data.length) return;
+    if (!enabled || !node || !node.clientWidth || !data.length) return;
     let disposed = false;
     let cleanup: (() => void) | undefined;
     void import("./metricsChartRuntime").then(({ init }) => {
@@ -49,5 +49,5 @@ export function useMetricsCanvas(ref: RefObject<HTMLDivElement | null>, data: [n
       cleanup = () => { resize.disconnect(); theme.disconnect(); chart.dispose(); };
     });
     return () => { disposed = true; cleanup?.(); };
-  }, [ref, data, timeAxis, metricName]);
+  }, [ref, data, timeAxis, metricName, enabled]);
 }
