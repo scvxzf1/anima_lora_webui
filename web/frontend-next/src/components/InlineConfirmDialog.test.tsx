@@ -69,7 +69,13 @@ it("keeps Escape and repeated confirmation from bypassing an in-flight action", 
   await user.click(confirm);
   expect(onConfirm).toHaveBeenCalledTimes(1);
   expect(confirm).toBeDisabled();
-  expect(screen.getByRole("button", { name: "取消" })).toBeDisabled();
+  const cancel = screen.getByRole("button", { name: "取消" });
+  expect(cancel).toHaveAttribute("aria-disabled", "true");
+  cancel.focus();
+  await user.keyboard("{Tab}");
+  expect(cancel).toHaveFocus();
+  await user.keyboard("{Tab}");
+  expect(cancel).toHaveFocus();
   await user.keyboard("{Escape}");
   expect(screen.getByRole("dialog")).toBeInTheDocument();
   expect(onConfirm).toHaveBeenCalledTimes(1);
@@ -77,4 +83,22 @@ it("keeps Escape and repeated confirmation from bypassing an in-flight action", 
   await waitFor(() => expect(resolveAction).toBeTypeOf("function"));
   resolveAction();
   await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+});
+
+it("allows another synchronous confirmation when the parent keeps the dialog mounted", async () => {
+  const user = userEvent.setup();
+  const onConfirm = vi.fn();
+  render(
+    <InlineConfirmDialog
+      message="此操作不可恢复。"
+      onConfirm={onConfirm}
+      onCancel={vi.fn()}
+    />,
+  );
+
+  const confirm = screen.getByRole("button", { name: "确定" });
+  await user.click(confirm);
+  expect(confirm).toBeEnabled();
+  await user.click(confirm);
+  expect(onConfirm).toHaveBeenCalledTimes(2);
 });

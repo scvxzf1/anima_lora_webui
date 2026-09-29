@@ -26,20 +26,29 @@ export function InlineConfirmDialog({
   const confirm = () => {
     if (isBusy || submittingRef.current) return;
     submittingRef.current = true;
+    const release = () => {
+      submittingRef.current = false;
+      setSubmitting(false);
+    };
     try {
       const result = onConfirm();
       if (result && typeof result.then === "function") {
         setSubmitting(true);
-        void result.then(() => {
-          submittingRef.current = false;
-          setSubmitting(false);
-        }, () => {
-          submittingRef.current = false;
-          setSubmitting(false);
-        });
+        return result.then(
+          (value) => {
+            release();
+            return value;
+          },
+          (error) => {
+            release();
+            throw error;
+          },
+        );
       }
+      release();
+      return result;
     } catch (error) {
-      submittingRef.current = false;
+      release();
       throw error;
     }
   };
@@ -56,7 +65,14 @@ export function InlineConfirmDialog({
       <div className="inline-confirm-body">
         <p>{message}</p>
         <div className="toolbar inline-confirm-actions">
-          <button ref={cancelFocusRef} type="button" onClick={onCancel} disabled={isBusy}>
+          <button
+            ref={cancelFocusRef}
+            type="button"
+            onClick={() => {
+              if (!isBusy) onCancel();
+            }}
+            aria-disabled={isBusy}
+          >
             取消
           </button>
           <button
