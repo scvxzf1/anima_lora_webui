@@ -64,6 +64,8 @@ describe("model library membership", () => {
     const moved = moveModel(added, "b", "g2");
     const ordered = reorderModel(moved, "a", 1);
     expect(ordered.revision).toBe("revision-1");
+    expect(ordered.groups?.find((group) => group.id === "g2")?.item_ids).toEqual(["b"]);
+    expect(reorderModel(library, "a", 1).groups?.find((group) => group.id === "g1")?.item_ids).toEqual(["b", "a"]);
     const membership = ordered.groups!.flatMap((group) => group.item_ids);
     expect(membership.length).toBe(ordered.items.length);
     expect(new Set(membership).size).toBe(ordered.items.length);

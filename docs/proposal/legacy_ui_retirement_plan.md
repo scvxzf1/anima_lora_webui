@@ -234,6 +234,8 @@ P0–P3 代码已按原提交顺序 cherry-pick 至本地 `dev`，后续时间�
 
 旧训练数据前端测试的分组顺序/按路径搜索契约已迁入 Next 数据集选择器 E2E；训练量计算以现行后端 API 为准，后端估算与分桶测试 **16 项通过**。Next 数据集选择器整份浏览器 **7 项通过**，旧 `test_dragon_training_data_frontend.py` 的剩余 DOM 接线、旧 JS 计算函数和 CSS 断言已删除。此处仍未改变任何用户数据或训练运行状态。
 
+旧模型配置前端测试只依赖 Classic/Dragon DOM、CSS、旧 JS 排序 helper 和选择弹窗。Next 用组内 `item_ids` 排序而非重排全局 `items`；已补精确组内排序与跨组归属断言，并沿用模型组合写入训练草稿的组件测试、模型库顺序和长路径 E2E。定向组件 **27 项通过**、浏览器 **1 项通过**，旧 `test_global_model_config_frontend.py` 已删除；不把旧拖拽数组顺序误称为 Next 契约。
+
 ## 退役验收范围
 
 | 领域 | 核心验收内容 |
