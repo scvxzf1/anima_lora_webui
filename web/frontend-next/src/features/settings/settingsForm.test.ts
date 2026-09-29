@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   applySettingsDefaults,
+  SETTINGS_GROUPS,
   settingsDraft,
   settingsPatch,
 } from "./settingsForm";
@@ -8,6 +9,12 @@ import { addModel, deleteModel, moveModel, reorderModel } from "./modelLibrary";
 import type { ModelConfigResponse } from "./api";
 
 describe("global settings draft", () => {
+  it("exposes the tagging retention limit with the backend range", () => {
+    const field = SETTINGS_GROUPS.flatMap((group) => group.fields).find(
+      ({ key }) => key === "tagging_max_retained_jobs",
+    );
+    expect(field).toMatchObject({ label: "打标任务保留数量", kind: "number", min: 1, max: 500 });
+  });
   it("edits raw overrides, never effective paths, and sends only changed keys", () => {
     const baseline = settingsDraft({
       configs_root: "wrong",

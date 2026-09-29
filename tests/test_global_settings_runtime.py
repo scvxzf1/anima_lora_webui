@@ -11,12 +11,6 @@ from web.routes import settings as settings_routes
 from web.services import config_service, preview_service, settings_service
 
 
-ROOT = Path(__file__).resolve().parents[1]
-GLOBAL_SETTINGS_JS = ROOT / "web" / "static" / "js" / "features" / "global-settings" / "settings.js"
-EVENT_LISTENERS_JS = ROOT / "web" / "static" / "js" / "features" / "app-shell" / "event-listeners.js"
-INDEX_HTML = ROOT / "web" / "static" / "index.html"
-
-
 class _JsonRequest:
     def __init__(self, payload: dict[str, object], app: dict[str, object] | None = None):
         self._payload = payload
@@ -155,31 +149,6 @@ def test_set_configs_root_hot_swaps_domain_module_roots(tmp_path, monkeypatch):
     assert Path(sample_prompts_mod.DEFAULT_SAMPLE_PROMPTS_FILE) == resolved / "sample_prompts.txt"
 
 
-def test_global_settings_frontend_reload_after_configs_root_switch():
-    source = GLOBAL_SETTINGS_JS.read_text(encoding="utf-8")
-
-    assert "if (res.requires_reload)" in source
-    assert "location.reload()" in source
-    assert "正在切换新的配置根目录" in source
-
-
-def test_global_settings_tooltips_and_help_describe_configs_root_reload():
-    listeners = "\n".join(
-        path.read_text(encoding="utf-8")
-        for path in (
-            EVENT_LISTENERS_JS,
-            EVENT_LISTENERS_JS.with_name("event-listeners-setup.js"),
-            EVENT_LISTENERS_JS.with_name("beginner-tooltips.js"),
-        )
-    )
-    html = INDEX_HTML.read_text(encoding="utf-8")
-
-    assert "修改配置根目录后页面会自动刷新" in listeners
-    assert "'global-configs-root': '配置根目录" in listeners
-    assert "'global-ui-scale': '默认界面缩放比例" in listeners
-    assert "保存后页面会自动刷新并切换到新的配置根目录" in html
-
-
 def test_settings_route_hot_swaps_configs_root_and_refreshes_training_state(monkeypatch, tmp_path):
     payload = {
         "ok": True,
@@ -259,15 +228,6 @@ def test_tagging_job_retention_is_persisted_clamped_and_applied_to_runtime(tmp_p
     )
     assert response.status == 200
     assert service.retained == 500
-
-
-def test_dragon_global_settings_exposes_tagging_job_retention_control() -> None:
-    source = (ROOT / "web" / "static" / "js" / "dragon-ui" / "pages" / "global-settings.js").read_text(
-        encoding="utf-8"
-    )
-    assert "tagging_max_retained_jobs" in source
-    assert "打标任务保留上限" in source
-    assert "retained < 1 || retained > 500" in source
 
 
 def test_save_global_settings_persists_history_and_queue_roots(tmp_path, monkeypatch):
