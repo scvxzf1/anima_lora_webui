@@ -6,9 +6,15 @@ import { createMemoryRouter, RouterProvider } from "react-router-dom";
 import { jsonResponse } from "../../test/renderInApp";
 import { HistoryPage } from "./HistoryPage";
 import { HistoryDetailPage } from "./HistoryDetailPage";
+import { resetHistorySelection } from "./historyNavigation";
+
+const originalScrollIntoView = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollIntoView");
 
 afterEach(() => {
   cleanup();
+  resetHistorySelection();
+  if (originalScrollIntoView) Object.defineProperty(HTMLElement.prototype, "scrollIntoView", originalScrollIntoView);
+  else delete (HTMLElement.prototype as Partial<HTMLElement>).scrollIntoView;
   vi.unstubAllGlobals();
 });
 
@@ -46,7 +52,8 @@ it("returns from a task detail to the filtered list and restores its task anchor
   ], { initialEntries: ["/history?q=needle&state=error&layout=list"] });
   render(<QueryClientProvider client={client}><RouterProvider router={router} /></QueryClientProvider>);
 
-  await userEvent.setup().click(await screen.findByRole("link", { name: /Needle training/ }));
+  await userEvent.setup().click(await screen.findByRole("checkbox", { name: "选择 Needle training" }));
+  await userEvent.setup().click(screen.getByRole("link", { name: /Needle training/ }));
   expect(await screen.findByRole("heading", { name: "Needle training" })).toBeInTheDocument();
   await userEvent.setup().click(screen.getByRole("link", { name: "返回历史" }));
 
@@ -57,6 +64,70 @@ it("returns from a task detail to the filtered list and restores its task anchor
   await waitFor(() => expect(scrollIntoView).toHaveBeenCalled());
   expect(screen.getByRole("link", { name: /Needle training/ })).toBeInTheDocument();
   expect(screen.getByRole("combobox", { name: "状态" })).toHaveValue("error");
+  expect(screen.getByRole("checkbox", { name: "选择 Needle training" })).toBeChecked();
+});
+
+it("keeps cross-page selection during refresh and disables batch actions while fetching", async () => {
+  const tasks = [
+    { id: "task-1", name: "First training", job: "training", state: "idle", archived: false },
+    { id: "task-2", name: "Second training", job: "training", state: "idle", archived: false },
+  ];
+  let releaseSecondPage!: () => void;
+  let holdSecondPage = false;
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url === "/api/training/history/collections/settings") return jsonResponse({ collection_order: [], config_group_order: {} });
+    if (url.startsWith("/api/training/history?")) {
+      const parsed = new URL(url, "http://localhost");
+      if (parsed.searchParams.get("cursor") === "next") {
+        if (holdSecondPage) await new Promise<void>((resolve) => { releaseSecondPage = resolve; });
+        return jsonResponse({ tasks: [tasks[1]], total: 2, next_cursor: null });
+      }
+      return jsonResponse({ tasks: [tasks[0]], total: 2, next_cursor: "next" });
+    }
+    throw new Error(`Unexpected request: ${url}`);
+  }));
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const router = createMemoryRouter([{ path: "/history", element: <HistoryPage /> }], {
+    initialEntries: ["/history?layout=list"],
+  });
+  render(<QueryClientProvider client={client}><RouterProvider router={router} /></QueryClientProvider>);
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole("checkbox", { name: "选择 First training" }));
+  holdSecondPage = true;
+  await user.click(screen.getByRole("button", { name: "载入更多记录" }));
+  expect(screen.getByRole("button", { name: "归档已选" })).toBeDisabled();
+  releaseSecondPage();
+  await screen.findByRole("checkbox", { name: "选择 Second training" });
+  await user.click(screen.getByRole("checkbox", { name: "选择 Second training" }));
+  expect(screen.getByText("已选 2 项")).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "刷新" }));
+  await waitFor(() => expect(screen.getByText("已选 2 项")).toBeInTheDocument());
+});
+
+it("keeps selection through browser back and starts empty after a document reload", async () => {
+  const task = { id: "task-back", name: "Back navigation", job: "training", state: "idle", archived: false };
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url === "/api/training/history/collections/settings") return jsonResponse({ collection_order: [], config_group_order: {} });
+    if (url === "/api/training/history/task-back") return jsonResponse({ task, metrics: [] });
+    if (url.startsWith("/api/training/history?")) return jsonResponse({ tasks: [task], total: 1, next_cursor: null });
+    throw new Error(`Unexpected request: ${url}`);
+  }));
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const router = createMemoryRouter([
+    { path: "/history", element: <HistoryPage /> },
+    { path: "/history/:taskId", element: <HistoryDetailPage /> },
+  ], { initialEntries: ["/history?layout=list"] });
+  render(<QueryClientProvider client={client}><RouterProvider router={router} /></QueryClientProvider>);
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole("checkbox", { name: "选择 Back navigation" }));
+  await user.click(screen.getByRole("link", { name: /Back navigation/ }));
+  await screen.findByRole("heading", { name: "Back navigation" });
+  await router.navigate(-1);
+  expect(await screen.findByRole("checkbox", { name: "选择 Back navigation" })).toBeChecked();
+  resetHistorySelection();
+  await waitFor(() => expect(screen.getByRole("checkbox", { name: "选择 Back navigation" })).not.toBeChecked());
 });
 
 it("searches history on the server and resets pagination without clearing other filters", async () => {

@@ -27,7 +27,7 @@ import {
 import { HistoryDrag } from "./HistoryDrag";
 import { HistoryTaskCard } from "./HistoryTaskCard";
 import { HistoryTaskStack } from "./HistoryTaskStack";
-import { readStackPages, useHistoryAnchor } from "./historyNavigation";
+import { readStackPages, useHistoryAnchor, useHistorySelected } from "./historyNavigation";
 import { renderedHistoryIds } from "./historySelectionScope";
 import { historyReturnSearch, useHistoryRestore } from "./useHistoryRestore";
 import "./HistoryPage.css";
@@ -96,7 +96,7 @@ export function HistoryPage() {
       { replace: true },
     );
   }
-  const [selected, setSelected] = useState<string[]>([]);
+  const { selected, setSelected } = useHistorySelected();
   const [notice, setNotice] = useState("");
 
   const query = useInfiniteQuery({
@@ -111,6 +111,7 @@ export function HistoryPage() {
     tasks.some((task) => task.id === id && task.job === "training"),
   );
   const restore = useHistoryRestore(query, params.toString());
+  const selectionReady = Boolean(query.data) && !query.isFetching && !query.error && !restore.restoring;
   const listSearch = historyReturnSearch(params.toString(), query.data?.pages.length || 1);
   const missingAnchor = useHistoryAnchor(params.toString(), Boolean(query.data) && !query.isFetching && !query.error && !restore.restoring);
   const visible = useMemo(
@@ -181,7 +182,7 @@ export function HistoryPage() {
   }
 
   function runBatch(action: "archive" | "unarchive" | "delete") {
-    if (!selected.length || commandLock.current || busy) return;
+    if (!selected.length || !selectionReady || commandLock.current || busy) return;
     const message =
       action === "delete"
         ? `确定删除已选 ${selected.length} 条历史记录吗？该操作不会删除运行目录和权重。`
@@ -193,8 +194,9 @@ export function HistoryPage() {
 
   function refreshHistory() {
     const hadBatchError = Boolean(batch.error);
+    const expectedPages = query.data?.pages.length || 0;
     void query.refetch().then((result) => {
-      if (!result.isSuccess || !result.data) return;
+      if (!result.isSuccess || !result.data || result.data.pages.length < expectedPages) return;
       const loadedIds = new Set(
         result.data.pages.flatMap((pageData) => pageData.tasks || [])
           .map((task) => String(task.id || "")),
@@ -339,14 +341,14 @@ export function HistoryPage() {
               <button type="button" disabled={busy} onClick={() => setSelected([])}>清除选择</button>
               <button
                 type="button"
-                disabled={selected.length < 2 || selected.length > 4 || busy}
+                disabled={!selectionReady || selected.length < 2 || selected.length > 4 || busy}
                 onClick={() => setComparison([...selected])}
               >
                 对比记录 (2-4)
               </button>
               <button
                 type="button"
-                disabled={selectedTraining.length < 2 || busy}
+                disabled={!selectionReady || selectedTraining.length < 2 || busy}
                 onClick={() => {
                   const target = new URLSearchParams();
                   selectedTraining.forEach((id) => target.append("task", id));
@@ -358,26 +360,26 @@ export function HistoryPage() {
               </button>
               <button
                 type="button"
-                disabled={busy}
+                disabled={!selectionReady || busy}
                 onClick={() => runBatch("archive")}
               >
                 归档已选
               </button>
               <button
                 type="button"
-                disabled={busy}
+                disabled={!selectionReady || busy}
                 onClick={() => runBatch("unarchive")}
               >
                 取消归档
               </button>
               <button
                 type="button"
-                disabled={busy}
+                disabled={!selectionReady || busy}
                 onClick={() => {
                   const group = window.prompt(
                     "移动到集合（留空为未分类）；同配置关联的全部历史记录会一起调整。",
                   );
-                  if (group === null || commandLock.current || busy) return;
+                  if (group === null || !selectionReady || commandLock.current || busy) return;
                   commandLock.current = true;
                   batch.mutate({
                     action: "set_group",
@@ -390,7 +392,7 @@ export function HistoryPage() {
               </button>
               <button
                 type="button"
-                disabled={busy}
+                disabled={!selectionReady || busy}
                 className="history-danger"
                 onClick={() => runBatch("delete")}
               >
@@ -398,7 +400,7 @@ export function HistoryPage() {
               </button>
               <button
                 type="button"
-                disabled={busy}
+                disabled={!selectionReady || busy}
                 className="history-danger"
                 onClick={() => setRuntimeDeleteIds([...selected])}
               >
@@ -481,7 +483,7 @@ export function HistoryPage() {
                         key={stack.id}
                         stack={stack}
                         selected={selected}
-                        busy={busy}
+                        busy={busy || !selectionReady}
                         listSearch={listSearch}
                         onToggle={toggleSelected}
                         onToggleGroup={(ids) =>
@@ -501,7 +503,7 @@ export function HistoryPage() {
                         key={task.id}
                         task={task}
                         selected={selected}
-                        busy={busy}
+                        busy={busy || !selectionReady}
                         listSearch={listSearch}
                         onToggle={toggleSelected}
                       />

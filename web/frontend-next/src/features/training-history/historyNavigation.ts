@@ -2,6 +2,21 @@ import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { create } from "zustand";
 
+type HistorySelection = { selected: string[]; setSelected: (ids: string[] | ((current: string[]) => string[])) => void };
+const useHistorySelection = create<HistorySelection>()((set) => ({
+  selected: [],
+  setSelected: (value) => set(({ selected }) => ({ selected: typeof value === "function" ? value(selected) : value })),
+}));
+
+export function useHistorySelected() {
+  const state = useHistorySelection();
+  return { selected: state.selected, setSelected: state.setSelected };
+}
+
+export function resetHistorySelection() {
+  useHistorySelection.getState().setSelected([]);
+}
+
 const useHistoryAnchors = create<{ anchors: Record<string, string> }>(() => ({ anchors: {} }));
 
 export function rememberHistoryTask(search: string, id: string) {
