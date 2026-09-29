@@ -128,6 +128,20 @@ describe('dataset editor API', () => {
     );
   });
 
+  it('forwards a nonzero preview offset with the bounded page limit', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ ok: true, images: [], count: 0, total: 50 }), { status: 200 }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await fetchDatasetPresetImages('configs/datasets/studio.toml', 1, undefined, 24, 48);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/config/dataset-presets/images?file=configs%2Fdatasets%2Fstudio.toml&dataset_index=1&source=source&limit=24&offset=48',
+      expect.objectContaining({ signal: undefined }),
+    );
+  });
+
   it('renames and deletes dataset groups through encoded group URLs', async () => {
     const fetchMock = vi.fn().mockImplementation(async () => (
       new Response(JSON.stringify({ ok: true, message: '已完成', group: { id: '角色 A' } }), { status: 200 })

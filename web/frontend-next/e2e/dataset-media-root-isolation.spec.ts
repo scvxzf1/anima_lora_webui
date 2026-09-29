@@ -128,7 +128,7 @@ function previewPayload(activeRoot: string, assets: MediaAssets) {
     total: 1,
     returned: 1,
     offset: 0,
-    limit: 120,
+    limit: 24,
     next_offset: null,
     has_more_before: false,
     has_more_after: false,
@@ -362,7 +362,7 @@ test("preview deep link keeps the second subset query contract across a root swi
     root: "configs",
     datasetIndex: "1",
     source: "source",
-    limit: "120",
+    limit: "24",
     offset: null,
   });
 
@@ -381,7 +381,7 @@ test("preview deep link keeps the second subset query contract across a root swi
     root: "external-configs",
     datasetIndex: "1",
     source: "source",
-    limit: "120",
+    limit: "24",
     offset: null,
   });
   expect(state.settingsWrites).toHaveLength(1);

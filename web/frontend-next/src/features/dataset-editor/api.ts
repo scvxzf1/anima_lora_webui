@@ -19,8 +19,8 @@ export const datasetKeys = {
   all: ['datasets'] as const,
   library: () => [...datasetKeys.all, 'library'] as const,
   preset: (file: string) => [...datasetKeys.all, 'preset', file] as const,
-  preview: (file: string, datasetIndex: number) => (
-    [...datasetKeys.all, 'preview', file, datasetIndex] as const
+  preview: (file: string, datasetIndex: number, offset = 0) => (
+    [...datasetKeys.all, 'preview', file, datasetIndex, offset] as const
   ),
 };
 
@@ -41,6 +41,7 @@ export function fetchDatasetPresetImages(
   datasetIndex: number,
   signal?: AbortSignal,
   limit = 120,
+  offset = 0,
 ) {
   const query = new URLSearchParams({
     file,
@@ -48,6 +49,7 @@ export function fetchDatasetPresetImages(
     source: 'source',
     limit: String(limit),
   });
+  if (offset > 0) query.set('offset', String(offset));
   return apiRequest<DatasetPreviewResponse>(
     `/api/config/dataset-presets/images?${query.toString()}`,
     { signal },

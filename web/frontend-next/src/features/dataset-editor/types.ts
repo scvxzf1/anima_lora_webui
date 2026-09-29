@@ -174,6 +174,11 @@ export type DatasetPreviewResponse = {
   count: number;
   total: number;
   limit: number;
+  offset?: number;
+  returned?: number;
+  next_offset?: number;
+  has_more_before?: boolean;
+  has_more_after?: boolean;
   images: DatasetPreviewImage[];
   row: DatasetRow;
   settings: Record<string, unknown>;
