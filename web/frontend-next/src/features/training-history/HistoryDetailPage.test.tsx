@@ -10,6 +10,39 @@ import { HistoryDetailPage } from "./HistoryDetailPage";
 describe("history detail navigation", () => {
   afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
+  it.each(["", "?view=unknown"])("falls back to overview for search %s", async (search) => {
+    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse({
+      task: { id: "task-1", job: "training", state: "done", name: "History task" }, metrics: [],
+    })));
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const router = createMemoryRouter([
+      { path: "/history/:taskId", element: <HistoryDetailPage /> },
+    ], { initialEntries: [`/history/task-1${search}`] });
+    render(<QueryClientProvider client={client}><RouterProvider router={router} /></QueryClientProvider>);
+
+    expect(await screen.findByRole("link", { name: /^概览$/ })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("main")).toHaveAttribute("data-view", "overview");
+  });
+
+  it("encodes a special-character task ID in the detail request", async () => {
+    const taskId = "task #&?";
+    const fetchMock = vi.fn(async () => jsonResponse({
+      task: { id: taskId, job: "training", state: "done", name: "History task" }, metrics: [],
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const router = createMemoryRouter([
+      { path: "/history/:taskId", element: <HistoryDetailPage /> },
+    ], { initialEntries: [`/history/${encodeURIComponent(taskId)}?view=overview`] });
+    render(<QueryClientProvider client={client}><RouterProvider router={router} /></QueryClientProvider>);
+
+    await screen.findByRole("heading", { name: "History task" });
+    expect(fetchMock).toHaveBeenCalledWith(
+      `/api/training/history/${encodeURIComponent(taskId)}`,
+      expect.anything(),
+    );
+  });
+
   it("switches tabs through the URL and opens the resume shortcut", async () => {
     const detailReads: string[] = [];
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
@@ -29,14 +62,14 @@ describe("history detail navigation", () => {
     ], { initialEntries: ["/history/task-1?view=metrics"] });
     render(<QueryClientProvider client={client}><RouterProvider router={router} /></QueryClientProvider>);
 
-    const metrics = await screen.findByRole("link", { name: "指标", exact: true });
+    const metrics = await screen.findByRole("link", { name: /^指标$/ });
     expect(metrics).toHaveAttribute("aria-current", "page");
-    await userEvent.setup().click(screen.getByRole("link", { name: "产物", exact: true }));
+    await userEvent.setup().click(screen.getByRole("link", { name: /^产物$/ }));
     expect(router.state.location.search).toBe("?view=artifacts");
-    expect(screen.getByRole("link", { name: "产物", exact: true })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("link", { name: /^产物$/ })).toHaveAttribute("aria-current", "page");
     expect(detailReads).toHaveLength(1);
 
-    await userEvent.setup().click(screen.getByRole("button", { name: "检查点续训", exact: true }));
+    await userEvent.setup().click(screen.getByRole("button", { name: /^检查点续训$/ }));
     expect(await screen.findByRole("dialog", { name: "从历史检查点续训" })).toBeInTheDocument();
     expect(await screen.findByText("无检查点")).toBeInTheDocument();
   });

@@ -11,6 +11,7 @@ describe("history asset path copying", () => {
   });
 
   it("copies the local weight path while keeping its download action", async () => {
+    const taskId = "task #&?";
     const user = userEvent.setup();
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
@@ -23,12 +24,13 @@ describe("history asset path copying", () => {
         : { images: [] };
       return new Response(JSON.stringify(payload), { status: 200, headers: { "Content-Type": "application/json" } });
     }));
-    renderInApp(<HistoryAssets taskId="task-1" />);
+    renderInApp(<HistoryAssets taskId={taskId} />);
 
     const copy = await screen.findByRole("button", { name: "复制 step-10.safetensors 的本地路径" });
     await user.click(copy);
     expect(writeText).toHaveBeenCalledWith("/output/task/step-10.safetensors");
     expect(screen.getByRole("status")).toHaveTextContent("step-10.safetensors的路径已复制");
+    expect(screen.getByRole("link", { name: "step-10.safetensors" })).toHaveAttribute("href", "/api/preview/weight?task_id=task+%23%26%3F&file=step-10.safetensors");
     expect(screen.getByRole("link", { name: "step-10.safetensors" })).toHaveAttribute("download");
     expect(screen.getByText("/output/task/step-10.safetensors")).toBeInTheDocument();
   });
