@@ -117,12 +117,16 @@ for (const width of [1440, 390]) {
     const output = page.getByRole("textbox", { name: "输出名称", exact: true });
     await expect(output).toHaveValue("studio-portrait");
     await output.fill("draft-first");
-    page.once("dialog", (dialog) => dialog.dismiss());
     await page.getByLabel("当前训练配置", { exact: true }).selectOption("configs/imported/second.toml");
+    const switchDialog = page.getByRole("dialog", { name: "放弃未保存修改？" });
+    await expect(switchDialog).toBeVisible();
+    await expect(page.getByLabel("当前训练配置", { exact: true })).toHaveValue(configFile.path);
+    await switchDialog.getByRole("button", { name: "取消", exact: true }).click();
     await expect(output).toHaveValue("draft-first");
     await expect(page.getByLabel("当前训练配置", { exact: true })).toHaveValue(configFile.path);
-    page.once("dialog", (dialog) => dialog.accept());
     await page.getByLabel("当前训练配置", { exact: true }).selectOption("configs/imported/second.toml");
+    await expect(switchDialog).toBeVisible();
+    await switchDialog.getByRole("button", { name: "切换并放弃修改", exact: true }).click();
     await expect(output).toHaveValue("second");
     await output.fill("preserved-copy");
     await page.getByRole("button", { name: "保存并入队", exact: true }).click();

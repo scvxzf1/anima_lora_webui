@@ -4,9 +4,10 @@ import type { TrainingContextController } from "./useTrainingContext";
 
 type Props = {
   context: TrainingContextController;
+  selectionDisabled?: boolean;
 };
 
-export function TrainingContextBar({ context }: Props) {
+export function TrainingContextBar({ context, selectionDisabled = false }: Props) {
   return (
     <section className="training-context-bar" aria-label="当前训练上下文">
       <div className="training-context-copy">
@@ -18,10 +19,15 @@ export function TrainingContextBar({ context }: Props) {
         <span>训练配置</span>
         <select
           aria-label="当前训练配置"
-          value={context.selectedFile?.path || ""}
-          disabled={context.isPending || !context.files.length}
+          value={context.selectedFileId || context.selectedFile?.path || ""}
+          disabled={selectionDisabled || context.listsPending || !context.files.length}
           onChange={(event) => context.selectConfigFile(event.target.value)}
         >
+          {!context.selectedFileAvailable && context.selectedFileId ? (
+            <option value={context.selectedFileId} disabled>
+              {context.selectedFile?.label || context.selectedFile?.filename || context.selectedFileId}（已不可用）
+            </option>
+          ) : null}
           {context.files.map((file) => (
             <option key={file.path} value={file.path}>
               {file.label ||
@@ -38,14 +44,19 @@ export function TrainingContextBar({ context }: Props) {
         <select
           aria-label="当前硬件预设"
           value={context.selectedPreset}
-          disabled={context.isPending || !context.presets.length}
+          disabled={selectionDisabled || context.listsPending || !context.presets.length}
           onChange={(event) => context.selectPreset(event.target.value)}
         >
           {context.presets.map((preset) => (
-            <option key={preset} value={preset}>
-              {preset}
-            </option>
+          <option key={preset} value={preset}>
+            {preset}
+          </option>
           ))}
+          {!context.presets.includes(context.selectedPreset) ? (
+            <option value={context.selectedPreset} disabled>
+              {context.selectedPreset}（已不可用）
+            </option>
+          ) : null}
         </select>
       </label>
       <div

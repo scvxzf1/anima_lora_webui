@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 
 import {
   fetchMergedTrainingConfig,
@@ -9,7 +9,7 @@ import {
 } from "../api/trainingContext";
 import { useTrainingContextStore } from "./trainingContextStore";
 
-export function useTrainingContext(options: { loadMergedConfig?: boolean; retryMergedConfig?: boolean } = {}) {
+export function useTrainingContext(options: { loadMergedConfig?: boolean; retryMergedConfig?: boolean; deferFallback?: boolean } = {}) {
   const loadMergedConfig = options.loadMergedConfig ?? true;
   const selection = useTrainingContextStore();
   const groupsQuery = useQuery({
@@ -33,30 +33,42 @@ export function useTrainingContext(options: { loadMergedConfig?: boolean; retryM
     [groupsQuery.data],
   );
   const presets = presetsQuery.data || [];
+  const listedSelectedFile = files.find((file) => file.path === selection.configFile);
+  const lastSelectedFile = useRef(listedSelectedFile);
+  if (listedSelectedFile) lastSelectedFile.current = listedSelectedFile;
+  const selectedFileAvailable = Boolean(listedSelectedFile);
   const selectedFile =
-    files.find((file) => file.path === selection.configFile) ||
-    files.find(
-      (file) => file.path === "configs/imported/lora.toml" && !file.locked,
-    ) ||
-    files.find((file) => !file.locked) ||
-    files.find((file) => file.path === "configs/gui-methods/lora.toml") ||
-    files[0];
-  const selectedPreset = presets.includes(selection.preset)
+    listedSelectedFile ||
+    (options.deferFallback && lastSelectedFile.current?.path === selection.configFile
+      ? lastSelectedFile.current
+      : undefined) ||
+    (!options.deferFallback
+      ? files.find(
+          (file) => file.path === "configs/imported/lora.toml" && !file.locked,
+        ) ||
+        files.find((file) => !file.locked) ||
+        files.find((file) => file.path === "configs/gui-methods/lora.toml") ||
+        files[0]
+      : undefined);
+  const selectedPreset = options.deferFallback && !presets.includes(selection.preset)
+    ? selection.preset
+    : presets.includes(selection.preset)
     ? selection.preset
     : presets.includes("default")
       ? "default"
       : presets[0] || "default";
 
   useEffect(() => {
-    if (selectedFile && selectedFile.path !== selection.configFile) {
+    if (!options.deferFallback && selectedFile && selectedFile.path !== selection.configFile) {
       selection.selectConfigFile(selectedFile.path);
     }
-  }, [selectedFile?.path, selection.configFile, selection.selectConfigFile]);
+  }, [options.deferFallback, selectedFile?.path, selection.configFile, selection.selectConfigFile]);
 
   useEffect(() => {
+    if (options.deferFallback) return;
     if (selectedPreset !== selection.preset)
       selection.selectPreset(selectedPreset);
-  }, [selectedPreset, selection.preset, selection.selectPreset]);
+  }, [options.deferFallback, selectedPreset, selection.preset, selection.selectPreset]);
 
   const mergedQuery = useQuery({
     queryKey: trainingContextKeys.merged(
@@ -74,11 +86,19 @@ export function useTrainingContext(options: { loadMergedConfig?: boolean; retryM
     files,
     presets,
     selectedFile,
+    selectedFileId: selection.configFile,
+    selectedFileAvailable,
     selectedPreset,
     selectConfigFile: selection.selectConfigFile,
     selectPreset: selection.selectPreset,
     mergedConfig: mergedQuery.data,
     mergedConfigPending: mergedQuery.isPending || mergedQuery.isFetching,
+    mergedConfigUpdatedAt: mergedQuery.dataUpdatedAt,
+    mergedConfigIsFetching: mergedQuery.isFetching,
+    listsRefetching: groupsQuery.isFetching || presetsQuery.isFetching,
+    listsPending: groupsQuery.isPending || presetsQuery.isPending,
+    refetchFiles: groupsQuery.refetch,
+    refetchPresets: presetsQuery.refetch,
     mergedConfigError: mergedQuery.error,
     refetchMergedConfig: mergedQuery.refetch,
     maxTrainSteps: positiveSteps(mergedQuery.data?.max_train_steps),

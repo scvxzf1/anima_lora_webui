@@ -11,6 +11,9 @@ import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { trainingContextKeys } from "../../api/trainingContext";
+import { trainingConfigKeys } from "./api";
+import { useTrainingContextStore } from "../../app/trainingContextStore";
 import { TrainingWorkspace } from "./TrainingWorkspace";
 import { TRAINING_DETAILED_MANAGEMENT_KEY } from "./TrainingConfigLibrary";
 
@@ -27,6 +30,7 @@ function renderWorkspace() {
   });
   return {
     router,
+    client,
     ...render(
       <QueryClientProvider client={client}>
         <RouterProvider router={router} />
@@ -35,7 +39,7 @@ function renderWorkspace() {
   };
 }
 
-function createFetchMock() {
+function createFetchMock(includeSecondConfig = false) {
   let content = 'output_name = "dragon-run"\nmax_train_steps = 1600\n';
   let merged = {
     output_name: "dragon-run",
@@ -104,6 +108,19 @@ function createFetchMock() {
                 trainable: true,
                 locked: false,
               },
+              ...(includeSecondConfig
+                ? [
+                    {
+                      path: "configs/imported/other.toml",
+                      label: "other.toml",
+                      filename: "other.toml",
+                      method: "lora",
+                      methods_subdir: "imported",
+                      trainable: true,
+                      locked: false,
+                    },
+                  ]
+                : []),
             ],
           },
         ]);
@@ -223,7 +240,7 @@ describe("TrainingWorkspace", () => {
 
   it("shows source-aware merged values without exposing a start action", async () => {
     vi.stubGlobal("fetch", createFetchMock());
-    renderWorkspace();
+    const { client } = renderWorkspace();
 
     expect(
       screen.getByRole("heading", { name: "训练配置" }),
@@ -436,8 +453,8 @@ describe("TrainingWorkspace", () => {
     expect(within(restored).queryByRole("button", { name: "拖动排序 train.toml" })).not.toBeInTheDocument();
   });
 
-  it("guards dirty preset switching, browser unload, and SPA navigation", async () => {
-    vi.stubGlobal("fetch", createFetchMock());
+  it("confirms dirty context switching asynchronously and keeps unload and SPA guards", async () => {
+    vi.stubGlobal("fetch", createFetchMock(true));
     const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
     const user = userEvent.setup();
     const { router } = renderWorkspace();
@@ -448,12 +465,52 @@ describe("TrainingWorkspace", () => {
 
     const unload = new Event("beforeunload", { cancelable: true });
     expect(window.dispatchEvent(unload)).toBe(false);
-    await user.selectOptions(screen.getByLabelText("当前硬件预设"), "low_vram");
-    expect(confirm).toHaveBeenCalledWith(
-      "当前训练配置有未保存修改。切换硬件预设会丢失这些修改，是否继续？",
-    );
-    expect(screen.getByLabelText("当前硬件预设")).toHaveValue("default");
+    const config = screen.getByLabelText("当前训练配置");
+    await user.selectOptions(config, "configs/imported/other.toml");
+    let dialog = screen.getByRole("dialog", { name: "放弃未保存修改？" });
+    expect(config).toHaveValue("configs/imported/train.toml");
+    expect(within(dialog).getByText(/切换配置会丢失这些修改/)).toBeInTheDocument();
+    await user.click(within(dialog).getByRole("button", { name: "取消" }));
+    expect(config).toHaveValue("configs/imported/train.toml");
+    expect(outputName).toHaveValue("dragon-run-dirty");
 
+    const preset = screen.getByLabelText("当前硬件预设");
+    await user.selectOptions(preset, "low_vram");
+    dialog = screen.getByRole("dialog", { name: "放弃未保存修改？" });
+    expect(preset).toHaveValue("default");
+    expect(preset).toBeDisabled();
+    expect(screen.getByLabelText("当前训练配置")).toBeDisabled();
+    expect(confirm).not.toHaveBeenCalled();
+    expect(within(dialog).getByRole("button", { name: "取消" })).toHaveFocus();
+
+    await user.click(within(dialog).getByRole("button", { name: "取消" }));
+    expect(screen.queryByRole("dialog", { name: "放弃未保存修改？" })).not.toBeInTheDocument();
+    expect(preset).toHaveValue("default");
+    expect(outputName).toHaveValue("dragon-run-dirty");
+
+    await user.selectOptions(preset, "low_vram");
+    dialog = screen.getByRole("dialog", { name: "放弃未保存修改？" });
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog", { name: "放弃未保存修改？" })).not.toBeInTheDocument();
+    expect(preset).toHaveValue("default");
+    expect(preset).toHaveFocus();
+
+    await user.selectOptions(preset, "low_vram");
+    dialog = screen.getByRole("dialog", { name: "放弃未保存修改？" });
+    await user.click(within(dialog).getByRole("button", { name: "切换并放弃修改" }));
+    await waitFor(() => expect(preset).toHaveValue("low_vram"));
+    await waitFor(() => expect(outputName).toHaveValue("dragon-run"));
+    expect(confirm).not.toHaveBeenCalled();
+
+    await user.type(outputName, "-again");
+    await user.selectOptions(config, "configs/imported/other.toml");
+    dialog = screen.getByRole("dialog", { name: "放弃未保存修改？" });
+    await user.click(within(dialog).getByRole("button", { name: "切换并放弃修改" }));
+    await waitFor(() => expect(config).toHaveValue("configs/imported/other.toml"));
+    await waitFor(() => expect(outputName).toHaveValue("dragon-run"));
+    expect(confirm).not.toHaveBeenCalled();
+
+    await user.type(outputName, "-again");
     await act(async () => {
       await router.navigate("/other");
     });
@@ -463,9 +520,552 @@ describe("TrainingWorkspace", () => {
     expect(router.state.location.pathname).toBe("/training");
   });
 
+  it("preserves a dirty draft when a pending config target disappears", async () => {
+    const baseFetch = createFetchMock(true);
+    let includeTarget = true;
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      if (
+        String(input) === "/api/config/file-groups?kind=training" &&
+        !includeTarget
+      ) {
+        return Promise.resolve(
+          jsonResponse([
+            {
+              id: "imported",
+              label: "导入配置",
+              methods_subdir: "imported",
+              files: [
+                {
+                  path: "configs/imported/train.toml",
+                  label: "train.toml",
+                  filename: "train.toml",
+                  method: "lora",
+                  methods_subdir: "imported",
+                  trainable: true,
+                  locked: false,
+                },
+              ],
+            },
+          ]),
+        );
+      }
+      return baseFetch(input, init);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    useTrainingContextStore.setState({
+      configFile: "configs/imported/train.toml",
+      preset: "default",
+    });
+    const user = userEvent.setup();
+    const { client } = renderWorkspace();
+
+    await user.click(screen.getByRole("tab", { name: "训练计划" }));
+    const outputName = await screen.findByLabelText("输出名称");
+    await waitFor(() => expect(outputName).toBeEnabled());
+    await user.type(outputName, "-dirty");
+    const config = screen.getByLabelText("当前训练配置");
+    await user.selectOptions(config, "configs/imported/other.toml");
+    const dialog = screen.getByRole("dialog", { name: "放弃未保存修改？" });
+
+    includeTarget = false;
+    await act(async () => {
+      await client.invalidateQueries({ queryKey: trainingContextKeys.files() });
+    });
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("option", { name: "other.toml" }),
+      ).not.toBeInTheDocument(),
+    );
+    expect(dialog).toBeInTheDocument();
+
+    await user.click(
+      within(dialog).getByRole("button", { name: "切换并放弃修改" }),
+    );
+    expect(screen.queryByRole("dialog", { name: "放弃未保存修改？" })).not.toBeInTheDocument();
+    expect(config).toHaveValue("configs/imported/train.toml");
+    expect(outputName).toHaveValue("dragon-run-dirty");
+    expect(screen.getByRole("button", { name: "保存配置" })).toBeEnabled();
+  });
+
+  it("keeps a removed dirty source selected, blocks writes, and allows switching to a listed target", async () => {
+    const baseFetch = createFetchMock(true);
+    let includeSource = true;
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      if (
+        String(input) === "/api/config/file-groups?kind=training" &&
+        !includeSource
+      ) {
+        return Promise.resolve(jsonResponse([
+          {
+            id: "imported",
+            label: "导入配置",
+            methods_subdir: "imported",
+            files: [
+              {
+                path: "configs/imported/other.toml",
+                label: "other.toml",
+                filename: "other.toml",
+                method: "lora",
+                methods_subdir: "imported",
+                trainable: true,
+                locked: false,
+              },
+            ],
+          },
+        ]));
+      }
+      return baseFetch(input, init);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    useTrainingContextStore.setState({
+      configFile: "configs/imported/train.toml",
+      preset: "default",
+    });
+    const user = userEvent.setup();
+    const { client } = renderWorkspace();
+
+    await user.click(screen.getByRole("tab", { name: "训练计划" }));
+    const outputName = await screen.findByLabelText("输出名称");
+    await waitFor(() => expect(outputName).toBeEnabled());
+    await user.type(outputName, "-dirty");
+    includeSource = false;
+    await act(async () => {
+      await client.invalidateQueries({ queryKey: trainingContextKeys.files() });
+    });
+
+    await waitFor(() =>
+      expect(screen.getByLabelText("当前训练配置")).toHaveValue("configs/imported/train.toml"),
+    );
+    expect(screen.getByRole("option", { name: /train\.toml（已不可用）/ })).toBeInTheDocument();
+    expect(outputName).toHaveValue("dragon-run-dirty");
+    expect(outputName).toBeDisabled();
+    expect(screen.getByRole("button", { name: "保存配置" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "保存并启动" })).toBeDisabled();
+
+    const config = screen.getByLabelText("当前训练配置");
+    await user.selectOptions(config, "configs/imported/other.toml");
+    const dialog = screen.getByRole("dialog", { name: "放弃未保存修改？" });
+    expect(config).toHaveValue("configs/imported/train.toml");
+    expect(outputName).toHaveValue("dragon-run-dirty");
+    await user.click(within(dialog).getByRole("button", { name: "切换并放弃修改" }));
+    await waitFor(() => expect(config).toHaveValue("configs/imported/other.toml"));
+    await waitFor(() => expect(outputName).toHaveValue("dragon-run"));
+  });
+
+  it("disables confirmation during an in-flight list refetch but keeps cancellation available", async () => {
+    const baseFetch = createFetchMock(true);
+    let releaseList!: (response: Response) => void;
+    let holdList = false;
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input) === "/api/config/file-groups?kind=training" && holdList) {
+        holdList = false;
+        return new Promise<Response>((resolve) => { releaseList = resolve; });
+      }
+      return baseFetch(input, init);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    useTrainingContextStore.setState({
+      configFile: "configs/imported/train.toml",
+      preset: "default",
+    });
+    const user = userEvent.setup();
+    const { client } = renderWorkspace();
+
+    await user.click(screen.getByRole("tab", { name: "训练计划" }));
+    const outputName = await screen.findByLabelText("输出名称");
+    await waitFor(() => expect(outputName).toBeEnabled());
+    await user.type(outputName, "-dirty");
+    await user.selectOptions(screen.getByLabelText("当前训练配置"), "configs/imported/other.toml");
+    const dialog = screen.getByRole("dialog", { name: "放弃未保存修改？" });
+    holdList = true;
+    let refetch!: Promise<void>;
+    act(() => {
+      refetch = client.invalidateQueries({ queryKey: trainingContextKeys.files() });
+    });
+
+    const confirm = within(dialog).getByRole("button", { name: "切换并放弃修改" });
+    await waitFor(() => expect(confirm).toBeDisabled());
+    expect(within(dialog).getByRole("button", { name: "取消" })).toBeEnabled();
+    await user.click(within(dialog).getByRole("button", { name: "取消" }));
+    expect(screen.queryByRole("dialog", { name: "放弃未保存修改？" })).not.toBeInTheDocument();
+    expect(outputName).toHaveValue("dragon-run-dirty");
+    releaseList(jsonResponse([
+      {
+        id: "imported",
+        label: "导入配置",
+        methods_subdir: "imported",
+        files: [
+          {
+            path: "configs/imported/train.toml",
+            label: "train.toml",
+            filename: "train.toml",
+            method: "lora",
+            methods_subdir: "imported",
+            trainable: true,
+            locked: false,
+          },
+        ],
+      },
+    ]));
+    await act(async () => { await refetch; });
+    expect(screen.getByLabelText("当前训练配置")).toHaveValue("configs/imported/train.toml");
+    expect(outputName).toHaveValue("dragon-run-dirty");
+  });
+
+  it("does not hydrate a clean draft from a target that disappears while its config is loading", async () => {
+    const baseFetch = createFetchMock(true);
+    let includeTarget = true;
+    let releaseMerged!: (response: Response) => void;
+    let holdTargetConfig = false;
+    const targetMerged = new Promise<Response>((resolve) => { releaseMerged = resolve; });
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === "/api/config/file-groups?kind=training" && !includeTarget) {
+        return Promise.resolve(jsonResponse([
+          {
+            id: "imported",
+            label: "导入配置",
+            methods_subdir: "imported",
+            files: [
+              {
+                path: "configs/imported/train.toml",
+                label: "train.toml",
+                filename: "train.toml",
+                method: "lora",
+                methods_subdir: "imported",
+                trainable: true,
+                locked: false,
+              },
+            ],
+          },
+        ]));
+      }
+      if (url.startsWith("/api/config/merged?") && url.includes("other.toml") && holdTargetConfig) {
+        holdTargetConfig = false;
+        return targetMerged;
+      }
+      return baseFetch(input, init);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    useTrainingContextStore.setState({
+      configFile: "configs/imported/train.toml",
+      preset: "default",
+    });
+    const user = userEvent.setup();
+    const { client } = renderWorkspace();
+
+    await user.click(screen.getByRole("tab", { name: "训练计划" }));
+    const outputName = await screen.findByLabelText("输出名称");
+    await waitFor(() => expect(outputName).toBeEnabled());
+    expect(outputName).toHaveValue("dragon-run");
+    holdTargetConfig = true;
+    await user.selectOptions(screen.getByLabelText("当前训练配置"), "configs/imported/other.toml");
+    await waitFor(() => expect(fetchMock.mock.calls.some(([input]) =>
+      String(input).startsWith("/api/config/merged?") && String(input).includes("other.toml"),
+    )).toBe(true));
+
+    includeTarget = false;
+    await act(async () => {
+      await client.invalidateQueries({ queryKey: trainingContextKeys.files() });
+    });
+    expect(screen.getByLabelText("当前训练配置")).toHaveValue("configs/imported/other.toml");
+    expect(outputName).toHaveValue("dragon-run");
+    expect(outputName).toBeDisabled();
+    releaseMerged(jsonResponse({
+      output_name: "other-run",
+      model_family: "krea2_raw",
+      max_train_steps: 900,
+    }));
+    await waitFor(() => expect(screen.getByLabelText("当前训练配置")).toHaveValue("configs/imported/other.toml"));
+    expect(outputName).toHaveValue("dragon-run");
+  });
+
+  it("waits for warm target raw and merged data to refresh before hydrating or saving", async () => {
+    const baseFetch = createFetchMock(true);
+    let targetVersion = 1;
+    let holdTargetRefresh = false;
+    let releaseTargetRaw!: (response: Response) => void;
+    let releaseTargetMerged!: (response: Response) => void;
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = init?.method || "GET";
+      if (url.startsWith("/api/config/raw?") && new URL(url, "http://localhost").searchParams.get("file") === "configs/imported/other.toml") {
+        if (holdTargetRefresh && targetVersion === 2) {
+          holdTargetRefresh = false;
+          return new Promise<Response>((resolve) => { releaseTargetRaw = resolve; });
+        }
+        return Promise.resolve(jsonResponse({
+          file: "configs/imported/other.toml",
+          content: `output_name = "other-v${targetVersion}"\n`,
+          revision: `other-rev-v${targetVersion}`,
+          meta: {
+            path: "configs/imported/other.toml",
+            label: "other.toml",
+            method: "lora",
+            methods_subdir: "imported",
+            locked: false,
+          },
+        }));
+      }
+      if (url.startsWith("/api/config/merged?") && new URL(url, "http://localhost").searchParams.get("config_file") === "configs/imported/other.toml") {
+        if (targetVersion === 2 && !releaseTargetMerged) {
+          return new Promise<Response>((resolve) => { releaseTargetMerged = resolve; });
+        }
+        return Promise.resolve(jsonResponse({
+          output_name: `other-v${targetVersion}`,
+          model_family: "krea2_raw",
+          max_train_steps: targetVersion === 1 ? 800 : 900,
+        }));
+      }
+      return baseFetch(input, init);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    useTrainingContextStore.setState({
+      configFile: "configs/imported/train.toml",
+      preset: "default",
+    });
+    const user = userEvent.setup();
+    const { client } = renderWorkspace();
+
+    await user.click(screen.getByRole("tab", { name: "训练计划" }));
+    const outputName = await screen.findByLabelText("输出名称");
+    await waitFor(() => expect(outputName).toBeEnabled());
+    await user.selectOptions(screen.getByLabelText("当前训练配置"), "configs/imported/other.toml");
+    await waitFor(() => expect(outputName).toHaveValue("other-v1"));
+    await user.selectOptions(screen.getByLabelText("当前训练配置"), "configs/imported/train.toml");
+    await waitFor(() => expect(outputName).toHaveValue("dragon-run"));
+    await user.type(outputName, "-dirty");
+
+    targetVersion = 2;
+    holdTargetRefresh = true;
+    await user.selectOptions(screen.getByLabelText("当前训练配置"), "configs/imported/other.toml");
+    const dialog = screen.getByRole("dialog", { name: "放弃未保存修改？" });
+    await user.click(within(dialog).getByRole("button", { name: "切换并放弃修改" }));
+
+    await waitFor(() => expect(screen.getByLabelText("当前训练配置")).toHaveValue("configs/imported/other.toml"));
+    await waitFor(() => expect(releaseTargetRaw).toBeTypeOf("function"));
+    await waitFor(() => expect(releaseTargetMerged).toBeTypeOf("function"));
+    expect(outputName).toHaveValue("dragon-run-dirty");
+    expect(outputName).toBeDisabled();
+    expect(screen.getByLabelText("当前训练配置")).toBeDisabled();
+    expect(screen.getByLabelText("当前硬件预设")).toBeDisabled();
+    expect(screen.getByRole("button", { name: "保存配置" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "保存并启动" })).toBeDisabled();
+    releaseTargetRaw(jsonResponse({
+      file: "configs/imported/other.toml",
+      content: 'output_name = "other-v2"\n',
+      revision: "other-rev-v2",
+      meta: { path: "configs/imported/other.toml", label: "other.toml", method: "lora", methods_subdir: "imported", locked: false },
+    }));
+    await waitFor(() => expect(outputName).toBeDisabled());
+    releaseTargetMerged(jsonResponse({ output_name: "other-v2", model_family: "krea2_raw", max_train_steps: 900 }));
+    await waitFor(() => expect(outputName).toHaveValue("other-v2"));
+    await waitFor(() => expect(outputName).toBeEnabled());
+    expect(screen.getByLabelText("当前训练配置")).toBeEnabled();
+    expect(client.getQueryData(trainingConfigKeys.raw("configs/imported/other.toml"))).toEqual(
+      expect.objectContaining({ revision: "other-rev-v2" }),
+    );
+    expect(client.getQueryData(trainingContextKeys.merged("configs/imported/other.toml", "default"))).toEqual(
+      expect.objectContaining({ output_name: "other-v2", max_train_steps: 900 }),
+    );
+
+    await user.type(outputName, "-edited");
+    await user.click(screen.getByRole("button", { name: "保存配置" }));
+    await waitFor(() => expect(requestBody(fetchMock, "/api/config/raw", "PATCH").revision).toBe("other-rev-v2"));
+    expect(requestBody(fetchMock, "/api/config/raw", "PATCH").values).toEqual({ output_name: "other-v2-edited" });
+  });
+
+  it("blocks writes when the preset catalog becomes empty without trapping config selection", async () => {
+    const baseFetch = createFetchMock(true);
+    let presetsEmpty = false;
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) =>
+      String(input) === "/api/presets" && presetsEmpty
+        ? Promise.resolve(jsonResponse([]))
+        : baseFetch(input, init),
+    ));
+    useTrainingContextStore.setState({ configFile: "configs/imported/train.toml", preset: "default" });
+    const { client } = renderWorkspace();
+    await screen.findByLabelText("当前训练配置");
+    await userEvent.setup().click(screen.getByRole("tab", { name: "训练计划" }));
+    await screen.findByRole("button", { name: "立即启动" });
+    await waitFor(() => expect(screen.getByLabelText("当前训练配置")).toBeEnabled());
+
+    presetsEmpty = true;
+    await act(async () => {
+      await client.invalidateQueries({ queryKey: trainingContextKeys.presets() });
+    });
+    await waitFor(() => expect(screen.getByRole("button", { name: "立即启动" })).toBeDisabled());
+    expect(screen.getByRole("button", { name: "保存配置" })).toBeDisabled();
+    expect(screen.getByLabelText("当前训练配置")).toBeEnabled();
+  });
+
+  it("keeps a target uneditable and blocks writes when a warm target refresh fails", async () => {
+    const baseFetch = createFetchMock(true);
+    let failTargetRefresh = false;
+    let sourceVersion = 1;
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.startsWith("/api/config/raw?") && new URL(url, "http://localhost").searchParams.get("file") === "configs/imported/other.toml" && failTargetRefresh) {
+        return Promise.resolve(jsonResponse({ ok: false, error: "目标配置读取失败" }, 500));
+      }
+      if (url.startsWith("/api/config/raw?") && new URL(url, "http://localhost").searchParams.get("file") === "configs/imported/train.toml") {
+        return Promise.resolve(jsonResponse({
+          file: "configs/imported/train.toml",
+          content: `output_name = "${sourceVersion === 1 ? "dragon-run" : "dragon-run-v2"}"\nmax_train_steps = 1600\n`,
+          revision: `train-rev-v${sourceVersion}`,
+          meta: { path: "configs/imported/train.toml", label: "train.toml", method: "lora", methods_subdir: "imported", locked: false },
+        }));
+      }
+      if (url.startsWith("/api/config/merged?") && new URL(url, "http://localhost").searchParams.get("config_file") === "configs/imported/train.toml") {
+        return Promise.resolve(jsonResponse({
+          output_name: sourceVersion === 1 ? "dragon-run" : "dragon-run-v2",
+          model_family: "krea2_raw",
+          max_train_steps: 1600,
+        }));
+      }
+      if (url.startsWith("/api/config/raw?") && new URL(url, "http://localhost").searchParams.get("file") === "configs/imported/other.toml") {
+        return Promise.resolve(jsonResponse({
+          file: "configs/imported/other.toml",
+          content: 'output_name = "other-v1"\n',
+          revision: "other-rev-v1",
+          meta: { path: "configs/imported/other.toml", label: "other.toml", method: "lora", methods_subdir: "imported", locked: false },
+        }));
+      }
+      if (url.startsWith("/api/config/merged?") && new URL(url, "http://localhost").searchParams.get("config_file") === "configs/imported/other.toml") {
+        return Promise.resolve(jsonResponse({ output_name: "other-v1", model_family: "krea2_raw", max_train_steps: 800 }));
+      }
+      return baseFetch(input, init);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    useTrainingContextStore.setState({ configFile: "configs/imported/train.toml", preset: "default" });
+    const user = userEvent.setup();
+    renderWorkspace();
+
+    await user.click(screen.getByRole("tab", { name: "训练计划" }));
+    const outputName = await screen.findByLabelText("输出名称");
+    await waitFor(() => expect(outputName).toBeEnabled());
+    await user.selectOptions(screen.getByLabelText("当前训练配置"), "configs/imported/other.toml");
+    await waitFor(() => expect(outputName).toHaveValue("other-v1"));
+    await user.selectOptions(screen.getByLabelText("当前训练配置"), "configs/imported/train.toml");
+    await waitFor(() => expect(outputName).toHaveValue("dragon-run"));
+    await user.type(outputName, "-dirty");
+
+    failTargetRefresh = true;
+    sourceVersion = 2;
+    await user.selectOptions(screen.getByLabelText("当前训练配置"), "configs/imported/other.toml");
+    const dialog = screen.getByRole("dialog", { name: "放弃未保存修改？" });
+    await user.click(within(dialog).getByRole("button", { name: "切换并放弃修改" }));
+
+    expect(await screen.findByText("目标配置读取失败")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "重试读取" })).toBeEnabled();
+    const config = screen.getByLabelText("当前训练配置");
+    expect(config).toBeEnabled();
+    await user.selectOptions(config, "configs/imported/train.toml");
+    const recoveryDialog = screen.getByRole("dialog", { name: "放弃未保存修改？" });
+    await user.click(within(recoveryDialog).getByRole("button", { name: "切换并放弃修改" }));
+    await waitFor(() => expect(config).toHaveValue("configs/imported/train.toml"));
+    await waitFor(() => expect(screen.getByLabelText("输出名称")).toHaveValue("dragon-run-v2"));
+    expect(screen.getByLabelText("输出名称")).toBeEnabled();
+    expect(fetchMock.mock.calls.some(([, init]) => init?.method === "PATCH")).toBe(false);
+    expect(fetchMock.mock.calls.some(([input, init]) => String(input).startsWith("/api/training/") && init?.method === "POST")).toBe(false);
+  });
+
+  it("preserves a dirty draft when a pending preset target disappears", async () => {
+    const baseFetch = createFetchMock();
+    let includeTarget = true;
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) =>
+      String(input) === "/api/presets" && !includeTarget
+        ? Promise.resolve(jsonResponse(["default"]))
+        : baseFetch(input, init),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    useTrainingContextStore.setState({
+      configFile: "configs/imported/train.toml",
+      preset: "default",
+    });
+    const user = userEvent.setup();
+    const { client } = renderWorkspace();
+
+    await user.click(screen.getByRole("tab", { name: "训练计划" }));
+    const outputName = await screen.findByLabelText("输出名称");
+    await waitFor(() => expect(outputName).toBeEnabled());
+    await user.type(outputName, "-dirty");
+    const preset = screen.getByLabelText("当前硬件预设");
+    await user.selectOptions(preset, "low_vram");
+    const dialog = screen.getByRole("dialog", { name: "放弃未保存修改？" });
+
+    includeTarget = false;
+    await act(async () => {
+      await client.invalidateQueries({ queryKey: trainingContextKeys.presets() });
+    });
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("option", { name: "low_vram" }),
+      ).not.toBeInTheDocument(),
+    );
+    expect(dialog).toBeInTheDocument();
+
+    await user.click(
+      within(dialog).getByRole("button", { name: "切换并放弃修改" }),
+    );
+    expect(screen.queryByRole("dialog", { name: "放弃未保存修改？" })).not.toBeInTheDocument();
+    expect(preset).toHaveValue("default");
+    expect(outputName).toHaveValue("dragon-run-dirty");
+    expect(screen.getByRole("button", { name: "保存配置" })).toBeEnabled();
+  });
+
+  it("keeps a removed dirty source preset and blocks writes until switching to a listed preset", async () => {
+    const baseFetch = createFetchMock();
+    let includeSourcePreset = true;
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) =>
+      String(input) === "/api/presets" && !includeSourcePreset
+        ? Promise.resolve(jsonResponse(["low_vram"]))
+        : baseFetch(input, init),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    useTrainingContextStore.setState({
+      configFile: "configs/imported/train.toml",
+      preset: "default",
+    });
+    const user = userEvent.setup();
+    const { client } = renderWorkspace();
+
+    await user.click(screen.getByRole("tab", { name: "训练计划" }));
+    const outputName = await screen.findByLabelText("输出名称");
+    await waitFor(() => expect(outputName).toBeEnabled());
+    await user.type(outputName, "-dirty");
+    await waitFor(() => expect(client.isFetching({ queryKey: trainingContextKeys.presets() })).toBe(0));
+    includeSourcePreset = false;
+    await act(async () => {
+      client.setQueryData(trainingContextKeys.presets(), ["low_vram"]);
+    });
+    expect(client.getQueryData(trainingContextKeys.presets())).toEqual(["low_vram"]);
+
+    const preset = screen.getByLabelText("当前硬件预设");
+    await waitFor(() => expect(screen.getByRole("option", { name: /default.*已不可用/ })).toBeInTheDocument());
+    expect(preset).toHaveValue("default");
+    expect(outputName).toHaveValue("dragon-run-dirty");
+    expect(outputName).toBeDisabled();
+    expect(screen.getByRole("button", { name: "保存配置" })).toBeDisabled();
+
+    await user.selectOptions(preset, "low_vram");
+    const dialog = screen.getByRole("dialog", { name: "放弃未保存修改？" });
+    await user.click(within(dialog).getByRole("button", { name: "切换并放弃修改" }));
+    await waitFor(() => expect(preset).toHaveValue("low_vram"));
+    await waitFor(() => expect(outputName).toBeEnabled());
+    useTrainingContextStore.setState({
+      configFile: "configs/imported/train.toml",
+      preset: "default",
+    });
+  });
+
   it("restores known page defaults to the draft only after confirmation, then saves explicitly", async () => {
     const fetchMock = createFetchMock();
     vi.stubGlobal("fetch", fetchMock);
+    useTrainingContextStore.setState({
+      configFile: "configs/imported/train.toml",
+      preset: "default",
+    });
     const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
     const user = userEvent.setup();
     renderWorkspace();

@@ -7,6 +7,7 @@ export function InlineConfirmDialog({
   confirmLabel = "确定",
   danger = false,
   busy = false,
+  confirmDisabled = false,
   onConfirm,
   onCancel,
 }: {
@@ -15,6 +16,7 @@ export function InlineConfirmDialog({
   confirmLabel?: string;
   danger?: boolean;
   busy?: boolean;
+  confirmDisabled?: boolean;
   onConfirm: () => void | Promise<unknown>;
   onCancel: () => void;
 }) {
@@ -79,7 +81,7 @@ export function InlineConfirmDialog({
             type="button"
             className={danger ? "history-danger" : "button-primary"}
             onClick={confirm}
-            disabled={isBusy}
+            disabled={isBusy || confirmDisabled}
           >
             {confirmLabel}
           </button>

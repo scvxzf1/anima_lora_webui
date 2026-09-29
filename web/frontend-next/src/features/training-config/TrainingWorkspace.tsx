@@ -10,6 +10,7 @@ import { TrainingWorkspaceLayout } from "./TrainingWorkspaceLayout";
 import { TrainingLaunchDialog } from "./TrainingLaunchDialog";
 import { TrainingRawEditor } from "./TrainingRawEditor";
 import { TrainingSamplePrompts } from "./TrainingExtras";
+import { InlineConfirmDialog } from "../../components/InlineConfirmDialog";
 import {
   invalidateTrainingQueries,
   useTrainingWorkspace,
@@ -57,7 +58,12 @@ export function TrainingWorkspace() {
     ownKeys,
     saveAs,
     confirmDiscard,
+    pendingContextSwitch,
+    contextSwitchConfirmDisabled,
+    confirmContextSwitch,
+    cancelContextSwitch,
     guardedContext,
+    contextSelectionBusy,
     locked,
     busy,
   } = state;
@@ -73,7 +79,10 @@ export function TrainingWorkspace() {
             {locked ? "系统只读 · 可另存" : dirty ? "有未保存修改" : "已同步"}
           </span>
         </header>
-        <TrainingContextBar context={guardedContext} />
+        <TrainingContextBar
+          context={guardedContext}
+          selectionDisabled={contextSelectionBusy}
+        />
 
         {context.error || rawQuery.error ? (
           <section className="training-config-error" role="alert">
@@ -94,11 +103,17 @@ export function TrainingWorkspace() {
           <>
             <section
               className="training-config-source"
-              aria-busy={context.isPending || rawQuery.isPending}
+              aria-busy={
+                context.isPending ||
+                context.mergedConfigIsFetching ||
+                rawQuery.isPending ||
+                rawQuery.isFetching ||
+                busy
+              }
             >
               <div>
                 <span>方法文件</span>
-                <strong>{selectedFile?.path || "—"}</strong>
+                <strong>{selectedFile?.path || context.selectedFileId || "—"}</strong>
               </div>
               <div>
                 <span>硬件预设</span>
@@ -202,6 +217,17 @@ export function TrainingWorkspace() {
             if (!saveAs.isPending) setSaveAsOpen(false);
           }}
           onConfirm={(name) => saveAs.mutate(name)}
+        />
+      ) : null}
+      {pendingContextSwitch ? (
+        <InlineConfirmDialog
+          title="放弃未保存修改？"
+          message={`当前训练配置有未保存修改。${pendingContextSwitch.kind === "config" ? "切换配置" : "切换硬件预设"}会丢失这些修改，是否继续？`}
+          confirmLabel="切换并放弃修改"
+          danger
+          confirmDisabled={contextSwitchConfirmDisabled}
+          onCancel={cancelContextSwitch}
+          onConfirm={confirmContextSwitch}
         />
       ) : null}
     </div>
