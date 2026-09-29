@@ -122,7 +122,7 @@ P0–P3 代码已按原提交顺序 cherry-pick 至本地 `dev`，后续时间�
 ## P4 后续迁移检查点（2026-09-29）
 
 - 旧 UIUX CSS/DOM 测试已由 Next 浏览器结果测试接替：配置组长任务名和指标、手机数据集保存主操作在 1440px/390px 均可见可操作。测试先发现 390px 配置组任务标题被压到不可见；修正窄屏任务行布局后，4 项 E2E 通过，截图确认标题、路径与指标不重叠。历史时间戳格式与原值提示另有 Next 组件测试。旧 `test_dragon_uiux_review_fixes.py` 已删除。
-- 布尔配置与模型快速选择旧测试已迁到 Next 字段、工作区和模型能力测试。工作区实际点击 VAE 缓存开关后，保存 PATCH 的 `use_vae_cache` 为 JSON boolean。旧 `test_dragon_config_boolean_controls_frontend.py`、`test_dragon_model_quick_picker_frontend.py` 已删除。预设库折叠持久化在 Next 尚无等价行为，旧 `test_dragon_config_workbench_frontend.py` 仍保留，待单独处理。
+- 布尔配置与模型快速选择旧测试已迁到 Next 字段、工作区和模型能力测试。工作区实际点击 VAE 缓存开关后，保存 PATCH 的 `use_vae_cache` 为 JSON boolean。旧 `test_dragon_config_boolean_controls_frontend.py`、`test_dragon_model_quick_picker_frontend.py` 已删除。复核确认 Next `TrainingWorkspace` 已持久化配置库折叠状态，现有测试覆盖收起、重载与展开；旧“双视图”接线与 CSS 字面断言随旧界面退役，`test_dragon_config_workbench_frontend.py` 已删除。
 - 监控 `interrupted`/`failed` 状态已明确映射为错误视觉态；隐藏标签页停止轮询和 WebSocket 触发的 HTTP 刷新，恢复可见后确认 status 并刷新 metrics/logs/GPU，包含 status 请求途中转入后台的竞态和空闲 GPU 刷新。旧指针动画和可见性轮询测试仍保留至旧静态源码实际删除；未合入过早删除它们的隔离候选。
 - 当前集成检查：Next 单 worker 83 文件 / 377 项通过，强制 TypeScript 检查通过；静态路由 21 项通过；新历史/监控与 UIUX 浏览器测试合计 7 项通过。隔离候选构建位于 `/tmp/legacy-ui-p4-checkpoint-20260929/dragon-next`，在线 `web/static/dragon-next/index.html` 仍指向旧 hash 资源，20203 未切换。这些结果不代替 P4 旧静态树删除后的 P5 验收。
 
