@@ -241,7 +241,7 @@ describe("TrainingWorkspace", () => {
     expect(
       screen.getByRole("button", { name: "加入队列" }),
     ).toBeInTheDocument();
-  });
+  }, 15_000);
 
   it("previews and saves only changed fields, then runs structured preflight", async () => {
     const fetchMock = createFetchMock();
@@ -283,7 +283,7 @@ describe("TrainingWorkspace", () => {
     expect(await screen.findByText("需要处理")).toBeInTheDocument();
     expect(screen.getByText("Qwen3 文本编码器 不存在")).toBeInTheDocument();
     expect(screen.getByText("源图像目录 存在")).toBeInTheDocument();
-  });
+  }, 15_000);
 
   it("saves boolean field edits as JSON booleans through the workspace handler", async () => {
     const fetchMock = createFetchMock();

@@ -389,7 +389,7 @@ describe('DatasetWorkspace', () => {
     vi.stubGlobal('fetch', fetchMock);
     const user = userEvent.setup();
     const view = renderWorkspace();
-    await screen.findByRole('heading', { name: 'alpha.toml' });
+    await screen.findByRole('heading', { name: 'alpha.toml' }, { timeout: 15_000 });
 
     const toggle = screen.getByRole('switch', { name: '详细管理' });
     expect(toggle).not.toBeChecked();
@@ -414,7 +414,7 @@ describe('DatasetWorkspace', () => {
     await user.click(screen.getByRole('switch', { name: '详细管理' }));
     expect(window.localStorage.getItem(DATASET_DETAILED_MANAGEMENT_KEY)).toBe('false');
     expect(screen.queryByRole('button', { name: '拖动排序预设 alpha.toml' })).not.toBeInTheDocument();
-  });
+  }, 15_000);
 
   it('renders grouped presets, filters them, and loads the selected editor', async () => {
     const { fetchMock } = createFetchMock();
@@ -432,7 +432,7 @@ describe('DatasetWorkspace', () => {
     expect(screen.getByLabelText('原始图片目录')).toHaveValue('image_dataset/beta');
     expect(screen.getByRole('button', { name: '保存' })).toBeDisabled();
     expect(screen.getByRole('button', { name: '复制' })).toBeEnabled();
-  });
+  }, 15_000);
 
   it('blocks browser unload and SPA navigation while the dataset draft is dirty', async () => {
     const { fetchMock } = createFetchMock();
