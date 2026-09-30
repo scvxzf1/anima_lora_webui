@@ -160,6 +160,8 @@ export async function mockWorkspace(page: Page) {
           409,
         );
       }
+      if (path === "/api/config/data-dirs/suggest")
+        return reply({ ok: true, source_exists: true, source_is_dir: true, source_image_count: 3, source_inspection_error: null });
       if (path === "/api/config/dataset-presets/cover")
         return reply({ ok: true, image: `data:image/png;base64,${imageData}`, reason: "" });
       if (
