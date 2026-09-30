@@ -81,7 +81,7 @@ DCW v4 已有训练和推理入口；当前开放问题集中在校准覆盖面�
 
 ## 5. 翻译与本地化
 
-- **WebUI 文案和帮助**：修改 `web/static/js/config/catalog/` 或对应 feature 模块中的现有字符串来源，不建立平行的桌面 GUI 翻译表。LoRA、MoE、σ-bucket、VAE 等技术术语应保持可识别。
+- **WebUI 文案和帮助**：修改 `web/frontend-next/src/features/training-config/domain/` 或对应 Next feature 模块中的现有字符串来源，不建立平行的桌面 GUI 翻译表。LoRA、MoE、σ-bucket、VAE 等技术术语应保持可识别。
 - **文档和结构图**：英文基准结构图位于 `docs/structure_images/`，其他语言可使用 `docs/structure_images_<lang>/` sibling tree；提交时列出引用图片的 Markdown 文件并更新索引。
 - **翻译文档入口**：新增 `<name>.<code>.md` sibling 时，必须说明如何从 [`docs/README.md`](README.md) 或分区索引发现它。
 - **规范文件**：不要建立翻译后独立演化的 `AGENTS.md`。仓库级开发约束始终以根 [`../AGENTS.md`](../AGENTS.md) 为准。

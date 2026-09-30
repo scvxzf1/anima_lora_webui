@@ -6,7 +6,7 @@
 
 - 配置链：`configs/base.toml`、`configs/presets.toml`、`configs/methods/*.toml`、`configs/gui-methods/*.toml`。
 - 任务入口：`tasks.py`、`scripts/tasks/`、`scripts/experimental_tasks/`。
-- WebUI：`web/static/js/config/catalog/*`、`web/static/js/features/anima-app/chunks/01-scope-state.js`。
+- WebUI：`web/frontend-next/src/features/training-config/domain/*`、`web/frontend-next/src/features/training-config/`。
 - 维护说明：`CLAUDE.md`、`docs/structure/anima-optimizations.md`、`docs/findings/*blockswap*`、`docs/findings/*lokr*`、Anima skill references。
 - 排除范围：`configs/imported/`、`configs/web-training-history/`、`configs/web-training-queue/`、`output/`、`models/`、`post_image_dataset/` 等用户数据或运行产物。
 
@@ -141,7 +141,7 @@ configs/base.toml
 | 配置名 | 所在位置 | 作用 | 默认值/候选值 | 适用场景 | 风险或副作用 | UI 暴露 |
 | --- | --- | --- | --- | --- | --- | --- |
 | 自包含变体文件 | `configs/gui-methods/*.toml` | 每个变体一个自包含训练配置；目录名为历史兼容名称 | 当前有 `chimera_hydra`、`easycontrol`、`glora`、`hydralora`、`hydralora-8gb`、`ip_adapter`、`loha`、`lokr`、`lora`、`lora-8gb`、`lora-convrot-vram`、`lora-v100-stable`、`lora_signal_probe`、`ortholora`、`reft`、`soft_tokens`、`tlora`、`tlora-8gb`、`tlora_ortho_reft`、`vera` | WebUI 选择训练方法 | 变体文件会覆盖 preset 同名键；`lora_signal_probe` 为维护/诊断变体，不是新手默认入口 | 是 |
-| 表单分类 `optimization` | `web/static/js/config/catalog/form-layout.js` | 将优化字段集中到“优化”页签 | 包含显存与速度、LoKr 专用、数据加载与 VAE、实验性功能 | 用户查找关键开关 | 表单默认值与最终 merge 值需要看当前配置 | 是 |
+| 表单分类 `optimization` | `web/frontend-next/src/features/training-config/stageGroups.ts`、`domain/config-field-catalog.js` | 将优化字段集中到资源/训练计划分组 | 包含显存与速度、LoKr 专用、数据加载与 VAE、实验性功能 | 用户查找关键开关 | 表单默认值与最终 merge 值需要看当前配置 | 是 |
 | 资源快捷按钮 `全 GPU` | `01-scope-state.js` | 关闭 block swap/probe/offload，保持 compile | `blocks_to_swap=0`、`torch_compile=true` | 显存充足、最快路径 | 显存不足会 OOM | 是 |
 | 资源快捷按钮 `Balanced 16G` | `01-scope-state.js`、`configs/presets.toml[balanced_16g]` | 普通 LoRA 16GB block swap 档 | `blocks_to_swap=12`、`bf16`、`profile=off`、`gradient_checkpointing=false` | 16GB 普通 LoRA 优先档 | 不等同 LoKr 稳定档；需要诊断时手动打开 profile | 是 |
 | 资源快捷按钮 `FP8 测试` | `01-scope-state.js` | FP8 block swap 传输消融 | `blocks_to_swap=12`、`block_swap_transfer_dtype=fp8_e4m3`、probe auto | 传输实验 | 不建议默认训练，存在量化误差 | 是 |

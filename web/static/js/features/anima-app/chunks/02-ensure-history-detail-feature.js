@@ -1,6 +1,0 @@
-/**
- * Compatibility barrel for app-shell startup + config form helpers.
- * Domain truth lives in feature modules; importing this file still configures bridges.
- */
-export * from '../../app-shell/startup.js?v=module-bootstrap-20260903-flash-defaults-v1';
-export * from '../../config-form/index.js?v=module-bootstrap-20260903-flash-defaults-v1';

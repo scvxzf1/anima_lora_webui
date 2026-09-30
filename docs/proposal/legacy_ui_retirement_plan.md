@@ -363,6 +363,13 @@ Next 配置库现通过现有 ZIP API 导出训练配置分组；无需打开详
 
 ## 退役验收范围
 
+## P4/P5 当前门禁（2026-09-30）
+
+- 旧 Classic/Dragon 静态树已按白名单 staged 删除，共 470 个文件；保留 `favicon.svg`、`chart.js`、`dragon-next/index.html`、`previous-index.html` 及哈希资源。删除后 `tests/test_web_static_server.py` **21 项通过**，活跃运行时代码未发现直接读取旧 `index.html`、`app.js`、`style.css`、`js/`、`css/` 或 `fonts/` 的调用点。
+- 删除后的 Next 定向 Vitest **4 文件 / 39 项通过**，强制 TypeScript 检查通过；隔离候选构建通过，发布候选脚本报告 `previousIndex=true`、`atomicReplace=true`、`rollback=true`、`oldChunkRetained=true`、`assetCount=102`。
+- 全量 Vitest 本轮一次出现字段帮助、stage groups、打标跨 tab 的时序失败；三文件串行复跑 **15/15 通过**，因此全量稳定性仍是 P5 门禁，不能以历史全量数字替代本轮稳定结果。
+- 6.1-sol 独立审计确认：P4 仍不可勾选，P5 尚未完成；活跃文档仍有指向已删除旧静态源码的断链，需要改为 Next 入口或明确历史说明。在线 `20203` 尚未切换，未发布、未推送，未改变用户数据和后台任务。
+
 | 领域 | 核心验收内容 |
 | --- | --- |
 | 训练配置 | 导入、编辑、保存、重载；隐藏字段及未知键保留；模型族与方法切换；提示词；预检、启动和入队契约 |

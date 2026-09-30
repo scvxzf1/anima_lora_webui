@@ -352,12 +352,10 @@
 
 ## 分类与维护来源
 
-- 五分类名称及章节映射：`web/static/js/config/catalog/form-category-defs.js`
-- 章节字段键及排序：`web/static/js/config/catalog/form-layout.js`
-- 八章节及细分类聚合：`web/static/js/dragon-ui/pages/config-block-metadata.js`
-- 新人 / 初学者 / 高级层级：`web/static/js/dragon-ui/pages/config-field-tiers.js`
-- 当前模型/方法可用性：`web/static/js/dragon-ui/pages/config-field-availability.js`
-- 中文名称与短说明：`web/static/js/config/catalog/field-help-summary.js`
-- 页面运行时字段去重、未分类字段补入及计数：`web/static/js/dragon-ui/pages/config-page.js`、`config-all-view.js`
+- Next 阶段名称及字段分组：`web/frontend-next/src/features/training-config/stageGroups.ts`、`resourceGroups.ts`
+- 字段键、默认值与输入类型：`web/frontend-next/src/features/training-config/domain/config-field-catalog.js`、`defaults.js`、`config-field-types.js`
+- 当前模型/方法可用性：`web/frontend-next/src/features/training-config/domain/config-field-availability.js`
+- 中文名称与短说明：`web/frontend-next/src/features/training-config/domain/field-help-summary.js`
+- 页面运行时字段筛选、适用性与编辑：`web/frontend-next/src/features/training-config/fieldCatalog.ts`、`TrainingFieldEditor.tsx`
 
 当上述目录、当前配置文件、preset 或模型族发生变化时，应重新生成本快照，并重新核对 215 与各章节计数；不要把 215 写成永久不变量。
