@@ -293,12 +293,8 @@ export function HistoryPage() {
           .map((task) => String(task.id || "")),
       );
       setSelected((current) => current.filter((id) => loadedIds.has(id)));
-      if (hadBatchError) {
-        batch.reset();
-        setNotice("已刷新历史记录，当前列表已核对。");
-      } else {
-        setNotice("");
-      }
+      if (hadBatchError) batch.reset();
+      setNotice("已刷新历史记录，当前列表已核对。");
     } catch {
       if (!currentRun()) return;
       setSelected([]);

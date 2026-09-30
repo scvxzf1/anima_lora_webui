@@ -75,10 +75,18 @@ def normalize_metric_record(item: dict[str, Any]) -> dict[str, Any] | None:
     step = int_or_none(item.get("step"))
     if step is not None:
         out["step"] = step
-    for key in ("loss", "lr", "cmmd"):
-        value = float_or_none(item.get(key))
+    for key in ("loss", "cmmd"):
+        value = finite_metric_float(item.get(key))
         if value is not None:
             out[key] = value
+    lr = finite_metric_float(item.get("lr"))
+    if lr is None:
+        for key in ("learningRate", "learning_rate"):
+            lr = finite_metric_float(item.get(key))
+            if lr is not None:
+                break
+    if lr is not None:
+        out["lr"] = lr
     if item.get("kind"):
         out["kind"] = str(item.get("kind"))
     if item.get("rate"):
@@ -221,19 +229,19 @@ def progress_event_loss(event: dict[str, Any]) -> float | None:
 def progress_event_lr(event: dict[str, Any]) -> float | None:
     direct = first_float_field(
         event,
-        ("lr", "learning_rate", "lr/unet", "lr/group0", "lr/textencoder"),
+        ("lr", "learningRate", "learning_rate", "lr/unet", "lr/group0", "lr/textencoder"),
     )
     if direct is not None:
         return direct
     for key, value in event.items():
         key_text = str(key)
         if key_text.startswith("lr/") and not key_text.startswith("lr/d*lr/"):
-            lr = float_or_none(value)
+            lr = finite_metric_float(value)
             if lr is not None:
                 return lr
     for key, value in event.items():
         if str(key).startswith("lr/d*lr"):
-            lr = float_or_none(value)
+            lr = finite_metric_float(value)
             if lr is not None:
                 return lr
     return None
@@ -241,10 +249,17 @@ def progress_event_lr(event: dict[str, Any]) -> float | None:
 
 def first_float_field(record: dict[str, Any], keys: tuple[str, ...]) -> float | None:
     for key in keys:
-        value = float_or_none(record.get(key))
+        value = finite_metric_float(record.get(key))
         if value is not None:
             return value
     return None
+
+
+def finite_metric_float(value: Any) -> float | None:
+    if isinstance(value, bool):
+        return None
+    number = float_or_none(value)
+    return number if number is not None and is_finite_number(number) else None
 
 
 def extract_float_metric(text: str, names: tuple[str, ...]) -> float | None:

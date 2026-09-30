@@ -110,6 +110,7 @@ it("refreshes active history only while visible and stops after the task termina
   act(() => { vi.advanceTimersByTime(1); });
   await waitFor(() => expect(historyCalls).toBe(2));
   expect(await screen.findByRole("link", { name: /Completed task/ })).toBeInTheDocument();
+  expect(screen.queryByText("已刷新历史记录，当前列表已核对。")).not.toBeInTheDocument();
   expect(screen.getByText(/8 日志/)).toBeInTheDocument();
   expect(screen.getByText(/4 指标/)).toBeInTheDocument();
   expect(historyCalls).toBe(2);
@@ -270,8 +271,10 @@ it("keeps cross-page selection during refresh and disables batch actions while f
   expect(screen.getByRole("button", { name: "刷新中" })).toBeDisabled();
   fireEvent.click(screen.getByRole("button", { name: "刷新中" }));
   expect(firstPageReads).toBe(2);
+  expect(screen.queryByText("已刷新历史记录，当前列表已核对。")).not.toBeInTheDocument();
   await act(async () => refreshedSecond.resolve(jsonResponse({ tasks: [tasks[1]], total: 2, next_cursor: null })));
   await waitFor(() => expect(screen.getByRole("button", { name: "归档已选" })).toBeEnabled());
+  expect(screen.getByText("已刷新历史记录，当前列表已核对。")).toBeInTheDocument();
   expect(screen.getByText("已选 2 项")).toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: "归档已选" }));
   await waitFor(() => expect(batchPayloads).toEqual([{ action: "archive", task_ids: ["task-1", "task-2"] }]));
@@ -307,6 +310,7 @@ it("clears unverified selection after refresh failure and allows a retry", async
   await act(async () => failedRefresh.resolve(new Response("failure", { status: 500 })));
   await waitFor(() => expect(screen.queryByText("已选 1 项")).not.toBeInTheDocument());
   expect(screen.getByText(/已清除无法核对的选择/)).toBeInTheDocument();
+  expect(screen.queryByText("已刷新历史记录，当前列表已核对。")).not.toBeInTheDocument();
   expect(screen.getByRole("button", { name: "刷新" })).toBeEnabled();
   await user.click(screen.getByRole("button", { name: "刷新" }));
   await waitFor(() => expect(reads).toBe(3));
