@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { mockWorkspace } from "./fixtures";
 
-async function setup(page: Page) {
+async function setup(page: Page, firstCaption = "red hair, mid, red hair") {
   const mocks = await mockWorkspace(page);
   const calls: { method: string; path: string; body: unknown }[] = [];
   const job = {
@@ -19,7 +19,7 @@ async function setup(page: Page) {
       file: `tag-${index}.png`,
       state: "ready",
       caption: "Original",
-      proposed_caption: index === 0 ? "red hair, mid, red hair" : "blue sky",
+      proposed_caption: index === 0 ? firstCaption : "blue sky",
       url: `/api/config/dataset-presets/image?image=${index}`,
     })),
   };
@@ -49,6 +49,20 @@ async function setup(page: Page) {
   );
   return { calls, mocks };
 }
+
+test("switching an untouched multiline caption to tags and back does not PATCH", async ({ page }) => {
+  const rawCaption = "red hair, mid\nred hair";
+  const { calls, mocks } = await setup(page, rawCaption);
+  await page.goto("/next/captioning?job=caption-1");
+  await page.getByRole("button", { name: "标签", exact: true }).last().click();
+  await page.getByRole("textbox", { name: "编辑标签 red hair", exact: true }).first().focus();
+  await page.getByRole("button", { name: "原始文本", exact: true }).last().click();
+  await expect(page.getByRole("textbox", { name: "候选标注", exact: true }).last()).toHaveValue(rawCaption);
+  await expect(page.getByRole("button", { name: "保存候选", exact: true })).toBeDisabled();
+  expect(calls.filter((call) => call.method === "PATCH")).toEqual([]);
+  expect(mocks.writes).toEqual([]);
+  expect(mocks.unhandled).toEqual([]);
+});
 
 for (const width of [390, 1280]) {
   test(`tag editing preserves keystrokes, duplicate identity, item isolation, and PATCH-only save at ${width}px`, async ({

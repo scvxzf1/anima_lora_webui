@@ -131,6 +131,36 @@ describe("caption review write boundaries", () => {
     await user.click(screen.getByRole("button", { name: "保存候选" }));
     expect(calls).toEqual(["long multi word tag, red hair"]);
   });
+  it("preserves raw caption bytes when switching tag mode without editing", async () => {
+    const rawCaption = "red hair, mid\nred hair";
+    const item = { id: "i1", name: "one.png", file: "one.png", state: "ready", caption: "", proposed_caption: rawCaption, url: "" };
+    const job = { id: "j1", state: "done", profile_name: "Fixture", profile_id: "p1", settings: { provider: "wd14" }, total: 1, completed: 1, failed: 0, items: [item] };
+    const calls: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).includes("/logs?")) return jsonResponse({ lines: [] });
+      if (init?.method === "PATCH") calls.push(JSON.parse(String(init.body)).proposed_caption);
+      return jsonResponse({ ok: true, job });
+    }));
+    renderInApp(<CaptionReview jobId="j1" />);
+    const user = userEvent.setup();
+    await screen.findByLabelText("候选标注");
+    await user.click(screen.getByRole("button", { name: "标签" }));
+    const firstTag = screen.getAllByRole("textbox", { name: "编辑标签 red hair" })[0];
+    await user.click(firstTag);
+    await user.click(screen.getByRole("button", { name: "原始文本" }));
+    expect(screen.getByLabelText("候选标注")).toHaveValue(rawCaption);
+    await user.click(screen.getByRole("button", { name: "保存候选" }));
+    expect(calls).toEqual([]);
+
+    await user.click(screen.getByRole("button", { name: "标签" }));
+    const tag = screen.getAllByRole("textbox", { name: "编辑标签 red hair" })[0];
+    await user.clear(tag);
+    await user.type(tag, " red hair ");
+    await user.tab();
+    await user.click(screen.getByRole("button", { name: "原始文本" }));
+    await user.click(screen.getByRole("button", { name: "保存候选" }));
+    expect(calls).toEqual([]);
+  });
   it("keeps provider snapshots that are external, unknown, or missing raw-only", async () => {
     for (const settings of [{ provider: "openai_compatible" }, { provider: "future" }, undefined]) {
       cleanup();

@@ -257,8 +257,9 @@ function SortableTag({
         disabled={disabled}
         onChange={(event) => setDraft(event.target.value)}
         onBlur={() => {
-          if (draft.trim()) onEdit(draft);
-          else setDraft(tag);
+          const cleanDraft = draft.trim();
+          if (!cleanDraft || cleanDraft === tag) setDraft(tag);
+          else onEdit(draft);
         }}
         onKeyDown={(event) => {
           if (event.key === "Enter") event.currentTarget.blur();
