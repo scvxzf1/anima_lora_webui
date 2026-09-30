@@ -355,6 +355,12 @@ Next 配置库现通过现有 ZIP API 导出训练配置分组；无需打开详
 - 旧打标测试暂不删除，因仍缺少资源下载/取消、内置提示词复制、本地类别标签等窄行为证据；本批已补对应真实组件 **4 项**，但旧文件还混有 logs/preview/visibility/GPU 等边界，需继续逐项拆除。
 - 旧 `ui-bootstrap.js` 与 Classic/Dragon 旧入口仍存在，不能提前删除静态树；下一阶段需迁移或删除剩余混合旧测试并验证 `/static/index.html` 不再是运行入口，再按白名单删除旧 index/app/js/css/style/fonts，保留 favicon、chart.js 和 dragon-next 当前/previous 资源。
 
+## P4 打标旧测试最终退役（2026-09-30）
+
+- 独立 Sol 最终核对旧 `test_dragon_tagging_frontend.py` 18 项：打标来源/分页/500 上限、provider CRUD 与 GPU 校验、提示词/翻译、候选编辑/重跑/PATCH-commit 隔离、资源下载取消、日志/预览和返回状态均有 Next 组件或浏览器证据；48 批次、IntersectionObserver、Dragon visibility poller、CSS/layout/hash 和独立旧 logs 页明确退出。该文件已删除。
+- 删除前旧文件 18/18 通过；删除后 caption 相关 Vitest **10 文件 / 24 项**、类型检查通过，source/GPU/assets 关键浏览器测试通过。至此活跃测试不再读取旧 `web/static/js/**` 或 `web/static/css/**`，共享字段 domain 测试只验证 Next 仍直接使用的规则模块。
+- 旧静态入口链 (`web/static/index.html` → `ui-bootstrap.js` → Classic/Dragon app) 仍待移除；下一步按白名单删除旧 index/app/js/css/style/fonts，保留 `favicon.svg`、`chart.js` 和 `dragon-next/**`，并验证 `/`/旧 hash 映射、候选构建和 previous-index 回退。P4 尚未完成，P5 未开始，未切换或推送线上服务。
+
 ## 退役验收范围
 
 | 领域 | 核心验收内容 |
