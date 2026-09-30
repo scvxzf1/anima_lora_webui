@@ -1,0 +1,54 @@
+.dataset-source-path-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px 8px;
+  min-width: 0;
+}
+
+.dataset-source-path-field > label {
+  grid-column: 1 / -1;
+}
+
+.dataset-source-path-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.dataset-source-path-actions button {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  color: var(--button-ink);
+  background: var(--button-bg);
+  border: 1px solid var(--button-border);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.dataset-source-path-actions button:hover {
+  border-color: var(--accent);
+}
+
+.dataset-source-path-field > small {
+  grid-column: 1 / -1;
+}
+
+.dataset-source-path-field > small[aria-live] {
+  color: var(--muted);
+}
+
+.dataset-source-path-field > small[data-state="valid"] {
+  color: var(--success, #287c54);
+}
+
+@media (max-width: 480px) {
+  .dataset-source-path-field {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .dataset-source-path-actions {
+    justify-content: flex-end;
+  }
+}

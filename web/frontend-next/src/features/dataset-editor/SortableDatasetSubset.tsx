@@ -7,6 +7,7 @@ import type { FieldPath, UseFormReturn } from 'react-hook-form';
 import type { DatasetFormValues } from './datasetForm';
 import { DatasetSettingsFields } from './DatasetSettingsFields';
 import { DatasetMaskFields } from './DatasetMaskFields';
+import { DatasetSourcePathField } from './DatasetSourcePathField';
 
 type Props = {
   form: UseFormReturn<DatasetFormValues>;
@@ -139,11 +140,11 @@ export function SortableDatasetSubset({
         <FieldError form={form} path={path('edit_pair_id')} />
       </label>}
 
-      <label className="dataset-wide-field">
-        <span>{row.edit_role === 'before' ? '编辑前图片目录' : row.edit_role === 'after' ? '目标图原始目录（编辑后）' : '原始图片目录'}</span>
-        <input {...form.register(path('source_dir'))} />
-        <FieldError form={form} path={path('source_dir')} />
-      </label>
+      <DatasetSourcePathField
+        form={form}
+        path={path('source_dir')}
+        label={row.edit_role === 'before' ? '编辑前图片目录' : row.edit_role === 'after' ? '目标图原始目录（编辑后）' : '原始图片目录'}
+      />
       {row.edit_role !== 'before' && <>
       <label>
         <span>{row.edit_role === 'after' ? '目标图训练目录（编辑后）' : '处理图片目录'}</span>

@@ -77,6 +77,28 @@ describe('dataset form domain', () => {
     }
   });
 
+  it('rejects an empty dataset list and a form whose only dataset is regularization data', () => {
+    const empty = emptyDatasetForm();
+    empty.datasets = [];
+    const emptyResult = datasetFormSchema.safeParse(empty);
+    expect(emptyResult.success).toBe(false);
+    if (!emptyResult.success) {
+      expect(emptyResult.error.issues.map((issue) => issue.path.join('.'))).toContain('datasets');
+    }
+
+    const regularizationOnly = emptyDatasetForm();
+    regularizationOnly.datasets[0].source_dir = 'image_dataset/reg';
+    regularizationOnly.datasets[0].is_reg = true;
+    const regularizationResult = datasetFormSchema.safeParse(regularizationOnly);
+    expect(regularizationResult.success).toBe(false);
+    if (!regularizationResult.success) {
+      expect(regularizationResult.error.issues).toContainEqual(expect.objectContaining({
+        path: ['datasets'],
+        message: '至少保留一个普通训练数据子集',
+      }));
+    }
+  });
+
   it('inherits defaults when creating a new subset', () => {
     const row = emptyDatasetRow({ resolution: 640, validation_seed: 7, caption_source_mode: 'txt' });
 
