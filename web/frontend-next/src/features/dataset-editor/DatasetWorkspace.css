@@ -319,6 +319,12 @@
   font-size: 11px;
 }
 
+.dataset-group-actions .dataset-command-error {
+  flex: 1 0 100%;
+  margin: 0;
+  text-align: right;
+}
+
 .dataset-sort-button {
   width: 28px;
   min-width: 28px;

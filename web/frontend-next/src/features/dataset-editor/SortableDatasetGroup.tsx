@@ -15,6 +15,7 @@ import {
 } from './datasetOrdering';
 import type { DatasetLibraryGroup, DatasetPresetSummary } from './types';
 import { DatasetCover } from './DatasetCover';
+import { DatasetGroupExport } from './DatasetGroupExport';
 import type { DatasetDrop } from './datasetDrag';
 
 type Props = {
@@ -114,6 +115,7 @@ export function SortableDatasetGroup({
           <span>{group.files.length} 个预设</span>
         </div>
         <div className="dataset-group-actions">
+          <DatasetGroupExport groupId={group.id} label={group.label} empty={group.files.length === 0} />
           <button type="button" className="dataset-sort-button" onClick={onToggle}
             disabled={collapseDisabled} aria-expanded={!collapsed} aria-controls={contentId}
             aria-label={`${collapsed ? '展开' : '折叠'}分组 ${group.label}`}
