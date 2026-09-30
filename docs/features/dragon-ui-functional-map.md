@@ -1,9 +1,11 @@
 # Dragon UI 八个界面功能与关联图谱
 
-状态：功能盘点，非改版方案
+状态：已退役界面的历史功能盘点，非当前操作指南，也不是改版方案
 采集日期：2026-09-08
-适用范围：本机 `http://127.0.0.1:20204/?ui=dragon` 运行界面及当日工作树源码
+适用范围：2026-09-08 的本机 Dragon 运行界面及当日工作树源码；当前入口已统一为 `/next`
 版本基线：`dev`，HEAD `2e96bd0ce3a7c2803d542e5b0b7dfeac77369d8b`，含未提交改动；不是该提交或线上版本的纯净快照。
+
+本文保留旧界面行为和数据关系作为迁移审计资料。旧 `web/static` 源码已从工作树移除，下面的源码定位是历史文件名与符号记录，不再是可点击的当前实现入口；当前行为以 `web/frontend-next/` 和后端服务为准。
 
 ## 1. 范围与阅读方式
 
@@ -407,20 +409,20 @@ flowchart TD
 
 | 事实 | 源码入口 / 定位 |
 | --- | --- |
-| 七个主导航、两个快捷入口 | [nav.js](../../web/static/js/dragon-ui/nav.js)，`PRIMARY_NAV_ITEMS` / `NAV_SHORTCUTS` |
-| 业务页与辅助页路由 | [page-loaders.js](../../web/static/js/dragon-ui/page-loaders.js)，`createDragonPageLoaders()` |
-| 配置保存、模型值进入草稿 | [config-page.js](../../web/static/js/dragon-ui/pages/config-page.js)，约 1231、1294 行 |
-| 保存后预检、入队暂停、启动跳转 | [training-controls.js](../../web/static/js/dragon-ui/pages/training-controls.js)，`runTrainingAction()`，约 236 行 |
-| 数据蓝图保存和应用 | [dataset-editor.js](../../web/static/js/dragon-ui/pages/dataset-editor.js)，约 710 行；`/dataset-presets/apply` |
-| 模型库的 revision 保存 | [model-config.js](../../web/static/js/dragon-ui/pages/model-config.js)，约 440 行 |
-| 实时指标、日志工具与停止提示 | [live-training-view.js](../../web/static/js/dragon-ui/pages/live-training-view.js)，`renderLiveTrainingPage()` / `renderConsole()` |
-| 队列操作的文件保留语义 | [queue.js](../../web/static/js/dragon-ui/pages/queue.js)，约 184、226、275 行；[queue_control.py](../../web/services/training/queue_control.py) |
+| 七个主导航、两个快捷入口 | `web/static/js/dragon-ui/nav.js`，`PRIMARY_NAV_ITEMS` / `NAV_SHORTCUTS` |
+| 业务页与辅助页路由 | `web/static/js/dragon-ui/page-loaders.js`，`createDragonPageLoaders()` |
+| 配置保存、模型值进入草稿 | `web/static/js/dragon-ui/pages/config-page.js`，约 1231、1294 行 |
+| 保存后预检、入队暂停、启动跳转 | `web/static/js/dragon-ui/pages/training-controls.js`，`runTrainingAction()`，约 236 行 |
+| 数据蓝图保存和应用 | `web/static/js/dragon-ui/pages/dataset-editor.js`，约 710 行；`/dataset-presets/apply` |
+| 模型库的 revision 保存 | `web/static/js/dragon-ui/pages/model-config.js`，约 440 行 |
+| 实时指标、日志工具与停止提示 | `web/static/js/dragon-ui/pages/live-training-view.js`，`renderLiveTrainingPage()` / `renderConsole()` |
+| 队列操作的文件保留语义 | `web/static/js/dragon-ui/pages/queue.js`，约 184、226、275 行；[queue_control.py](../../web/services/training/queue_control.py) |
 | 入队冻结与运行蓝图 | [queue_enqueue.py](../../web/services/training/queue_enqueue.py)，`enqueue_training()`；[runtime_prepare.py](../../web/services/training/runtime_prepare.py)，约 196 行 |
-| 历史合并查看切 classic | [history.js](../../web/static/js/dragon-ui/pages/history.js)，`data-history-classic` 处理器，约 84 行 |
-| 删除历史分组不删任务 | [history-collections-controller.js](../../web/static/js/dragon-ui/pages/history-collections-controller.js)，`deleteCollection()`，约 244 行 |
-| 历史续训使用快照和检查点 | [history-detail.js](../../web/static/js/dragon-ui/pages/history-detail.js)，约 230 行；[history_resume.py](../../web/services/training/history_resume.py) |
-| 打标子流程与候选写回 | [tagging.js](../../web/static/js/dragon-ui/pages/tagging.js)、[tagging-results-page.js](../../web/static/js/dragon-ui/pages/tagging-results-page.js)；[storage.py](../../web/services/tagging/storage.py)，`image.with_suffix(".txt")` |
-| 全局设置四组字段 | [global-settings.js](../../web/static/js/dragon-ui/pages/global-settings.js)，`SETTING_GROUPS` |
+| 历史合并查看切 classic | `web/static/js/dragon-ui/pages/history.js`，`data-history-classic` 处理器，约 84 行 |
+| 删除历史分组不删任务 | `web/static/js/dragon-ui/pages/history-collections-controller.js`，`deleteCollection()`，约 244 行 |
+| 历史续训使用快照和检查点 | `web/static/js/dragon-ui/pages/history-detail.js`，约 230 行；[history_resume.py](../../web/services/training/history_resume.py) |
+| 打标子流程与候选写回 | `web/static/js/dragon-ui/pages/tagging.js`、`web/static/js/dragon-ui/pages/tagging-results-page.js`；[storage.py](../../web/services/tagging/storage.py)，`image.with_suffix(".txt")` |
+| 全局设置四组字段 | `web/static/js/dragon-ui/pages/global-settings.js`，`SETTING_GROUPS` |
 
 相关说明：
 
