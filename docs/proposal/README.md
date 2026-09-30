@@ -9,6 +9,7 @@
 
 | 文档 | 状态 | 说明 |
 | --- | --- | --- |
+| [legacy_ui_retirement_plan.md](legacy_ui_retirement_plan.md) | 已完成 / 待归档 | Classic / Dragon 旧 UI 退役：共用逻辑迁移、功能对账、入口收拢、代码清理与独立验收 |
 | [qwen_image_2_1_90hx_optimization_20260927.md](qwen_image_2_1_90hx_optimization_20260927.md) | 实验 / 阶段 3 开发中 | INT8 首轮热测、32-head 与 GPU wait 证据修正、PCIe 传输预算及结构性优化排序 |
 | [qwen_image_2_1_training_block_stage3_20260927.md](qwen_image_2_1_training_block_stage3_20260927.md) | 开发中 | 冻结 MLP/QKV 融合、独立 LoRA 梯度与保存契约、激活预算及分段重算验收 |
 | [dragon_next_training_config_plan.md](dragon_next_training_config_plan.md) | 活跃 / 待实施 | Next 训练配置的字段对账、选择规则、排列、补充入口与 T0–T5 分阶段验收计划 |
