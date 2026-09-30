@@ -1,8 +1,8 @@
 # Dragon Next 实施与验收记录
 
-> 2026-09-24 更新：用户已批准将 Next 设为默认前端。服务根路径 `/` 现跳转 `/next`；旧 Dragon/classic 仍通过 `/?ui=dragon` 和 `/?ui=classic` 访问。下文保留 2026-09-09 的验收快照。
+> 2026-09-30 更新：Next 已是唯一生产前端。服务根路径 `/` 及旧 `ui` query 均映射到 `/next`；旧 Dragon/classic 源码已退役。下文保留 2026-09-09 的验收快照。
 
-- 状态：八个主工作区工程实现完成 / 独立入口验收 / 默认切换未批准；数据集蒙版编辑为独立子路由
+- 状态：八个主工作区历史工程实现记录；生产默认切换已完成；数据集蒙版编辑为独立子路由
 - 日期：2026-09-09
 - 本页验收数字是 2026-09-09 的历史记录，不代表当前工作树；当前审计见 [2026-09-13 前端审计](../findings/webui_frontend_audit_20260913.md)。
 - 计划：[新前端开发计划书](../proposal/dragon_frontend_rebuild_plan.md)
@@ -13,7 +13,7 @@
 
 生产入口为 Python 服务的 `/next/training`。本机本次验证地址为 `http://127.0.0.1:20203/next/training`；
 开发入口为 `http://127.0.0.1:5173/next/training`，地址不是部署默认值。
-旧 Dragon/classic 默认入口没有切换，辅助生图、权重分析、环境工具继续通过明确的旧页面链接访问。
+旧 Dragon/classic 页面已退役；辅助生图、权重分析、环境工具均由 Next 工作区提供。
 
 React + TypeScript + Vite 承载独立页面，TanStack Query 管服务端快照，Zustand 只保留配置选择，
 已有 React Hook Form/Zod 数据集模型继续复用。Tailwind token/utilities 与本地 Radix/CVA Button 构成共享控件底座，

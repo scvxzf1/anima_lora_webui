@@ -1,6 +1,6 @@
 # Dragon Next UI/UX 实施进度
 
-状态：本计划工程实现、隔离验收及审计修复完成。更新：2026-09-10。本文测试数、截图和验收结论均为当日历史快照，不代表当前未提交工作树；当前复核见 [2026-09-13 前端审计](../findings/webui_frontend_audit_20260913.md)。适用入口：`/next`，不切换旧默认入口；真实训练与生产签收边界见下文。
+状态：本计划工程实现、隔离验收及审计修复的历史快照。2026-09-30 退役计划已完成生产切换；本文测试数、截图和验收结论仍为当日历史快照，当前入口为 `/next`，真实生产签收以退役计划记录为准。
 
 依据：2026-09-09 本线程《Dragon Next 前端审阅与优化方向》。保留其 F01-F09、任务概览专项、其他页面方向和完整验收矩阵；本文件记录当前事实，不把计划当完成。
 
@@ -81,7 +81,7 @@ rtk proxy pnpm --dir web/frontend-next run build
 rtk proxy env DRAGON_E2E_PORT=20519 DRAGON_API_TARGET=http://127.0.0.1:29999 pnpm --dir web/frontend-next exec playwright test
 ```
 
-只读预览已在 `http://127.0.0.1:20521/next/history/fixture-run` 启动。脚本为 `web/frontend-next/scripts/preview-isolated.mjs`，使用合成fixture而非用户任务，所有API写请求403，无后端代理。独立浏览器检查八个工作区和概览无pageerror、样张实际解码480px、写入拒绝通过。真实20203仍未启动，本预览不证明后端新路由已在真实服务加载。
+只读预览已在 `http://127.0.0.1:20521/next/history/fixture-run` 启动。脚本为 `web/frontend-next/scripts/preview-isolated.mjs`，使用合成fixture而非用户任务，所有API写请求403，无后端代理。独立浏览器检查八个工作区和概览无pageerror、样张实际解码480px、写入拒绝通过。原始记录中的“真实20203仍未启动”已被后续生产切换取代；当前只读证据见退役计划的 `/tmp/dragon-next-20203-final/report.json`。
 
 独立审计明确排除：设置保存仅更新queue策略字段，不会全量覆盖新入队任务；manifest不等于checkpoint完整性；允许“尚未检查”且不自动扫描；原生流式文件下载不改为将大权重读入JS内存。下载过程中外部文件被删除仍可能由浏览器/HTTP报错，应重新检查可用性，不保证检查与下载间文件不变化。
 
