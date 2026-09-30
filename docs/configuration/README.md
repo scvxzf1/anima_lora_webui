@@ -8,7 +8,7 @@
 | --- | --- | --- |
 | [external-configs.md](external-configs.md) | 当前实现说明 | 解释 `ANIMA_CONFIGS_ROOT`、WebUI 全局设置里的 `configs_root`、路径解析优先级和迁移建议 |
 | [model-training-capabilities.md](model-training-capabilities.md) | 当前实现说明 | 模型训练能力标签、编辑数据集匹配、预检查和旧任务参数兼容 |
-| [dragon-training-config-215.md](dragon-training-config-215.md) | 运行时快照 | 收集 Dragon 训练配置页当前显示的 215 项，并记录五类导航、八章画布、当前值和可用性 |
+| [dragon-training-config-215.md](dragon-training-config-215.md) | 历史快照 | 记录已退役 Dragon 配置页当时显示的 215 项；当前配置入口为 `/next/training` |
 | [dataset-cache-semantics.md](dataset-cache-semantics.md) | 当前实现说明 | Dragon 数据集的 `mask_mode`、family-aware 缓存和 runtime 预检契约 |
 | [preprocess-auto-batch.md](preprocess-auto-batch.md) | 当前实现说明 | VAE/文本缓存从 1 起步的自动批大小、预测上拉、OOM 退避和固定预设兼容 |
 | [qwen-edit-low-memory-preprocess.md](qwen-edit-low-memory-preprocess.md) | 当前实现说明 | Qwen Image 2.1 Edit 配对数据预处理，以及 Qwen3-VL TE 缓存的 BF16 CPU offload 选择 |

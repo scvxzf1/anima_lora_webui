@@ -1,10 +1,10 @@
-# Dragon 训练器 215 项配置清单
+# 已退役 Dragon 训练器 215 项配置快照
 
 重组探索：[Dragon 训练配置渐进披露重组提案](../proposal/dragon_config_progressive_disclosure.md)
 
 > 快照日期：2026-09-03（Asia/Shanghai）
 >
-> 页面：`http://127.0.0.1:20203/?ui=dragon#config/training-config`
+> 页面：历史 Dragon 页面；当前配置入口为 `/next/training`
 >
 > 当前训练配置：`configs/imported/8-8-测试.toml`
 >

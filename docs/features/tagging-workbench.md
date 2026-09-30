@@ -1,21 +1,17 @@
 # 打标工作台（外部 API 与本地 ONNX）
 
 状态：外部 API 与本地 ONNX 打标均已接线；本地模型权重按需下载
-适用界面：Classic Dragon (`?ui=dragon`) 与 Dragon Next (`/next/captioning`)
+适用界面：Dragon Next (`/next/captioning`)
 
 ## 入口与联动
 
 直接入口：
 
 ```text
-http://127.0.0.1:20102/?ui=dragon#page/captioning
-```
-
-React Next 入口为：
-
-```text
 http://127.0.0.1:20102/next/captioning
 ```
+
+该入口由根路径兼容重定向统一导向 Next；旧 Classic/Dragon 页面已退役。
 
 也可以在 **数据集** 页面选择并保存一个数据集预设，然后点击 **打开打标工作台**。页面会带入当前
 `dataset_file`、数据组序号和原始图目录；这段上下文只保存在一次性的 `sessionStorage` 项中，不包含
