@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Play, Search, ChevronLeft, ChevronRight } from "lucide-react";
-import { useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useEffect, useRef, useState } from "react";
+import { useLocation } from "react-router-dom";
 import { datasetLibraryQuery, datasetPresetQuery } from "../dataset-editor/api";
 import {
   captioningKeys,
@@ -11,6 +11,7 @@ import {
   captionImageUrl,
   type Profiles,
 } from "./api";
+import { useCaptionDraft } from "./captionDraft";
 
 export function CaptionSource({
   library,
@@ -19,18 +20,27 @@ export function CaptionSource({
 }: {
   library?: Profiles;
   onCreated: (id: string) => void;
-  onSourceChange?: (file: string, index: number) => void;
+  onSourceChange?: (file: string, index: number, source?: string) => void;
 }) {
-  const [params] = useSearchParams();
+  const { search } = useLocation();
+  const params = new URLSearchParams(search);
   const [file, setFile] = useState(params.get("dataset") || "");
   const [index, setIndex] = useState(() => Math.max(0, Number(params.get("subset")) || 0));
-  const [source, setSource] = useState("source");
+  const [source, setSource] = useState(params.get("source") || "source");
+  const { draft, update } = useCaptionDraft({
+    dataset: file,
+    subset: index,
+    source,
+  });
   const [offset, setOffset] = useState(0);
-  const [scanned, setScanned] = useState(false);
-  const [selected, setSelected] = useState<string[]>([]);
-  const [profileId, setProfileId] = useState("");
-  const [prompt, setPrompt] = useState("");
-  const [systemPrompt, setSystemPrompt] = useState("");
+  const [scanned, setScanned] = useState(() => draft.selected.length > 0);
+  const previousScope = useRef(JSON.stringify([file, index, source]));
+  const selected = draft.selected;
+  const setSelected = (next: string[] | ((current: string[]) => string[])) =>
+    update((current) => ({ selected: typeof next === "function" ? next(current.selected) : next }));
+  const profileId = draft.profileId;
+  const prompt = draft.prompt;
+  const systemPrompt = draft.systemPrompt;
   const datasets = useQuery(datasetLibraryQuery);
   const preset = useQuery({
     ...datasetPresetQuery(file),
@@ -47,9 +57,30 @@ export function CaptionSource({
     enabled: scanned && Boolean(file),
   });
   const qc = useQueryClient();
+  useEffect(() => {
+    const nextFile = params.get("dataset") || "";
+    const nextIndex = Math.max(0, Number(params.get("subset")) || 0);
+    const nextSource = params.get("source") || "source";
+    setFile(nextFile);
+    setIndex(nextIndex);
+    setSource(nextSource);
+  }, [search]);
+  useEffect(() => {
+    const nextScope = JSON.stringify([file, index, source]);
+    if (previousScope.current !== nextScope) {
+      previousScope.current = nextScope;
+      setScanned(draft.selected.length > 0);
+      setOffset(0);
+    }
+  }, [file, index, source, draft.selected.length]);
   const profile = library?.profiles.find(
-    (p) => p.id === (profileId || library.active_profile_id),
+    (p) => p.id === (profileId === null ? library.active_profile_id : profileId),
   );
+  useEffect(() => {
+    if (!library || profileId === null || profileId === "") return;
+    const restored = library.profiles.find((item) => item.id === profileId);
+    if (!restored?.available) update({ profileId: "" });
+  }, [library, profileId, update]);
   const create = useMutation({
     mutationFn: async (payload: Parameters<typeof createCaptionJob>[0]) => {
       const data = await createCaptionJob(payload);
@@ -64,14 +95,9 @@ export function CaptionSource({
       onCreated(data.job.id);
     },
   });
-  function resetSource() {
-    setScanned(false);
-    setSelected([]);
-    setOffset(0);
-  }
   function submit() {
     if (
-      !profile ||
+      !profile?.available ||
       !selected.length ||
       selected.length > 500 ||
       create.isPending
@@ -110,8 +136,7 @@ export function CaptionSource({
                 const nextFile = e.target.value;
                 setFile(nextFile);
                 setIndex(0);
-                resetSource();
-                onSourceChange?.(nextFile, 0);
+                onSourceChange?.(nextFile, 0, source);
               }}
             >
               <option value="">选择数据集</option>
@@ -129,8 +154,7 @@ export function CaptionSource({
               onChange={(e) => {
                 const nextIndex = Number(e.target.value);
                 setIndex(nextIndex);
-                resetSource();
-                onSourceChange?.(file, nextIndex);
+                onSourceChange?.(file, nextIndex, source);
               }}
             >
               {preset.data?.datasets.map((row, i) => (
@@ -145,8 +169,9 @@ export function CaptionSource({
             <select
               value={source}
               onChange={(e) => {
-                setSource(e.target.value);
-                resetSource();
+                const nextSource = e.target.value;
+                setSource(nextSource);
+                onSourceChange?.(file, index, nextSource);
               }}
             >
               <option value="source">原始图</option>
@@ -157,7 +182,7 @@ export function CaptionSource({
             <span>接入预设</span>
             <select
               value={profile?.id || ""}
-              onChange={(e) => setProfileId(e.target.value)}
+              onChange={(e) => update({ profileId: e.target.value })}
             >
               <option value="">选择接入预设</option>
               {library?.profiles.map((p) => (
@@ -170,14 +195,14 @@ export function CaptionSource({
           <label className="full-width">
             <span>提示词预设</span>
             <select
-              defaultValue=""
+              value={prompts.data?.presets.some((p) => p.id === draft.promptPresetId) ? draft.promptPresetId : ""}
               onChange={(e) => {
                 const value = prompts.data?.presets.find(
                   (p) => p.id === e.target.value,
                 );
+                update({ promptPresetId: e.target.value });
                 if (value) {
-                  setPrompt(value.user_prompt);
-                  setSystemPrompt(value.system_prompt);
+                  update({ prompt: value.user_prompt, systemPrompt: value.system_prompt });
                 }
               }}
             >
@@ -208,7 +233,7 @@ export function CaptionSource({
                 <textarea
                   rows={3}
                   value={systemPrompt}
-                  onChange={(e) => setSystemPrompt(e.target.value)}
+                  onChange={(e) => update({ systemPrompt: e.target.value, promptPresetId: "" })}
                 />
               </label>
               <label>
@@ -216,7 +241,7 @@ export function CaptionSource({
                 <textarea
                   rows={3}
                   value={prompt}
-                  onChange={(e) => setPrompt(e.target.value)}
+                  onChange={(e) => update({ prompt: e.target.value, promptPresetId: "" })}
                 />
               </label>
             </>

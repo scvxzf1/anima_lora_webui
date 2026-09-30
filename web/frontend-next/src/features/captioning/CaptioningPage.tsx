@@ -33,7 +33,7 @@ export function CaptioningPage({ embeddedBasePath = "/captioning" }: { embeddedB
   function setSelectedJob(jobId: string) {
     setParams((current) => {
       const next = new URLSearchParams();
-      for (const key of ["dataset", "subset"]) {
+      for (const key of ["dataset", "subset", "source"]) {
         const value = current.get(key);
         if (value !== null) next.set(key, value);
       }
@@ -42,12 +42,13 @@ export function CaptioningPage({ embeddedBasePath = "/captioning" }: { embeddedB
     }, { replace: true });
   }
 
-  function setSourceContext(file: string, index: number) {
+  function setSourceContext(file: string, index: number, source = "source") {
     setParams((current) => {
       const next = new URLSearchParams(current);
       if (file) next.set("dataset", file);
       else next.delete("dataset");
       next.set("subset", String(index));
+      next.set("source", source);
       next.delete("job");
       return next;
     }, { replace: true });

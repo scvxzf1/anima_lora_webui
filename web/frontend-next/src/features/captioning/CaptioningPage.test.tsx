@@ -11,11 +11,11 @@ vi.mock('./CaptionSource', () => ({
     onSourceChange,
     onCreated,
   }: {
-    onSourceChange: (file: string, index: number) => void;
+    onSourceChange: (file: string, index: number, source: string) => void;
     onCreated: (id: string) => void;
   }) => (
     <div>
-      <button onClick={() => onSourceChange('configs/datasets/next.toml', 1)}>模拟切换子集</button>
+      <button onClick={() => onSourceChange('configs/datasets/next.toml', 1, 'training')}>模拟切换子集</button>
       <button onClick={() => onCreated('job-1')}>模拟创建任务</button>
     </div>
   ),
@@ -63,4 +63,8 @@ it('keeps dataset and subset context while changing the source and creating a jo
   await waitFor(() => expect(router.state.location.search).toContain('job=job-1'));
   expect(router.state.location.search).toContain('dataset=configs%2Fdatasets%2Fnext.toml');
   expect(router.state.location.search).toContain('subset=1');
+  expect(router.state.location.search).toContain('source=training');
+  await user.click(screen.getByRole('button', { name: '新任务' }));
+  await waitFor(() => expect(router.state.location.search).not.toContain('job='));
+  expect(router.state.location.search).toContain('source=training');
 });
