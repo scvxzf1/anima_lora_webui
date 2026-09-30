@@ -142,12 +142,12 @@ configs/base.toml
 | --- | --- | --- | --- | --- | --- | --- |
 | 自包含变体文件 | `configs/gui-methods/*.toml` | 每个变体一个自包含训练配置；目录名为历史兼容名称 | 当前有 `chimera_hydra`、`easycontrol`、`glora`、`hydralora`、`hydralora-8gb`、`ip_adapter`、`loha`、`lokr`、`lora`、`lora-8gb`、`lora-convrot-vram`、`lora-v100-stable`、`lora_signal_probe`、`ortholora`、`reft`、`soft_tokens`、`tlora`、`tlora-8gb`、`tlora_ortho_reft`、`vera` | WebUI 选择训练方法 | 变体文件会覆盖 preset 同名键；`lora_signal_probe` 为维护/诊断变体，不是新手默认入口 | 是 |
 | 表单分类 `optimization` | `web/frontend-next/src/features/training-config/stageGroups.ts`、`domain/config-field-catalog.js` | 将优化字段集中到资源/训练计划分组 | 包含显存与速度、LoKr 专用、数据加载与 VAE、实验性功能 | 用户查找关键开关 | 表单默认值与最终 merge 值需要看当前配置 | 是 |
-| 资源快捷按钮 `全 GPU` | `01-scope-state.js` | 关闭 block swap/probe/offload，保持 compile | `blocks_to_swap=0`、`torch_compile=true` | 显存充足、最快路径 | 显存不足会 OOM | 是 |
-| 资源快捷按钮 `Balanced 16G` | `01-scope-state.js`、`configs/presets.toml[balanced_16g]` | 普通 LoRA 16GB block swap 档 | `blocks_to_swap=12`、`bf16`、`profile=off`、`gradient_checkpointing=false` | 16GB 普通 LoRA 优先档 | 不等同 LoKr 稳定档；需要诊断时手动打开 profile | 是 |
-| 资源快捷按钮 `FP8 测试` | `01-scope-state.js` | FP8 block swap 传输消融 | `blocks_to_swap=12`、`block_swap_transfer_dtype=fp8_e4m3`、probe auto | 传输实验 | 不建议默认训练，存在量化误差 | 是 |
-| 资源快捷按钮 `更省显存` | `01-scope-state.js` | 增加 block swap 数 | `blocks_to_swap=16`、`profile=off` | 16GB 普通 LoRA 更省显存 | 比 Balanced 更慢 | 是 |
-| 资源快捷按钮 `LoKr 16G` | `01-scope-state.js`、LoKr playbook | LoKr 专用救场 | `blocks_to_swap=23`、`lokr_factor_group_size=8`、`memory_probe=auto`、`profile=off` | LoKr 16GB 首次试跑 | 余量很薄；仍可能需 allocator 环境变量；需要 block swap 归因时手动开 profile | 是 |
-| 资源快捷按钮 `OOM 兜底` | `01-scope-state.js` | block swap + selective checkpoint | `blocks_to_swap=12`、`selective_checkpoint=mlp_only`、`profile=off` | 普通路径仍 OOM | 会变慢；不适合作为 LoKr 首选 fallback | 是 |
+| 资源快捷按钮 `全 GPU` | `web/frontend-next/src/features/training-config/resourceGroups.ts`、`trainingForm.ts` | 关闭 block swap/probe/offload，保持 compile | `blocks_to_swap=0`、`torch_compile=true` | 显存充足、最快路径 | 显存不足会 OOM | 是 |
+| 资源快捷按钮 `Balanced 16G` | `web/frontend-next/src/features/training-config/resourceGroups.ts`、`configs/presets.toml[balanced_16g]` | 普通 LoRA 16GB block swap 档 | `blocks_to_swap=12`、`bf16`、`profile=off`、`gradient_checkpointing=false` | 16GB 普通 LoRA 优先档 | 不等同 LoKr 稳定档；需要诊断时手动打开 profile | 是 |
+| 资源快捷按钮 `FP8 测试` | `web/frontend-next/src/features/training-config/resourceGroups.ts` | FP8 block swap 传输消融 | `blocks_to_swap=12`、`block_swap_transfer_dtype=fp8_e4m3`、probe auto | 传输实验 | 不建议默认训练，存在量化误差 | 是 |
+| 资源快捷按钮 `更省显存` | `web/frontend-next/src/features/training-config/resourceGroups.ts` | 增加 block swap 数 | `blocks_to_swap=16`、`profile=off` | 16GB 普通 LoRA 更省显存 | 比 Balanced 更慢 | 是 |
+| 资源快捷按钮 `LoKr 16G` | `web/frontend-next/src/features/training-config/resourceGroups.ts`、LoKr playbook | LoKr 专用救场 | `blocks_to_swap=23`、`lokr_factor_group_size=8`、`memory_probe=auto`、`profile=off` | LoKr 16GB 首次试跑 | 余量很薄；仍可能需 allocator 环境变量；需要 block swap 归因时手动开 profile | 是 |
+| 资源快捷按钮 `OOM 兜底` | `web/frontend-next/src/features/training-config/resourceGroups.ts` | block swap + selective checkpoint | `blocks_to_swap=12`、`selective_checkpoint=mlp_only`、`profile=off` | 普通路径仍 OOM | 会变慢；不适合作为 LoKr 首选 fallback | 是 |
 | Web 全局设置 | `configs/web-ui-settings.toml`、`web/services/settings_service.py` | 输出根目录、配置根和界面比例 | `output_root=output/runs` | WebUI runtime 输出和界面默认值 | 文档不应固化本机绝对路径 | 是 |
 | 全局模型配置库 | `configs/web-ui-settings.toml`、`web/services/model_config_service.py` | 有序 Anima/Krea-2 模型路径组合 | `model_config_library.items`；默认项镜像旧 `[global]` 路径 | 新建预设、配置页选择和旧消费者兼容 | 默认项切换会影响空路径配置的回退值 | 是 |
 
