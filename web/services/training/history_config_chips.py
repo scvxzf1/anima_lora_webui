@@ -1,7 +1,8 @@
 """Derive history-list chip fields from config.snapshot.toml.
 
-Aligned with web/static/js/features/history-detail overview chips:
-training variant family, preprocess precision, block-swap transfer dtype.
+Aligned with the Next React history overview chips in
+web/frontend-next/src/features/training-history: training variant family,
+preprocess precision, and block-swap transfer dtype.
 """
 
 from __future__ import annotations
@@ -130,7 +131,7 @@ def _infer_precision_preference(flat: dict[str, Any]) -> str:
 
 
 def _infer_training_variant(flat: dict[str, Any], raw_text: str, *, variant: str) -> str:
-    """Match formatHistoryTrainingVariant inference order in overview.js."""
+    """Match the Next history overview's training-variant inference order."""
     module_name = str(flat.get("network_module") or "").lower()
     moe_style = str(flat.get("use_moe_style") or "").strip().lower()
 

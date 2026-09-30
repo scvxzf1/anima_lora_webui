@@ -2,8 +2,8 @@
 
 本文件是给 AI Agent 长期维护本仓库用的根级工作协议。它覆盖整个
 本仓库；子目录如果另有 `AGENTS.md` 或 `CLAUDE.md`，以离目标文件更近
-的说明为补充约束。根目录曾经通过 `@CLAUDE.md` 引用维护说明，但当前根级
-`CLAUDE.md` 可能不存在，因此不要依赖外部展开，优先以本文件和实时源码为准。
+的说明为补充约束。根级 `CLAUDE.md` 是指向本文件的入口重定向；不要依赖
+工具自动展开引用，直接阅读本文件，并以实时源码和测试核对代码事实。
 
 ## 总体原则
 
@@ -20,11 +20,36 @@
   谨慎合并，不要 revert。
 - 代码事实优先于文档。若本文件、旧说明和源码不一致，先读源码和测试，再更新文档。
 
+## Graphify 按需导航
+
+- 跨文件调用链、模块依赖、架构理解或改动影响分析时，由 Agent 自主判断是否先查询
+  现有 `graphify-out/graph.json`，不要求用户每次提醒；已知位置的小修改、单文件阅读和
+  简单文本搜索直接使用源码与 `rg`，不强制查询图谱。
+- 图谱只用于缩小阅读范围，不是代码事实源。重要关系必须核对当前源码和测试；同名符号、
+  动态调用、反射及运行时关系可能存在歧义或遗漏。无结果不代表不存在依赖。
+- 查询前确认图谱存在，并留意生成后发生的改动、重构或分支切换。图谱缺失、过期或查询失败
+  时直接回退源码，不阻塞任务，也不自动重建；需要重建时说明范围并取得用户同意。
+- 每次调用设置 `GRAPHIFY_NO_AUTO_REFRESH=1`；查询同时设置
+  `GRAPHIFY_QUERY_LOG_DISABLE=1`。例如：
+  `GRAPHIFY_QUERY_LOG_DISABLE=1 GRAPHIFY_NO_AUTO_REFRESH=1 graphify query "<问题>" --graph graphify-out/graph.json`。
+  精确关系使用同样环境变量调用 `graphify path` / `graphify explain`，限制查询和返回范围。
+- 经授权建图时仅扫描本项目，使用本地 `--code-only --no-cluster`，排除依赖、缓存、数据集、
+  权重、日志和训练输出。顶层数据目录使用根锚定排除规则（如 `/models/`），不得误排除
+  `library/models/` 等源码。现有图谱先备份或使用独立输出目录。
+- 未经额外授权，不分析文档、PDF、图片或视频，不启用语义 API、LLM 标注、MCP、服务或
+  watcher，不自动安装升级工具或修改 hooks / Agent 规则。
+- `graphify-out/` 是本地产物，不随业务代码暂存、提交或推送；使用明确路径暂存，保留用户
+  已有文件和改动。本规则不自动修改 `.gitignore`。
+
 ## 子代理委派与模型
 
 - 主代理可在用户已授权的任务范围内自主规划和委派探索、数学推导、代码实现、测试及独立验收，无需逐次申请委派许可；不再限定子代理只能探索或使用默认角色。
-- 子代理模型仅限 `gpt-6-sol`、`gpt-6-luna`。派生时显式指定模型，主代理按复杂度选择角色及推理强度；优先用 luna 处理简单任务，用 sol 处理复杂实现和关键验收。
-- 不得使用会将模型锁定或覆盖为上述白名单之外模型的角色，不得静默回退。保持 `fork_turns="none"`，通过自包含任务说明交接，减少重复上下文与主线程重复阅读。
+- 子代理模型仅限当前环境可用的最新版本 Sol 和 Luna，不固定旧版本模型 ID。
+  派生前依据工具提供的模型列表、版本及别名说明确认所选系列的最新可用模型，显式指定
+  完整 `model` ID；主代理按复杂度选择角色及推理强度，简单任务优先 Luna，复杂实现和关键验收优先 Sol。
+- 不得使用会将模型锁定或覆盖为其他系列或旧版本的角色，不得静默回退。
+  若无法确认最新版本或所选模型不可用，先说明限制并请求用户选择，不自行改用旧版本或其他系列。
+  保持 `fork_turns="none"`，通过自包含任务说明交接，减少重复上下文与主线程重复阅读。
 - 实现任务必须明确文件归属、接口契约和验收条件；子代理必须保护他人改动。多代理并行写入遵守下文独立工作树规则。
 - 实现者负责开发自测，关键改动由不同代理独立验收；主代理负责集成、审阅关键差异与验证证据并给出最终结论。
 
@@ -64,6 +89,8 @@
   [`scripts/tasks/`](scripts/tasks/) 和 [`scripts/experimental_tasks/`](scripts/experimental_tasks/)。
 - 维护和验证命令优先使用 `.venv/bin/python`；只有确认无需项目虚拟环境，或 `.venv/`
   不存在时，才回退到系统 `python`。
+- 直接使用原生 Shell 命令；搜索优先 `rg`，读取时限定相关文件和行范围。
+  保留关键错误、退出状态与验证证据，避免无关的大量输出占用上下文。
 - 跨平台用户文档可写成 `python tasks.py <command>`，本仓维护执行优先写成
   `.venv/bin/python tasks.py <command>`。用户文档可把 `make <target>` 作为兼容写法，
   但不要作为唯一入口。
@@ -86,22 +113,25 @@
   `github.com/scvxzf1/anima_lora_webui`。`main` 是发布分支，`dev` 是日常集成分支。
   用户说“拉取线上更新”或“同步线上 main”时，按指定分支操作；未指定分支的日常开发推送
   默认使用 `dev`，只有明确要求发布或推送 `main` 时才写入发布分支。
-- 不要把 `main` 当作日常开发分支。开始新任务前先同步 `dev`；独立任务优先从最新 `dev`
-  创建 `codex/<task>`，单人小改动才直接在 `dev` 上提交。多个 Agent 不要共用同一工作树和
-  分支进行并行写入。
+- 不要把 `main` 当作日常开发分支。开始独立开发任务时，在干净且适合切换的工作树中
+  先同步 `dev`，再优先创建 `codex/<task>`；单人小改动才直接在 `dev` 上提交。
+  只读审查、用户指定的现有分支续作以及脏工作区不自动执行该同步流程。
+  多个 Agent 不要共用同一工作树和分支进行并行写入。
 - 操作前先运行 `git remote -v`，找到 URL 匹配目标仓库的 remote；它在不同 checkout 中可能叫
   `origin`、`webui` 或其他名字。命令和汇报使用实际 remote，不要凭文档假定别名存在。
 - 指向个人 fork、私有镜像或 `sorryhyun/anima_lora` 等参考仓的 remote 不是默认发布目标。
   除非用户明确点名，不要向它们 pull、push、reset，也不要把上游参考合入和线上发布混为一谈。
-- 日常开发的最小同步流程是：
+- 日常开发在干净工作树中的最小同步流程是：
   ```text
   git status --short --branch
   git fetch <target-remote> --prune
   git switch dev
-  git pull --rebase
+  git pull --rebase <target-remote> dev
   ```
-  工作树有未提交内容时，先区分代码、用户配置和运行数据；不得用切换、reset 或清理命令
-  偷换或删除它们。
+  工作树有未提交或未跟踪内容时，先区分代码、用户配置和运行数据，不自动执行
+  `switch` / `pull` / `rebase`，也不自动 stash、提交或清理。优先保留当前现场并在
+  独立工作树隔离开发；若必须处理原工作区，先说明保留方案并取得用户确认。
+  不得用切换、reset 或清理命令偷换或删除已有内容。
 - 首次使用本流程时，在没有需要保留的未提交改动的工作树中，从已同步的 `main` 创建并发布 `dev`：
   ```text
   git switch main
@@ -147,7 +177,7 @@
 
 - `tasks.py`：所有稳定命令注册表。
 - `train.py`：统一训练入口；`AnimaTrainer` 类名作为兼容 facade 保留，实际按
-  `model_family` dispatch Anima、Krea-2 和 Z-Image。
+  `model_family` dispatch Anima、Krea-2、Z-Image 和 Qwen-Image 2.1；族清单以注册表为准。
 - `inference.py`：独立推理入口。
 - `anima_lora/`：可安装包门面，给嵌入式调用暴露精选 API。
 - `library/`：训练、推理、配置、数据、runtime、模型、captioning、vision 等核心逻辑。
@@ -167,19 +197,14 @@
   Diffusers 目录和受校验的单文件组件，`attention_backend.py` 将默认 `flash` 映射到
   Diffusers `flash_varlen`，`block_swap.py` 把官方 `model.layers` 接到共享 `ModelOffloader`。
   通用 image-test/独立推理尚未注册。
-- Krea-2 RTX 3080 速度诊断（最终）：1024² NF4+swap20 约 12s/it 的主因是大矩阵吞吐，长窗口再叠加热降频；同机对照中 3080 BF16 Linear 比 PG199 慢 4.4-5.2×，NF4 Linear 慢 4.1-4.6×，attention 慢 2.83×。选择性 checkpoint、fixed resident compile、Flash varlen、NF4 和 block-swap 已完成消融；生产建议保留 NF4 + full checkpoint + fixed resident compile，并按显存选择 swap20-24。当前默认使用 Flash varlen，`torch`/`sdpa` 可显式回退。不要每步调 `prepare_block_swap_before_forward`（探针会多计约 196ms），也不要把 padding 尾裁剪当作优化方向。详见 `docs/findings/krea2_3080_speed_final.md` 和 `docs/findings/krea2_3080_speed_comparison_extended.md`。
-- Krea-2 选择性 checkpoint：PG199 32GB 可用 `gradient_checkpointing=false` + `selective_checkpoint="every_other"`，1024² NF4 实测 28.46GB / 2.90s，比 full checkpoint 快 13.9%。RTX 3080 swap20 放开单 block 仍 OOM，10GB 卡必须保持 full checkpoint。Krea 目前只支持 `off/every_other`，其他 Anima selective 模式显式拒绝，见 `docs/findings/krea2_3080_speed_stage2.md`。
-- Krea-2 compile：固定长度编译目标必须是 adapter apply/load 后的 block `_forward`，不要编译 checkpoint wrapper 或 swapped tail。PG199 NF4 full-ckpt 实测 3.370→2.726s（-19.1%）。RTX 3080 swap20 的冷态 12.140→11.744s 不能外推为持续收益；长窗口会漂到 12.65s，compile 的可靠价值是 peak 约 6.15GB 且避免 eager 首个 backward OOM。24 buckets 已验证只形成 4608/4864 两张 resident 图并默认开启 fixed compile，见阶段 3、5、9 findings。
-- Krea-2 PG199 叠加边界：compile + every-other（14/28 checkpoint）会 OOM；compile + 16/28 checkpoint 的 20 步稳态为 2.408s/it（-28.5%），但峰值 31.55GB 无余量，仅作 PG199 探针实验点，不进默认配置或通用 CLI。安全档仍是 full checkpoint + compile（2.726s/it / 11.06GB）。RTX 3080 不适用 selective 叠加，见 `docs/findings/krea2_3080_speed_stage4.md`。
-- Krea-2 RTX 3080 长窗口修正：resident compile 的冷态 11.744s/it（+3.3%）不是持续收益；20 步从 12.06 漂到 12.65s。120 秒 BF16 GEMM 达 84°C，时钟约 1800MHz，同样退化 7-9%。compile 的已证价值是训练 peak 6.15GB 且 20 步通过，而当前 eager swap20 首个 backward OOM。不要再宣称 3080 compile 持续加速 3.3%；长训主瓶颈包含散热/频率曲线，修改功耗、风扇或降压前必须取得明确同意，见 `docs/findings/krea2_3080_speed_stage5.md`。
-- Krea-2 NF4 dtype 边界：不要绕过 `weights.py`/`quantize.py` 的 BF16 compute 强制检查。RTX 3080 FP16 Linear 虽快 13.7%、NF4 层 backward 虽从 27.07 降到 10.02ms，但同权重/同输入的输入梯度 rel-L2=35.6%、cos=0.943，已 REJECT。不要新增全局 FP16 NF4 开关，见 `docs/findings/krea2_3080_speed_stage6.md`。
-- Krea-2 Inductor mode：只支持 None/default。`reduce-overhead` 的 CUDA Graph 在 non-reentrant checkpoint backward recompute 时会报 output overwritten RuntimeError；`max-autotune*` 未验证也显式拒绝。不要为 Krea 复用通用 WebUI 中的其他 compile preset，见 `docs/findings/krea2_3080_speed_stage7.md`。
-- Krea-2 LoRA rank 速度边界：PG199 NF4+compile 中 rank16→8 将可训参数 48.17M→24.08M，但步时 2.726→2.73s 持平、峰值仅省 145MB。rank 应按 adapter 容量/质量选择，不要当作 3080 速度优化，见 `docs/findings/krea2_3080_speed_stage8.md`。
-- Krea-2 multi-bucket compile：24 个 `CONSTANT_TOKEN_BUCKETS` 加固定 512 文本后只形成 4608/4864 两张 block 图，同 token family 的不同宽高比可直接复用，实测稳态 2.731/2.956s、峰值 <=11.35GB。`configs/methods/krea2_lora.toml` 因此默认 `torch_compile=true`、`compile_dynamic_seq=false`、resident scope、default mode。不要启用 dynamic_seq/其他 preset/编译 swapped tail，见 `docs/findings/krea2_3080_speed_stage9.md`。
-- Krea-2 compile 续训：PG199 NF4 中途保存/reload LoRA 96.4MB + optimizer 193.0MB 后，LoRA/forward round-trip delta=0，loss jump=0.000214，续训步时 2.728-2.730s 无重编译。reload 后不需再调 `compile_blocks()`，默认 fixed resident compile 可用于正常 checkpoint/resume，见 `docs/findings/krea2_3080_speed_stage10.md`。
-- Krea-2 compiled 算子天花板：PG199 profile 中 eager→compiled 为 3.398→2.746s；GEMM 1593ms 和 cuDNN attention 847ms 前后不变，收益来自融合约 601ms 的 mul/copy/add 及将可见 NF4 dequant 706→486 次。compiled 后 GEMM+attention 约占 89%，不要再期待 Python/prepare/padding 小修获得两位数加速，见 `docs/findings/krea2_3080_speed_stage11.md`。
-- Krea-2 packed varlen FlashAttention：有效 token 打包 + native GQA 在 PG199 全模型/双 token-family 快 11-13%，50 步保持 2.417-2.439s（末步 2.429s）；RTX 3080 swap20 的 20 步热稳态约 12.145s（比历史 cuDNN compile 12.65s 快 4%），checkpoint LoRA/forward delta=0，GPU peak 6.09GB。已通过 `library/models/krea2_raw/attention_backend.py` 生产化为 `attn_mode="flash"`，包含 provider/dtype 前置拒绝、batch>1/GQA/padding 契约、训练/推理接线与 WebUI family 过滤；当前默认使用 Flash，`torch`/`sdpa` 可显式回退，见 `docs/findings/krea2_3080_speed_stage12.md`。
-- Krea-2 RTX 3080 速度研究最终摘要：根因、有效配置、否决路径和可选后端的权威总表见 `docs/findings/krea2_3080_speed_final.md`，跨 PG199/3080 的 step、it/min、显存、冷/热稳态和 swap/checkpoint/compile/Flash 统一矩阵见 `docs/findings/krea2_3080_speed_comparison_extended.md`。简述为“大矩阵吞吐主导 + 长窗口热降频叠加”；生产默认保留 NF4、full checkpoint、fixed resident compile、Flash varlen 与按显存选择 swap。
+- `library/models/qwen_image_2_1/`：Qwen-Image 2.1 T2I/Edit 训练与训练预览。
+  `family.py` 承载 4D latent/token forward，`strategy.py` 和 `weights.py` 负责专属
+  text cache 与权重加载，`compile.py` 提供独立 block 编译。能力边界见
+  [多模型支持](docs/multi_model_support.md)，adapter 组合按实时源码和验收证据判断。
+- Krea-2 性能研究只在本协议保留维护边界，不再复制逐阶段实验数字。根因与否决路径见
+  [最终结论](docs/findings/krea2_3080_speed_final.md)，跨硬件、冷/热稳态矩阵见
+  [扩展对照](docs/findings/krea2_3080_speed_comparison_extended.md)；历史后端默认值以
+  当前源码和方法配置为准。生产安全边界见下文「Krea-2 训练与性能边界」。
 - `library/config/`：TOML 读取、合并、normalize、schema 校验。
 - `library/training/`：训练 bootstrap、loop、optimizer、scheduler、checkpoint、loss 等。
 - `library/inference/`：generation、sampling、adapter 加载、DirectEdit、DCW、输出处理。
@@ -187,7 +212,7 @@
 - `networks/`：adapter/network 实现。修改这里前读 `networks/CLAUDE.md`。
 - `scripts/tasks/`：稳定命令实现。
 - `scripts/experimental_tasks/`：实验命令实现。
-- `web/`：aiohttp WebUI 后端和静态前端。
+- `web/`：aiohttp WebUI 后端、`frontend-next/` React/Vite 工作台及静态发布资源。
 - `preprocess/`：CLI 预处理脚本，底层编排通常在 `library/preprocess/`。
 - `custom_nodes/`：ComfyUI 节点；发布副本通过 `_vendor/` 同步。
 - `configs/`：base、presets、methods、gui-methods、datasets、Web 设置、历史和队列。
@@ -257,6 +282,9 @@ configs/base.toml
     VAE/Anima latent cache 策略。
   - `{stem}_{WxH}_z_image.npz`：Z-Image Flux VAE latent cache（分辨率 infix 由调用方加入）。
   - `{stem}_z_image_te.safetensors`：Z-Image text encoder cache。
+  - `{stem}_{WxH}_qwen_image_2_1.npz`：Qwen-Image 2.1 专属 latent cache。
+  - `{stem}_qwen_image_2_1_te.safetensors`：Qwen-Image 2.1 text encoder cache。
+    不得复用其他族的 latent normalization 或 text cache schema。
 
 ## 方法和能力入口
 
@@ -289,15 +317,18 @@ cross-attention softmax 的 attention sinks。
 分成 4032 和 4200 两个 token-count family。每个 bucket 精确填满自己的 token count，
 没有 intra-bucket padding。
 
-- native shapes 是当前唯一模式；不要恢复旧的 pad-to-static 4096 路径。
-- `compile_blocks()` 会开启 native-shape flatten，让图按 token count 复用。
+- Anima/Krea-2 的共享分桶路径使用 native shapes；不要恢复旧的 pad-to-static 4096 路径。
+- Anima 的 `compile_blocks()` 会开启 native-shape flatten，让图按 token count 复用。
+  Krea-2 使用自己的 fixed resident block 编译，Qwen-Image 2.1 使用独立的 token/编译路径；
+  不要把 Anima 的 flatten 或 band 实现当作所有模型族的通用契约。
 - `compile_seq_bands` 是 Anima-only 实验开关，默认 `false`，且必须同时启用
-  `compile_dynamic_seq=true`；Krea-2 和 Z-Image 由 compatibility layer 自动关闭。
-- 初始 bands 来自当前 `bucket_resolutions`，缺省才回退 `CONSTANT_TOKEN_BUCKETS`。采样事件
+  `compile_dynamic_seq=true`；Krea-2 和 Z-Image 由 compatibility layer 自动关闭，
+  Qwen-Image 2.1 不复用该 band 编译路径。
+- Anima 初始 bands 来自当前 `bucket_resolutions`，缺省才回退 `CONSTANT_TOKEN_BUCKETS`。采样事件
   发现新 prompt token count 时由 `ensure_training_compile_seq_range()` 加 singleton range
   并重编译，不要宣称 canonical bucket 自动包含任意 sample 分辨率。
 - 64GB synthetic 多 band A/B 数值通过，但比 union 慢约 43--44% 且无显存收益，生产默认
-  继续使用 union dynamic-seq。证据见
+  Anima 继续使用 union dynamic-seq。证据见
   `docs/findings/anima_perband_dynamic_seq_20260830.md`。
 - 改 bucket 表、token count、compile flatten、sample prompt 分辨率参与预算时，必须补
   shape/invariant 测试。
@@ -320,21 +351,50 @@ DiT -> attach network -> training loop
 
 ### Compile After Apply
 
-`torch.compile` 必须 trace adapter monkey-patched forward，所以 `compile_blocks()` 必须在
-`network.apply_to` 和 `load_weights` 后执行。复用 `library/runtime/harness.py::build_anima`
-或 `compile_blocks_for_training()`，不要在 bench、scripts、preprocess 中手写易错顺序。
-distillation 的 `compile_dit_blocks_for_pool()` 仍使用一个 union range，不复用训练侧
-`compile_seq_bands`。
+`torch.compile` 必须 trace adapter monkey-patched forward；支持编译的模型族都必须在
+`network.apply_to` 和可选 `load_weights` 后编译，不要在 bench、scripts、preprocess 中
+手写易错顺序。入口按模型族选择：
+
+- Anima/Krea-2 训练复用 `compile_blocks_for_training()`；Anima runtime 可复用
+  `library/runtime/harness.py::build_anima`。
+- Qwen-Image 2.1 由训练 bootstrap 调用
+  `library/models/qwen_image_2_1/compile.py::compile_qwen_image_2_1_blocks()`，编译 block
+  inner forward，swap dispatch 留在图外；不复用 Anima native flatten/bands。
+- Z-Image 当前不支持 compile，不能因为共享训练入口而绕过兼容拒绝。
+- Anima distillation 的 `compile_dit_blocks_for_pool()` 仍使用一个 union range，
+  不复用训练侧 `compile_seq_bands`。
+
+### Krea-2 训练与性能边界
+
+- 默认配置保留 full checkpoint、fixed resident compile 和 Flash varlen；
+  `torch`/`sdpa` 可显式回退，block swap 按实际可用显存选择。NF4 是显式选择的路径，
+  启用时只允许 BF16 compute，不将其描述为基座加载默认值。
+- NF4 必须遵守 `weights.py` / `quantize.py` 的 BF16 compute 检查；FP16 NF4 已被
+  数值验收否决，不新增全局 FP16 NF4 开关。
+- 编译目标是 adapter apply/load 后的 resident block `_forward`，不是 checkpoint
+  wrapper 或 swapped tail。使用 fixed sequence 和 None/default mode；拒绝
+  dynamic-seq、`reduce-overhead`、`max-autotune*` 等未支持配置。
+- selective checkpoint 只支持 `off/every_other`；RTX 3080 10GB 保持 full checkpoint，
+  不套用 PG199 的 selective 实验。compile + selective 叠加没有通用安全余量，不进默认档。
+- 性能由大矩阵吞吐主导，长窗口叠加热降频；冷态 compile 收益不能外推持续收益。
+  不要把 rank 降低、padding 尾裁剪或每步 `prepare_block_swap_before_forward` 当作加速方案。
+  checkpoint/resume 已验证无需重复调用 `compile_blocks()`。
+- 修改功耗、风扇或降压前必须取得用户明确同意。各实验的适用条件与数值证据查阅
+  项目地图链接的 findings，不将某张卡的结果外推到其他硬件。
 
 ### DiT Latent Shape
 
-DiT forward 使用 5D latent：`(B, C, T=1, H, W)`，单例时间轴是 dim 2。
+latent shape 是模型族接口契约，不是所有底层 transformer 的统一输入格式。
 
-- VAE、cache、训练 inner loop、很多 spectral helper 使用 4D `(B, C, H, W)`。
-- 进入 DiT 前显式 `unsqueeze(2)`，离开 DiT 后显式 `squeeze(2)`。
-- 不要用裸 `squeeze()` 或 `squeeze(0)` 处理这个边界。
+- Anima DiT 和 Krea-2/Z-Image 的训练 `forward_for_loss` 接口使用
+  5D `(B, C, T=1, H, W)`，单例时间轴是 dim 2；族内再转换成底层模型要求的格式。
+- 这些路径的 VAE、cache、训练 inner loop 和很多 spectral helper 使用
+  4D `(B, C, H, W)`；跨 4D/5D 边界显式 `unsqueeze(2)` / `squeeze(2)`，
+  不要用裸 `squeeze()` 或 `squeeze(0)`。
+- Qwen-Image 2.1 的 `forward_for_loss` 使用 4D `[B,64,H,W]`，在族内展平为 image tokens；
+  不要套用其他族的时间轴转换。以各族 `family.py` 的 shape 校验为准。
 
-### Model Family Dispatch 和 Z-Image
+### Model Family Dispatch、Z-Image 和 Qwen-Image 2.1
 
 - `MODEL_FAMILY_REGISTRY` 和 `dispatch_model_family()` 必须 fail closed；未知 family、缺失
   handler、未注册推理 mode/sampler 不得回退 Anima。
@@ -345,6 +405,10 @@ DiT forward 使用 5D latent：`(B, C, T=1, H, W)`，单例时间轴是 dim 2。
   `1 <= blocks_to_swap <= len(model.layers)-2`，当前 30 main layers 即 `1..28`。
 - Z-Image dataset/subset `caption_dropout_rate` 必须为 0；其 text cache 和 latent affine
   不得借用 Anima/Krea sidecar 或 normalization。
+- Qwen-Image 2.1 支持 T2I/Edit 训练和训练 preview；通用 image-test/独立推理的
+  mode/sampler 尚未注册，不得从训练 preview 外推通用推理支持。
+- Qwen adapter 支持以实时 registry、compatibility layer 和定向验收证据为准；
+  接口放行不等于所有组合已真机验证，正在推进的 LoKr/LoHa 扩展须区分代码支持与验证范围。
 - 详细边界见 `docs/multi_model_support.md`，相关测试为
   `tests/test_model_family_registry.py`、`tests/test_model_family_fail_closed.py`、
   `tests/test_z_image_family.py` 和 `tests/test_z_image_block_swap.py`。
@@ -415,8 +479,10 @@ T-LoRA mask 是共享 buffer，每个 denoising step 更新一次。
 
 - 新增前端业务代码默认尽量控制在 1000 行以内；需求复杂、无法合理控制时，先说明原因、
   拆分方案和预计代码规模。
-- 按职责拆分页面、组件、hooks、utils、api、constants、styles，遵循现有 `web/static/js/`
-  和 `web/static/css/` 模块边界。
+- 当前前端为 `web/frontend-next/` 的 React/Vite 工作台，按职责拆分页面、组件、hooks、
+  utils、api、constants、styles；遵循 `src/app/`、`src/features/`、`src/api/`、
+  `src/components/` 和 `src/styles/` 模块边界。旧 `web/static/js/` / `css/` 仅适用于
+  遗留代码维护，不承载新工作台业务。
 - 禁止把大量逻辑堆进单个 `App`、页面文件或超大组件；单个组件建议不超过 200-300 行，
   单个函数建议不超过 80 行。
 - 重复 UI 和重复逻辑必须抽象复用，但不要为压缩行数牺牲可读性、功能完整性和可测试性。
@@ -431,24 +497,31 @@ T-LoRA mask 是共享 buffer，每个 denoising step 更新一次。
 - 业务服务：`web/services/config_service.py`、`settings_service.py`、`training_service.py`、
   `preview_service.py`、`weight_analysis_service.py`。
 - 拆分业务：`web/services/config/`、`web/services/training/` 和 `web/services/tagging/`。
-- 前端 bootstrap：`web/static/app.js`。
-- 前端模块：`web/static/js/`。
-- DOM 锚点：`web/static/index.html`。
-- 样式入口：`web/static/style.css`，具体样式在 `web/static/css/*.css`。
+- 当前用户入口：`/next`（Next React 工作台）；`/` 和历史 `/?ui=dragon` / `/?ui=classic` 仅作兼容重定向，最终进入该入口。
+- 前端 bootstrap：`web/frontend-next/src/main.tsx`；壳、路由和 UI 偏好在 `src/app/`，
+  业务模块在 `src/features/`，共享 API、组件和样式在相应 `src/` 子目录。
+- 开发与部署说明：[前端 README](web/frontend-next/README.md)。工具链以其说明、
+  `package.json` 和锁文件为准；开发使用 Vite 并单独启动后端，生产由 Python 服务托管
+  `web/static/dragon-next/` 构建产物，不需要 Node 常驻。
+- 旧 `web/static/app.js`、`index.html`、`style.css` 和 `js/features/anima-app/`
+  仅为遗留静态源码，不是当前主入口或用户故障回退入口；活跃功能文档和新维护应以 Next 路由及 feature 目录为准。
 
 规则：
 
-- `web/static/app.js` 只做 ES module bootstrap；业务放入 feature 模块。
-- 当前主容器是 `web/static/js/features/anima-app/`；不要恢复 `js/features/legacy-app.js`。
+- 新工作台业务放入独立 feature，不依赖旧界面 DOM 或隐式全局业务状态；旧字段目录和
+  能力规则只能按纯模块复用，不挂载旧 DOM。不要恢复 `js/features/legacy-app.js`。
 - `globalThis` 只允许作为旧代码迁移桥或第三方库兼容桥；新 WebUI 业务默认使用 `export/import`
   和显式 `ctx` / store，不要新增隐式全局状态总线。
-- `web/static/js/features/anima-app/chunks/` 是历史机械拆分过渡层；新功能优先放入独立 feature
-  目录，修改 chunk 时优先把相关状态和函数迁出。
+- `web/static/js/features/anima-app/chunks/` 是遗留机械拆分过渡层；仅在维护遗留代码时
+  适用迁出状态和函数的规则，不把新工作台功能堆回该目录。
 - 事件绑定、拖拽、筛选、弹窗、状态渲染等重复前端逻辑应抽到 shared helper 或 feature-local
   helper，不要复制一套近似 DOM 操作。
-- 更新前端 import 时，同步 cache token，避免浏览器读旧模块。
-- DOM id 是跨模块契约；改 `index.html` 前先搜索 selector 和相关测试。
-- CSS 新文件必须从 `style.css` 可达，并遵守 import 顺序。
+- Next 构建通过哈希资源与原子替换入口发布；修改源码后走 `web-next-build`，不手改
+  `web/static/dragon-next/` 产物。旧 `previous-index.html` 只用于静态版本发布回退。
+- 仅维护旧静态前端时：更新 import 同步 cache token，改 DOM id 前先搜索 selector
+  和相关测试，CSS 新文件从旧 `style.css` 可达并遵守 import 顺序。
+- 工作台各类草稿独立，保存不自动启动训练；mutation 不自动重试，连接中断且结果未知时
+  必须先核对服务器状态，不能盲目重试。
 - `configs/web-ui-settings.toml [global]` 由 `settings_service.py` 管理，`output_root` 默认
   `output/runs`。
 - runtime、history、preview 图片、队列项删除必须受 `resolve_output_root()` 边界约束。
@@ -457,14 +530,17 @@ T-LoRA mask 是共享 buffer，每个 denoising step 更新一次。
 - sample prompts 默认 `configs/sample_prompts.txt`，按配置分叉到
   `configs/sample-prompts/<methods_subdir>/<config-stem>.txt`。保留注释、空行和用户格式。
 - 历史任务模式只保留 `collection` / `collections`，不要恢复旧 `config` / `flat` 模式。
-- 当前 WebUI 用户入口为 `web/frontend-next/`，使用 Next 工作台和共享 HTTP API；旧
-  `web/static/js/dragon-ui/` 与 classic 前端仅作为遗留静态源码保留，不是用户回退入口。
-  打标 provider 凭据与调用必须留在服务端，审核草稿和写回任务不并入训练队列。
+- 工作台复用共享 HTTP API；打标 provider 凭据与调用必须留在服务端，审核草稿和写回
+  任务不并入训练队列。
 
-常用 WebUI 验证入口见
-[前端健康度评分卡](docs/features/frontend-health-scorecard.md)和
+前端验证优先使用 `.venv/bin/python tasks.py web-next-check`（typecheck 和单元测试）
+与 `web-next-e2e`，部署构建使用 `web-next-build`；维护执行使用原生命令。
+E2E 使用隔离端口和 mock API/训练 WebSocket，不对用户后端执行写操作，不复用或终止
+已有服务；具体工具链、端口和并发隔离方式见前端 README。
+旧静态前端维护才参考
+[前端健康度评分卡](docs/features/frontend-health-scorecard.md)及
 [`tests/test_training_frontend_*.py`](tests/)。后端按改动领域从 [`tests/`](tests/) 中选择
-配置、预览、队列、历史或权重分析的定向测试，不要在本协议复制一份容易漂移的测试清单。
+配置、预览、队列、历史或权重分析的定向测试，不在本协议复制容易漂移的测试清单。
 
 ## Adapter 和 Network 维护
 

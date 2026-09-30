@@ -1,16 +1,14 @@
 # 历史任务与集合
 
 状态：稳定
-适用版本：当前 WebUI 主界面
+适用版本：当前 WebUI Next 工作台 `/next/history`
 入口命令：
 
 ```bash
 .venv/bin/python tasks.py web --host 127.0.0.1 --port 20102
 ```
 
-相关代码：
-
-- `web/static/index.html`（训练页 `历史任务` / 集合管理）
+- `web/frontend-next/src/features/training-history/`（Next 历史任务与集合工作区）
 - `web/services/training/` 历史服务
 - `configs/web-training-history/`（或外置配置根下的同名目录）
 - `tests/test_training_history_*.py`、`tests/test_training_frontend_history.py`
@@ -44,17 +42,16 @@
 | 底模计算路径 | base 前向计算路径 | `base_compute`（如 `bf16` / `w8a16_convrot` / `w8a8_convrot`）；缺省显示 `-` |
 | 精度倾向 | 表单「精度倾向」语义 | **不是** snapshot 直读字段：WebUI 保存时会把 `precision_preference` 展开成 `mixed_precision` 并删除；概览按 `precisionPreferenceFromConfig` 规则反推：`mixed_precision=no` → `fp32`，`fp16`/`full_fp16` → `fp16`，否则 `bf16` |
 
-相关代码：`web/static/js/features/history-detail/overview.js`、`config-chips.js`。
+相关代码：`web/frontend-next/src/features/training-history/HistoryOverview.tsx`、`HistorySnapshot.tsx` 及后端 `web/services/training/history_config_chips.py`。
 
 ---
 
 ## 2. 入口
 
-1. 打开 **训练**。
-2. 点 **历史任务**。
-3. 或从「最近训练」点 **查看全部**。
-4. 需要整理集合时点 **集合管理**。
-5. 点某个任务进入详情，可看 loss、日志、样张、配置与续训入口。
+1. 打开 Next 顶部导航 **历史任务**，进入 `/next/history`。
+2. 或从「最近训练」点 **查看全部**。
+3. 需要整理集合时点 **集合管理**。
+4. 点某个任务进入详情，可看 loss、日志、样张、配置与续训入口。
 
 常用筛选：
 

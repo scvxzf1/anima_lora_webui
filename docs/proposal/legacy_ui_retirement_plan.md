@@ -342,6 +342,13 @@ Next 配置库现通过现有 ZIP API 导出训练配置分组；无需打开详
 - 旧 `test_dragon_config_visibility_frontend.py` 仅验证 Dragon 字段层级、旧筛选 DOM/CSS 和 localStorage 偏好，已删除。settings 持久化、共享字段 catalog/disclosure 及旧监控混合测试仍保留，不能按文件名整删；剩余相关旧测试收集 **81 项**成功，Next domain 定向 **16 项**通过。
 - 打标专属测试仍暂不删除：旧文件还混有 prompt/logs/preview/visibility/GPU picker 等尚未完全以新版行为测试承接的边界。旧静态树和旧浏览器脚本仍待处理，P4/P5 尚未完成，在线 `20203` 未切换，未推送。
 
+## P4 旧脚本与维护入口收口（2026-09-30）
+
+- 删除 `tests/browser/auto-swap-resource-controls.cjs` 与 `dragon-config-visual-smoke.cjs`；两者仅动态导入旧 `static/js/dragon-ui` 并操作 Dragon hash/DOM，无 Next 或后端契约。保留的浏览器脚本 `dragon-preset-actions.cjs` 通过 `node --check`。
+- 活跃维护入口已更新：AGENTS 明确 `/next` 与 `web/frontend-next` 为当前入口；历史配置 chips 注释改为 Next 历史概览；静态服务日志样例改为保留的 dragon-next 资源；配置、数据集、设置、历史和队列 feature 文档改用 Next 路由及行为测试，旧 DOM/CSS/脚本仅保留历史说明。静态服务定向 **21 项通过**。
+- 当前旧静态树仍不能删除：`ui-bootstrap.js` 及旧 `index.html/app.js/style.css/js/css/fonts` 仍由剩余混合测试直接读取，且字段 catalog/disclosure 等共享 domain 测试尚需保留。下一批需先处理这些测试和旧入口链，再做精确白名单删除。
+- 打标旧专属测试仍保留至 prompt/logs/preview/visibility/GPU 等剩余契约完成；P4 尚未结束，P5 未开始，在线 `20203` 未切换，未推送，用户数据和后台任务未改变。
+
 ## 退役验收范围
 
 | 领域 | 核心验收内容 |

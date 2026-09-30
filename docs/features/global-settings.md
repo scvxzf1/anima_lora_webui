@@ -1,17 +1,14 @@
 # 全局设置
 
 状态：稳定
-适用版本：当前 WebUI 主界面
+适用版本：当前 WebUI Next 工作台 `/next/settings`
 入口命令：
 
 ```bash
 .venv/bin/python tasks.py web --host 127.0.0.1 --port 20102
 ```
 
-相关代码：
-
-- `web/static/js/dragon-ui/pages/global-settings.js`
-- `web/static/index.html`（classic `data-tab="settings"`）
+- `web/frontend-next/src/features/settings/SettingsPage.tsx`（Next 全局设置）
 - `web/services/settings_service.py`
 - `library/env.py`（`get_configs_root` 等）
 - `tests/test_preview_service.py`、`tests/test_ui_scale_settings.py`、`tests/test_global_settings_runtime.py`
@@ -20,7 +17,7 @@
 
 ## 1. 这是干什么的
 
-一句话：设置两套 WebUI 共用的默认输出目录、配置根目录和界面缩放，并管理 Dragon 动态效果。
+一句话：设置 WebUI 共用的默认输出目录、配置根目录和界面缩放，并管理 Next 工作台的动态效果。
 
 全局设置写到：
 
@@ -33,7 +30,7 @@
 
 ## 2. 入口
 
-1. Dragon UI 打开 **模型与系统 → 全局设置**；classic UI 打开顶部导航 **全局设置**。
+1. 打开 Next 顶部导航 **全局设置**，进入 `/next/settings`。
 2. 修改：
    - 输出文件夹
    - 配置根目录
@@ -50,7 +47,7 @@
 | 输出文件夹 | `global-output-root` | Web 训练统一输出根，默认 `output/runs` |
 | 配置根目录 | `global-configs-root` | 外置 `configs/` 根，含 methods、datasets、history、queue |
 | 缩放比例 | `global-ui-scale` | 默认 UI 缩放 25%–400% |
-| Dragon 动态效果 | `dragon_motion_enabled` | 控制 Dragon 页面入场、滚动揭示、视差和平滑过渡，默认开启 |
+| Next 动态效果 | `dragon_motion_enabled` | 控制 Next 工作台页面入场、滚动揭示、视差和平滑过渡，默认开启 |
 | 主页面独立比例 | 各页面 follow-default + 数值 | 配置/数据集/训练等页面可单独缩放 |
 | 历史详情独立比例 | 历史详情各子页 | 只作用于历史详情内容区 |
 
@@ -60,9 +57,9 @@
 2. 环境变量 `ANIMA_CONFIGS_ROOT`
 3. 默认 `configs/`
 
-Dragon / classic 模式不是 TOML 全局设置项。界面切换写入浏览器 `localStorage.anima_ui_mode`，不会改变输出根、配置根、训练历史或模型配置。详见 [Dragon UI 与 classic 兼容界面](dragon-ui.md)。
+旧 Dragon / classic URL 仅作兼容重定向，不改变输出根、配置根、训练历史或模型配置。界面偏好仍写入浏览器本地存储。
 
-`dragon_motion_enabled` 只影响 Dragon，classic 不会读取该值。关闭后仍保留加载文字和状态反馈，但不再运行页面离场等待、滚动揭示观察器或视差滚动监听。如果操作系统已开启“减少动态效果”，系统偏好始终优先。
+`dragon_motion_enabled` 由 Next 工作台读取，用于控制页面过渡、滚动揭示和视差效果。如果操作系统已开启“减少动态效果”，系统偏好始终优先。
 
 ---
 

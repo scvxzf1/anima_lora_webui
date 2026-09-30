@@ -1,16 +1,14 @@
 # 训练队列
 
 状态：稳定
-适用版本：当前 WebUI 主界面
+适用版本：当前 WebUI Next 工作台 `/next/queue`
 入口命令：
 
 ```bash
 .venv/bin/python tasks.py web --host 127.0.0.1 --port 20102
 ```
 
-相关代码：
-
-- `web/static/index.html`（`data-tab="training"`，队列视图）
+- `web/frontend-next/src/features/training-queue/`（Next 队列工作区）
 - `web/services/training/` 队列与 runtime
 - `configs/web-training-queue/`（或外置配置根下的同名目录）
 - `tests/test_training_queue.py`、`tests/test_training_frontend_queue.py`
@@ -34,9 +32,9 @@
 
 ## 2. 入口
 
-1. 在 **配置** 页准备好配置后点 **加入队列**。
-2. 打开顶部导航 **训练**。
-3. 点 **队列** 视图，或点摘要区的 **管理** 打开队列管理台。
+1. 在 Next **训练配置** 页准备好配置后点 **加入队列**。
+2. 打开 Next 顶部导航 **训练队列**，进入 `/next/queue`。
+3. 在队列页使用摘要区的 **管理** 打开队列管理台。
 4. 需要时用：
    - **暂停 / 恢复**
    - **失败后** 下拉框

@@ -1,16 +1,14 @@
 # 数据集编辑器
 
 状态：稳定
-适用版本：当前 WebUI 主界面
+适用版本：当前 WebUI Next 工作台 `/next/datasets`
 入口命令：
 
 ```bash
 .venv/bin/python tasks.py web --host 127.0.0.1 --port 20102
 ```
 
-相关代码：
-
-- `web/static/index.html`（`data-tab="datasets"` / `#tab-datasets`）
+- `web/frontend-next/src/features/dataset-editor/`（Next 数据集工作区）
 - `web/services/config/` 中的 dataset 预设读写
 - `tests/test_web_config_datasets.py`
 
@@ -31,7 +29,7 @@
 
 ## 2. 入口
 
-1. 打开顶部导航 **数据集**。
+1. 打开 Next 顶部导航 **数据集蓝图**，进入 `/next/datasets`。
 2. 左侧列表选择一个数据集预设。
 3. 右侧编辑器修改字段。
 4. 点 **保存**。
@@ -64,7 +62,7 @@
 
 ### 通用规则与分组设置
 
-Dragon 数据集页顶部的“通用规则”是新建数据集组的默认基线。修改基线不会
+Next 数据集工作区顶部的“通用规则”是新建数据集组的默认基线。修改基线不会
 隐式覆盖已有组；只有点击“同步到所有组”后，现有组的对应设置才会更新。
 
 保存预设时，WebUI 会将这些基线值独立写入

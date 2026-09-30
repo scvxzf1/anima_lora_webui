@@ -146,7 +146,9 @@ def test_web_access_logger_suppresses_successful_requests_only(monkeypatch) -> N
         SimpleNamespace(path="/ws/training"), SimpleNamespace(status=101), 0.0
     )
     access_logger.log(
-        SimpleNamespace(path="/static/app.js"), SimpleNamespace(status=304), 0.0
+        SimpleNamespace(path="/static/dragon-next/assets/app.js"),
+        SimpleNamespace(status=304),
+        0.0,
     )
     access_logger.log(
         SimpleNamespace(path="/api/training/history"),
