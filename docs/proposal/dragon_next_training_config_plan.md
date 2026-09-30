@@ -215,7 +215,7 @@ DRAGON_VERIFY_URL=http://127.0.0.1:20203 DRAGON_VERIFY_OUTPUT=/tmp/dragon-next-t
 | [TrainingEditor.tsx](../../web/frontend-next/src/features/training-config/TrainingEditor.tsx) | 搜索计数、tab 切换、上下文与字段编辑器 |
 | [stageGroups.ts](../../web/frontend-next/src/features/training-config/stageGroups.ts)、[resourceGroups.ts](../../web/frontend-next/src/features/training-config/resourceGroups.ts) | 簇顺序、默认展开、实验字段归组 |
 | [family_registry.py](../../library/models/family_registry.py)、[compat_matrix.py](../../library/training/compat_matrix.py) | 当前模型族选择能力与最终训练组合约束 |
-| [model-family.js](../../web/static/js/features/config-form/model-family.js)、[config-field-availability.js](../../web/static/js/dragon-ui/pages/config-field-availability.js)、[config-field-disclosure-rules.js](../../web/static/js/dragon-ui/pages/config-field-disclosure-rules.js) | 共享能力、字段依赖与披露；Next 另保留未进旧 catalog 的正式字段 |
+| `model-family.js`、`config-field-availability.js`、`config-field-disclosure-rules.js`（旧 Classic/Dragon 静态实现） | 历史共享能力、字段依赖与披露参考；当前 Next 实施入口见本表上方的 `web/frontend-next/src/features/training-config/` 文件 |
 | [DatasetApplyDialog.tsx](../../web/frontend-next/src/features/dataset-editor/DatasetApplyDialog.tsx)、[editDataset.ts](../../web/frontend-next/src/features/dataset-editor/editDataset.ts) | 已有 Edit 配对及写入 task 的确认流程 |
 | [training-preflight-locate.spec.ts](../../web/frontend-next/e2e/training-preflight-locate.spec.ts) | 已有定位流程与焦点断言，禁用改造需要同步扩展 |
 | [前端工程说明](../../web/frontend-next/README.md)、[任务 wrapper](../../scripts/tasks/web.py) | 隔离测试、构建发布、生产只读检查边界 |

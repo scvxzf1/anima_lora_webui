@@ -50,7 +50,7 @@ _DATASET_IMAGE_LIST_CACHE_TTL_SECONDS = 2.0
 _DATASET_IMAGE_LIST_CACHE_ITEMS = 64
 _DATASET_IMAGE_LIST_CACHE: OrderedDict[
     tuple[str, tuple[str, ...], bool, str],
-    tuple[float, int, tuple[Path, ...]],
+    tuple[float, tuple[object, ...], tuple[Path, ...]],
 ] = OrderedDict()
 _DATASET_IMAGE_LIST_CACHE_LOCK = RLock()
 
@@ -329,11 +329,13 @@ def _dataset_image_files(
         bool(recursive),
         normalized_pattern,
     )
-    directory_mtime_ns = path.stat().st_mtime_ns
+    # Some filesystems coalesce rapid directory mtime updates. Include the
+    # immediate entry names/stat stamps so additions are visible immediately.
+    directory_stamp = _dataset_directory_stamp(path)
     now = monotonic()
     with _DATASET_IMAGE_LIST_CACHE_LOCK:
         cached = _DATASET_IMAGE_LIST_CACHE.get(cache_key)
-        if cached and cached[0] > now and cached[1] == directory_mtime_ns:
+        if cached and cached[0] > now and cached[1] == directory_stamp:
             _DATASET_IMAGE_LIST_CACHE.move_to_end(cache_key)
             return list(cached[2])
 
@@ -349,13 +351,28 @@ def _dataset_image_files(
     with _DATASET_IMAGE_LIST_CACHE_LOCK:
         _DATASET_IMAGE_LIST_CACHE[cache_key] = (
             monotonic() + _DATASET_IMAGE_LIST_CACHE_TTL_SECONDS,
-            directory_mtime_ns,
+            directory_stamp,
             items,
         )
         _DATASET_IMAGE_LIST_CACHE.move_to_end(cache_key)
         while len(_DATASET_IMAGE_LIST_CACHE) > _DATASET_IMAGE_LIST_CACHE_ITEMS:
             _DATASET_IMAGE_LIST_CACHE.popitem(last=False)
     return list(items)
+
+
+def _dataset_directory_stamp(path: Path) -> tuple[object, ...]:
+    """Return a cheap change stamp that catches rapid entry additions/removals."""
+    entries = []
+    try:
+        for entry in path.iterdir():
+            try:
+                stat = entry.stat()
+                entries.append((entry.name, stat.st_mode, stat.st_mtime_ns, stat.st_size))
+            except OSError:
+                entries.append((entry.name, None, None, None))
+    except OSError:
+        return (path.stat().st_mtime_ns, ())
+    return (path.stat().st_mtime_ns, tuple(sorted(entries)))
 
 
 def _count_images(
