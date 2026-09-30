@@ -349,6 +349,12 @@ Next 配置库现通过现有 ZIP API 导出训练配置分组；无需打开详
 - 当前旧静态树仍不能删除：`ui-bootstrap.js` 及旧 `index.html/app.js/style.css/js/css/fonts` 仍由剩余混合测试直接读取，且字段 catalog/disclosure 等共享 domain 测试尚需保留。下一批需先处理这些测试和旧入口链，再做精确白名单删除。
 - 打标旧专属测试仍保留至 prompt/logs/preview/visibility/GPU 等剩余契约完成；P4 尚未结束，P5 未开始，在线 `20203` 未切换，未推送，用户数据和后台任务未改变。
 
+## P4 静态测试门禁收缩（2026-09-30）
+
+- 旧配置静态测试再收缩：Chrome/motion 保留 settings service round-trip；stage catalog/disclosure 改测 Next 直接使用的共享 domain；Krea-2 pipeline 仅保留 4 项后端 preflight；970 行纯旧 Dragon monitor 静态测试删除。相关定向 pytest **18 项**、Next domain **16 项**通过。
+- 旧打标测试暂不删除，因仍缺少资源下载/取消、内置提示词复制、本地类别标签等窄行为证据；本批已补对应真实组件 **4 项**，但旧文件还混有 logs/preview/visibility/GPU 等边界，需继续逐项拆除。
+- 旧 `ui-bootstrap.js` 与 Classic/Dragon 旧入口仍存在，不能提前删除静态树；下一阶段需迁移或删除剩余混合旧测试并验证 `/static/index.html` 不再是运行入口，再按白名单删除旧 index/app/js/css/style/fonts，保留 favicon、chart.js 和 dragon-next 当前/previous 资源。
+
 ## 退役验收范围
 
 | 领域 | 核心验收内容 |

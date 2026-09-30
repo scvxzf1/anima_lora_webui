@@ -8,7 +8,7 @@ import pytest
 
 
 ROOT = Path(__file__).resolve().parents[1]
-STATIC = ROOT / "web" / "static"
+NEXT_DOMAIN = ROOT / "web" / "frontend-next" / "src" / "features" / "training-config" / "domain"
 SNAPSHOT = ROOT / "docs" / "configuration" / "dragon-training-config-215.md"
 GRADIENT_FLOW_KEYS = [
     "gradient_flow_probe_jsonl",
@@ -42,7 +42,7 @@ def test_stage_catalog_covers_frozen_and_current_runtime_fields_once() -> None:
     assert len(frozen) == 215
     assert len(set(frozen)) == 215
     current = [*frozen, *GRADIENT_FLOW_KEYS, *AUTO_RESOURCE_KEYS]
-    module_uri = (STATIC / "js/dragon-ui/pages/config-field-catalog.js").resolve().as_uri()
+    module_uri = (NEXT_DOMAIN / "config-field-catalog.js").resolve().as_uri()
     payload = _node_json(f"""
 const mod = await import({json.dumps(module_uri + '?coverage')});
 const keys = {json.dumps(current)};
@@ -76,30 +76,8 @@ console.log(JSON.stringify({{
     assert payload["unknown"]["cluster"] == "unclassified"
 
 
-def test_stage_catalog_covers_every_layout_candidate() -> None:
-    catalog_uri = (STATIC / "js/dragon-ui/pages/config-field-catalog.js").resolve().as_uri()
-    layout_uri = (STATIC / "js/config/catalog/form-layout.js").resolve().as_uri()
-    payload = _node_json(f"""
-const catalog = await import({json.dumps(catalog_uri + '?layout-coverage')});
-const layout = await import({json.dumps(layout_uri + '?stage-layout-coverage')});
-const keys = [...new Set(layout.FORM_SECTION_DEFS.flatMap((section) => section.keys))];
-console.log(JSON.stringify({{
-  count: keys.length,
-  missing: keys.filter((key) => !catalog.CONFIG_FIELD_CATALOG[key]),
-  hiddenTimestepFields: [
-    catalog.CONFIG_FIELD_CATALOG.timestep_mask_mode?.cluster,
-    catalog.CONFIG_FIELD_CATALOG.timestep_mask_at_inference?.cluster,
-  ],
-}}));
-""")
-
-    assert payload["count"] == 218
-    assert payload["missing"] == []
-    assert payload["hiddenTimestepFields"] == ["orthogonal", "orthogonal"]
-
-
 def test_stage_catalog_rejects_invalid_ownership_and_dependencies() -> None:
-    module_uri = (STATIC / "js/dragon-ui/pages/config-field-catalog.js").resolve().as_uri()
+    module_uri = (NEXT_DOMAIN / "config-field-catalog.js").resolve().as_uri()
     payload = _node_json(f"""
 const mod = await import({json.dumps(module_uri + '?negative-invariants')});
 const entry = (key, stage, cluster, siblingOrder, dependsOn = []) => ({{
@@ -135,7 +113,7 @@ console.log(JSON.stringify(Object.fromEntries(Object.entries(cases).map(([name, 
 
 def test_stage_catalog_drives_deterministic_dependency_order() -> None:
     current = [*_frozen_keys(), *GRADIENT_FLOW_KEYS, *AUTO_RESOURCE_KEYS]
-    module_uri = (STATIC / "js/dragon-ui/pages/config-field-catalog.js").resolve().as_uri()
+    module_uri = (NEXT_DOMAIN / "config-field-catalog.js").resolve().as_uri()
     payload = _node_json(f"""
 const mod = await import({json.dumps(module_uri + '?ordering')});
 const keys = {json.dumps(list(reversed(current)))};
@@ -157,34 +135,3 @@ console.log(JSON.stringify({{ ordered, lokr }}));
     lokr_positions = [index[key] for key in payload["lokr"]]
     assert len(lokr_positions) == 9
     assert lokr_positions == list(range(min(lokr_positions), max(lokr_positions) + 1))
-
-
-def test_block_builder_uses_the_same_four_stage_catalog() -> None:
-    current = [*_frozen_keys(), *GRADIENT_FLOW_KEYS]
-    module_uri = (STATIC / "js/dragon-ui/pages/config-block-metadata.js").resolve().as_uri()
-    payload = _node_json(f"""
-const mod = await import({json.dumps(module_uri + '?stage-builder')});
-const keys = {json.dumps(current)};
-const result = mod.buildConfigBlocks([{{ sub: {{ id: 'advanced' }}, keys }}], {{}}, {{}}, {{}});
-const modelFamily = result.blocks.find((block) => block.key === 'model_family');
-console.log(JSON.stringify({{
-  total: result.blocks.length,
-  unique: new Set(result.blocks.map((block) => block.key)).size,
-  stages: result.chapters.map((stage) => [stage.id, stage.count]),
-  clusterCounts: result.chapters.map((stage) => [stage.id, stage.clusters.length]),
-  modelFamily,
-}}));
-""")
-
-    assert payload["total"] == 218
-    assert payload["unique"] == 218
-    assert payload["stages"] == [
-        ["input", 21],
-        ["method", 105],
-        ["training", 44],
-        ["resources", 48],
-    ]
-    assert all(count > 0 for _, count in payload["clusterCounts"])
-    assert payload["modelFamily"]["stage"] == "input"
-    assert payload["modelFamily"]["cluster"] == "models"
-    assert payload["modelFamily"]["experimental"] is False

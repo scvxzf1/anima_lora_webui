@@ -7,7 +7,7 @@ import pytest
 
 
 ROOT = Path(__file__).resolve().parents[1]
-STATIC = ROOT / "web" / "static"
+NEXT_DOMAIN = ROOT / "web" / "frontend-next" / "src" / "features" / "training-config" / "domain"
 LOKR_KEYS = [
     "lokr_factor",
     "lokr_use_einsum",
@@ -20,41 +20,6 @@ LOKR_KEYS = [
     "lokr_grouped_delta_backward_backend",
 ]
 VERA_KEYS = ["vera_projection_prng_key", "vera_d_initial", "vera_save_projection"]
-COMMON_SCREENSHOT_KEYS = [
-    "output_name",
-    "max_train_epochs",
-    "learning_rate",
-    "save_every_n_epochs",
-    "save_last_n_epochs",
-    "checkpointing_epochs",
-    "checkpointing_last_n_epochs",
-    "network_train_unet_only",
-    "network_dim",
-    "network_alpha",
-    "lora_adapter_kind",
-    "dora_wd",
-    "optimizer_type",
-    "lr_scheduler",
-    "timestep_sampling",
-    "discrete_flow_shift",
-    "log_every_n_steps",
-    "max_train_steps",
-    "train_batch_size",
-    "gradient_accumulation_steps",
-]
-PREVIEW_SCREENSHOT_KEYS = [
-    "sample_prompts",
-    "sample_every_n_epochs",
-    "sample_every_n_steps",
-    "sample_at_first",
-    "sample_sampler",
-]
-
-
-def _read(relative: str) -> str:
-    return (STATIC / relative).read_text(encoding="utf-8")
-
-
 def _node_json(script: str) -> dict:
     if not shutil.which("node"):
         pytest.skip("node is required for Dragon disclosure checks")
@@ -71,7 +36,7 @@ def _node_json(script: str) -> dict:
 
 def test_disclosure_rules_follow_adapter_method_and_family_context() -> None:
     module_uri = (
-        STATIC / "js/dragon-ui/pages/config-field-disclosure-rules.js"
+        NEXT_DOMAIN / "config-field-disclosure-rules.js"
     ).resolve().as_uri()
     payload = _node_json(f"""
 const mod = await import({json.dumps(module_uri + '?matrix')});
@@ -167,10 +132,10 @@ console.log(JSON.stringify({{
 
 def test_unknown_model_family_fails_closed_for_method_and_capability_fields() -> None:
     disclosure_uri = (
-        STATIC / "js/dragon-ui/pages/config-field-disclosure-rules.js"
+        NEXT_DOMAIN / "config-field-disclosure-rules.js"
     ).resolve().as_uri()
     availability_uri = (
-        STATIC / "js/dragon-ui/pages/config-field-availability.js"
+        NEXT_DOMAIN / "config-field-availability.js"
     ).resolve().as_uri()
     payload = _node_json(f"""
 const disclosure = await import({json.dumps(disclosure_uri + '?unknown-family')});
@@ -210,10 +175,10 @@ console.log(JSON.stringify({{
 
 def test_adapter_selector_is_persistent_and_capability_aware() -> None:
     disclosure_uri = (
-        STATIC / "js/dragon-ui/pages/config-field-disclosure-rules.js"
+        NEXT_DOMAIN / "config-field-disclosure-rules.js"
     ).resolve().as_uri()
     availability_uri = (
-        STATIC / "js/dragon-ui/pages/config-field-availability.js"
+        NEXT_DOMAIN / "config-field-availability.js"
     ).resolve().as_uri()
     payload = _node_json(f"""
 const disclosure = await import({json.dumps(disclosure_uri + '?persistent-adapter')});
@@ -249,10 +214,10 @@ console.log(JSON.stringify({{
 
 def test_general_parent_children_stay_visible_and_disable_until_enabled() -> None:
     disclosure_uri = (
-        STATIC / "js/dragon-ui/pages/config-field-disclosure-rules.js"
+        NEXT_DOMAIN / "config-field-disclosure-rules.js"
     ).resolve().as_uri()
     availability_uri = (
-        STATIC / "js/dragon-ui/pages/config-field-availability.js"
+        NEXT_DOMAIN / "config-field-availability.js"
     ).resolve().as_uri()
     payload = _node_json(f"""
 const disclosure = await import({json.dumps(disclosure_uri + '?persistent-parents')});
@@ -325,136 +290,8 @@ console.log(JSON.stringify({{
     assert payload["unknown"]["presentation"]["code"] == "audit-only"
 
 
-def test_screenshot_resource_baseline_is_in_the_default_surface() -> None:
-    tiers_uri = (
-        STATIC / "js/dragon-ui/pages/config-field-tiers.js"
-    ).resolve().as_uri()
-    disclosure_uri = (
-        STATIC / "js/dragon-ui/pages/config-field-disclosure-rules.js"
-    ).resolve().as_uri()
-    catalog_uri = (
-        STATIC / "js/dragon-ui/pages/config-field-catalog.js"
-    ).resolve().as_uri()
-    screenshot_keys = [
-        "pipeline_parallel",
-        "pipeline_parallel_stages",
-        "pipeline_parallel_microbatches",
-        "pipeline_parallel_schedule",
-        "pipeline_parallel_split",
-        "blocks_to_swap",
-        "block_swap_transfer_dtype",
-        "block_swap_restore_mode",
-        "selective_checkpoint",
-        "selective_checkpoint_blocks",
-        "base_compute",
-        "block_swap_profile_jsonl",
-        "memory_probe_jsonl",
-        "memory_probe_max_steps",
-        "peak_probe_jsonl",
-        "peak_probe_max_steps",
-        "peak_probe_level",
-        "preprocess_vae_cache_batch_size",
-        "preprocess_text_cache_batch_size",
-        "preprocess_memory_profile",
-        "preprocess_precision_preference",
-        "reuse_dataset_cache_copy",
-        "reuse_vae_latents",
-        "reuse_text_encoder_cache",
-        "cache_fingerprint_mode",
-        "force_rebuild_preprocess_cache",
-        "gradient_checkpointing",
-        "precision_preference",
-        "lr_warmup_steps",
-        "unsloth_offload_checkpointing",
-        "disable_block_swap_for_eval",
-        "attn_mode",
-        "torch_compile",
-        "compile_block_scope",
-        "use_custom_down_autograd",
-    ]
-    payload = _node_json(f"""
-const tiers = await import({json.dumps(tiers_uri + '?screenshot-default-surface')});
-const disclosure = await import({json.dumps(disclosure_uri + '?screenshot-default-surface')});
-const catalog = await import({json.dumps(catalog_uri + '?screenshot-default-surface')});
-const keys = {json.dumps(screenshot_keys)};
-const context = {{ method: 'lora', adapter: 'lora', modelFamily: 'anima', values: {{}} }};
-console.log(JSON.stringify({{
-  defaultLevel: tiers.normalizeConfigVisibilityLevel(undefined),
-  defaultHidden: keys.filter((key) => !tiers.configFieldVisibleAtLevel(
-    tiers.configFieldVisibilityLevel(key),
-    tiers.normalizeConfigVisibilityLevel(undefined),
-  )),
-  contextHidden: keys.filter((key) => !disclosure.configFieldDisclosure(key, context).visible),
-  missingOwners: keys.filter((key) => !catalog.CONFIG_FIELD_CATALOG[key]),
-}}));
-""")
-
-    assert payload == {
-        "defaultLevel": "beginner",
-        "defaultHidden": [],
-        "contextHidden": [],
-        "missingOwners": [],
-    }
-
-
-def test_screenshot_common_baseline_respects_z_image_disclosure() -> None:
-    tiers_uri = (
-        STATIC / "js/dragon-ui/pages/config-field-tiers.js"
-    ).resolve().as_uri()
-    disclosure_uri = (
-        STATIC / "js/dragon-ui/pages/config-field-disclosure-rules.js"
-    ).resolve().as_uri()
-    availability_uri = (
-        STATIC / "js/dragon-ui/pages/config-field-availability.js"
-    ).resolve().as_uri()
-    payload = _node_json(f"""
-const tiers = await import({json.dumps(tiers_uri + '?common-screenshot')});
-const disclosure = await import({json.dumps(disclosure_uri + '?common-screenshot')});
-const availability = await import({json.dumps(availability_uri + '?common-screenshot')});
-const keys = {json.dumps(COMMON_SCREENSHOT_KEYS)};
-const context = {{ method: 'lora', adapter: 'lora', modelFamily: 'z_image', values: {{}} }};
-console.log(JSON.stringify({{
-  defaultHidden: keys.filter((key) => !tiers.configFieldVisibleAtLevel(
-    tiers.configFieldVisibilityLevel(key),
-    tiers.normalizeConfigVisibilityLevel(undefined),
-  )),
-  contextHidden: keys.filter((key) => !disclosure.configFieldDisclosure(key, context).visible),
-  adapterAvailability: availability.configFieldAvailability('lora_adapter_kind', context),
-}}));
-""")
-
-    assert payload["defaultHidden"] == []
-    assert payload["contextHidden"] == []
-    assert payload["adapterAvailability"]["enabled"] is True
-    assert payload["adapterAvailability"]["code"] is None
-
-
-def test_screenshot_preview_baseline_is_in_the_default_surface() -> None:
-    tiers_uri = (
-        STATIC / "js/dragon-ui/pages/config-field-tiers.js"
-    ).resolve().as_uri()
-    disclosure_uri = (
-        STATIC / "js/dragon-ui/pages/config-field-disclosure-rules.js"
-    ).resolve().as_uri()
-    payload = _node_json(f"""
-const tiers = await import({json.dumps(tiers_uri + '?preview-screenshot')});
-const disclosure = await import({json.dumps(disclosure_uri + '?preview-screenshot')});
-const keys = {json.dumps(PREVIEW_SCREENSHOT_KEYS)};
-const context = {{ method: 'lora', adapter: 'lora', modelFamily: 'z_image', values: {{}} }};
-console.log(JSON.stringify({{
-  defaultHidden: keys.filter((key) => !tiers.configFieldVisibleAtLevel(
-    tiers.configFieldVisibilityLevel(key),
-    tiers.normalizeConfigVisibilityLevel(undefined),
-  )),
-  contextHidden: keys.filter((key) => !disclosure.configFieldDisclosure(key, context).visible),
-}}));
-""")
-
-    assert payload == {"defaultHidden": [], "contextHidden": []}
-
-
 def test_hidden_adapter_drafts_remain_in_patch_and_preserve_network_args() -> None:
-    module_uri = (STATIC / "js/dragon-ui/pages/config-values.js").resolve().as_uri()
+    module_uri = (NEXT_DOMAIN / "config-values.js").resolve().as_uri()
     payload = _node_json(f"""
 const mod = await import({json.dumps(module_uri + '?hidden-draft')});
 const baselineValues = {{
@@ -483,35 +320,8 @@ console.log(JSON.stringify({{ raw, patch: mod.prepareConfigPatch(raw, baselineVa
     ]
 
 
-def test_disclosure_state_is_wired_without_removing_fields_from_scope() -> None:
-    page = _read("js/dragon-ui/pages/config-page.js")
-    view = _read("js/dragon-ui/pages/config-all-view.js")
-    controls = _read("js/dragon-ui/pages/config-visibility-controls.js")
-    dirty = _read("js/dragon-ui/pages/config-dirty-state.js")
-
-    assert "configFieldDisclosure(key, availabilityContext)" in page
-    assert "|| (availabilityContext ? configFieldDisclosure(key, availabilityContext) : null)" in page
-    assert "const presentationAttributes = presentation" in page
-    assert "data-config-presentation-visible" in page
-    field_filter = _read("js/dragon-ui/pages/config-field-filter.js")
-    assert "const matchesPresentation = revealHidden || presentationVisible" in field_filter
-    assert "if (field.classList.contains('dragon-config-block')) {\n            field.dataset.configPresentationVisible" not in page
-    assert "state?.showAllCandidates || state?.showChangedOnly" in field_filter
-    assert "collectConfigDraftChanges(state)" in page
-    assert "configFieldAvailability(key, state.availabilityContext).enabled" not in page
-    assert ".dragon-config-unavailable-badge:not(.dragon-config-disclosure-badge)" in page
-    assert "availability.enabled === false || presentation.visible === false" in page
-    assert "syncConfigFieldAvailability(wrapper, state, trainingContext)" in page
-    assert "data-config-show-all-candidates" in view
-    assert "适用 ${applicable} / 候选 ${total}" in view
-    assert "state.showAllCandidates = !Boolean(state.showAllCandidates)" in controls
-    assert "configPresentationVisible === 'false'" in dirty
-
-
 def test_shared_preview_and_method_fields_are_not_disabled_by_overlapping_sets() -> None:
-    module_uri = (
-        STATIC / "js/dragon-ui/pages/config-field-availability.js"
-    ).resolve().as_uri()
+    module_uri = (NEXT_DOMAIN / "config-field-availability.js").resolve().as_uri()
     payload = _node_json(f"""
 const mod = await import({json.dumps(module_uri + '?shared-method-fields')});
 const check = (key, method) => mod.configFieldAvailability(key, {{
