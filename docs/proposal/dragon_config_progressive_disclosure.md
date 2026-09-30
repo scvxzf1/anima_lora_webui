@@ -566,16 +566,16 @@ Dragon 训练配置页现在对未知模型族 fail closed：模型族值本身�
 
 ## 历史代码抓手与当前入口
 
-以下 `web/static/js/` 路径来自旧 Classic/Dragon 静态界面的实现快照，保留用于
+以下旧 catalog/Dragon 模块文件名来自 Classic/Dragon 静态界面的实现快照，保留用于
 解释原有分类、披露和兼容行为；新配置工作台的实施入口是
 `web/frontend-next/src/features/training-config/`，不能将旧文件当作 Next 的当前事实源。
 
-- 五分类（历史快照）：`web/static/js/config/catalog/form-category-defs.js`
-- 字段章节与顺序（历史快照）：`web/static/js/config/catalog/form-layout.js`
-- 八章节聚合（历史快照）：`web/static/js/dragon-ui/pages/config-block-metadata.js`
-- 静态等级（历史快照）：`web/static/js/dragon-ui/pages/config-field-tiers.js`
-- 动态可用性（历史快照）：`web/static/js/dragon-ui/pages/config-field-availability.js`
-- 页面上下文与过滤（历史快照）：`web/static/js/dragon-ui/pages/config-page.js`
-- 可见性偏好（历史快照）：`web/static/js/dragon-ui/pages/config-ui-preferences.js`
+- 五分类（历史快照）：旧 `form-category-defs.js`
+- 字段章节与顺序（历史快照）：旧 `form-layout.js`
+- 八章节聚合（历史快照）：旧 `config-block-metadata.js`
+- 静态等级（历史快照）：旧 `config-field-tiers.js`
+- 动态可用性（历史快照）：旧 `config-field-availability.js`
+- 页面上下文与过滤（历史快照）：旧 `config-page.js`
+- 可见性偏好（历史快照）：旧 `config-ui-preferences.js`
 - 当前 Next 字段目录与披露实现：`web/frontend-next/src/features/training-config/`
 - 模型族能力：`library/models/family_registry.py`

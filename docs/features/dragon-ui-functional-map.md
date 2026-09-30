@@ -409,20 +409,20 @@ flowchart TD
 
 | 事实 | 源码入口 / 定位 |
 | --- | --- |
-| 七个主导航、两个快捷入口 | `web/static/js/dragon-ui/nav.js`，`PRIMARY_NAV_ITEMS` / `NAV_SHORTCUTS` |
-| 业务页与辅助页路由 | `web/static/js/dragon-ui/page-loaders.js`，`createDragonPageLoaders()` |
-| 配置保存、模型值进入草稿 | `web/static/js/dragon-ui/pages/config-page.js`，约 1231、1294 行 |
-| 保存后预检、入队暂停、启动跳转 | `web/static/js/dragon-ui/pages/training-controls.js`，`runTrainingAction()`，约 236 行 |
-| 数据蓝图保存和应用 | `web/static/js/dragon-ui/pages/dataset-editor.js`，约 710 行；`/dataset-presets/apply` |
-| 模型库的 revision 保存 | `web/static/js/dragon-ui/pages/model-config.js`，约 440 行 |
-| 实时指标、日志工具与停止提示 | `web/static/js/dragon-ui/pages/live-training-view.js`，`renderLiveTrainingPage()` / `renderConsole()` |
-| 队列操作的文件保留语义 | `web/static/js/dragon-ui/pages/queue.js`，约 184、226、275 行；[queue_control.py](../../web/services/training/queue_control.py) |
+| 七个主导航、两个快捷入口 | 历史 `nav.js`，`PRIMARY_NAV_ITEMS` / `NAV_SHORTCUTS` |
+| 业务页与辅助页路由 | 历史 `page-loaders.js`，`createDragonPageLoaders()` |
+| 配置保存、模型值进入草稿 | 历史 `config-page.js`，约 1231、1294 行 |
+| 保存后预检、入队暂停、启动跳转 | 历史 `training-controls.js`，`runTrainingAction()`，约 236 行 |
+| 数据蓝图保存和应用 | 历史 `dataset-editor.js`，约 710 行；`/dataset-presets/apply` |
+| 模型库的 revision 保存 | 历史 `model-config.js`，约 440 行 |
+| 实时指标、日志工具与停止提示 | 历史 `live-training-view.js`，`renderLiveTrainingPage()` / `renderConsole()` |
+| 队列操作的文件保留语义 | 历史 `queue.js`，约 184、226、275 行；[queue_control.py](../../web/services/training/queue_control.py) |
 | 入队冻结与运行蓝图 | [queue_enqueue.py](../../web/services/training/queue_enqueue.py)，`enqueue_training()`；[runtime_prepare.py](../../web/services/training/runtime_prepare.py)，约 196 行 |
-| 历史合并查看切 classic | `web/static/js/dragon-ui/pages/history.js`，`data-history-classic` 处理器，约 84 行 |
-| 删除历史分组不删任务 | `web/static/js/dragon-ui/pages/history-collections-controller.js`，`deleteCollection()`，约 244 行 |
-| 历史续训使用快照和检查点 | `web/static/js/dragon-ui/pages/history-detail.js`，约 230 行；[history_resume.py](../../web/services/training/history_resume.py) |
-| 打标子流程与候选写回 | `web/static/js/dragon-ui/pages/tagging.js`、`web/static/js/dragon-ui/pages/tagging-results-page.js`；[storage.py](../../web/services/tagging/storage.py)，`image.with_suffix(".txt")` |
-| 全局设置四组字段 | `web/static/js/dragon-ui/pages/global-settings.js`，`SETTING_GROUPS` |
+| 历史合并查看切 classic | 历史 `history.js`，`data-history-classic` 处理器，约 84 行 |
+| 删除历史分组不删任务 | 历史 `history-collections-controller.js`，`deleteCollection()`，约 244 行 |
+| 历史续训使用快照和检查点 | 历史 `history-detail.js`，约 230 行；[history_resume.py](../../web/services/training/history_resume.py) |
+| 打标子流程与候选写回 | 历史 `tagging.js`、`tagging-results-page.js`；[storage.py](../../web/services/tagging/storage.py)，`image.with_suffix(".txt")` |
+| 全局设置四组字段 | 历史 `global-settings.js`，`SETTING_GROUPS` |
 
 相关说明：
 

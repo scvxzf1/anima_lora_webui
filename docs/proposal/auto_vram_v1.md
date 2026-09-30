@@ -11,7 +11,7 @@
 - `library/training/loop.py`
 - `library/training/memory_probe.py`
 - `library/training/compat_matrix.py`
-- `web/static/js/config/catalog/form-layout.js`（旧 Classic/Dragon 静态界面的历史抓手；当前配置工作台入口为 `web/frontend-next/`）
+- 旧 catalog 的 `form-layout.js`（Classic/Dragon 静态界面的历史抓手；当前配置工作台入口为 `web/frontend-next/`）
 
 ---
 

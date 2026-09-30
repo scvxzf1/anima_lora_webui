@@ -459,7 +459,7 @@ timeout 60 .venv/bin/python -m pytest tests/test_documentation_integrity.py -q
 | 主题 | 文件与符号 |
 | --- | --- |
 | 功能清单 | [Dragon UI 功能图谱](../features/dragon-ui-functional-map.md) |
-| 旧界面与回退（历史） | [Dragon UI 指南](../features/dragon-ui.md)、`web/static/js/ui-bootstrap.js`（已退役源码定位，仅供历史对照） |
+| 旧界面与回退（历史） | [Dragon UI 指南](../features/dragon-ui.md)、旧 `ui-bootstrap.js`（已退役源码定位，仅供历史对照） |
 | 现有 React 工程 | [package.json](../../web/frontend-next/package.json)、[vite.config.ts](../../web/frontend-next/vite.config.ts)、[router.tsx](../../web/frontend-next/src/app/router.tsx) |
 | 静态入口与认证 | [server.py](../../web/server.py)，`next_index_handler`、`static_handler` |
 | 配置/数据接口 | [config.py](../../web/routes/config.py)，raw、dataset-presets、apply、file-groups |
