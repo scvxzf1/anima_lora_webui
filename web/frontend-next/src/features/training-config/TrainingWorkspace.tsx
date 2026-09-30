@@ -11,6 +11,7 @@ import { TrainingLaunchDialog } from "./TrainingLaunchDialog";
 import { TrainingRawEditor } from "./TrainingRawEditor";
 import { TrainingSamplePrompts } from "./TrainingExtras";
 import { InlineConfirmDialog } from "../../components/InlineConfirmDialog";
+import { useTrainingHotstart } from "./useTrainingHotstart";
 import {
   invalidateTrainingQueries,
   useTrainingWorkspace,
@@ -67,6 +68,17 @@ export function TrainingWorkspace() {
     locked,
     busy,
   } = state;
+  const hotstart = useTrainingHotstart({
+    file: selectedFile,
+    preset: context.selectedPreset,
+    hydrated: state.hydratedKey === `${selectedFile?.path || ""}\0${context.selectedPreset}` && !context.isPending && !rawQuery.isFetching && !context.mergedConfigIsFetching,
+    unavailable: !context.selectedFileAvailable || locked || Boolean(context.error || rawQuery.error),
+    busy,
+    dirty,
+    mergedConfig,
+    draft: state.draft,
+    setDraft: state.setDraft,
+  });
   return (
     <div className="training-config-shell">
       <main className="training-config-page">
@@ -234,6 +246,15 @@ export function TrainingWorkspace() {
           onConfirm={confirmContextSwitch}
         />
       ) : null}
+      {hotstart.intent && hotstart.status === "ready" && <InlineConfirmDialog
+        title="应用热启动权重到草稿？"
+        message={`${hotstart.intent.configFile} / ${hotstart.intent.preset}：只设置权重路径，从 step 0 开始，不恢复优化器、调度器或训练步数。兼容性检查基于已保存配置。${hotstart.dirty ? "当前其它未保存草稿修改会保留，但不属于此次兼容性检查范围。" : ""}不会自动保存或启动。`}
+        confirmLabel="应用到草稿"
+        onCancel={hotstart.cancel}
+        onConfirm={hotstart.apply}
+      />}
+      {hotstart.intent && hotstart.status === "checking" && <p role="status">正在重新检查热启动权重</p>}
+      {hotstart.status === "error" && <p role="alert">{hotstart.error} {hotstart.intent && <><button type="button" onClick={hotstart.retry}>重试检查</button><button type="button" onClick={hotstart.cancel}>取消热启动</button></>}</p>}
     </div>
   );
 }

@@ -124,7 +124,7 @@ export function useTrainingWorkspace() {
     }
   }, [draft, baseline, fields, mergedConfig]);
   const changes = patch.values;
-  const dirty = fields.some(
+  const dirty = !sameTrainingValue(draft.resume, baseline.resume, "text") || fields.some(
     (field) =>
       !sameTrainingValue(draft[field.key], baseline[field.key], field.kind),
   );

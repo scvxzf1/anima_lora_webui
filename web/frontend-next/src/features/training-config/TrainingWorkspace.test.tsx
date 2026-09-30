@@ -15,6 +15,7 @@ import { trainingContextKeys } from "../../api/trainingContext";
 import { trainingConfigKeys } from "./api";
 import { useTrainingContextStore } from "../../app/trainingContextStore";
 import { TrainingWorkspace } from "./TrainingWorkspace";
+import { useHotstartIntent } from "./hotstartIntent";
 import { TRAINING_DETAILED_MANAGEMENT_KEY } from "./TrainingConfigLibrary";
 
 function renderWorkspace() {
@@ -236,7 +237,42 @@ describe("TrainingWorkspace", () => {
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
     window.localStorage.clear();
+    useHotstartIntent.setState({ intent: null });
   });
+
+  it("clears saved resume even when the hotstart weight already matches, without auto-saving", async () => {
+    const baseFetch = createFetchMock();
+    const weight = "/output/weight.safetensors";
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.startsWith("/api/config/merged?")) {
+        const response = await baseFetch(input, init);
+        return jsonResponse({ ...await response.json(), network_weights: weight, resume: "/output/old-state" });
+      }
+      if (url === "/api/training/continue-lora/inspect")
+        return jsonResponse({ ok: true, compatible: true, abs_path: weight, kind: "LoRA" });
+      return baseFetch(input, init);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    useTrainingContextStore.setState({ configFile: "configs/imported/train.toml", preset: "default" });
+    const user = userEvent.setup();
+    renderWorkspace();
+    await user.click(screen.getByRole("tab", { name: "训练计划" }));
+    const output = await screen.findByLabelText("输出名称");
+    await waitFor(() => expect(output).toBeEnabled());
+    await user.clear(output);
+    await user.type(output, "other-draft-change");
+    const offer = () => useHotstartIntent.getState().offer({ configFile: "configs/imported/train.toml", preset: "default", variant: "lora", subdir: "imported", path: weight });
+    act(offer);
+    await user.click(await screen.findByRole("button", { name: "取消" }));
+    expect(output).toHaveValue("other-draft-change");
+    act(offer);
+    await user.click(await screen.findByRole("button", { name: "应用到草稿" }));
+    expect(fetchMock.mock.calls.some(([url, init]) => String(url) === "/api/config/raw" && init?.method === "PATCH")).toBe(false);
+    expect(screen.getByText("有未保存修改")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "保存配置" }));
+    await waitFor(() => expect(requestBody(fetchMock, "/api/config/raw", "PATCH").values).toEqual({ output_name: "other-draft-change", resume: "" }));
+  }, 15_000);
 
   it("shows source-aware merged values without exposing a start action", async () => {
     vi.stubGlobal("fetch", createFetchMock());

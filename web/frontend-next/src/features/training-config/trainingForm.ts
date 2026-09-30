@@ -358,12 +358,15 @@ export function draftFromMerged(
   config: Record<string, unknown>,
   fields = TRAINING_FIELDS,
 ): TrainingDraft {
-  return Object.fromEntries(
+  const draft = Object.fromEntries(
     fields.map((field) => [
       field.key,
       formValue(field, displayConfigValue(field.key, config)),
     ]),
   ) as TrainingDraft;
+  // Resume is not a form control, but hotstart must be able to clear a saved resume.
+  if (typeof config.resume === "string") draft.resume = config.resume;
+  return draft;
 }
 
 export function restoreKnownFormDefaults(

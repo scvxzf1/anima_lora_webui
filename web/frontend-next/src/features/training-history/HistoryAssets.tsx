@@ -6,6 +6,7 @@ import { finiteNumber } from "../../components/trainingNumbers";
 import { AssetPagination } from "./AssetPagination";
 import { HistoryImageDialog } from "./HistoryImageDialog";
 import { HistoryArtifacts } from "./HistoryArtifacts";
+import { HistoryHotstart } from "./HistoryHotstart";
 import { fetchHistoryImages, fetchHistoryWeights, historyAssetUrl } from "./api";
 
 export function HistoryAssets({ taskId }: { taskId: string }) {
@@ -59,6 +60,7 @@ function TaskAssets({ taskId }: { taskId: string }) {
         <button type="button" aria-label={`复制 ${weight.name} 的本地路径`} title={weight.abs_path ? "复制本地路径" : "本地绝对路径不可用"} disabled={!weight.abs_path} onClick={() => void copyWeightPath(weight.abs_path || "", weight.name, setCopyStatus)}>
           <Copy aria-hidden="true" size={15} />
         </button>
+        <HistoryHotstart weight={weight} />
       </div>)}
     </div>
     <p className="history-copy-status" role="status" aria-live="polite">{copyStatus}</p>
