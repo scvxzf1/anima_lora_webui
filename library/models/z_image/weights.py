@@ -235,6 +235,21 @@ def load_z_image_vae(path: str, *, dtype: torch.dtype, device="cpu"):
 def load_z_image_transformer(path: str, *, dtype: torch.dtype, device="cpu"):
     from diffusers import ZImageTransformer2DModel
 
+    from library.quantization.format import inspect_mixed_nf4
+
+    if inspect_mixed_nf4(path, family="z_image") is not None:
+        from library.quantization.mixed_nf4 import load_mixed_nf4_into
+
+        if dtype != torch.bfloat16:
+            raise ValueError("Mixed NF4 requires BF16 compute")
+        config = ZImageTransformer2DModel.load_config(str(CONFIG_ROOT / "transformer"))
+        with torch.device("meta"):
+            model = ZImageTransformer2DModel.from_config(config)
+        load_mixed_nf4_into(model, path, family="z_image", dtype=dtype, device=device)
+        # The official rope embedder computes CPU frequencies lazily, outside meta.
+        validate_z_image_component_config(model, "transformer")
+        return model
+
     checkpoint = _single_file(path)
     model = (
         _from_single_file(ZImageTransformer2DModel, checkpoint, "transformer", dtype)

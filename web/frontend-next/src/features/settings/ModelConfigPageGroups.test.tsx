@@ -96,4 +96,21 @@ describe("model config group deletion", () => {
     await user.click(deleteButton);
     expect(screen.getByRole("button", { name: "唯一分组" })).toBeInTheDocument();
   });
+
+  it("opens an in-page rename dialog and saves the renamed group", async () => {
+    const fetchMock = installFetch(groupedConfig);
+    const user = userEvent.setup();
+    renderInApp(<ModelConfigPage />);
+
+    await screen.findByRole("button", { name: /Model A/ });
+    await user.click(screen.getAllByTitle("重命名分组")[0]);
+    const input = screen.getByRole("textbox", { name: "分组名称" });
+    await user.clear(input);
+    await user.type(input, "训练模型");
+    await user.click(screen.getByRole("button", { name: "确定" }));
+    await user.click(screen.getByRole("button", { name: "保存模型配置" }));
+
+    const put = fetchMock.mock.calls.find(([, init]) => init?.method === "PUT");
+    expect(JSON.parse(String(put?.[1]?.body)).groups[0].label).toBe("训练模型");
+  });
 });

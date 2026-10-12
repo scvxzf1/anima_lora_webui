@@ -1,4 +1,5 @@
 from contextlib import nullcontext
+from functools import partial
 import json
 from pathlib import Path
 from types import SimpleNamespace
@@ -265,12 +266,60 @@ class SwapModel(torch.nn.Module):
     def __init__(self):
         super().__init__()
         self.switches = []
+        self.prepares = []
+        self.forward_only = False
+
+    def prepare_block_swap_before_forward(self):
+        self.prepares.append(self.forward_only)
 
     def switch_block_swap_for_inference(self):
         self.switches.append("inference")
+        self.forward_only = True
+        self.prepare_block_swap_before_forward()
 
     def switch_block_swap_for_training(self):
         self.switches.append("training")
+        self.forward_only = False
+        self.prepare_block_swap_before_forward()
+
+
+@pytest.mark.parametrize("fail", [False, True])
+def test_local_sample_reuses_swap_layout_across_steps_cfg_and_prompts(tmp_path, monkeypatch, fail):
+    dit, network = SwapModel(), torch.nn.Linear(1, 1)
+    accelerator = SimpleNamespace(device=torch.device("cpu"), autocast=nullcontext)
+    args = SimpleNamespace(output_dir=str(tmp_path), seed=12, output_name="test")
+    prompts = [{"prompt": f"test {index}", "enum": index, "width": 64, "height": 64,
+                "sample_steps": 28, "guidance_scale": 3, "negative_prompt": "avoid"}
+               for index in range(2)]
+    positive = (torch.ones(1, 2, 3), torch.ones(1, 2), torch.zeros(1, 2))
+    negative = (torch.zeros(1, 2, 3), torch.ones(1, 2), torch.zeros(1, 2))
+    outputs = {preview_conditions.condition_key(prompt, negative=negative_condition): values
+               for prompt in prompts for negative_condition, values in ((False, positive), (True, negative))}
+    calls = []
+
+    def forward(model, latent, text, mask, sigma, **kwargs):
+        assert model is dit and not dit.training and not network.training
+        assert dit.forward_only and dit.prepares == [True]
+        calls.append(float(text.mean()))
+        if fail and len(calls) == 58:
+            raise RuntimeError("second prompt failed")
+        return torch.ones_like(latent) * text.mean()
+
+    monkeypatch.setattr(training_preview, "prepare_dtype", lambda args: (torch.float32, None))
+    monkeypatch.setattr(training_preview, "generate_preview", partial(sampling.generate_preview, forward=forward))
+    state = torch.random.get_rng_state().clone()
+    if fail:
+        with pytest.raises(RuntimeError, match="second prompt failed"):
+            training_preview._sample_local(accelerator, args, dit, network, prompts, outputs, None, 5)
+    else:
+        training_preview._sample_local(accelerator, args, dit, network, prompts, outputs, None, 5)
+
+    assert calls == [1.0, 0.0] * (29 if fail else 56)
+    assert dit.switches == ["inference", "training"]
+    assert dit.prepares == [True, False] and not dit.forward_only
+    assert dit.training and network.training
+    assert torch.equal(state, torch.random.get_rng_state())
+    assert len(list((tmp_path / "sample" / "latents").glob("*.pt"))) == (1 if fail else 2)
 
 
 @pytest.mark.parametrize("fail", [False, True])
@@ -345,6 +394,7 @@ def test_local_sample_allows_missing_negative_cache(tmp_path, monkeypatch):
 
 
 class FakeVAE:
+    use_tiling = False
     device = torch.device("cpu")
     dtype = torch.float32
     config = SimpleNamespace(latents_mean=[2.0] * 64, latents_std=[3.0] * 64)

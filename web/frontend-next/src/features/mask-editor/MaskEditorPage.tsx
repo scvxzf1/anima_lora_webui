@@ -94,8 +94,8 @@ export function MaskEditorPage({ embedded = false }: { embedded?: boolean }) {
     </div>}
     {page.data?.readonly && <p className="mask-error" role="status">此数据集已锁定或只读</p>}
     <div className="mask-workspace">
-      {page.data && <MaskImageList page={page.data} selected={imageFile} disabled={busy}
-        onSelect={value => { if (value !== imageFile) void switchTo(() => { setSelected(value); setShowImages(false); }, '切换图片'); }}
+      {page.data && showImages && <MaskImageList page={page.data} selected={imageFile} disabled={busy}
+        onSelect={value => { if (value !== imageFile) void switchTo(() => setSelected(value), '切换图片'); }}
         onPage={value => void switchTo(() => { setOffset(value); setSelected(''); }, '翻页')} />}
       <section className="mask-canvas-area" aria-label="编辑区域" aria-busy={editor.loading}>
         {editor.engine ? <MaskViewport ref={viewport} engine={editor.engine} tool={tool} size={size}

@@ -6,6 +6,7 @@ export function trapDialogFocus(event: KeyboardEvent, container: HTMLElement | n
     'input:not([disabled])',
     'select:not([disabled])',
     'textarea:not([disabled])',
+    'summary:not([tabindex="-1"])',
     '[tabindex]:not([tabindex="-1"])',
   ].join(','))).filter((element) => !element.hasAttribute('hidden'));
   if (!focusable.length) return;

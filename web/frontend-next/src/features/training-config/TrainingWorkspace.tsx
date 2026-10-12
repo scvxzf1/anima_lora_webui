@@ -18,6 +18,12 @@ import {
 } from "./useTrainingWorkspace";
 import "./TrainingWorkspace.css";
 import "./TrainingWorkspaceLayout.css";
+import "./TrainingButtons.css";
+import "./TrainingFormEnhancements.css";
+import "./TrainingAnimations.css";
+import "./TrainingColors.css";
+import "./TrainingResponsive.css";
+import "./TrainingMicroInteractions.css";
 
 export function TrainingWorkspace() {
   const state = useTrainingWorkspace();

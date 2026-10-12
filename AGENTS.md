@@ -44,14 +44,18 @@
 ## 子代理委派与模型
 
 - 主代理可在用户已授权的任务范围内自主规划和委派探索、数学推导、代码实现、测试及独立验收，无需逐次申请委派许可；不再限定子代理只能探索或使用默认角色。
-- 子代理模型仅限当前环境可用的最新版本 Sol 和 Luna，不固定旧版本模型 ID。
-  派生前依据工具提供的模型列表、版本及别名说明确认所选系列的最新可用模型，显式指定
-  完整 `model` ID；主代理按复杂度选择角色及推理强度，简单任务优先 Luna，复杂实现和关键验收优先 Sol。
-- 不得使用会将模型锁定或覆盖为其他系列或旧版本的角色，不得静默回退。
-  若无法确认最新版本或所选模型不可用，先说明限制并请求用户选择，不自行改用旧版本或其他系列。
+- 子代理模型仅允许 `gpt-6.1-sol` 和 `gpt-6-luna`，不得自动改用其他版本。
+  派生前依据工具提供的模型列表确认所选模型可用，显式指定完整 `model` ID；主代理在此白名单内
+  按复杂度选择角色及推理强度，简单任务优先 `gpt-6-luna`，复杂实现、数学推导和关键验收优先 `gpt-6.1-sol`。
+- 不得使用会将模型锁定或覆盖为白名单之外模型的角色，不得静默回退。
+  若无法确认所选模型可用或所选模型不可用，先说明限制并请求用户选择，不自行改用其他模型。
   保持 `fork_turns="none"`，通过自包含任务说明交接，减少重复上下文与主线程重复阅读。
 - 实现任务必须明确文件归属、接口契约和验收条件；子代理必须保护他人改动。多代理并行写入遵守下文独立工作树规则。
-- 实现者负责开发自测，关键改动由不同代理独立验收；主代理负责集成、审阅关键差异与验证证据并给出最终结论。
+- 实现者负责必要的局部自查；仅在下文「验证策略」列出的关键风险或明确的发布要求下，
+  将独立验收作为交付条件。普通改动不默认再派测试代理；主代理负责集成、审阅关键差异与已有证据。
+- 测试/验收代理默认允许异步工作，主代理继续推进不依赖其结果的开发、集成和文档工作。
+  只在当前决定确实依赖验收结果、命中关键风险或准备发布时等待；普通开发交付可明确标注待验收项。
+  关键风险的独立验收由不同于实现者的代理承担，也可以安排在集中的验收阶段。
 
 ## 反上帝代码守则
 
@@ -71,13 +75,13 @@
   - 为什么必须改热点文件。
   - 为什么不能放到新模块。
   - 后续如何继续瘦身。
-  - 跑了哪些定向测试。
+  - 做了哪些必要检查，还有哪些待验收项。
 - 单个新增 Python 函数建议不超过 100 行；超过时优先拆成 helper、pipeline step 或策略对象。
 - 单个新增 Python 类建议不超过 400 行；超过时优先按状态、IO、策略、验证、保存/加载拆分。
 - 单个新增 JS 函数建议不超过 80 行；新增 UI 逻辑必须按 feature、store、api、renderer 拆分。
 - 单个新增测试文件建议不超过 1200 行；超过时按领域拆成多个测试文件，不要继续加大现有超大测试。
 - 已超过 1000 行的源码或测试文件，除搬迁、兼容 shim、删除旧逻辑外，默认不继续承载新业务。
-- 重构优先采用“搬家型重构”：先保持行为不变地抽模块，再补测试和清理旧 facade；不要一轮同时改架构和改行为。
+- 重构优先采用“搬家型重构”：先保持行为不变地抽模块，再按实际风险复用或补充验证并清理旧 facade；不要一轮同时改架构和改行为。
 - 新增配置、CLI、adapter、WebUI 表单或队列/历史行为时，必须同步考虑文档入口、测试入口和旧兼容面，避免逻辑散落。
 
 ## 环境和命令入口
@@ -97,7 +101,7 @@
 - `python tasks.py <command> KEY=value` 支持 Make 风格尾随环境变量，例如：
   `python tasks.py print-config METHOD=lora PRESET=default`。
 - 实验命令通常以 `exp-*` 开头，可能变动或删除。修改时同步检查实验任务实现、配置、文档和测试。
-- 常用维护入口：
+- 常用维护入口（测试命令按下文「验证策略」选用，不作为每次开发的固定步骤）：
   - WebUI：`.venv/bin/python tasks.py web --host 127.0.0.1 --port 20102`
   - 单元测试：`timeout 60 .venv/bin/python -m pytest tests/<test_file>.py`
   - 快速反馈：`timeout 60 .venv/bin/python tasks.py test-fast`
@@ -144,13 +148,13 @@
 - 推送前至少检查：`git status --short --branch`、`git fetch <target-remote> --prune`、
   对日常分支使用 `git rev-list --left-right --count HEAD...<target-remote>/dev`，对发布分支
   使用对应的 `main` 比较，并查看 `git log --oneline <target-remote>/<branch>..HEAD`，再跑
-  与改动直接相关的测试。
+  按下文「验证策略」选定的必要检查。
 - 未跟踪文件默认不随推送发布，除非用户明确要求或本次任务确认需要纳入版本控制。
 - 用户要求直接“推送更新到线上”但未指定分支时，默认目标是 `<target-remote> dev:dev`；明确
   发布时才使用 `<target-remote> main:main`。若当前身份没有写权限，使用个人 fork 分支和 PR，
   不要因此把个人 fork 改称线上主仓。完成后汇报仓库、remote、分支、最新提交 hash，以及是否
   还有未提交或未跟踪改动。
-- 发布 `main` 前应先将 `dev` 的提交通过 review/定向测试，再使用 fast-forward 或普通 PR 合入；
+- 发布 `main` 前应先将 `dev` 的提交通过 review，并完成与风险和发布要求对应的定向验收，再使用 fast-forward 或普通 PR 合入；
   不要为了绕过分支差异强推。逻辑相关的代码、测试和文档可拆成独立提交，但每个提交都必须
   保持可解释、可验证。
 - 暂存时使用明确的路径白名单，不要在含有本机设置、模型路径、训练历史、队列、日志、导入
@@ -533,14 +537,16 @@ T-LoRA mask 是共享 buffer，每个 denoising step 更新一次。
 - 工作台复用共享 HTTP API；打标 provider 凭据与调用必须留在服务端，审核草稿和写回
   任务不并入训练队列。
 
-前端验证优先使用 `.venv/bin/python tasks.py web-next-check`（typecheck 和单元测试）
-与 `web-next-e2e`，部署构建使用 `web-next-build`；维护执行使用原生命令。
+前端开发按改动需要做类型检查或构建，低风险文案、样式和局部 UI 修改不默认新增测试或运行 E2E。
+需要类型检查和单元测试的集中检查时使用 `.venv/bin/python tasks.py web-next-check`；
+业务逻辑优先复用相关定向用例，`web-next-e2e` 用于关键交互验收、明确的发布要求或用户指定验证。
+部署构建使用 `web-next-build`；具体命令以前端 README 和工具链为准，维护执行使用原生命令。
 E2E 使用隔离端口和 mock API/训练 WebSocket，不对用户后端执行写操作，不复用或终止
 已有服务；具体工具链、端口和并发隔离方式见前端 README。
 旧静态前端维护才参考
 [前端健康度评分卡](docs/features/frontend-health-scorecard.md)及
-[`tests/test_training_frontend_*.py`](tests/)。后端按改动领域从 [`tests/`](tests/) 中选择
-配置、预览、队列、历史或权重分析的定向测试，不在本协议复制容易漂移的测试清单。
+[`tests/test_training_frontend_*.py`](tests/)。后端需要测试时，按改动领域从 [`tests/`](tests/) 中选择
+配置、预览、队列、历史或权重分析的最小定向用例，不在本协议复制容易漂移的测试清单。
 
 ## Adapter 和 Network 维护
 
@@ -571,7 +577,8 @@ E2E 使用隔离端口和 mock API/训练 WebSocket，不对用户后端执行�
 - 新 CLI 参数要检查 `library/training/cli_args.py`、config schema、WebUI、README/docs。
 - WebUI/daemon 启动训练还要查 `library/runtime/launch.py`、`scripts/tasks/_common.py`、
   `web/services/training_service.py` 和 `web/services/training/*`。
-- 涉及 GPU、accelerate、compile 时，测试不要依赖真实大模型；优先小 fixture 或 monkeypatch。
+- 涉及 GPU、accelerate、compile 且需要测试时，优先小 fixture 或 monkeypatch；
+  真实大模型、真机数值和性能验证放到明确的验收阶段。
 
 推理：
 
@@ -646,33 +653,54 @@ E2E 使用隔离端口和 mock API/训练 WebSocket，不对用户后端执行�
 - 活跃或半活跃提案：`docs/proposal/`。
 - 过期或缺失上下文材料：`_archive/docs/`，并标注历史状态。
 - bench 说明：对应 `bench/<method>/README.md`。
-- 纯文档改动至少跑：`git diff --check -- README.md AGENTS.md docs _archive/docs`。
+- 纯文档改动只对本次修改的文档路径运行 `git diff --check -- <changed-doc-paths>`；
+  新增或修改链接时检查受影响链接，不默认运行测试套件。
 - 大规模文档整理还要跑本地 Markdown 链接检查，确认真实坏链为 0；外部链接只在需要时人工抽查。
 - 用户可见命令优先写 `python tasks.py <command>` 或 `.venv/bin/python tasks.py <command>`；
   `make <target>` 可作为兼容说明，但不要作为唯一入口。
 
 ## 验证策略
 
-- 后台测试默认加 `timeout 60`。
+- 默认将功能实现与测试验收分开。日常开发以差异审阅、`git diff --check` 和必要的
+  语法、类型或构建检查收尾；低风险文案、样式、简单配置和局部逻辑默认不新增测试、不运行测试套件。
+- 验证范围由具体失败风险决定；跨文件、跨目录、改动行数或新增函数本身不触发扩大测试。
+  优先复用能覆盖风险的已有用例，必要时只运行相关 case；一次必要检查通过后，只有新改动、
+  失败或未解决的疑点才触发追加验证，避免重复跑相同检查。
+- 新增或扩展自动化测试优先用于真实缺陷的回归、稳定对外接口的重要边界和关键运行时不变量。
+  避免复述实现、穷举低价值组合；普通新行为不要求逐项补测试或解释为什么未补测试。
+- 以下变化在交付相应行为前需要最小定向验收：用户数据删除或越界写入边界、latent shape
+  和缓存 schema、checkpoint/adapter 保存加载和训练恢复、核心数值算法、模型族 fail-closed
+  分派，以及改变已有配置或公开 API 的兼容契约。优先验证被改动的契约，不自动扩大到全套测试。
+  本文件明确要求的 shape/invariant 测试仍须补充。关键风险的独立验收按上文委派规则执行。
+- `test-core`、`test-integration`、`test-hardware`、`test-experimental`、`test-all`
+  及完整收集默认放在集中验收或发布阶段，仅在有对应风险、明确发布要求或用户指定时选用，
+  不作为普通开发交付的默认阻塞步骤。性能或数值结论必须有对应的测量证据；未测量时仅报告实现状态。
+- 测试/验收可异步进行；主代理继续不依赖结果的工作。等待只用于必要的关键验收或发布条件，
+  普通改动可以先交付实现并标明待验收范围；不要为了凑齐测试结果反复派发或升级测试套件。
+- 执行必要的短定向测试时默认加 `timeout 60`；集中验收按任务设置明确时限，例如
+  `timeout 300 .venv/bin/python tasks.py test-core`。超时、环境缺失或未执行不得报告为通过，
+  不自动延长时限或重复重试。
 - 需要项目 Python 依赖的验证命令，默认使用 `.venv/bin/python`，避免系统 Python
   缺少 torch、pytest 插件或本仓依赖导致误判。
-- 优先从 [`tests/`](tests/) 中按改动模块和文件名选择定向测试；跨模块改动再扩大到
-  `timeout 300 .venv/bin/python tasks.py test-core`。涉及多进程/多组件、真实硬件或研究探针时，
-  再显式运行 `test-integration`、`test-hardware` 或 `test-experimental`；完整收集使用
-  `.venv/bin/python tasks.py test-all --collect-only`。
-- 大模型、真实训练、下载类验证不要默认执行；涉及 GPU 的代码优先使用小 fixture 或 monkeypatch。
+- 大模型、真实训练、下载类验证不要默认执行；小 fixture 或 monkeypatch 用于局部契约验证，
+  不作为真机数值或性能结论的证据。验收避免占用用户正在训练的 GPU，或争抢开发所需资源。
+- 环境不足以完成关键验收时，可以交付实现，但必须明确尚未验证的契约和发布限制，
+  不宣称相关能力已验证。普通低风险改动只需简短说明实际做过的检查。
 - lint/format 会改文件时，只在范围明确时运行。
 
 ## 贡献规范
 
 贡献等级、bench 证据、方法文档和 PR checklist 统一以
 [`CONTRIBUTING.md`](CONTRIBUTING.md) 为准，本协议不维护第二份摘要。
+测试的新增、范围与执行时机统一以上文「验证策略」为准；明确的 bench、数值及方法能力
+证据要求在 PR 或发布验收阶段落实。
 
 ## 完成前检查
 
 - `git diff --check` 对你改过的路径干净。
 - 只改了任务相关文件，没有误碰用户数据目录。
-- 新行为有测试或明确说明无法低成本测试。
+- 命中关键风险的改动有必要的定向验收证据，或明确标注待验收的契约和发布限制；
+  普通新行为不以新增测试作为完成条件。
 - 用户可见命令、配置字段、WebUI 表单、文档入口保持同步。
 - 如果改了 custom nodes 相关 live source，说明是否需要 `vendor-sync`。
-- 最终回复用简短中文说明改了什么、验证了什么、还有什么未做。
+- 最终回复用简短中文说明改了什么、实际验证了什么；有待验收项时区分“实现完成”和“验收通过”。

@@ -1,10 +1,15 @@
 # Dragon 新前端开发计划书
 
-- 状态：已实施 / 独立入口验收中 / 默认切换待批准
+- 状态：历史重建计划 / 原阶段决策与实施记录
 - 编写日期：2026-09-09
 - 版本：v1.1
 - 适用范围：Dragon WebUI 前端重建，复用现有 aiohttp 后端与用户数据
 - 核对基线：`dev`，HEAD `2e96bd0ce3a7c2803d542e5b0b7dfeac77369d8b`，含大量未提交改动，不是线上纯净快照
+
+> 2026-10-04 文档状态说明：Next 已成为唯一前端入口，Classic / Dragon 旧 UI 的
+> P0–P5 退役和生产只读验收已于 2026-09-30 完成，见 [退役记录](../../_archive/docs/proposal/legacy_ui_retirement_plan.md)。
+> 本文中的“默认切换待批准”和保留旧入口属于原重建阶段的决策快照；
+> 当前开发、部署与恢复入口以 [前端 README](../../web/frontend-next/README.md) 为准。
 
 ## 1. 决策摘要
 

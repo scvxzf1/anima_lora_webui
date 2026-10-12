@@ -1,14 +1,14 @@
-"""Read-only, opt-in image-directory dimension census for step estimates.
+"""Read-only, opt-in configured bucket census for step estimates.
 
 This is a pre-sampling census, not a reconstruction of a running dataloader.
-Only image headers are read. Source projections reuse preprocessing geometry.
+Only image headers are read. Configured projections reuse preprocessing geometry.
 """
 
 from collections import Counter
 from functools import lru_cache
 from pathlib import Path
 from time import monotonic
-from typing import Any
+from typing import Any, Literal
 
 from PIL import Image
 
@@ -26,8 +26,10 @@ def _image_size(path: Path, mtime_ns: int, file_size: int) -> tuple[int, int]:
         return image.size
 
 
-def _source_bucket_selector(settings: dict[str, Any]):
+def _source_bucket_selector(settings: dict[str, Any], model_family: str, *, training_directory: bool = False):
     from library.datasets.buckets import BucketManager
+    from library.datasets.qwen_image_geometry import align_qwen_bucket_manager, align_qwen_resolution
+    from library.models.family_registry import normalize_registered_family
     from library.preprocess.bucket_geometry import select_resize_bucket
 
     resolution = _positive_int(settings.get("resolution"), 1024)
@@ -38,13 +40,25 @@ def _source_bucket_selector(settings: dict[str, Any]):
         reso_steps=_positive_int(settings.get("bucket_reso_steps"), 64),
     )
     manager.make_buckets(constant_token_buckets=True)
+    qwen = normalize_registered_family(model_family, allow_aliases=True) == "qwen_image_2_1"
+    if qwen:
+        align_qwen_bucket_manager(manager)
+    enable_bucket = _bool_value(settings.get("enable_bucket"), True)
+    bucket_no_upscale = _bool_value(settings.get("bucket_no_upscale"), False)
 
     def select(width: int, height: int):
-        return select_resize_bucket(
+        bucket = select_resize_bucket(
             manager, width, height,
-            enable_bucket=_bool_value(settings.get("enable_bucket"), True),
-            bucket_no_upscale=_bool_value(settings.get("bucket_no_upscale"), False),
+            enable_bucket=enable_bucket,
+            bucket_no_upscale=bucket_no_upscale,
         )
+        if enable_bucket and bucket_no_upscale and (training_directory or qwen):
+            # Training consumes these dimensions directly; source fallback
+            # still predicts the preprocessing resize before training.
+            bucket = (width, height)
+        if qwen:
+            bucket = align_qwen_resolution(bucket)
+        return bucket
 
     return select
 
@@ -56,10 +70,12 @@ def inspect_estimate_buckets(
     path_pattern: str,
     available: bool,
     source_settings: dict[str, Any] | None = None,
+    model_family: str = "anima",
+    projection_basis: Literal["source_projection", "configured_projection"] = "source_projection",
     min_pixels: int = 0,
 ) -> dict[str, Any]:
     result: dict[str, Any] = {
-        "basis": "source_projection" if source_settings is not None else "image_dimensions",
+        "basis": projection_basis if source_settings is not None else "image_dimensions",
         "status": "ready" if available else "pending",
         "image_count": 0,
         "unreadable_count": 0,
@@ -69,7 +85,9 @@ def inspect_estimate_buckets(
     }
     if not available:
         return result
-    select_bucket = _source_bucket_selector(source_settings) if source_settings is not None else None
+    select_bucket = _source_bucket_selector(
+        source_settings, model_family, training_directory=projection_basis == "configured_projection",
+    ) if source_settings is not None else None
     counts: Counter[tuple[int, int]] = Counter()
     files = _dataset_image_files(
         directory,

@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 import torch
 from bitsandbytes.nn import Linear4bit
+from library.quantization.nf4 import BF16AutocastLinear4bit
 from safetensors import safe_open
 from safetensors.torch import load_file, save_file
 
@@ -96,10 +97,10 @@ def test_self_contained_v2_round_trip_is_exact(nf4_files, monkeypatch) -> None:
 
     def record_linear4bit_device(*args, **kwargs):
         construction_devices.append(kwargs.get("device"))
-        return Linear4bit(*args, **kwargs)
+        return BF16AutocastLinear4bit(*args, **kwargs)
 
     monkeypatch.setattr(
-        "library.models.krea2_raw.quantize.Linear4bit",
+        "library.models.krea2_raw.quantize.BF16AutocastLinear4bit",
         record_linear4bit_device,
     )
     loaded = _TinyModel().to(torch.bfloat16)

@@ -57,7 +57,9 @@ from library.training.metrics import MetricContext, collect_metrics
 from library.training.validation import run_validation
 from library.training.adaptive_personalization import metrics as personalization_metrics
 from library.training.adaptive_runtime.training_runtime import notify as adaptive_notify
+from library.training.adaptive_runtime.resume_runtime import startup_log
 from library.training.sample_preview_common import should_sample
+from library.training.precision_report import observe as precision_observe
 
 logger = logging.getLogger(__name__)
 
@@ -351,7 +353,7 @@ def build_loop_state(
             return None
 
     if trainer.is_text_encoder_not_needed_for_training(args):
-        logger.info("text_encoder is not needed for training. deleting to save memory.")
+        startup_log(args, logger, "text_encoder is not needed for training. deleting to save memory.")
         for t_enc in text_encoders:
             del t_enc
         text_encoders = []
@@ -408,7 +410,7 @@ def build_loop_state(
     # as the residual batch count within the resumed epoch.
     global_step = max(0, int(resume_global_step or 0))
 
-    logger.info(f"unet dtype: {unet_weight_dtype}, device: {unet.device}")
+    startup_log(args, logger, f"unet dtype: {unet_weight_dtype}, device: {unet.device}")
     _ts_parts = [f"timestep_sampling={args.timestep_sampling}"]
     if args.timestep_sampling in ("sigmoid", "shift", "flux_shift"):
         _ts_parts.append(f"sigmoid_scale={args.sigmoid_scale}")
@@ -422,7 +424,7 @@ def build_loop_state(
         _ts_parts.append(
             f"σ∈[{getattr(args, 't_min', None)}, {getattr(args, 't_max', None)}]"
         )
-    logger.info("sigma sampling: " + ", ".join(_ts_parts))
+    startup_log(args, logger, "sigma sampling: " + ", ".join(_ts_parts))
     for i, t_enc in enumerate(text_encoders):
         params_itr = t_enc.parameters()
         params_itr.__next__()  # skip the first parameter
@@ -744,7 +746,7 @@ def _run_epoch_steps(trainer, state: LoopState, epoch: int) -> None:
 def _run_step(trainer, state: LoopState, batch) -> torch.Tensor:
     """The accumulate-scope body: on_step_start hooks, cudagraph mark, forward,
     backward gating, manual adapter sync, grad capture/clip, optimizer step +
-    zero_grad. Returns the loss (detached or live)."""
+    zero_grad. Returns a detached loss for logging and sample scheduling."""
     from library.training.auto_block_swap.online import before_microstep, after_microstep
 
     adaptive_notify(trainer, "forward")
@@ -900,7 +902,9 @@ def _run_step(trainer, state: LoopState, batch) -> torch.Tensor:
         _probe_step(memory_probe, state, "before_optimizer")
         adaptive_notify(trainer, "optimizer")
         try:
+            precision_observe("optimizer", state)
             state.optimizer.step()
+            precision_observe("optimizer", state, after=True)
             adaptive_notify(trainer, "after_optimizer", state)
             if accelerator.sync_gradients and gradient_flow_probe is not None:
                 try:
@@ -923,7 +927,10 @@ def _run_step(trainer, state: LoopState, batch) -> torch.Tensor:
         peak_probe.end_step(device=accelerator.device)
 
     after_microstep(state, loss)
-    return loss
+    # Callbacks above still receive the original graph. The outer loop only
+    # needs the scalar value; retaining grad_fn across VAE decode keeps frozen
+    # ConvRot/NF4 constants from a completed backward alive.
+    return loss.detach()
 
 
 def _step_lr_scheduler(state: LoopState, loss: torch.Tensor) -> None:

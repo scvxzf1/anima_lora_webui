@@ -191,3 +191,31 @@ it.each(["start", "queue"] as const)(
     ]);
   },
 );
+
+function DetailsHarness() {
+  const device = useTrainingDevices();
+  const state = {
+    deviceState: device,
+    busy: false,
+    draft: {},
+    setDraft: vi.fn(),
+    preflight: { reset: vi.fn() },
+  } as unknown as ReturnType<typeof useTrainingWorkspace>;
+  return <TrainingDevices state={state} details />;
+}
+
+it("keeps distributed training controls collapsed in the resources details group", async () => {
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+    if (String(input) === "/api/training/gpus") {
+      return jsonResponse({ gpus: [{ index: 0, name: "GPU A", memory_total_gb: 12 }, { index: 1, name: "GPU B", memory_total_gb: 12 }] });
+    }
+    throw new Error(`unexpected request ${String(input)}`);
+  }));
+  renderInApp(<DetailsHarness />);
+  const group = await screen.findByText("多卡与分布式训练");
+  const details = group.closest("details");
+  expect(details).not.toHaveAttribute("open");
+  await userEvent.click(group);
+  expect(await screen.findByRole("button", { name: "多卡 · 数据并行" })).toBeInTheDocument();
+  expect(screen.getByText("当前选择")).toBeInTheDocument();
+});

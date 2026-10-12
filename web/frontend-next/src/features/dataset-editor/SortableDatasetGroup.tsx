@@ -110,8 +110,8 @@ export function SortableDatasetGroup({
       data-dragging={groupSort.isDragging}
     >
       <header ref={effectiveCollapsed ? drop.setNodeRef : undefined}>
-        <div>
-          <h3>{group.label}</h3>
+        <div className="dataset-group-heading">
+          <h3 title={group.label}>{group.label}</h3>
           <span>{group.files.length} 个预设</span>
         </div>
         <div className="dataset-group-actions">

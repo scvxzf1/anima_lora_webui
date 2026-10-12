@@ -20,8 +20,7 @@ export function useMaskImage(file: string, index: number, image: string, onSaved
     void (async () => {
       try {
         const result = await fetchMask(file, index, image, controller.signal);
-        const original = await loadBitmap(result.image_url);
-        const mask = await loadBitmap(result.mask_url);
+        const [original, mask] = await Promise.all([loadBitmap(result.image_url), loadBitmap(result.mask_url)]);
         if (!controller.signal.aborted) { setEngine(new MaskCanvas(original, mask)); setMeta(result); }
       } catch (reason) {
         if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : String(reason));

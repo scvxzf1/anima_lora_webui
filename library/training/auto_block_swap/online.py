@@ -114,8 +114,15 @@ class OnlineSwapController:
         started = time.perf_counter()
         try:
             changed = self.offloader.reconfigure(self.model.blocks, decision.blocks)
-        except torch.cuda.OutOfMemoryError:
+        except torch.cuda.OutOfMemoryError as exc:
             # No optimizer transaction is in progress; reconfigure rolled back.
+            if decision.reason in {"gpu_pressure", "new_shape"}:
+                self._record({"event": "safety_migration_oom", "step": step,
+                              "target": decision.blocks, "reason": decision.reason})
+                raise RuntimeError(
+                    f"Dynamic AUTO safety migration failed ({decision.reason}); "
+                    "refusing to start the batch"
+                ) from exc
             self.policy.rejected_below = max(
                 self.policy.rejected_below, decision.blocks
             )

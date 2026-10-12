@@ -1,0 +1,66 @@
+{
+  "recomputed_csv_shares_match": true,
+  "joint_targets": 280,
+  "dense_checks": [
+    {
+      "file": "Sakura Anima V2.safetensors",
+      "module": "lora_unet_blocks_0_adaln_modulation_cross_attn_1",
+      "relative_error": 1.685551555549285e-07
+    },
+    {
+      "file": "nino-nakano-officialart-anima-lora-nochekaiser.safetensors",
+      "module": "lora_unet_blocks_0_cross_attn_k_proj",
+      "relative_error": 9.959872458890865e-08
+    },
+    {
+      "file": "remielle_anima_lora_clean.safetensors",
+      "module": "lora_unet_blocks_0_cross_attn_k_proj",
+      "relative_error": 4.085886195417909e-07
+    },
+    {
+      "file": "roxy-migurdia-officialart-anima-lora-nochekaiser.safetensors",
+      "module": "lora_unet_blocks_0_cross_attn_k_proj",
+      "relative_error": 7.92185254588398e-08
+    },
+    {
+      "file": "typhoeus_anima_v2.safetensors",
+      "module": "lora_unet_blocks_0_cross_attn_k_proj",
+      "relative_error": 1.4068304727442984e-07
+    }
+  ],
+  "base_hash_evidence": {
+    "Sakura Anima V2.safetensors": null,
+    "nino-nakano-officialart-anima-lora-nochekaiser.safetensors": "bd43b7cffe1ed1153d9c41e7beb2f18cb1273eafbaa3af3edd6a173dc90a006e",
+    "remielle_anima_lora_clean.safetensors": null,
+    "roxy-migurdia-officialart-anima-lora-nochekaiser.safetensors": "bd43b7cffe1ed1153d9c41e7beb2f18cb1273eafbaa3af3edd6a173dc90a006e",
+    "typhoeus_anima_v2.safetensors": "bd43b7cffe1ed1153d9c41e7beb2f18cb1273eafbaa3af3edd6a173dc90a006e",
+    "90s_anime_melancholy_Anima-step00003300.safetensors": null,
+    "AddMicroDetails_Anima_v1.safetensors": "bd43b7cffe1ed1153d9c41e7beb2f18cb1273eafbaa3af3edd6a173dc90a006e",
+    "Anima_in_real_update_v2_epoch_20.safetensors": null,
+    "MeMaAni V2 C.safetensors": null,
+    "Turbo-ANIMA-v4.safetensors": null,
+    "ba_nai_style_v1.safetensors": "bd43b7cffe1ed1153d9c41e7beb2f18cb1273eafbaa3af3edd6a173dc90a006e",
+    "dark_art_style_Anima-step00002750.safetensors": null,
+    "lenovo_ultrareal_anima_base1.safetensors": null,
+    "mixed_styles_anima-base1_v6.safetensors": "bd43b7cffe1ed1153d9c41e7beb2f18cb1273eafbaa3af3edd6a173dc90a006e",
+    "sky02v6.safetensors": "bd43b7cffe1ed1153d9c41e7beb2f18cb1273eafbaa3af3edd6a173dc90a006e"
+  },
+  "sensitivity_excluding_ba_nai": {
+    "n_style": 9,
+    "character_mean": {
+      "MLP": 0.40156864394818853,
+      "self-attn": 0.3103686007378329,
+      "cross-attn": 0.2880627553139786
+    },
+    "style_mean": {
+      "MLP": 0.4060484730575865,
+      "self-attn": 0.3047574741716692,
+      "cross-attn": 0.2891940527707442
+    },
+    "difference_pp": {
+      "MLP": -0.44798291093979814,
+      "self-attn": 0.5611126566163693,
+      "cross-attn": -0.11312974567656009
+    }
+  }
+}

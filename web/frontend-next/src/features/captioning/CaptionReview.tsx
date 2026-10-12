@@ -9,6 +9,10 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { ApiError } from "../../api/client";
+import { CaptionBatchConflict } from "./CaptionBatchConflict";
+import { CaptionBatchToolbar } from "./CaptionBatchToolbar";
+import { applyDeltas, filterCandidates } from "./captionBatch";
+import { useReviewDrafts } from "./useReviewDrafts";
 import { CaptionTranslation } from "./CaptionTranslation";
 import { CaptionTagEditor } from "./CaptionTagEditor";
 import { CaptionReviewContext } from "./CaptionReviewContext";
@@ -24,12 +28,18 @@ import {
   fetchCaptionJob,
   fetchCaptionLogs,
   updateCaptionItem,
+  updateCaptionItems,
+  type CaptionBatchUpdate,
   commitCaptionJob,
   cancelCaptionJob,
   rerunCaptionJob,
 } from "./api";
 
 export function CaptionReview({ jobId }: { jobId: string }) {
+  return <CaptionReviewJob key={jobId} jobId={jobId} />;
+}
+
+function CaptionReviewJob({ jobId }: { jobId: string }) {
   const qc = useQueryClient();
   const query = useQuery({
     queryKey: captioningKeys.job(jobId),
@@ -46,7 +56,11 @@ export function CaptionReview({ jobId }: { jobId: string }) {
   });
   const [selectedId, setSelectedId] = useState("");
   const [checked, setChecked] = useState<string[]>([]);
-  const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const draftState = useReviewDrafts(query.data?.job.items || []);
+  const { drafts, setDrafts } = draftState;
+  const [tagFilter, setTagFilter] = useState("");
+  const [batchConflict, setBatchConflict] = useState(false);
+  const [pendingBatch, setPendingBatch] = useState<CaptionBatchUpdate[]>([]);
   const [page, setPage] = useState(0);
   const [mobileView, setMobileView] = useState<"editor" | "items">("editor");
   const [needsReconcile, setNeedsReconcile] = useState(false);
@@ -58,14 +72,16 @@ export function CaptionReview({ jobId }: { jobId: string }) {
   const job = query.data?.job;
   const item =
     job?.items.find((entry) => entry.id === selectedId) || job?.items[0];
-  const currentPage = Math.min(page, Math.max(0, Math.ceil((job?.items.length || 0) / 50) - 1));
-  const pageItems = job?.items.slice(currentPage * 50, (currentPage + 1) * 50) || [];
+  const filteredItems = filterCandidates(job?.items || [], drafts, tagFilter);
+  const currentPage = Math.min(page, Math.max(0, Math.ceil(filteredItems.length / 50) - 1));
+  const pageItems = filteredItems.slice(currentPage * 50, (currentPage + 1) * 50);
   const selectedIds = checked.filter((id) => job?.items.some((item) => item.id === id));
   const writableIds = (job?.items || []).filter((entry) =>
     ["ready", "failed", "committed"].includes(entry.state) && entry.proposed_caption.trim(),
   ).map((entry) => entry.id);
   function locate(id: string) {
-    const index = job?.items.findIndex((entry) => entry.id === id) ?? -1;
+    let index = filteredItems.findIndex((entry) => entry.id === id);
+    if (index < 0) { setTagFilter(""); index = job?.items.findIndex((entry) => entry.id === id) ?? -1; }
     if (index < 0) return;
     setSelectedId(id);
     setPage(Math.floor(index / 50));
@@ -78,13 +94,28 @@ export function CaptionReview({ jobId }: { jobId: string }) {
     retry: false,
     onSuccess: (data, submitted) => {
       qc.setQueryData(captioningKeys.job(jobId), data);
-      setDrafts((current) => {
-        const next = { ...current };
-        if (next[submitted.id] === submitted.text) delete next[submitted.id];
-        return next;
-      });
+      draftState.acknowledge({ [submitted.id]: submitted.text });
     },
   });
+  const batchSave = useMutation({
+    mutationFn: (updates: CaptionBatchUpdate[]) => updateCaptionItems(jobId, updates),
+    retry: false,
+    onSuccess: (data, submitted) => {
+      qc.setQueryData(captioningKeys.job(jobId), data);
+      draftState.acknowledge(Object.fromEntries(submitted.map((entry) => [entry.id, entry.proposed_caption])));
+      setPendingBatch([]); setBatchConflict(false);
+    },
+    onError: (error) => {
+      if (error instanceof ApiError && [0, 409].includes(error.status)) setNeedsReconcile(true);
+    },
+  });
+  function saveAll() {
+    if (!job || running || busy || query.isError || Object.keys(drafts).some((id) => !job.items.some((item) => item.id === id))) return;
+    const updates = Object.entries(drafts).map(([id, proposed_caption]) => ({ id, proposed_caption,
+      expected_caption: draftState.expected[id] ?? job!.items.find((entry) => entry.id === id)!.proposed_caption }));
+    if (!updates.length || updates.some((entry) => !entry.proposed_caption.trim())) return;
+    setPendingBatch(updates); batchSave.mutate(updates);
+  }
   const commit = useMutation({
     mutationFn: (ids: string[]) => commitCaptionJob(jobId, ids),
     retry: false,
@@ -111,10 +142,18 @@ export function CaptionReview({ jobId }: { jobId: string }) {
       }
     },
   });
-  const busy = save.isPending || commit.isPending || control.isPending || needsReconcile;
+  const busy = batchConflict || batchSave.isPending || save.isPending || commit.isPending || control.isPending || needsReconcile;
   async function reconcileUnknown() {
     const result = await query.refetch();
     if (result.isError || !result.data) return;
+    if (pendingBatch.length) {
+      const confirmed = pendingBatch.filter((entry) => result.data.job.items.find((item) => item.id === entry.id)?.proposed_caption === entry.proposed_caption);
+      draftState.acknowledge(Object.fromEntries(confirmed.map((entry) => [entry.id, entry.proposed_caption])));
+      setPendingBatch([]);
+      setBatchConflict(confirmed.length !== pendingBatch.length);
+      // Remaining drafts retain their original expected values and require deliberate conflict resolution.
+      batchSave.reset();
+    }
     setNeedsReconcile(false);
     control.reset();
     await qc.invalidateQueries({ queryKey: captioningKeys.jobs });
@@ -158,7 +197,7 @@ export function CaptionReview({ jobId }: { jobId: string }) {
           </button>
           <button
             type="button"
-            disabled={running || busy || dirty || query.isError || needsReconcile}
+            disabled={running || busy || dirty || query.isError || needsReconcile || (checked.length > 0 && !selectedIds.length)}
             onClick={() => {
               if (
                 window.confirm(
@@ -186,6 +225,8 @@ export function CaptionReview({ jobId }: { jobId: string }) {
           </button>
         </div>
       )}
+      {batchConflict && <CaptionBatchConflict items={job.items} drafts={drafts} disabled={query.isError || query.isFetching}
+        onRebase={() => { draftState.rebase(); setBatchConflict(false); }} />}
       <div className="toolbar">
         <button
           type="button"
@@ -203,7 +244,12 @@ export function CaptionReview({ jobId }: { jobId: string }) {
           写回全部候选 ({writableIds.length})
         </button>
       </div>
-      <CaptionReviewContext items={job.items} current={item} page={currentPage} drafts={drafts} checked={selectedIds}
+      <CaptionBatchToolbar items={job.items} drafts={drafts} checked={selectedIds} filtered={filteredItems}
+        filter={tagFilter} onFilter={(tag) => { setTagFilter(tag); setPage(0); }}
+        allowed={["cltagger", "wd14"].includes(job.settings?.provider || "")} disabled={running || busy || query.isError}
+        onApply={(deltas) => setDrafts(applyDeltas(job.items, drafts, deltas))} onSave={saveAll}
+        undo={draftState.undo} redo={draftState.redo} canUndo={draftState.canUndo} canRedo={draftState.canRedo} />
+      <CaptionReviewContext items={job.items} visibleItems={filteredItems} current={item} page={currentPage} drafts={drafts} checked={selectedIds}
         onLocate={locate} mobileView={mobileView} onView={setMobileView} />
       <div className="caption-review-layout" data-mobile-view={mobileView}>
         <div className="review-items">
@@ -218,13 +264,13 @@ export function CaptionReview({ jobId }: { jobId: string }) {
               <ChevronLeft size={16} />
             </button>
             <span>
-              {currentPage + 1} / {Math.max(1, Math.ceil(job.items.length / 50))}
+              {currentPage + 1} / {Math.max(1, Math.ceil(filteredItems.length / 50))}
             </span>
             <button
               type="button"
               title="下一页"
               aria-label="下一页候选"
-              disabled={(currentPage + 1) * 50 >= job.items.length}
+              disabled={(currentPage + 1) * 50 >= filteredItems.length}
               onClick={() => setPage(currentPage + 1)}
             >
               <ChevronRight size={16} />
@@ -319,10 +365,10 @@ export function CaptionReview({ jobId }: { jobId: string }) {
           </div>
         )}
       </div>
-      {(save.error || commit.error || (!needsReconcile && control.error) || query.error) && (
+      {(batchSave.error || save.error || commit.error || (!needsReconcile && control.error) || query.error) && (
         <p className="form-error" role="alert">
           {
-            (save.error || commit.error || (!needsReconcile && control.error) || query.error)
+            (batchSave.error || save.error || commit.error || (!needsReconcile && control.error) || query.error)
               ?.message
           }
         </p>

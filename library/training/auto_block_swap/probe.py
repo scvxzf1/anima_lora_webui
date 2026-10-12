@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import statistics
+import math
 import time
 from pathlib import Path
 
 import torch
 
-from library.models.family_registry import dispatch_model_family
 from library.env import resolve_model_family
+from .capacity import loaded_blocks, loaded_model_limit
 from .policy import host_swap_limit
 from .process import ProbeComplete, write_result
 from .resources import host_memory
@@ -28,18 +29,7 @@ def _quant_bytes(state) -> int:
 
 
 def model_block_bytes(model, family: str) -> list[int]:
-    blocks = dispatch_model_family(
-        family,
-        operation="AUTO block-swap inventory",
-        handlers={
-            "anima": lambda: model.blocks,
-            "krea2_raw": lambda: model.blocks,
-            "z_image": lambda: model.layers,
-            "qwen_image_2_1": lambda: (_ for _ in ()).throw(
-                ValueError("Qwen Image 2.1 AUTO block swap is not supported")
-            ),
-        },
-    )()
+    blocks = loaded_blocks(model, family)
     sizes = []
     for block in blocks:
         # Before adapter application, count all base weights conservatively.
@@ -72,7 +62,7 @@ def after_model_load(args, model) -> None:
         "status": "inventory",
         "block_count": len(sizes),
         "block_bytes": sizes,
-        "model_swap_limit": len(sizes) - 2,
+        "model_swap_limit": loaded_model_limit(model, resolve_model_family(args)),
         "host_swap_limit": maximum,
         "host_after_model_load": memory.to_dict(),
     }
@@ -120,22 +110,25 @@ def representative_batches(group) -> list[dict]:
         by_bucket = {}
         for index, batch in enumerate(dataset.buckets_indices):
             bucket = dataset.bucket_manager.buckets[batch.bucket_index]
+            width, height = dataset.bucket_manager.resos[batch.bucket_index]
+            resolution = (int(width), int(height))
             size = min(
                 batch.bucket_batch_size,
                 len(bucket) - batch.batch_index * batch.bucket_batch_size,
             )
             if size <= 0:
                 continue
-            previous = by_bucket.get(batch.bucket_index)
+            previous = by_bucket.get(resolution)
             if previous is None or size > previous["batch_size"]:
-                width, height = dataset.bucket_manager.resos[batch.bucket_index]
-                by_bucket[batch.bucket_index] = {
+                by_bucket[resolution] = {
                     "index": offset + index,
                     "dataset": dataset_id,
                     "width": int(width),
                     "height": int(height),
                     "batch_size": size,
+                    "weight": 0 if previous is None else previous["weight"],
                 }
+            by_bucket[resolution]["weight"] += 1
         cases.extend(by_bucket.values())
         offset += len(dataset)
     if not cases:
@@ -143,6 +136,18 @@ def representative_batches(group) -> list[dict]:
     return sorted(
         cases, key=lambda c: (-c["width"] * c["height"] * c["batch_size"], c["index"])
     )
+
+
+def weighted_case_seconds(cases: list[dict], per_case: list[float]) -> float:
+    """Expected update time from per-case hot medians and dataset batch counts."""
+    if not cases or len(cases) != len(per_case):
+        raise ValueError("AUTO requires matching nonempty case timings and weights")
+    weights = [case.get("weight") for case in cases]
+    if any(type(weight) is not int or weight <= 0 for weight in weights):
+        raise ValueError("AUTO requires positive integer case weights")
+    if any(not math.isfinite(seconds) or seconds <= 0 for seconds in per_case):
+        raise ValueError("AUTO requires finite positive case timing")
+    return sum(weight * seconds for weight, seconds in zip(weights, per_case)) / sum(weights)
 
 
 def _cuda_budget(device) -> int:
@@ -247,7 +252,8 @@ def run_probe(trainer, state) -> None:
             "blocks": state.args.blocks_to_swap,
             "cases": cases,
             "updates": samples,
-            "seconds": sum(per_case) / len(per_case),
+            "seconds": weighted_case_seconds(cases, per_case),
+            "unweighted_seconds": sum(per_case) / len(per_case),
             "headroom": headroom,
             "gpu_reserve": reserve,
             "safe": headroom >= reserve,

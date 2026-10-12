@@ -1,5 +1,12 @@
 # Plan: split inference into `../anima_inference`
 
+> **Status: historical planning snapshot.** Reviewed on 2026-10-04. This
+> repository still contains `inference.py` and the inference task registrations
+> in `tasks.py`; this document does not establish that the proposed split has
+> completed. The phase checkboxes and workflow below preserve the original
+> plan, not a current migration checklist. Use the [inference reference](guidelines/inference.md)
+> and [package API](../anima_lora/__init__.py) for the current repository entry points.
+
 Working document. Captures the agreed-upon shape of the split before any
 moves happen, so the refactor is reversible and the final state is checked
 against this file rather than reconstructed from chat logs.

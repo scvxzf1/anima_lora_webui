@@ -81,6 +81,7 @@ describe("launch command boundary", () => {
       fetchMock.mock.calls as unknown as [string, RequestInit][]
     ).filter(([url]) => url === "/api/training/queue");
     expect(calls).toHaveLength(1);
+    expect(JSON.parse(String(calls[0][1].body))).not.toHaveProperty("ignore_risks");
     expect(JSON.parse(String(calls[0][1].body))).toMatchObject({
       config_file: file.path,
       start_paused: true,
@@ -171,6 +172,8 @@ describe("launch command boundary", () => {
         ([url]) => String(url) === "/api/training/start",
       ),
     ).toHaveLength(1);
+    const startCall = (fetchMock.mock.calls as unknown as [string, RequestInit][]).find(([url]) => url === "/api/training/start");
+    expect(JSON.parse(String(startCall?.[1].body))).not.toHaveProperty("ignore_risks");
   });
 
   it("orders mixed preflight checks by severity and preserves ties", async () => {

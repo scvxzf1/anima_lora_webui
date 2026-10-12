@@ -1,0 +1,202 @@
+/* ============================================
+   Training Page Animations
+   ============================================ */
+
+/* Fade in on mount */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideInLeft {
+  from {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes slideInRight {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Apply animations to main sections */
+.training-workspace-container {
+  animation: fadeIn 300ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.training-config-library {
+  animation: slideInLeft 400ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.training-workspace-main {
+  animation: slideInUp 400ms cubic-bezier(0.4, 0, 0.2, 1) 50ms both;
+}
+
+.training-edit-card {
+  animation: scaleIn 350ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.training-command-bar {
+  animation: slideInUp 400ms cubic-bezier(0.4, 0, 0.2, 1) 100ms both;
+}
+
+/* Stagger animation for list items */
+.training-config-library li {
+  animation: slideInLeft 300ms cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+.training-config-library li:nth-child(1) { animation-delay: 0ms; }
+.training-config-library li:nth-child(2) { animation-delay: 30ms; }
+.training-config-library li:nth-child(3) { animation-delay: 60ms; }
+.training-config-library li:nth-child(4) { animation-delay: 90ms; }
+.training-config-library li:nth-child(5) { animation-delay: 120ms; }
+.training-config-library li:nth-child(6) { animation-delay: 150ms; }
+.training-config-library li:nth-child(7) { animation-delay: 180ms; }
+.training-config-library li:nth-child(8) { animation-delay: 210ms; }
+
+/* Stagger animation for resource groups */
+.training-resource-group {
+  animation: slideInUp 300ms cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+.training-resource-group:nth-child(1) { animation-delay: 0ms; }
+.training-resource-group:nth-child(2) { animation-delay: 40ms; }
+.training-resource-group:nth-child(3) { animation-delay: 80ms; }
+.training-resource-group:nth-child(4) { animation-delay: 120ms; }
+.training-resource-group:nth-child(5) { animation-delay: 160ms; }
+.training-resource-group:nth-child(6) { animation-delay: 200ms; }
+
+/* Loading states */
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.loading-skeleton {
+  animation: pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Spinner animation */
+@keyframes rotate {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.spinner {
+  animation: rotate 1s linear infinite;
+}
+
+/* Button press animation */
+@keyframes buttonPress {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(0.96);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.training-command-bar button:active:not(:disabled) {
+  animation: buttonPress 200ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Success feedback animation */
+@keyframes successPulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 8px rgba(16, 185, 129, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
+  }
+}
+
+.success-feedback {
+  animation: successPulse 600ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Error shake animation */
+@keyframes shake {
+  0%, 100% {
+    transform: translateX(0);
+  }
+  10%, 30%, 50%, 70%, 90% {
+    transform: translateX(-4px);
+  }
+  20%, 40%, 60%, 80% {
+    transform: translateX(4px);
+  }
+}
+
+.error-shake {
+  animation: shake 400ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Reduce motion for accessibility */
+@media (prefers-reduced-motion: reduce) {
+  .training-workspace-container,
+  .training-config-library,
+  .training-workspace-main,
+  .training-edit-card,
+  .training-command-bar,
+  .training-config-library li,
+  .training-resource-group {
+    animation: none;
+  }
+
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

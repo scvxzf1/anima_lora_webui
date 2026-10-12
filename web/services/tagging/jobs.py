@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
+from .batch_update import update_candidates
 from .client import OpenAICompatibleClient, TaggingApiError
 from .local_worker_client import LocalTaggingWorkerClient, LocalWorkerError
 from .memory_log import DEFAULT_LOG_RETENTION_LINES, TaggingMemoryLog
@@ -332,6 +333,14 @@ class TaggingJobManager:
             event="item_edited",
             item=item,
         )
+        return self.snapshot(job_id)
+
+    def update_items(self, job_id: str, updates: Any) -> dict[str, Any]:
+        job = self._get(job_id)
+        if any(lock is not None and lock.locked() for lock in (self._commit_locks.get(job_id), self._rerun_locks.get(job_id))):
+            raise RuntimeError("任务正在写回或重跑，请稍后核对")
+        update_candidates(job, updates)
+        self._refresh_counts(job)
         return self.snapshot(job_id)
 
     async def commit(

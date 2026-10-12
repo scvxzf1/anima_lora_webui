@@ -44,11 +44,28 @@ def _install_z_image_strategies(args) -> None:
     return None
 
 
-def _qwen_image_2_1_inference_unsupported(*_args, **_kwargs) -> None:
-    raise NotImplementedError("Qwen Image 2.1 standalone inference is not implemented")
+def _validate_qwen_image_2_1(args, *, mode: str) -> None:
+    from library.models.qwen_image_2_1 import inference_runner
+
+    inference_runner.validate_qwen_image_2_1_inference_args(args, mode=mode)
+
+
+def _install_qwen_image_2_1_strategies(args) -> None:
+    # Standalone Qwen inference owns tokenizer/text encoding inside its runner;
+    # the global Anima strategy singletons must remain untouched.
+    return None
+
+
+def validate_inference_family_options(args, family: str) -> None:
+    if family != "qwen_image_2_1" and any(
+        getattr(args, name, None) is not None
+        for name in ("qwen_image_2_1_task", "reference_image", "reference_images")
+    ):
+        raise SystemExit("Qwen task/reference flags require --model_family qwen_image_2_1.")
 
 
 def prepare_inference_family(args, family: str, mode: str) -> None:
+    validate_inference_family_options(args, family)
     spec = get_model_family_spec(family)
     if mode not in spec.supported_inference_modes:
         supported = (
@@ -68,7 +85,7 @@ def prepare_inference_family(args, family: str, mode: str) -> None:
             "anima": _validate_anima,
             "krea2_raw": _validate_krea2,
             "z_image": _validate_z_image,
-            "qwen_image_2_1": _qwen_image_2_1_inference_unsupported,
+            "qwen_image_2_1": _validate_qwen_image_2_1,
         },
     )
     validator(args, mode=mode)
@@ -79,7 +96,7 @@ def prepare_inference_family(args, family: str, mode: str) -> None:
             "anima": _install_anima_strategies,
             "krea2_raw": _install_krea2_strategies,
             "z_image": _install_z_image_strategies,
-            "qwen_image_2_1": _qwen_image_2_1_inference_unsupported,
+            "qwen_image_2_1": _install_qwen_image_2_1_strategies,
         },
     )
     installer(args)

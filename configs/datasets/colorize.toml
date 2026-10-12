@@ -32,3 +32,6 @@ validation_seed = 42
   recursive = true
   flip_aug = false
   num_repeats = 1
+  mask_mode = "external"
+  mask_dir = "post_image_dataset/resized_masks/3191a631f508"
+  alpha_mask = true

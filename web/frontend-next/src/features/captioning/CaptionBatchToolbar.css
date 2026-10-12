@@ -1,0 +1,10 @@
+.caption-batch { margin: 12px 0; padding: 12px; border: 1px solid var(--line); border-radius: 8px; min-width: 0; }
+.caption-batch label { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.caption-batch-tags { display: flex; flex-wrap: wrap; gap: 4px; max-height: 140px; overflow: auto; margin: 8px 0; }
+.caption-batch-tags button { max-width: 100%; overflow-wrap: anywhere; }
+.caption-batch-tags button[aria-pressed="true"] { outline: 2px solid var(--accent); }
+.caption-batch-diff { max-height: 50vh; overflow: auto; overflow-wrap: anywhere; }
+.caption-batch-diff article { border-bottom: 1px solid var(--line); padding: 8px 0; }
+@media(max-width: 600px) { .caption-batch .toolbar > label { width: 100%; } .caption-batch input, .caption-batch select { max-width: 100%; } }
+
+@media(max-width: 600px) { .caption-batch { margin: 6px 0; padding: 8px; } .caption-batch > .toolbar { gap: 4px; } .caption-batch > .toolbar > strong { font-size: 13px; } .caption-batch > .toolbar > button { padding: 4px 6px; font-size: 12px; } }

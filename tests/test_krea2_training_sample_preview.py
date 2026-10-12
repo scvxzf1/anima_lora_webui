@@ -44,9 +44,11 @@ class _FakeDiT:
 
     def switch_block_swap_for_inference(self):
         self.inference_calls += 1
+        self.prepare_block_swap_before_forward()
 
     def switch_block_swap_for_training(self):
         self.training_calls += 1
+        self.prepare_block_swap_before_forward()
 
     def prepare_block_swap_before_forward(self):
         self.prepare_calls += 1
@@ -377,7 +379,7 @@ def test_krea2_sample_lifecycle_restores_training_state(monkeypatch, tmp_path) -
     assert len(decoded) == 1
     assert accelerator.barriers == 2
     assert dit.inference_calls == 1
-    assert dit.prepare_calls == 1
+    assert dit.prepare_calls == 2
     assert dit.training_calls == 1
     assert network.training is True
     assert network.cleared == 1

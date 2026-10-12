@@ -88,7 +88,7 @@ def validate_local_precision_contract(args, expected):
     """Recompute the worker-side request; injected IDs are not trusted."""
     requested = str(getattr(args, "adaptive_precision", "off") or "off").strip().lower()
     if requested == "auto" and getattr(args, "adaptive_resolved_mode", None) not in {
-        "bf16", "fp16_fp32", "fp32"
+        "bf16", "native_fp16", "fp16_fp32", "fp32"
     }:
         raise ValueError("precision_contract_mismatch: worker adaptive mode is unresolved")
     actual = precision_contract_id(args)
@@ -111,18 +111,23 @@ def preserve_precision_cast(model, dtype):
 
 def validate_training_network(args, network):
     from .training_config import islands_enabled
-    if not islands_enabled(args):
+    from .native_precision import native_enabled
+    if not islands_enabled(args) and not native_enabled(args):
         return
+    validate_plain_training_network(network, label="Native FP16" if native_enabled(args) else "FP16/FP32")
+
+
+def validate_plain_training_network(network, *, label):
     from networks.lora_modules.lora import LoRAModule
 
     modules = getattr(network, "unet_loras", ())
     if (not modules or getattr(network, "text_encoder_loras", ())
             or any(type(module) is not LoRAModule for module in modules)):
-        raise ValueError("FP16/FP32 training requires plain DiT LoRA modules only")
+        raise ValueError(f"{label} training requires plain DiT LoRA modules only")
     allowed = {id(p) for module in modules for p in module.parameters()}
     if any(id(p) not in allowed or p.dtype != torch.float32
            for p in network.parameters() if p.requires_grad):
-        raise ValueError("FP16/FP32 training requires only FP32 LoRA trainable parameters")
+        raise ValueError(f"{label} training requires only FP32 LoRA trainable parameters")
 
 
 def register_precision_checkpoint(accelerator, manifest):

@@ -19,6 +19,27 @@ class TrainingRuntime:
         self.completed_steps = 0
         self.saved_state = None
         self.finished = False
+        self.capacity = getattr(args, "_adaptive_swap_capacity", None) if args is not None else None
+        self.host_limit = None
+        self.host_budget_reason = "not_measured"
+
+    def validate_swap_capacity(self, model, family):
+        if self.capacity is None:
+            return
+        from library.training.auto_block_swap.capacity import (
+            HostLimitReached, loaded_host_capacity,
+        )
+
+        if family != self.capacity["model_family"]:
+            raise ValueError("Adaptive swap model family drifted after preload")
+        measured = loaded_host_capacity(self.args, model, self.capacity)
+        self.host_limit = measured["host_limit"]
+        self.host_budget_reason = measured["host_budget_reason"]
+        if self.host_limit is not None and self.args.blocks_to_swap > self.host_limit:
+            raise HostLimitReached(
+                f"Requested {self.args.blocks_to_swap} swapped blocks exceeds measured "
+                f"host limit {self.host_limit}"
+            )
 
     def phase(self, stage):
         self.stage = stage
@@ -55,12 +76,13 @@ class TrainingRuntime:
         if not self.optimizer_started or state.global_step != self.completed_steps + 1:
             raise RuntimeError("Adaptive worker observed an invalid optimizer boundary")
         self.stage = "checkpoint"
-        saved = save_training_state(state, self.directory)
+        from .resume_runtime import enabled, commit
+        saved = commit(self, state) if enabled(self.args) else save_training_state(state, self.directory)
         previous = self.saved_state
         self.saved_state = str(saved)
         self.completed_steps = state.global_step
         write_result(self.directory / "latest-state.json", self.result("running"))
-        if previous is not None:
+        if previous is not None and not enabled(self.args):
             try:
                 shutil.rmtree(previous)
             except OSError:
@@ -75,23 +97,40 @@ class TrainingRuntime:
         self.stage = "finished"
 
     def result(self, status):
+        capacity = self.capacity or {}
+        effective_cap = capacity.get("effective_cap")
+        if effective_cap is not None and self.host_limit is not None:
+            effective_cap = min(effective_cap, self.host_limit)
+        from .resume_runtime import enabled
+        recovery = enabled(self.args)
         return {"status": status, "stage": self.stage,
+                "model_limit": capacity.get("model_limit"),
+                "requested_cap": capacity.get("requested_cap"),
+                "effective_cap": effective_cap,
+                "host_limit": self.host_limit,
+                "host_budget_reason": self.host_budget_reason,
                 "optimizer_started": self.optimizer_started,
                 "completed_steps": self.completed_steps, "saved_state": self.saved_state,
                 "precision_contract_id": self.precision_contract_id,
                 "precision_manifest_id": self.precision_manifest_id,
-                "committed_checkpoint": None, "data_cursor_resume_supported": False,
-                "resume_limitation": "dataset_order_and_prefetch_cursor_not_restored"}
+                "committed_checkpoint": self.saved_state if recovery else None,
+                "data_cursor_resume_supported": recovery,
+                "resume_limitation": None if recovery else "dataset_order_and_prefetch_cursor_not_restored"}
 
 
 def notify(trainer, event, state=None):
+    from library.training.precision_report import notify as precision_notify
+
+    precision_notify(event, state)
     runtime = getattr(trainer, "_adaptive_training_runtime", None)
     if runtime is None:
         return
-    if event in {"setup", "commit"}:
+    from .native_runtime import NativeStartupRuntime
+    if event == "setup" or (event == "commit" and type(runtime) is not NativeStartupRuntime):
         # The commit path also writes a progress result; validate before it
         # can publish an obsolete dtype identity.
-        runtime.validate_precision(getattr(trainer, "_adaptive_precision_manifest_model", None))
+        runtime.validate_precision(getattr(trainer, "_native_precision_model",
+                                           getattr(trainer, "_adaptive_precision_manifest_model", None)))
     if event in {"after_optimizer", "commit", "finish"}:
         getattr(runtime, event)(state)
     else:
@@ -104,5 +143,8 @@ def validate_entry(trainer, args):
     private = getattr(args, "_adaptive_training_worker", None)
     runtime = getattr(trainer, "_adaptive_training_runtime", None)
     if private or runtime is not None:
-        if not private or not isinstance(runtime, TrainingRuntime):
+        from .native_runtime import NativeStartupRuntime
+        from .native_precision import native_enabled
+        expected_type = NativeStartupRuntime if native_enabled(args) else TrainingRuntime
+        if not private or type(runtime) is not expected_type:
             raise ValueError("Adaptive training worker requires an isolated runtime")

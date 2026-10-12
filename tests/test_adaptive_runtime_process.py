@@ -77,6 +77,18 @@ def test_host_pressure_prevents_launch(tmp_path):
     assert runner(MemoryPlan(), attempt=0, resume=None)["status"] == "host_limit"
 
 
+def test_structured_worker_host_limit_is_preserved(tmp_path):
+    script = (
+        "import pathlib, sys; "
+        "pathlib.Path(sys.argv[1]).with_name('result.json').write_text("
+        "'{\"status\": \"host_limit\", \"host_limit\": 1}')"
+    )
+    runner = IsolatedRunner(tmp_path, lambda p: [sys.executable, "-c", script, str(p)],
+                            resources=resources)
+    result = runner(MemoryPlan(), attempt=0, resume=None)
+    assert result["status"] == "host_limit" and result["host_limit"] == 1
+
+
 @pytest.mark.skipif(os.name != "posix", reason="POSIX process signal test")
 def test_supervisor_sigterm_reaps_worker_and_records_cancellation(tmp_path):
     worker = (

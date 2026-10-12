@@ -4,6 +4,7 @@ import { createRoot } from 'react-dom/client';
 import { DragonNextApp } from './app/DragonNextApp';
 import { redirectLegacyHash } from './app/legacyRouteAdapter';
 import './styles/base.css';
+import './styles/animations.css';
 
 const root = document.getElementById('root');
 

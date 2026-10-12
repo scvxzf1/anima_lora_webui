@@ -1,21 +1,30 @@
-.training-metric-visibility {
+.training-metric-controls {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 8px 16px;
+  min-width: 0;
   min-height: 36px;
   margin: 4px 0 12px;
+  font-size: 13px;
 }
 
+.training-metric-visibility,
 .training-metric-values {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 8px 16px;
-  min-height: 32px;
-  margin: -8px 0 12px;
+  min-width: 0;
+}
+
+.training-metric-controls .checkbox-row,
+.training-metric-latest {
+  white-space: nowrap;
+}
+
+.training-metric-values {
   color: var(--muted);
-  font-size: 13px;
 }
 
 .training-metric-latest {
@@ -39,3 +48,7 @@
   color: var(--muted);
   font-size: 13px;
 }
+
+.training-chart-legend { display: flex; flex-wrap: wrap; gap: 16px; margin: 0 0 8px; font-size: 13px; }
+.training-loss-legend { color: #3b82f6; }
+.training-lr-legend { color: #e88723; }

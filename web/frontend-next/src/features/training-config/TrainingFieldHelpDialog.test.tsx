@@ -4,10 +4,11 @@ import { afterEach, expect, it, vi } from "vitest";
 import { TrainingFieldEditor } from "./TrainingFieldEditor";
 import { fieldsForConfig } from "./fieldCatalog";
 import { FIELD_HELP_SUMMARY_ZH } from "./domain/field-help-summary.js";
+import { TrainingFieldHelpDialog } from "./TrainingFieldHelpDialog";
 
 afterEach(cleanup);
 
-it("shows every help chapter with the live value, default and model family", async () => {
+it("shows the live state, advice and choices without legacy headings", async () => {
   const user = userEvent.setup();
   const field = fieldsForConfig({ qwen_text_encoder_cache_policy: "auto" }).find((item) => item.key === "qwen_text_encoder_cache_policy")!;
   const view = render(<TrainingFieldEditor fields={[field]} draft={{ qwen_text_encoder_cache_policy: "auto", model_family: "krea2_raw" }} ownKeys={new Set()} disabled={false} onChange={vi.fn()} />);
@@ -17,15 +18,17 @@ it("shows every help chapter with the live value, default and model family", asy
   await user.click(trigger);
 
   expect(await screen.findByRole("dialog")).toBeInTheDocument();
-  expect(screen.getByText("当前值").parentElement).toHaveTextContent("cpu");
-  expect(screen.getByText("页面默认值").parentElement).toHaveTextContent("auto");
-  expect(screen.getByText("模型族").parentElement).toHaveTextContent("krea2_raw");
-  for (const heading of ["摘要", "新手建议", "为什么通常这样设", "好处", "代价", "风险", "补充说明"]) {
+  expect(screen.getByText("当前值").parentElement).toHaveTextContent("仅 CPU");
+  expect(screen.getByText(/与默认值不同/)).toHaveTextContent("自动（推荐）");
+  expect(screen.getByLabelText("模型族 krea2_raw")).toBeInTheDocument();
+  for (const heading of ["建议", "选项怎么选", "注意"]) {
     expect(screen.getByRole("heading", { name: heading })).toBeInTheDocument();
   }
-  expect(screen.getAllByText(/仅影响 Qwen3-VL/).length).toBeGreaterThan(0);
-  expect(screen.getByRole("heading", { name: "新手建议" }).nextElementSibling).toHaveTextContent("一般保持自动");
-  expect(screen.getByRole("heading", { name: "为什么通常这样设" }).nextElementSibling).toHaveTextContent("cpu_offload");
+  expect(screen.getByRole("table")).toHaveTextContent("cpu_offload");
+  for (const heading of ["设置说明", "作用", "好处", "代价", "风险"]) {
+    expect(screen.queryByRole("heading", { name: heading })).not.toBeInTheDocument();
+  }
+  expect(screen.queryByText("暂无补充说明。")).not.toBeInTheDocument();
 });
 
 it("uses catalog defaults for non-core training fields", async () => {
@@ -35,7 +38,7 @@ it("uses catalog defaults for non-core training fields", async () => {
   render(<TrainingFieldEditor fields={[field]} draft={{ model_family: "anima", lora_adapter_kind: "lokr", lokr_grouped_delta_backend: "eager" }} ownKeys={new Set()} disabled={false} onChange={vi.fn()} />);
   await user.click(screen.getByRole("button", { name: "查看LoKr 分组 Delta 后端帮助" }));
   await screen.findByRole("dialog");
-  expect(screen.getByText("页面默认值").parentElement).toHaveTextContent("triton");
+  expect(screen.getByText(/与默认值不同/)).toHaveTextContent("triton");
 });
 
 it("keeps the summary inline and loads the full help chapters when opened", async () => {
@@ -44,11 +47,40 @@ it("keeps the summary inline and loads the full help chapters when opened", asyn
   render(<TrainingFieldEditor fields={[field]} draft={{ model_family: "anima", network_dim: 16 }} ownKeys={new Set()} disabled={false} onChange={vi.fn()} />);
 
   expect(screen.getByText(FIELD_HELP_SUMMARY_ZH.network_dim)).toBeInTheDocument();
-  expect(screen.queryByRole("heading", { name: "好处" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("heading", { name: "作用" })).not.toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: "查看LoRA rank帮助" }));
   const dialog = await screen.findByRole("dialog");
   expect(within(dialog).getByText(FIELD_HELP_SUMMARY_ZH.network_dim)).toBeInTheDocument();
-  expect(within(dialog).getByRole("heading", { name: "好处" })).toBeInTheDocument();
+  expect(within(dialog).getByRole("heading", { name: "建议" })).toBeInTheDocument();
+});
+
+it("shows reviewed option labels, keeps advanced details collapsed, and only shows a different default", async () => {
+  const user = userEvent.setup();
+  const field = fieldsForConfig({ sample_vae_decode: "tiled" }).find((item) => item.key === "sample_vae_decode")!;
+  const view = render(<TrainingFieldEditor fields={[field]} draft={{ sample_vae_decode: "tiled", model_family: "krea2_raw" }} ownKeys={new Set()} disabled={false} onChange={vi.fn()} />);
+  await user.click(screen.getByRole("button", { name: "查看预览 VAE 解码帮助" }));
+  const dialog = await screen.findByRole("dialog");
+  expect(within(dialog).getByRole("table")).toHaveTextContent("分块 GPU 解码（推荐）");
+  expect(within(dialog).queryByText(/与默认值不同/)).not.toBeInTheDocument();
+  const details = dialog.querySelector("details")!;
+  expect(details.open).toBe(false);
+  await user.tab();
+  expect(within(dialog).getByText("进阶")).toHaveFocus();
+  await user.tab();
+  expect(within(dialog).getByRole("button", { name: "关闭字段说明" })).toHaveFocus();
+  await user.click(within(dialog).getByText("进阶"));
+  expect(details.open).toBe(true);
+  view.rerender(<TrainingFieldEditor fields={[field]} draft={{ sample_vae_decode: "cpu", model_family: "krea2_raw" }} ownKeys={new Set()} disabled={false} onChange={vi.fn()} />);
+  expect(within(dialog).getByText(/与默认值不同/)).toHaveTextContent("分块 GPU 解码（推荐）");
+});
+
+it("does not repeat the model family and preserves unknown option values", () => {
+  render(<TrainingFieldHelpDialog label="模型族" fieldKey="model_family" value="future_family" options={["anima", "krea2_raw"]} modelFamily="future_family" draft={{ model_family: "future_family" }} onClose={vi.fn()} />);
+  expect(screen.getByText("future_family")).toBeInTheDocument();
+  expect(screen.queryByLabelText("模型族 future_family")).not.toBeInTheDocument();
+  const table = screen.getByRole("table");
+  expect(within(table).queryByText("z_image")).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /恢复/ })).not.toBeInTheDocument();
 });
 
 it("explains why a disabled field is unavailable and closes with focus restoration", async () => {
@@ -68,7 +100,7 @@ it("shows a clear fallback for unknown fields and closes on Escape or backdrop c
   const field = { key: "future_field", label: "未来字段", kind: "text" as const, group: "training" as const };
   const view = render(<TrainingFieldEditor fields={[field]} draft={{ future_field: "safe <text>" }} ownKeys={new Set()} disabled={false} onChange={vi.fn()} />);
   await user.click(screen.getByRole("button", { name: "查看未来字段帮助" }));
-  expect(screen.getByText("此字段暂无详细帮助内容。请保持当前值，除非你已了解该参数的作用；可在高级配置或项目文档中核对后再修改。")).toBeInTheDocument();
+  expect(screen.getByText(/此字段暂无详细帮助内容/)).toBeInTheDocument();
   expect(screen.getByText("safe <text>")).toBeInTheDocument();
   await user.keyboard("{Escape}");
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();

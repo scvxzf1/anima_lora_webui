@@ -170,3 +170,79 @@ def test_atomic_publish_rejects_symlink_target(tmp_path):
     with pytest.raises(ValueError):
         preview_spec.publish_reference(target, image_bytes())
     assert outside.read_bytes() == b"unchanged"
+
+
+@pytest.mark.parametrize("format", ["JPEG", "PNG"])
+def test_preview_reads_legacy_path_without_importing(isolated_root, format):
+    source = isolated_root / "旧参考 图.jpg"
+    original = image_bytes(format)
+    source.write_bytes(original)
+    response = asyncio.run(routes.handle_preview(SimpleNamespace(query={"path": str(source)})))
+    assert response.status == 200
+    assert response.content_type == "image/png"
+    with Image.open(io.BytesIO(response.body)) as image:
+        assert image.format == "PNG" and image.size == (64, 32)
+    assert source.read_bytes() == original
+    assert not (isolated_root / "sample-references").exists()
+
+
+def test_preview_managed_path_and_thumbnail(isolated_root):
+    result = service.import_reference(data=image_bytes())
+    with Image.open(io.BytesIO(service.preview_reference(result["reference_image"]))) as image:
+        assert image.size == (64, 32)
+    source = isolated_root / "large.png"
+    Image.new("RGB", (640, 320), "red").save(source)
+    with Image.open(io.BytesIO(service.preview_reference(str(source), thumbnail=True))) as image:
+        assert image.size == (160, 80)
+
+
+def test_display_preview_is_bounded_jpeg_without_cache_or_file_changes(isolated_root):
+    source = isolated_root / "large.png"
+    Image.new("RGB", (3200, 1600), "red").save(source)
+    original = source.read_bytes()
+    request = SimpleNamespace(query={"path": str(source), "display": "1"})
+    response = asyncio.run(routes.handle_preview(request))
+    assert response.status == 200
+    assert response.content_type == "image/jpeg"
+    assert response.headers["Cache-Control"] == "private, no-store"
+    assert "ETag" not in response.headers
+    with Image.open(io.BytesIO(response.body)) as image:
+        assert image.format == "JPEG" and image.size == (1600, 800)
+    Image.new("RGB", (64, 32), "blue").save(source)
+    changed = asyncio.run(routes.handle_preview(request))
+    assert changed.body != response.body
+    with Image.open(io.BytesIO(changed.body)) as image:
+        assert image.size == (64, 32)
+    assert list(isolated_root.iterdir()) == [source]
+    source.write_bytes(original)
+    request.query["thumbnail"] = "1"
+    thumbnail = asyncio.run(routes.handle_preview(request))
+    assert thumbnail.content_type == "image/png"
+    with Image.open(io.BytesIO(thumbnail.body)) as image:
+        assert image.size == (160, 80)
+
+
+@pytest.mark.parametrize("name,content", [("private.txt", b"private configuration"), ("bad.png", b"not an image")])
+def test_preview_never_serves_non_image_bytes(isolated_root, name, content):
+    source = isolated_root / name
+    source.write_bytes(content)
+    response = asyncio.run(routes.handle_preview(SimpleNamespace(query={"path": str(source)})))
+    assert response.status == 400
+    assert response.content_type == "application/json"
+    assert content not in response.body
+
+
+def test_preview_enforces_path_byte_pixel_and_single_frame_limits(isolated_root, monkeypatch):
+    source = isolated_root / "reference.png"
+    source.write_bytes(image_bytes())
+    for path in ("", str(isolated_root / "missing.png"), str(isolated_root / ".." / "outside.png")):
+        assert asyncio.run(routes.handle_preview(SimpleNamespace(query={"path": path}))).status == 400
+    monkeypatch.setattr(preview_spec, "MAX_REFERENCE_BYTES", 1)
+    assert asyncio.run(routes.handle_preview(SimpleNamespace(query={"path": str(source)}))).status == 400
+    monkeypatch.setattr(preview_spec, "MAX_REFERENCE_BYTES", 20 * 1024 * 1024)
+    monkeypatch.setattr(preview_spec, "MAX_REFERENCE_PIXELS", 100)
+    assert asyncio.run(routes.handle_preview(SimpleNamespace(query={"path": str(source)}))).status == 400
+    monkeypatch.setattr(preview_spec, "MAX_REFERENCE_PIXELS", 32 * 1024 * 1024)
+    Image.new("RGB", (64, 32), "red").save(source, "GIF", save_all=True,
+        append_images=[Image.new("RGB", (64, 32), "blue")])
+    assert asyncio.run(routes.handle_preview(SimpleNamespace(query={"path": str(source)}))).status == 400

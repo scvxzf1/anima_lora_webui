@@ -14,6 +14,9 @@
 
 | 文档 | 原因 |
 | --- | --- |
+| [legacy_ui_retirement_plan.md](../_archive/docs/proposal/legacy_ui_retirement_plan.md) | Classic / Dragon 旧 UI 退役已完成；保留 2026-09-28 至 2026-09-30 的迁移、取舍与验收记录 |
+| [krea2_raw_gradient_checkpointing.md](../_archive/docs/proposal/krea2_raw_gradient_checkpointing.md) | Krea-2 检查点已落地；保留早期调查、设计与实现分叉的历史核对 |
+| [webui-instrument-panel-reskin/README.md](../_archive/docs/proposal/webui-instrument-panel-reskin/README.md) | 2026-07-12 旧静态 UI 换皮已完成；设计、计划、迭代日志和最终评审成组归档 |
 | [anima-app-deglobalization.md](../_archive/docs/proposal/anima-app-deglobalization.md) | 阶段 0-3 已落地（85 轮，`globalThis` 从 1075 降到 270），剩余收尾由 `anima-app-legacy-bridge-cleanup.md` 接续 |
 | [anima-app-legacy-bridge-cleanup.md](../_archive/docs/proposal/anima-app-legacy-bridge-cleanup.md) | `anima-app` legacy bridge 收尾已完成，仅保留实施上下文 |
 | [lora-network-decomposition.md](../_archive/docs/proposal/lora-network-decomposition.md) | `LoRANetwork` 分层拆分核心代码已落地，当前仅保留实施计划和历史上下文 |

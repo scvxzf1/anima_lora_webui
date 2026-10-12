@@ -12,7 +12,6 @@ from accelerate.utils import set_seed
 
 from library import train_util
 from library.datasets import debug_dataset
-from library.anima import training as anima_train_utils
 from library.anima import text_strategies
 from library.runtime.accelerator import prepare_accelerator, prepare_dtype, resume_from_local_or_hf_if_specified
 from library.runtime.device import clean_memory_on_device
@@ -42,6 +41,7 @@ from library.training.precision_policy import (
 )
 from library.training.adaptive_runtime.training_runtime import notify as adaptive_notify, validate_entry
 from library.training.progress import ProgressSink, run_scope
+from library.training.precision_report import reported_session, observe as precision_observe, notify as precision_notify
 from library.training.probes import attach_peak_probe_to_network, maybe_probe, maybe_probe_components
 from library.training.train_bootstrap import (
     collect_compile_resolutions,
@@ -54,12 +54,23 @@ logger = logging.getLogger(__name__)
 
 
 def run_training_session(trainer, args) -> None:
+    from library.models.qwen_image_2_1.nf4_compile_runtime import qwen_nf4_compile_session
+
+    def run_configured(trainer, args):
+        with qwen_nf4_compile_session(args):
+            return _run_training_session(trainer, args)
+
+    return reported_session(trainer, args, run_configured)
+
+
+def _run_training_session(trainer, args) -> None:
     from library.training.auto_block_swap.coordinator import calibrate_if_requested
     from library.training.auto_block_swap.probe import after_model_load, check_dataset, run_probe
 
     from library.training.adaptive_runtime.precision import resolve_adaptive_precision
     resolve_adaptive_precision(args)
     validate_entry(trainer, args)
+    precision_notify("setup")
     calibrate_if_requested(args)
     session_id = random.randint(0, 2**32)
     training_started_at = time.time()
@@ -67,7 +78,9 @@ def run_training_session(trainer, args) -> None:
     from library.training.preview_spec import validate_preview_file
 
     validate_preview_file(args)
+    precision_notify("contract_validation")
     verify_training_args(args)
+    precision_notify("setup")
     train_util.prepare_dataset_args(args, True)
     setup_logging(args, reset=True)
 
@@ -122,11 +135,13 @@ def run_training_session(trainer, args) -> None:
         if val_dataset_group is not None:
             val_dataset_group.set_current_strategies()  # dataset needs to know the strategies explicitly
             debug_dataset(val_dataset_group)
+        precision_notify("debug_dataset")
         return
     if len(train_dataset_group) == 0:
         logger.error(
             "No data found. Please verify arguments (train_data_dir must be the parent of folders with images)"
         )
+        precision_notify("no_data")
         return
 
     if cache_latents:
@@ -225,6 +240,7 @@ def run_training_session(trainer, args) -> None:
     logger.info("preparing accelerator")
     accelerator = prepare_accelerator(args)
     is_main_process = accelerator.is_main_process
+    precision_observe("accelerator_ready", accelerator)
     trainer.memory_probe = MemoryProbe.from_args(
         args,
         is_main_process=is_main_process,
@@ -384,6 +400,7 @@ def run_training_session(trainer, args) -> None:
         args, accelerator, vae, text_encoder, unet, text_encoders, weight_dtype
     )
     if network_result is None:
+        precision_notify("network_not_created")
         return
     network, net_kwargs, train_unet, train_text_encoder = network_result
     peak_probe_lokr_modules = attach_peak_probe_to_network(network, trainer.peak_probe)
@@ -484,6 +501,11 @@ def run_training_session(trainer, args) -> None:
         train_text_encoder,
         cache_latents,
     )
+    from library.training.adaptive_runtime.native_runtime import NativeStartupRuntime
+    native_runtime = getattr(trainer, "_adaptive_training_runtime", None)
+    if type(native_runtime) is NativeStartupRuntime:
+        native_runtime.prepared(unet, network, accelerator)
+    precision_observe("models_prepared", unet, network)
     adaptive_notify(trainer, "setup")
     maybe_probe_components(
         trainer,
@@ -596,8 +618,12 @@ def run_training_session(trainer, args) -> None:
     saver.auto_resume(network)
 
     # resume
+    from library.training.adaptive_runtime.resume_runtime import restore as restore_exact_cursor
+    exact_resume_plan = restore_exact_cursor(
+        trainer, args, accelerator, train_dataloader, unet, network, optimizer
+    )
     resume_from_local_or_hf_if_specified(accelerator, args)
-    resume_plan = plan_resume_start(
+    resume_plan = exact_resume_plan or plan_resume_start(
         args,
         steps_from_state=saver.steps_from_state,
         batches_per_epoch=len(train_dataloader),
@@ -606,6 +632,7 @@ def run_training_session(trainer, args) -> None:
             getattr(args, "_stage_num_update_steps_per_epoch", 0) or 0
         ) or None,
     )
+    precision_observe("resumed", resume_plan.global_step)
     initial_step = resume_plan.initial_step
     epoch_to_start = resume_plan.epoch_to_start
     apply_anima_block_freeze(
@@ -663,6 +690,7 @@ def run_training_session(trainer, args) -> None:
         resume_global_step=resume_plan.global_step,
         metadata=metadata,
     )
+    precision_notify("loop_ready", loop_state)
     loop_state.train_dataset_group = stage_dataset
     loop_state.dataloader_kwargs = stage_loader_kwargs
     maybe_probe(
@@ -701,14 +729,7 @@ def run_training_session(trainer, args) -> None:
         optimizer_eval_fn()
         decode_deferred_samples_safely(accelerator, args, loop_state, vae)
 
-        if is_main_process and sample_preview_enabled(args):
-            try:
-                accelerator.unwrap_model(loop_state.unet).to("cpu")
-            except Exception:
-                pass
-            clean_memory_on_device(accelerator.device)
-            anima_train_utils.decode_pending_samples(accelerator, args, vae)
-
+        precision_notify("final_save", loop_state)
         if is_main_process and (args.save_state or args.save_state_on_train_end):
             save_state_on_train_end(args, accelerator)
 

@@ -18,13 +18,15 @@
 | 了解旧 Dragon 八个界面的历史功能盘点 | [Dragon UI 功能图谱](features/dragon-ui-functional-map.md) |
 | 查阅新前端实施记录 | [Dragon Next 实施记录](features/dragon-next-implementation.md) |
 | 为数据集手动绘制训练蒙版 | [手动蒙版编辑器](features/manual-mask-editor.md) |
-| 跟踪 Next 视觉与工作流修复 | [Next UI/UX 实施进度](features/dragon-next-uiux-progress.md) |
+| 查阅 Next 视觉与工作流修复的阶段记录 | [Next UI/UX 实施记录](features/dragon-next-uiux-progress.md) |
 | 审计并推进 WebUI 后端整改 | [后端审计后续计划](superpowers/plans/2026-09-13-webui-backend-audit-followup.md) |
-| 审核当前分支前端健康度 | [前端健康度评分卡](features/frontend-health-scorecard.md) |
+| 参考前端审阅方法和历史评分 | [前端健康度评分卡](features/frontend-health-scorecard.md) |
 | 查稳定方法 | [方法索引](methods/README.md) |
 | 查可运行实验 | [实验索引](experimental/README.md) |
+| 按已验证配置试验 Qwen Edit NF4 编译 | [Qwen NF4 编译实验](experimental/qwen-nf4-compile.md) |
 | 理解模型、路由和优化原理 | [结构索引](structure/README.md) |
 | 理解 FP16/FP32 训练误差与静态测试边界 | [混合精度数值论证](structure/adaptive-precision-numerics.md) |
+| 配置实验中途 OOM 恢复与独立预览回退 | [训练恢复](experimental/adaptive-training-recovery.md)、[预览内存策略](configuration/sample-preview-memory.md) |
 | 查实验结论、失败路径和审计 | [研究结论索引](findings/README.md) |
 | 评估活跃提案或维护计划 | [提案索引](proposal/README.md)、[施工区索引](superpowers/README.md) |
 | 准备贡献或认领待办 | [PR 规范](../CONTRIBUTING.md)、[贡献优先事项](contribution-priorities.md) |
@@ -43,7 +45,7 @@
 | [findings/](findings/README.md) | 实验结果、失败路径、审计和运行报告 |
 | [optimizations/](optimizations/README.md) | compile、kernel、显存和性能优化 |
 | [proposal/](proposal/README.md) | 活跃或半活跃提案 |
-| [superpowers/](superpowers/README.md) | 当前迭代的 spec、plan 和执行日志 |
+| [superpowers/](superpowers/README.md) | 维护用 spec、plan、执行日志和明确标记的历史快照 |
 
 每个分区的 `README.md` 负责列出该分区文档；本页只链接分区入口。
 
@@ -53,9 +55,9 @@
 | --- | --- |
 | [contribution-priorities.md](contribution-priorities.md) | 从 PR 规范中分离出的当前贡献方向和验收设想 |
 | [optimization-configs-current.md](optimization-configs-current.md) | 与实时配置面同步的优化配置事实清单 |
-| [optimization-roadmap.md](optimization-roadmap.md) | 跨方法优化路线图 |
+| [optimization-roadmap.md](optimization-roadmap.md) | 优化候选方向与按风险选择的验收方式 |
 | [multi_model_support.md](multi_model_support.md) | 多模型支持的架构耦合地图 |
-| [separation_plan.md](separation_plan.md) | 训练、推理和文档拆分计划记录 |
+| [separation_plan.md](separation_plan.md) | 推理拆分的历史规划快照；不表示搬迁已完成 |
 | [archive-index.md](archive-index.md) | `_archive/docs/` 历史材料入口 |
 
 ## 文档生命周期
@@ -71,11 +73,19 @@
 
 ## 验证
 
-文档结构、链接、锚点、围栏、索引完整性、生命周期标记和部分当前配置事实由以下测试守护：
+日常文档修订按 [验证策略](../AGENTS.md#验证策略) 做差异审阅，并只检查本次修改的路径：
+
+```bash
+git diff --check -- <changed-doc-paths>
+```
+
+新增或修改链接时检查受影响的本地目标和锚点；移动、归档或重排索引时，还要确认相关文档
+从本页可达。大规模整理使用本地链接检查，普通文字修订不默认运行测试套件。
+
+需要集中验收文档结构、围栏、索引完整性、生命周期标记及当前配置声明时，可选用：
 
 ```bash
 timeout 60 .venv/bin/python -m pytest tests/test_documentation_integrity.py -q
-git diff --check -- README.md AGENTS.md CONTRIBUTING.md docs _archive/docs
 ```
 
 外部链接只在任务需要时人工核验；不要为了整理导航改写实验结论或历史运行记录。

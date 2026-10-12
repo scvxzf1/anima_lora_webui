@@ -50,9 +50,11 @@ class _FakeDiT:
 
     def switch_block_swap_for_inference(self) -> None:
         self.inference_switches += 1
+        self.prepare_block_swap_before_forward()
 
     def switch_block_swap_for_training(self) -> None:
         self.training_switches += 1
+        self.prepare_block_swap_before_forward()
 
     def prepare_block_swap_before_forward(self) -> None:
         self.prepare_calls += 1
@@ -169,7 +171,7 @@ def test_process_without_a_prompt_waits_for_main_process(monkeypatch, tmp_path) 
     assert rank_0[3] == [0]
     assert rank_1[3] == []
     assert rank_0[0].wait_count == rank_1[0].wait_count == 2
-    assert rank_1[1].prepare_calls == 0
+    assert rank_1[1].prepare_calls == 2
     assert rank_1[1].inference_switches == rank_1[1].training_switches == 1
 
 
@@ -185,7 +187,7 @@ def test_single_process_samples_every_prompt(monkeypatch, tmp_path) -> None:
     assert sampled == [0, 1, 2]
     assert decoded == [0]
     assert accelerator.wait_count == 2
-    assert dit.prepare_calls == 3
+    assert dit.prepare_calls == 2
 
 
 def test_remote_missing_prompt_stops_all_processes_before_barriers(
@@ -224,6 +226,7 @@ def _gloo_sampling_worker(
     init_method: str,
     output_dir: str,
     fail_rank_one: bool,
+    fail_entry: bool = False,
 ) -> None:
     dist.init_process_group(
         "gloo",
@@ -267,13 +270,19 @@ def _gloo_sampling_worker(
             disable_block_swap_for_eval=False,
         )
         accelerator = _DistributedAccelerator(rank, world_size)
+        dit = _FakeDiT()
+        if fail_entry and rank == 1:
+            def fail_switch():
+                dit.inference_switches += 1
+                raise RuntimeError("injected rank 1 entry failure")
+            dit.switch_block_swap_for_inference = fail_switch
         try:
             anima_training.sample_images(
                 accelerator,
                 args,
                 1,
                 150,
-                _FakeDiT(),
+                dit,
                 object(),
                 None,
                 object(),
@@ -283,9 +292,12 @@ def _gloo_sampling_worker(
             if not fail_rank_one:
                 raise
             if rank == 1:
-                assert str(exc) == "injected rank 1 sampling failure"
+                expected = "entry" if fail_entry else "sampling"
+                assert str(exc) == f"injected rank 1 {expected} failure"
             else:
                 assert str(exc) == "Sample generation failed on another process"
+            assert accelerator.wait_count == 0
+            assert dit.training_switches == 1
             Path(root, f"failed-{rank}").touch()
             return
         if fail_rank_one:
@@ -322,8 +334,9 @@ def test_two_process_gloo_shards_before_main_process_decode(tmp_path) -> None:
 
 @pytest.mark.integration
 @pytest.mark.focused
+@pytest.mark.parametrize("fail_entry", [False, True])
 def test_two_process_gloo_propagates_sampling_failure_without_barrier_hang(
-    tmp_path,
+    tmp_path, fail_entry,
 ) -> None:
     if not dist.is_available() or not dist.is_gloo_available():
         pytest.skip("torch.distributed gloo backend is unavailable")
@@ -337,6 +350,7 @@ def test_two_process_gloo_propagates_sampling_failure_without_barrier_hang(
             f"file://{tmp_path / 'gloo-init'}",
             str(tmp_path),
             True,
+            fail_entry,
         ),
         nprocs=world_size,
         join=True,

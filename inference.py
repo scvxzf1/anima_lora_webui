@@ -36,7 +36,7 @@ from library.inference.precision import (
 )
 from library.env import KNOWN_MODEL_FAMILIES, resolve_model_family
 from library.models.family_registry import dispatch_model_family
-from library.inference.family_runtime import prepare_inference_family
+from library.inference.family_runtime import prepare_inference_family, validate_inference_family_options
 
 # Side-effect import: registers spectrum_denoise with library.inference.generation
 # so --spectrum dispatches without library.inference holding a hard edge into networks/.
@@ -70,10 +70,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         type=str,
         default=None,
         choices=list(KNOWN_MODEL_FAMILIES),
-        help="DiT model family (anima default; krea2_raw supported; z_image "
-        "currently training-only). "
+        help="DiT model family (anima default; krea2_raw and qwen_image_2_1 "
+        "support single-prompt inference; z_image currently training-only). "
         "Unset falls back to env ANIMA_MODEL_FAMILY then 'anima'.",
     )
+    parser.add_argument("--qwen_image_2_1_task", choices=["t2i", "edit"], default=None)
+    references = parser.add_mutually_exclusive_group()
+    references.add_argument("--reference_image", type=str, default=None)
+    references.add_argument("--reference_images", nargs="+", default=None)
     parser.add_argument("--vae", type=str, default=None, help="VAE directory or path")
     parser.add_argument(
         "--vae_chunk_size",
@@ -1031,8 +1035,35 @@ def _generate_z_image_latent(args, gen_settings) -> torch.Tensor:
     raise RuntimeError("Z-Image inference is not implemented in the training v1 path.")
 
 
+def _generate_qwen_image_2_1_latent(args, gen_settings) -> torch.Tensor:
+    """Qwen Image 2.1 standalone T2I/Edit family path."""
+    from library.models.qwen_image_2_1 import inference_runner
+
+    device = gen_settings.device
+    runtime_dtype = gen_settings.runtime_dtype
+    inference_runner.validate_qwen_image_2_1_inference_args(args, mode="single")
+    from library.models.qwen_image_2_1.inference_conditions import prepare_qwen_image_2_1_conditions
+
+    positive, negative, reference = prepare_qwen_image_2_1_conditions(
+        args, device, runtime_dtype
+    )
+    dit, network = inference_runner.load_qwen_image_2_1_dit_for_inference(
+        args, device, runtime_dtype
+    )
+    try:
+        return inference_runner.generate_qwen_image_2_1(
+            args, dit, network, positive, negative, device, args.seed, runtime_dtype,
+            reference=reference,
+        )
+    finally:
+        del network, dit
+        gc.collect()
+        clean_memory_on_device(device)
+
+
 def main():
     args = parse_args()
+    validate_inference_family_options(args, resolve_model_family(args))
 
     # Check if latents are provided
     latents_mode = args.latent_path is not None and len(args.latent_path) > 0
@@ -1048,6 +1079,13 @@ def main():
     device = torch.device(device)
     logger.info(f"Using device: {device}")
     args.device = device
+
+    if latents_mode and resolve_model_family(args) == "qwen_image_2_1":
+        from library.models.qwen_image_2_1.inference_latents import decode_qwen_latent_files
+
+        decode_qwen_latent_files(args, device)
+        logger.info("Done!")
+        return
 
     if latents_mode:
         # Original latent decode mode
@@ -1136,14 +1174,21 @@ def main():
                     "anima": generate,
                     "krea2_raw": _generate_krea2_latent,
                     "z_image": _generate_z_image_latent,
-                    "qwen_image_2_1": lambda *_args: (_ for _ in ()).throw(
-                        NotImplementedError("Qwen Image 2.1 standalone inference is not implemented")
-                    ),
+                    "qwen_image_2_1": _generate_qwen_image_2_1_latent,
                 },
             )
             latent = generator(args, gen_settings)
 
             clean_memory_on_device(device)
+
+            if model_family == "qwen_image_2_1":
+                from library.models.qwen_image_2_1.inference_runner import (
+                    save_qwen_image_2_1_output,
+                )
+
+                save_qwen_image_2_1_output(args, latent, device)
+                logger.info("Done!")
+                return
 
             vae = qwen_image_autoencoder_kl.load_vae(
                 args.vae,

@@ -4,12 +4,14 @@ import {
   ArrowUp,
   FolderPlus,
   Plus,
+  Pencil,
   Save,
   Trash2,
   RotateCcw,
 } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { ApiError } from "../../api/client";
+import { CommandDialog } from "../../components/CommandDialog";
 import { capabilityLabels, findModelCapability, previewCapabilityLabels, useModelCapabilities } from "../../api/modelCapabilities";
 import { useServerDraft } from "../../components/useServerDraft";
 import { QueryFeedback } from "../../components/QueryFeedback";
@@ -41,6 +43,9 @@ export function ModelConfigPage() {
   const [selectedId, setSelectedId] = useState("");
   const [search, setSearch] = useState("");
   const [taskFilter, setTaskFilter] = useState("");
+  const [renameGroupId, setRenameGroupId] = useState<string | null>(null);
+  const [renameLabel, setRenameLabel] = useState("");
+  const renameInputRef = useRef<HTMLInputElement>(null);
   const capabilities = useModelCapabilities();
   const modelCapability = (family: string) => findModelCapability(capabilities.data?.items, family);
   const [notice, setNotice] = useState("");
@@ -113,6 +118,35 @@ export function ModelConfigPage() {
       item_ids: [...remaining[0].item_ids, ...removed.item_ids],
     };
     editor.setDraft({ ...draft, groups: remaining });
+  }
+  function openRenameGroup(groupId: string) {
+    const group = groups.find((entry) => entry.id === groupId);
+    if (!group) return;
+    setRenameGroupId(groupId);
+    setRenameLabel(group.label);
+    setNotice("");
+  }
+  function submitRenameGroup() {
+    const label = renameLabel.trim();
+    if (!draft || !renameGroupId || !label) return;
+    if (
+      groups.some(
+        (group) =>
+          group.id !== renameGroupId &&
+          group.label.toLowerCase() === label.toLowerCase(),
+      )
+    ) {
+      setNotice("分组名称已存在");
+      return;
+    }
+    editor.setDraft({
+      ...draft,
+      groups: groups.map((group) =>
+        group.id === renameGroupId ? { ...group, label } : group,
+      ),
+    });
+    setRenameGroupId(null);
+    setNotice("");
   }
   return (
     <div className="settings-shell">
@@ -192,20 +226,11 @@ export function ModelConfigPage() {
                       <button
                         type="button"
                         title="重命名分组"
-                        onClick={() => {
-                          const label = window
-                            .prompt("分组名称", group.label)
-                            ?.trim();
-                          if (label)
-                            editor.setDraft({
-                              ...draft,
-                              groups: groups.map((g) =>
-                                g.id === group.id ? { ...g, label } : g,
-                              ),
-                            });
-                        }}
+                        aria-label={group.label}
+                        onClick={() => openRenameGroup(group.id)}
                       >
                         {group.label}
+                        <Pencil size={13} aria-hidden="true" />
                       </button>
                       <button
                         type="button"
@@ -425,6 +450,60 @@ export function ModelConfigPage() {
           </p>
         )}
         {notice && !editor.dirty && !query.error && <p role="status">{notice}</p>}
+        {renameGroupId && (
+          <CommandDialog
+            title="重命名分组"
+            onClose={() => setRenameGroupId(null)}
+            initialFocusRef={renameInputRef}
+          >
+            <form
+              className="command-form"
+              onSubmit={(event) => {
+                event.preventDefault();
+                submitRenameGroup();
+              }}
+            >
+              <label>
+                分组名称
+                <input
+                  ref={renameInputRef}
+                  value={renameLabel}
+                  maxLength={80}
+                  onChange={(event) => setRenameLabel(event.target.value)}
+                />
+              </label>
+              {renameLabel.trim() &&
+                groups.some(
+                  (group) =>
+                    group.id !== renameGroupId &&
+                    group.label.toLowerCase() === renameLabel.trim().toLowerCase(),
+                ) && (
+                  <p className="form-error" role="alert">
+                    分组名称已存在
+                  </p>
+                )}
+              <div className="toolbar">
+                <button type="button" onClick={() => setRenameGroupId(null)}>
+                  取消
+                </button>
+                <button
+                  type="submit"
+                  className="primary"
+                  disabled={
+                    !renameLabel.trim() ||
+                    groups.some(
+                      (group) =>
+                        group.id !== renameGroupId &&
+                        group.label.toLowerCase() === renameLabel.trim().toLowerCase(),
+                    )
+                  }
+                >
+                  确定
+                </button>
+              </div>
+            </form>
+          </CommandDialog>
+        )}
       </main>
     </div>
   );

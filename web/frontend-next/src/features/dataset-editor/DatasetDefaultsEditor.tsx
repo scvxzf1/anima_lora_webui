@@ -11,9 +11,9 @@ export function DatasetDefaultsEditor({
   disabled: boolean;
 }) {
   return (
-    <fieldset className="dataset-default-fields" disabled={disabled}>
+    <fieldset className="dataset-default-fields">
       <legend>默认训练参数</legend>
-      <DatasetSettingsFields form={form} prefix="defaults" includeKeepTokens />
+      <DatasetSettingsFields form={form} prefix="defaults" includeKeepTokens disabled={disabled} />
     </fieldset>
   );
 }

@@ -64,8 +64,10 @@ from web.services.config_service import (
 
 
 def setup_config_routes(app: web.Application) -> None:
+    from web.routes.model_blocks import setup_model_block_routes
     from web.routes.sample_references import setup_sample_reference_routes
 
+    setup_model_block_routes(app)
     setup_sample_reference_routes(app)
     app.router.add_get("/api/methods", handle_methods)
     app.router.add_get("/api/methods/{method}/variants", handle_variants)

@@ -79,6 +79,26 @@ base.toml
 
 ---
 
+## 训练预检与风险确认
+
+启动和入队会重新执行预检。新三族 NF4 权重通过实际文件头的 manifest 识别，
+即使 `base_compute=bf16` 也会检查量化格式、模型族及训练参数，不加载权重或占用 GPU。
+旧 Anima 和 Krea NF4 格式保留各自的既有规则。
+
+新 Krea 混合 NF4 和 Qwen-Image 2.1 NF4 的编译默认阻止启动。
+Qwen 完整权重的编译数值对照已发现梯度差异，详见
+[编译验收记录](../findings/qwen_nf4_compile_90hx_20261005.md)。
+只有检查结果全部属于可确认风险时，启动弹窗才显示「我已了解以上风险，仍要继续」。
+勾选普通启动确认和风险确认后，可点「无视风险继续启动」或「无视风险继续入队」。
+模型文件损坏、模型族不匹配、缺失路径、精度或其他不兼容配置仍须先处理。
+
+风险确认仅对本次启动或该队列项有效，不写回训练 TOML 或全局设置。
+预处理后会再次检查；新出现的错误仍会阻止训练。修改配置、预设、设备或收到新的
+预检报告后，需要重新确认。强行启动不表示数值差异已修复或训练质量已经验证。
+
+命令行调用可显式添加 `--allow_unverified_nf4_compile`，仅放行上述编译风险；
+写入 TOML 的同名字段不会自动放行。队列和历史训练命令会保留该参数，便于追溯。
+
 ## 5. 相关测试
 
 ```bash
@@ -87,6 +107,7 @@ timeout 60 .venv/bin/python -m pytest \
   tests/test_web_config_sample_prompts.py \
   tests/test_web_config_file_groups.py \
   tests/test_web_config_preflight.py \
+  tests/test_mixed_nf4_preflight_risks.py \
   tests/test_training_frontend_config_ui.py \
   -q
 ```

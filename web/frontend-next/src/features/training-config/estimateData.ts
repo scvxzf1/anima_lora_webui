@@ -12,7 +12,7 @@ export type EstimateDataset = {
   trigger_clone_sampled_weighted_image_count: number;
   uses_preprocessed_images: boolean;
   bucket_distribution?: {
-    basis: "image_dimensions" | "source_projection";
+    basis: "image_dimensions" | "source_projection" | "configured_projection";
     status: "ready" | "partial" | "pending";
     image_count: number;
     unreadable_count: number;

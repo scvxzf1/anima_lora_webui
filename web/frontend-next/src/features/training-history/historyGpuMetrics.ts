@@ -23,7 +23,7 @@ export function historyGpuSummary(points: Record<string, unknown>[]): HistoryGpu
   for (const { key } of HISTORY_GPU_METRICS) {
     const values = points.map((point) => finiteNumber(point[key])).filter((value): value is number => value !== undefined);
     if (!values.length) continue;
-    summary[key] = { latest: values[values.length - 1], peak: Math.max(...values) };
+    summary[key] = { latest: values[values.length - 1], peak: values.reduce((peak, value) => Math.max(peak, value), -Infinity) };
   }
   return summary;
 }

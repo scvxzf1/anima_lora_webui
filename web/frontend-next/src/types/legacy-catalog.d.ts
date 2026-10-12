@@ -69,5 +69,6 @@ declare module "*domain/model-family.js" {
     key: string,
     family: string,
     option: string,
+    context?: Record<string, unknown> | string,
   ): boolean;
 }

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient, type UseQueryResult } from "@tanstack/react-query";
 import { Link, useSearchParams } from "react-router-dom";
-import { ArrowRight, Square } from "lucide-react";
+import { Activity, ArrowRight, Cpu, Radio, Square, Terminal } from "lucide-react";
 import { fetchGpus, fetchTrainingLogs, fetchTrainingMetrics, fetchTrainingStatus, liveMonitorKeys, stopTraining, type GpuInventory, type TrainingStatus } from "./api";
 import { TrainingMetricsCharts } from "../../components/TrainingMetricsCharts";
 import { LogViewer } from "../../components/LogViewer";
@@ -9,6 +9,7 @@ import { QueryFeedback } from "../../components/QueryFeedback";
 import { InlineConfirmDialog } from "../../components/InlineConfirmDialog";
 import { MonitorSummary, GpuDetails } from "./MonitorSummary";
 import { useMonitorRefresh } from "./useMonitorRefresh";
+import { MonitorHistoryWorkspace } from "./MonitorHistoryWorkspace";
 import "./LiveMonitorPage.css";
 
 const RUNNING_STATES = new Set(["running", "training", "compiling", "caching", "saving"]);
@@ -67,10 +68,13 @@ export function LiveMonitorPage() {
     if (stopTarget && (stopTarget !== taskId || !running || statusQuery.error)) setStopTarget(null);
   }, [stopTarget, taskId, running, statusQuery.error]);
 
-  return <div className="monitor-shell"><main className="monitor-page">
+  return <MonitorHistoryWorkspace>{(recentToggle) => <main className="monitor-page">
     <header className="monitor-header">
       <div className="monitor-header-main">
-        <h1>当前监控</h1>
+        <div className="monitor-title-row">
+          <h1>当前监控</h1>
+          <span className="monitor-telemetry-tag">Telemetry</span>
+        </div>
         {taskId ? <p className="monitor-identity"><Link to={`/history/${encodeURIComponent(taskId)}`}>{taskId}</Link>
           {status?.variant ? ` · ${status.variant}` : ""}{status?.preset ? ` · ${status.preset}` : ""}
           {status?.latest_progress?.label ? ` · ${String(status.latest_progress.label)}` : ""}
@@ -80,6 +84,7 @@ export function LiveMonitorPage() {
         <span className="monitor-state" role="status" aria-label="当前任务状态" data-state={statusQuery.error ? "unknown" : running ? "running" : errorState ? "error" : "idle"}>{state}</span>
         {taskId ? <button type="button" className="monitor-stop" disabled={!running || Boolean(statusQuery.error) || stop.isPending}
           onClick={() => setStopTarget(taskId)}><Square size={14} />{stop.isPending ? "正在停止" : "停止训练"}</button> : null}
+        {recentToggle}
       </div>
     </header>
     <div className="monitor-connection-row">
@@ -99,17 +104,59 @@ export function LiveMonitorPage() {
       <p>目标任务：{stop.variables}</p><p>{stop.error.message}</p>
     </section> : null}
     {status && taskId ? <MonitorSummary status={status} /> : status ? <section className="monitor-idle" aria-label="空闲状态">
-      <h2>{statusQuery.error ? "任务状态待确认。" : running ? "任务身份未确认，控制暂不可用。" : "暂无当前任务。"}</h2>
-      {!running && !statusQuery.error ? <nav aria-label="空闲时操作"><Link to="/training">训练配置 <ArrowRight size={14} /></Link><Link to="/queue">训练队列 <ArrowRight size={14} /></Link></nav> : null}
+      <div className="monitor-idle-card">
+        <div className="monitor-idle-hero">
+          <div className="monitor-idle-icon" aria-hidden="true">
+            <Radio size={24} />
+          </div>
+          <div className="monitor-idle-content">
+            <h2>{statusQuery.error ? "任务状态待确认。" : running ? "任务身份未确认，控制暂不可用。" : "暂无当前任务。"}</h2>
+            <p className="monitor-idle-subtitle">
+              {statusQuery.error
+                ? "无法连接到训练守护进程，请检查网络或服务状态。"
+                : running
+                ? "正在同步任务元数据，请稍候。"
+                : "训练系统处于空闲就绪状态，硬件与工作流就绪。您可直接配置新作业或在队列中查看任务。"}
+            </p>
+          </div>
+        </div>
+        {!running && !statusQuery.error ? <nav aria-label="空闲时操作" className="monitor-idle-nav">
+          <Link to="/training" className="monitor-idle-action-card">
+            <div className="monitor-idle-action-text">
+              <strong>训练配置</strong>
+              <span>设置模型架构、数据集与训练参数</span>
+            </div>
+            <ArrowRight size={16} />
+          </Link>
+          <Link to="/queue" className="monitor-idle-action-card">
+            <div className="monitor-idle-action-text">
+              <strong>训练队列</strong>
+              <span>管理已排队作业与调度策略</span>
+            </div>
+            <ArrowRight size={16} />
+          </Link>
+        </nav> : null}
+      </div>
     </section> : null}
     {taskId ? <div className="monitor-workspace" data-has-charts={status?.job === "training"}>
       {status?.job === "training" ? <section className="monitor-chart-panel" aria-label="训练趋势">
+        <header className="monitor-panel-header">
+          <div className="monitor-panel-title">
+            <Activity size={16} className="monitor-panel-icon" />
+            <h2>训练趋势</h2>
+          </div>
+        </header>
         <QueryFeedback query={metricsQuery} label="指标" hasData={metricsQuery.data !== undefined} />
         {metricsQuery.data ? <TrainingMetricsCharts key={taskId} points={metricsQuery.data} total={status?.metric_count} /> : null}
       </section> : null}
       <GpuPanel query={gpusQuery} status={status} confirmed={Boolean(status) && !statusQuery.error} />
       <section className="monitor-log-panel" aria-label="实时日志">
-        <header><h2>实时日志</h2></header>
+        <header className="monitor-panel-header">
+          <div className="monitor-panel-title">
+            <Terminal size={16} className="monitor-panel-icon" />
+            <h2>实时日志</h2>
+          </div>
+        </header>
         <QueryFeedback query={logsQuery} label="日志" hasData={Boolean(logsQuery.data)} />
         {logsQuery.data ? <LogViewer key={taskId} lines={logsQuery.data.records} total={status?.log_count} /> : null}
       </section>
@@ -125,7 +172,7 @@ export function LiveMonitorPage() {
         setStopTarget(null);
       }}
     /> : null}
-  </main></div>;
+  </main>}</MonitorHistoryWorkspace>;
 }
 
 function GpuPanel({ query, status, confirmed }: {
@@ -136,9 +183,15 @@ function GpuPanel({ query, status, confirmed }: {
   const sampledAt = query.data?.sampled_at;
   const unavailable = Boolean(query.error || query.data?.stale);
   return <section className="monitor-gpu-panel" aria-label="设备信息">
-    <header><h2>设备信息</h2>{typeof sampledAt === "number" && Number.isFinite(sampledAt) && !unavailable ? <time dateTime={new Date(sampledAt * 1000).toISOString()}>
-      采样于 {new Date(sampledAt * 1000).toLocaleTimeString()}
-    </time> : null}</header>
+    <header className="monitor-panel-header">
+      <div className="monitor-panel-title">
+        <Cpu size={16} className="monitor-panel-icon" />
+        <h2>设备信息</h2>
+      </div>
+      {typeof sampledAt === "number" && Number.isFinite(sampledAt) && !unavailable ? <time dateTime={new Date(sampledAt * 1000).toISOString()}>
+        采样于 {new Date(sampledAt * 1000).toLocaleTimeString()}
+      </time> : null}
+    </header>
     <QueryFeedback query={query} label="GPU" hasData={Boolean(query.data)} />
     {query.data?.stale ? <p className="monitor-gpu-warning" role="status">GPU 采样暂不可用</p> : null}
     {running && selected.some((index) => !query.data?.gpus?.some((gpu) => gpu.index === index)) && !unavailable ?

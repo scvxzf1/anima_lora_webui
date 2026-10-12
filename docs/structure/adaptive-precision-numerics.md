@@ -315,6 +315,11 @@ selected 仍为 FP32，不应夸大成返回错误的低精度策略。
 同时，relative-L2 的 `max(reference_norm,1e-30)` 在小范数区也不再是真正相对误差；
 应明确记录参考量级和绝对误差，不把分母下限解释成经过任务验收的绝对容差。
 
+2026-09-30 修复状态：`vector_metrics` 已改为 FP64 计算，不再对 cosine 分母设置
+固定 floor；零参考而候选非零时 relative-L2 为 `null` 并附原因，由比较器 fail-closed，
+absolute-L2 与 reference-L2 继续保留。原 2 个 strict xfail 已移除。此前记录的失败
+测试和数学推导均是当时状态，保留为历史证据，不表示修复后回归已全量通过。
+
 ### 8.3 全局梯度通过不保证 Adam 更新接近
 
 取两个独立参数的参考梯度 `g=(1,m)`、候选 `ghat=(1,0)`，`m=2^-26`。

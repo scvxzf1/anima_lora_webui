@@ -1,12 +1,18 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import { TRAINING_LIBRARY_SIZE_KEYS, TrainingWorkspaceLayout } from "./TrainingWorkspaceLayout";
+import { TRAINING_LIBRARY_LAYOUT_KEY, TRAINING_LIBRARY_SIZE_KEYS, TrainingWorkspaceLayout, useTrainingLibraryLayout } from "./TrainingWorkspaceLayout";
+
+function LayoutSwitch() {
+  const layout = useTrainingLibraryLayout()!;
+  return <button onClick={() => layout.setMode(layout.mode === "top" ? "auto" : "top")}>{layout.mode}</button>;
+}
 
 function renderLayout() {
   return render(
     <TrainingWorkspaceLayout>
       <aside className="training-config-library">配置库</aside>
       <div className="training-editor-column">编辑器</div>
+      <LayoutSwitch />
     </TrainingWorkspaceLayout>,
   );
 }
@@ -58,5 +64,23 @@ describe("TrainingWorkspaceLayout", () => {
     fireEvent.keyDown(side, { key: "Home" });
     fireEvent.keyDown(side, { key: "ArrowLeft" });
     expect(localStorage.getItem(TRAINING_LIBRARY_SIZE_KEYS.side)).toBe("10");
+  });
+
+  it("persists explicit placement without changing either saved size", () => {
+    localStorage.setItem(TRAINING_LIBRARY_SIZE_KEYS.side, "32");
+    localStorage.setItem(TRAINING_LIBRARY_SIZE_KEYS.top, "24");
+    const view = renderLayout();
+    const layout = document.querySelector<HTMLElement>(".training-workspace-layout")!;
+    expect(layout.dataset.orientation).toBe("top");
+    fireEvent.click(screen.getByRole("button", { name: "auto" }));
+    expect(layout.dataset.orientation).toBe("top");
+    expect(localStorage.getItem(TRAINING_LIBRARY_LAYOUT_KEY)).toBe("top");
+    view.unmount();
+    renderLayout();
+    expect(document.querySelector<HTMLElement>(".training-workspace-layout")!.dataset.orientation).toBe("top");
+    fireEvent.click(screen.getByRole("button", { name: "top" }));
+    expect(localStorage.getItem(TRAINING_LIBRARY_LAYOUT_KEY)).toBeNull();
+    expect(localStorage.getItem(TRAINING_LIBRARY_SIZE_KEYS.side)).toBe("32");
+    expect(localStorage.getItem(TRAINING_LIBRARY_SIZE_KEYS.top)).toBe("24");
   });
 });

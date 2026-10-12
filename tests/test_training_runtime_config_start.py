@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from tests.nf4_preflight_test_support import write_ordinary_checkpoint
+
 from types import SimpleNamespace
 
 from library.training.stage_schedule import active_subset_indices_for_step
@@ -180,7 +182,7 @@ def test_handle_start_uses_runtime_config_from_absolute_output_root(tmp_path, mo
     Image.new("RGB", (8, 8), color=(10, 20, 30)).save(dataset_cache / "resized" / "a.png")
     Image.new("RGB", (8, 8), color=(10, 20, 30)).save(source_dir / "a.png")
     (tmp_path / "models").mkdir()
-    (tmp_path / "models" / "anima.safetensors").write_bytes(b"model")
+    write_ordinary_checkpoint(tmp_path / "models" / "anima.safetensors")
     (tmp_path / "models" / "qwen.safetensors").write_bytes(b"qwen")
     (tmp_path / "models" / "vae.safetensors").write_bytes(b"vae")
     runtime_config = run_dir / "config.runtime.toml"
@@ -197,6 +199,7 @@ def test_handle_start_uses_runtime_config_from_absolute_output_root(tmp_path, mo
                 'pretrained_model_name_or_path = "models/anima.safetensors"',
                 'qwen3 = "models/qwen.safetensors"',
                 'vae = "models/vae.safetensors"',
+                'max_train_steps = 100',
             ]
         ),
         encoding="utf-8",

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowDown, ArrowUp, FolderOpen, ImagePlus, LoaderCircle, X } from "lucide-react";
-import { importSampleReference, managedReferenceUrl } from "./sampleReferenceApi";
+import { importSampleReference } from "./sampleReferenceApi";
+import { SampleReferencePreview } from "./SampleReferencePreview";
 import "./SampleReferenceInput.css";
 
 export function SampleReferenceInput({ value, disabled, onChange, onBusyChange, maxReferences = 4 }: {
@@ -74,7 +75,7 @@ export function SampleReferenceInput({ value, disabled, onChange, onBusyChange, 
     <span>参考图 ({value.length}/{maxReferences})</span>
     <small>缩放后参考图总像素上限 4 Mi。</small>
     <ol className="sample-reference-list">{value.map((reference, index) => <li key={`${reference}-${index}`}>
-      {managedReferenceUrl(reference) ? <img src={managedReferenceUrl(reference)} alt={`参考图 ${index + 1}`} onError={() => setError(`参考图 ${index + 1} 预览加载失败。`)} /> : <span className="sample-reference-placeholder">{index + 1}</span>}
+      <SampleReferencePreview path={reference} label={`参考图 ${index + 1}`} />
       <span className="sample-reference-name" title={reference}>{reference}</span>
       <button type="button" title="上移" aria-label={`上移参考图 ${index + 1}`} disabled={disabled || busy || index === 0} onClick={() => {
         const next = [...value]; [next[index - 1], next[index]] = [next[index], next[index - 1]]; update(next);

@@ -4,12 +4,16 @@ import { useWatch, type FieldPath, type UseFormReturn } from 'react-hook-form';
 
 import { apiRequest } from '../../api/client';
 import type { DatasetFormValues } from './datasetForm';
+import { DatasetFieldLabel } from './DatasetFieldLabel';
+import type { DatasetFieldHelpKey } from './field-help';
 import './DatasetSourcePathField.css';
 
 type Props = {
   form: UseFormReturn<DatasetFormValues>;
   path: FieldPath<DatasetFormValues>;
   label: string;
+  helpField?: DatasetFieldHelpKey;
+  disabled?: boolean;
 };
 
 type Inspection = {
@@ -21,7 +25,7 @@ type Inspection = {
   source_inspection_error?: string | null;
 };
 
-export function DatasetSourcePathField({ form, path, label }: Props) {
+export function DatasetSourcePathField({ form, path, label, helpField, disabled = false }: Props) {
   const value = useWatch({ control: form.control, name: path });
   const inputRef = useRef<HTMLInputElement>(null);
   const requestId = useRef(0);
@@ -134,24 +138,25 @@ export function DatasetSourcePathField({ form, path, label }: Props) {
 
   return (
     <div className="dataset-source-path-field dataset-wide-field">
-      <label htmlFor={path}>
-        <span>{label}</span>
+      <div className="dataset-setting-field">
+        <DatasetFieldLabel htmlFor={path} field={helpField} label={label} />
         <input
           id={path}
+          disabled={disabled}
           {...registration}
           ref={(element) => { registration.ref(element); inputRef.current = element; }}
           aria-invalid={errorMessage ? true : undefined}
           aria-describedby={[errorMessage ? errorId : '', statusId].filter(Boolean).join(' ') || undefined}
         />
-      </label>
+      </div>
       <div className="dataset-source-path-actions">
-        <button type="button" title="选择本机文件夹名" aria-label="选择本机文件夹名" onClick={() => void chooseDirectory()}>
+        <button type="button" disabled={disabled} title="选择本机文件夹名" aria-label="选择本机文件夹名" onClick={() => void chooseDirectory()}>
           <FolderOpen size={15} aria-hidden="true" />
         </button>
-        <button type="button" title="复制目录路径" aria-label="复制目录路径" onClick={() => void copyPath()}>
+        <button type="button" disabled={disabled} title="复制目录路径" aria-label="复制目录路径" onClick={() => void copyPath()}>
           <Copy size={15} aria-hidden="true" />
         </button>
-        <button type="button" title="重新检查目录" aria-label="重新检查目录" onClick={refresh}>
+        <button type="button" disabled={disabled} title="重新检查目录" aria-label="重新检查目录" onClick={refresh}>
           <RefreshCw size={15} aria-hidden="true" />
         </button>
       </div>

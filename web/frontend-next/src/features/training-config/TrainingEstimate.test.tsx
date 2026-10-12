@@ -74,3 +74,12 @@ it("shows request errors without inventing empty distribution data", async () =>
   expect(await screen.findByRole("alert")).toHaveTextContent("读取失败");
   expect(screen.queryByRole("table")).not.toBeInTheDocument();
 });
+
+it("labels training directory buckets calculated from saved dataset settings", async () => {
+  vi.stubGlobal("fetch", vi.fn(async () => jsonResponse({ ...data, datasets: [
+    { ...row, bucket_distribution: { ...row.bucket_distribution, basis: "configured_projection" } },
+  ] })));
+  renderInApp(<TrainingEstimate file={{ path: "configs/test.toml" }} preset="default" dirty={false} />);
+  expect(await screen.findByText(/训练目录目标桶 1 个子集 · 按已保存数据集分桶设置计算目标尺寸/)).toBeInTheDocument();
+  expect(screen.queryByText(/实测/)).not.toBeInTheDocument();
+});

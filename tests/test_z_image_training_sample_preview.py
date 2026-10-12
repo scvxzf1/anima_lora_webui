@@ -241,6 +241,7 @@ def test_decode_pending_z_image_samples_reverses_latent_normalization(tmp_path) 
             self.anchor = torch.nn.Parameter(torch.zeros(()))
             self.config = SimpleNamespace(scaling_factor=2.0, shift_factor=0.5)
             self.seen = None
+            self.use_tiling = False
 
         @property
         def dtype(self):

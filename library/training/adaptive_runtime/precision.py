@@ -39,24 +39,59 @@ def floating_tree(value, *, device, dtype):
     return tree_map(convert, value)
 
 
+def vector_metrics(pairs):
+    """Compare FP32 vectors with FP64 reductions and exact zero-norm semantics."""
+    ref_square = actual_square = delta_square = dot = 0.0
+    for reference, candidate in pairs:
+        ref, actual = reference.double(), candidate.double()
+        if not torch.isfinite(ref).all() or not torch.isfinite(actual).all():
+            return {"finite": False, "relative_l2": None, "absolute_l2": None,
+                    "reference_l2": None, "cosine": None}
+        ref_square += float(ref.square().sum())
+        actual_square += float(actual.square().sum())
+        delta_square += float((actual - ref).square().sum())
+        dot += float((ref * actual).sum())
+    reference_l2, actual_l2 = math.sqrt(ref_square), math.sqrt(actual_square)
+    absolute_l2 = math.sqrt(delta_square)
+    if reference_l2 == 0:
+        relative_l2 = 0.0 if actual_l2 == 0 else None
+        cosine = 1.0 if actual_l2 == 0 else 0.0
+    else:
+        relative_l2 = absolute_l2 / reference_l2
+        cosine = 0.0 if actual_l2 == 0 else dot / (reference_l2 * actual_l2)
+    metrics = {"finite": True, "relative_l2": relative_l2,
+               "absolute_l2": absolute_l2, "reference_l2": reference_l2,
+               "cosine": max(-1.0, min(1.0, cosine))}
+    if relative_l2 is None:
+        metrics["relative_l2_undefined_reason"] = "zero_reference_nonzero_candidate"
+    return metrics
+
+
 def _measure(reference, candidate):
     if len(reference) != len(candidate):
         raise ValueError("Precision candidate changed the output/gradient structure")
-    errors, cosines = [], []
+    errors, cosines, absolute_errors, reference_norms = [], [], [], []
+    undefined_relative_l2 = False
     for ref, actual in zip(reference, candidate, strict=True):
         if ref.shape != actual.shape:
             raise ValueError("Precision candidate changed tensor shapes")
-        ref, actual = ref.double().flatten(), actual.double().flatten()
-        if not torch.isfinite(actual).all():
-            return {"finite": False, "relative_l2": None, "cosine": None}
-        norm = torch.linalg.vector_norm(ref)
-        other = torch.linalg.vector_norm(actual)
-        delta = torch.linalg.vector_norm(actual - ref)
-        errors.append(float(delta / norm.clamp_min(1e-30)))
-        cosine = (ref @ actual) / (norm * other).clamp_min(1e-30)
-        cosines.append(1.0 if norm == 0 and other == 0 else float(cosine))
-    return {"finite": True, "relative_l2": max(errors, default=0.0),
-            "cosine": min(cosines, default=1.0)}
+        metrics = vector_metrics([(ref, actual)])
+        if not metrics["finite"]:
+            return metrics
+        if metrics["relative_l2"] is None:
+            undefined_relative_l2 = True
+        else:
+            errors.append(metrics["relative_l2"])
+        cosines.append(metrics["cosine"])
+        absolute_errors.append(metrics["absolute_l2"])
+        reference_norms.append(metrics["reference_l2"])
+    result = {"finite": True, "relative_l2": None if undefined_relative_l2 else max(errors, default=0.0),
+              "absolute_l2": max(absolute_errors, default=0.0),
+              "reference_l2": max(reference_norms, default=0.0),
+              "cosine": min(cosines, default=1.0)}
+    if undefined_relative_l2:
+        result["relative_l2_undefined_reason"] = "zero_reference_nonzero_candidate"
+    return result
 
 
 def _prepare_inputs(args, kwargs, *, device, dtype, preserved):
@@ -144,6 +179,8 @@ def calibrate_unit(module, cases, *, device, candidate="fp16", tolerances=None,
             seed=index, preserved=preserve_input_indices)
         output, gradient = [_measure(a, b) for a, b in zip(reference, trial, strict=True)]
         safe = (output["finite"] and gradient["finite"]
+                and output["relative_l2"] is not None
+                and gradient["relative_l2"] is not None
                 and output["relative_l2"] <= limits.output_relative_l2
                 and gradient["relative_l2"] <= limits.gradient_relative_l2
                 and gradient["cosine"] >= limits.gradient_cosine)
@@ -188,9 +225,15 @@ def resolve_adaptive_precision(args, *, get_capability=None) -> str:
     requested = str(getattr(args, "adaptive_precision", "off") or "off").strip().lower()
     if requested != "auto":
         return requested
+    from library.models.family_registry import normalize_registered_family
+
+    family = normalize_registered_family(
+        getattr(args, "model_family", "anima") or "anima",
+        source="adaptive precision model_family", allow_aliases=True,
+    )
     cached_mode = getattr(args, "adaptive_resolved_mode", None)
     cached_candidate = getattr(args, "adaptive_candidate", None)
-    if cached_mode in {"bf16", "fp16_fp32", "fp32"} and cached_candidate in {
+    if cached_mode in {"bf16", "native_fp16", "fp16_fp32", "fp32"} and cached_candidate in {
         "bf16", "fp16", "fp32"
     }:
         # The parent may call this helper again while entering the supervisor.
@@ -211,23 +254,22 @@ def resolve_adaptive_precision(args, *, get_capability=None) -> str:
                 capability = None
         if capability is None:
             mixed = str(getattr(args, "mixed_precision", "bf16") or "bf16").strip().lower()
-            mode = {"bf16": "bf16", "fp16": "fp16_fp32", "no": "fp32"}.get(mixed, "fp32")
-            candidate = {"bf16": "bf16", "fp16_fp32": "fp16", "fp32": "fp32"}[mode]
+            candidate = {"bf16": "bf16", "fp16": "fp16", "no": "fp32"}.get(mixed, "fp32")
+            fp16_mode = "native_fp16" if family == "anima" else "fp16_fp32"
+            mode = {"bf16": "bf16", "fp16": fp16_mode, "fp32": "fp32"}[candidate]
         else:
             candidate = preferred_candidate(tuple(capability))
-            mode = {"bf16": "bf16", "fp16": "fp16_fp32", "fp32": "fp32"}[candidate]
+            fp16_mode = "native_fp16" if family == "anima" else "fp16_fp32"
+            mode = {"bf16": "bf16", "fp16": fp16_mode, "fp32": "fp32"}[candidate]
     args.adaptive_resolved_mode = mode
     args.adaptive_candidate = candidate
-    args.mixed_precision = {"bf16": "bf16", "fp16_fp32": "fp16", "fp32": "no"}[mode]
-    family = str(getattr(args, "model_family", "anima") or "anima").strip().lower()
-    try:
-        from library.models.family_registry import normalize_registered_family
-
-        family = normalize_registered_family(
-            family, source="adaptive precision model_family", allow_aliases=True
+    args.mixed_precision = {"bf16": "bf16", "native_fp16": "fp16", "fp16_fp32": "fp16", "fp32": "no"}[mode]
+    if mode == "native_fp16":
+        args.attn_mode = "torch"
+        args.adaptive_resolution_reason = (
+            "Anima FP16 candidate uses native AMP with torch attention; "
+            "hardware routing is not numerical or training-quality certification"
         )
-    except (ImportError, ValueError):
-        pass
     if mode == "fp16_fp32" and getattr(args, "block_swap_restore_mode", None) in {None, "slab"}:
         args.block_swap_restore_mode = "foreach"
     if mode in {"fp16_fp32", "fp32"} and family in {"krea2_raw", "z_image"}:

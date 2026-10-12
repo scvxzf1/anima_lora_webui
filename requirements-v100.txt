@@ -6,6 +6,7 @@
 torch==2.10.0+cu129
 torchvision==0.25.0+cu129
 accelerate>=1.13.0
+torchdata==0.11.0
 transformers>=5.10.1
 diffusers>=0.37.0
 einops>=0.7.0

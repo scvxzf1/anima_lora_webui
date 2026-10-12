@@ -190,6 +190,7 @@ def populate_schema(
     # semantic knobs. Old configs / snapshots still resolve onto the new keys.
     for _canon, _old in (
         ("use_vae_cache", ("cache_latents", "cache_latents_to_disk")),
+        ("sample_vae_decode", ("qwen_sample_vae_decode",)),
         (
             "use_text_cache",
             ("cache_text_encoder_outputs", "cache_text_encoder_outputs_to_disk"),

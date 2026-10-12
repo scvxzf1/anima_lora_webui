@@ -234,6 +234,10 @@ export function configFieldAvailability(key, context = {}) {
     if (key === 'blocks_to_swap' && toggleEnabled(context, 'auto_block_swap')) {
         return unavailable('本次运行由 AUTO 校准；保留此手动值供关闭 AUTO 后使用。', 'auto-block-swap-enabled');
     }
+    if (key === 'qwen_sample_blocks_to_swap'
+        && String(contextValue(context, 'qwen_sample_swap_mode', 'inherit')).trim().toLowerCase() !== 'custom') {
+        return unavailable('请先选择“自定义”预览块交换。', 'qwen-preview-swap-inherit');
+    }
     if (['auto_block_swap_mode', 'auto_block_swap_interval', 'auto_block_swap_max_trials', 'auto_block_swap_timeout', 'auto_block_swap_swap_io_limit_mb', 'auto_block_swap_vram_reserve_percent', 'auto_block_swap_preference'].includes(key)
         && !toggleEnabled(context, 'auto_block_swap')) {
         return unavailable('请先启用 AUTO 块交换。', 'auto-block-swap-disabled');

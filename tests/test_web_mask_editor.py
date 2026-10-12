@@ -183,6 +183,81 @@ def test_mask_directory_cannot_overwrite_source_assets(dataset):
         masks.list_masks(FILE, 0)
 
 
+def test_list_masks_is_lightweight_and_loads_preset_once(dataset, monkeypatch):
+    from web.services.config import dataset_media
+
+    calls = 0
+    original = masks.presets.load_dataset_preset
+
+    def load_once(file):
+        nonlocal calls
+        calls += 1
+        return original(file)
+
+    def unexpected(*_args, **_kwargs):
+        raise AssertionError("mask listing must not read preview metadata")
+
+    monkeypatch.setattr(masks.presets, "load_dataset_preset", load_once)
+    monkeypatch.setattr(masks.presets, "list_dataset_preset_images", unexpected)
+    monkeypatch.setattr(masks.presets, "resolve_dataset_preview_image", unexpected)
+    monkeypatch.setattr(dataset_media, "_dataset_image_preview_meta", unexpected)
+    monkeypatch.setattr(dataset_media, "_dataset_caption_meta", unexpected)
+    monkeypatch.setattr(dataset_media, "_dataset_image_dimensions", unexpected)
+
+    page = masks.list_masks(FILE, 0)
+    assert calls == 1
+    assert page["total"] == page["returned"] == 1
+    assert len(page["images"]) == 1
+    image = page["images"][0]
+    assert {key: value for key, value in image.items() if key != "thumbnail_url"} == {
+        "file": "source/nested/photo.jpg",
+        "name": "photo.jpg",
+        "url": "/api/config/dataset-presets/image?file=configs/datasets/manual-mask.toml"
+               "&dataset_index=0&source=source&image=source/nested/photo.jpg",
+        "has_mask": False,
+    }
+    assert image["thumbnail_url"].startswith(
+        "/api/config/dataset-presets/thumbnail?file=configs/datasets/manual-mask.toml"
+    )
+    assert "&v=" in image["thumbnail_url"]
+
+
+def test_list_masks_pagination_and_mask_status(dataset):
+    source = dataset / "source/nested"
+    for index in range(50):
+        (source / f"image-{index:02d}.jpg").write_bytes(b"image bytes")
+    first = masks.list_masks(FILE, 0)
+    root = dataset / first["mask_dir"]
+    (root / "nested").mkdir(parents=True)
+    (root / "nested/image-00_mask.png").write_bytes(png())
+    (root / "image-01_mask.png").write_bytes(png())
+    first = masks.list_masks(FILE, 0)
+    second = masks.list_masks(FILE, 0, offset=first["next_offset"])
+    assert (first["total"], first["returned"], first["next_offset"]) == (51, 48, 48)
+    assert first["has_more_after"] and not first["has_more_before"]
+    assert {item["name"] for item in first["images"] if item["has_mask"]} == {
+        "image-00.jpg", "image-01.jpg",
+    }
+    assert (second["offset"], second["returned"], second["next_offset"]) == (48, 3, 51)
+    assert second["has_more_before"] and not second["has_more_after"]
+    assert all(not item["has_mask"] for item in second["images"])
+
+
+def test_list_masks_rejects_source_symlink_escape(dataset):
+    outside = dataset / "outside.jpg"
+    outside.write_bytes(b"not opened")
+    (dataset / "source/escape.jpg").symlink_to(outside)
+    with pytest.raises(ValueError, match="图片不属于"):
+        masks.list_masks(FILE, 0)
+
+
+def test_list_masks_rejects_symlink_to_non_image(dataset):
+    (dataset / "source/not-image.txt").write_text("caption")
+    (dataset / "source/alias.jpg").symlink_to(dataset / "source/not-image.txt")
+    with pytest.raises(ValueError, match="只允许读取数据集图片"):
+        masks.list_masks(FILE, 0)
+
+
 def test_http_round_trip_and_conflict_status(dataset):
     import asyncio
     from aiohttp import web

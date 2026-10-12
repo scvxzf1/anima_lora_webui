@@ -15,13 +15,15 @@ export function AppShell() {
     <div
       className="next-layout"
       data-training-workspace={location.pathname === "/training"}
+      data-monitor-workspace={location.pathname === "/monitor"}
       data-dataset-workspace={location.pathname === "/datasets"}
       data-mask-workspace={location.pathname === "/datasets/masks"}
       data-dataset-image-workspace={location.pathname.startsWith("/datasets/workspace")}
       style={{
         zoom: scale.global,
+        minHeight: location.pathname === "/monitor" ? `calc(100dvh / ${scale.global})` : undefined,
         height:
-          ["/training", "/datasets", "/datasets/masks"].includes(location.pathname)
+          ["/training", "/datasets", "/datasets/masks", "/monitor"].includes(location.pathname)
             || location.pathname.startsWith("/datasets/workspace")
             ? `calc(100dvh / ${scale.global})`
             : undefined,

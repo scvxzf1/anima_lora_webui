@@ -18,6 +18,10 @@ for (const viewport of [{ width: 1172, height: 900 }, { width: 390, height: 844 
       content: `${JSON.stringify({ prompt: "colorize", sample_task: "edit", reference_images: ["/tmp/before-a.png", "/tmp/before-b.png"], width: 512, height: 512 })}\n`,
       prompts: ["colorize"], revision: "fixture",
     } }));
+    await page.route((url) => url.pathname === "/api/config/sample-references/preview", (route) => route.fulfill({
+      contentType: "image/svg+xml",
+      body: '<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512"><rect width="100%" height="100%" fill="teal"/></svg>',
+    }));
 
     await page.goto("/next/training");
     await expect(page.getByText("已同步", { exact: true })).toBeVisible();

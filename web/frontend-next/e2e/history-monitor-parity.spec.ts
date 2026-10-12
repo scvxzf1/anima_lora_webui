@@ -15,41 +15,43 @@ test("history loss and learning-rate charts expose labeled metric values", async
     system: [],
   } }));
 
+  await page.route((url) => url.pathname === "/api/training/history/fixture-run/system", (route) => route.fulfill({ json: { system: [], total: 0, next_offset: 0, has_more_after: false } }));
   await page.goto("/next/history/fixture-run?view=metrics");
-  const lossSection = page.getByRole("region", { name: "Loss 趋势" });
-  const lossChart = lossSection.getByRole("group", { name: "Loss 趋势，4 个点" });
+  const lossSection = page.getByRole("region", { name: "Loss 与学习率趋势" });
+  const lossChart = lossSection.getByRole("group", { name: "Loss 与学习率趋势，4 个点" });
   await expect(lossChart).toBeVisible();
   await expect(lossChart.locator("canvas")).toBeVisible();
   const desktopBox = await lossChart.boundingBox();
   expect(desktopBox).not.toBeNull();
-  await page.mouse.move(desktopBox!.x + desktopBox!.width * 0.65, desktopBox!.y + desktopBox!.height * 0.5);
+  await page.mouse.move(desktopBox!.x + 64 + (desktopBox!.width - 142) * 2 / 3, desktopBox!.y + desktopBox!.height * 0.5);
   await expect(page.getByText("STEP: 40", { exact: true })).toBeVisible();
   await expect(page.getByText("Loss: 0.1600", { exact: true })).toBeVisible();
   await lossChart.focus();
   await page.keyboard.press("ArrowRight");
   await page.keyboard.press("ArrowRight");
   await page.keyboard.press("ArrowRight");
-  await expect(lossSection.getByText("检查点 3/4 · STEP: 40 · Loss: 0.1600", { exact: true })).toBeVisible();
+  await expect(lossSection.getByText("检查点 3/4 · STEP: 40 · Loss: 0.1600 · 学习率: 6.000e-5", { exact: true })).toBeVisible();
 
-  const lrSection = page.getByRole("region", { name: "学习率趋势" });
-  const lrChart = lrSection.getByRole("group", { name: "学习率趋势，4 个点" });
+  const lrSection = lossSection;
+  const lrChart = lossChart;
   await lrChart.focus();
   await page.keyboard.press("ArrowRight");
-  await expect(lrSection.getByText("检查点 1/4 · STEP: 0 · 学习率: 1.000e-4", { exact: true })).toBeVisible();
+  await expect(lrSection.getByText("检查点 4/4 · STEP: 60 · Loss: 0.09000 · 学习率: 4.000e-5", { exact: true })).toBeVisible();
   await page.screenshot({ path: info.outputPath("history-loss-inspection.png"), fullPage: true });
 
   const tooltip = lossChart.locator(':scope > div[style*="z-index: 9999999"]');
   await lossChart.scrollIntoViewIfNeeded();
   const resizeBox = await lossChart.boundingBox();
   expect(resizeBox).not.toBeNull();
-  await page.mouse.move(resizeBox!.x + resizeBox!.width * 0.65, resizeBox!.y + resizeBox!.height * 0.5);
+  await page.mouse.move(resizeBox!.x + 64 + (resizeBox!.width - 142) * 2 / 3, resizeBox!.y + resizeBox!.height * 0.5);
   await expect(tooltip).toBeVisible();
   await page.setViewportSize({ width: 390, height: 844 });
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await expect(tooltip).toBeHidden();
+  await lossChart.scrollIntoViewIfNeeded();
   const mobileBox = await lossChart.boundingBox();
   expect(mobileBox).not.toBeNull();
-  await page.mouse.move(mobileBox!.x + mobileBox!.width * 0.65, mobileBox!.y + mobileBox!.height * 0.5);
+  await page.mouse.move(mobileBox!.x + 64 + (mobileBox!.width - 142) * 2 / 3, mobileBox!.y + mobileBox!.height * 0.5);
   await expect(page.getByText("STEP: 40", { exact: true })).toBeVisible();
   await expect(page.getByText("Loss: 0.1600", { exact: true })).toBeVisible();
   await expect.poll(() => tooltip.evaluate((element) => {
@@ -61,7 +63,7 @@ test("history loss and learning-rate charts expose labeled metric values", async
   await expect(lrChart.locator("canvas")).toBeVisible();
   const mobileLrBox = await lrChart.boundingBox();
   expect(mobileLrBox).not.toBeNull();
-  await page.mouse.move(mobileLrBox!.x + mobileLrBox!.width * 0.65, mobileLrBox!.y + mobileLrBox!.height * 0.5);
+  await page.mouse.move(mobileLrBox!.x + 64 + (mobileLrBox!.width - 142) * 2 / 3, mobileLrBox!.y + mobileLrBox!.height * 0.5);
   const lrTooltip = lrChart.locator(':scope > div[style*="z-index: 9999999"]');
   await expect(lrTooltip).toBeVisible();
   await expect(lrTooltip).toContainText("学习率:");
@@ -73,7 +75,7 @@ test("history loss and learning-rate charts expose labeled metric values", async
   await lossChart.focus();
   await page.keyboard.press("ArrowLeft");
   await page.keyboard.press("ArrowLeft");
-  await expect(lossSection.getByText("检查点 1/4 · STEP: 0 · Loss: 0.4200", { exact: true })).toBeVisible();
+  await expect(lossSection.getByText("检查点 2/4 · STEP: 20 · Loss: 0.2800 · 学习率: 8.000e-5", { exact: true })).toBeVisible();
   await page.screenshot({ path: info.outputPath("history-loss-inspection-mobile.png"), fullPage: true });
   expect(mocks.writes).toEqual([]);
   expect(mocks.unhandled).toEqual([]);

@@ -1,6 +1,7 @@
 import { finiteNumber, formatLearningRate, formatLoss, formatStep } from "../../components/trainingNumbers";
 import type { GpuInfo, TrainingStatus } from "./api";
 import { isTrainingMetric } from "../../components/metricSemantics";
+import { Activity, Cpu } from "lucide-react";
 
 const RUNNING_STATES = new Set(["running", "training", "compiling", "caching", "saving"]);
 
@@ -70,15 +71,18 @@ export function MonitorSummary({ status }: { status: TrainingStatus }) {
   return <>
     <section className="monitor-progress-card" aria-label="任务进度">
       <div className="monitor-progress-heading">
-        <h2>任务进度</h2>
+        <div className="monitor-progress-title-wrap">
+          <Activity size={18} className="monitor-heading-icon" />
+          <h2>任务进度</h2>
+        </div>
         <strong>{pct == null ? "未记录" : `${pct.toFixed(1)}%`}</strong>
       </div>
       {pct != null ? <div className="monitor-progress-track" role="progressbar" aria-label="任务进度" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
         <div style={{ width: `${pct}%` }} />
       </div> : null}
       <div className="monitor-progress-copy">
-        <div><span>{status.job === "preprocess" ? "处理进度" : "步数"}</span><strong>{formatStep(step)} / {formatStep(total)}</strong></div>
-        <div><span>任务目录</span><strong>{status.output_dir || "未记录"}</strong></div>
+        <div className="monitor-chip"><span>{status.job === "preprocess" ? "处理进度" : "步数"}</span><strong>{formatStep(step)} / {formatStep(total)}</strong></div>
+        <div className="monitor-chip monitor-dir-chip"><span>任务目录</span><strong title={status.output_dir}>{status.output_dir || "未记录"}</strong></div>
       </div>
       {status.anomaly_message ? <p className="monitor-anomaly" role="status">{status.anomaly_message}</p> : null}
     </section>
@@ -92,11 +96,34 @@ export function MonitorSummary({ status }: { status: TrainingStatus }) {
 }
 
 export function GpuDetails({ gpu, participation }: { gpu: GpuInfo; participation: string }) {
-  return <dl className="monitor-gpu-card">
-    <div className="monitor-gpu-title"><dt>GPU {finiteNumber(gpu.index) ?? "?"}</dt><dd>{participation}</dd></div>
+  const memUsed = finiteNumber(gpu.memory_used_gb);
+  const memTotal = finiteNumber(gpu.memory_total_gb);
+  const memPct = memUsed != null && memTotal != null && memTotal > 0
+    ? Math.max(0, Math.min(100, (memUsed / memTotal) * 100)) : undefined;
+  const util = finiteNumber(gpu.gpu_util);
+  const isSelected = participation === "当前任务已选";
+  const isUnselected = participation === "未选用";
+
+  return <dl className="monitor-gpu-card" data-participation={isSelected ? "selected" : isUnselected ? "unselected" : "idle"}>
+    <div className="monitor-gpu-title">
+      <dt><Cpu size={14} className="monitor-gpu-icon" /> GPU {finiteNumber(gpu.index) ?? "?"}</dt>
+      <dd><span className="monitor-gpu-badge" data-status={isSelected ? "selected" : isUnselected ? "unselected" : "idle"}>{participation}</span></dd>
+    </div>
     <div className="monitor-gpu-name"><dt>型号</dt><dd>{String(gpu.name || "未记录")}</dd></div>
-    <div><dt>显存</dt><dd>{quantity(gpu.memory_used_gb, " GB", 1)} / {quantity(gpu.memory_total_gb, " GB", 1)}</dd></div>
-    <div><dt>利用率</dt><dd>{quantity(gpu.gpu_util, "%")}</dd></div>
+    <div className="monitor-gpu-stat">
+      <dt>显存</dt>
+      <dd>
+        <span>{quantity(gpu.memory_used_gb, " GB", 1)} / {quantity(gpu.memory_total_gb, " GB", 1)}</span>
+        {memPct != null ? <div className="monitor-mini-meter" title={`显存已用 ${memPct.toFixed(1)}%`}><div style={{ width: `${memPct}%` }} /></div> : null}
+      </dd>
+    </div>
+    <div className="monitor-gpu-stat">
+      <dt>利用率</dt>
+      <dd>
+        <span>{quantity(gpu.gpu_util, "%")}</span>
+        {util != null ? <div className="monitor-mini-meter" title={`利用率 ${util}%`}><div style={{ width: `${Math.max(0, Math.min(100, util))}%` }} /></div> : null}
+      </dd>
+    </div>
     <div><dt>温度</dt><dd>{quantity(gpu.gpu_temp, "°C")}</dd></div>
   </dl>;
 }

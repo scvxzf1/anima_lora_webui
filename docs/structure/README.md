@@ -22,6 +22,7 @@
 | [spectrum.md](spectrum.md) | Spectrum Chebyshev feature forecasting 原理 |
 | [chimera-hydra.md](chimera-hydra.md) | ChimeraHydra 双池 additive MoE 原理 |
 | [dpdmd.md](dpdmd.md) | DP-DMD 多角色 LoRA 蒸馏结构 |
+| [nm-w4a16.md](nm-w4a16.md) | N:M 稀疏、INT4 payload、BF16 计算和反向输入梯度的数学边界 |
 
 相关图片在 [../structure_images/](../structure_images/) 和 [../structure_images_korean/](../structure_images_korean/)。
 

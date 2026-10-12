@@ -32,7 +32,11 @@ describe("history asset path copying", () => {
     expect(screen.getByRole("status")).toHaveTextContent("step-10.safetensors的路径已复制");
     expect(screen.getByRole("link", { name: "step-10.safetensors" })).toHaveAttribute("href", "/api/preview/weight?task_id=task+%23%26%3F&file=step-10.safetensors");
     expect(screen.getByRole("link", { name: "step-10.safetensors" })).toHaveAttribute("download");
-    expect(screen.getByText("/output/task/step-10.safetensors")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "下载 step-10.safetensors" })).toHaveAttribute("href", "/api/preview/weight?task_id=task+%23%26%3F&file=step-10.safetensors");
+    expect(screen.getByRole("link", { name: "下载 step-10.safetensors" })).toHaveAttribute("download");
+    expect(screen.getByRole("link", { name: "下载 step-10.safetensors" })).toHaveAttribute("title", "下载 step-10.safetensors");
+    expect(screen.getByText("/output/task/step-10.safetensors")).toHaveAttribute("title", "/output/task/step-10.safetensors");
+    expect(screen.getByRole("link", { name: "step-10.safetensors" })).toHaveAttribute("title", "step-10.safetensors");
   });
 
   it("shows an accessible failure message when clipboard access is denied", async () => {
@@ -147,6 +151,8 @@ describe("history asset path copying", () => {
     expect(screen.getByRole("button", { name: "查看 Step 500 variant-b.png 的生成参数" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "final.safetensors" }).parentElement?.parentElement).toHaveTextContent("Final Model");
     expect(screen.getByRole("link", { name: "checkpoint.safetensors" }).parentElement?.parentElement).not.toHaveTextContent("Final Model");
+    expect(screen.getByRole("link", { name: "下载 final.safetensors" })).toHaveAttribute("download");
+    expect(screen.getByRole("link", { name: "下载 checkpoint.safetensors" })).toHaveAttribute("download");
   });
 
   it("keeps the selected file stable when refreshed images change order", async () => {

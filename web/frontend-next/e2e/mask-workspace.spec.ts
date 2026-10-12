@@ -479,15 +479,19 @@ test('mask pagination requests a nonzero offset and keeps the selected image ide
   const mocks = await setupMaskWorkspace(page, { maskImageCount: 60 });
   await openMaskWorkspace(page);
 
+  await expect(page.locator('.mask-image-item img')).toHaveCount(0);
+  await page.getByRole('button', { name: '展开或收起图片列表' }).click();
   await expect(page.getByRole('button', { name: 'image-1.png' })).toBeVisible();
   await page.getByRole('button', { name: '下一页图片' }).click();
   await expect(page.getByRole('button', { name: 'image-48.png' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'image-1.png' })).toHaveCount(0);
   expect(mocks.pageReads).toContainEqual({ datasetIndex: '0', offset: '48' });
 
-  await page.getByRole('button', { name: 'image-48.png' }).click();
-  await expect(page.locator('.mask-filename')).toHaveText('image-48.png');
-  expect(mocks.imageReads).toContainEqual({ datasetIndex: '0', image: 'images/studio/image-48.png' });
+  await page.getByRole('button', { name: 'image-49.png' }).click();
+  await expect(page.locator('.mask-filename')).toHaveText('image-49.png');
+  await expect(page.getByRole('button', { name: 'image-49.png' })).toHaveAttribute('aria-current', 'true');
+  await expect(page.locator('.mask-image-item img')).toHaveCount(12);
+  expect(mocks.imageReads).toContainEqual({ datasetIndex: '0', image: 'images/studio/image-49.png' });
 
   await page.getByRole('button', { name: '上一页图片' }).click();
   await expect(page.getByRole('button', { name: 'image-1.png' })).toBeVisible();
@@ -546,6 +550,7 @@ test('dirty mask confirms before switching images or subsets', async ({ page }) 
   const canvas = await openMaskWorkspace(page);
   await drawMaskStroke(page, canvas);
 
+  await page.getByRole('button', { name: '展开或收起图片列表' }).click();
   const otherImage = page.getByRole('button', { name: 'other.png' });
   await otherImage.click();
   let discard = page.getByRole('dialog', { name: '放弃未保存修改？' });
@@ -560,6 +565,7 @@ test('dirty mask confirms before switching images or subsets', async ({ page }) 
   discard = page.getByRole('dialog', { name: '放弃未保存修改？' });
   await discard.getByRole('button', { name: '放弃修改并继续' }).click();
   await expect(page.locator('section[aria-label="编辑区域"]')).toHaveAttribute('aria-busy', 'false');
+  await expect(page.locator('.mask-image-item')).toHaveCount(2);
   await expect(otherImage).toHaveAttribute('aria-current', 'true');
   await expect(page.locator('.mask-filename')).toHaveText('other.png');
   expect(mocks.imageReads).toContainEqual({ datasetIndex: '0', image: otherImageFile });

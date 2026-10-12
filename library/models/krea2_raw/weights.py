@@ -67,6 +67,24 @@ def load_krea2_dit(
     if resolved_nf4_path and not os.path.exists(resolved_nf4_path):
         raise FileNotFoundError(f"NF4 权重不存在: {resolved_nf4_path}")
 
+    from library.quantization.format import inspect_mixed_nf4
+
+    if inspect_mixed_nf4(dit_path, family="krea2_raw") is not None:
+        from library.quantization.mixed_nf4 import load_mixed_nf4_into
+
+        if nf4 or resolved_nf4_path:
+            raise ValueError("Mixed NF4 cannot be combined with online NF4 or nf4_path")
+        mixed_dtype = torch.bfloat16 if dtype is None else dtype
+        if mixed_dtype != torch.bfloat16:
+            raise ValueError("Mixed NF4 requires BF16 compute")
+        with torch.device("meta"):
+            model = SingleStreamDiT(config)
+        load_mixed_nf4_into(model, dit_path, family="krea2_raw",
+                            dtype=mixed_dtype, device=device)
+        if eval:
+            model.eval()
+        return model
+
     nf4_info = (
         inspect_nf4_checkpoint(resolved_nf4_path) if resolved_nf4_path else None
     )

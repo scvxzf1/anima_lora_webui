@@ -12,6 +12,7 @@ import {
   historyGpuSampleTime,
   historyGpuSummary,
 } from "./historyGpuMetrics";
+import { useHistorySystem } from "./useHistorySystem";
 import "./HistoryGpuMetrics.css";
 
 const METRICS = [
@@ -20,10 +21,11 @@ const METRICS = [
   { key: "gpu_temp", label: "GPU 温度 (°C)" },
 ] as const;
 
-export function HistoryGpuMetrics({ points, total, whitelist = [] }: {
-  points: Record<string, unknown>[]; total?: number; whitelist?: number[];
+export function HistoryGpuMetrics({ points, total, whitelist = [], taskId }: {
+  points: Record<string, unknown>[]; total?: number; whitelist?: number[]; taskId?: string;
 }) {
-  const recentPoints = useMemo(() => historyGpuRecentPoints(points), [points]);
+  const history = useHistorySystem(taskId, points, total);
+  const recentPoints = history.points;
   const devices = useMemo(() => historyGpuDevices(recentPoints), [recentPoints]);
   const [selectedKey, setSelectedKey] = useState("");
   const [selectedSample, setSelectedSample] = useState("");
@@ -34,7 +36,7 @@ export function HistoryGpuMetrics({ points, total, whitelist = [] }: {
   const visibleMetrics = metrics.filter(({ key }) => !hiddenMetrics.has(key));
   const summary = historyGpuSummary(chartPoints);
   const hasSummary = HISTORY_GPU_METRICS.some(({ key }) => summary[key].latest !== undefined || summary[key].peak !== undefined);
-  const inspectionIndices = historyGpuInspectionIndices(chartPoints);
+  const inspectionIndices = historyGpuInspectionIndices(historyGpuRecentPoints(chartPoints)).map((index) => index + Math.max(0, chartPoints.length - 1000));
   const latestInspection = inspectionIndices.at(-1);
   const requestedSample = inspectionIndices.find((index) => historyGpuSampleKey(chartPoints[index]) === selectedSample);
   const inspectionIndex = requestedSample ?? latestInspection;
@@ -50,6 +52,7 @@ export function HistoryGpuMetrics({ points, total, whitelist = [] }: {
     : devices.length ? whitelist.length ? `任务已选 GPU ${whitelist.join("、")}` : "参与设备未确认" : "仅有汇总记录";
 
   return <section className="history-gpu-metrics" aria-label="GPU 资源历史">
+    {taskId && <div className="history-gpu-loading" role="status">已读取 {history.read} / {history.total ?? "未知"} 个采样点{history.loading ? <> · 正在读取 <button type="button" onClick={history.cancel}>取消读取</button></> : null}{history.error ? <><span role="alert"> · {history.error}</span> <button type="button" onClick={history.retry}>重新读取</button></> : null}</div>}
     <div className="history-gpu-heading">
       <div><h2>GPU 资源</h2><p>{device ? `GPU ${device.index} · ${device.name} · ${scope}` : scope}</p></div>
       {devices.length ? <div className="history-gpu-choices" role="group" aria-label="GPU 资源范围">
@@ -91,7 +94,7 @@ export function HistoryGpuMetrics({ points, total, whitelist = [] }: {
       </div>
       <div className="history-gpu-charts">
         {metrics.map(({ key, label }) => <MetricsChart key={`${device?.key || "total"}-${key}`} points={chartPoints}
-        metric={key} label={label} timeAxis total={total} hidden={hiddenMetrics.has(key)} />)}
+        metric={key} label={label} timeAxis segmentedWindow total={history.total} hidden={hiddenMetrics.has(key)} />)}
       </div>
       {metrics.length > 0 && !visibleMetrics.length ? <p className="history-detail-empty">已隐藏所有 GPU 指标</p> : null}
     </div> : <p className="history-detail-empty">暂无 GPU 资源记录</p>}

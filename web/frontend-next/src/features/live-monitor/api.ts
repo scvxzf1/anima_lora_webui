@@ -62,12 +62,13 @@ export function fetchTrainingStatus(signal?: AbortSignal) {
 }
 
 export async function fetchTrainingMetrics(taskId?: string, signal?: AbortSignal) {
-  const query = taskId ? `?task_id=${encodeURIComponent(taskId)}` : "";
+  const query = new URLSearchParams({ all: "1" });
+  if (taskId) query.set("task_id", taskId);
   const points = await apiRequest<Record<string, unknown>[]>(
-    `/api/training/metrics${query}`,
+    `/api/training/metrics?${query.toString()}`,
     { signal },
   );
-  return points.slice(-2000);
+  return points;
 }
 
 export async function fetchTrainingLogs(limit = 300, taskId?: string, signal?: AbortSignal) {

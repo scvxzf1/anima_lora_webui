@@ -46,6 +46,7 @@ def setup_tagging_routes(app: web.Application) -> None:
         app.router.add_get(f"{prefix}/jobs/{{job_id}}", handle_job_get)
         app.router.add_post(f"{prefix}/jobs/{{job_id}}/rerun", handle_job_rerun)
         app.router.add_post(f"{prefix}/jobs/{{job_id}}/cancel", handle_job_cancel)
+        app.router.add_patch(f"{prefix}/jobs/{{job_id}}/items", handle_items_update)
         app.router.add_patch(f"{prefix}/jobs/{{job_id}}/items/{{item_id}}", handle_item_update)
         app.router.add_post(f"{prefix}/jobs/{{job_id}}/commit", handle_job_commit)
 
@@ -422,6 +423,21 @@ async def handle_job_cancel(request: web.Request) -> web.Response:
         return web.json_response({"ok": False, "error": str(exc)}, status=404)
     except RuntimeError as exc:
         return web.json_response({"ok": False, "error": str(exc)}, status=409)
+
+
+async def handle_items_update(request: web.Request) -> web.Response:
+    service = _service(request)
+    if service is None:
+        return _unavailable()
+    try:
+        data = await _json_object(request)
+        return web.json_response(service.update_items(request.match_info["job_id"], data.get("items")))
+    except KeyError as exc:
+        return web.json_response({"ok": False, "error": str(exc)}, status=404)
+    except RuntimeError as exc:
+        return web.json_response({"ok": False, "error": str(exc)}, status=409)
+    except ValueError as exc:
+        return web.json_response({"ok": False, "error": str(exc)}, status=400)
 
 
 async def handle_item_update(request: web.Request) -> web.Response:

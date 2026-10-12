@@ -18,6 +18,14 @@ describe("backend-derived model capabilities", () => {
     expect(editCapabilityIssue(items[0])).toContain("Anima");
     expect(editCapabilityIssue(undefined)).toContain("不可用");
     expect(capabilityLabels({ name: "old", display_name: "Old", aliases: [] })).toEqual(["能力未知"]);
+    expect(capabilityLabels({
+      name: "qwen_image_2_1",
+      display_name: "Qwen Image 2.1",
+      aliases: [],
+      supported_tasks: ["t2i", "edit"],
+      supported_network_specs: ["lora", "loha", "lokr"],
+      plain_lora_only: true,
+    })).toContain("LoRA / LoHa / LoKr（仅 T2I 实验）");
   });
 
   it("refreshes read-only labels when family changes and filters model rows", async () => {

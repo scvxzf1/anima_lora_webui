@@ -8,54 +8,116 @@
   background: var(--page);
   font-family: "Noto Sans SC", "Microsoft YaHei", sans-serif;
   font-synthesis: none;
+
+  /* 表面层次 */
   --surface: #ffffff;
-  --page: #f5f6f7;
-  --surface-subtle: #f7f8fa;
-  --line: #d8dde5;
-  --line-strong: #b9c2cf;
-  --muted: #5f6875;
-  --accent: #2461bb;
-  --primary: #19765d;
-  --accent-soft: #e9efff;
-  --danger: #b42318;
-  --danger-soft: #fff0ef;
-  --danger-line: #d88b85;
-  --success: #18794e;
-  --success-soft: #eaf8f1;
-  --success-line: #a8dcc3;
-  --warning: #8a4b08;
-  --warning-soft: #fff5e8;
-  --warning-line: #efc68f;
-  --ink: #171918;
-  --button-ink: #182235;
+  --page: #f8f9fb;
+  --surface-subtle: #f3f5f8;
+  --surface-elevated: #ffffff;
+
+  /* 边框 */
+  --line: #e1e6ed;
+  --line-strong: #c5cdd8;
+
+  /* 文字 */
+  --ink: #1a1d23;
+  --muted: #5a6170;
+  --ink-light: #7d8694;
+
+  /* 主色 - 渐变蓝 */
+  --accent: #3b82f6;
+  --accent-hover: #2563eb;
+  --accent-soft: #eff6ff;
+  --accent-gradient: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+
+  /* 品牌主色 - 绿色渐变 */
+  --primary: #10b981;
+  --primary-hover: #059669;
+  --primary-soft: #ecfdf5;
+  --primary-gradient: linear-gradient(135deg, #10b981 0%, #059669 100%);
+
+  /* 语义色 */
+  --danger: #ef4444;
+  --danger-soft: #fef2f2;
+  --danger-line: #fca5a5;
+  --success: #10b981;
+  --success-soft: #ecfdf5;
+  --success-line: #86efac;
+  --warning: #f59e0b;
+  --warning-soft: #fffbeb;
+  --warning-line: #fcd34d;
+
+  /* 按钮 */
+  --button-ink: #1e293b;
   --button-bg: #ffffff;
-  --button-border: #bcc6d4;
+  --button-border: #cbd5e1;
+
+  /* 阴影 */
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+  --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+
+  /* 圆角 */
+  --radius-sm: 6px;
+  --radius: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
 }
 
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --page: #18191c;
-  --surface: #202125;
-  --surface-subtle: #25262b;
-  --line: #37383e;
-  --line-strong: #61636d;
-  --muted: #adaeb8;
-  --ink: #f0f0f3;
-  --accent: #89b8ff;
-  --accent-soft: #26354d;
-  --primary: #217c65;
-  --success: #84dabb;
-  --success-soft: #223c32;
-  --success-line: #44665b;
-  --danger: #ffa6ac;
-  --danger-soft: #3e252b;
-  --danger-line: #9e6069;
-  --warning: #ecc879;
-  --warning-soft: #3c3524;
-  --warning-line: #74613f;
-  --button-ink: #ededf1;
-  --button-bg: #28292e;
-  --button-border: #555761;
+
+  /* 表面层次 - 深色模式使用更深的渐进色阶 */
+  --page: #0f1419;
+  --surface: #1a1f26;
+  --surface-subtle: #232930;
+  --surface-elevated: #2a3139;
+
+  /* 边框 */
+  --line: #2d333d;
+  --line-strong: #404854;
+
+  /* 文字 */
+  --ink: #e8eaed;
+  --muted: #9ca3af;
+  --ink-light: #6b7280;
+
+  /* 主色 - 在深色背景上更亮 */
+  --accent: #60a5fa;
+  --accent-hover: #3b82f6;
+  --accent-soft: #1e3a5f;
+  --accent-gradient: linear-gradient(135deg, #60a5fa 0%, #3b82f6 100%);
+
+  /* 品牌主色 */
+  --primary: #34d399;
+  --primary-hover: #10b981;
+  --primary-soft: #064e3b;
+  --primary-gradient: linear-gradient(135deg, #34d399 0%, #10b981 100%);
+
+  /* 语义色 */
+  --danger: #f87171;
+  --danger-soft: #450a0a;
+  --danger-line: #7f1d1d;
+  --success: #34d399;
+  --success-soft: #064e3b;
+  --success-line: #065f46;
+  --warning: #fbbf24;
+  --warning-soft: #451a03;
+  --warning-line: #78350f;
+
+  /* 按钮 */
+  --button-ink: #e8eaed;
+  --button-bg: #2a3139;
+  --button-border: #404854;
+
+  /* 阴影 - 深色模式使用更深的阴影 */
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.3);
+  --shadow: 0 1px 3px 0 rgb(0 0 0 / 0.4), 0 1px 2px -1px rgb(0 0 0 / 0.4);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.4), 0 2px 4px -2px rgb(0 0 0 / 0.4);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.5), 0 4px 6px -4px rgb(0 0 0 / 0.5);
+  --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.5), 0 8px 10px -6px rgb(0 0 0 / 0.5);
 }
 
 * {
@@ -82,7 +144,7 @@ body {
   line-height: 1.6;
 }
 :root[data-next-help="always"] .training-field-help,
-.training-edit-fields > label:focus-within .training-field-help {
+.training-edit-fields > label:has(> :is(input, select, textarea):focus) .training-field-help {
   display: block;
 }
 :root[data-next-tags="contextual"] .training-field-tag {

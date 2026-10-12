@@ -34,6 +34,7 @@ from web.services.config.preflight_compat import (
     _web_python_executable,
     training_sample_sampler_status,
 )
+from web.services.config.preflight_nf4 import check_mixed_nf4
 from web.services.config.preflight_stage_schedule import check_stage_schedule
 from web.services.config.dataset_rows import merge_stage_schedule_from_dataset_config
 from web.services.config.schema_gate import validate_config_mapping
@@ -186,7 +187,7 @@ def preflight_training_config(
         config_file
     ) or _looks_like_web_runtime_config(cfg)
 
-    def add(level: str, key: str, message: str, path: Path | None = None) -> None:
+    def add(level: str, key: str, message: str, path: Path | None = None, **flags) -> None:
         item = {
             "level": level,
             "key": key,
@@ -194,6 +195,7 @@ def preflight_training_config(
         }
         if path is not None:
             item["path"] = _display_path(path)
+        item.update(flags)
         checks.append(item)
         if level == "error":
             errors.append(item)
@@ -359,6 +361,8 @@ def preflight_training_config(
         )
         check_file("qwen3", "Qwen3 文本编码器", (".safetensors", ".pt", ".pth", ".bin"))
         check_file("vae", "VAE 模型", (".safetensors", ".pt", ".pth", ".ckpt"))
+    if cfg.get("pretrained_model_name_or_path"):
+        check_mixed_nf4(cfg, _resolve_project_path(str(cfg["pretrained_model_name_or_path"])), add)
     _check_network_weights(cfg, add, variant, preset, methods_subdir, config_file)
     dataset_config_path = _dataset_config_path_from_cfg(cfg)
     if cfg.get("dataset_config") and (
@@ -389,6 +393,7 @@ def preflight_training_config(
 
     return {
         "ok": not errors,
+        "can_override": bool(errors) and all(item.get("overridable") is True for item in errors),
         "training_task": training_task_summary(task_cfg) if family_valid else None,
         "variant": variant,
         "preset": preset,

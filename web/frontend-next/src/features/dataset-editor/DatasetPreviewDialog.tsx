@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { Copy, Expand, ImageOff, RefreshCw, X } from 'lucide-react';
+import { Copy, Expand, ImageOff, PanelLeftClose, PanelLeftOpen, RefreshCw, ScrollText, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 
@@ -9,6 +9,9 @@ import { DatasetImageViewer } from './DatasetImageViewer';
 import { DATASET_PREVIEW_PAGE_SIZE, DatasetPreviewPager, hasDatasetPreviewPagination } from './DatasetPreviewPager';
 import { trapDialogFocus } from './trapDialogFocus';
 import type { DatasetPreviewImage } from './types';
+import { useContinuousPreview } from './useContinuousPreview';
+import { usePreviewPreference } from './usePreviewPreference';
+import { usePreviewFocusRefresh } from './usePreviewFocusRefresh';
 import './DatasetPreview.css';
 
 type Props = {
@@ -27,6 +30,8 @@ export function DatasetPreviewDialog({ file, datasetIndex, returnFocus, onClose,
   const viewerImageRef = useRef<DatasetPreviewImage | null>(null);
   const viewerTriggerRef = useRef<HTMLElement | null>(null);
   const [viewerImage, setViewerImage] = useState<DatasetPreviewImage | null>(null);
+  const [infoExpanded, setInfoExpanded] = usePreviewPreference('dataset-preview-info-expanded', true);
+  const [continuous, setContinuous] = usePreviewPreference('dataset-preview-continuous', false);
   const identity = `${file}\0${datasetIndex}`;
   const [page, setPage] = useState({ identity, offset: 0 });
   const offset = page.identity === identity ? page.offset : 0;
@@ -35,10 +40,25 @@ export function DatasetPreviewDialog({ file, datasetIndex, returnFocus, onClose,
     queryFn: ({ signal }) => fetchDatasetPresetImages(file, datasetIndex, signal, DATASET_PREVIEW_PAGE_SIZE, offset),
     placeholderData: (previous, previousQuery) => previousQuery?.queryKey[2] === file && previousQuery?.queryKey[3] === datasetIndex ? previous : undefined,
     gcTime: 0,
+    refetchOnWindowFocus: false,
   });
   const currentData = !preview.isPlaceholderData && (preview.data?.offset ?? 0) === offset ? preview.data : undefined;
   const paginationSupported = preview.data && hasDatasetPreviewPagination(preview.data);
   const pageMismatch = paginationSupported && !preview.isPlaceholderData && preview.data!.offset !== offset && preview.data!.total > offset;
+  const stream = useContinuousPreview({ enabled: continuous, identity, offset, data: currentData, bodyRef });
+  const streamActive = continuous && !!currentData && !!paginationSupported;
+  const shownOffset = streamActive ? stream.visibleOffset : offset;
+  const shownData = streamActive ? stream.pages.find((item) => item.offset === shownOffset) ?? currentData : currentData;
+  usePreviewFocusRefresh(async () => {
+    if (preview.isFetching) return;
+    if (streamActive) await stream.refresh();
+    else await preview.refetch({ cancelRefetch: false });
+  });
+
+  useEffect(() => {
+    const images = streamActive ? stream.pages.flatMap((item) => item.images) : currentData?.images;
+    setViewerImage((selected) => selected ? images?.find((image) => image.file === selected.file) ?? selected : null);
+  }, [currentData, streamActive, stream.pages]);
 
   useEffect(() => {
     const data = preview.data;
@@ -93,6 +113,16 @@ export function DatasetPreviewDialog({ file, datasetIndex, returnFocus, onClose,
     if (bodyRef.current) bodyRef.current.scrollTop = 0;
   }
 
+  function toggleContinuous() {
+    if (continuous && streamActive) changePage(stream.visibleOffset);
+    setContinuous(!continuous);
+  }
+
+  function refreshPreview() {
+    if (streamActive && shownOffset !== offset) changePage(shownOffset);
+    else void preview.refetch();
+  }
+
   const panel = (
     <div className="dataset-preview-backdrop" role="presentation" onMouseDown={(event) => {
       if (!embedded && event.target === event.currentTarget) onClose();
@@ -105,9 +135,16 @@ export function DatasetPreviewDialog({ file, datasetIndex, returnFocus, onClose,
             <p>{preview.data ? `${preview.data.source_label} · ${preview.data.directory} · ${preview.data.count}/${preview.data.total} 张 · 标注来源 ${preview.data.caption_source_label} · ${preview.data.caption_summary}` : file}</p>
           </div>
           <div className="dataset-preview-actions">
-            <button type="button" onClick={() => preview.refetch()} disabled={preview.isFetching}>
+            <button type="button" className="dataset-preview-preference" aria-label={infoExpanded ? '折叠信息栏' : '展开信息栏'} aria-expanded={infoExpanded} title={infoExpanded ? '折叠信息栏' : '展开信息栏'} onClick={() => setInfoExpanded(!infoExpanded)}>
+              {infoExpanded ? <PanelLeftClose aria-hidden="true" size={16} /> : <PanelLeftOpen aria-hidden="true" size={16} />}
+              <span>信息</span>
+            </button>
+            {paginationSupported && <button type="button" className="dataset-preview-preference" aria-label="连续滚动" aria-pressed={continuous} title="连续滚动" onClick={toggleContinuous}>
+              <ScrollText aria-hidden="true" size={16} /><span>连续滚动</span>
+            </button>}
+            <button type="button" aria-label="刷新" title="刷新" onClick={refreshPreview} disabled={preview.isFetching || stream.loading}>
               <RefreshCw aria-hidden="true" size={16} />
-              {preview.isFetching && preview.data ? '刷新中' : '刷新'}
+              <span>{preview.isFetching && preview.data ? '刷新中' : '刷新'}</span>
             </button>
             {!embedded && <button ref={closeRef} type="button" className="dataset-icon-button" aria-label="关闭图片预览" title="关闭" onClick={onClose}>
               <X aria-hidden="true" size={18} />
@@ -128,11 +165,13 @@ export function DatasetPreviewDialog({ file, datasetIndex, returnFocus, onClose,
             <strong>分页结果与请求位置不一致</strong>
             <button type="button" onClick={() => changePage(0)}>返回第一页</button>
           </div> : null}
-          {paginationSupported ? <DatasetPreviewPager key={`${identity}:${offset}`} data={preview.data!} offset={offset} loading={preview.isFetching || preview.isPlaceholderData} onChange={changePage} /> : null}
+          {paginationSupported ? <DatasetPreviewPager key={`${identity}:${shownOffset}`} data={shownData ?? preview.data!} offset={shownOffset} loading={preview.isFetching || preview.isPlaceholderData} onChange={changePage} /> : null}
+          {streamActive && stream.error ? <div className="dataset-preview-message" role="alert"><strong>{stream.error.direction === 'refresh' ? '图片预览刷新失败' : '相邻页加载失败'}</strong><span>{stream.error.message}</span><button type="button" onClick={stream.retry}>{stream.error.direction === 'refresh' ? '重试刷新' : `重试${stream.error.direction === 'before' ? '上一页' : '下一页'}`}</button></div> : null}
+          {streamActive && stream.loading ? <p className="dataset-preview-page-warning" role="status">正在读取相邻页</p> : null}
           {currentData && !paginationSupported && currentData.total > currentData.images.length ? <p className="dataset-preview-page-warning" role="status">分页接口尚未生效，请重启 WebUI 服务后再翻页。</p> : null}
           {currentData ? (
-            <div className="dataset-preview-layout">
-              <aside className="dataset-preview-info">
+            <div className="dataset-preview-layout" data-info-expanded={infoExpanded}>
+              {infoExpanded && <aside className="dataset-preview-info">
                 <dl className="dataset-preview-details">
                   <Detail label="数据集文件" value={currentData.file} />
                   <Detail label="当前目录" value={currentData.directory} />
@@ -144,13 +183,15 @@ export function DatasetPreviewDialog({ file, datasetIndex, returnFocus, onClose,
                   <Detail label="标注来源" value={currentData.caption_source_label} />
                   <Detail label="识别摘要" value={currentData.caption_summary} />
                 </dl>
-              </aside>
+              </aside>}
               <section className="dataset-preview-results" aria-label="预览图片">
                 {currentData.images.length ? (
-                  <div className="dataset-preview-grid">
-                    {currentData.images.map((image) => (
-                      <DatasetPreviewCard key={image.file} image={image} onOpen={openViewer} />
-                    ))}
+                  streamActive ? stream.pages.map((item) => (
+                    <div className="dataset-preview-page" data-preview-offset={item.offset} key={item.offset}>
+                      <div className="dataset-preview-grid">{item.images.map((image) => <DatasetPreviewCard key={image.file} image={image} onOpen={openViewer} />)}</div>
+                    </div>
+                  )) : <div className="dataset-preview-grid">
+                    {currentData.images.map((image) => <DatasetPreviewCard key={image.file} image={image} onOpen={openViewer} />)}
                   </div>
                 ) : (
                   <p className="dataset-preview-message">{currentData.message || '当前目录没有可预览图片'}</p>
@@ -181,6 +222,7 @@ function DatasetPreviewCard({
 }) {
   const [imageFailed, setImageFailed] = useState(false);
   const [copyStatus, setCopyStatus] = useState('');
+  useEffect(() => setImageFailed(false), [image.url]);
 
   async function copyCaption() {
     try {

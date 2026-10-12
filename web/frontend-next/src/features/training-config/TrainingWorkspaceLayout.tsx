@@ -1,7 +1,23 @@
-import { useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent, type ReactNode, type RefObject } from "react";
+import { createContext, useContext, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent, type ReactNode, type RefObject } from "react";
 
 type Axis = "side" | "top";
+type LayoutMode = Axis | "auto";
 type Sizes = Record<Axis, number | null>;
+export const TRAINING_LIBRARY_LAYOUT_KEY = "dragon-next.training-library-layout";
+const LayoutContext = createContext<{ mode: LayoutMode; setMode: (mode: LayoutMode) => void } | null>(null);
+
+export function useTrainingLibraryLayout() {
+  return useContext(LayoutContext);
+}
+
+function readLayoutMode(): LayoutMode {
+  try {
+    const stored = localStorage.getItem(TRAINING_LIBRARY_LAYOUT_KEY);
+    return stored === "side" || stored === "top" ? stored : "auto";
+  } catch {
+    return "auto";
+  }
+}
 
 const STORAGE_KEYS: Record<Axis, string> = {
   side: "dragon-next.training-library-side-percent",
@@ -144,6 +160,31 @@ export function TrainingWorkspaceLayout({ children }: { children: ReactNode }) {
   const layoutRef = useRef<HTMLDivElement>(null);
   const controls = useLibrarySizes(layoutRef);
   const { sizes } = controls;
+  const [mode, setModeState] = useState<LayoutMode>(readLayoutMode);
+  const [narrow, setNarrow] = useState(false);
+
+  useLayoutEffect(() => {
+    const layout = layoutRef.current;
+    if (!layout) return;
+    const workspace = layout.closest(".next-content") || layout;
+    const update = () => setNarrow(workspace.getBoundingClientRect().width <= 1050);
+    update();
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(update);
+    observer?.observe(workspace);
+    window.addEventListener("resize", update);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener("resize", update);
+    };
+  }, []);
+
+  function setMode(next: LayoutMode) {
+    setModeState(next);
+    try {
+      if (next === "auto") localStorage.removeItem(TRAINING_LIBRARY_LAYOUT_KEY);
+      else localStorage.setItem(TRAINING_LIBRARY_LAYOUT_KEY, next);
+    } catch { /* Keep the current session's selection. */ }
+  }
 
   const style = {
     "--training-library-side-size": sizes.side === null ? undefined : `${sizes.side}%`,
@@ -151,12 +192,14 @@ export function TrainingWorkspaceLayout({ children }: { children: ReactNode }) {
   } as CSSProperties;
 
   return (
-    <div ref={layoutRef} className="training-workspace-layout" style={style}>
-      {children}
-      {(["side", "top"] as const).map((axis) => (
-        <LibraryResizer key={axis} axis={axis} controls={controls} />
-      ))}
-    </div>
+    <LayoutContext.Provider value={{ mode, setMode }}>
+      <div ref={layoutRef} className="training-workspace-layout" data-orientation={mode === "auto" ? (narrow ? "top" : "side") : mode} style={style}>
+        {children}
+        {(["side", "top"] as const).map((axis) => (
+          <LibraryResizer key={axis} axis={axis} controls={controls} />
+        ))}
+      </div>
+    </LayoutContext.Provider>
   );
 }
 

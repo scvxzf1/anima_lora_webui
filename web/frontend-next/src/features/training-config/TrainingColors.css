@@ -1,0 +1,259 @@
+/* ============================================
+   Training Page Color Enhancements
+   ============================================ */
+
+/* Enhanced color tokens for training workspace */
+:root {
+  /* Accent variations */
+  --accent-bright: #3B6DFF;
+  --accent-dim: rgba(59, 109, 255, 0.12);
+  --accent-hover: #2856E8;
+
+  /* Success states */
+  --success: #10B981;
+  --success-dim: rgba(16, 185, 129, 0.12);
+  --success-hover: #059669;
+
+  /* Warning states */
+  --warning: #F59E0B;
+  --warning-dim: rgba(245, 158, 11, 0.12);
+  --warning-hover: #D97706;
+
+  /* Danger states */
+  --danger: #EF4444;
+  --danger-dim: rgba(239, 68, 68, 0.12);
+  --danger-hover: #DC2626;
+
+  /* Info states */
+  --info: #06B6D4;
+  --info-dim: rgba(6, 182, 212, 0.12);
+  --info-hover: #0891B2;
+
+  /* Surface enhancements */
+  --surface-overlay: rgba(255, 255, 255, 0.05);
+  --surface-glass: rgba(255, 255, 255, 0.02);
+
+  /* Border enhancements */
+  --border-focus: var(--accent);
+  --border-success: var(--success);
+  --border-warning: var(--warning);
+  --border-danger: var(--danger);
+
+  /* Text on color backgrounds */
+  --text-on-accent: #FFFFFF;
+  --text-on-success: #FFFFFF;
+  --text-on-warning: #000000;
+  --text-on-danger: #FFFFFF;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    /* Darker surface gradients */
+    --surface-overlay: rgba(255, 255, 255, 0.03);
+    --surface-glass: rgba(255, 255, 255, 0.01);
+
+    /* Adjust accent for dark mode */
+    --accent-bright: #5B8DFF;
+    --accent-dim: rgba(91, 141, 255, 0.15);
+  }
+}
+
+/* Primary action styling */
+.training-command-bar .primary-command {
+  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-hover) 100%);
+  color: var(--text-on-accent);
+  border-color: var(--accent);
+  font-weight: 600;
+}
+
+.training-command-bar .primary-command:hover:not(:disabled) {
+  background: linear-gradient(135deg, var(--accent-hover) 0%, var(--accent) 100%);
+  box-shadow: 0 4px 12px var(--accent-dim), 0 0 0 1px var(--accent);
+}
+
+.training-command-bar .primary-command:active:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+/* Success state button */
+.training-command-bar button.success {
+  background: linear-gradient(135deg, var(--success) 0%, var(--success-hover) 100%);
+  color: var(--text-on-success);
+  border-color: var(--success);
+}
+
+.training-command-bar button.success:hover:not(:disabled) {
+  box-shadow: 0 4px 12px var(--success-dim);
+}
+
+/* Warning state button */
+.training-command-bar button.warning {
+  background: linear-gradient(135deg, var(--warning) 0%, var(--warning-hover) 100%);
+  color: var(--text-on-warning);
+  border-color: var(--warning);
+}
+
+.training-command-bar button.warning:hover:not(:disabled) {
+  box-shadow: 0 4px 12px var(--warning-dim);
+}
+
+/* Danger state button */
+.training-command-bar button.danger {
+  background: linear-gradient(135deg, var(--danger) 0%, var(--danger-hover) 100%);
+  color: var(--text-on-danger);
+  border-color: var(--danger);
+}
+
+.training-command-bar button.danger:hover:not(:disabled) {
+  box-shadow: 0 4px 12px var(--danger-dim);
+}
+
+/* Config library item states */
+.training-config-library li[aria-selected="true"] {
+  background: linear-gradient(135deg, var(--accent-dim) 0%, var(--surface-overlay) 100%);
+  border-left: 3px solid var(--accent);
+  padding-left: calc(12px - 3px);
+}
+
+.training-config-library li[data-dirty="true"]::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  right: 12px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--warning);
+  transform: translateY(-50%);
+  box-shadow: 0 0 4px var(--warning);
+}
+
+/* Resource group category colors */
+.training-resource-group[data-category="model"] > div {
+  border-left: 3px solid var(--accent);
+}
+
+.training-resource-group[data-category="dataset"] > div {
+  border-left: 3px solid var(--success);
+}
+
+.training-resource-group[data-category="optimizer"] > div {
+  border-left: 3px solid var(--info);
+}
+
+.training-resource-group[data-category="adapter"] > div {
+  border-left: 3px solid var(--warning);
+}
+
+/* Enhanced focus rings */
+.training-edit-fields input:focus,
+.training-edit-fields textarea:focus,
+.training-edit-fields select:focus {
+  border-color: var(--border-focus);
+  box-shadow: 0 0 0 3px var(--accent-dim);
+}
+
+/* Validation states */
+.training-edit-fields [data-valid="true"]:not(:focus) {
+  border-color: var(--success);
+}
+
+.training-edit-fields [data-valid="false"]:not(:focus) {
+  border-color: var(--danger);
+}
+
+/* Status badges */
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.status-badge.success {
+  background: var(--success-dim);
+  color: var(--success);
+  border: 1px solid var(--success);
+}
+
+.status-badge.warning {
+  background: var(--warning-dim);
+  color: var(--warning);
+  border: 1px solid var(--warning);
+}
+
+.status-badge.danger {
+  background: var(--danger-dim);
+  color: var(--danger);
+  border: 1px solid var(--danger);
+}
+
+.status-badge.info {
+  background: var(--info-dim);
+  color: var(--info);
+  border: 1px solid var(--info);
+}
+
+/* Glass morphism effects for overlays */
+.training-modal-backdrop {
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.training-modal-content {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+}
+
+/* Gradient borders for cards */
+.training-edit-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg,
+    var(--accent) 0%,
+    var(--success) 50%,
+    var(--info) 100%);
+  opacity: 0;
+  transition: opacity 200ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.training-edit-card:hover::before {
+  opacity: 0.8;
+}
+
+/* Loading shimmer effect */
+@keyframes shimmer {
+  0% {
+    background-position: -1000px 0;
+  }
+  100% {
+    background-position: 1000px 0;
+  }
+}
+
+.loading-shimmer {
+  background: linear-gradient(
+    90deg,
+    var(--surface) 0%,
+    var(--surface-overlay) 50%,
+    var(--surface) 100%
+  );
+  background-size: 1000px 100%;
+  animation: shimmer 2s infinite;
+}
+
+/* Smooth color transitions */
+* {
+  transition-property: color, background-color, border-color, box-shadow;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}

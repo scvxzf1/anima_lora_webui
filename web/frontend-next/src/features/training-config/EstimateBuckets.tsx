@@ -16,7 +16,13 @@ export function EstimateBuckets({ datasets }: { datasets: EstimateDataset[] }) {
   const unreadable = rows.reduce((sum, row) => sum + (row.bucket_distribution?.unreadable_count || 0), 0);
   const unscanned = rows.reduce((sum, row) => sum + (row.bucket_distribution?.unscanned_count || 0), 0);
   const predicted = rows.filter((row) => row.bucket_distribution?.basis === "source_projection").length;
+  const configured = rows.filter((row) => row.bucket_distribution?.basis === "configured_projection").length;
   const measured = rows.filter((row) => row.bucket_distribution?.basis === "image_dimensions" && row.bucket_distribution.status !== "pending").length;
+  const basisDescription = [
+    configured > 0 ? `训练目录目标桶 ${configured} 个子集` : "",
+    predicted > 0 ? `源图预测 ${predicted} 个子集` : "",
+    measured > 0 ? `训练目录实测 ${measured} 个子集` : "",
+  ].filter(Boolean).join(" · ");
   const filtered = rows.reduce((sum, row) => sum + (row.bucket_distribution?.filtered_count || 0), 0);
   const groups = [
     { key: "landscape", label: "横图" },
@@ -36,7 +42,7 @@ export function EstimateBuckets({ datasets }: { datasets: EstimateDataset[] }) {
         </select>
       </div>
     </div>
-    <p className="estimate-caption">{predicted > 0 ? `源图预测 ${predicted} 个子集${measured > 0 ? ` · 训练目录实测 ${measured} 个子集` : ""} · 按已保存预处理配置选桶` : "image_dir 尺寸实测"} · 不含重复、抽样、验证划分和触发词克隆；最终训练分桶以运行结果为准。</p>
+    <p className="estimate-caption">{basisDescription || "等待分桶统计"}{configured + predicted > 0 ? " · 按已保存数据集分桶设置计算目标尺寸" : measured > 0 ? " · image_dir 尺寸实测" : ""} · 不含重复、抽样、验证划分和触发词克隆；最终训练分桶以运行结果为准。</p>
     {unavailable > 0 && <p className="estimate-warning" role="status">{unavailable} 个数据集未返回分桶信息，请更新并重启 WebUI 后端。</p>}
     {pending > 0 && <p className="estimate-warning" role="status">{pending} 个数据集的源图与训练目录均无匹配图片，请检查目录和筛选规则。</p>}
     {filtered > 0 && <p className="estimate-caption">按最低像素阈值排除 {number(filtered)} 张源图。</p>}

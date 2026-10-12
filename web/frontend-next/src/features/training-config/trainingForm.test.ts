@@ -24,6 +24,7 @@ import {
   CONFIG_FIELD_CATALOG,
   configFieldCatalogEntry,
 } from "./domain/config-field-catalog.js";
+import { FIELD_LABEL_ZH } from "./domain/labels-options.js";
 
 function readConfig(relativePath: string) {
   return parseToml(
@@ -133,6 +134,40 @@ describe("training config form domain", () => {
         { key: "max_train_steps", kind: "number", label: "steps", group: "training" },
       ], new Set()),
     ).toEqual(draft);
+  });
+
+  it("keeps automatic OOM swap budget at zero and out of unrelated config patches", () => {
+    const field = TRAINING_FIELDS.find(
+      (candidate) => candidate.key === "adaptive_oom_retry_max_swap",
+    );
+    expect(field).toMatchObject({
+      kind: "number",
+      group: "resources",
+      min: 0,
+      label: "OOM 交换块预算（0=自动）",
+    });
+    expect(FIELD_LABEL_ZH.adaptive_oom_retry_max_swap).toBe(
+      "OOM 交换块预算（0=自动）",
+    );
+
+    const fields = fieldsForConfig({});
+    expect(draftFromMerged({}, fields).adaptive_oom_retry_max_swap).toBe(0);
+
+    const source = {
+      adaptive_oom_retry_max_swap: 0,
+      output_name: "before",
+    };
+    const sourceFields = fieldsForConfig(source);
+    const baseline = draftFromMerged(source, sourceFields);
+    expect(baseline.adaptive_oom_retry_max_swap).toBe(0);
+    expect(
+      trainingPatchValues(
+        { ...baseline, output_name: "after" },
+        baseline,
+        sourceFields,
+        source,
+      ),
+    ).toEqual({ output_name: "after" });
   });
 
   it("ignores equivalent numeric and JSON formatting changes", () => {

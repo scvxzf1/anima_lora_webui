@@ -4,7 +4,7 @@ import { QueryFeedback } from "../../components/QueryFeedback";
 import { finiteNumber } from "../../components/trainingNumbers";
 import { fetchHistoryImages, fetchHistoryWeights } from "./api";
 
-export function HistoryResultSummary({ taskId }: { taskId: string }) {
+export function HistoryResultSummary({ taskId, onViewChange }: { taskId: string; onViewChange?: (view: string) => void }) {
   const images = useQuery({
     queryKey: ["history-result-summary", taskId, "images"],
     queryFn: ({ signal }) => fetchHistoryImages(taskId, signal, 1), retry: false,
@@ -18,7 +18,9 @@ export function HistoryResultSummary({ taskId }: { taskId: string }) {
   const next = new URLSearchParams(params);
   next.set("view", "artifacts");
   return <section className="history-overview-section" aria-label="训练产物摘要">
-    <div className="toolbar"><h2>训练产物</h2><Link to={`?${next}`} state={location.state}>查看全部产物</Link></div>
+    <div className="toolbar"><h2>训练产物</h2>{onViewChange
+      ? <button type="button" onClick={() => onViewChange("artifacts")}>查看全部产物</button>
+      : <Link to={`?${next}`} state={location.state}>查看全部产物</Link>}</div>
     {(images.isPending || images.error) && <QueryFeedback query={images} label="样张摘要" hasData={Boolean(images.data)} />}
     {(weights.isPending || weights.error) && <QueryFeedback query={weights} label="权重摘要" hasData={Boolean(weights.data)} />}
     <dl className="history-info">

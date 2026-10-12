@@ -6,6 +6,7 @@ export type ModelCapability = {
   display_name: string;
   aliases: string[];
   supported_tasks?: string[];
+  supported_network_specs?: string[] | null;
   plain_lora_only?: boolean;
   supported_preview_tasks?: string[];
   max_preview_references?: number;
@@ -22,7 +23,11 @@ export function useModelCapabilities(enabled = true) {
 
 export function findModelCapability(items: ModelCapability[] | undefined, family: unknown) {
   const key = String(family || "anima").trim().toLowerCase().replaceAll("-", "_");
-  return items?.find((item) => item.name === key || item.aliases?.includes(key));
+  return items?.find((item) => {
+    const name = String(item.name || "").trim().toLowerCase().replaceAll("-", "_");
+    const aliases = (item.aliases || []).map((alias) => String(alias).trim().toLowerCase().replaceAll("-", "_"));
+    return name === key || aliases.includes(key);
+  });
 }
 
 export function taskLabel(task: string) {
@@ -31,7 +36,14 @@ export function taskLabel(task: string) {
 
 export function capabilityLabels(capability: ModelCapability | undefined): string[] {
   if (!capability?.supported_tasks) return ["能力未知"];
-  return [...capability.supported_tasks.map(taskLabel), ...(capability.plain_lora_only ? ["仅支持 LoRA"] : [])];
+  const specs = (capability.supported_network_specs || []).map((spec) => spec.toLowerCase());
+  const familyName = String(capability.name || "").trim().toLowerCase().replaceAll("-", "_");
+  const networkLabel = familyName === "qwen_image_2_1"
+    && capability.supported_tasks.includes("t2i")
+    && specs.includes("lora") && specs.includes("loha") && specs.includes("lokr")
+    ? "LoRA / LoHa / LoKr（仅 T2I 实验）"
+    : capability.plain_lora_only ? "仅支持 LoRA" : null;
+  return [...capability.supported_tasks.map(taskLabel), ...(networkLabel ? [networkLabel] : [])];
 }
 
 export function editCapabilityIssue(capability: ModelCapability | undefined): string | null {

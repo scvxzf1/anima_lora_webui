@@ -119,7 +119,8 @@ def test_after_load_uses_sparse_host_budget_and_scope(monkeypatch, preference, m
 
     monkeypatch.setattr(probe, "model_block_bytes", lambda *a: [GIB] * 28)
     monkeypatch.setattr(probe, "host_memory", lambda: HostMemory(16 * GIB, 14 * GIB, 0, 0, 0, 0))
-    model = SimpleNamespace(offloader=SimpleNamespace(master_scope="all"))
+    model = SimpleNamespace(blocks=[None] * 28,
+                            offloader=SimpleNamespace(master_scope="all"))
     args = SimpleNamespace(
         model_family="krea2_raw", auto_block_swap_preference=preference,
         _auto_swap_probe={"inventory": True}, blocks_to_swap=3,
@@ -140,7 +141,7 @@ def test_probe_and_fixed_monitor_use_custom_total_vram_reserve(monkeypatch):
         _auto_swap_report="summary.json",
     )
     monkeypatch.setattr(torch.cuda, "get_device_properties", lambda _: SimpleNamespace(total_memory=16 * GIB))
-    monkeypatch.setattr(probe, "representative_batches", lambda _: [{}])
+    monkeypatch.setattr(probe, "representative_batches", lambda _: [{"weight": 1}])
     samples = [{"headroom": 3 * GIB, "case": 0, "update": i, "seconds": 1.0} for i in range(3)]
     monkeypatch.setattr(probe, "_probe_updates", lambda *a: samples)
     state = SimpleNamespace(

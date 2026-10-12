@@ -1,5 +1,6 @@
 import type { TrainingPreflightResponse } from "./api";
 import { taskLabel } from "../../api/modelCapabilities";
+import { isOverridableRisk } from "./preflightRisks";
 
 type Props = {
   result?: TrainingPreflightResponse;
@@ -87,7 +88,7 @@ export function TrainingPreflightPanel({
                       ? "警告"
                       : check.level === "info"
                         ? "提示"
-                        : "错误"}
+                        : isOverridableRisk(check) ? "风险" : "错误"}
                 </span>
                 <div>
                   <strong>{check.message}</strong>

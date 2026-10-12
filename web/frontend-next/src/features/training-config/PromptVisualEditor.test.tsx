@@ -87,3 +87,37 @@ it("clears original JSON reference keys when switching an edit sample to t2i", a
   await userEvent.click(screen.getByRole("button", { name: "应用样张" }));
   expect(JSON.parse(onChange.mock.lastCall![0])).toEqual({ prompt: "test", sample_task: "t2i", custom: true });
 });
+
+it("previews all old and managed references and closes without discarding the edit draft", async () => {
+  const { CommandDialog } = await import("../../components/CommandDialog");
+  const paths = ["/服务器/旧参考 图.jpg", `/configs/sample-references/${"a".repeat(64)}.png`];
+  const source = JSON.stringify({ prompt: "edit me", sample_task: "edit", reference_images: paths });
+  const onChange = vi.fn();
+  const onClose = vi.fn();
+  render(<CommandDialog title="样张提示词" onClose={onClose}><PromptVisualEditor content={source} onChange={onChange} onEditing={vi.fn()} disabled={false} modelFamily="qwen_image_2_1" supportedPreviewTasks={["t2i", "edit"]} /></CommandDialog>);
+  expect(screen.getAllByRole("img")).toHaveLength(2);
+  for (const [index, path] of paths.entries()) {
+    const image = screen.getByRole("img", { name: `样张 1 参考图 ${index + 1}` });
+    expect(new URL(image.getAttribute("src")!, "http://localhost").searchParams.get("path")).toBe(path);
+  }
+  await userEvent.click(screen.getByRole("button", { name: "展开样张 1 参考图 2" }));
+  expect(screen.getByRole("img", { name: "样张 1 参考图 2大图" })).toBeInTheDocument();
+  await userEvent.keyboard("{Escape}");
+  expect(screen.getAllByRole("dialog")).toHaveLength(1);
+  expect(onClose).not.toHaveBeenCalled();
+  expect(screen.getByRole("button", { name: "展开样张 1 参考图 2" })).toHaveFocus();
+  await userEvent.click(screen.getByRole("button", { name: "样张 1 · 编辑 · 2 图: edit me" }));
+  await userEvent.type(screen.getByLabelText("编辑指令"), " draft");
+  const trigger = screen.getByRole("button", { name: "展开参考图 1" });
+  trigger.focus();
+  await userEvent.keyboard("{Enter}");
+  expect(screen.getByRole("button", { name: "关闭参考图预览" })).toHaveFocus();
+  await userEvent.keyboard("{Tab}");
+  expect(screen.getByRole("button", { name: "关闭参考图预览" })).toHaveFocus();
+  await userEvent.click(screen.getByRole("button", { name: "关闭参考图预览" }));
+  expect(screen.getByLabelText("编辑指令")).toHaveValue("edit me draft");
+  expect(onChange).not.toHaveBeenCalled();
+  expect(trigger).toHaveFocus();
+  await userEvent.click(screen.getByRole("button", { name: "应用样张" }));
+  expect(JSON.parse(onChange.mock.lastCall![0]).reference_images).toEqual(paths);
+});

@@ -213,6 +213,9 @@ class TaggingService:
     def update_item(self, job_id: str, item_id: str, text: str) -> dict[str, Any]:
         return self.jobs.update_item(job_id, item_id, text)
 
+    def update_items(self, job_id: str, updates: Any) -> dict[str, Any]:
+        return self.jobs.update_items(job_id, updates)
+
     async def commit_job(
         self,
         job_id: str,

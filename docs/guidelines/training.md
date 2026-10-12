@@ -5,16 +5,17 @@ Every training run resolves a method + hardware preset via the merge chain
 (method beats preset on overlap; CLI args still win last).
 Method TOMLs in `configs/methods/` are toggle-block files that hold several
 variants behind comments; the clean per-variant tree lives in
-`configs/gui-methods/` and is wrapped by `make lora-gui GUI_PRESETS=<variant>`.
+`configs/gui-methods/` and is selected with `python tasks.py lora-gui <variant>`.
+The `make` targets remain available as compatibility forwarding wrappers.
 
 ```bash
-make lora                                      # methods/lora.toml + presets[default]
-make lora PRESET=low_vram                      # any preset can be swapped in
-make lora-gui GUI_PRESETS=tlora                # one self-contained variant file
-make print-config METHOD=lora PRESET=default   # dump the merged config
+python tasks.py lora                           # methods/lora.toml + presets[default]
+python tasks.py lora PRESET=low_vram           # any preset can be swapped in
+python tasks.py lora-gui tlora                 # one self-contained variant file
+python tasks.py print-config METHOD=lora PRESET=default  # dump the merged config
 ```
 
-Run `ls configs/gui-methods/` for the live variant list.
+Run `rg --files configs/gui-methods` for the live variant list.
 
 ## LoRA family — the three-axis surface
 
@@ -82,10 +83,10 @@ Each has its own method TOML and `make` entrypoint:
 
 | Family | Config | Train target |
 |--------|--------|--------------|
-| ChimeraHydra (dual-pool MoE) | `methods/chimera.toml` | `make exp-chimera` |
-| IP-Adapter | `methods/ip_adapter.toml` | `make exp-ip-adapter` |
-| EasyControl | `methods/easycontrol.toml` | `make exp-easycontrol` |
-| Soft Tokens (SoftREPA) | `methods/soft_tokens.toml` | `make exp-soft-tokens` |
+| ChimeraHydra (dual-pool MoE) | `methods/chimera.toml` | `python tasks.py exp-chimera` |
+| IP-Adapter | `methods/ip_adapter.toml` | `python tasks.py exp-ip-adapter` |
+| EasyControl | `methods/easycontrol.toml` | `python tasks.py exp-easycontrol` |
+| Soft Tokens (SoftREPA) | `methods/soft_tokens.toml` | `python tasks.py exp-soft-tokens` |
 
 Deep dives in `docs/methods/` (shipped) and `docs/experimental/`.
 
@@ -143,14 +144,14 @@ default in `base.toml`. 注意：只把它设为 `false` 并不能覆盖 batch �
 `mask_dir = ""` 以阻止自动探测）。
 
 ```bash
-make mask        # SAM3 + MIT (via tempdir) → post_image_dataset/masks/
-make mask-clean  # rm -rf post_image_dataset/masks/
+python tasks.py mask        # SAM3 + MIT (via tempdir) → post_image_dataset/masks/
+python tasks.py mask-clean  # rm -rf post_image_dataset/masks/
 ```
 
 These read `post_image_dataset/resized/` (the resized output of
-`make preprocess`). Subsets auto-pick `post_image_dataset/masks/` if
+`python tasks.py preprocess`). Subsets auto-pick `post_image_dataset/masks/` if
 present, falling back to legacy `masks/{merged,sam,mit}/` so users who
-haven't re-run `make mask` after the consolidation keep training.
+haven't re-run `python tasks.py mask` after the consolidation keep training.
 
 ## Dataset configuration
 

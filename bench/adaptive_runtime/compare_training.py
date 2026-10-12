@@ -11,7 +11,7 @@ import torch
 
 from bench.adaptive_runtime.capture import capture_path
 from bench.adaptive_runtime.replay import MODE
-from library.training.adaptive_runtime.precision import Tolerances
+from library.training.adaptive_runtime.precision import Tolerances, vector_metrics
 from library.training.auto_block_swap.process import write_result
 
 
@@ -62,18 +62,7 @@ def load_case(directory, case, expected_gradients):
 
 
 def aggregate_metrics(reference, candidate, names):
-    ref_square = actual_square = delta_square = dot = 0.0
-    for name in names:
-        ref, actual = reference[name].double(), candidate[name].double()
-        ref_square += float(ref.square().sum())
-        actual_square += float(actual.square().sum())
-        delta_square += float((actual - ref).square().sum())
-        dot += float((ref * actual).sum())
-    cosine = (1.0 if ref_square == actual_square == 0 else
-              dot / max(math.sqrt(ref_square * actual_square), 1e-30))
-    return {"relative_l2": math.sqrt(delta_square) / max(math.sqrt(ref_square), 1e-30),
-            "absolute_l2": math.sqrt(delta_square),
-            "cosine": max(-1.0, min(1.0, cosine)), "reference_l2": math.sqrt(ref_square)}
+    return vector_metrics((reference[name], candidate[name]) for name in names)
 
 
 def compare_case(reference, candidate):
@@ -85,13 +74,21 @@ def compare_case(reference, candidate):
               "adapter_gradient": names}
     metrics = {key: aggregate_metrics(reference, candidate, group) for key, group in groups.items()}
     worst = [{"name": n, **aggregate_metrics(reference, candidate, [n])} for n in names]
-    metrics["worst_adapter_parameters"] = sorted(worst, key=lambda r: r["relative_l2"], reverse=True)[:10]
+    metrics["worst_adapter_parameters"] = sorted(
+        worst, key=lambda r: float("inf") if r["relative_l2"] is None else r["relative_l2"],
+        reverse=True,
+    )[:10]
     metrics["largest_absolute_adapter_errors"] = sorted(
-        worst, key=lambda r: r["absolute_l2"], reverse=True)[:10]
+        worst, key=lambda r: float("inf") if r["absolute_l2"] is None else r["absolute_l2"],
+        reverse=True,
+    )[:10]
     limits = Tolerances()
     metrics["within_experimental_tolerances"] = (
-        metrics["prediction"]["relative_l2"] <= limits.output_relative_l2
-        and all(metrics[key]["relative_l2"] <= limits.gradient_relative_l2
+        metrics["prediction"]["finite"]
+        and metrics["prediction"]["relative_l2"] is not None
+        and metrics["prediction"]["relative_l2"] <= limits.output_relative_l2
+        and all(metrics[key]["finite"] and metrics[key]["relative_l2"] is not None
+                and metrics[key]["relative_l2"] <= limits.gradient_relative_l2
                 and metrics[key]["cosine"] >= limits.gradient_cosine
                 for key in ("input_gradient", "adapter_gradient"))
     )

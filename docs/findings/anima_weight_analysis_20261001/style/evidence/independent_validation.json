@@ -1,0 +1,22 @@
+{
+  "sample_dense_checks": [
+    {
+      "file": "ba_nai_style_v1.safetensors",
+      "module": "lora_unet_blocks_0_adaln_modulation_cross_attn_2",
+      "relative_error": 6.108915006009588e-07
+    },
+    {
+      "file": "Anima_in_real_update_v2_epoch_20.safetensors",
+      "module": "diffusion_model.blocks.0.adaln_modulation_cross_attn.1",
+      "relative_error": 2.167710769850035e-07
+    },
+    {
+      "file": "sky02v6.safetensors",
+      "module": "lora_unet_final_layer_linear",
+      "relative_error": 1.4253391430752797e-07
+    }
+  ],
+  "common_targets": 280,
+  "files": 10,
+  "all_common_group_shares_recomputed": true
+}

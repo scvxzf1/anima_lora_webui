@@ -137,6 +137,35 @@ def test_migration_oom_retains_count_and_sets_expiring_floor(controller):
     assert control.switches == 0
 
 
+@pytest.mark.parametrize("reason", ["gpu_pressure", "new_shape"])
+def test_safety_migration_oom_aborts_before_batch(controller, monkeypatch, reason):
+    control, state = controller
+    control.policy.current = 2
+    control.model.blocks_to_swap = 2
+    if reason == "gpu_pressure":
+        control.policy.known_inputs.add((1, 16, 8, 8))
+        monkeypatch.setattr(control, "_safe_count", lambda **kwargs: 4)
+    control.offloader.reconfigure.side_effect = torch.cuda.OutOfMemoryError("injected")
+    with pytest.raises(RuntimeError, match=f"safety migration failed \\({reason}\\)"):
+        control.before(state, batch())
+    assert control.microsteps == 0 and control.shapes == []
+    assert control.policy.current == control.model.blocks_to_swap == 2
+    assert getattr(control.args, "blocks_to_swap", 2) != 4
+    assert control.switches == 0
+    assert not control.policy.known_shapes
+
+
+def test_exploration_migration_oom_rolls_back_and_starts_batch(controller):
+    control, state = controller
+    control.policy.known_inputs.add((1, 16, 8, 8))
+    control.pending = Decision(2, "explore")
+    control.offloader.reconfigure.side_effect = torch.cuda.OutOfMemoryError("injected")
+    control.before(state, batch())
+    assert control.microsteps == 1
+    assert control.policy.current == control.model.blocks_to_swap == 4
+    assert control.policy.rejected_below == 2
+
+
 @pytest.mark.parametrize("loss,skipped", [(float("nan"), False), (1, True)])
 def test_invalid_optimizer_updates_abort(controller, loss, skipped):
     control, state = controller

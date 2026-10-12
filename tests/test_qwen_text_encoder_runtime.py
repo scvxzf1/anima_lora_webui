@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import gc
+import weakref
 from types import SimpleNamespace
 
 import pytest
@@ -125,6 +127,100 @@ def test_runtime_removes_offload_hooks_after_error(monkeypatch, tiny_encoder):
     assert events == [("install", tiny_encoder.model), ("remove", tiny_encoder.model)]
     assert not hasattr(tiny_encoder, "_qwen_execution_device")
     assert not hasattr(tiny_encoder, "_qwen_cache_offloaded")
+
+
+class _SmallEncoder(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.model = torch.nn.Sequential(torch.nn.Linear(2, 2), torch.nn.Linear(2, 2))
+        self.lm_head = torch.nn.Linear(2, 2)
+
+
+def test_real_partial_offload_install_preserves_original_error_and_releases_encoder(monkeypatch):
+    from accelerate import hooks
+
+    model = _SmallEncoder()
+    reference = weakref.ref(model)
+    original_set = hooks.set_module_tensor_to_device
+    failure = RuntimeError("injected offload init failure")
+    meta_calls = 0
+
+    def fail_partial(module, name, device, *args, _failure=failure, **kwargs):
+        nonlocal meta_calls
+        if str(device) == "meta":
+            meta_calls += 1
+            if meta_calls == 2:
+                assert next(module.parameters()).is_meta
+                assert not hasattr(module, "_hf_hook")
+                raise _failure
+        return original_set(module, name, device, *args, **kwargs)
+
+    monkeypatch.setattr(runtime, "_should_offload", lambda *_a: True)
+    with monkeypatch.context() as patch:
+        patch.setattr(hooks, "set_module_tensor_to_device", fail_partial)
+        with pytest.raises(RuntimeError, match="injected offload init failure") as raised:
+            with runtime.loaded_text_encoder_for_cache(model, dtype=torch.float32, device="cpu"):
+                pytest.fail("partially initialized encoder must never be yielded")
+        assert raised.value is failure
+        assert any("meta tensors" in note for note in failure.__notes__)
+        assert not any(hasattr(module, "_hf_hook") or hasattr(module, "_old_forward") for module in model.modules())
+        assert not hasattr(model, "_qwen_execution_device")
+        assert not hasattr(model, "_qwen_cache_offloaded")
+        assert model.lm_head.weight.device.type == "cpu"
+    del raised, failure, fail_partial, model
+    gc.collect()
+    assert reference() is None
+
+
+@pytest.mark.parametrize("encode_error", [False, True])
+def test_real_offload_context_restores_weights_and_hooks(monkeypatch, encode_error):
+    model = _SmallEncoder()
+    original = {name: value.clone() for name, value in model.state_dict().items()}
+    failure = ValueError("encode failed")
+    monkeypatch.setattr(runtime, "_should_offload", lambda *_a: True)
+
+    def encode():
+        with runtime.loaded_text_encoder_for_cache(model, dtype=torch.float32, device="cpu") as prepared:
+            assert prepared.lm_head.weight.device.type == "cpu"
+            assert next(prepared.model.parameters()).is_meta
+            prepared.model(torch.ones(1, 2))
+            if encode_error:
+                raise failure
+
+    if encode_error:
+        with pytest.raises(ValueError, match="encode failed") as raised:
+            encode()
+        assert raised.value is failure
+    else:
+        encode()
+    assert all(torch.equal(value, original[name]) for name, value in model.state_dict().items())
+    assert not any(hasattr(module, "_hf_hook") or hasattr(module, "_old_forward") for module in model.modules())
+    assert not hasattr(model, "_qwen_execution_device")
+    assert not hasattr(model, "_qwen_cache_offloaded")
+
+
+@pytest.mark.parametrize("encode_error", [False, True])
+def test_cleanup_failure_is_exposed_without_masking_encode_error(monkeypatch, encode_error):
+    model = _SmallEncoder()
+    failure = ValueError("encode failed")
+    cleanup_failure = RuntimeError("CPU cleanup failed")
+    events = []
+
+    def failed_move(*_args, **_kwargs):
+        raise cleanup_failure
+
+    monkeypatch.setattr(model, "to", failed_move)
+    monkeypatch.setattr(runtime.gc, "collect", lambda: events.append("collect"))
+    with pytest.raises((ValueError, RuntimeError)) as raised:
+        with runtime.loaded_text_encoder_for_cache(model, dtype=torch.float32, device="cpu"):
+            if encode_error:
+                raise failure
+    assert raised.value is (failure if encode_error else cleanup_failure)
+    if encode_error:
+        assert any("CPU cleanup failed" in note for note in failure.__notes__)
+    assert events == ["collect"]
+    assert not hasattr(model, "_qwen_execution_device")
+    assert not hasattr(model, "_qwen_cache_offloaded")
 
 
 @pytest.mark.parametrize("preview_error", [False, True])

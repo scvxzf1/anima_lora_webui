@@ -88,6 +88,8 @@
 .training-workspace-layout > .training-config-library {
   grid-column: 1;
   grid-row: 1;
+  width: auto;
+  min-width: 0;
 }
 .training-workspace-layout > .training-editor-column {
   grid-column: 3;
@@ -142,7 +144,7 @@
   display: flex;
   flex-direction: column;
 }
-.training-editor-column > :not(.training-edit-groups) {
+.training-editor-column > :not(.training-editor-scroll-area) {
   flex-shrink: 0;
 }
 .training-editor-column > .toolbar {
@@ -154,10 +156,21 @@
 .training-edit-groups {
   flex: 1;
   min-height: 0;
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: scroll;
   overscroll-behavior: contain;
-  scrollbar-gutter: stable;
   align-content: start;
+}
+.training-config-library > .training-library-groups {
+  scrollbar-width: auto;
+  scrollbar-color: var(--line-strong) var(--surface-subtle);
+}
+.training-config-library > .training-library-groups::-webkit-scrollbar { width: 10px; }
+.training-config-library > .training-library-groups::-webkit-scrollbar-track { background: var(--surface-subtle); }
+.training-config-library > .training-library-groups::-webkit-scrollbar-thumb {
+  background: var(--line-strong);
+  border: 2px solid var(--surface-subtle);
+  border-radius: 5px;
 }
 .training-edit-card,
 [id^="training-field-"] {
@@ -168,13 +181,15 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
-  overflow: auto;
+  overflow: hidden;
   overscroll-behavior: contain;
 }
-.training-library-groups {
+.training-config-library > .training-library-groups {
   min-height: 0;
   max-height: none;
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: scroll;
+  scrollbar-gutter: stable;
 }
 .training-config-library[hidden] {
   display: none;
@@ -184,7 +199,6 @@
   .training-config-page { padding-top: 20px; padding-bottom: 24px; }
   .training-config-header { padding-bottom: 18px; }
   .training-workspace-layout { flex: none; }
-  .training-workspace-layout .training-library-resizer { display: none; }
   .training-workspace-layout:not(:has(.training-config-library[hidden])) {
     grid-template-rows: auto auto;
   }
@@ -213,53 +227,66 @@
     flex: 1;
   }
 }
-@container workspace (max-width: 1050px) {
-  .training-workspace-layout {
+  .training-workspace-layout[data-orientation="top"] {
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: clamp(10%, var(--training-library-top-size, 180px), 80%) 10px minmax(0, 1fr);
   }
-  .training-config-library {
+  .training-workspace-layout[data-orientation="top"] > .training-config-library {
     max-height: none;
   }
-  .training-workspace-layout > .training-editor-column {
+  .training-workspace-layout[data-orientation="top"] > .training-editor-column {
     grid-column: 1;
     grid-row: 3;
     margin: 10px 0 0;
   }
-  .training-library-resizer--side { display: none; }
-  .training-library-resizer--top {
+  .training-workspace-layout[data-orientation="top"] > .training-library-resizer--side { display: none; }
+  .training-workspace-layout[data-orientation="top"] > .training-library-resizer--top {
     display: block;
     grid-column: 1;
     grid-row: 2;
     cursor: row-resize;
   }
-  .training-library-resizer--top::after {
+  .training-workspace-layout[data-orientation="top"] > .training-library-resizer--top::after {
     top: 4px;
     left: 50%;
     width: 32px;
     height: 2px;
     transform: translateX(-50%);
   }
-  .training-library-resizer--top:hover,
-  .training-library-resizer--top:focus-visible {
+  .training-workspace-layout[data-orientation="top"] > .training-library-resizer--top:hover,
+  .training-workspace-layout[data-orientation="top"] > .training-library-resizer--top:focus-visible {
     box-shadow: inset 0 2px var(--accent);
   }
-  .training-workspace-layout:has(.training-config-library[hidden]) {
+  .training-workspace-layout[data-orientation="top"]:has(.training-config-library[hidden]) {
     grid-template-rows: minmax(0, 1fr);
   }
-  .training-workspace-layout:has(.training-config-library[hidden]) > .training-editor-column {
+  .training-workspace-layout[data-orientation="top"]:has(.training-config-library[hidden]) > .training-editor-column {
     grid-row: 1;
     margin-top: 0;
   }
-  .training-config-library .eyebrow {
+  .training-workspace-layout[data-orientation="top"] .training-config-library .eyebrow {
     display: none;
   }
-}
 @media (max-width: 800px) {
-  .training-config-page .training-workspace-layout:not(:has(.training-config-library[hidden])) {
+  .training-workspace-layout[data-orientation] > .training-library-resizer { display: none; }
+  .training-workspace-layout[data-orientation] {
+    grid-template-columns: minmax(0, 1fr);
     grid-template-rows: auto auto;
   }
-  .training-workspace-layout > .training-config-library {
+  .training-workspace-layout[data-orientation] > .training-editor-column {
+    grid-column: 1;
+    grid-row: 2;
+    margin: 10px 0 0;
+  }
+  .training-workspace-layout[data-orientation]:has(.training-config-library[hidden]) > .training-editor-column {
+    grid-row: 1;
+    margin-top: 0;
+  }
+  .training-config-page .training-workspace-layout:not(:has(.training-config-library[hidden])) {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto;
+  }
+  .training-workspace-layout[data-orientation] > .training-config-library {
     max-height: 180px;
   }
   .training-workspace-layout > .training-editor-column {

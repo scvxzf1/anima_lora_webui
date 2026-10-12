@@ -12,7 +12,9 @@ import { useState } from "react";
 import { Copy } from "lucide-react";
 import { resolveHistoryPath } from "./historyPaths";
 
-export function HistoryOverview({ detail }: { detail: HistoryTaskDetail }) {
+export function HistoryOverview({ detail, onViewChange, onMonitor }: {
+  detail: HistoryTaskDetail; onViewChange?: (view: string) => void; onMonitor?: () => void;
+}) {
   const [copyStatus, setCopyStatus] = useState("");
   const task = detail.task;
   const training = task?.job === "training";
@@ -21,7 +23,8 @@ export function HistoryOverview({ detail }: { detail: HistoryTaskDetail }) {
   return <>
     <section className="history-outcome" aria-label="执行结果" data-state={task?.state}>
       <p>{taskOutcome(task)}</p>
-      {task?.state === "running" && <Link to={`/monitor?from_task=${encodeURIComponent(task.id || "")}`}>查看当前监控</Link>}
+      {task?.state === "running" && (onMonitor ? <button type="button" onClick={onMonitor}>查看当前监控</button>
+        : <Link to={`/monitor?from_task=${encodeURIComponent(task.id || "")}`}>查看当前监控</Link>)}
     </section>
     {training ? <dl className="history-detail-stats" aria-label="训练摘要">
       <div><dt>{task?.state === "running" ? "最新 Loss" : "末次有效 Loss"}</dt><dd>{formatLoss(summary.loss)}</dd></div>
@@ -36,7 +39,7 @@ export function HistoryOverview({ detail }: { detail: HistoryTaskDetail }) {
         ["运行时长", formatDuration(task?.started_at, task?.finished_at)],
       ]} />
     </section> : <p role="status">此记录未保存可识别的任务类型。</p>}
-    {training && task?.id && <HistoryResultSummary taskId={task.id} />}
+    {training && task?.id && <HistoryResultSummary taskId={task.id} onViewChange={onViewChange} />}
     {task?.id && <HistoryArtifacts taskId={task.id} />}
     <div className="history-overview-grid">
       <HistoryFingerprint detail={detail} />

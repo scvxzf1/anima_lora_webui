@@ -64,3 +64,16 @@ it("ignores an in-flight upload after removing a reference", async () => {
   expect(onChange).toHaveBeenLastCalledWith([]);
   expect(screen.queryByRole("img")).not.toBeInTheDocument();
 });
+
+it("reports thumbnail and full-size preview failures without changing the reference", async () => {
+  const onChange = vi.fn();
+  render(<Editor initial={["/old.jpg"]} onChange={onChange} />);
+  fireEvent.error(screen.getByRole("img", { name: "参考图 1" }));
+  expect(screen.getByRole("status")).toHaveTextContent("预览加载失败");
+  await userEvent.click(screen.getByRole("button", { name: "展开参考图 1" }));
+  fireEvent.error(screen.getByRole("img", { name: "参考图 1大图" }));
+  expect(screen.getByRole("alert")).toHaveTextContent("检查服务器图片路径");
+  await userEvent.keyboard("{Escape}");
+  expect(screen.getByText("/old.jpg")).toBeInTheDocument();
+  expect(onChange).not.toHaveBeenCalled();
+});

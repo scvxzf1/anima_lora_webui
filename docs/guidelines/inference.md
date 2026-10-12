@@ -18,32 +18,90 @@ python inference.py \
     --save_path output/tests
 ```
 
-The canned `make test` target picks the latest bakeable LoRA in `output/ckpt/`
+The canned `python tasks.py test` target picks the latest bakeable LoRA in `output/ckpt/`
 and runs against the values above (`INFERENCE_BASE` in
 `scripts/tasks/_common.py`). The `inference.py` argparse defaults differ
 (`--infer_steps 50`, `--flow_shift 3.0`, `--guidance_scale 3.5`,
-`--attn_mode torch`, `--sampler euler`) — `make test` is the more
-representative starting point.
+`--attn_mode torch`, `--sampler euler`) — `python tasks.py test` is the more
+representative starting point. `make` remains available as a compatibility
+forwarding wrapper. These `test` / `test-*` commands run inference and generate
+images; they are not pytest suites or development acceptance checks. Their
+default model/weight assumptions do not imply support for every model family;
+use a family-specific command only where that family's documented capabilities
+allow it. The example above is for Anima.
+
+## Qwen Image 2.1 standalone inference
+
+Use `--model_family qwen_image_2_1 --runtime_dtype bf16 --sampler euler` with
+Qwen Image 2.1 DiT, Qwen3-VL text encoder and its dedicated VAE. The default
+task is `t2i`; `--qwen_image_2_1_task edit` requires either
+`--reference_image PATH` or `--reference_images PATH [PATH...]` (1–4 images,
+in the supplied order). These two reference flags are mutually exclusive;
+T2I rejects references and other model families reject these Qwen flags.
+
+Both T2I and Edit first load the text encoder strictly on CPU. With a CUDA
+runtime device, the shared low-memory runtime automatically chooses core GPU
+placement or Accelerate CPU offload using available memory, leaving the unused
+`lm_head` on CPU. `--text_encoder_cpu` explicitly keeps encoding on CPU and
+disables offload; `--device cpu` also uses CPU encoding. Positive and negative
+prompts are encoded separately. Encoder hooks and weights are released before
+loading the reference VAE or DiT, including when prompt encoding fails.
+
+```bash
+python inference.py --model_family qwen_image_2_1 \
+    --dit /path/to/qwen-image-2.1 --text_encoder /path/to/qwen3-vl \
+    --vae /path/to/qwen-vae --runtime_dtype bf16 --sampler euler \
+    --qwen_image_2_1_task edit --reference_images first.png second.png \
+    --prompt "Apply the style of image 2 to image 1" --image_size 512 768 \
+    --save_path output/tests
+```
+
+Output dimensions are H/W and must be positive multiples of 32. References
+use bounded single-frame image IO with EXIF orientation, then one shared
+aspect-preserving BICUBIC resize for both VLM and VAE conditioning. Inputs
+are never overwritten. Loading stays sequential: text encoder, reference
+VAE, DiT, then output VAE. At most one strictly stamped plain LoRA is accepted;
+LoKr/LoHa, batch/interactive mode, generic image-test and compile remain
+unsupported. Full-weight NF4/BF16 standalone Edit produced a verified 512×512
+PNG with one reference, one Euler step and CFG=1 on CMP 90HX. After connecting
+automatic encoder offload, four-reference, two-step CFG=2 Edit and saved-latent
+decoding also passed; the decoded PNG pixels match the original exactly.
+These results do not establish Edit quality or general memory requirements; see the
+[standalone inference findings](../findings/qwen_standalone_inference_20261005.md).
+
+For saved Qwen latents, use `--model_family qwen_image_2_1 --latent_path
+first.safetensors second.safetensors --vae /path/to/qwen-vae` with BF16/Euler
+defaults. This reads the supplied files in order and loads only the dedicated
+Qwen VAE, restoring its 64-channel mean/std normalization and 16x pixel stride.
+Safetensors must contain `latent`; torch tensor files use safe `weights_only`
+loading. Each latent must be finite floating `[1,64,H,W]` with positive H/W;
+any saved height/width must match the 16x stride. All files are checked before
+VAE loading. Saved seed/prompt/negative prompt metadata applies per file, and
+PNG names include the input filename stem. `--output_type` keeps the same
+images/latent/latent_images behavior. Edit/reference flags, LoRA weights and
+prompt-file/interactive generation are rejected in this decode mode. The CLI
+still requires `--text_encoder` and `--save_path`; the encoder is not loaded.
 
 ## Test targets
 
 | Target | What it runs |
 |--------|--------------|
-| `make test` | Latest LoRA |
-| `make test SPECTRUM=1` | Latest LoRA + Spectrum acceleration |
-| `make test MOD=1` | Latest LoRA + distilled `pooled_text_proj` (modulation guidance). Composes with `SPECTRUM=1`. |
-| `make test NOLORA=1` | Bare DiT (skips `--lora_weight`). Compose with `MOD=1` for a mod-only sample. |
-| `make test-hydra` | Latest HydraLoRA / FeRA `*_moe.safetensors` (router-live) |
-| `make test-merge` | Inference against a baked DiT under `MODEL_DIR=` |
-| `make test-dcw` | Latest LoRA + DCW scalar bias correction (task target passes λ = 0.01) |
-| `make test-dcw-v4` | Bare DiT + DCW v4 learnable calibrator by default; set `NOLORA=0` for latest LoRA |
-| `make test-spectrum-dcw` | Spectrum + DCW scalar |
-| `make test-dcw-v4-spectrum` | Spectrum + DCW v4 |
+| `python tasks.py test` | Latest LoRA |
+| `python tasks.py test SPECTRUM=1` | Latest LoRA + Spectrum acceleration |
+| `python tasks.py test MOD=1` | Latest LoRA + distilled `pooled_text_proj` (modulation guidance). Composes with `SPECTRUM=1`. |
+| `python tasks.py test NOLORA=1` | Bare DiT (skips `--lora_weight`). Compose with `MOD=1` for a mod-only sample. |
+| `python tasks.py test-smc-cfg` | Latest LoRA + SMC-CFG; composes with `SPECTRUM=1`, `MOD=1`, and `NOLORA=1`. |
+| `python tasks.py test-hydra` | Latest HydraLoRA / FeRA `*_moe.safetensors` (router-live) |
+| `python tasks.py test-merge MODEL_DIR=...` | Inference against a baked DiT under `MODEL_DIR=` |
+| `python tasks.py test-dcw` | Latest LoRA + DCW scalar bias correction (task target passes λ = 0.01) |
+| `python tasks.py test-dcw-v4` | Bare DiT + DCW v4 learnable calibrator by default; set `NOLORA=0` for latest LoRA |
+| `python tasks.py test-spectrum-dcw` | Spectrum + DCW scalar |
+| `python tasks.py test-dcw-v4-spectrum` | Spectrum + DCW v4 |
 | `python tasks.py exp-invert-directedit` | DirectEdit postfix-tail inversion probe |
-| `make exp-test-ip REF_IMAGE=...` | IP-Adapter (image-conditioned) |
-| `make exp-test-easycontrol REF_IMAGE=...` | EasyControl |
-| `make exp-test-directedit PROMPT='...'` | DirectEdit on a random source image |
-| `make exp-test-directedit-dry` | DirectEdit reconstruction sanity check |
+| `python tasks.py exp-test-ip <ref_image>` | IP-Adapter (image-conditioned) |
+| `python tasks.py exp-test-easycontrol <ref_image>` | EasyControl |
+| `python tasks.py exp-test-directedit` | DirectEdit on a random source image |
+| `python tasks.py exp-test-directedit-dry` | DirectEdit reconstruction sanity check |
 
 ## Key flags
 
@@ -59,9 +117,9 @@ representative starting point.
 | `--easycontrol_image` | — | Reference image for EasyControl |
 | `--easycontrol_scale` | 1.0 | EasyControl scale |
 | `--easycontrol_image_match_size` | off | Match target H/W to ref bucket |
-| `--infer_steps` | 50 | Denoising steps (28 via `make test`) |
-| `--guidance_scale` | 3.5 | Text CFG scale (4.0 via `make test`) |
-| `--flow_shift` | 3.0 | Flow-matching schedule shift (1.0 via `make test`) |
+| `--infer_steps` | 50 | Denoising steps (28 via `python tasks.py test`) |
+| `--guidance_scale` | 3.5 | Text CFG scale (4.0 via `python tasks.py test`) |
+| `--flow_shift` | 3.0 | Flow-matching schedule shift (1.0 via `python tasks.py test`) |
 | `--sampler` | `euler` | `euler` (deterministic ODE), `er_sde` (stochastic), `lcm` (x0 re-noise — distilled few-step models) |
 | `--attn_mode` | `torch` | `torch` / `flash` / `flex` / `sageattn` / `xformers` (`sdpa` alias) |
 | `--from_file` | — | Batch prompts from a text file |
@@ -111,7 +169,7 @@ Composes with every adapter and with Spectrum. Two modes — see
 | Flag | Description |
 |------|-------------|
 | `--dcw` | Scalar mode (one global λ) |
-| `--dcw_lambda` | λ value (`inference.py` default: -0.015; `make test-dcw` passes 0.01) |
+| `--dcw_lambda` | λ value (`inference.py` default: -0.015; `python tasks.py test-dcw` passes 0.01) |
 | `--dcw_band_mask` | Where to apply: `LL` (default) / `HF` / `all` |
 | `--dcw_schedule` | Per-step shaping (e.g. flat / cosine) |
 | `--dcw_calibrator` | Path to a v4 fusion-head safetensors (replaces scalar) |

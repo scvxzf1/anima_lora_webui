@@ -16,6 +16,7 @@ from library.anima import weights as anima_utils
 from library.env import resolve_model_family
 from library.models import qwen_vae as qwen_image_autoencoder_kl
 from library.models.family_registry import dispatch_model_family, get_model_family_spec
+from library.quantization.training import validate_mixed_nf4_training
 from library.training.probes import maybe_probe_components as _maybe_probe_components
 from library.training.train_bootstrap import resolve_block_swap_profile_jsonl
 from library.training.v100_flash import (
@@ -37,6 +38,17 @@ def _adaptive_islands_enabled(args) -> bool:
 def _install_adaptive_precision(model, args, accelerator, family: str, *, trainer=None) -> None:
     """Install frozen precision islands before adapter/offloader setup."""
     if not _adaptive_islands_enabled(args):
+        from library.training.adaptive_runtime.native_runtime import NativeStartupRuntime
+        from library.training.adaptive_runtime.native_precision import native_enabled
+
+        runtime = getattr(trainer, "_adaptive_training_runtime", None)
+        if native_enabled(args) and family == "krea2_raw":
+            from library.training.adaptive_runtime.native_family import install_guards
+            install_guards(model, family)
+        if native_enabled(args) and type(runtime) is NativeStartupRuntime:
+            runtime.capture_model(model)
+            runtime.validate_swap_capacity(model, family)
+            trainer._native_precision_model = model
         return
     from library.training.adaptive_runtime.training_config import require_training_contract
     from library.training.adaptive_runtime.training_precision import (
@@ -47,6 +59,10 @@ def _install_adaptive_precision(model, args, accelerator, family: str, *, traine
     require_training_contract(args, world_size=accelerator.num_processes)
     manifest = install_training_precision(model, args, model_family=family)
     register_precision_checkpoint(accelerator, manifest)
+    if trainer is not None:
+        runtime = getattr(trainer, "_adaptive_training_runtime", None)
+        if runtime is not None:
+            runtime.validate_swap_capacity(model, family)
     # Keep the original base model visible to the adaptive runtime.  The
     # runtime re-hashes these tensors after setup and after accelerator
     # preparation so an offloader dtype drift cannot hide behind the request ID.
@@ -189,10 +205,14 @@ def _load_qwen_image_2_1_dit(trainer, args, weight_dtype, accelerator, text_enco
     from library.models.qwen_image_2_1.weights import load_qwen_image_2_1_transformer
 
     trainer.is_swapping_blocks = bool(getattr(args, "blocks_to_swap", 0) or 0)
+    from library.models.qwen_image_2_1.preview_memory import needs_preview_offloader
+
+    preview_offloader = needs_preview_offloader(args)
     loading_device = "cpu" if trainer.is_swapping_blocks else accelerator.device
     model = load_qwen_image_2_1_transformer(
         args.pretrained_model_name_or_path, dtype=weight_dtype, device=loading_device
     )
+    validate_mixed_nf4_training(model, args)
     attn_mode = prepare_qwen_image_2_1_attention(
         model,
         getattr(args, "attn_mode", None),
@@ -206,10 +226,10 @@ def _load_qwen_image_2_1_dit(trainer, args, weight_dtype, accelerator, text_enco
     )
     if getattr(args, "gradient_checkpointing", False):
         model.enable_gradient_checkpointing()
-    if trainer.is_swapping_blocks:
+    if trainer.is_swapping_blocks or preview_offloader:
         enable_qwen_image_2_1_block_swap(
             model,
-            args.blocks_to_swap,
+            getattr(args, "blocks_to_swap", 0) or 0,
             accelerator.device,
             profile_jsonl=resolve_block_swap_profile_jsonl(args),
             transfer_dtype=getattr(args, "block_swap_transfer_dtype", None),
@@ -237,6 +257,7 @@ def _load_z_image_dit(trainer, args, weight_dtype, accelerator, text_encoders):
         dtype=weight_dtype,
         device=loading_device,
     )
+    validate_mixed_nf4_training(model, args)
     _install_adaptive_precision(model, args, accelerator, "z_image", trainer=trainer)
     attn_mode = prepare_z_image_attention(
         model,
@@ -301,8 +322,9 @@ def _load_krea2_dit(trainer, args, weight_dtype, accelerator, text_encoders):
     from library.models.krea2_raw.weights import load_krea2_dit
     from library.training.adaptive_runtime.training_config import islands_enabled
 
+    from library.training.adaptive_runtime.native_precision import native_enabled
     adaptive = islands_enabled(args)
-    if adaptive:
+    if adaptive or native_enabled(args):
         from library.models.krea2_raw.quantize import inspect_nf4_checkpoint
         if inspect_nf4_checkpoint(str(args.pretrained_model_name_or_path)).is_nf4:
             raise ValueError("FP16/FP32 training requires nonquantized base weights, not NF4")
@@ -344,6 +366,7 @@ def _load_krea2_dit(trainer, args, weight_dtype, accelerator, text_encoders):
         nf4=nf4_active,
         nf4_path=nf4_path if nf4_active else None,
     )
+    validate_mixed_nf4_training(model, args)
     _install_adaptive_precision(model, args, accelerator, "krea2_raw", trainer=trainer)
     attn_mode = prepare_krea2_attention(
         model,

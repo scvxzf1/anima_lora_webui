@@ -169,6 +169,13 @@ def load_anima_model(
     dit_path = str(resolve_under_home(dit_path))
     device = torch.device(device)
     loading_device = torch.device(loading_device)
+    from library.anima.mixed_nf4 import inspect_mixed_nf4, load_mixed_state
+
+    mixed_nf4 = inspect_mixed_nf4(dit_path) if os.path.isfile(dit_path) else None
+    if mixed_nf4 and dit_weight_dtype != torch.bfloat16:
+        raise ValueError("Anima mixed NF4 requires BF16 compute")
+    if mixed_nf4 and lora_weights_list:
+        raise ValueError("Load-time LoRA merge is unsupported for Anima mixed NF4")
     checkpoint_layout = checkpoint_layout or inspect_anima_checkpoint(dit_path)
 
     # We currently support fixed DiT config for Anima models
@@ -200,17 +207,23 @@ def load_anima_model(
         rename_hook=_dit_rename_hook,
         concat_hook=_dit_concat_hook,
     )
-    sd = load_safetensors_with_lora(
-        model_files=dit_path,
-        lora_weights_list=lora_weights_list,
-        lora_multipliers=lora_multipliers,
-        calc_device=device,
-        move_to_device=(loading_device == device),
-        dit_weight_dtype=dit_weight_dtype,
-        weight_transform_hooks=rename_hooks,
-    )
-
-    missing, unexpected = model.load_state_dict(sd, strict=False, assign=True)
+    if mixed_nf4:
+        missing, unexpected = load_mixed_state(
+            model, dit_path, dtype=dit_weight_dtype,
+            lora_weights_list=lora_weights_list, rename_hook=_dit_rename_hook,
+            concat_hook=_dit_concat_hook, device=loading_device,
+        )
+    else:
+        sd = load_safetensors_with_lora(
+            model_files=dit_path,
+            lora_weights_list=lora_weights_list,
+            lora_multipliers=lora_multipliers,
+            calc_device=device,
+            move_to_device=(loading_device == device),
+            dit_weight_dtype=dit_weight_dtype,
+            weight_transform_hooks=rename_hooks,
+        )
+        missing, unexpected = model.load_state_dict(sd, strict=False, assign=True)
     if missing:
         # Filter out expected missing buffers (initialized in __init__, not saved in checkpoint)
         unexpected_missing = [

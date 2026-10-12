@@ -36,7 +36,7 @@ export function useMetricsCanvas(ref: RefObject<HTMLDivElement | null>, data: [n
           },
           xAxis: { type: timeAxis ? "time" : "value", axisLabel: { color: style.getPropertyValue("--muted") }, splitLine: { show: false } },
           yAxis: { type: "value", scale: true, axisLabel: { color: style.getPropertyValue("--muted") }, splitLine: { lineStyle: { color: style.getPropertyValue("--line") } } },
-          series: [{ type: "line", data, sampling: "lttb", showSymbol: false, lineStyle: { width: 2, color: style.getPropertyValue("--accent") } }],
+          series: [{ type: "line", data, connectNulls: false, showSymbol: false, lineStyle: { width: 2, color: style.getPropertyValue("--accent") } }],
         });
       };
       render();

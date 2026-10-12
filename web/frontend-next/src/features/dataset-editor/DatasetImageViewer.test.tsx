@@ -58,4 +58,18 @@ describe('DatasetImageViewer', () => {
     expect(viewer.querySelector('.dataset-image-viewer-canvas')).toHaveAttribute('aria-busy', 'true');
     expect(within(viewer).getByRole('status')).toHaveTextContent('正在读取图片');
   });
+
+  it('automatically retries a failed image when its file version changes', () => {
+    const { rerender } = render(<DatasetImageViewer image={image} returnFocus={null} onClose={() => undefined} />);
+    fireEvent.error(screen.getByRole('img', { name: 'photo.png' }));
+    expect(screen.getByRole('alert')).toHaveTextContent('图片加载失败');
+
+    const updated = { ...image, url: `${image.url}&v=new-version` };
+    rerender(<DatasetImageViewer image={updated} returnFocus={null} onClose={() => undefined} />);
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    const replacement = screen.getByRole('img', { name: 'photo.png' });
+    expect(replacement).toHaveAttribute('src', updated.url);
+    fireEvent.load(replacement);
+    expect(screen.queryByText('正在读取图片')).not.toBeInTheDocument();
+  });
 });

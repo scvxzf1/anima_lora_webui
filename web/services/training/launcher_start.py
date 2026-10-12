@@ -14,6 +14,7 @@ from library.runtime.launch import (
     configure_accelerate_for_gpu_selection,
     resolve_training_world_size_for_gpu_selection,
 )
+from web.services.training.risk_acknowledgement import pending_preflight, without_risk_flag
 from web.services.training.common import _format_ts
 from web.services.training.launch_support import (
     _normalize_continue_lora_info,
@@ -252,8 +253,7 @@ async def _start_preprocess_unlocked(
     )
 
     cmd = [venv_python, "tasks.py", "preprocess"]
-    if extra_args:
-        cmd.extend(extra_args)
+    cmd.extend(without_risk_flag(extra_args))
 
     env = os.environ.copy()
     gpu_selection = _normalize_gpu_whitelist(gpu_whitelist)
@@ -316,6 +316,7 @@ async def _start_pending_training(self, pending: dict[str, Any]) -> None:
                 pending.get("gpu_whitelist") or []
             ),
         )
+        preflight = pending_preflight(preflight, pending.get("extra_args"))
         if not preflight.get("ok", False):
             errors = preflight.get("summary", {}).get("errors", 0)
             details = []

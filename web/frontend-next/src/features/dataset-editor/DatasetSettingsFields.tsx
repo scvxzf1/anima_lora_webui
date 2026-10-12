@@ -1,11 +1,14 @@
 import type { FieldPath, UseFormReturn } from 'react-hook-form';
 
 import { captionSourceModes, type DatasetFormValues } from './datasetForm';
+import { DatasetFieldLabel } from './DatasetFieldLabel';
+import type { DatasetFieldHelpKey } from './field-help';
 
 type Props = {
   form: UseFormReturn<DatasetFormValues>;
   prefix: 'defaults' | `datasets.${number}.settings`;
   includeKeepTokens?: boolean;
+  disabled?: boolean;
 };
 
 const captionModeLabels: Record<typeof captionSourceModes[number], string> = {
@@ -15,44 +18,45 @@ const captionModeLabels: Record<typeof captionSourceModes[number], string> = {
   captions_json: 'captions.json',
 };
 
-export function DatasetSettingsFields({ form, prefix, includeKeepTokens = false }: Props) {
+export function DatasetSettingsFields({ form, prefix, includeKeepTokens = false, disabled = false }: Props) {
   const path = (key: string) => `${prefix}.${key}` as FieldPath<DatasetFormValues>;
+  const settingProps = { form, disabled };
 
   return (
     <div className="dataset-settings-sections">
       <SettingsGroup title="训练尺寸">
-        <NumberSetting form={form} path={path('resolution')} label="训练分辨率" min={64} step={64} />
-        <NumberSetting form={form} path={path('batch_size')} label="批大小" min={1} />
-        <NumberSetting form={form} path={path('prior_loss_weight')} label="正则损失权重" min={0} step={0.05} />
+        <NumberSetting {...settingProps} path={path('resolution')} helpField="resolution" label="训练分辨率" min={64} step={64} />
+        <NumberSetting {...settingProps} path={path('batch_size')} helpField="batch_size" label="批大小" min={1} />
+        <NumberSetting {...settingProps} path={path('prior_loss_weight')} helpField="prior_loss_weight" label="正则损失权重" min={0} step={0.05} />
       </SettingsGroup>
 
       <SettingsGroup title="分桶规则">
-        <CheckboxSetting form={form} path={path('enable_bucket')} label="启用分桶" />
-        <NumberSetting form={form} path={path('min_bucket_reso')} label="最小桶尺寸" min={64} step={64} />
-        <NumberSetting form={form} path={path('max_bucket_reso')} label="最大桶尺寸" min={64} step={64} />
-        <NumberSetting form={form} path={path('bucket_reso_steps')} label="桶尺寸步长" min={1} />
-        <CheckboxSetting form={form} path={path('bucket_no_upscale')} label="禁止放大小图" />
+        <CheckboxSetting {...settingProps} path={path('enable_bucket')} helpField="enable_bucket" label="启用分桶" />
+        <NumberSetting {...settingProps} path={path('min_bucket_reso')} helpField="min_bucket_reso" label="最小桶尺寸" min={64} step={64} />
+        <NumberSetting {...settingProps} path={path('max_bucket_reso')} helpField="max_bucket_reso" label="最大桶尺寸" min={64} step={64} />
+        <NumberSetting {...settingProps} path={path('bucket_reso_steps')} helpField="bucket_reso_steps" label="桶尺寸步长" min={1} />
+        <CheckboxSetting {...settingProps} path={path('bucket_no_upscale')} helpField="bucket_no_upscale" label="禁止放大小图" />
       </SettingsGroup>
 
       <SettingsGroup title="验证集">
-        <NumberSetting form={form} path={path('validation_split')} label="验证集比例" min={0} max={1} step={0.01} />
-        <NumberSetting form={form} path={path('validation_split_num')} label="验证集数量" min={0} />
-        <NumberSetting form={form} path={path('validation_seed')} label="验证随机种子" min={0} />
+        <NumberSetting {...settingProps} path={path('validation_split')} helpField="validation_split" label="验证集比例" min={0} max={1} step={0.01} />
+        <NumberSetting {...settingProps} path={path('validation_split_num')} helpField="validation_split_num" label="验证集数量" min={0} />
+        <NumberSetting {...settingProps} path={path('validation_seed')} helpField="validation_seed" label="验证随机种子" min={0} />
       </SettingsGroup>
 
       <SettingsGroup title="标注读取">
-        <TextSetting form={form} path={path('caption_extension')} label="标注扩展名" placeholder=".txt" />
+        <TextSetting {...settingProps} path={path('caption_extension')} helpField="caption_extension" label="标注扩展名" placeholder=".txt" />
         {includeKeepTokens ? (
-          <NumberSetting form={form} path={path('keep_tokens')} label="保留 Token 数" min={0} />
+          <NumberSetting {...settingProps} path={path('keep_tokens')} helpField="keep_tokens" label="保留 Token 数" min={0} />
         ) : null}
-        <CheckboxSetting form={form} path={path('prefer_json_caption')} label="优先 JSON 标注" />
-        <label>
-          <span>标注来源</span>
-          <select {...form.register(path('caption_source_mode'))}>
+        <CheckboxSetting {...settingProps} path={path('prefer_json_caption')} helpField="prefer_json_caption" label="优先 JSON 标注" />
+        <div className="dataset-setting-field">
+          <DatasetFieldLabel htmlFor={path('caption_source_mode')} field="caption_source_mode" label="标注来源" />
+          <select id={path('caption_source_mode')} disabled={disabled} {...form.register(path('caption_source_mode'))}>
             {captionSourceModes.map((mode) => <option key={mode} value={mode}>{captionModeLabels[mode]}</option>)}
           </select>
           <FieldError form={form} path={path('caption_source_mode')} />
-        </label>
+        </div>
       </SettingsGroup>
     </div>
   );
@@ -70,61 +74,73 @@ function SettingsGroup({ title, children }: { title: string; children: React.Rea
 function NumberSetting({
   form,
   path,
+  helpField,
   label,
   min,
   max,
   step = 1,
+  disabled,
 }: {
   form: UseFormReturn<DatasetFormValues>;
   path: FieldPath<DatasetFormValues>;
+  helpField?: DatasetFieldHelpKey;
   label: string;
   min?: number;
   max?: number;
   step?: number;
+  disabled: boolean;
 }) {
   return (
-    <label>
-      <span>{label}</span>
-      <input type="number" min={min} max={max} step={step} {...form.register(path, { valueAsNumber: true })} />
+    <div className="dataset-setting-field">
+      <DatasetFieldLabel htmlFor={path} field={helpField} label={label} />
+      <input id={path} type="number" min={min} max={max} step={step} disabled={disabled} {...form.register(path, { valueAsNumber: true })} />
       <FieldError form={form} path={path} />
-    </label>
+    </div>
   );
 }
 
 function TextSetting({
   form,
   path,
+  helpField,
   label,
   placeholder,
+  disabled,
 }: {
   form: UseFormReturn<DatasetFormValues>;
   path: FieldPath<DatasetFormValues>;
+  helpField?: DatasetFieldHelpKey;
   label: string;
   placeholder?: string;
+  disabled: boolean;
 }) {
   return (
-    <label>
-      <span>{label}</span>
-      <input {...form.register(path)} placeholder={placeholder} />
+    <div className="dataset-setting-field">
+      <DatasetFieldLabel htmlFor={path} field={helpField} label={label} />
+      <input id={path} {...form.register(path)} placeholder={placeholder} disabled={disabled} />
       <FieldError form={form} path={path} />
-    </label>
+    </div>
   );
 }
 
 function CheckboxSetting({
   form,
   path,
+  helpField,
   label,
+  disabled,
 }: {
   form: UseFormReturn<DatasetFormValues>;
   path: FieldPath<DatasetFormValues>;
+  helpField: DatasetFieldHelpKey;
   label: string;
+  disabled: boolean;
 }) {
   return (
-    <label className="dataset-checkbox-field">
-      <input type="checkbox" {...form.register(path)} />
-      <span>{label}</span>
-    </label>
+    <div className="dataset-setting-field dataset-checkbox-field">
+      <input id={path} type="checkbox" disabled={disabled} {...form.register(path)} />
+      <DatasetFieldLabel htmlFor={path} field={helpField} label={label} />
+    </div>
   );
 }
 

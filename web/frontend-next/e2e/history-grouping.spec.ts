@@ -80,7 +80,7 @@ async function historyFixture(page: Page) {
   return { writes, control };
 }
 
-async function drag(page: Page, source: Locator, target: Locator) {
+async function drag(page: Page, source: Locator, target: Locator, holdMs = 0) {
   await expect(source).toBeEnabled();
   await target.scrollIntoViewIfNeeded();
   await source.scrollIntoViewIfNeeded();
@@ -88,6 +88,7 @@ async function drag(page: Page, source: Locator, target: Locator) {
   const b = (await target.boundingBox())!;
   await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2);
   await page.mouse.down();
+  if (holdMs) await page.waitForTimeout(holdMs);
   await page.mouse.move(a.x + a.width / 2 + 8, a.y + a.height / 2, {
     steps: 3,
   });
@@ -143,16 +144,18 @@ test("history pointer sorting persists collections and config order", async ({
   await page.goto("/next/history?collection=Studio");
   await drag(
     page,
-    page.getByRole("button", { name: "拖动集合 Studio", exact: true }),
+    page.locator('[data-history-drag="collection:Studio"] > button.object-row'),
     page.locator('[data-history-drag="collection:Archive"]'),
+    240,
   );
   await expect.poll(() => writes.length).toBe(1);
   expect(writes[0].body.collection_order).toEqual(["Archive", "Studio"]);
   const nav = page.locator(".history-config-groups");
   await drag(
     page,
-    nav.getByRole("button", { name: "拖动配置组 Portrait A", exact: true }),
+    nav.locator("[data-history-drag]").filter({ hasText: "Portrait A" }).locator("button.object-row"),
     nav.locator("[data-history-drag]").filter({ hasText: "Portrait B" }),
+    240,
   );
   await expect.poll(() => writes.length).toBe(2);
   expect(writes[1].body.config_group_order).toEqual({
@@ -180,16 +183,14 @@ test("history keyboard config sorting persists", async ({ page }) => {
   const { writes } = await historyFixture(page);
   await page.goto("/next/history?collection=Studio");
   const nav = page.locator(".history-config-groups");
-  const source = nav.getByRole("button", {
-    name: "拖动配置组 Portrait A",
-    exact: true,
-  });
+  const source = nav.locator("[data-history-drag]").filter({ hasText: "Portrait A" }).locator("button.object-row");
   const target = nav
     .locator("[data-history-drag]")
     .filter({ hasText: "Portrait B" });
   await expect(source).toBeEnabled();
   await source.focus();
-  await page.keyboard.press("Space");
+  await expect(source).toHaveAttribute("aria-keyshortcuts", "F2");
+  await page.keyboard.press("F2");
   await expect(nav.locator('[data-dragging="true"]')).toHaveCount(1);
   await page.keyboard.press("ArrowDown");
   await expect(target).toHaveAttribute("data-over", "true");
@@ -199,6 +200,23 @@ test("history keyboard config sorting persists", async ({ page }) => {
     Studio: ["b", "a", "unloaded"],
     Archive: ["c"],
   });
+});
+
+test("history sidebar click and keyboard activation still filter", async ({ page }) => {
+  const { writes } = await historyFixture(page);
+  await page.goto("/next/history?collection=Studio");
+  const studio = page.locator('[data-history-drag="collection:Studio"] > button.object-row');
+  const archive = page.locator('[data-history-drag="collection:Archive"] > button.object-row');
+  await archive.click();
+  await expect(archive).toHaveAttribute("data-selected", "true");
+  await studio.focus();
+  await page.keyboard.press("Enter");
+  await expect(studio).toHaveAttribute("data-selected", "true");
+  await archive.focus();
+  await page.keyboard.press("Space");
+  await expect(archive).toHaveAttribute("data-selected", "true");
+  await expect(page.locator('[data-dragging="true"]')).toHaveCount(0);
+  expect(writes).toEqual([]);
 });
 
 test("history drag moves entire config and selected tasks, cancellation is inert", async ({
@@ -265,12 +283,9 @@ test("history keyboard drag supports cancel and failed saves retain order", asyn
 }) => {
   const { writes, control } = await historyFixture(page);
   await page.goto("/next/history?collection=Studio");
-  const handle = page.getByRole("button", {
-    name: "拖动集合 Studio",
-    exact: true,
-  });
+  const handle = page.locator('[data-history-drag="collection:Studio"] > button.object-row');
   await handle.focus();
-  await page.keyboard.press("Space");
+  await page.keyboard.press("F2");
   await expect(
     page.locator('[data-history-drag="collection:Studio"]'),
   ).toHaveAttribute("data-dragging", "true");
@@ -285,7 +300,7 @@ test("history keyboard drag supports cancel and failed saves retain order", asyn
   expect(writes).toHaveLength(0);
   control.fail = true;
   await handle.focus();
-  await page.keyboard.press("Space");
+  await page.keyboard.press("F2");
   await expect(
     page.locator('[data-history-drag="collection:Studio"]'),
   ).toHaveAttribute("data-dragging", "true");

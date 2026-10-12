@@ -151,6 +151,7 @@ def _dataset_image_preview_meta(
         f"&dataset_index={dataset_index}"
         f"&source={quote(source)}"
         f"&image={quote(rel_path)}"
+        f"&v={stat.st_mtime_ns:x}-{stat.st_size:x}"
     )
     thumbnail_url = (
         "/api/config/dataset-presets/thumbnail"

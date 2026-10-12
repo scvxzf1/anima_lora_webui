@@ -179,7 +179,7 @@ def _adaptive_precision_requires_runtime_resolution(cfg: dict[str, Any]) -> bool
     """
     requested = str(cfg.get("adaptive_precision", "off") or "off").strip().lower()
     resolved = str(cfg.get("adaptive_resolved_mode", "") or "").strip().lower()
-    return requested == "auto" and resolved not in {"bf16", "fp16_fp32", "fp32"}
+    return requested == "auto" and resolved not in {"bf16", "native_fp16", "fp16_fp32", "fp32"}
 
 
 def _check_checkpointing_config(

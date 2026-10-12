@@ -1,0 +1,147 @@
+.dataset-setting-field {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.dataset-field-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  min-width: 0;
+}
+
+.dataset-field-label > label {
+  display: inline;
+  color: inherit;
+  font-size: inherit;
+}
+
+.dataset-field-help {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  vertical-align: middle;
+}
+
+.dataset-field-help > .dataset-field-help-trigger,
+.dataset-field-help-popover .dataset-field-help-close {
+  display: inline-grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  min-height: 26px;
+  padding: 0;
+  color: var(--muted);
+  background: transparent;
+  border: 0;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.dataset-field-help > .dataset-field-help-trigger:hover,
+.dataset-field-help > .dataset-field-help-trigger:focus-visible,
+.dataset-field-help-popover .dataset-field-help-close:hover,
+.dataset-field-help-popover .dataset-field-help-close:focus-visible {
+  color: var(--accent);
+  background: var(--accent-soft);
+  outline: 2px solid var(--accent-soft);
+}
+
+.dataset-field-help-popover {
+  position: fixed;
+  z-index: 1250;
+  width: min(390px, calc(100vw - 24px));
+  padding: 14px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  box-shadow: 0 8px 28px rgb(0 0 0 / 16%);
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.65;
+  text-align: left;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.dataset-field-help-popover > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.dataset-field-help-popover[role="note"] p {
+  margin: 7px 0 0;
+  color: var(--ink);
+  font-size: inherit;
+}
+
+.dataset-field-help-recommendation {
+  margin-top: 12px;
+  padding: 10px 12px;
+  background: var(--accent-soft);
+  border-left: 3px solid var(--accent);
+  border-radius: 4px;
+}
+
+.dataset-field-help-recommendation > strong {
+  color: var(--accent);
+}
+
+.dataset-field-help-note,
+.dataset-field-help-popover details {
+  margin-top: 12px;
+}
+
+.dataset-field-help-popover table {
+  width: 100%;
+  margin-top: 12px;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 12px;
+}
+
+.dataset-field-help-popover th,
+.dataset-field-help-popover td {
+  padding: 7px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+
+.dataset-field-help-popover th:first-child {
+  width: 36%;
+}
+
+.dataset-field-help-popover code {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.dataset-field-help-popover summary {
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.stage-schedule-toggle-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+@media (max-width: 600px) {
+  .dataset-field-help > .dataset-field-help-trigger,
+  .dataset-field-help-popover .dataset-field-help-close {
+    width: 30px;
+    height: 30px;
+    min-height: 30px;
+  }
+}

@@ -1,15 +1,126 @@
 # DiT 自适应混合精度与 OOM 恢复阶段开发计划
 
 状态：活跃提案 / 已恢复开发，P1 smoke 与 P2 数据原型通过
-更新时间：2026-09-27
+更新时间：2026-10-01
 适用范围：当前工作树中的实验实现，不代表已发布版本
 当前说明：[实验入口与限制](../experimental/adaptive-runtime.md)
 历史证据：[实测与失败记录](../findings/adaptive_runtime_20260921.md)
 
-## 当前执行限制（2026-09-26）
+## 2026-10-01 全局复盘后的执行优先级
 
-按用户最新要求，优先打通 FP16/FP32 混合精度训练，暂不扩展 OOM 重试关联；
-当前只授权静态测试、CPU 小型数值夹具和数学论证，不启动 GPU、整模训练或热测。
+用户要求加快推进。最新排序见[自动精度交付收敛计划](adaptive_precision_delivery_reset_20261001.md)：
+暂停把token/head根因追踪作为交付前置，优先复用已有训练精度入口与probe，完成有预算的
+可部署Linear组合搜索、同优化器状态的更新对照、保留集及真实训练收益验证。
+下文各阶段的“下一步”保留历史研究语境；当前主线不再默认继续局部K反向恢复。
+旧数值拒绝、门槛和生产默认不变，更新后OOM恢复仍是独立未完成项。
+
+批次1现已完成：3个参考/控制worker与12个不同MLP2候选，10个通过单输入、sigma=.5、
+初始LoRA的严格门槛；同空状态AdamW的真实更新已落盘并经独立CPU复算。
+候选05/04进入下一批；05理论权重payload减少5.616%，尚无GPU峰值或稳态速度收益证明。
+完整范围见[批次1交付报告](../findings/anima_precision_delivery_batch1_90hx_20261001.md)。
+随后[批次2](../findings/anima_precision_delivery_batch2_90hx_20261001.md)已完成两个新样本、
+两种bucket、三档sigma与独立初始/非零AdamW状态的验证：05/04及FP32控制各12/12通过，
+独立FP64复算36格一致；四组train.py各完成5次有效更新、零跳步，最终CPU审计通过。
+候选05/04峰值显存仍高于FP32控制，生产BF16对照更省显存；实用收益尚未成立。
+下一步是计划身份绑定、选择/拒绝报告与收益决策，当前仍不能计作生产自动精度交付完成。
+
+随后[旧Anima FP16 AMP基线](../findings/anima_legacy_fp16_comparison_90hx_20261001.md)
+补测五步有效、零跳步，独立审核通过；scale1024时步2..5均值2.694s、整卡峰3524MiB，
+短窗明显优于主体FP32候选。原生AMP与FP32必要保护已实际观察；旧默认scale、严格矩阵、
+长期质量及Turing未验收。下一阶段的收益/质量评估应纳入旧FP16基线，仍保留原数值门槛。
+
+其后[旧FP16集中12格验收](../findings/anima_native_fp16_acceptance_90hx_20261001.md)已完成：
+全部finite、真实更新、零跳步，独立FP64证据审核通过，但严格0/12通过，input/adapter梯度明显漂移。
+05/04默认扩张与逐层/scale追加结束。质量标准已提前登记并绑定SHA，数据/prompt待绑定、quality=not_run；
+严格失败不等同已证明训练质量失败，不能以finite覆盖它。执行与协议见
+[集中验收入口](../experimental/anima-native-fp16-acceptance.md)。
+
+## 当前执行范围（2026-09-30）
+
+本轮授权更新启动 OOM 恢复、配置与 WebUI：`adaptive_oom_retry_max_swap=0` 表示
+自动查询实际模型合法交换上限，正整数表示用户预算；模型结构及 CPU 主机内存只会
+进一步收紧有效上限。重试按起始增量指数增长，最后一次可直达有效上限；尝试次数
+包含首次训练。Anima、Krea-2 和 Z-Image 的上限按实际模型结构计算，不再使用跨族
+固定的 26。此次仅进行 CPU/前端定向验证，不启动 GPU、整模训练或热测，也不改变
+精度计划冻结约束。首次 optimizer 更新开始后的 OOM 仍不自动续训。
+
+另有独立授权的 Anima 首阶段 disposable precision CLI 实测，记录于
+[CMP 90HX 探针报告](../findings/anima_adaptive_precision_90hx_20260930.md)：FP16/BF16
+候选均 finite 完成 3 updates 但梯度门槛失败，FP32 Linear 组仅作为通过的控制对照。
+这不表示 production 精度计划解冻、生产 train 已桥接或 OOM 上限策略参与该实验；
+OOM max-swap 自动上限更新仍按本节及[实验入口说明](../experimental/adaptive-runtime.md)
+所述范围独立维护。
+
+Anima 后续由 Luna 执行分支/scale 诊断矩阵，六个候选仍梯度不达标；缩放有效但不充分，
+早期 block 是误差集中处而非已确认源头。证据与后续局部 VJP 定位方向见
+[90HX 梯度定位](../findings/anima_adaptive_precision_diagnostics_90hx_20260930.md)。
+
+后续单步固定状态的[局部 VJP/cotangent 对照](../findings/anima_local_vjp_90hx_20260930.md)
+已由 Luna 运行；MLP-only 候选仍梯度不达标，局部量化与整网轨迹偏移尚未形成因果分解。
+下一步定位 MLP2/GELU，不将 QKV-FP16 局部反事实作为候选实际配置。
+
+MLP2/GELU 捕获及投影拆分已继续完成，见[定位报告](../findings/anima_mlp_path_90hx_20260930.md)。
+真实样本 GELU 输入单独变化影响很小，但传入 cotangent 偏移很大；MLP1/MLP2 单独
+降精度均失败，不能据此推荐层名单。后续需要前向/反向分离的受控诊断，而不是增加
+FP32 层数量或放宽门槛。
+
+同前向 FP32 base-dx [受控反事实](../findings/anima_backward_counterfactual_90hx_20260930.md)
+已完成；两种 FP16 prediction 逐位一致，base-dx 干预未改善梯度漂移。后续沿 block
+边界定位 cotangent 首次放大位置；此结果只收窄本固定样本解释，不开放生产 FP16。
+
+29个[残差流边界对照](../findings/anima_block_boundaries_90hx_20260930.md)已完成，
+FP32控制误差极小；boundary14首次超2%，block10/8两侧观察到明显放大。
+下一步固定同一activation/cotangent做单block VJP，对照轨迹与局部计算；不将定位指标作为安全层名单。
+
+block14[完整形状八组VJP](../findings/anima_block14_vjp_90hx_20260930.md)已完成；
+同侧捕获重现通过，八格完整梯度CPU复算一致。固定输入/策略只换传入cotangent产生最大局部对照，
+下一步沿block15..27的cotangent来源继续固定边界定位，不将三类对照相加成因果贡献。
+
+[15/17/27上游对照](../findings/anima_upstream_vjp_90hx_20260930.md)已完成，24格完整梯度CPU复算一致。
+block17的激活变化对照已与cotangent变化接近，而局部policy切换仍小；下一步拆查
+block17内部attention/MLP及归一化/残差边界的激活扰动敏感性，尚不开放生产精度方案。
+
+2026-10-01 [block17内部阶段对照](../findings/anima_block17_paths_90hx_20261001.md)已完成，
+复用来源捕获，无新训练；固定参考阶段cotangent时self-attention完整VJP差异最大
+（0.676%，cross-attention 0.081%、MLP 0.164%）。下一步细分自注意力前置
+normalization/modulation、QKV、Q/K normalization、attention和输出投影；
+该结果尚不区分具体算子根因，也不开放生产精度方案。
+
+[自注意力两段/投影核心拆分](../findings/anima_attention_split_90hx_20261001.md)随后完成：
+归一化固定h换输入对照0.022%--0.040%，换h约1.271%--1.296%；固定du的core
+fused-QKV梯度差异1.130%，K分量1.923%，固定cotangent的两个投影VJP变化0。
+下一步在显存预算内隔离重放core，校验与现有dp的fidelity后，再拆Q/K normalization
+与attention后向；不能据此推荐生产安全层名单或认定最初FP16误差来源。
+
+[隔离QK-norm四格](../findings/anima_qknorm_90hx_20261001.md)现已完成：原core u逐位/
+dp fidelity通过，四格由真实weights与NumPy解析式独立验证，显存峰值1500MiB。
+换norm输入对照0.116%--0.374%，换attention传回梯度约1.161%--1.319%，K分量
+后者2.004%--2.365%。下一步在隔离attention路径做真实Q/K/V激活受控替换，
+继续固定du与conditioning；四格不是可加的因果分解，生产精度方案仍未开放。
+
+[post-RoPE QKV八格](../findings/anima_qkv_matrix_90hx_20261001.md)已完成热测与独立验收。
+单独换K输入fused对照0.737%--0.947%，大于V/Q轴，且受V背景影响。
+下一步优先在固定背景下细查K轨迹与V交互或K差异方向插值；
+仍不能认定最初FP16舍入误差来源，不能将输入轴对照当成安全精度名单。
+
+[K差异方向五点/V背景对照](../findings/anima_k_interpolation_90hx_20261001.md)已完成：
+固定Q_R/du，参考V端点对照0.945%、候选V0.737%，五点响应非线性；
+独立CPU统计审计通过，外层热测timeout124仍保留。
+[已有梯度head/token分布](../findings/anima_k_distribution_90hx_20261001.md)随后完成：
+两V背景端点约99%平方误差集中于top1% tokens，最大head13/token3343，独立复算通过。
+[实际K激活漂移CPU核对](../findings/anima_k_activation_distribution_90hx_20261001.md)完成：
+token3343承载77.75%激活误差，head13激活份额仅10.24%；激活top42覆盖约93.1%
+fused梯度误差，集合交集13/42，独立NumPy核验通过。
+[局部K替换](../findings/anima_k_local_90hx_20261001.md)已完成热测与产物验收：
+top42距full响应残差约12%--15%，低误差集合响应小；head13仅10.24%漂移能量却产生
+较大响应。下一步在候选K背景检查反向恢复，不将距离比作为贡献或生产精度认证，
+不追加长训练或放宽门槛。
+
+本轮 CPU 主回归为 106 passed，关联精度/旧 AUTO/预检回归为 230 passed、1 skipped
+（CUDA 条件）；独立复核通过。前端定向测试 23 passed、帮助对话框隔离测试 5 passed，
+类型检查与隔离候选构建通过。全量前端测试仍有历史页和打标相关三项失败，未计作通过；
+此次未覆盖线上静态资源。正 swap 成功结果必须携带已测主机预算，加载阶段 OOM 可暂未测。
+
 下文历史热测授权和“两线同步”的阶段安排不构成当前执行授权。三模型双卡的
 最终目标保留，但未完成、未在本轮验证。
 

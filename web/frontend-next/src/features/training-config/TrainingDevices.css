@@ -37,3 +37,10 @@
   .training-device-options > label { flex-wrap: wrap; gap: 4px; }
   .training-device-options small { margin-left: 18px; }
 }
+.training-devices-details details { border: 1px solid var(--line); border-radius: 6px; padding: 0 10px; }
+.training-devices-details summary { cursor: pointer; padding: 10px 0; font-size: 13px; font-weight: 600; }
+.training-devices-details details[open] summary { border-bottom: 1px solid var(--line); margin-bottom: 8px; }
+.training-devices-details .training-device-heading { padding: 4px 0; }
+.training-device-summary { display: flex; gap: 8px; flex-wrap: wrap; padding: 8px 0; font-size: 12px; }
+.training-device-summary span { color: var(--muted); }
+.training-device-unavailable { border-top: 1px solid var(--line); margin-top: 4px; }

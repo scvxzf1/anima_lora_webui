@@ -1,5 +1,9 @@
 .training-resource-group {
   border-bottom: 1px solid var(--line);
+  transition: background 150ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+.training-resource-group:hover {
+  background: var(--surface-subtle);
 }
 .training-resource-group h3 {
   margin: 0;
@@ -18,9 +22,12 @@
   text-align: left;
   font-size: 13px;
   cursor: pointer;
+  transition: all 180ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 .training-resource-group h3 button:hover {
   background: var(--surface);
+  padding-left: 16px;
+  box-shadow: inset 3px 0 0 var(--accent);
 }
 .training-resource-group h3 svg {
   flex-shrink: 0;

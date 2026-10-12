@@ -3,6 +3,13 @@ import { apiRequest } from "../../api/client";
 export type SampleReference = { ok: true; reference_image: string; width: number; height: number; url: string };
 const absolutePath = (path: string) => /^(?:\/|[A-Za-z]:[\\/])/.test(path.trim());
 
+export function sampleReferencePreviewUrl(path: string, thumbnail = false, display = false) {
+  const query = new URLSearchParams({ path });
+  if (thumbnail) query.set("thumbnail", "1");
+  else if (display) query.set("display", "1");
+  return `/api/config/sample-references/preview?${query}`;
+}
+
 export function managedReferenceUrl(path: string) {
   const key = path.replace(/\\/g, "/").split("/").pop()?.match(/^([a-f0-9]{64})\.png$/)?.[1];
   return key ? `/api/config/sample-references/${key}` : "";

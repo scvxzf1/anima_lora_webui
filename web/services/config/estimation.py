@@ -264,10 +264,12 @@ def estimate_training_steps(
                 recursive=recursive,
                 path_pattern=path_pattern,
                 available=resized_count > 0 or src_count > 0,
-                source_settings=None if resized_count > 0 else settings,
+                source_settings=settings,
+                model_family=str(cfg.get("model_family") or "anima"),
+                projection_basis="configured_projection" if resized_count > 0 else "source_projection",
                 min_pixels=(
                     _nonnegative_int(cfg.get("min_pixels"), 500_000)
-                    if _bool_value(cfg.get("drop_lowres_images"), True) else 0
+                    if resized_count == 0 and _bool_value(cfg.get("drop_lowres_images"), True) else 0
                 ),
             )
 

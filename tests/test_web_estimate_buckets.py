@@ -128,3 +128,84 @@ def test_estimation_falls_back_to_source_projection(monkeypatch, tmp_path: Path)
     distribution = result["datasets"][0]["bucket_distribution"]
     assert distribution["basis"] == "source_projection"
     assert distribution["buckets"] == [{"width": 512, "height": 512, "count": 1}]
+
+
+@pytest.mark.parametrize("enable_bucket", [True, False])
+def test_estimation_projects_training_directory_with_saved_dataset_settings(monkeypatch, tmp_path: Path, enable_bucket):
+    from library.preprocess.images import process_image
+    from tests.web_config_test_support import _patch_config_service_paths, _write_minimal_config_tree
+    from web.services import config_service
+
+    _, dataset_path = _write_minimal_config_tree(tmp_path)
+    _patch_config_service_paths(monkeypatch, tmp_path)
+    training = tmp_path / "training"
+    training.mkdir()
+    for name, size in [("a.png", (1500, 2100)), ("b.png", (1600, 2240))]:
+        Image.new("RGB", size).save(training / name)
+    Image.new("RGB", (64, 64)).save(training / "small.png")
+    dataset_path.write_text(
+        f'[[datasets]]\nresolution = 512\nmin_bucket_reso = 256\nmax_bucket_reso = 1024\n'
+        f'bucket_reso_steps = 64\nenable_bucket = {str(enable_bucket).lower()}\n'
+        '[[datasets.subsets]]\nimage_dir = "training"\nnum_repeats = 2\n',
+        encoding="utf-8",
+    )
+    baseline = config_service.estimate_training_steps("lora", "default", "imported")
+    detailed = config_service.estimate_training_steps("lora", "default", "imported", include_buckets=True)
+    distribution = detailed["datasets"][0]["bucket_distribution"]
+    assert distribution["basis"] == "configured_projection"
+    assert distribution["image_count"] == 3
+    assert distribution["filtered_count"] == 0
+    assert detailed["steps_per_epoch"] == baseline["steps_per_epoch"]
+    _, size = process_image(training / "a.png", tmp_path / "output", (
+        (512, 512), 256, 1024, 64, True, False, enable_bucket,
+    ))
+    projected = next(bucket for bucket in distribution["buckets"] if (bucket["width"], bucket["height"]) == size)
+    assert projected["count"] == (2 if enable_bucket else 3)
+    assert all(bucket["width"] < 1500 and bucket["height"] < 2100 for bucket in distribution["buckets"])
+
+
+@pytest.mark.parametrize("enable_bucket,bucket_no_upscale", [(True, False), (True, True), (False, True)])
+def test_qwen_projection_matches_preprocessing_alignment(tmp_path: Path, enable_bucket, bucket_no_upscale):
+    from library.preprocess.images import process_image
+
+    image = tmp_path / "image.png"
+    Image.new("RGB", (713, 941)).save(image)
+    settings = {"resolution": 512, "min_bucket_reso": 256, "max_bucket_reso": 1024,
+                "bucket_reso_steps": 64, "enable_bucket": enable_bucket,
+                "bucket_no_upscale": bucket_no_upscale}
+    distribution = inspect_estimate_buckets(
+        tmp_path, recursive=True, path_pattern="*", available=True,
+        source_settings=settings, model_family="qwen_image_2_1", projection_basis="configured_projection",
+    )
+    _, size = process_image(image, tmp_path / "output", (
+        (512, 512), 256, 1024, 64, True, bucket_no_upscale, enable_bucket,
+    ), model_family="qwen_image_2_1")
+    assert distribution["buckets"] == [{"width": size[0], "height": size[1], "count": 1}]
+    assert all(edge % 32 == 0 for edge in size)
+    if enable_bucket and bucket_no_upscale:
+        assert size == (704, 928)
+
+
+def test_estimation_passes_qwen_family_to_training_directory_projection(monkeypatch, tmp_path: Path):
+    from tests.web_config_test_support import _patch_config_service_paths
+    from web.services import config_service
+
+    _patch_config_service_paths(monkeypatch, tmp_path)
+    Image.new("RGB", (713, 941)).save(tmp_path / "image.png")
+    monkeypatch.setattr(config_service, "_load_training_config_for_web_run", lambda *a, **kw: {"model_family": "qwen_image_2_1"})
+    monkeypatch.setattr(config_service, "_dataset_rows_for_estimate", lambda cfg: [{
+        "image_dir": str(tmp_path), "source_dir": str(tmp_path / "missing"),
+        "settings": {"resolution": 512, "bucket_no_upscale": True},
+    }])
+    result = config_service.estimate_training_steps("lora", "default", include_buckets=True)
+    assert result["datasets"][0]["bucket_distribution"]["buckets"] == [{"width": 704, "height": 928, "count": 1}]
+
+
+def test_training_directory_no_upscale_preserves_native_dimensions(tmp_path: Path):
+    Image.new("RGB", (713, 941)).save(tmp_path / "image.png")
+    distribution = inspect_estimate_buckets(
+        tmp_path, recursive=True, path_pattern="*", available=True,
+        source_settings={"resolution": 512, "bucket_no_upscale": True},
+        projection_basis="configured_projection",
+    )
+    assert distribution["buckets"] == [{"width": 713, "height": 941, "count": 1}]

@@ -1,9 +1,31 @@
-.training-config-page
-  .training-workspace-layout:not(:has(.training-config-library[hidden])) {
-  grid-template-columns: minmax(260px, min(42%, max(260px, var(--training-library-side-size, 320px)))) 10px minmax(0, 1fr);
-}
 .training-config-library > * {
   flex-shrink: 0;
+}
+.training-config-library > header > .training-library-layout-switch {
+  display: inline-flex;
+  flex: none;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+}
+.training-library-layout-switch > .icon-button {
+  width: 25px;
+  height: 26px;
+  padding: 3px;
+  background: transparent;
+  border: 0;
+}
+.training-library-layout-switch > .icon-button[aria-pressed="true"] {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+@media (max-width: 800px) {
+  .training-config-library > header > .training-library-layout-switch { display: none; }
+}
+/* Native title hints do not expand the independently scrolling library. */
+.training-config-library [title]::before {
+  content: none;
 }
 .training-library-group[data-drop-over="true"] {
   outline: 2px solid var(--accent);
@@ -55,7 +77,7 @@
   bottom: -5px;
 }
 .training-config-library > .training-library-groups {
-  flex: 1 0 100px;
+  flex: 1 1 0;
   border-top: 1px solid var(--line);
 }
 .training-config-library .training-library-group-heading {
@@ -111,6 +133,7 @@
 }
 .training-config-library > .training-library-actions {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
@@ -249,11 +272,4 @@
 }
 .training-library-groups .training-library-group + .training-library-group {
   border-top: 1px solid var(--line-strong);
-}
-@container workspace (max-width: 1050px) {
-  .training-config-page
-    .training-workspace-layout:not(:has(.training-config-library[hidden])) {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: clamp(10%, var(--training-library-top-size, 180px), 80%) 10px minmax(0, 1fr);
-  }
 }

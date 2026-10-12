@@ -57,6 +57,42 @@ it("keeps adaptive precision and OOM retry in separate resource groups", () => {
   expect(resourceSummary("oom_retry", { adaptive_oom_retry: false })).toBe("关闭");
 });
 
+it("shows the Qwen NF4 compile experiment as an Edit-only boolean compile control", async () => {
+  const user = userEvent.setup();
+  const source = {
+    model_family: "qwen_image_2_1",
+    qwen_image_2_1_task: "edit",
+    qwen_nf4_compile_experiment: false,
+  };
+  const field = fieldsForConfig(source).find((candidate) => candidate.key === "qwen_nf4_compile_experiment")!;
+  expect(field.group).toBe("resources");
+  expect(field.kind).toBe("boolean");
+  expect(field.label).toBe("Qwen NF4 编译实验");
+  expect(groupResourceFields(fieldsForConfig(source)).find((group) => group.id === "compile")?.fields)
+    .toContainEqual(expect.objectContaining({ key: "qwen_nf4_compile_experiment" }));
+  expect(filterTrainingFields(fieldsForConfig(source), source, source, "", "applicable", "lora")
+    .map((candidate) => candidate.key)).toContain("qwen_nf4_compile_experiment");
+
+  const onChange = vi.fn();
+  render(<TrainingFieldEditor fields={[field]} draft={source} ownKeys={new Set(Object.keys(source))} disabled={false} onChange={onChange} method="lora" />);
+  expect(screen.getByLabelText("Qwen NF4 编译实验")).not.toBeChecked();
+  await user.click(screen.getByRole("button", { name: "查看Qwen NF4 编译实验帮助" }));
+  expect(await screen.findByText(/默认关闭/)).toBeInTheDocument();
+  await user.click(screen.getByLabelText("Qwen NF4 编译实验"));
+  expect(onChange).toHaveBeenCalledWith("qwen_nf4_compile_experiment", true);
+
+  for (const wrongScope of [
+    { model_family: "qwen_image_2_1", qwen_image_2_1_task: "t2i" },
+    { model_family: "anima", qwen_image_2_1_task: "edit" },
+  ]) {
+    expect(filterTrainingFields(fieldsForConfig(wrongScope), wrongScope, wrongScope, "", "applicable", "lora")
+      .map((candidate) => candidate.key)).not.toContain("qwen_nf4_compile_experiment");
+    const active = { ...wrongScope, qwen_nf4_compile_experiment: true };
+    expect(filterTrainingFields(fieldsForConfig(active), active, active, "", "applicable", "lora")
+      .map((candidate) => candidate.key)).toContain("qwen_nf4_compile_experiment");
+  }
+});
+
 it("labels Qwen task options and explains the Edit dataset contract", () => {
   const field = fieldsForConfig({ model_family: "qwen_image_2_1" }).find(
     (candidate) => candidate.key === "qwen_image_2_1_task",

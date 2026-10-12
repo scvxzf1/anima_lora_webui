@@ -60,14 +60,31 @@ def reconfigure_block_swap(offloader, blocks, count: int) -> bool:
     offloader._ensure_cpu_weight_masters(blocks)
     offloader._swap_gpu_slab_cache.clear()
     offloader._slot_assignments.clear()
+    slots = offloader._mixed_representation_slots
+    slots.release_bindings(offloader, blocks)
+    slots.clear()
     try:
         capture_missing(offloader, blocks, count)
         _place_frozen_weights(offloader, blocks, count)
-    except torch.cuda.OutOfMemoryError:
+        offloader.blocks_to_swap = count
+        slots.prepare(offloader, blocks)
+        # Validate new exchange pairs before committing hooks or trimming the
+        # previous topology's masters. Same-format NF4 mismatches can be found
+        # only during plan construction, rather than mixed-slot preparation.
+        offloader._swap_plan_cache.clear()
+        offloader._swap_slab_plan_cache.clear()
+        offloader._warm_swap_plan_cache(blocks)
+    except (torch.cuda.OutOfMemoryError, ValueError):
         try:
+            slots.release_bindings(offloader, blocks)
+            slots.clear()
+            offloader.blocks_to_swap = previous
             _place_frozen_weights(offloader, blocks, previous)
             synchronize_device(offloader.device)
             trim_masters(offloader, blocks, previous)
+            slots.prepare(offloader, blocks)
+            offloader._swap_plan_cache.clear()
+            offloader._swap_slab_plan_cache.clear()
         except Exception as rollback_error:
             raise RuntimeError(
                 "Dynamic swap migration rollback failed"

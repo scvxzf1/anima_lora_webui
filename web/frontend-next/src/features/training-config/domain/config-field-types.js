@@ -33,6 +33,7 @@ const BOOLEAN_METHOD_DEFAULTS = Object.freeze({
     freq_router_layer_norm: true,
     content_router_layer_norm: true,
     train_llm_adapter: false,
+    qwen_nf4_compile_experiment: false,
     lora_fp32_compute: false,
     ortho_centered_gate: false,
     chimera_centered_gate: false,

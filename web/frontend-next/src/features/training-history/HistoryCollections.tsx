@@ -7,7 +7,7 @@ import {
 import { useRef, useState } from "react";
 import { CommandDialog } from "../../components/CommandDialog";
 import { HistoryDragItem } from "./HistoryDrag";
-import { ArrowDown, ArrowUp, FolderPlus, Pencil, Trash2 } from "lucide-react";
+import { FolderPlus, Pencil, Trash2 } from "lucide-react";
 import {
   batchUpdateHistoryTasks,
   fetchHistoryCollections,
@@ -154,6 +154,7 @@ export function HistoryCollections({
             id={`collection:${name}`}
             data={{ kind: "collection", collection: name, label: name }}
             disabled={busy}
+            rowActivator
           >
             <button
               type="button"
@@ -193,39 +194,6 @@ export function HistoryCollections({
               >
                 <Trash2 size={16} />
               </button>
-              {[-1, 1].map((direction) => (
-                <button
-                  key={direction}
-                  type="button"
-                  disabled={
-                    busy ||
-                    names.indexOf(name) + direction < 0 ||
-                    names.indexOf(name) + direction >= names.length
-                  }
-                  title={direction < 0 ? "上移集合" : "下移集合"}
-                  aria-label={direction < 0 ? "上移集合" : "下移集合"}
-                  onClick={() => {
-                    const order = [...names];
-                    const index = order.indexOf(name);
-                    [order[index], order[index + direction]] = [
-                      order[index + direction],
-                      order[index],
-                    ];
-                    mutation.mutate(() =>
-                      saveHistoryCollections({
-                        ...settings,
-                        collection_order: order,
-                      }),
-                    );
-                  }}
-                >
-                  {direction < 0 ? (
-                    <ArrowUp size={16} />
-                  ) : (
-                    <ArrowDown size={16} />
-                  )}
-                </button>
-              ))}
             </div>
           )}
         </div>

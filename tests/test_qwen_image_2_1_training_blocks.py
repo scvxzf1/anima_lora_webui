@@ -163,6 +163,7 @@ def test_bootstrap_installation_order_source_contract():
     body = source[source.index("network.apply_to(text_encoder, unet"):]
     assert body.index("network.load_weights(args.network_weights)") < body.index("install_training_block_projections(args, unet, network)")
     assert body.index("install_training_block_projections(args, unet, network)") < body.index("compile_qwen_image_2_1_blocks(")
+    assert body.index("_pin_lokr_checkpoint_compile_budget(") < body.index("compile_qwen_image_2_1_blocks(")
 
 
 def test_cli_toml_and_snapshot_keep_experiment_opt_in():

@@ -23,6 +23,7 @@ from library.inference.adapters import (
     set_step_expert_index,
 )
 from library.inference import sampling as inference_utils
+from library.inference.block_swap_lifecycle import inference_block_swap
 from library.inference.output import check_inputs
 from library.inference.text import prepare_text_inputs
 from library.inference.models import load_dit_model
@@ -351,7 +352,9 @@ def generate_body_tiled(
     lora_cutoff_step = getattr(args, "lora_cutoff_step", None)
 
     try:
-        with tqdm(total=len(timesteps), desc="Denoising steps (tiled)") as pbar:
+        with inference_block_swap(anima), tqdm(
+            total=len(timesteps), desc="Denoising steps (tiled)"
+        ) as pbar:
             for i, t in enumerate(timesteps):
                 # P-GRAFT: disable LoRA at cutoff step
                 if (
@@ -397,8 +400,6 @@ def generate_body_tiled(
                     bw = blend_weights[(y, x)]
 
                     # Conditional pass
-                    if anima.blocks_to_swap:
-                        anima.prepare_block_swap_before_forward()
                     # Caption-dependent routers (chimera ContentRouter and the
                     # crossattn-emb GlobalRouter) — gates depend on the caption,
                     # so fire separately for cond vs uncond. No-op otherwise.
@@ -422,8 +423,6 @@ def generate_body_tiled(
 
                     # Unconditional pass
                     if do_cfg:
-                        if anima.blocks_to_swap:
-                            anima.prepare_block_swap_before_forward()
                         set_hydra_content(anima, negative_embed)
                         set_hydra_crossattn(anima, negative_embed)
                         if soft_tokens_net is not None:

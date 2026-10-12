@@ -29,7 +29,7 @@ const FALLBACK_MODEL_FAMILIES = Object.freeze([
     {
         name: 'qwen_image_2_1',
         aliases: ['qwen_image_2_1', 'qwen_image_21', 'qwen21'],
-        supported_network_specs: ['lora'],
+        supported_network_specs: ['lora', 'loha', 'lokr'],
         supports_method_adapters: false,
         plain_lora_only: true,
         supported_tasks: ['t2i', 'edit'],
@@ -107,7 +107,25 @@ export function modelFamilySupportsPipelineParallel(value) {
     return capability?.configurable === true && capability?.runtime_available === true;
 }
 
-export function modelFamilyOptionSupported(fieldKey, family, option) {
+function taskFromContext(context) {
+    if (typeof context === 'string') return context.trim().toLowerCase();
+    const values = context?.values && typeof context.values === 'object' ? context.values : context;
+    const task = context?.task ?? values?.qwen_image_2_1_task ?? values?.qwen_task;
+    return String(task ?? 't2i').trim().toLowerCase();
+}
+
+function qwenSupportedNetworkSpecs(capability) {
+    const specs = capability?.supported_network_specs;
+    if (Array.isArray(specs)) {
+        return specs.map((spec) => String(spec).trim().toLowerCase()).filter(Boolean);
+    }
+    // Older capability payloads only exposed plain_lora_only. Keep that
+    // contract conservative until the backend publishes explicit variants.
+    if (capability?.plain_lora_only === true) return ['lora'];
+    return ['lora', 'loha', 'lokr'];
+}
+
+export function modelFamilyOptionSupported(fieldKey, family, option, context) {
     if (fieldKey === 'auto_block_swap_preference' && option === 'ram') {
         return isKrea2ModelFamily(family);
     }
@@ -130,19 +148,27 @@ export function modelFamilyOptionSupported(fieldKey, family, option) {
             : capability.name === 'qwen_image_2_1' ? ['t2i', 'edit'] : [];
         return supportedTasks.includes(value.toLowerCase());
     }
-    if (capability.name === 'qwen_image_2_1' && capability.plain_lora_only) {
-        if (fieldKey === 'lora_adapter_kind') return value.toLowerCase() === 'lora';
+    if (capability.name === 'qwen_image_2_1') {
+        const task = taskFromContext(context);
+        if (fieldKey === 'lora_adapter_kind') {
+            const supportedSpecs = qwenSupportedNetworkSpecs(capability);
+            return (task === 'edit' ? ['lora'] : supportedSpecs).includes(value.toLowerCase());
+        }
         if (fieldKey === 'network_module') return value === 'networks.lora_anima';
         if (fieldKey === 'use_moe_style') return ['false', 'none', 'off', '0'].includes(value.toLowerCase());
         if (fieldKey === 'router_source') return value.toLowerCase() === 'none';
+        if (fieldKey === 'route_per_layer') return ['false', 'off', '0'].includes(value.toLowerCase());
+        if (fieldKey === 'dora_wd' || fieldKey === 'use_ortho') return ['false', 'off', '0'].includes(value.toLowerCase());
+        if (fieldKey === 'use_loha') return ['false', 'off', '0'].includes(value.toLowerCase()) || (task === 't2i' && ['true', 'on', '1'].includes(value.toLowerCase()));
+        if (fieldKey === 'use_lokr') return ['false', 'off', '0'].includes(value.toLowerCase()) || (task === 't2i' && ['true', 'on', '1'].includes(value.toLowerCase()));
     }
     // Variant selection is open; concrete network/forward contracts validate execution.
     return true;
 }
 
-export function modelFamilySelectOptions(fieldKey, family, options, currentValue) {
+export function modelFamilySelectOptions(fieldKey, family, options, currentValue, context) {
     const supported = (Array.isArray(options) ? options : []).filter((option) => (
-        modelFamilyOptionSupported(fieldKey, family, option)
+        modelFamilyOptionSupported(fieldKey, family, option, context)
     ));
     if (
         currentValue !== null
@@ -153,7 +179,7 @@ export function modelFamilySelectOptions(fieldKey, family, options, currentValue
     }
     return supported.map((value) => ({
         value,
-        supported: modelFamilyOptionSupported(fieldKey, family, value),
+        supported: modelFamilyOptionSupported(fieldKey, family, value, context),
     }));
 }
 

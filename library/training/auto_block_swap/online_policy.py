@@ -33,6 +33,9 @@ class OnlineSwapPolicy:
         self.trial_warmup_cost = 0.0
         self.trial_switch_cost = 0.0
         self.seen = defaultdict(int)
+        self.baseline_counts = defaultdict(int)
+        self.trial_counts = {}
+        self.trial_weights = {}
         self.known_shapes = set()
         self.known_inputs = set()
         self.cooldown_until = 0
@@ -45,6 +48,7 @@ class OnlineSwapPolicy:
         self.samples.clear()
         self.cold_samples.clear()
         self.seen.clear()
+        self.baseline_counts.clear()
 
     def changed(self, blocks, *, seconds=0):
         self.current = blocks
@@ -56,6 +60,8 @@ class OnlineSwapPolicy:
         self.reference = self.current
         self.cooldown_until = step + cooldown
         self.reset_window()
+        self.trial_counts = {}
+        self.trial_weights = {}
 
     def guard(self, shape, *, step, safe_count):
         if safe_count > self.maximum:
@@ -85,6 +91,8 @@ class OnlineSwapPolicy:
         if shape not in self.known_shapes:
             self.known_shapes.add(shape)
             self.abandon(step, cooldown=0)
+        if self.phase == "baseline":
+            self.baseline_counts[shape] += 1
         self.seen[shape] += 1
         if self.seen[shape] <= self.warmup:
             self.cold_samples[shape].append(seconds)
@@ -115,6 +123,11 @@ class OnlineSwapPolicy:
                 return None
             self.reference, self.candidate = self.current, target
             self.before = window
+            self.trial_counts = {key: self.baseline_counts[key] for key in window}
+            total = sum(self.trial_counts.values())
+            self.trial_weights = {
+                key: self.trial_counts[key] / total for key in window
+            }
             self.trial_warmup_cost = 0.0
             self.trial_switch_cost = 0.0
             self.phase = "candidate"
@@ -132,14 +145,13 @@ class OnlineSwapPolicy:
         drift = (
             max(abs(window[k] / self.before[k] - 1) for k in keys) if keys else math.inf
         )
-        reference = (
-            statistics.mean(math.sqrt(window[k] * self.before[k]) for k in keys)
-            if keys
-            else 0
+        reference = sum(
+            self.trial_weights.get(k, 0) * math.sqrt(window[k] * self.before[k])
+            for k in keys
         )
-        candidate = (
-            statistics.mean(self.candidate_times[k] for k in keys) if keys else math.inf
-        )
+        candidate = sum(
+            self.trial_weights.get(k, 0) * self.candidate_times[k] for k in keys
+        ) if keys else math.inf
         saving = reference - candidate
         stable = keys == self.known_shapes and drift <= 0.10
         resource_preferred = prefer_candidate(
@@ -168,10 +180,14 @@ class OnlineSwapPolicy:
             "accepted": worthwhile,
             "preference": self.preference,
             "resource_preferred": resource_preferred,
+            "shape_weights": {str(k): self.trial_weights[k] for k in self.trial_weights},
+            "baseline_shape_counts": {str(k): self.trial_counts[k] for k in self.trial_weights},
             "warmup_cost_seconds": self.trial_warmup_cost,
             "switch_cost_seconds": self.trial_switch_cost + switch_seconds,
         }
         self.phase = "baseline"
+        self.trial_counts = {}
+        self.trial_weights = {}
         self.reset_window()
         if worthwhile:
             self.stride = min(8, self.stride * 2)

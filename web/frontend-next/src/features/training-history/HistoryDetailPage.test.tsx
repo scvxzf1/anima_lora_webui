@@ -95,4 +95,27 @@ describe("history detail navigation", () => {
     expect(await screen.findByRole("dialog", { name: "从历史检查点续训" })).toBeInTheDocument();
     expect(await screen.findByText("无检查点")).toBeInTheDocument();
   });
+
+  it("keeps embedded overview shortcuts local and hides checkpoint resume", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/api/preview/images")) return jsonResponse({ images: [], total: 0 });
+      if (url.includes("/api/preview/weights")) return jsonResponse({ weights: [], total: 0 });
+      if (url.includes("/artifacts")) return jsonResponse({ artifacts: [] });
+      return jsonResponse({ task: { id: "past", job: "training", state: "running", name: "History task" }, metrics: [] });
+    }));
+    const onBack = vi.fn();
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const router = createMemoryRouter([{ path: "/monitor", element: <HistoryDetailPage taskId="past" onBack={onBack} /> }], {
+      initialEntries: ["/monitor?from_task=current"],
+    });
+    render(<QueryClientProvider client={client}><RouterProvider router={router} /></QueryClientProvider>);
+    await screen.findByRole("heading", { name: "History task" });
+    expect(screen.queryByRole("button", { name: "检查点续训" })).not.toBeInTheDocument();
+    await userEvent.setup().click(await screen.findByRole("button", { name: "查看当前监控" }));
+    expect(onBack).toHaveBeenCalledOnce();
+    await userEvent.setup().click(screen.getByRole("button", { name: "查看全部产物" }));
+    expect(screen.getByRole("button", { name: /^产物$/ })).toHaveAttribute("aria-pressed", "true");
+    expect(router.state.location.pathname + router.state.location.search).toBe("/monitor?from_task=current");
+  });
 });

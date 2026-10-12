@@ -1,0 +1,133 @@
+/* ============================================
+   Training Form Field Enhancements
+   ============================================ */
+
+/* Text inputs and textareas with enhanced focus */
+.training-edit-fields input[type="text"],
+.training-edit-fields input[type="number"],
+.training-edit-fields input[type="email"],
+.training-edit-fields input[type="url"],
+.training-edit-fields textarea,
+.training-edit-fields select {
+  transition: all 180ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.training-edit-fields input[type="text"]:focus,
+.training-edit-fields input[type="number"]:focus,
+.training-edit-fields input[type="email"]:focus,
+.training-edit-fields input[type="url"]:focus,
+.training-edit-fields textarea:focus,
+.training-edit-fields select:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-dim);
+  outline: none;
+}
+
+/* Checkbox and radio enhanced interaction */
+.training-edit-fields input[type="checkbox"],
+.training-edit-fields input[type="radio"] {
+  transition: all 150ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.training-edit-fields input[type="checkbox"]:focus,
+.training-edit-fields input[type="radio"]:focus {
+  box-shadow: 0 0 0 3px var(--accent-dim);
+  outline: none;
+}
+
+.training-edit-fields input[type="checkbox"]:checked,
+.training-edit-fields input[type="radio"]:checked {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+/* Field group hover effect */
+.training-edit-fields > div {
+  transition: background 150ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.training-edit-fields > div:hover {
+  background: var(--surface-subtle);
+}
+
+.training-edit-fields > div:focus-within {
+  background: var(--surface-subtle);
+}
+
+/* Label emphasis on focus */
+.training-edit-fields label {
+  transition: color 150ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.training-edit-fields > div:focus-within label {
+  color: var(--accent);
+}
+
+/* Error state */
+.training-edit-fields input:invalid:not(:placeholder-shown),
+.training-edit-fields textarea:invalid:not(:placeholder-shown),
+.training-edit-fields select:invalid {
+  border-color: #EF4444;
+}
+
+.training-edit-fields input:invalid:not(:placeholder-shown):focus,
+.training-edit-fields textarea:invalid:not(:placeholder-shown):focus,
+.training-edit-fields select:invalid:focus {
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.15);
+}
+
+/* Disabled state enhancement */
+.training-edit-fields input:disabled,
+.training-edit-fields textarea:disabled,
+.training-edit-fields select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Placeholder styling */
+.training-edit-fields input::placeholder,
+.training-edit-fields textarea::placeholder {
+  color: var(--muted);
+  opacity: 0.6;
+}
+
+/* Number input spinner styling */
+.training-edit-fields input[type="number"]::-webkit-inner-spin-button,
+.training-edit-fields input[type="number"]::-webkit-outer-spin-button {
+  opacity: 0;
+  transition: opacity 150ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.training-edit-fields input[type="number"]:hover::-webkit-inner-spin-button,
+.training-edit-fields input[type="number"]:hover::-webkit-outer-spin-button,
+.training-edit-fields input[type="number"]:focus::-webkit-inner-spin-button,
+.training-edit-fields input[type="number"]:focus::-webkit-outer-spin-button {
+  opacity: 1;
+}
+
+/* Select dropdown arrow enhancement */
+.training-edit-fields select {
+  background-image: linear-gradient(45deg, transparent 50%, var(--text) 50%),
+                    linear-gradient(135deg, var(--text) 50%, transparent 50%);
+  background-position: calc(100% - 15px) center,
+                       calc(100% - 10px) center;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+  padding-right: 30px;
+}
+
+.training-edit-fields select:focus {
+  background-image: linear-gradient(45deg, transparent 50%, var(--accent) 50%),
+                    linear-gradient(135deg, var(--accent) 50%, transparent 50%);
+}
+
+/* Smooth color transitions for dark mode */
+@media (prefers-color-scheme: dark) {
+  .training-edit-fields input,
+  .training-edit-fields textarea,
+  .training-edit-fields select {
+    transition: background 180ms cubic-bezier(0.4, 0, 0.2, 1),
+                border-color 180ms cubic-bezier(0.4, 0, 0.2, 1),
+                box-shadow 180ms cubic-bezier(0.4, 0, 0.2, 1);
+  }
+}

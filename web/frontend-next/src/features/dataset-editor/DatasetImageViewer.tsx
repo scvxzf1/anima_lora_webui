@@ -22,6 +22,11 @@ export function DatasetImageViewer({ image, returnFocus, onClose }: Props) {
   const [reloadIndex, setReloadIndex] = useState(0);
 
   useEffect(() => {
+    setImageFailed(false);
+    setImageLoading(true);
+  }, [image.url]);
+
+  useEffect(() => {
     onCloseRef.current = onClose;
   }, [onClose]);
 
@@ -82,7 +87,7 @@ export function DatasetImageViewer({ image, returnFocus, onClose }: Props) {
               <>
                 {imageLoading ? <p className="dataset-image-viewer-loading" role="status" aria-live="polite">正在读取图片</p> : null}
                 <img
-                  key={reloadIndex}
+                  key={`${image.url}\0${reloadIndex}`}
                   src={image.url}
                   alt={image.name}
                   onLoad={() => setImageLoading(false)}

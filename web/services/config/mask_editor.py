@@ -10,11 +10,15 @@ from contextlib import contextmanager
 from io import BytesIO
 from pathlib import Path
 from threading import RLock
+from urllib.parse import quote
 
 import tomlkit
 from PIL import Image
 
 from web.services.config import dataset_presets_api as presets
+from web.services.config.common import _bool_value
+from web.services.config.dataset_media import _list_dataset_image_files, _dataset_preview_empty_message
+from web.services.config.dataset_rows import _normalize_path_pattern
 from web.services.config.mask_editor_geometry import check_size, prepare_image
 from web.services.config.revisioned_text import RevisionConflictError, text_revision
 
@@ -132,13 +136,40 @@ def _data_url(image: Image.Image) -> str:
 
 def list_masks(file: str, index: int, offset: int = 0) -> dict:
     preset, row, source, _training, root = _context(file, index)
-    page = presets.list_dataset_preset_images(file, index, source="source", limit=48, offset=offset)
-    for item in page["images"]:
-        path = presets.resolve_dataset_preview_image(file, index, item["file"], source="source")
+    listing = _list_dataset_image_files(
+        source, 48, offset=offset,
+        recursive=_bool_value(row.get("recursive"), True),
+        path_pattern=_normalize_path_pattern(row.get("path_pattern")),
+    )
+    images = []
+    for path in listing["items"]:
+        path = path.resolve()
+        if not path.is_relative_to(source) or not path.is_file():
+            raise ValueError("图片不属于当前数据集路径")
+        if path.suffix.lower() not in presets.DATASET_IMAGE_EXTS:
+            raise ValueError("只允许读取数据集图片")
         relative = path.relative_to(source)
         target = _contained(root, relative.with_name(f"{relative.stem}_mask.png"))
-        item["has_mask"] = target.is_file() or _contained(root, Path(target.name)).is_file()
-    return {**page, "mask_dir": presets._display_path(root), "mask_mode": row["mask_mode"],
+        display = presets._display_path(path)
+        encoded = (f"?file={quote(preset['file'])}&dataset_index={index}"
+                   f"&source=source&image={quote(display)}")
+        stamp = path.stat()
+        images.append({
+            "file": display,
+            "name": path.name,
+            "url": f"/api/config/dataset-presets/image{encoded}",
+            "thumbnail_url": (f"/api/config/dataset-presets/thumbnail{encoded}"
+                              f"&v={stamp.st_mtime_ns:x}-{stamp.st_size:x}"),
+            "has_mask": target.is_file() or _contained(root, Path(target.name)).is_file(),
+        })
+    return {"ok": True, "file": preset["file"], "dataset_index": index,
+            "source": "source", "directory": presets._display_path(source),
+            "directory_exists": source.is_dir(),
+            "images": images, "count": len(images),
+            **{key: listing[key] for key in ("total", "offset", "limit", "returned", "next_offset",
+                                               "has_more_before", "has_more_after")},
+            "message": "" if images else _dataset_preview_empty_message(source, "source"),
+            "mask_dir": presets._display_path(root), "mask_mode": row["mask_mode"],
             "readonly": bool(preset["readonly"] or preset.get("meta", {}).get("locked")),
             "config_revision": _digest(preset["content"].encode())}
 

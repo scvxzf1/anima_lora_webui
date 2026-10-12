@@ -8,10 +8,9 @@ import time
 from types import SimpleNamespace
 from typing import Optional
 
-import numpy as np
 import torch
-from PIL import Image
 
+from library.training.preview_lifecycle import preview_lifecycle
 from library.datasets.buckets import snap_sample_size
 from library.models.z_image.family import forward_for_loss, prepare_prompt_embeds
 from library.runtime.accelerator import prepare_dtype
@@ -315,52 +314,31 @@ def sample_images(
     if text_encoder is not None:
         text_encoder = accelerator.unwrap_model(text_encoder)
     net = accelerator.unwrap_model(network) if network is not None else None
-    if net is not None:
-        net.eval()
-        if hasattr(net, "clear_timestep_mask"):
-            net.clear_timestep_mask()
-    if hasattr(dit, "switch_block_swap_for_inference"):
-        dit.switch_block_swap_for_inference()
-    save_dir = os.path.join(args.output_dir, "sample")
-    os.makedirs(save_dir, exist_ok=True)
-    rng_state = torch.get_rng_state()
-    cuda_rng_state = None
-    try:
-        cuda_rng_state = (
-            torch.cuda.get_rng_state() if torch.cuda.is_available() else None
-        )
-    except Exception:
-        pass
     sample_error: Optional[Exception] = None
     try:
-        with torch.no_grad(), accelerator.autocast():
-            for prompt_dict in local_prompts:
-                if hasattr(dit, "prepare_block_swap_before_forward"):
-                    dit.prepare_block_swap_before_forward()
-                _sample_image(
-                    accelerator,
-                    args,
-                    dit,
-                    text_encoder,
-                    tokenize_strategy,
-                    text_encoding_strategy,
-                    save_dir,
-                    prompt_dict,
-                    epoch,
-                    steps,
-                    sample_prompts_te_outputs,
-                    prompt_replacement,
-                )
+        with preview_lifecycle(
+            dit, net, disable_block_swap=getattr(args, "disable_block_swap_for_eval", False)
+        ):
+            save_dir = os.path.join(args.output_dir, "sample")
+            os.makedirs(save_dir, exist_ok=True)
+            with torch.no_grad(), accelerator.autocast():
+                for prompt_dict in local_prompts:
+                    _sample_image(
+                        accelerator,
+                        args,
+                        dit,
+                        text_encoder,
+                        tokenize_strategy,
+                        text_encoding_strategy,
+                        save_dir,
+                        prompt_dict,
+                        epoch,
+                        steps,
+                        sample_prompts_te_outputs,
+                        prompt_replacement,
+                    )
     except Exception as exc:
         sample_error = exc
-    finally:
-        torch.set_rng_state(rng_state)
-        if cuda_rng_state is not None:
-            torch.cuda.set_rng_state(cuda_rng_state)
-        if hasattr(dit, "switch_block_swap_for_training"):
-            dit.switch_block_swap_for_training()
-        if net is not None:
-            net.train()
     if sample_error is not None and is_cuda_oom(sample_error):
         clean_memory_on_device(accelerator.device)
     if failed_on_any_process(accelerator, sample_error is not None, num_processes):
@@ -371,53 +349,20 @@ def sample_images(
     from library.anima.training import decode_samples_for_live_preview
 
     accelerator.wait_for_everyone()
-    if getattr(accelerator, "is_main_process", True):
-        decode_samples_for_live_preview(accelerator, args, vae, dit=dit, network=net)
+    decode_error = None
+    try:
+        if getattr(accelerator, "is_main_process", True):
+            decode_samples_for_live_preview(accelerator, args, vae, dit=dit, network=net)
+    except Exception as exc:
+        decode_error = exc
+    from library.training.preview_decode import raise_decode_failure
+
+    raise_decode_failure(accelerator, decode_error, num_processes)
     accelerator.wait_for_everyone()
 
 
 def decode_pending_samples(accelerator, args, vae) -> None:
-    """Decode staged normalized Z-Image latents into PNG previews."""
-    save_dir = os.path.join(args.output_dir, "sample")
-    latents_dir = os.path.join(save_dir, "latents")
-    if not os.path.isdir(latents_dir):
-        return
-    files = sorted(name for name in os.listdir(latents_dir) if name.endswith(".pt"))
-    if not files:
-        return
-    try:
-        org_vae_device = next(vae.parameters()).device
-    except StopIteration:
-        org_vae_device = torch.device("cpu")
-    vae.to(accelerator.device)
-    try:
-        for filename in files:
-            path = os.path.join(latents_dir, filename)
-            try:
-                record = torch.load(path, map_location="cpu")
-                latents = record["latents"].to(accelerator.device, dtype=vae.dtype)
-                latents = latents / float(vae.config.scaling_factor) + float(
-                    vae.config.shift_factor
-                )
-                with torch.no_grad():
-                    decoded = vae.decode(latents, return_dict=False)[0]
-                image = torch.clamp((decoded.float() + 1.0) / 2.0, 0.0, 1.0)[0]
-                decoded_np = (255.0 * np.moveaxis(image.cpu().numpy(), 0, 2)).astype(
-                    np.uint8
-                )
-                pil = Image.fromarray(decoded_np)
-                stem = os.path.splitext(filename)[0]
-                pil.save(os.path.join(save_dir, stem + ".png"))
-                os.remove(path)
-            except Exception as exc:
-                logger.error(
-                    "Failed to decode Z-Image sample latent %s: %s", filename, exc
-                )
-            clean_memory_on_device(accelerator.device)
-    finally:
-        vae.to(org_vae_device)
-        clean_memory_on_device(accelerator.device)
-    try:
-        os.rmdir(latents_dir)
-    except OSError:
-        pass
+    """Decode normalized Flux latents with the shared preview VAE policy."""
+    from library.training.preview_decode import decode_pending_samples as decode_shared_samples, decode_z_image_latent
+
+    decode_shared_samples(accelerator, args, vae, decode_latent=decode_z_image_latent)

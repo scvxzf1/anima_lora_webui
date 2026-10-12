@@ -100,8 +100,18 @@ export function configFieldDisclosure(key, context = {}) {
     const modelFamily = normalizeModelFamily(context.modelFamily || 'anima');
     const familyCapability = modelFamilyCapability(modelFamily);
 
-    if (key === 'qwen_text_encoder_cache_policy' && modelFamily !== 'qwen_image_2_1') {
-        return hidden(catalog, '文本编码器缓存策略仅适用于 qwen_image_2_1。', 'qwen-cache-family');
+    if (key === 'qwen_nf4_compile_experiment') {
+        const enabled = toggleEnabled(context, key);
+        if (modelFamily !== 'qwen_image_2_1' || String(contextValue(context, 'qwen_image_2_1_task', 't2i')).toLowerCase() !== 'edit') {
+            return enabled
+                ? shown(catalog)
+                : hidden(catalog, '该实验仅适用于 Qwen-Image 2.1 Edit；当前已关闭。', 'qwen-nf4-compile-scope');
+        }
+    }
+
+    if (['qwen_text_encoder_cache_policy', 'qwen_sample_swap_mode', 'qwen_sample_blocks_to_swap'].includes(key)
+        && modelFamily !== 'qwen_image_2_1') {
+        return hidden(catalog, 'Qwen 专属预览/缓存策略仅适用于 qwen_image_2_1。', 'qwen-cache-family');
     }
 
     if (catalog.location === 'audit_only' && !(catalog.cluster === 'spd-audit' && method === 'spd')) {

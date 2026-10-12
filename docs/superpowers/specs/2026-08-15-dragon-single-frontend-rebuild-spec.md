@@ -1,8 +1,13 @@
 # Dragon 单前端重建总规格
 
-状态：已确认方向 / 长期实施中<br>
-适用版本：当前 `main` 及后续 Dragon 单前端迁移分支<br>
+状态：历史设计规格（2026-08 迁移阶段）<br>
+适用版本：当时的 Dragon 单前端迁移工作树<br>
 执行计划：[`../plans/2026-08-15-dragon-single-frontend-rebuild.md`](../plans/2026-08-15-dragon-single-frontend-rebuild.md)
+
+> 2026-10-04 整理：本文保留迁移阶段的目标、Classic 回退决策和完成门槛。
+> Next 已是唯一生产前端，见[当前前端说明](../../../web/frontend-next/README.md)
+> 和[退役记录](../../../_archive/docs/proposal/legacy_ui_retirement_plan.md)。
+> 本文的历史门禁不替代当前 [验证策略](../../../AGENTS.md#验证策略)，也不证明每项迁移验收均已完成。
 
 ## 1. 目标
 

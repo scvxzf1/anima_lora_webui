@@ -143,11 +143,19 @@ def prepare_accelerator(args: argparse.Namespace):
     dynamo_backend = "NO"
 
     from library.training.adaptive_runtime.training_config import islands_enabled, require_training_contract
+    from library.training.adaptive_runtime.native_precision import native_enabled
     precision_kwargs = {}
-    if islands_enabled(args):
+    if native_enabled(args):
+        require_training_contract(args)
+        from library.training.adaptive_runtime.native_precision import accelerator_handlers
+        precision_kwargs["kwargs_handlers"] = accelerator_handlers(args)
+    elif islands_enabled(args):
         require_training_contract(args)
         from library.training.adaptive_runtime.training_precision import accelerator_handlers
         precision_kwargs["kwargs_handlers"] = accelerator_handlers(args)
+    if getattr(args, "adaptive_oom_retry_resume", False):
+        from accelerate import DataLoaderConfiguration
+        precision_kwargs["dataloader_config"] = DataLoaderConfiguration(use_stateful_dataloader=True)
     accelerator = Accelerator(
         gradient_accumulation_steps=args.gradient_accumulation_steps,
         mixed_precision=args.mixed_precision,
@@ -156,10 +164,10 @@ def prepare_accelerator(args: argparse.Namespace):
         dynamo_backend=dynamo_backend,
         **precision_kwargs,
     )
-    if islands_enabled(args):
+    if native_enabled(args) or islands_enabled(args):
         require_training_contract(args, world_size=accelerator.num_processes)
         if accelerator.device.type != "cuda" or accelerator.scaler is None:
-            raise ValueError("FP16/FP32 training requires CUDA and the Accelerate FP16 scaler")
+            raise ValueError("Adaptive FP16 training requires CUDA and the Accelerate FP16 scaler")
     print("accelerator device:", accelerator.device)
     return accelerator
 
@@ -172,7 +180,10 @@ def prepare_dtype(args: argparse.Namespace):
         weight_dtype = torch.bfloat16
 
     from library.training.adaptive_runtime.training_config import islands_enabled, require_training_contract
-    if islands_enabled(args):
+    from library.training.adaptive_runtime.native_precision import native_enabled
+    if native_enabled(args):
+        require_training_contract(args)
+    elif islands_enabled(args):
         require_training_contract(args)
         weight_dtype = torch.float32
 

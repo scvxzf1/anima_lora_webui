@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef } from 'react';
 import { imagePoint, MaskCanvas, type Point, type Tool, type View } from './maskCanvas';
 
 export type ViewportHandle = { fit: () => void; zoom: (factor: number) => void };
@@ -12,8 +12,30 @@ export const MaskViewport = forwardRef<ViewportHandle, Props>(function MaskViewp
   latest.current = props;
   const state = useRef({ scale: 1, origin: { x: 0, y: 0 }, width: 1, height: 1,
     pointer: null as Point | null, drag: null as { id: number; last: Point; pan: boolean } | null });
-  const [tick, setTick] = useState(0);
-  const redraw = () => setTick(value => value + 1);
+  const frame = useRef<number | null>(null);
+  const draw = useCallback(() => {
+    frame.current = null;
+    const node = canvas.current;
+    if (!node) return;
+    const s = state.current;
+    const current = latest.current;
+    const dpr = window.devicePixelRatio || 1;
+    const width = Math.round(s.width * dpr), height = Math.round(s.height * dpr);
+    if (node.width !== width || node.height !== height) { node.width = width; node.height = height; }
+    const ctx = node.getContext('2d')!;
+    ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, node.width, node.height);
+    ctx.scale(dpr, dpr); ctx.translate(s.origin.x, s.origin.y); ctx.scale(s.scale, s.scale);
+    current.engine.render(ctx, current.view, current.opacity);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    if (s.pointer && current.tool !== 'pan' && !current.disabled) {
+      ctx.beginPath(); ctx.arc(s.pointer.x, s.pointer.y, current.size * s.scale / 2, 0, Math.PI * 2);
+      ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2; ctx.stroke();
+      ctx.strokeStyle = '#202125'; ctx.lineWidth = 1; ctx.stroke();
+    }
+  }, []);
+  const redraw = useCallback(() => {
+    if (frame.current === null) frame.current = requestAnimationFrame(draw);
+  }, [draw]);
   function fit() {
     const s = state.current;
     s.scale = Math.min((s.width - 40) / props.engine.mask.width, (s.height - 40) / props.engine.mask.height, 1);
@@ -51,27 +73,12 @@ export const MaskViewport = forwardRef<ViewportHandle, Props>(function MaskViewp
   // The viewport resets only when a different image engine is installed.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.engine]);
-  useEffect(() => {
-    const id = requestAnimationFrame(() => {
-      const node = canvas.current;
-      if (!node) return;
-      const s = state.current;
-      const dpr = window.devicePixelRatio || 1;
-      const width = Math.round(s.width * dpr), height = Math.round(s.height * dpr);
-      if (node.width !== width || node.height !== height) { node.width = width; node.height = height; }
-      const ctx = node.getContext('2d')!;
-      ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, node.width, node.height);
-      ctx.scale(dpr, dpr); ctx.translate(s.origin.x, s.origin.y); ctx.scale(s.scale, s.scale);
-      props.engine.render(ctx, props.view, props.opacity);
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      if (s.pointer && props.tool !== 'pan' && !props.disabled) {
-        ctx.beginPath(); ctx.arc(s.pointer.x, s.pointer.y, props.size * s.scale / 2, 0, Math.PI * 2);
-        ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2; ctx.stroke();
-        ctx.strokeStyle = '#202125'; ctx.lineWidth = 1; ctx.stroke();
-      }
-    });
-    return () => cancelAnimationFrame(id);
-  }, [props, tick]);
+  const version = props.engine.version;
+  useEffect(() => { redraw(); }, [props.engine, version, props.view, props.opacity, props.tool, props.size, props.disabled, redraw]);
+  useEffect(() => () => {
+    if (frame.current !== null) cancelAnimationFrame(frame.current);
+    frame.current = null;
+  }, []);
   function point(event: React.PointerEvent): Point {
     const node = host.current!, rect = node.getBoundingClientRect();
     return { x: (event.clientX - rect.left) * node.clientWidth / rect.width,

@@ -1,0 +1,13 @@
+{
+  "gram_relative_error": 2.5758541581573168e-08,
+  "lokr_relative_error": 2.575854142401059e-08,
+  "all_files": 10,
+  "all_modules": 4132,
+  "reconstructed": 4132,
+  "unsupported": 0,
+  "nonfinite": 0,
+  "unused": 0,
+  "group_share_max_error": 3.3306690738754696e-16,
+  "per_file_energy_max_error": 0.0,
+  "seconds": 7.169963359832764
+}

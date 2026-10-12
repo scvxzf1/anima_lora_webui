@@ -119,8 +119,5 @@ def test_range_widening_precedes_the_block_swap_pause():
     ]
 
     assert body.index("_ensure_sample_compile_range(dit, net, prompts)") < body.index(
-        "dit.pause_block_swap()"
-    )
-    assert body.index("_ensure_sample_compile_range(dit, net, prompts)") < body.index(
-        "dit.switch_block_swap_for_inference()"
+        "with preview_lifecycle("
     )

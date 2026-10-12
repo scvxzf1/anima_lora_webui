@@ -124,8 +124,9 @@ class TrainingService:
     def unsubscribe(self, ws: web.WebSocketResponse):
             self._ws_clients.discard(ws)
 
-    def get_metrics_history(self) -> list[dict]:
-            return [_json_safe_training_payload(item) for item in self._metrics_history[-500:]]
+    def get_metrics_history(self, *, include_all: bool = False) -> list[dict]:
+            items = self._metrics_history if include_all else self._metrics_history[-500:]
+            return [_json_safe_training_payload(item) for item in items]
 
     def get_log_records(self, after: int = 0, limit: int = 1000) -> list[dict[str, Any]]:
             limit = max(1, min(limit, MAX_LOG_RECORDS))
@@ -228,6 +229,7 @@ class TrainingService:
         'get_history_artifact_path': 'history',
         'get_history_collection_settings': 'history',
         'get_history_log_page': 'history',
+        'get_history_system_page': 'history',
         'get_history_log_path': 'history',
         'get_history_task': 'history',
         'get_history_task_summary': 'history',

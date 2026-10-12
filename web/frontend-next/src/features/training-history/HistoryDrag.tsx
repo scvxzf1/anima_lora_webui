@@ -1,11 +1,15 @@
 import {
   createContext,
+  cloneElement,
+  isValidElement,
   useCallback,
   useContext,
   useEffect,
   useRef,
   useState,
   type ReactNode,
+  type ComponentPropsWithRef,
+  type ReactElement,
 } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -47,6 +51,28 @@ import {
 } from "./historyDrag";
 
 const DragBusy = createContext(false);
+
+class HistoryKeyboardSensor extends KeyboardSensor {
+  static activators = KeyboardSensor.activators.map((activator) => ({
+    ...activator,
+    handler: (...args: Parameters<typeof activator.handler>) => {
+      const [event, options, context] = args;
+      const sidebar = event.target instanceof Element &&
+        Boolean(event.target.closest(".history-sidebar-activator"));
+      const code = event.nativeEvent.code;
+      if (sidebar ? code !== "F2" : code !== "Space" && code !== "Enter")
+        return false;
+      return activator.handler(event, {
+        ...options,
+        keyboardCodes: {
+          start: ["F2", "Space", "Enter"],
+          end: ["Space", "Enter"],
+          cancel: ["Escape"],
+        },
+      }, context);
+    },
+  }));
+}
 
 export function runHistoryDragConfirmation(
   capturedScope: string,
@@ -111,8 +137,12 @@ export function HistoryDrag({
     },
   });
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: historyKeyboardCoordinates }),
+    useSensor(PointerSensor, {
+      activationConstraint: { delay: 200, tolerance: 24 },
+      bypassActivationConstraint: ({ event }) =>
+        event.target instanceof Element && Boolean(event.target.closest(".history-drag-handle")),
+    }),
+    useSensor(HistoryKeyboardSensor, { coordinateGetter: historyKeyboardCoordinates }),
   );
   function drop({ active, over }: DragEndEvent) {
     setActive(undefined);
@@ -235,15 +265,17 @@ export function HistoryDragItem({
   children,
   disabled = false,
   handle = true,
+  rowActivator = false,
 }: {
   id: string;
   data: HistoryDragData;
   children: ReactNode;
   disabled?: boolean;
   handle?: boolean;
+  rowActivator?: boolean;
 }) {
   const busy = useContext(DragBusy) || disabled;
-  const drag = useDraggable({ id, data, disabled: busy || !handle });
+  const drag = useDraggable({ id, data, disabled: busy || (!handle && !rowActivator) });
   const drop = useDroppable({
     id,
     data,
@@ -264,7 +296,17 @@ export function HistoryDragItem({
       data-over={drop.isOver}
       data-dragging={drag.isDragging}
     >
-      {handle && (
+      {rowActivator && isValidElement(children)
+        ? cloneElement(children as ReactElement<ComponentPropsWithRef<"button">>, {
+            ref: drag.setActivatorNodeRef,
+            ...drag.attributes,
+            ...drag.listeners,
+            className: `${(children as ReactElement<ComponentPropsWithRef<"button">>).props.className || ""} history-sidebar-activator`,
+            "aria-keyshortcuts": "F2",
+            title: `按 F2 拖动${data.kind === "collection" ? "集合" : "配置组"} ${data.label}`,
+          })
+        : null}
+      {handle && !rowActivator && (
         <button
           type="button"
           className="history-drag-handle"
@@ -278,7 +320,7 @@ export function HistoryDragItem({
           <GripVertical size={16} />
         </button>
       )}
-      {children}
+      {!rowActivator && children}
     </div>
   );
 }

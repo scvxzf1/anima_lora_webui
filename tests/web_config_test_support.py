@@ -23,6 +23,7 @@ from web.services.config import _legacy as legacy_config
 from web.services.config import datasets as config_datasets
 from web.services.config import metadata as config_metadata
 from web.services.config import paths as config_paths
+from tests.nf4_preflight_test_support import write_ordinary_checkpoint
 
 
 
@@ -180,7 +181,7 @@ def _write_selected_checkpoint_preflight_config(
     source_dir.mkdir(parents=True)
     Image.new("RGB", (8, 8), color=(20, 40, 60)).save(source_dir / "sample.png")
     (tmp_path / "models").mkdir()
-    (tmp_path / "models" / "anima.safetensors").write_bytes(b"model")
+    write_ordinary_checkpoint(tmp_path / "models" / "anima.safetensors")
     (tmp_path / "models" / "qwen.safetensors").write_bytes(b"qwen")
     (tmp_path / "models" / "vae.safetensors").write_bytes(b"vae")
     selected_config = configs / "imported" / "selected.toml"

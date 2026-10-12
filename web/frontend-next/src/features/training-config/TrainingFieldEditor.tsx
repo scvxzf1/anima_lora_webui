@@ -2,6 +2,7 @@ import { sameTrainingValue, type TrainingDraft, type TrainingFieldSpec } from ".
 import { FilePenLine, HelpCircle, Undo2 } from "lucide-react";
 import { lazy, Suspense, useState } from "react";
 import { TrainingDatasetField } from "./TrainingDatasetField";
+import { TrainingBlockSwapControl } from "./TrainingBlockSwapControl";
 import { availableFieldOptions, fieldAvailability } from "./fieldCatalog";
 import { FIELD_HELP_SUMMARY_ZH } from "./domain/field-help-summary.js";
 import { FORM_UI_DEFAULTS } from "./domain/defaults.js";
@@ -41,12 +42,14 @@ export function TrainingFieldEditor({
         const options = availableFieldOptions(
           field,
           String(draft.model_family || "anima"),
+          draft,
         );
         const controlDisabled = disabled || !availability.enabled;
         return (
           <label
             key={field.key}
             id={`training-field-${field.key}`}
+            htmlFor={`training-control-${field.key}`}
             tabIndex={-1}
             data-available={availability.enabled}
             data-visible={availability.visible}
@@ -71,8 +74,11 @@ export function TrainingFieldEditor({
                   )}
                 </span>
             </span>
-            {field.kind === "json" ? (
+            {field.key === "blocks_to_swap" ? (
+              <TrainingBlockSwapControl draft={draft} field={field} disabled={controlDisabled} onChange={onChange} />
+            ) : field.kind === "json" ? (
               <textarea
+                id={`training-control-${field.key}`}
                 aria-label={field.label}
                 rows={5}
                 value={String(draft[field.key] ?? "")}
@@ -81,6 +87,7 @@ export function TrainingFieldEditor({
               />
             ) : field.kind === "boolean" ? (
               <input
+                id={`training-control-${field.key}`}
                 type="checkbox"
                 aria-label={field.label}
                 checked={Boolean(draft[field.key])}
@@ -89,6 +96,7 @@ export function TrainingFieldEditor({
               />
             ) : field.kind === "select" ? (
               <select
+                id={`training-control-${field.key}`}
                 aria-label={field.label}
                 value={String(draft[field.key] ?? "")}
                 disabled={controlDisabled}
@@ -107,6 +115,7 @@ export function TrainingFieldEditor({
               </select>
             ) : (
               <input
+                id={`training-control-${field.key}`}
                 type={field.kind}
                 aria-label={field.label}
                 value={String(draft[field.key] ?? "")}
@@ -142,7 +151,7 @@ export function TrainingFieldEditor({
       })}
     </div>
     {helpField && <Suspense fallback={<p role="status">正在加载字段说明</p>}>
-      <TrainingFieldHelpDialog label={helpField.label} fieldKey={helpField.key} value={draft[helpField.key]} defaultValue={helpField.defaultValue ?? (FORM_UI_DEFAULTS as Record<string, unknown>)[helpField.key]} modelFamily={modelFamily} unavailableReason={fieldAvailability(helpField.key, draft, method).enabled ? undefined : fieldAvailability(helpField.key, draft, method).reason} onClose={() => setHelpField(null)} />
+      <TrainingFieldHelpDialog label={helpField.label} fieldKey={helpField.key} value={draft[helpField.key]} defaultValue={helpField.defaultValue ?? (FORM_UI_DEFAULTS as Record<string, unknown>)[helpField.key]} kind={helpField.kind} options={availableFieldOptions(helpField, modelFamily, draft)} optionLabels={helpField.optionLabels} modelFamily={modelFamily} draft={draft} unavailableReason={fieldAvailability(helpField.key, draft, method).enabled ? undefined : fieldAvailability(helpField.key, draft, method).reason} onClose={() => setHelpField(null)} />
     </Suspense>}
     </>
   );

@@ -2,6 +2,7 @@
 
 from fractions import Fraction
 import hashlib
+import json
 import math
 
 import pytest
@@ -39,7 +40,7 @@ def test_double_reductions_stay_finite_across_fp32_capture_range(value):
     assert local["finite"] is True
     for metrics in (local, aggregate):
         assert metrics["relative_l2"] == 0
-        assert math.isfinite(metrics["cosine"])
+        assert metrics["cosine"] == 1
     assert aggregate["absolute_l2"] == 0
     assert aggregate["reference_l2"] == value
 
@@ -62,6 +63,58 @@ def test_zero_gradient_convention_and_nonzero_candidate(candidate_gradient, pass
     assert report["within_experimental_tolerances"] is passes
     assert report["input_gradient"]["cosine"] == 1
     assert report["adapter_gradient"]["cosine"] == (1 if passes else 0)
+    if not passes:
+        assert report["adapter_gradient"]["relative_l2"] is None
+        assert report["adapter_gradient"]["relative_l2_undefined_reason"] == (
+            "zero_reference_nonzero_candidate")
+        assert report["adapter_gradient"]["absolute_l2"] == candidate_gradient
+
+
+def test_zero_reference_nonzero_candidate_has_json_safe_metrics():
+    reference, candidate = tensor(0), tensor(2**-149)
+    local = _measure([reference], [candidate])
+    aggregate = aggregate_metrics({"x": reference}, {"x": candidate}, ["x"])
+    for metrics in (local, aggregate):
+        assert metrics["finite"] is True
+        assert metrics["reference_l2"] == 0
+        assert metrics["absolute_l2"] == 2**-149
+        assert metrics["relative_l2"] is None
+        assert metrics["relative_l2_undefined_reason"] == "zero_reference_nonzero_candidate"
+        assert metrics["cosine"] == 0
+        json.dumps(metrics, allow_nan=False)
+
+
+@pytest.mark.parametrize("scale", [2**-60, 1.0, 2**60])
+def test_nonzero_comparison_is_scale_invariant(scale):
+    reference = torch.tensor([scale, 2 * scale], dtype=torch.float32)
+    candidate = torch.tensor([2 * scale, scale], dtype=torch.float32)
+    local = _measure([reference], [candidate])
+    aggregate = aggregate_metrics({"x": reference}, {"x": candidate}, ["x"])
+    for metrics in (local, aggregate):
+        assert metrics["relative_l2"] == pytest.approx(math.sqrt(2 / 5))
+        assert metrics["cosine"] == pytest.approx(4 / 5)
+        assert metrics["absolute_l2"] == pytest.approx(math.sqrt(2) * scale)
+        assert metrics["reference_l2"] == pytest.approx(math.sqrt(5) * scale)
+
+
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), -float("inf")])
+def test_aggregate_nonfinite_candidate_fails_closed(value):
+    metrics = aggregate_metrics({"x": tensor(1)}, {"x": tensor(value)}, ["x"])
+    assert metrics["finite"] is False
+    assert metrics["relative_l2"] is None and metrics["cosine"] is None
+
+
+def test_nonfinite_direct_training_comparison_fails_closed():
+    report = compare_case(case(), case(gradient=float("nan")))
+    assert report["within_experimental_tolerances"] is False
+    assert report["adapter_gradient"]["finite"] is False
+    json.dumps(report, allow_nan=False)
+
+
+def test_local_later_nonfinite_candidate_fails_closed_after_zero_reference():
+    metrics = _measure([tensor(0), tensor(1)], [tensor(1), tensor(float("inf"))])
+    assert metrics["finite"] is False
+    assert metrics["relative_l2"] is None
 
 
 def test_aggregate_gradient_gate_does_not_bound_first_adam_update():
@@ -86,9 +139,9 @@ def test_aggregate_gradient_gate_does_not_bound_first_adam_update():
 
 @pytest.mark.parametrize("value", [float("nan"), float("inf"), -float("inf")])
 def test_local_candidate_nonfinite_metrics_fail_closed(value):
-    assert _measure([tensor(1)], [tensor(value)]) == {
-        "finite": False, "relative_l2": None, "cosine": None,
-    }
+    metrics = _measure([tensor(1)], [tensor(value)])
+    assert metrics["finite"] is False
+    assert metrics["relative_l2"] is None and metrics["cosine"] is None
 
 
 @pytest.mark.parametrize("invalid", ["nan", "inf", "negative_inf", "float64", "empty"])
@@ -116,10 +169,6 @@ def test_comparison_rejects_changed_parameter_contract(change):
         compare_case(case(), candidate)
 
 
-@pytest.mark.xfail(
-    strict=True, raises=pytest.fail.Exception,
-    reason="Aggregate cosine denominator floor rejects identical tiny gradients",
-)
 def test_identical_tiny_capture_should_pass_comparison():
     reference = case(gradient=2**-60, input_gradient=2**-60)
     report = compare_case(reference, {name: value.clone() for name, value in reference.items()})
@@ -131,10 +180,6 @@ def test_identical_tiny_capture_should_pass_comparison():
     assert report["within_experimental_tolerances"] is True
 
 
-@pytest.mark.xfail(
-    strict=True, raises=pytest.fail.Exception,
-    reason="Local cosine denominator floor labels a finite FP32 self-reference unsafe",
-)
 def test_fp32_reference_with_small_gradient_should_have_safe_case():
     class TinySlope(torch.nn.Module):
         def forward(self, value):

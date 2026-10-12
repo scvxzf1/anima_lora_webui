@@ -3,6 +3,7 @@ import { TrainingModelPicker } from "./TrainingExtras";
 import { TrainingStageFields } from "./TrainingResourceGroups";
 import { GROUPS } from "./useTrainingWorkspace";
 import { TrainingDevices } from "./TrainingDevices";
+import { TrainingEditorScrollArea } from "./TrainingEditorScrollArea";
 
 export function TrainingEditor({
   state,
@@ -46,7 +47,6 @@ export function TrainingEditor({
             preflight.reset();
           }}
         />
-        <TrainingDevices state={state} />
         <div className="training-field-search">
           <input
             aria-label="搜索参数"
@@ -99,7 +99,7 @@ export function TrainingEditor({
             </button>
           ))}
         </nav>
-        <div className="training-edit-groups" key={activeStage}>
+        <TrainingEditorScrollArea key={activeStage}>
           {GROUPS.filter(([group]) => group === activeStage).map(([group, title]) => (
             <section
               role="tabpanel"
@@ -152,7 +152,7 @@ export function TrainingEditor({
               />
             </section>
           ))}
-        </div>
+        </TrainingEditorScrollArea>
       </div>
     </>
   );

@@ -153,7 +153,6 @@ export function Topbar() {
         onPointerDown={(event) => {
           if (event.button !== 0) return;
           event.currentTarget.setPointerCapture(event.pointerId);
-          resizeSidebar(event.clientX);
         }}
         onPointerMove={(event) => {
           if (event.currentTarget.hasPointerCapture(event.pointerId)) {
@@ -200,7 +199,7 @@ export function Topbar() {
           <NavLink
             key={to}
             to={to}
-            end={to === "/datasets"}
+            end={to === "/training" || to === "/datasets"}
             aria-label={label}
             title={label}
             onClick={() => setExpanded(false)}

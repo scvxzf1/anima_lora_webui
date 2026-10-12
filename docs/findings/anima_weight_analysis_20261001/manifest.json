@@ -1,0 +1,293 @@
+{
+  "snapshot_date": "2026-10-01",
+  "source_aliases": {
+    "style_source": "权重分析/anima/画风/analysis-20261001-204544",
+    "character_source": "权重分析/anima/人物/analysis-20261001-211900"
+  },
+  "source_alias_note": "来源别名相对于原调查工作区父目录；保留原目录标识，不要求本机绝对路径。",
+  "copied_files": [
+    {
+      "source_path": "style_source/aggregate.json",
+      "target_relative_path": "style/data/aggregate.json",
+      "source_sha256": "9a4cf7eea042abfb204d6d91cc1f336a0fface2bedd956a208bc0489bbfcc5b1",
+      "copied_sha256": "9a4cf7eea042abfb204d6d91cc1f336a0fface2bedd956a208bc0489bbfcc5b1",
+      "source_bytes": 180369,
+      "copied_bytes": 180369,
+      "report_navigation_only_modified": false,
+      "modification_reason": null
+    },
+    {
+      "source_path": "style_source/analysis.py",
+      "target_relative_path": "style/scripts/analysis.py",
+      "source_sha256": "58b3536c6c8141cc937d52e6a37741e0ecfa1d6578508c4b22520b0a7da09602",
+      "copied_sha256": "58b3536c6c8141cc937d52e6a37741e0ecfa1d6578508c4b22520b0a7da09602",
+      "source_bytes": 21461,
+      "copied_bytes": 21461,
+      "report_navigation_only_modified": false,
+      "modification_reason": null
+    },
+    {
+      "source_path": "style_source/block_heatmap.png",
+      "target_relative_path": "style/figures/block_heatmap.png",
+      "source_sha256": "e7d3807a1121e66c945a4f38a848757ef6ec8f06787f8954c5ee0dc2624991e2",
+      "copied_sha256": "e7d3807a1121e66c945a4f38a848757ef6ec8f06787f8954c5ee0dc2624991e2",
+      "source_bytes": 108298,
+      "copied_bytes": 108298,
+      "report_navigation_only_modified": false,
+      "modification_reason": null
+    },
+    {
+      "source_path": "style_source/common_targets_heatmap.png",
+      "target_relative_path": "style/figures/common_targets_heatmap.png",
+      "source_sha256": "86c7dad43fa2f96a79fabd148facb662ff8aa0bc63d4dc0dfdbc07320d220fc5",
+      "copied_sha256": "86c7dad43fa2f96a79fabd148facb662ff8aa0bc63d4dc0dfdbc07320d220fc5",
+      "source_bytes": 125089,
+      "copied_bytes": 125089,
+      "report_navigation_only_modified": false,
+      "modification_reason": null
+    },
+    {
+      "source_path": "style_source/independent_validation.json",
+      "target_relative_path": "style/evidence/independent_validation.json",
+      "source_sha256": "6680659fcb11ba2ba28385eaa3eb7568c48f2618e07fff1f3eb5529434d5f318",
+      "copied_sha256": "6680659fcb11ba2ba28385eaa3eb7568c48f2618e07fff1f3eb5529434d5f318",
+      "source_bytes": 631,
+      "copied_bytes": 631,
+      "report_navigation_only_modified": false,
+      "modification_reason": null
+    },
+    {
+      "source_path": "style_source/module_heatmap.png",
+      "target_relative_path": "style/figures/module_heatmap.png",
+      "source_sha256": "f00af6c837ba2c83bd20e5ec6a481989e1778001bdb540e85d029240fac52405",
+      "copied_sha256": "f00af6c837ba2c83bd20e5ec6a481989e1778001bdb540e85d029240fac52405",
+      "source_bytes": 116826,
+      "copied_bytes": 116826,
+      "report_navigation_only_modified": false,
+      "modification_reason": null
+    },
+    {
+      "source_path": "style_source/partial.json",
+      "target_relative_path": "style/evidence/partial.json",
+      "source_sha256": "f9b7f4de45939244469391c3030a367d6d9a7d3051049fb8cb844b26fb9eb904",
+      "copied_sha256": "f9b7f4de45939244469391c3030a367d6d9a7d3051049fb8cb844b26fb9eb904",
+      "source_bytes": 15978,
+      "copied_bytes": 15978,
+      "report_navigation_only_modified": false,
+      "modification_reason": null
+    },
+    {
+      "source_path": "style_source/per_file.csv",
+      "target_relative_path": "style/data/per_file.csv",
+      "source_sha256": "6f3cc5968450572d9bdadcf7b2a71a2e2441f8e0f3ed4a2d2268fa091ed05cc1",
+      "copied_sha256": "6f3cc5968450572d9bdadcf7b2a71a2e2441f8e0f3ed4a2d2268fa091ed05cc1",
+      "source_bytes": 2474,
+      "copied_bytes": 2474,
+      "report_navigation_only_modified": false,
+      "modification_reason": null
+    },
+    {
+      "source_path": "style_source/per_layer.csv",
+      "target_relative_path": "style/data/per_layer.csv",
+      "source_sha256": "f084e716021f8ecd08b1fd02ce60a93b4907fb38f7df70bc1277637854ed8957",
+      "copied_sha256": "f084e716021f8ecd08b1fd02ce60a93b4907fb38f7df70bc1277637854ed8957",
+      "source_bytes": 1137549,
+      "copied_bytes": 1137549,
+      "report_navigation_only_modified": false,
+      "modification_reason": null
+    },
+    {
+      "source_path": "style_source/progress.log",
+      "target_relative_path": "style/evidence/progress.log",
+      "source_sha256": "0b6d1f10bac54c75963f994c886bae4028a4e23fb212a42c93ba4c6d1ade1b5f",
+      "copied_sha256": "0b6d1f10bac54c75963f994c886bae4028a4e23fb212a42c93ba4c6d1ade1b5f",
+      "source_bytes": 1129,
+      "copied_bytes": 1129,
+      "report_navigation_only_modified": false,
+      "modification_reason": null
+    },
+    {
+      "source_path": "style_source/report.md",
+      "target_relative_path": "style/report.md",
+      "source_sha256": "23f06abe0e909f1b36bad47ad753526833cc7396e7116b998272de543f5d72b3",
+      "copied_sha256": "c11fcebfe644ce0b0b62c6ed72aa37cda246954c059114c34f2f9dde53ba427d",
+      "source_bytes": 9825,
+      "copied_bytes": 10726,
+      "report_navigation_only_modified": true,
+      "modification_reason": "报告仅调整本地导航、相对链接、历史状态标签和复现说明，统计数值与结论保留。"
+    },
+    {
+      "source_path": "style_source/validation.json",
+      "target_relative_path": "style/evidence/validation.json",
+      "source_sha256": "1d0e05e31ab122a6b2421ab62882a14116e8b2d19e5f354d2c94ebc18eda65e2",
+      "copied_sha256": "1d0e05e31ab122a6b2421ab62882a14116e8b2d19e5f354d2c94ebc18eda65e2",
+      "source_bytes": 338,
+      "copied_bytes": 338,
+      "report_navigation_only_modified": false,
+      "modification_reason": null
+    },
+    {
+      "source_path": "character_source/aggregate.json",
+      "target_relative_path": "character/data/aggregate.json",
+      "source_sha256": "41b4f4439299a086401710977553f38554a95af56a67b825ae3b4263656887e3",
+      "copied_sha256": "41b4f4439299a086401710977553f38554a95af56a67b825ae3b4263656887e3",
+      "source_bytes": 783780,
+      "copied_bytes": 783780,
+      "report_navigation_only_modified": false,
+      "modification_reason": null
+    },
+    {
+      "source_path": "character_source/analysis.py",
+      "target_relative_path": "character/scripts/analysis.py",
+      "source_sha256": "0a3822aa2cde59515fe385f1a35c4158a3251451bbea3452909ff9fd7d348d03",
+      "copied_sha256": "0a3822aa2cde59515fe385f1a35c4158a3251451bbea3452909ff9fd7d348d03",
+      "source_bytes": 25130,
+      "copied_bytes": 25130,
+      "report_navigation_only_modified": false,
+      "modification_reason": null
+    },
+    {
+      "source_path": "character_source/block_cosine.png",
+      "target_relative_path": "character/figures/block_cosine.png",
+      "source_sha256": "e0c4e5845f3fed7febd6ca93687fa76593c7fd14983deaac1158d12fac3203c5",
+      "copied_sha256": "e0c4e5845f3fed7febd6ca93687fa76593c7fd14983deaac1158d12fac3203c5",
+      "source_bytes": 30186,
+      "copied_bytes": 30186,
+      "report_navigation_only_modified": false,
+      "modification_reason": null
+    },
+    {
+      "source_path": "character_source/block_heatmap.png",
+      "target_relative_path": "character/figures/block_heatmap.png",
+      "source_sha256": "2bcc42e110ef9cf7e4c93f081430b9ab612a0b526dc59be1f2bd249e9181c276",
+      "copied_sha256": "2bcc42e110ef9cf7e4c93f081430b9ab612a0b526dc59be1f2bd249e9181c276",
+      "source_bytes": 70925,
+      "copied_bytes": 70925,
+      "report_navigation_only_modified": false,
+      "modification_reason": null
+    },
+    {
+      "source_path": "character_source/common_target_summary.csv",
+      "target_relative_path": "character/data/common_target_summary.csv",
+      "source_sha256": "228f14ef1b9ecf7bed735945627a43ac5d7b4c3df6676dab52bf4c4375bbeba6",
+      "copied_sha256": "228f14ef1b9ecf7bed735945627a43ac5d7b4c3df6676dab52bf4c4375bbeba6",
+      "source_bytes": 744,
+      "copied_bytes": 744,
+      "report_navigation_only_modified": false,
+      "modification_reason": null
+    },
+    {
+      "source_path": "character_source/comparison_blocks.png",
+      "target_relative_path": "character/figures/comparison_blocks.png",
+      "source_sha256": "225ab098b880578abb64d7fc2349f9ba44566e90daa87c1c2e6ab4067a4affbb",
+      "copied_sha256": "225ab098b880578abb64d7fc2349f9ba44566e90daa87c1c2e6ab4067a4affbb",
+      "source_bytes": 163760,
+      "copied_bytes": 163760,
+      "report_navigation_only_modified": false,
+      "modification_reason": null
+    },
+    {
+      "source_path": "character_source/independent_validation.json",
+      "target_relative_path": "character/evidence/independent_validation.json",
+      "source_sha256": "a3cc4a2477d74c0ef973cbe97d9aa34c035f727ccb4047761265b4a9573cba72",
+      "copied_sha256": "a3cc4a2477d74c0ef973cbe97d9aa34c035f727ccb4047761265b4a9573cba72",
+      "source_bytes": 2697,
+      "copied_bytes": 2697,
+      "report_navigation_only_modified": false,
+      "modification_reason": null
+    },
+    {
+      "source_path": "character_source/module_heatmap.png",
+      "target_relative_path": "character/figures/module_heatmap.png",
+      "source_sha256": "50738dcd9ba4ce3783a39be7fa4271159131684e01580bc388ee94d6ba8340a1",
+      "copied_sha256": "50738dcd9ba4ce3783a39be7fa4271159131684e01580bc388ee94d6ba8340a1",
+      "source_bytes": 85068,
+      "copied_bytes": 85068,
+      "report_navigation_only_modified": false,
+      "modification_reason": null
+    },
+    {
+      "source_path": "character_source/partial.json",
+      "target_relative_path": "character/evidence/partial.json",
+      "source_sha256": "02d654c78ac4dfcc9415adfd6c3f4892990547af601efa4e3c0261c945ddf67f",
+      "copied_sha256": "02d654c78ac4dfcc9415adfd6c3f4892990547af601efa4e3c0261c945ddf67f",
+      "source_bytes": 7595,
+      "copied_bytes": 7595,
+      "report_navigation_only_modified": false,
+      "modification_reason": null
+    },
+    {
+      "source_path": "character_source/per_file.csv",
+      "target_relative_path": "character/data/per_file.csv",
+      "source_sha256": "24e2ed614d8904d01b4a6a8c5058be460c4652ba25c1114c441bb36956ee9dbc",
+      "copied_sha256": "24e2ed614d8904d01b4a6a8c5058be460c4652ba25c1114c441bb36956ee9dbc",
+      "source_bytes": 1437,
+      "copied_bytes": 1437,
+      "report_navigation_only_modified": false,
+      "modification_reason": null
+    },
+    {
+      "source_path": "character_source/per_layer.csv",
+      "target_relative_path": "character/data/per_layer.csv",
+      "source_sha256": "a29482ea383066e2e63b7ac3fa3a45843b001b825cf557f52a3e362fffd3dcac",
+      "copied_sha256": "a29482ea383066e2e63b7ac3fa3a45843b001b825cf557f52a3e362fffd3dcac",
+      "source_bytes": 416943,
+      "copied_bytes": 416943,
+      "report_navigation_only_modified": false,
+      "modification_reason": null
+    },
+    {
+      "source_path": "character_source/progress.log",
+      "target_relative_path": "character/evidence/progress.log",
+      "source_sha256": "09782624f8c9288e9d3b4868d42c84d6abbbf0f517e53614605dae9e227349d8",
+      "copied_sha256": "09782624f8c9288e9d3b4868d42c84d6abbbf0f517e53614605dae9e227349d8",
+      "source_bytes": 601,
+      "copied_bytes": 601,
+      "report_navigation_only_modified": false,
+      "modification_reason": null
+    },
+    {
+      "source_path": "character_source/report.md",
+      "target_relative_path": "character/report.md",
+      "source_sha256": "5871c117c103bb48b6f19f8754fbccbe887a47af743b040608cc383da0bfc014",
+      "copied_sha256": "c41eb7ad5c7e9b3c2d567394e775793cef358a56993531480f5251e16c03a152",
+      "source_bytes": 20610,
+      "copied_bytes": 21306,
+      "report_navigation_only_modified": true,
+      "modification_reason": "报告仅调整本地导航、相对链接、历史状态标签和复现说明，统计数值与结论保留。"
+    },
+    {
+      "source_path": "character_source/validation.json",
+      "target_relative_path": "character/evidence/validation.json",
+      "source_sha256": "51f6f4f1d84ab461e96ee8ec88cb273b9ebe845ca9eee6f2594242dad4e48ae8",
+      "copied_sha256": "51f6f4f1d84ab461e96ee8ec88cb273b9ebe845ca9eee6f2594242dad4e48ae8",
+      "source_bytes": 1314,
+      "copied_bytes": 1314,
+      "report_navigation_only_modified": false,
+      "modification_reason": null
+    }
+  ],
+  "generated_files": [
+    {
+      "target_relative_path": "README.md",
+      "sha256": "165ae5782d7ade579950c7d1b7e9957e9566481e3feb9cbd2bec321849e8f5f8",
+      "bytes": 2681
+    },
+    {
+      "target_relative_path": "summary.md",
+      "sha256": "99956f99b905d12e62766d3995082d3036bc9ce95069cc482abcc34f0ec09639",
+      "bytes": 2360
+    }
+  ],
+  "excluded": [
+    "*.safetensors",
+    "mpl-cache/",
+    "__pycache__/"
+  ],
+  "counts": {
+    "source_files_copied": 26,
+    "style": 12,
+    "character": 14,
+    "generated_files_excluding_manifest": 2
+  }
+}

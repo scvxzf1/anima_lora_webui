@@ -440,7 +440,7 @@ it("reconciles selection when refresh ends before the previously loaded page dep
 
 it("clears selected tasks when switching config groups", async () => {
   const tasks = [
-    { id: "task-a", name: "Alpha task", job: "training", state: "idle", archived: false, group: "project", history_group_key: "alpha", history_group_label: "Alpha config" },
+    { id: "task-a", name: "Alpha task", job: "training", state: "idle", archived: false, group: "project", history_group_key: "alpha", history_group_label: "Alpha config with a very long name that should stay on one line" },
     { id: "task-b", name: "Beta task", job: "training", state: "idle", archived: false, group: "project", history_group_key: "beta", history_group_label: "Beta config" },
   ];
   const batchPayloads: unknown[] = [];
@@ -459,6 +459,10 @@ it("clears selected tasks when switching config groups", async () => {
   const router = createMemoryRouter([{ path: "/history", element: <HistoryPage /> }], { initialEntries: ["/history?layout=list&collection=project"] });
   render(<QueryClientProvider client={client}><RouterProvider router={router} /></QueryClientProvider>);
   const user = userEvent.setup();
+  await screen.findByRole("button", { name: "Beta config" });
+  expect(screen.queryByRole("button", { name: /上移集合|下移集合|上移配置分组|下移配置分组/ })).not.toBeInTheDocument();
+  expect(document.querySelector(".object-library .history-drag-handle, .history-config-groups .history-drag-handle")).toBeNull();
+  expect(screen.getByTitle("Alpha config with a very long name that should stay on one line")).toBeInTheDocument();
   await user.click(await screen.findByRole("checkbox", { name: "选择 Alpha task" }));
   await user.click(screen.getByRole("button", { name: "Beta config" }));
   expect(screen.queryByText("已选 1 项")).not.toBeInTheDocument();

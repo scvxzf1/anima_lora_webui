@@ -1,4 +1,4 @@
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryRouter, RouterProvider } from "react-router-dom";
@@ -10,6 +10,12 @@ afterEach(() => {
   vi.unstubAllGlobals();
   Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
 });
+
+beforeEach(() => vi.stubGlobal("ResizeObserver", class {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}));
 
 it.each([
   ["interrupted", "已中断", "error", false],

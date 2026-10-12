@@ -13,6 +13,8 @@
 | [preprocess-auto-batch.md](preprocess-auto-batch.md) | 当前实现说明 | VAE/文本缓存从 1 起步的自动批大小、预测上拉、OOM 退避和固定预设兼容 |
 | [qwen-edit-low-memory-preprocess.md](qwen-edit-low-memory-preprocess.md) | 当前实现说明 | Qwen Image 2.1 Edit 配对数据预处理，以及 Qwen3-VL TE 缓存的 BF16 CPU offload 选择 |
 | [auto-block-swap.md](auto-block-swap.md) | 实验 | 独立进程启动校准、物理内存预算、完整训练步验证及手动配置兼容 |
+| [sample-preview-memory.md](sample-preview-memory.md) | 当前实现说明 | 所有模型族训练预览 VAE 的分块、OOM 回退、CPU 策略与旧 Qwen 键兼容 |
+| [qwen-preview-memory.md](qwen-preview-memory.md) | 当前实现说明 | Qwen 预览 DiT 块交换覆盖及通用 VAE 策略 |
 
 ## 维护规则
 

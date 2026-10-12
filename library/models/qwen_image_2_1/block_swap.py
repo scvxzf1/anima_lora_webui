@@ -31,9 +31,9 @@ class QwenImage21BlockSwapAdapter:
         blocks = getattr(model, "transformer_blocks", None)
         if not isinstance(blocks, nn.ModuleList):
             raise TypeError("Qwen Image 2.1 block swap requires transformer_blocks ModuleList")
-        if not 1 <= blocks_to_swap <= len(blocks) - 2:
+        if not 0 <= blocks_to_swap <= len(blocks) - 2:
             raise ValueError(
-                f"Qwen Image 2.1 blocks_to_swap must be between 1 and {len(blocks) - 2}"
+                f"Qwen Image 2.1 blocks_to_swap must be between 0 and {len(blocks) - 2}"
             )
 
         self.model = model
@@ -129,6 +129,9 @@ class QwenImage21BlockSwapAdapter:
         self.model._gradient_checkpointing_func = self._checkpoint_with_swap
 
     def move_to_device_except_swap_blocks(self, device: torch.device) -> None:
+        if not getattr(self.model, "blocks_to_swap", 0):
+            self.model.to(device)
+            return
         self.model.transformer_blocks = None
         try:
             self.model.to(device)

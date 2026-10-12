@@ -215,6 +215,18 @@ def load_qwen_image_2_1_transformer(path: str, *, dtype: torch.dtype, device="cp
     file = _single_file(path, "transformer")
     with torch.device("meta"):
         model = QwenImage21Transformer2DModel()
+    from library.quantization.format import inspect_mixed_nf4
+
+    if inspect_mixed_nf4(file, family="qwen_image_2_1") is not None:
+        from library.quantization.mixed_nf4 import load_mixed_nf4_into
+
+        load_mixed_nf4_into(model, file, family="qwen_image_2_1", dtype=dtype, device=device)
+        _materialize_qwen_derived_tensors(model)
+        # Mixed loading installs packed and retained tensors directly on the
+        # requested device.  Derived RoPE/timestep buffers are rebuilt on CPU;
+        # move those buffers as well before exposing the model to forward.
+        return model.to(device=device)
+
     with safe_open(str(file), framework="pt", device="cpu") as handle:
         keys = set(handle.keys())
         model_state = model.state_dict()

@@ -9,6 +9,7 @@ function networkArgMap(config) {
 }
 
 export function displayConfigValue(key, config) {
+    if (key === 'sample_vae_decode') return config?.sample_vae_decode ?? config?.qwen_sample_vae_decode ?? FORM_UI_DEFAULTS.sample_vae_decode;
     if (key === 'lora_adapter_kind') return loraAdapterKindFromConfig(config);
     if (key === 'precision_preference') return precisionPreferenceFromConfig(config);
     const spec = NETWORK_ARG_FIELD_MAP.get(key);

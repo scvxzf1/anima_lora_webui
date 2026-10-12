@@ -4,6 +4,7 @@ import { createPortal } from 'react-dom';
 import type { UseFormReturn } from 'react-hook-form';
 
 import type { DatasetFormValues } from './datasetForm';
+import { DatasetFieldHelp } from './DatasetFieldHelp';
 import {
   addStageScheduleStage,
   applyStageTemplate,
@@ -48,15 +49,18 @@ export function StageScheduleEditor({ form, disabled }: Props) {
           <h3 id="stage-schedule-heading">分阶段调度</h3>
           <p>按训练进度切换数据子集，阶段必须连续覆盖 0% 到 100%。</p>
         </div>
-        <label className="stage-schedule-toggle">
-          <input
-            type="checkbox"
-            checked={enabled}
-            disabled={disabled}
-            onChange={(event) => setEnabled(event.target.checked)}
-          />
-          <span>{enabled ? '已启用' : '已关闭'}</span>
-        </label>
+        <div className="stage-schedule-toggle-control">
+          <label className="stage-schedule-toggle">
+            <input
+              type="checkbox"
+              checked={enabled}
+              disabled={disabled}
+              onChange={(event) => setEnabled(event.target.checked)}
+            />
+            <span>{enabled ? '已启用' : '已关闭'}</span>
+          </label>
+          <DatasetFieldHelp field="stage_schedule_enabled" label="分阶段调度" />
+        </div>
       </header>
 
       {enabled ? (
@@ -207,10 +211,10 @@ function StageScheduleDialog({ initialStages, datasets, returnFocus, onCancel, o
           <table>
             <thead>
               <tr>
-                <th>阶段</th>
-                <th>数据子集</th>
-                <th>开始</th>
-                <th>结束</th>
+                <th>阶段 <DatasetFieldHelp field="stage_name" label="阶段名称" /></th>
+                <th>数据子集 <DatasetFieldHelp field="stage_subset_index" label="数据子集" /></th>
+                <th>开始 <DatasetFieldHelp field="stage_start_pct" label="开始百分比" /></th>
+                <th>结束 <DatasetFieldHelp field="stage_end_pct" label="结束百分比" /></th>
                 <th>操作</th>
               </tr>
             </thead>

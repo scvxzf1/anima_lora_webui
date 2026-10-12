@@ -10,6 +10,7 @@ from web.services.preview.edit_metadata import merge_edit_preview_metadata
 
 
 class FakeVAE:
+    use_tiling = False
     device = torch.device("cpu")
     dtype = torch.float32
     config = SimpleNamespace(latents_mean=[0.0] * 64, latents_std=[1.0] * 64)

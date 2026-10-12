@@ -29,6 +29,8 @@ def reference_key(prompt):
 def snapshot_prompts(args):
     prompts = train_util.load_prompts(args.sample_prompts)
     for prompt in prompts:
+        if not isinstance(prompt.get("use_kv_cache", False), bool):
+            raise ValueError("Qwen preview use_kv_cache must be a boolean")
         validate_preview_prompt(prompt, "qwen_image_2_1", getattr(args, "sample_sampler", "euler"))
         references = preview_references(prompt)
         if not references:

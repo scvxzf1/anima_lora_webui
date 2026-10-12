@@ -63,8 +63,8 @@ def test_single_process_contract():
 
 @pytest.mark.parametrize("capability,mode,mixed,candidate", [
     ((8, 0), "bf16", "bf16", "bf16"),
-    ((7, 5), "fp16_fp32", "fp16", "fp16"),
-    ((6, 0), "fp16_fp32", "fp16", "fp16"),
+    ((7, 5), "native_fp16", "fp16", "fp16"),
+    ((6, 0), "native_fp16", "fp16", "fp16"),
     ((6, 1), "fp32", "no", "fp32"),
 ])
 def test_auto_precision_uses_shared_compute_capability_policy(capability, mode, mixed, candidate):
@@ -112,7 +112,7 @@ def test_auto_fp32_path_is_valid_for_z_image_on_older_architecture():
     "family,capability,expected_mode,expected_mixed,expected_attention",
     [
         ("anima", (8, 0), "bf16", "bf16", "flash"),
-        ("anima", (7, 5), "fp16_fp32", "fp16", "flash"),
+        ("anima", (7, 5), "native_fp16", "fp16", "torch"),
         ("z_image", (8, 0), "bf16", "bf16", "flash"),
         ("z_image", (7, 5), "fp16_fp32", "fp16", "torch"),
         ("z_image", (6, 1), "fp32", "no", "torch"),
@@ -126,6 +126,7 @@ def test_auto_precision_is_validated_against_each_dit_family(
         adaptive_precision="auto",
         mixed_precision="bf16",
         attn_mode="flash",
+        adaptive_fp32_modules=[],
     )
     assert resolve_adaptive_precision(configured, get_capability=lambda: capability) == expected_mode
     assert configured.mixed_precision == expected_mixed

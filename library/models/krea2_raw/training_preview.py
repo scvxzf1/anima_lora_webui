@@ -10,6 +10,7 @@ from typing import Any, Optional
 
 import torch
 
+from library.training.preview_lifecycle import preview_lifecycle
 from library.datasets.buckets import snap_sample_size
 from library.models.krea2_raw.family import Krea2TextEmbedding
 from library.models.krea2_raw.inference_runner import generate_krea2
@@ -228,61 +229,32 @@ def _run_local_samples(
     sample_prompts_te_outputs,
     prompt_replacement,
 ) -> Optional[Exception]:
-    if net is not None:
-        net.eval()
-        if hasattr(net, "clear_timestep_mask"):
-            net.clear_timestep_mask()
-    block_swap_paused = False
-    if getattr(args, "disable_block_swap_for_eval", False) and hasattr(
-        dit, "pause_block_swap"
-    ):
-        block_swap_paused = dit.pause_block_swap()
-    else:
-        dit.switch_block_swap_for_inference()
-
-    save_dir = os.path.join(args.output_dir, "sample")
-    os.makedirs(save_dir, exist_ok=True)
-    rng_state = torch.get_rng_state()
-    cuda_rng_state = None
-    try:
-        cuda_rng_state = (
-            torch.cuda.get_rng_state() if torch.cuda.is_available() else None
-        )
-    except Exception:
-        pass
-
     sample_error: Optional[Exception] = None
     try:
-        with torch.no_grad(), accelerator.autocast():
-            for prompt_dict in local_prompts:
-                dit.prepare_block_swap_before_forward()
-                _sample_image(
-                    accelerator,
-                    args,
-                    dit,
-                    net,
-                    text_encoder,
-                    tokenize_strategy,
-                    text_encoding_strategy,
-                    save_dir,
-                    prompt_dict,
-                    epoch,
-                    steps,
-                    sample_prompts_te_outputs,
-                    prompt_replacement,
-                )
+        with preview_lifecycle(
+            dit, net, disable_block_swap=getattr(args, "disable_block_swap_for_eval", False)
+        ):
+            save_dir = os.path.join(args.output_dir, "sample")
+            os.makedirs(save_dir, exist_ok=True)
+            with torch.no_grad(), accelerator.autocast():
+                for prompt_dict in local_prompts:
+                    _sample_image(
+                        accelerator,
+                        args,
+                        dit,
+                        net,
+                        text_encoder,
+                        tokenize_strategy,
+                        text_encoding_strategy,
+                        save_dir,
+                        prompt_dict,
+                        epoch,
+                        steps,
+                        sample_prompts_te_outputs,
+                        prompt_replacement,
+                    )
     except Exception as exc:  # coordinate failures before entering a barrier
         sample_error = exc
-    finally:
-        torch.set_rng_state(rng_state)
-        if cuda_rng_state is not None:
-            torch.cuda.set_rng_state(cuda_rng_state)
-        if block_swap_paused and hasattr(dit, "resume_block_swap"):
-            dit.resume_block_swap()
-        else:
-            dit.switch_block_swap_for_training()
-        if net is not None:
-            net.train()
     return sample_error
 
 
@@ -357,6 +329,13 @@ def sample_images(
     from library.anima.training import decode_samples_for_live_preview
 
     accelerator.wait_for_everyone()
-    if getattr(accelerator, "is_main_process", True):
-        decode_samples_for_live_preview(accelerator, args, vae, dit=dit, network=net)
+    decode_error = None
+    try:
+        if getattr(accelerator, "is_main_process", True):
+            decode_samples_for_live_preview(accelerator, args, vae, dit=dit, network=net)
+    except Exception as exc:
+        decode_error = exc
+    from library.training.preview_decode import raise_decode_failure
+
+    raise_decode_failure(accelerator, decode_error, num_processes)
     accelerator.wait_for_everyone()

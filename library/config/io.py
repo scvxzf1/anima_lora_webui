@@ -73,6 +73,12 @@ def _flatten_toml(
     """
     out: dict = {}
     src_text = _read_text_silent(source)
+    from library.training.preview_decode_config import DECODE_KEY, LEGACY_DECODE_KEY
+
+    explicit_decode = DECODE_KEY in d or any(
+        DECODE_KEY in value for key, value in d.items()
+        if key not in _NON_FLAT_SECTIONS and isinstance(value, dict)
+    )
 
     def _visit(key: str, value: Any) -> None:
         line = _config_schema.find_line(src_text, key)
@@ -84,6 +90,10 @@ def _flatten_toml(
             strict=strict,
             logger=logger,
         )
+        if key == LEGACY_DECODE_KEY:
+            if explicit_decode:
+                return
+            resolved = DECODE_KEY
         out[resolved] = coerced
 
     for k, v in d.items():

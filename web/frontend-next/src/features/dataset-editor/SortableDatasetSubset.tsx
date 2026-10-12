@@ -6,6 +6,7 @@ import type { FieldPath, UseFormReturn } from 'react-hook-form';
 
 import type { DatasetFormValues } from './datasetForm';
 import { DatasetSettingsFields } from './DatasetSettingsFields';
+import { DatasetFieldLabel } from './DatasetFieldLabel';
 import { DatasetMaskFields } from './DatasetMaskFields';
 import { DatasetSourcePathField } from './DatasetSourcePathField';
 
@@ -74,7 +75,6 @@ export function SortableDatasetSubset({
       aria-label={`子集 ${index + 1}`}
       data-selected={selected}
       data-dragging={sortable.isDragging}
-      disabled={disabled}
       onFocusCapture={onSelect}
     >
       <legend className="dataset-row-legend">
@@ -112,9 +112,9 @@ export function SortableDatasetSubset({
             <ArrowDown size={15} aria-hidden="true" />
           </button>
         </div>
-        <label>
-          <span>子集角色</span>
-          <select {...form.register(path('edit_role'), {
+        <div className="dataset-setting-field">
+          <DatasetFieldLabel htmlFor={path('edit_role')} field="edit_role" label="子集角色" />
+          <select id={path('edit_role')} disabled={disabled} {...form.register(path('edit_role'), {
             onChange: () => {
               form.setValue(`datasets.${index}.is_reg`, false, { shouldDirty: true, shouldValidate: true });
               revalidatePairs();
@@ -124,86 +124,89 @@ export function SortableDatasetSubset({
             <option value="before">编辑前</option>
             <option value="after">编辑后</option>
           </select>
-        </label>
-        {row.edit_role === 'normal' && <label className="dataset-checkbox-field">
-          <input type="checkbox" {...form.register(path('is_reg'))} />
-          <span>正则数据</span>
-        </label>}
+        </div>
+        {row.edit_role === 'normal' && <div className="dataset-setting-field dataset-checkbox-field">
+          <input id={path('is_reg')} type="checkbox" disabled={disabled} {...form.register(path('is_reg'))} />
+          <DatasetFieldLabel htmlFor={path('is_reg')} field="is_reg" label="正则数据" />
+        </div>}
         <button type="button" className="danger-command" onClick={onRemove} disabled={disabled || rowCount <= 1}>
           删除子集
         </button>
       </div>
 
-      {row.edit_role !== 'normal' && <label className="dataset-wide-field">
-        <span>配对编号或名称</span>
-        <input {...form.register(path('edit_pair_id'), { onChange: revalidatePairs })} placeholder="例如：1" />
+      {row.edit_role !== 'normal' && <div className="dataset-setting-field dataset-wide-field">
+        <DatasetFieldLabel htmlFor={path('edit_pair_id')} field="edit_pair_id" label="配对编号或名称" />
+        <input id={path('edit_pair_id')} disabled={disabled} {...form.register(path('edit_pair_id'), { onChange: revalidatePairs })} placeholder="例如：1" />
         <FieldError form={form} path={path('edit_pair_id')} />
-      </label>}
+      </div>}
 
       <DatasetSourcePathField
         form={form}
         path={path('source_dir')}
+        helpField="source_dir"
+        disabled={disabled}
         label={row.edit_role === 'before' ? '编辑前图片目录' : row.edit_role === 'after' ? '目标图原始目录（编辑后）' : '原始图片目录'}
       />
       {row.edit_role !== 'before' && <>
-      <label>
-        <span>{row.edit_role === 'after' ? '目标图训练目录（编辑后）' : '处理图片目录'}</span>
-        <input {...form.register(path('image_dir'))} />
-      </label>
-      <label>
-        <span>缓存目录</span>
-        <input {...form.register(path('cache_dir'))} />
-      </label>
-      <label>
-        <span>重复次数</span>
-        <input type="number" min="1" {...form.register(path('num_repeats'), { valueAsNumber: true })} />
+      <div className="dataset-setting-field">
+        <DatasetFieldLabel htmlFor={path('image_dir')} field="image_dir" label={row.edit_role === 'after' ? '目标图训练目录（编辑后）' : '处理图片目录'} />
+        <input id={path('image_dir')} disabled={disabled} {...form.register(path('image_dir'))} />
+      </div>
+      <div className="dataset-setting-field">
+        <DatasetFieldLabel htmlFor={path('cache_dir')} field="cache_dir" label="缓存目录" />
+        <input id={path('cache_dir')} disabled={disabled} {...form.register(path('cache_dir'))} />
+      </div>
+      <div className="dataset-setting-field">
+        <DatasetFieldLabel htmlFor={path('num_repeats')} field="num_repeats" label="重复次数" />
+        <input id={path('num_repeats')} disabled={disabled} type="number" min="1" {...form.register(path('num_repeats'), { valueAsNumber: true })} />
         <FieldError form={form} path={path('num_repeats')} />
-      </label>
-      <label className="dataset-checkbox-field">
-        <input type="checkbox" {...form.register(path('recursive'))} />
-        <span>递归扫描子目录</span>
-      </label>
-      <label>
-        <span>路径筛选</span>
-        <input {...form.register(path('path_pattern'))} placeholder="*" />
+      </div>
+      <div className="dataset-setting-field dataset-checkbox-field">
+        <input id={path('recursive')} disabled={disabled} type="checkbox" {...form.register(path('recursive'))} />
+        <DatasetFieldLabel htmlFor={path('recursive')} field="recursive" label="递归扫描子目录" />
+      </div>
+      <div className="dataset-setting-field">
+        <DatasetFieldLabel htmlFor={path('path_pattern')} field="path_pattern" label="路径筛选" />
+        <input id={path('path_pattern')} disabled={disabled} {...form.register(path('path_pattern'))} placeholder="*" />
         <FieldError form={form} path={path('path_pattern')} />
-      </label>
+      </div>
 
       <details className="dataset-row-advanced dataset-wide-field">
         <summary>高级规则</summary>
-        <DatasetMaskFields form={form} index={index} />
-        <DatasetSettingsFields form={form} prefix={`datasets.${index}.settings`} />
+        <DatasetMaskFields form={form} index={index} disabled={disabled} />
+        <DatasetSettingsFields form={form} prefix={`datasets.${index}.settings`} disabled={disabled} />
         <section className="dataset-experimental-settings">
           <h4>实验规则</h4>
           <div>
-            <label className="dataset-checkbox-field">
-              <input type="checkbox" {...form.register(path('nl_tag_mix.enabled'))} />
-              <span>NL/Tag 标签混合</span>
-            </label>
-            <label>
-              <span>Tag 占比</span>
-              <input type="number" min="0" max="1" step="0.05" {...form.register(path('nl_tag_mix.tag_ratio'), { valueAsNumber: true })} />
+            <div className="dataset-setting-field dataset-checkbox-field">
+              <input id={path('nl_tag_mix.enabled')} type="checkbox" disabled={disabled} {...form.register(path('nl_tag_mix.enabled'))} />
+              <DatasetFieldLabel htmlFor={path('nl_tag_mix.enabled')} field="nl_tag_mix_enabled" label="NL/Tag 标签混合" />
+            </div>
+            <div className="dataset-setting-field">
+              <DatasetFieldLabel htmlFor={path('nl_tag_mix.tag_ratio')} field="tag_ratio" label="Tag 占比" />
+              <input id={path('nl_tag_mix.tag_ratio')} disabled={disabled} type="number" min="0" max="1" step="0.05" {...form.register(path('nl_tag_mix.tag_ratio'), { valueAsNumber: true })} />
               <FieldError form={form} path={path('nl_tag_mix.tag_ratio')} />
-            </label>
-            <label className="dataset-checkbox-field">
-              <input type="checkbox" {...form.register(path('trigger_clone.enabled'))} />
-              <span>触发词图像复制</span>
-            </label>
-            <label>
-              <span>触发词</span>
-              <input {...form.register(path('trigger_clone.prompt'))} placeholder="my_character_token" disabled={!row.trigger_clone.enabled} />
+            </div>
+            <div className="dataset-setting-field dataset-checkbox-field">
+              <input id={path('trigger_clone.enabled')} disabled={disabled} type="checkbox" {...form.register(path('trigger_clone.enabled'))} />
+              <DatasetFieldLabel htmlFor={path('trigger_clone.enabled')} field="trigger_clone_enabled" label="触发词图像复制" />
+            </div>
+            <div className="dataset-setting-field">
+              <DatasetFieldLabel htmlFor={path('trigger_clone.prompt')} field="trigger_clone_prompt" label="触发词" />
+              <input id={path('trigger_clone.prompt')} {...form.register(path('trigger_clone.prompt'))} placeholder="my_character_token" disabled={disabled || !row.trigger_clone.enabled} />
               <FieldError form={form} path={path('trigger_clone.prompt')} />
-            </label>
-            <label>
-              <span>复制循环次数</span>
-              <input type="number" min="1" {...form.register(path('trigger_clone.num_repeats'), { valueAsNumber: true })} disabled={!row.trigger_clone.enabled} />
+            </div>
+            <div className="dataset-setting-field">
+              <DatasetFieldLabel htmlFor={path('trigger_clone.num_repeats')} field="trigger_clone_num_repeats" label="复制循环次数" />
+              <input id={path('trigger_clone.num_repeats')} type="number" min="1" {...form.register(path('trigger_clone.num_repeats'), { valueAsNumber: true })} disabled={disabled || !row.trigger_clone.enabled} />
               <FieldError form={form} path={path('trigger_clone.num_repeats')} />
-            </label>
+            </div>
           </div>
         </section>
         <ExperimentalScope
           fieldId={fieldId}
           fieldIds={fieldIds}
+          disabled={disabled}
           onApply={(targets) => onCopyExperimental(fieldId, targets)}
         />
       </details>
@@ -215,10 +218,12 @@ export function SortableDatasetSubset({
 function ExperimentalScope({
   fieldId,
   fieldIds,
+  disabled,
   onApply,
 }: {
   fieldId: string;
   fieldIds: string[];
+  disabled: boolean;
   onApply: (targets: string[]) => void;
 }) {
   const candidates = fieldIds.filter((id) => id !== fieldId);
@@ -239,6 +244,7 @@ function ExperimentalScope({
             <label className="dataset-checkbox-field" key={id}>
               <input
                 type="checkbox"
+                disabled={disabled}
                 checked={selected.includes(id)}
                 onChange={(event) => setSelected((current) => (
                   event.target.checked ? [...current, id] : current.filter((item) => item !== id)
@@ -248,7 +254,7 @@ function ExperimentalScope({
             </label>
           );
         })}
-        <button type="button" disabled={!selected.length} onClick={() => onApply(selected)}>
+        <button type="button" disabled={disabled || !selected.length} onClick={() => onApply(selected)}>
           应用到所选子集
         </button>
       </div>

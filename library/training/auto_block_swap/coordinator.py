@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import math
 import os
 from pathlib import Path
 import secrets
@@ -14,6 +15,7 @@ from .process import run_process, write_result
 from .preferences import preference, swap_io_limit_bytes
 
 logger = logging.getLogger(__name__)
+CONFIRMATION_TIMING_DRIFT_LIMIT = 0.10
 
 
 def measurement(result: dict, blocks: int, *, swap_limit_bytes=None) -> Measurement:
@@ -116,12 +118,45 @@ def run_calibration(args, directory: Path, *, runner=run_process) -> int:
         confirmation_dir,
         timeout=timeout,
     )
-    report["confirmation"] = confirmation
+    confirmation_seconds = confirmation.get("seconds")
+    valid_timing = (
+        isinstance(confirmation_seconds, (int, float))
+        and not isinstance(confirmation_seconds, bool)
+        and math.isfinite(confirmation_seconds)
+        and confirmation_seconds > 0
+    )
+    report["confirmation"] = (
+        confirmation if valid_timing else {
+            **confirmation, "seconds": None,
+            "invalid_seconds": repr(confirmation_seconds),
+        }
+    )
     write_result(directory / "summary.json", report)
-    if not measurement(confirmation, selected, swap_limit_bytes=swap_limit).safe:
+    confirmed = measurement(confirmation, selected, swap_limit_bytes=swap_limit)
+    if not confirmed.safe:
         raise RuntimeError(
             "AUTO block-swap confirmation failed; refusing to start training"
         )
+    chosen = next(m for m in search.measurements if m.blocks == selected)
+    if not valid_timing:
+        report["confirmation_timing"] = {"stable": False, "limit": CONFIRMATION_TIMING_DRIFT_LIMIT,
+                                         "candidate_seconds": chosen.seconds, "confirmation_seconds": None,
+                                         "relative_drift": None}
+        write_result(directory / "summary.json", report)
+        raise RuntimeError("AUTO block-swap confirmation has invalid timing; refusing to start training")
+    drift = confirmed.seconds / chosen.seconds - 1
+    report["confirmation_timing"] = {
+        "stable": abs(drift) <= CONFIRMATION_TIMING_DRIFT_LIMIT or math.isclose(
+            abs(drift), CONFIRMATION_TIMING_DRIFT_LIMIT, rel_tol=1e-12
+        ),
+        "limit": CONFIRMATION_TIMING_DRIFT_LIMIT,
+        "candidate_seconds": chosen.seconds,
+        "confirmation_seconds": confirmed.seconds,
+        "relative_drift": drift,
+    }
+    write_result(directory / "summary.json", report)
+    if not report["confirmation_timing"]["stable"]:
+        raise RuntimeError("AUTO block-swap confirmation timing drift exceeded 10%; refusing to start training")
     report.update(
         {"status": "selected", "selected_blocks": selected, "seed": args.seed}
     )

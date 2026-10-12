@@ -4,6 +4,14 @@
 
 本目录的材料默认不是当前实现说明。实现状态以 `docs/README.md` 指向的 `guidelines/`、`methods/`、`experimental/`、`structure/`、`configuration/`、`features/`、`findings/` 和 `optimizations/` 文档为准。
 
+## 2026-10-04 归档
+
+| 文档 | 原因 |
+| --- | --- |
+| [legacy_ui_retirement_plan.md](legacy_ui_retirement_plan.md) | P0–P5 和 2026-09-30 生产只读验收已完成，保留退役过程及功能取舍 |
+| [krea2_raw_gradient_checkpointing.md](krea2_raw_gradient_checkpointing.md) | 保留早期检查点调查与落地核对，当前能力见多模型说明 |
+| [webui-instrument-panel-reskin/README.md](webui-instrument-panel-reskin/README.md) | 已完成的旧静态 UI 换皮设计、执行计划、迭代日志与最终评审 |
+
 ## 2026-07-07 归档（第二批）
 
 | 文档 | 原因 |

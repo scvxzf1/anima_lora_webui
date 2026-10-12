@@ -118,12 +118,23 @@ def test_no_grad_forward_and_placement_protocol(monkeypatch):
     assert model.blocks_to_swap == 1
 
 
-@pytest.mark.parametrize("count", [0, 2])
-def test_swap_rejects_invalid_count(monkeypatch, count):
+def test_swap_accepts_zero_for_all_resident_model(monkeypatch):
     monkeypatch.setattr(swap_module, "ModelOffloader", RecordingOffloader)
-    with pytest.raises(ValueError, match="between 1 and 1"):
+    model = _tiny_model()
+    adapter = swap_module.enable_qwen_image_2_1_block_swap(model, 0, torch.device("cpu"))
+    assert model.blocks_to_swap == 0
+    model.move_to_device_except_swap_blocks(torch.device("cpu"))
+    model.prepare_block_swap_before_forward(free_cache=False)
+    with torch.no_grad():
+        _forward(model)
+    assert adapter.offloader.events == []
+
+
+def test_swap_rejects_count_above_model_limit(monkeypatch):
+    monkeypatch.setattr(swap_module, "ModelOffloader", RecordingOffloader)
+    with pytest.raises(ValueError, match="between 0 and 1"):
         swap_module.enable_qwen_image_2_1_block_swap(
-            _tiny_model(), count, torch.device("cpu")
+            _tiny_model(), 2, torch.device("cpu")
         )
 
 
@@ -198,7 +209,8 @@ def test_full_block_count_swap_compile_boundary(monkeypatch, swapped, scope, com
     assert model.blocks_to_swap == swapped
 
 
-def test_loader_stages_swapped_transformer_on_cpu(monkeypatch):
+@pytest.mark.parametrize("training_count,preview_mode", [(24, "inherit"), (0, "custom")])
+def test_loader_stages_swapped_transformer_on_cpu(monkeypatch, training_count, preview_mode):
     captured = {}
 
     class FakeModel(torch.nn.Module):
@@ -220,7 +232,9 @@ def test_loader_stages_swapped_transformer_on_cpu(monkeypatch):
     args = SimpleNamespace(
         pretrained_model_name_or_path="qwen.safetensors",
         gradient_checkpointing=True,
-        blocks_to_swap=24,
+        blocks_to_swap=training_count,
+        qwen_sample_swap_mode=preview_mode,
+        qwen_sample_blocks_to_swap=2 if preview_mode == "custom" else 0,
         block_swap_transfer_dtype="bf16",
         block_swap_restore_mode="slab",
     )
@@ -231,11 +245,11 @@ def test_loader_stages_swapped_transformer_on_cpu(monkeypatch):
         trainer, args, torch.bfloat16, accelerator, [None]
     )
 
-    assert trainer.is_swapping_blocks is True
+    assert trainer.is_swapping_blocks is bool(training_count)
     assert captured["load"] == ("qwen.safetensors", torch.bfloat16, torch.device("cpu"))
     assert captured["swap"] == (
         model,
-        24,
+        training_count,
         torch.device("cpu"),
         {"profile_jsonl": None, "transfer_dtype": "bf16", "restore_mode": "slab"},
     )

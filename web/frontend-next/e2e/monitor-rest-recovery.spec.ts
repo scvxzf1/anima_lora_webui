@@ -77,7 +77,7 @@ test("REST recovery replays the latest snapshot and isolates logs by task", asyn
   await page.getByRole("button", { name: "重试日志" }).click();
   await expect(page.getByRole("log")).toContainText("run-B recovered task log");
   await expect(page.getByRole("log")).not.toContainText("run-A old task log");
-  await expect(page.getByRole("group", { name: /Loss 趋势/ })).toBeVisible();
+  await expect(page.getByRole("group", { name: /Loss 与学习率趋势，\d+ 个点/ })).toBeVisible();
   await expect(page.getByText("最新 Loss: 0.5300")).toBeVisible();
   await expect(page.getByText("最新 Loss: 0.8300")).toHaveCount(0);
   expect(metricsTaskIds).toContain("run-A");

@@ -18,16 +18,16 @@ When documentation and code disagree, verify the live implementation and tests, 
 
 ## Validation rules
 
-- Run the smallest relevant tests first, using the project interpreter:
+- Follow the risk-based [validation policy](AGENTS.md#验证策略). Low-risk changes use diff review and necessary syntax, type, or build checks; they do not require new tests or a test suite. When a specific contract needs testing, reuse the smallest relevant cases with the project interpreter:
 
   ```bash
   timeout 60 .venv/bin/python -m pytest tests/<relevant_test>.py -q
   ```
 
-- Expand to the full unit-test task when the change crosses subsystem boundaries:
+- Larger suites belong to focused acceptance or release validation when a concrete risk or an agreed release requirement calls for them. Crossing subsystem boundaries alone does not trigger broader tests. For example, select the core layer when its contracts need acceptance:
 
   ```bash
-  timeout 60 .venv/bin/python tasks.py test-unit
+  timeout 300 .venv/bin/python tasks.py test-core
   ```
 
 - Run checks only over the affected scope; do not reformat unrelated files:
@@ -38,8 +38,9 @@ When documentation and code disagree, verify the live implementation and tests, 
   git diff --check -- <changed_paths>
   ```
 
-- Documentation changes must keep the document reachable from [`docs/README.md`](docs/README.md) or a section index. Run `tests/test_documentation_integrity.py` for structural changes.
-- GPU, model-download, and real-training validation is required only when it is material and the environment is available. State exactly what was and was not run; never report an unexecuted smoke test as passing.
+- Documentation changes must keep the document reachable from [`docs/README.md`](docs/README.md) or a section index. Check changed paths with `git diff --check`; for moves or structural changes, check affected local links and navigation. The broader documentation-integrity checks are available for focused acceptance, not a routine step for every edit.
+- GPU, model-download, and real-training validation belongs to an explicitly scoped acceptance stage when material to the claimed capability. Preserve the authorization and resource boundaries in `AGENTS.md`. State exactly what was and was not run; never report an unexecuted smoke test as passing.
+- Acceptance can run asynchronously while implementation continues. Wait for evidence only when a dependent decision, a critical contract, or release requires it; otherwise distinguish implementation completion from pending acceptance. A passing focused check needs no repetition without new changes, failures, or unresolved concerns.
 - If live `library/` or `networks/` changes affect a ComfyUI node, run or explicitly call out the need for `python tasks.py vendor-sync`.
 
 ## Tier 1 — focused fixes
@@ -49,9 +50,9 @@ Examples include bugs, typos, UI labels, error messages, small CLI changes, and 
 Requirements:
 
 - minimal scope with no drive-by refactor;
-- relevant unit or frontend tests;
-- browser verification for a changed WebUI flow when practical;
-- a short training smoke test for a changed training path when a suitable GPU/model environment is available, otherwise an explicit validation limitation;
+- checks scoped to the actual risk under `AGENTS.md`, with no blanket requirement to add tests for each new behavior;
+- targeted browser verification when the changed interaction needs it;
+- a short training smoke test only when needed for the scoped acceptance claim and a suitable environment is available; otherwise identify the pending acceptance boundary;
 - user-visible behavior and documentation updated together.
 
 ## Tier 1.5 — efficiency or algorithm revision
@@ -86,7 +87,7 @@ Requirements:
 
 ## Tier 3 — new model-family support
 
-The repository currently supports `anima` and the scoped `krea2_raw` family. Adding a third model family is Tier 3 and requires maintainer agreement in an Issue before implementation. The existing Krea-2 path does not imply that every adapter or runtime feature is portable, or that the historical generic `ModelFamily` design is complete; see [`docs/proposal/krea2_raw_migration.md`](docs/proposal/krea2_raw_migration.md) for the current Krea-2 boundary and [`docs/multi_model_support.md`](docs/multi_model_support.md) for the historical architecture sketch.
+The [family registry](library/models/family_registry.py) defines the registered model families and capability boundaries. Adding a new model family is Tier 3 and requires maintainer agreement in an Issue before implementation. The existing Krea-2 path does not imply that every adapter or runtime feature is portable; see [`docs/multi_model_support.md`](docs/multi_model_support.md) for current support boundaries and [`docs/proposal/krea2_raw_migration.md`](docs/proposal/krea2_raw_migration.md) for migration background.
 
 Fixes and documented capability extensions for an existing family use Tier 1, 1.5, or 2 according to their actual behavioral and numerical impact. A new family proposal must define its training and inference boundary, cache and checkpoint compatibility, adapter support matrix, configuration/WebUI surface, reproducible validation, and explicit refusals for unsupported features.
 

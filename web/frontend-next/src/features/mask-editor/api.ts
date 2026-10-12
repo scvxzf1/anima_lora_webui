@@ -1,8 +1,19 @@
 import { apiRequest } from '../../api/client';
-import type { DatasetPreviewResponse } from '../dataset-editor/types';
 
-export type MaskPage = Omit<DatasetPreviewResponse, 'images'> & {
-  images: Array<DatasetPreviewResponse['images'][number] & { has_mask: boolean; thumbnail_url?: string }>;
+export type MaskPage = {
+  ok: true;
+  file: string;
+  dataset_index: number;
+  source: 'source';
+  directory: string;
+  directory_exists: boolean;
+  images: Array<{ file: string; name: string; url: string; thumbnail_url: string; has_mask: boolean }>;
+  count: number;
+  total: number;
+  limit: number;
+  returned: number;
+  has_more_before: boolean;
+  message: string;
   mask_dir: string;
   mask_mode: string;
   config_revision: string;

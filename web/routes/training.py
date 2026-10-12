@@ -13,6 +13,7 @@ from web.routes.training_queue_commands import queue_command_response
 
 from library.runtime.launch import resolve_training_world_size_for_gpu_selection
 from web.services.config_service import is_web_runtime_config, preflight_training_config
+from web.services.training.risk_acknowledgement import acknowledge_request_risks
 from web.services.training.gpu import normalize_gpu_whitelist
 from web.services.training_service import inspect_continue_lora_weight
 
@@ -58,6 +59,8 @@ def setup_training_routes(app: web.Application) -> None:
     app.router.add_put("/api/training/history/collections/settings", handle_history_collection_settings_put)
     app.router.add_get("/api/training/history/config-group/timeline", handle_config_group_timeline)
     app.router.add_get("/api/training/history/{task_id}/logs/search", handle_history_log_search)
+    from web.routes.training_history_system import history_system_response
+    app.router.add_get("/api/training/history/{task_id}/system", history_system_response)
     app.router.add_get("/api/training/history/{task_id}/logs", handle_history_logs)
     app.router.add_get("/api/training/history/{task_id}/logs/download", handle_history_log_download)
     app.router.add_get("/api/training/history/{task_id}/artifacts/{artifact_key}", handle_history_artifact)
@@ -150,7 +153,8 @@ async def handle_start(request: web.Request) -> web.Response:
             config_file=config_file,
             world_size=_preflight_world_size(gpu_whitelist),
         )
-        if not preflight.get("ok", False):
+        remaining, extra_args = acknowledge_request_risks(data, preflight, extra_args)
+        if not remaining.get("ok", False):
             return web.json_response({
                 "ok": False,
                 "error": "预检测发现错误，已阻止训练启动",
@@ -254,7 +258,8 @@ async def handle_preprocess(request: web.Request) -> web.Response:
         )
     except Exception as e:
         return web.json_response({"ok": False, "error": f"预处理预检测失败: {e}"}, status=400)
-    if not _preflight_allows_preprocess(preflight):
+    remaining, extra_args = acknowledge_request_risks(data, preflight, extra_args)
+    if not _preflight_allows_preprocess(remaining):
         return web.json_response({
             "ok": False,
             "error": "当前配置还有预处理无法自动解决的问题，请先修正预检测错误",
@@ -402,6 +407,8 @@ def _check_task_query(request: web.Request, svc) -> str | None:
 async def handle_metrics(request: web.Request) -> web.Response:
     svc = request.app["training_service"]
     _check_task_query(request, svc)
+    if request.query.get("all") == "1":
+        return web.json_response(svc.get_metrics_history(include_all=True))
     return web.json_response(svc.get_metrics_history())
 
 
@@ -466,9 +473,10 @@ async def _handle_queue_start_data(request: web.Request, data: dict) -> web.Resp
             config_file=config_file,
             world_size=_preflight_world_size(gpu_whitelist),
         )
+        remaining, extra_args = acknowledge_request_risks(data, preflight, extra_args)
         needs_preprocess = not config_file or not is_web_runtime_config(config_file)
-        if not preflight.get("ok", False):
-            if not (needs_preprocess and confirm_preprocess and _preflight_allows_preprocess(preflight)):
+        if not remaining.get("ok", False):
+            if not (needs_preprocess and confirm_preprocess and _preflight_allows_preprocess(remaining)):
                 return web.json_response({
                     "ok": False,
                     "error": "预检测发现错误，已阻止加入队列",
@@ -558,13 +566,14 @@ async def _handle_queue_batch_start_data(request: web.Request, data: dict) -> we
                 "failed_index": index,
                 "failed_item": raw,
             }, status=400)
+        remaining, extra_args = acknowledge_request_risks(raw, preflight, raw.get("extra_args") if isinstance(raw.get("extra_args"), list) else [])
         requires_preprocess = not config_file or not is_web_runtime_config(config_file)
         confirm_preprocess = bool(
             raw.get("confirm_preprocess", True)
             or raw.get("confirm_train_after", False)
         )
-        if not preflight.get("ok", False):
-            if not (requires_preprocess and confirm_preprocess and _preflight_allows_preprocess(preflight)):
+        if not remaining.get("ok", False):
+            if not (requires_preprocess and confirm_preprocess and _preflight_allows_preprocess(remaining)):
                 return web.json_response({
                     "ok": False,
                     "error": "预检测发现错误，已阻止批量加入队列",
@@ -577,7 +586,7 @@ async def _handle_queue_batch_start_data(request: web.Request, data: dict) -> we
             "preset": preset,
             "methods_subdir": methods_subdir,
             "config_file": config_file,
-            "extra_args": raw.get("extra_args") if isinstance(raw.get("extra_args"), list) else [],
+            "extra_args": extra_args,
             "requires_preprocess": requires_preprocess,
             "continue_info": _continue_lora_info_from_request(raw),
             "label": str(raw.get("label") or raw.get("filename") or "").strip(),

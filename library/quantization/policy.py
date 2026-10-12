@@ -1,0 +1,76 @@
+"""Exact main-block MLP policy; never select arbitrary matching linears."""
+from __future__ import annotations
+
+POLICY = 'main-mlp-nf4-v1'
+ALL_LINEAR_POLICY = 'all-linear-nf4-v1'
+FAMILIES = {
+    'krea2_raw': ('blocks', 'mlp', ('gate', 'up', 'down')),
+    'z_image': ('layers', 'feed_forward', ('w1', 'w2', 'w3')),
+    'qwen_image_2_1': ('transformer_blocks', 'img_mlp', ('gate_layer', 'proj', 'out')),
+}
+
+
+def policy_paths(family, count):
+    if family not in FAMILIES or type(count) is not int or count <= 0:
+        raise ValueError('Unsupported mixed NF4 family or empty main blocks')
+    root, mlp, names = FAMILIES[family]
+    return [f'{root}.{i}.{mlp}.{name}' for i in range(count) for name in names]
+
+
+def model_linear_paths(model):
+    """Return every ordinary Linear path for the Qwen Image 2.1 transformer."""
+    import torch
+
+    paths = []
+    for name, module in model.named_modules():
+        if not name or type(module) is not torch.nn.Linear:
+            continue
+        if 'forward' in module.__dict__ or hasattr(module, 'quant_state'):
+            raise ValueError(f'Model already has packed weights or adapter: {name}')
+        if module.in_features % 64 or module.out_features % 64:
+            raise ValueError(f'NF4 dimensions must be divisible by 64: {name}')
+        paths.append(name)
+    if not paths:
+        raise ValueError('Qwen Image 2.1 model has no ordinary Linear modules')
+    return sorted(paths)
+
+
+def model_paths(model, family, policy=POLICY):
+    import torch
+
+    if family not in FAMILIES:
+        raise ValueError('Unsupported mixed NF4 family')
+    if policy == ALL_LINEAR_POLICY:
+        if family != 'qwen_image_2_1':
+            raise ValueError('All-linear NF4 policy is supported only for qwen_image_2_1')
+        paths = model_linear_paths(model)
+        from bitsandbytes.nn import Linear4bit, Params4bit
+        for name, module in model.named_modules():
+            if (isinstance(module, Linear4bit) or isinstance(getattr(module, 'weight', None), Params4bit)
+                    or 'forward' in module.__dict__ or hasattr(module, 'lora_down')
+                    or hasattr(module, 'lora_up')):
+                raise ValueError(f'Model already has packed weights or adapter: {name}')
+        return paths
+    if policy != POLICY:
+        raise ValueError('Unsupported mixed NF4 policy')
+    root = FAMILIES[family][0]
+    blocks = getattr(model, root, None)
+    if not isinstance(blocks, (torch.nn.ModuleList, torch.nn.Sequential)):
+        raise ValueError('Expected complete main block collection')
+    paths = policy_paths(family, len(blocks))
+    for path in paths:
+        try:
+            linear = model.get_submodule(path)
+        except AttributeError as exc:
+            raise ValueError(f'Missing policy module: {path}') from exc
+        if type(linear) is not torch.nn.Linear or 'forward' in linear.__dict__:
+            raise ValueError(f'Policy target must be ordinary unpatched Linear: {path}')
+        if linear.in_features % 64 or linear.out_features % 64:
+            raise ValueError(f'NF4 dimensions must be divisible by 64: {path}')
+    from bitsandbytes.nn import Linear4bit, Params4bit
+    for name, module in model.named_modules():
+        if (isinstance(module, Linear4bit) or isinstance(getattr(module, 'weight', None), Params4bit)
+                or 'forward' in module.__dict__ or hasattr(module, 'quant_state')
+                or hasattr(module, 'lora_down') or hasattr(module, 'lora_up')):
+            raise ValueError(f'Model already has packed weights or adapter: {name}')
+    return paths

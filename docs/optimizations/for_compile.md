@@ -1,5 +1,25 @@
 # Changes from sd-scripts for torch.compile / dynamo
 
+> **Status: historical Anima implementation record.** Reviewed on 2026-10-04.
+> The code snippets, default-on claims and benchmark values below describe the
+> implementation stages recorded here. References to the "single switch", "only
+> compile path" and native flatten apply to that Anima path, not every model
+> family. They do not prescribe the current defaults or dynamic-sequence policy.
+> See the [current optimization configuration](../optimization-configs-current.md)
+> and [model-family support](../multi_model_support.md) for current boundaries.
+
+Current training compilation is selected after adapter apply/load in
+[`library/training/bootstrap.py`](../../library/training/bootstrap.py):
+
+| Family | Current compilation boundary |
+| --- | --- |
+| Anima | Native flatten with its own sequence-range policy, via the shared training harness |
+| Krea-2 | Fixed sequence lengths and resident block computation; no Anima flatten or sequence bands |
+| Qwen-Image 2.1 | Separate [block compiler](../../library/models/qwen_image_2_1/compile.py) |
+| Z-Image | `torch_compile=true` is rejected by the [compatibility layer](../../library/training/compat_matrix.py) |
+
+The historical record follows unchanged.
+
 This document catalogues every change made to the `anima_lora` fork (relative to the original `sd-scripts` repo) that enables or supports `torch.compile` and PyTorch dynamo. Changes are grouped by file and subsystem.
 
 ---

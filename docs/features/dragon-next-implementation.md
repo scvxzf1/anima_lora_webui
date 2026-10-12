@@ -2,6 +2,10 @@
 
 > 2026-09-30 更新：Next 已是唯一生产前端。服务根路径 `/` 及旧 `ui` query 均映射到 `/next`；旧 Dragon/classic 源码已退役。下文保留 2026-09-09 的验收快照。
 
+> 范围说明：下文的功能对账、旧辅助工具入口及“待批准事项”均记录 2026-09-09 的阶段状态。
+> 默认入口切换和旧前端退役已在后续完成，见[退役记录](../../_archive/docs/proposal/legacy_ui_retirement_plan.md)
+> 和[当前前端说明](../../web/frontend-next/README.md)。这不补足当时未执行的 GPU、外部服务或并发验收证据。
+
 - 状态：八个主工作区历史工程实现记录；生产默认切换已完成；数据集蒙版编辑为独立子路由
 - 日期：2026-09-09
 - 本页验收数字是 2026-09-09 的历史记录，不代表当前工作树；当前审计见 [2026-09-13 前端审计](../findings/webui_frontend_audit_20260913.md)。
@@ -173,6 +177,8 @@ ECharts 按需加载。没有引入 SSR、BFF、第三套运行时或生产 Node
 截图：[桌面堆叠](assets/dragon-next/history-stacked-desktop.png)、[移动展开](assets/dragon-next/history-stacked-mobile.png)，均为合成数据。
 
 ### 待批准事项
+
+> 本节为 2026-09-09 的历史发布边界，保留当时结论；不作为当前待批准清单。
 
 以下不因工程构建通过而自动获得批准：
 

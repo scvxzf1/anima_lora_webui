@@ -17,9 +17,12 @@ button,
   border: 1px solid var(--button-border);
   background: var(--button-bg);
   color: var(--button-ink);
-  border-radius: 5px;
-  padding: 6px 11px;
+  border-radius: var(--radius-sm);
+  padding: 6px 14px;
   cursor: pointer;
+  font-weight: 500;
+  transition: all 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: var(--shadow-sm);
 }
 button {
   display: inline-flex;
@@ -38,6 +41,7 @@ a svg {
   width: 36px;
   height: 36px;
   flex-shrink: 0;
+  border-radius: var(--radius-sm);
 }
 .inline-confirm-body {
   padding: 16px;
@@ -53,15 +57,23 @@ a svg {
 }
 .button-primary {
   color: #fff;
-  background: var(--primary);
-  border-color: var(--primary);
+  background: var(--primary-gradient);
+  border: none;
+  box-shadow: var(--shadow-md);
+  font-weight: 600;
 }
 button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
 button:hover:not(:disabled) {
-  filter: brightness(1.08);
+  filter: brightness(1.05);
+  box-shadow: var(--shadow-md);
+  transform: translateY(-1px);
+}
+button:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: var(--shadow-sm);
 }
 input,
 select,
@@ -70,8 +82,16 @@ textarea {
   color: var(--ink);
   background: var(--surface);
   border: 1px solid var(--line-strong);
-  border-radius: 4px;
-  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  padding: 8px 11px;
+  transition: all 150ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+input:focus,
+select:focus,
+textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
 }
 input[type="checkbox"],
 input[type="radio"] {
@@ -125,8 +145,9 @@ fieldset {
   border-right: 1px solid var(--line);
   z-index: 5;
   overflow-y: auto;
+  box-shadow: var(--shadow-sm);
 }
-.app-navigation-resizer {
+.app-navigation .app-navigation-resizer {
   position: absolute;
   inset-block: 0;
   right: 0;
@@ -261,17 +282,20 @@ fieldset {
   padding: 9px 11px;
   color: var(--muted);
   text-decoration: none;
-  border-radius: 5px;
+  border-radius: var(--radius-sm);
   font-size: 13px;
+  transition: all 150ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 .app-links a[aria-current="page"] {
   color: var(--accent);
   background: var(--accent-soft);
   font-weight: 600;
+  box-shadow: var(--shadow-sm);
 }
 .app-links a:hover {
   color: var(--ink);
   background: var(--surface-subtle);
+  transform: translateX(2px);
 }
 .nav-footer {
   margin-top: auto;
@@ -467,9 +491,15 @@ fieldset {
   margin: 14px 0;
 }
 .primary-command {
-  background: var(--primary) !important;
-  border-color: var(--primary) !important;
+  background: var(--primary-gradient) !important;
+  border: none !important;
   color: #fff !important;
+  font-weight: 600 !important;
+  box-shadow: var(--shadow-md) !important;
+}
+.primary-command:hover:not(:disabled) {
+  box-shadow: var(--shadow-lg) !important;
+  transform: translateY(-1px);
 }
 .danger,
 .form-error {
@@ -481,20 +511,31 @@ fieldset {
 }
 .page-tabs {
   display: flex;
-  gap: 20px;
+  gap: 4px;
   overflow-x: auto;
-  border-bottom: 1px solid var(--line);
+  border-bottom: 2px solid var(--line);
+  padding: 0 4px;
+  margin-bottom: 24px;
 }
 .page-tabs a {
+  position: relative;
   color: var(--muted);
   white-space: nowrap;
   text-decoration: none;
-  padding: 12px 0;
-  border-bottom: 2px solid transparent;
+  padding: 14px 20px;
+  border-radius: 8px 8px 0 0;
+  font-size: 14px;
+  font-weight: 600;
+  transition: all 0.2s ease;
+}
+.page-tabs a:hover {
+  color: var(--ink);
+  background: var(--surface-1);
 }
 .page-tabs a[aria-current="page"] {
   color: var(--accent);
-  border-color: var(--accent);
+  background: var(--surface-1);
+  box-shadow: inset 0 -3px 0 var(--accent);
 }
 .unframed-fieldset {
   border: 0;
@@ -517,9 +558,21 @@ fieldset {
   overflow-y: auto;
   background: var(--surface);
   border: 1px solid var(--line-strong);
-  border-radius: 8px;
-  padding: 22px;
-  box-shadow: 0 16px 50px rgb(0 0 0 / 25%);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  box-shadow: var(--shadow-xl);
+  animation: dialogSlideIn 200ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes dialogSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 .command-dialog > header {
   display: flex;

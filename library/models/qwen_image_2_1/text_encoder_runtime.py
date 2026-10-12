@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import contextlib
 import gc
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 
 import torch
 
@@ -51,6 +51,51 @@ def _should_offload(module: torch.nn.Module, device: torch.device, mode: str) ->
     except RuntimeError:
         return True
     return _parameter_bytes(module) > int(free_bytes * 0.60)
+
+
+def _cleanup_text_encoder(model: torch.nn.Module, installed_offload: bool) -> list[BaseException]:
+    """Attempt every cleanup step, including after a partial hook installation."""
+    errors: list[BaseException] = []
+
+    def attempt(action: Callable[[], object]) -> None:
+        try:
+            action()
+        except BaseException as error:
+            errors.append(error)
+
+    def remove_hooks() -> None:
+        from accelerate.hooks import remove_hook_from_module
+
+        core = model.model
+        attempt(lambda: remove_hook_from_module(core, recurse=True))
+        if errors:
+            # A failed detach must not prevent cleanup of the remaining children.
+            for module in core.modules():
+                attempt(lambda: remove_hook_from_module(module, recurse=False))
+
+                def discard_hook() -> None:
+                    if hasattr(module, "_old_forward"):
+                        module.forward = module._old_forward
+                        delattr(module, "_old_forward")
+                    module.__dict__.pop("_hf_hook", None)
+
+                attempt(discard_hook)
+
+    if installed_offload:
+        attempt(remove_hooks)
+
+    def move_to_cpu() -> None:
+        # init_hook can replace parameters before _hf_hook is attached. There
+        # is no saved weight on the module to restore in that case; this failed
+        # encoder must be discarded rather than materialized with to_empty.
+        if any(tensor.is_meta for tensors in (model.parameters(), model.buffers()) for tensor in tensors):
+            raise RuntimeError("Qwen text encoder cleanup left meta tensors; encoder is unusable and must be discarded")
+        model.to("cpu")
+
+    attempt(move_to_cpu)
+    for attribute in ("_qwen_execution_device", "_qwen_cache_offloaded"):
+        attempt(lambda: model.__dict__.pop(attribute, None))
+    return errors
 
 
 @contextlib.contextmanager
@@ -96,6 +141,7 @@ def loaded_text_encoder_for_cache(
     execution_device = _resolve_device(device)
     core = model.model
     installed_offload = False
+    stage_error: BaseException | None = None
     try:
         if _should_offload(core, execution_device, offload):
             from accelerate import cpu_offload
@@ -114,20 +160,25 @@ def loaded_text_encoder_for_cache(
             flush=True,
         )
         yield model
+    except BaseException as error:
+        stage_error = error
+        raise
     finally:
-        if installed_offload:
-            from accelerate.hooks import remove_hook_from_module
-
-            # Detaching recursively restores the CPU parameter placement held
-            # by Accelerate.  Calling model.to('cpu') while hooks are active
-            # would attempt to materialize meta tensors and can OOM.
-            remove_hook_from_module(core, recurse=True)
-        model.to("cpu")
-        if hasattr(model, "_qwen_execution_device"):
-            delattr(model, "_qwen_execution_device")
-        if hasattr(model, "_qwen_cache_offloaded"):
-            delattr(model, "_qwen_cache_offloaded")
-        del model
-        gc.collect()
+        cleanup_errors = _cleanup_text_encoder(model, installed_offload)
+        del model, core
+        try:
+            gc.collect()
+        except BaseException as error:
+            cleanup_errors.append(error)
         if execution_device.type == "cuda":
-            torch.cuda.empty_cache()
+            try:
+                torch.cuda.empty_cache()
+            except BaseException as error:
+                cleanup_errors.append(error)
+        if cleanup_errors:
+            primary = stage_error if stage_error is not None else cleanup_errors[0]
+            for error in cleanup_errors:
+                if error is not primary:
+                    primary.add_note(f"Qwen text encoder cleanup failed: {type(error).__name__}: {error}")
+            if stage_error is None:
+                raise primary

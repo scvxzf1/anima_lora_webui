@@ -11,7 +11,6 @@ from accelerate import Accelerator
 
 from library import train_util
 from library.anima import training as anima_train_utils
-from library.runtime.device import clean_memory_on_device
 
 logger = logging.getLogger(__name__)
 
@@ -95,12 +94,11 @@ def decode_deferred_samples_safely(
                     "Could not switch optimizer to eval before sample decode: "
                     f"{exc}"
                 )
-        try:
-            accelerator.unwrap_model(loop_state.unet).to("cpu")
-        except Exception:
-            pass
-        clean_memory_on_device(accelerator.device)
-        anima_train_utils.decode_pending_samples(accelerator, args, vae)
+        anima_train_utils.decode_samples_for_live_preview(
+            accelerator, args, vae,
+            dit=accelerator.unwrap_model(loop_state.unet),
+            network=getattr(loop_state, "network", None),
+        )
     except Exception as exc:  # noqa: BLE001 - never mask the real train exit
         logger.error(f"Failed to decode deferred sample images during cleanup: {exc}")
 

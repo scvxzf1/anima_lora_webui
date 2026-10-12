@@ -1,0 +1,240 @@
+/* ============================================
+   Training Page Responsive Enhancements
+   ============================================ */
+
+/* Base responsive utilities */
+@media (max-width: 1400px) {
+  .training-workspace-container {
+    gap: 16px;
+  }
+
+  .training-edit-fields {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 1200px) {
+  .training-command-bar {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .training-command-bar button span {
+    display: none;
+  }
+
+  .training-command-bar button {
+    min-width: 36px;
+    padding: 8px;
+  }
+
+  .training-resource-group-grid {
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  }
+}
+
+@media (max-width: 992px) {
+  .training-workspace-container {
+    grid-template-columns: 1fr;
+  }
+
+  .training-config-library[data-expanded="false"] {
+    display: none;
+  }
+
+  .training-resource-group-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 768px) {
+  .training-workspace-main {
+    padding: 12px;
+  }
+
+  .training-edit-card > header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .training-command-bar {
+    padding: 8px;
+  }
+
+  .training-edit-fields > div {
+    padding: 12px;
+  }
+
+  .training-resource-group > div {
+    padding: 12px;
+  }
+}
+
+@media (max-width: 640px) {
+  .training-workspace-container {
+    gap: 12px;
+  }
+
+  .training-edit-card {
+    border-radius: 8px;
+  }
+
+  .training-command-bar button {
+    font-size: 14px;
+  }
+
+  .training-config-library li {
+    padding: 10px 12px;
+  }
+}
+
+/* Touch device optimizations */
+@media (hover: none) and (pointer: coarse) {
+  .training-command-bar button {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  .training-config-library li {
+    min-height: 44px;
+    padding: 12px;
+  }
+
+  .training-edit-fields input,
+  .training-edit-fields textarea,
+  .training-edit-fields select {
+    min-height: 44px;
+    font-size: 16px; /* Prevent zoom on iOS */
+  }
+
+  /* Remove hover effects on touch devices */
+  .training-edit-card:hover {
+    transform: none;
+  }
+
+  .training-resource-group > div:hover {
+    transform: none;
+  }
+
+  .training-command-bar button:hover {
+    transform: none;
+  }
+}
+
+/* Print styles */
+@media print {
+  .training-command-bar,
+  .training-config-library {
+    display: none;
+  }
+
+  .training-workspace-container {
+    display: block;
+  }
+
+  .training-edit-card {
+    page-break-inside: avoid;
+    box-shadow: none;
+    border: 1px solid #000;
+  }
+}
+
+/* High contrast mode */
+@media (prefers-contrast: high) {
+  .training-edit-card,
+  .training-resource-group > div,
+  .training-config-library li {
+    border-width: 2px;
+  }
+
+  .training-command-bar button {
+    border-width: 2px;
+  }
+
+  .training-edit-fields input:focus,
+  .training-edit-fields textarea:focus,
+  .training-edit-fields select:focus {
+    outline: 3px solid currentColor;
+    outline-offset: 2px;
+  }
+}
+
+/* Large text mode support */
+@media (min-width: 1600px) {
+  .training-workspace-container {
+    max-width: 1800px;
+    margin: 0 auto;
+  }
+
+  .training-resource-group-grid {
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  }
+}
+
+/* Ultra-wide screen optimizations */
+@media (min-width: 2000px) {
+  .training-workspace-container {
+    max-width: 2200px;
+    gap: 32px;
+  }
+
+  .training-edit-fields {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .training-resource-group-grid {
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  }
+}
+
+/* Landscape phone optimization */
+@media (max-height: 600px) and (orientation: landscape) {
+  .training-edit-card > header {
+    padding: 10px 12px;
+  }
+
+  .training-command-bar {
+    padding: 6px;
+  }
+}
+
+/* Dark mode specific responsive adjustments */
+@media (prefers-color-scheme: dark) {
+  @media (max-width: 768px) {
+    .training-edit-card {
+      background: var(--surface);
+      border-color: var(--line);
+    }
+  }
+}
+
+/* Fluid typography */
+.training-edit-card h2 {
+  font-size: clamp(14px, 1vw + 10px, 16px);
+}
+
+.training-resource-group h3 {
+  font-size: clamp(13px, 0.9vw + 9px, 14px);
+}
+
+.training-edit-fields label {
+  font-size: clamp(12px, 0.8vw + 9px, 13px);
+}
+
+.training-command-bar button {
+  font-size: clamp(13px, 0.9vw + 10px, 14px);
+}
+
+/* Container queries for component-level responsiveness */
+@supports (container-type: inline-size) {
+  .training-resource-group {
+    container-type: inline-size;
+    container-name: resource-group;
+  }
+
+  @container resource-group (max-width: 300px) {
+    .training-resource-group-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+}

@@ -53,7 +53,7 @@ def test_frozen_merged_worker_args_preserve_precision_and_override_swap(tmp_path
 
 @pytest.mark.parametrize("changes", [
     {"seed": None}, {"seed": True}, {"gradient_accumulation_steps": 2},
-    {"adaptive_oom_retry_max_swap": 28}, {"adaptive_oom_retry_max_attempts": 0},
+    {"adaptive_oom_retry_max_swap": -1}, {"adaptive_oom_retry_max_attempts": 0},
     {"adaptive_oom_retry_swap_increment": True}, {"blocks_to_swap": 27},
     {"adaptive_oom_retry_timeout": float("nan")}, {"adaptive_oom_retry_timeout": True},
     {"resume": "old"}, {"save_every_n_steps": 1}, {"scale_weight_norms": 1.0},
@@ -104,6 +104,10 @@ def test_supervisor_retries_structured_startup_oom_for_each_dit_family(
 ):
     plans = []
     worker_configs = []
+    monkeypatch.setattr(
+        supervisor, "preload_model_capacity",
+        lambda args: {"model_family": args.model_family, "block_count": 28, "model_limit": 26},
+    )
 
     class Runner:
         def __init__(self, directory, command, **kwargs):
@@ -119,11 +123,16 @@ def test_supervisor_retries_structured_startup_oom_for_each_dit_family(
             worker_config = json.loads(Path(command[-1]).read_text())
             worker_configs.append(worker_config)
             contract_id = worker_config["_adaptive_precision_contract_id"]
+            capacity = worker_config["_adaptive_swap_capacity"]
+            fields = {key: capacity[key] for key in ("model_limit", "requested_cap", "effective_cap")}
+            fields["host_limit"] = capacity["model_limit"]
             if attempt == 0:
                 return {"status": "cuda_oom", "stage": "backward", "optimizer_started": False,
-                        "precision_contract_id": contract_id, "precision_manifest_id": "fixture"}
+                        "precision_contract_id": contract_id, "precision_manifest_id": "fixture",
+                        **fields}
             return {"status": "ok", "completed_steps": 2,
-                    "precision_contract_id": contract_id, "precision_manifest_id": "fixture"}
+                    "precision_contract_id": contract_id, "precision_manifest_id": "fixture",
+                    **fields}
 
     monkeypatch.setattr(supervisor, "IsolatedRunner", Runner)
     result = supervisor.run_supervised(
@@ -406,7 +415,7 @@ def test_model_load_oom_without_manifest_retries_after_local_contract_check(tmp_
     class Trainer:
         def train(self, args):
             self._adaptive_training_runtime.phase("model_load")
-            raise torch.cuda.OutOfMemoryError("injected before DiT install")
+            raise torch.cuda.OutOfMemoryError("CUDA injected before DiT install")
 
     def runner(plan, **kwargs):
         plans.append(plan.blocks_to_swap)

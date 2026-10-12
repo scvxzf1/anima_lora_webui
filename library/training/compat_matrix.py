@@ -185,7 +185,7 @@ def _check_qwen_image_2_1_contract(out: _CompatBuilder, config, *,
             out.error(f"qwen_image_2_1_{flag}", flag, message)
 
     task = str(_get(config, "qwen_image_2_1_task", "t2i") or "t2i").strip().lower()
-    family = "Qwen Image 2.1 Edit LoRA" if task == "edit" else "Qwen Image 2.1 T2I LoRA"
+    family = "Qwen Image 2.1 Edit adapter" if task == "edit" else "Qwen Image 2.1 T2I adapter"
     forbid("mixed_precision", str(_get(config, "mixed_precision", "bf16") or "bf16").lower() != "bf16",
            f"{family} requires mixed_precision=bf16")
     forbid("base_compute", str(_get(config, "base_compute", "bf16") or "bf16").lower() != "bf16",
@@ -243,6 +243,12 @@ def check_training_compat(
     """Validate optimization-flag combinations used by training and Web preflight."""
 
     out = _CompatBuilder()
+    from library.quantization.qwen_nf4_compile_policy import qwen_nf4_compile_experiment_errors
+
+    for message in qwen_nf4_compile_experiment_errors(_get(config, "model_family"), config):
+        out.error("qwen_nf4_compile_experiment", "qwen_nf4_compile_experiment", message)
+    if _get(config, "qwen_nf4_compile_experiment") is True and world_size not in (None, 1):
+        out.error("qwen_nf4_compile_experiment", "qwen_nf4_compile_experiment", "single-process training required")
     config = _with_network_args(config)
 
     from library.training.auto_block_swap.config import configuration_errors
@@ -290,6 +296,11 @@ def check_training_compat(
     krea2_family = family_spec.name == "krea2_raw"
     z_image_family = family_spec.name == "z_image"
     qwen_image_2_1_family = family_spec.name == "qwen_image_2_1"
+    from library.models.qwen_image_2_1.preview_memory import configuration_errors as preview_memory_errors
+
+    for key, message in preview_memory_errors(config, family=family_spec.name):
+        code = "sample_vae_decode_contract" if key == "sample_vae_decode" else "qwen_preview_memory_contract"
+        out.error(code, key, message)
     fused_projections = str(_get(config, "qwen_fused_projections", "off") or "off").strip().lower()
     saved_blocks = _get(config, "qwen_saved_projection_blocks", 0) or 0
     projection_budget = _get(config, "qwen_projection_budget_mib", 0) or 0
@@ -306,6 +317,8 @@ def check_training_compat(
     elif fused_projections != "off":
         if not qwen_image_2_1_family:
             out.error("qwen_fused_projections_family", "qwen_fused_projections", "Projection packing requires qwen_image_2_1")
+        elif _bool_value(_get(config, "use_lokr")) or _bool_value(_get(config, "use_loha")):
+            out.error("qwen_fused_projections_plain_lora", "qwen_fused_projections", "Projection packing requires plain LoRA; LoKr and LoHa are unsupported")
         for key, active, detail in (
             ("mixed_precision", str(_get(config, "mixed_precision", "bf16") or "bf16").lower() != "bf16", "BF16 mixed precision"),
             ("base_compute", str(_get(config, "base_compute", "bf16") or "bf16").lower() != "bf16", "BF16 base compute"),
@@ -389,6 +402,7 @@ def check_training_compat(
 
     if family_spec.plain_lora_only:
         adapter_conflicts = []
+        network_spec_name = None
         if network_module not in {"", "networks.lora_anima"}:
             adapter_conflicts.append(f"network_module={network_module!r}")
         if family_spec.supported_network_specs is not None:
@@ -399,13 +413,22 @@ def check_training_compat(
             except ValueError as exc:
                 adapter_conflicts.append(f"network_args ({exc})")
             else:
+                network_spec_name = network_spec.name
                 if network_spec.name not in family_spec.supported_network_specs:
                     adapter_conflicts.append(f"network_spec={network_spec.name!r}")
+        allowed_flags = {"use_lokr", "use_loha"} if qwen_image_2_1_family else set()
         adapter_conflicts.extend(
             flag
             for flag in KREA2_UNSUPPORTED_ADAPTER_FLAGS
+            if flag not in allowed_flags
             if _bool_value(_get(config, flag), False)
         )
+        qwen_task = str(_get(config, "qwen_image_2_1_task", "t2i") or "t2i").strip().lower()
+        if qwen_image_2_1_family and qwen_task == "edit":
+            if network_spec_name in {"lokr", "loha"} or any(
+                _bool_value(_get(config, flag), False) for flag in ("use_lokr", "use_loha")
+            ):
+                adapter_conflicts.append("qwen_image_2_1_task=edit requires plain LoRA")
         moe_style = (
             str(_get(config, "use_moe_style", "false") or "false").strip().lower()
         )
@@ -432,8 +455,9 @@ def check_training_compat(
             out.error(
                 ("krea2_plain_lora_only" if krea2_family else "family_plain_lora_only"),
                 "network_module",
-                f"{family_spec.display_name} training currently supports only "
-                "plain LoRA; unsupported: " + ", ".join(adapter_conflicts),
+                f"{family_spec.display_name} training supports only "
+                + ("plain LoRA, LoKr, or LoHa" if qwen_image_2_1_family else "plain LoRA")
+                + "; unsupported: " + ", ".join(adapter_conflicts),
             )
 
     if qwen_image_2_1_family:

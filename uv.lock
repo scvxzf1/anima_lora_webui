@@ -193,6 +193,7 @@ dependencies = [
     { name = "toml" },
     { name = "torch" },
     { name = "torchaudio" },
+    { name = "torchdata" },
     { name = "torchsde" },
     { name = "torchvision" },
     { name = "tqdm" },
@@ -274,6 +275,7 @@ requires-dist = [
     { name = "toml", specifier = ">=0.10.2" },
     { name = "torch", specifier = ">=2.12.0,<2.13" },
     { name = "torchaudio", specifier = ">=2.11.0" },
+    { name = "torchdata", specifier = "==0.11.0" },
     { name = "torchsde", specifier = ">=0.2.6" },
     { name = "torchvision", specifier = ">=0.27.0,<0.28" },
     { name = "tqdm" },
@@ -2623,6 +2625,19 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/fe/a2/f132f73ceb74e6af48ec20376bfb53a70cedbabfcb7a64cbb766fe8a5bf9/torchopt-0.7.3.tar.gz", hash = "sha256:7b5f1628318a89891b14b7eecf26adde0e9c0590842a16a99fcaa09a91c59c56", size = 119328, upload-time = "2023-11-10T06:32:39.099Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/3d/9c/487b18e6e9edf0988baa823a3c0474b816ec9d6f8674b0b34097551f0024/torchopt-0.7.3-py3-none-any.whl", hash = "sha256:ff84581d3c335d83996e6541650170bd22b3fe7eca2215593720df5902dcdc75", size = 168166, upload-time = "2023-11-10T06:32:37.444Z" },
+]
+
+[[package]]
+name = "torchdata"
+version = "0.11.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "requests" },
+    { name = "torch" },
+    { name = "urllib3" },
+]
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/95/d4/af694ef718aedbe95a72760ab9ff7a6a7a44ace2d7f70c27bfeb67c5c503/torchdata-0.11.0-py3-none-any.whl", hash = "sha256:52b940fbbe0e00fb21cabddf528449d1bec5bfb0d0823b7487b15f951658ee33", size = 61968, upload-time = "2025-02-20T22:26:30.666954Z" },
 ]
 
 [[package]]

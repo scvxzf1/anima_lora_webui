@@ -92,24 +92,53 @@ console.log(JSON.stringify(names.map(modelFamily => ({{
         assert row["invalidAttention"] is False
 
 
-def test_qwen_image_2_1_plain_lora_options_are_filtered():
+@pytest.mark.parametrize("stale_catalog", [False, True])
+def test_qwen_image_2_1_task_gates_network_variants(stale_catalog):
     if not shutil.which("node"):
         pytest.skip("node is required for frontend checks")
     family_uri = (NEXT_DOMAIN / "model-family.js").as_uri()
     script = f"""
 const family = await import({json.dumps(family_uri + '?v=qwen-image-21-v2')});
-const selected = {{
-    adapter: family.modelFamilySelectOptions('lora_adapter_kind', 'qwen_image_2_1', ['lora', 'loha'], 'lora'),
-    module: family.modelFamilySelectOptions('network_module', 'qwen_image_2_1', ['networks.lora_anima', 'networks.reft'], 'networks.lora_anima'),
-    attention: family.modelFamilySelectOptions('attn_mode', 'qwen_image_2_1', ['torch', 'sdpa', 'flash'], 'torch'),
-}};
-console.log(JSON.stringify(selected));
+if ({json.dumps(stale_catalog)}) {{
+    family.configureModelFamilyCapabilities([{{
+        ...family.modelFamilyCapability('qwen_image_2_1'),
+        supported_network_specs: ['lora', 'loha', 'lokr'],
+        plain_lora_only: true,
+    }}]);
+}}
+const choices = ['lora', 'loha', 'lokr', 'glora', 'vera'];
+const select = (task) => family.modelFamilySelectOptions(
+    'lora_adapter_kind', 'qwen_image_2_1', choices, 'lora',
+    {{ values: {{ qwen_image_2_1_task: task }} }},
+);
+const context = (task) => ({{ values: {{ qwen_image_2_1_task: task }} }});
+const t2i = select('t2i');
+const edit = select('edit');
+family.configureModelFamilyCapabilities([{{
+    ...family.modelFamilyCapability('qwen_image_2_1'),
+    supported_network_specs: undefined,
+    plain_lora_only: true,
+}}]);
+const legacyT2I = select('t2i');
+console.log(JSON.stringify({{
+    t2i,
+    edit,
+    legacyT2I,
+    moduleEdit: family.modelFamilySelectOptions('network_module', 'qwen_image_2_1', ['networks.lora_anima', 'networks.reft'], 'networks.lora_anima', context('edit')),
+    attention: family.modelFamilySelectOptions('attn_mode', 'qwen_image_2_1', ['torch', 'sdpa', 'flash'], 'torch', context('edit')),
+    doraEdit: family.modelFamilyOptionSupported('dora_wd', 'qwen_image_2_1', true, context('edit')),
+    routeEdit: family.modelFamilyOptionSupported('router_source', 'qwen_image_2_1', 'fei', context('edit')),
+}}));
 """
     result = subprocess.run(
         ["node", "--input-type=module", "--eval", script],
         cwd=ROOT, check=True, capture_output=True, text=True, timeout=20,
     )
     selected = json.loads(result.stdout)
-    assert [item["value"] for item in selected["adapter"]] == ["lora"]
-    assert [item["value"] for item in selected["module"]] == ["networks.lora_anima"]
+    assert [item["value"] for item in selected["t2i"]] == ["lora", "loha", "lokr"]
+    assert [item["value"] for item in selected["edit"]] == ["lora"]
+    assert [item["value"] for item in selected["legacyT2I"]] == ["lora"]
+    assert [item["value"] for item in selected["moduleEdit"]] == ["networks.lora_anima"]
     assert [item["value"] for item in selected["attention"]] == ["torch", "sdpa", "flash"]
+    assert selected["doraEdit"] is False
+    assert selected["routeEdit"] is False

@@ -3,6 +3,7 @@ import { Plus, Copy, Trash2, ArrowUp, ArrowDown } from "lucide-react";
 import { blankSamplePromptRow, parseSamplePromptLine } from "./samplePromptCodec";
 import { applyUniformPromptValues, commonPromptValues, isQwenSampleFamily, movePromptLine, promptLines, promptRowError, supportsEditSamples, updatePromptLine, type UniformPromptValues } from "./promptDocument";
 import { SampleReferenceInput } from "./SampleReferenceInput";
+import { SampleReferencePreview } from "./SampleReferencePreview";
 import "./PromptVisualEditor.css";
 
 const FIELDS = [["prompt", "正向提示词"], ["negative_prompt", "负向提示词"], ["width", "宽度"], ["height", "高度"], ["steps", "步数"], ["cfg", "CFG"], ["seed", "种子"], ["flow_shift", "Flow shift"], ["sample_sampler", "采样器"], ["extra", "其他参数"]] as const;
@@ -58,7 +59,10 @@ export function PromptVisualEditor({ content, disabled, onChange, onEditing, mod
         {uniformError && <p role="alert">{uniformError}</p>}
       </details>}
       {!editing && rows.map(({ index, row }, position) => <div className="prompt-row" key={index}>
-        <button type="button" className="prompt-row-title" disabled={disabled || !!editing} onClick={() => setEditing({ index, row })}>样张 {position + 1}{row.sample_task === "edit" ? ` · 编辑 · ${row.reference_images.length} 图` : ""}: {row.prompt}</button>
+        <div className="prompt-row-content">
+          <button type="button" className="prompt-row-title" disabled={disabled || !!editing} onClick={() => setEditing({ index, row })}>样张 {position + 1}{row.sample_task === "edit" ? ` · 编辑 · ${row.reference_images.length} 图` : ""}: {row.prompt}</button>
+          {row.sample_task === "edit" && <div className="prompt-row-references">{row.reference_images.map((path, referenceIndex) => <SampleReferencePreview key={`${path}-${referenceIndex}`} path={path} label={`样张 ${position + 1} 参考图 ${referenceIndex + 1}`} />)}</div>}
+        </div>
         <div className="toolbar">
           {[[Copy, "复制", () => append(rows[position].raw.trimEnd()), false], [ArrowUp, "上移", () => onChange(movePromptLine(content, index, -1)), position === 0], [ArrowDown, "下移", () => onChange(movePromptLine(content, index, 1)), position === rows.length - 1], [Trash2, "删除", () => onChange(content.split(/(?<=\n)/).filter((_, i) => i !== index).join("")), false]].map(([Icon, title, action, blocked]) => {
             const Tool = Icon as typeof Copy;

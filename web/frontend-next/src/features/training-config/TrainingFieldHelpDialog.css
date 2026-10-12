@@ -5,17 +5,29 @@
   display: grid;
   place-items: center;
   padding: 20px;
-  background: rgb(0 0 0 / 48%);
+  background: rgb(0 0 0 / 56%);
+  backdrop-filter: blur(3px);
+  animation: training-help-backdrop-in 0.2s ease;
+}
+@keyframes training-help-backdrop-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 .training-field-help-dialog {
-  width: min(680px, 100%);
-  max-height: min(82vh, 760px);
+  width: min(720px, 100%);
+  max-height: min(86vh, 820px);
   overflow: auto;
   color: var(--ink);
   background: var(--surface);
   border: 1px solid var(--line-strong);
-  border-radius: 6px;
-  box-shadow: 0 18px 54px rgb(0 0 0 / 28%);
+  border-radius: 12px;
+  box-shadow: 0 24px 64px rgb(0 0 0 / 42%), 0 0 0 1px rgb(255 255 255 / 4%) inset;
+  animation: training-help-dialog-in 0.24s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.training-field-help-content .training-field-help { display: block; }
+@keyframes training-help-dialog-in {
+  from { opacity: 0; transform: scale(0.96) translateY(12px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
 }
 .training-field-help-dialog > header {
   position: sticky;
@@ -25,36 +37,177 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
-  padding: 16px 20px;
+  padding: 20px 24px;
   background: var(--surface);
   border-bottom: 1px solid var(--line);
 }
-.training-field-help-dialog > header h2 { margin: 0; font-size: 17px; }
-.training-field-help-dialog > header code { display: block; margin-top: 5px; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
-.training-field-help-dialog > header button { flex: 0 0 34px; }
-.training-field-help-context {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 1px;
+.training-field-help-dialog > header h2 {
   margin: 0;
-  background: var(--line);
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.training-field-help-dialog > header code {
+  display: inline-block;
+  margin-top: 6px;
+  padding: 3px 8px;
+  color: var(--accent);
+  background: var(--surface-subtle);
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  overflow-wrap: anywhere;
+}
+.training-field-help-dialog > header button {
+  display: grid;
+  place-items: center;
+  flex: 0 0 36px;
+  padding: 0;
+  height: 36px;
+  transition: background 0.15s ease;
+}
+.training-field-help-dialog > header button:hover {
+  background: var(--surface-subtle);
+}
+.training-field-help-context {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 12px 24px;
+  margin: 0;
+  background: var(--surface-subtle);
   border-bottom: 1px solid var(--line);
 }
-.training-field-help-context > div { min-width: 0; padding: 10px 20px; background: var(--surface-subtle); }
-.training-field-help-context dt { color: var(--muted); font-size: 11px; }
-.training-field-help-context dd { margin: 4px 0 0; overflow-wrap: anywhere; font-size: 13px; }
-.training-field-help-context .training-field-help-unavailable { grid-column: 1 / -1; background: var(--warning-soft); }
-.training-field-help-unavailable dd { color: var(--warning); }
-.training-field-help-content { display: grid; gap: 0; padding: 4px 20px 16px; }
-.training-field-help-section { padding: 12px 0; border-bottom: 1px solid var(--line); }
-.training-field-help-section:last-child { border-bottom: 0; }
-.training-field-help-section h3 { margin: 0 0 5px; font-size: 13px; }
-.training-field-help-section p, .training-field-help-section ul { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.55; overflow-wrap: anywhere; }
-.training-field-help-section ul { padding-left: 20px; }
-.training-field-help-section li + li { margin-top: 4px; }
+.training-field-help-context dl {
+  min-width: 0;
+  margin: 0;
+}
+.training-field-help-context dt {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.training-field-help-context dd {
+  margin: 6px 0 0;
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+.training-field-help-unavailable {
+  margin: 0;
+  padding: 12px 24px;
+  background: color-mix(in srgb, var(--warning) 8%, var(--surface-subtle));
+  border-left: 3px solid var(--warning);
+}
+.training-field-help-unavailable dt { color: var(--muted); font-size: 12px; }
+.training-field-help-unavailable dd {
+  margin: 4px 0 0;
+  color: var(--warning);
+  font-weight: 600;
+}
+.training-field-help-default { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+.training-field-help-family {
+  margin-left: auto;
+  padding: 2px 8px;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  color: var(--muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.training-field-help-content {
+  display: grid;
+  gap: 0;
+  padding: 8px 24px 20px;
+}
+.training-field-help-section {
+  padding: 18px 0;
+  border-bottom: 1px solid var(--line);
+}
+.training-field-help-section:last-child {
+  border-bottom: 0;
+  padding-bottom: 8px;
+}
+.training-field-help-section h3 {
+  display: flex;
+  align-items: center;
+  margin: 0 0 10px;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.training-field-help-section h3 svg {
+  flex-shrink: 0;
+  color: var(--accent);
+  opacity: 0.8;
+}
+.training-field-help-section p,
+.training-field-help-section ul {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.training-field-help-section ul {
+  padding-left: 22px;
+  list-style: none;
+}
+.training-field-help-section li {
+  position: relative;
+  padding-left: 6px;
+}
+.training-field-help-section li::before {
+  content: "•";
+  position: absolute;
+  left: -16px;
+  color: var(--accent);
+  font-weight: 700;
+}
+.training-field-help-section li + li {
+  margin-top: 6px;
+}
+.training-field-help-summary { margin: 16px 0; font-size: 14px; line-height: 1.7; overflow-wrap: anywhere; }
+.training-field-help-recommendation {
+  margin: 4px 0 8px;
+  padding: 14px 16px;
+  border-left: 3px solid var(--accent);
+  border-radius: 0 6px 6px 0;
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+}
+.training-field-help-recommendation h3 { margin: 0 0 6px; color: var(--accent); font-size: 14px; }
+.training-field-help-recommendation p { margin: 0; font-size: 14px; line-height: 1.7; white-space: pre-line; overflow-wrap: anywhere; }
+.training-field-help-section p + p, .training-field-help-recommendation p + p { margin-top: 10px; }
+.training-field-help-options { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 13px; }
+.training-field-help-options th, .training-field-help-options td {
+  padding: 10px 8px;
+  text-align: left;
+  vertical-align: top;
+  overflow-wrap: anywhere;
+  border-bottom: 1px solid var(--line);
+}
+.training-field-help-options th { color: var(--muted); font-weight: 500; background: var(--surface-subtle); }
+.training-field-help-options th:first-child { width: 30%; }
+.training-field-help-options tr[data-current] { background: color-mix(in srgb, var(--accent) 8%, var(--surface)); }
+.training-field-help-options code, .training-field-help-options small { display: block; margin-top: 4px; color: var(--muted); font-size: 12px; }
+.training-field-help-advanced { padding: 16px 0; border-bottom: 1px solid var(--line); }
+.training-field-help-advanced summary { color: var(--muted); font-size: 14px; cursor: pointer; }
+.training-field-help-related { padding: 16px 0 4px; }
+.training-field-help-related h3 { margin: 0 0 8px; font-size: 13px; }
+.training-field-help-related ul { display: flex; flex-wrap: wrap; gap: 8px 16px; margin: 0; padding: 0; list-style: none; color: var(--muted); font-size: 12px; }
+.training-field-help-related code { overflow-wrap: anywhere; }
 @media (max-width: 520px) {
   .training-field-help-backdrop { padding: 10px; }
-  .training-field-help-context { grid-template-columns: minmax(0, 1fr); }
-  .training-field-help-context .training-field-help-unavailable { grid-column: auto; }
+  .training-field-help-context, .training-field-help-unavailable { padding-left: 14px; padding-right: 14px; }
+  .training-field-help-family { margin-left: 0; }
+  .training-field-help-dialog > header button { flex-basis: 44px; height: 44px; }
   .training-field-help-dialog > header, .training-field-help-content { padding-left: 14px; padding-right: 14px; }
+  .training-field-help-options th, .training-field-help-options td { padding: 8px 4px; }
 }

@@ -1,7 +1,7 @@
 """Training contract for hardware-selected precision and bounded OOM retry.
 
 The ``auto`` mode is resolved before the trainer is constructed.  It may select
-plain BF16/FP32, or the explicit FP16/FP32 island path for pre-Ampere GPUs.
+plain BF16/FP32, native Anima FP16 AMP, or explicit FP16/FP32 islands.
 """
 
 from collections.abc import Mapping
@@ -22,13 +22,17 @@ def resolved_mode(config):
     if mode != "auto":
         return mode
     resolved = get("adaptive_resolved_mode", None)
-    if resolved in {"bf16", "fp16_fp32", "fp32"}:
+    if resolved in {"bf16", "native_fp16", "fp16_fp32", "fp32"}:
         return resolved
     # A deterministic fallback keeps config/preflight validation usable on a
     # host where CUDA probing is unavailable.  The training entry resolves the
     # actual hardware policy before launching a worker.
     mixed = str(get("mixed_precision", "bf16") or "bf16").strip().lower()
-    return {"bf16": "bf16", "fp16": "fp16_fp32", "no": "fp32"}.get(mixed, "fp32")
+    from library.models.family_registry import normalize_registered_family
+    family = normalize_registered_family(get("model_family", "anima") or "anima",
+                                         source="adaptive precision model_family", allow_aliases=True)
+    fp16_mode = "native_fp16" if family == "anima" else "fp16_fp32"
+    return {"bf16": "bf16", "fp16": fp16_mode, "no": "fp32"}.get(mixed, "fp32")
 
 
 def islands_enabled(config):
@@ -36,30 +40,44 @@ def islands_enabled(config):
 
 
 def add_arguments(parser):
-    parser.add_argument("--adaptive_precision", choices=("off", "auto", "fp16_fp32"), default="off",
-                        help="Hardware-selected precision, or explicit FP16/FP32 precision islands.")
+    parser.add_argument("--adaptive_precision", choices=("off", "auto", "native_fp16", "fp16_fp32"), default="off",
+                        help="Hardware-selected precision, native Anima FP16 AMP, or FP16/FP32 islands.")
     parser.add_argument("--adaptive_fp32_modules", nargs="*", default=[],
                         help="Exact names or glob patterns of frozen Linear modules kept in FP32.")
     parser.add_argument("--adaptive_loss_scale", type=float, default=1024.0,
-                        help="Initial Accelerate loss scale for explicit FP16/FP32 training.")
+                        help="Initial Accelerate loss scale for native FP16 AMP or FP16/FP32 islands.")
     parser.add_argument("--adaptive_oom_retry", action="store_true",
                         help="[EXPERIMENTAL] Run training in a fresh-process swap-retry supervisor.")
+    parser.add_argument("--adaptive_oom_retry_resume", action="store_true",
+                        help="[EXPERIMENTAL] Save exact cursors and resume committed CUDA OOM steps.")
     parser.add_argument("--adaptive_oom_retry_max_attempts", type=int, default=4)
     parser.add_argument("--adaptive_oom_retry_swap_increment", type=int, default=2)
-    parser.add_argument("--adaptive_oom_retry_max_swap", type=int, default=26)
+    parser.add_argument("--adaptive_oom_retry_max_swap", type=int, default=0,
+                        help="Maximum swap blocks; 0 uses the local model's structural limit.")
     parser.add_argument("--adaptive_oom_retry_timeout", type=float, default=3600.0)
 
 
 def configuration_errors(config, *, world_size=1):
     get = config.get if isinstance(config, Mapping) else lambda k, d=None: getattr(config, k, d)
-    mode = resolved_mode(config)
+    try:
+        mode = resolved_mode(config)
+    except ValueError as exc:
+        return [str(exc)]
+    if mode == "native_fp16":
+        from .native_precision import configuration_errors as native_errors
+        return native_errors(config, world_size=world_size)
     if mode == "off":
         return (["adaptive_oom_retry requires adaptive_precision=fp16_fp32"]
                 if get("adaptive_oom_retry", False) else [])
     if mode not in {"bf16", "fp16_fp32", "fp32"}:
         return ["Unknown adaptive_precision mode"]
     errors = []
-    family = str(get("model_family", "anima") or "anima").strip().lower()
+    from library.models.family_registry import normalize_registered_family
+    try:
+        family = normalize_registered_family(get("model_family", "anima") or "anima",
+                                             source="adaptive precision model_family", allow_aliases=True)
+    except ValueError as exc:
+        return [str(exc)]
     if family not in ADAPTIVE_FAMILIES:
         errors.append(f"adaptive precision does not support model_family={family!r}")
     if mode in {"bf16", "fp32"}:
@@ -117,27 +135,36 @@ def configuration_errors(config, *, world_size=1):
 
 def require_training_contract(config, *, world_size=1):
     errors = configuration_errors(config, world_size=world_size)
+    from .resume_runtime import configuration_errors as recovery_errors
+    get = config.get if isinstance(config, Mapping) else lambda k, d=None: getattr(config, k, d)
+    errors.extend(recovery_errors(get, world_size=world_size))
     if errors:
         raise ValueError("; ".join(errors))
 
 
-def retry_configuration_errors(get):
+def retry_bounds_errors(get):
     errors = []
     for key, default, minimum, maximum in (
-        ("blocks_to_swap", 0, 0, 26), ("adaptive_oom_retry_max_swap", 26, 1, 26),
-        ("adaptive_oom_retry_swap_increment", 2, 1, 26),
+        ("blocks_to_swap", 0, 0, None), ("adaptive_oom_retry_max_swap", 0, 0, None),
+        ("adaptive_oom_retry_swap_increment", 2, 1, None),
         ("adaptive_oom_retry_max_attempts", 4, 1, 16),
     ):
         value = get(key, default)
-        if type(value) is not int or not minimum <= value <= maximum:
-            errors.append(f"{key} must be an integer in [{minimum}, {maximum}]")
-    initial, maximum = get("blocks_to_swap", 0), get("adaptive_oom_retry_max_swap", 26)
-    if type(initial) is int and type(maximum) is int and initial > maximum:
+        if type(value) is not int or value < minimum or (maximum is not None and value > maximum):
+            bound = f"[{minimum}, {maximum}]" if maximum is not None else f">= {minimum}"
+            errors.append(f"{key} must be an integer {bound}")
+    initial, maximum = get("blocks_to_swap", 0), get("adaptive_oom_retry_max_swap", 0)
+    if type(initial) is int and type(maximum) is int and maximum and initial > maximum:
         errors.append("Initial block swap exceeds retry maximum")
     timeout = get("adaptive_oom_retry_timeout", 3600.0)
     if (isinstance(timeout, bool) or not isinstance(timeout, (int, float))
             or not math.isfinite(timeout) or timeout <= 0):
         errors.append("adaptive_oom_retry_timeout must be finite and positive")
+    return errors
+
+
+def retry_configuration_errors(get):
+    errors = retry_bounds_errors(get)
     for key in ("resume", "initial_step", "initial_epoch", "save_state", "save_state_on_train_end",
                 "save_every_n_steps", "save_every_n_epochs", "checkpointing_epochs", "save_n_epoch_ratio",
                 "huggingface_repo_id", "log_with", "debug_dataset", "artist_filter", "scale_weight_norms"):

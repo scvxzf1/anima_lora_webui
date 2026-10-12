@@ -20,7 +20,7 @@ family、未注册推理模式或 sampler 都应失败，不得静默回退 Anim
 | `anima` | 默认生产模型族 | 完整方法面 | `single` / `batch` / `interactive`；`euler` / `er_sde` / `lcm` | registry 中声明的 Anima 后端 |
 | `krea2_raw` | 第二生产模型族 | 开放所有网络变体选择 | `single` + `euler` | `torch` / `sdpa` / `flash` |
 | `z_image` | 训练与训练预览 v1 | 开放所有网络变体选择 | 尚未注册；mode/sampler 集合为空 | `torch` / `sdpa` / `flash` (`flash_varlen`) |
-| `qwen_image_2_1` | T2I LoRA 首阶段；CMP 90HX torch/Flash 指定组合各 60 步短测通过 | 仅 plain LoRA | 尚未注册 | `torch` / `sdpa` / `flash`（BF16） |
+| `qwen_image_2_1` | T2I LoRA 首阶段；CMP 90HX torch/Flash 指定组合各 60 步短测通过 | T2I plain LoRA；T2I 实验 LoKr/LoHa；Edit 仅 plain LoRA | `single` + `euler`（T2I/Edit、plain LoRA） | `torch` / `sdpa` / `flash`（BF16） |
 
 WebUI 能选择四个模型族，但这不扩大 registry 的能力集合。尤其是 Z-Image 的训练 sample
 preview 只服务训练流程，不代表生图测试、独立 CLI 推理、batch 或 interactive 已可用。
@@ -74,9 +74,28 @@ Anima 使用 `blocks` 并均分 28/40 block；Krea-2 使用 `blocks` 并保留 2
   Anima-only extras 必须显式拒绝。
 - Z-Image 目前只有 `library/models/z_image/training_preview.py`。通用 image-test 和独立推理
   没有注册 handler，请勿从 WebUI family 下拉框推断其已支持。
-- Qwen Image 2.1 的推理、image-test 和训练 sample preview 均未实现，入口显式拒绝。
+- Qwen Image 2.1 的独立入口支持 BF16 `single` + `euler` 的 T2I/Edit 和最多一个 plain LoRA；Edit 接受 1–4 张有序参考图，完整 NF4 权重的单参考单步与四参考/CFG2/两步出图及 latent 再解码已通过。image-test、batch 和 interactive 仍显式拒绝。
+
+### 采样批次的块交换生命周期
+
+Anima、Krea-2 与 Z-Image 训练预览在一批样张进入/退出时统一切换块交换，
+不再在每个 prompt 前重复初始化。入口、预测和清理异常进入既有跨进程失败汇总；
+退出独立尝试恢复 adapter 原始 training 状态、合法驻留布局以及 CPU/当前 CUDA RNG。
+恢复本身失败仍会传播错误，不保证设备错误后可以继续训练。解码移动模型后的必要 prepare 保留。
+
+Anima tiled 推理同样复用一次 forward-only scope，退出恢复原 swap 模式。
+CPU/Gloo 和小型真实 CUDA/slab 验收已通过，完整三族权重的吞吐与样图质量未在本轮测量。
+本轮没有推广跨族 DiT K/V 缓存；Qwen 继续默认 B。详见
+[采样生命周期验收](findings/sampling_batch_lifecycle_20261002.md)。
 
 ## Qwen Image 2.1 首阶段边界
+
+2026-10-03 增补：Krea-2、Z-Image、Qwen Image 2.1 新增专用主干MLP混合BF16/NF4
+文件的实验加载路径，通过现有模型路径自动识别，不新增训练配置项。
+三族格式、官方小模型plain LoRA/checkpoint及CUDA换层验收已通过；没有完整权重热测或
+质量结论。新格式限BF16/eager/full checkpoint，拒绝compile和Qwen融合投影等组合。
+`base_compute=nf4`在Z-Image/Qwen仍不可用；下文旧NF4禁用声明指该通用开关，
+专用混合文件的完整边界见[多模型族混合NF4](experimental/multi-family-mixed-nf4.md)。
 
 `configs/methods/qwen_image_2_1_lora.toml` 是 T2I plain LoRA 起始配置。三个组件使用
 ComfyUI 单文件 safetensors：32-block DiT、Qwen3-VL 8B 和独立的 RGBA/64-channel VAE。
@@ -98,11 +117,31 @@ flow-matching sigma 和 attention-only LoRA。当前仅允许 BF16、`torch`/`sd
 随机裁剪、翻转和颜色增强。Apply 会校验 Qwen family、plain LoRA、缓存开关及图像配对，并写入
 `qwen_image_2_1_task="edit"`，不会启动训练。
 
-Edit 已通过配对、缓存 schema/网格、DiT 序列形状、Apply 和 UI 单元测试，并以本地 tokenizer 和真实
-`Qwen3VLProcessor` 对 64×32 合成参考图完成 CPU processor smoke（生成 2 个 image slots）；尚未加载
-Qwen3-VL 模型权重执行文本/图像条件编码，也未完成 GPU 编辑训练热测。因此 swap/compile 虽被兼容层允许，
-仍不代表已在 Edit 任务上完成硬件验收。`auto_block_swap`、CUDA Graph compile preset、NF4、
-文本编码器训练、caption dropout、sample preview、通用推理和 PP 仍未接入。依赖 Diffusers 尚未发版的 Qwen 2.1 实现，
+Edit 已通过配对、缓存 schema/网格、DiT 序列形状、Apply 和 UI 单元测试，并在 CMP 90HX 上用 50 对真实
+编辑数据完成 plain LoRA 的 50 步 BF16/full-checkpoint/swap/compile 链路验收；训练预览也已通过单、双、
+四参考图及 CFG 编辑短测（见[Edit 热训练](findings/qwen_edit_hot_training_20260928.md)和[编辑采样](findings/qwen_edit_sampling_hot_20260928.md)）。该证据覆盖训练链路和采样后恢复，不代表编辑质量、optimizer 续训、其他 adapter
+或其他硬件组合已验收。`auto_block_swap`、CUDA Graph compile preset、全量NF4开关、
+文本编码器训练、caption dropout 和 PP 仍未接入。T2I/Edit 独立推理通过
+`library/models/qwen_image_2_1/inference_runner.py` 复用专属 Euler、64-channel/16x VAE decode
+和严格 plain LoRA loader，并支持专属 `--latent_path` 解码。完整 NF4 的单参考 Edit 已出图；
+四参考 CFG2/两步在接入自动 TE offload 后出图并完成 latent 再解码，PNG 像素逐字节相同。
+边界见[独立推理验收](findings/qwen_standalone_inference_20261005.md)。仍不支持 image-test、
+batch/interactive、LoKr/LoHa 推理或独立 compile。NF4 训练 compile 的静态 + 原生 norm +
+非 persistent reduction 诊断组合已通过完整两步合成 Edit 数值对照，但真实缓存、
+896×1184 bucket 与 flow loss 两步对照失败；strict eager 跨实例两步已逐位复现，
+追加原生SiLU诊断后，完整真实两步保存张量通过原梯度门槛并逐位一致，已独立
+复算；随后真实两步与原生合成CLI独立重验均正常exit0。生产attention-only、
+zero-up初始化的两个真实Edit bucket也完成1286项逐位一致的独立重验、exit0。
+联合策略已接入默认关闭的 `qwen_nf4_compile_experiment` 受限入口；真实 `train.py`
+完成两步 AdamW 更新、约 67 MB checkpoint 保存并正常退出；追加两次 512×512 训练预览、
+完整状态保存及新进程 step2→3 续训均自然退出。Next 工作台开关与本地正式构建通过。
+仅限 BF16 Edit、plain attention LoRA rank/alpha16、torch attention、full checkpoint、
+swap24/foreach/BF16、static/all/Inductor default。普通 NF4 compile 拒绝保留；
+连续训练与续训的完整轨迹逐位复现、其他 optimizer、长训、性能、画质和跨硬件尚未验收。
+Python RNG 恢复即刻与保存值一致，随后 Rich 日志会消费全局 Python RNG，详见定位报告。配置见
+[NF4 编译实验](experimental/qwen-nf4-compile.md)，历史失败与验收见
+[NF4 编译定位](findings/qwen_nf4_compile_90hx_20261005.md)。
+依赖 Diffusers 尚未发版的 Qwen 2.1 实现，
 `pyproject.toml` 暂固定到包含官方 PR 的上游提交。Flash 使用 Qwen 专属 packed
 FlashAttention 2 varlen：按真实 key-valid mask gather K/V，避免把 tokenizer 左填充误作有效前缀；
 带因果三角 mask 的文本段仍走原生 SDPA，图像查询走 Flash varlen。`configs/methods/`
@@ -113,6 +152,31 @@ FlashAttention 2 varlen：按真实 key-valid mask gather K/V，避免把 tokeni
 中位步时约 10.16 秒，torch 约 7.94 秒，因此 Flash 保持 opt-in，不作为速度推荐。
 这些短测不代表训练收敛、样图质量、保存后重载/续训、其他 swap 数或其他硬件；`24` 是通过
 测试的点位，不是跨硬件默认建议。
+
+LoKr/LoHa 仅在 T2I 的指定 BF16 + full checkpoint + swap24 + torch attention + compile
+组合上完成 90HX 两步 smoke 与 20 步热测；本轮 plain LoRA、LoHa、LoKr 的稳态中位步时分别为
+7.938、9.090、11.373 秒。LoKr 需要在 Qwen block 编译前启用 checkpoint 编译预算；阶段 3
+投影融合与 LoKr/LoHa 组合仍拒绝。DoRA、VeRA 和其他变体未开放。Next WebUI 仅在 T2I 任务中展示 LoKr/LoHa
+实验选项，Edit 任务仍只展示 plain LoRA；这不扩大后端兼容矩阵或真机验收范围。
+见 [变体热测](findings/qwen_image_2_1_adapter_variants_90hx_20260929.md)。
+
+### 训练预览的 DiT 前缀 K/V 缓存
+
+训练预览的块交换默认继承训练状态，可通过 `qwen_sample_swap_mode="custom"` 和
+`qwen_sample_blocks_to_swap` 临时覆盖数量并在退出恢复。所有模型族的训练预览 VAE 独立使用
+`sample_vae_decode="tiled"/"auto"/"cpu"`，默认分块 GPU 解码；自动模式仅在 CUDA OOM 时逐级降级。
+这些配置不控制 DiT K/V 缓存；边界、界面入口与验收见
+[Qwen 预览显存策略](configuration/qwen-preview-memory.md)。
+
+Qwen 训练预览支持官方文本/参考图前缀 K/V 缓存。JSON 或 TOML 样张条目设置
+`use_kv_cache=true` 显式启用；省略或设为 `false` 保留 B 路径（无逐步 swap 初始化、无 DiT K/V 缓存）。
+直接 Python 采样 API 同样默认 B，可通过 `use_kv_cache=True` 显式启用 C；
+开关不改变训练 forward 或磁盘 TE/VAE 缓存。
+缓存只在当前样张内复用，CFG 正负分支独立，下一样张、下一采样轮次或权重更新后重新建立。
+仅对官方 causal/eval 模型及静态 LoRA/LoHa/LoKr 启用；动态 hook、未知 attention processor
+和自定义 forward 回退无缓存。当前前端没有增加缓存控件。
+该路径增加显存，BF16 输出也可能不同；CMP 90HX 上的收益与数值边界见
+[A/B/C 验收](findings/qwen_sampling_kv_abc_90hx_20261002.md)，不作为默认速度优化。
 
 ## Z-Image v1 边界
 
@@ -138,7 +202,8 @@ transformer input/caption width 和 Qwen3 hidden width。
 以下能力在 v1 明确不可用或由兼容层关闭：
 
 - 通用推理/image-test、batch/interactive mode 和任意推理 sampler；
-- NF4、`torch.compile`、per-band dynamic-seq 和 selective/offloaded checkpointing；
+- 全量NF4开关、`torch.compile`、per-band dynamic-seq 和 selective/offloaded checkpointing；
+  专用混合NF4文件作为实验例外，见上方增补与实验文档；
 - 依赖独立训练 forward hooks 的 MethodAdapter（如 IP-Adapter、EasyControl、BYG）；
 - weighted caption、layer range、alternate loss/timestep scheme；
 - 任意大于 0 的 dataset/subset caption dropout。

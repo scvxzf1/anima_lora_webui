@@ -5,10 +5,23 @@ import torch
 from diffusers import FlowMatchEulerDiscreteScheduler
 
 from library.models.qwen_image_2_1.family import forward_for_loss
+from library.models.qwen_image_2_1.preview_kv import PreviewKVForward, supports_preview_kv
 
 
 @torch.no_grad()
-def generate_preview(dit, prompt, positive, negative, reference, *, device, dtype, seed, forward=forward_for_loss):
+def generate_preview(dit, prompt, positive, negative, reference, *, device, dtype, seed,
+                     forward=forward_for_loss, use_kv_cache=False):
+    """Sample using the inference block layout prepared by the caller.
+
+    With block swap enabled, call ``switch_block_swap_for_inference()`` before
+    the prompt batch and restore training mode afterwards. The forward-only
+    offloader maintains that layout across denoising and CFG forwards.
+    The default uses B without DiT KV caching. ``use_kv_cache=True`` lets
+    official causal-condition eval models reuse a separate cache per CFG branch;
+    custom forwards and incompatible models keep their uncached behavior.
+    """
+    if not isinstance(use_kv_cache, bool):
+        raise ValueError("Qwen preview use_kv_cache must be a boolean")
     width, height = int(prompt.get("width", 512)), int(prompt.get("height", 512))
     count = int(prompt.get("sample_steps", 28))
     scale = float(prompt.get("guidance_scale", prompt.get("scale", 1.0)))
@@ -30,19 +43,28 @@ def generate_preview(dit, prompt, positive, negative, reference, *, device, dtyp
         else:
             reference = tuple(value.to(device=device, dtype=dtype) for value in reference)
 
-    def predict(values, sigma):
-        prepare = getattr(dit, "prepare_block_swap_before_forward", None)
-        if prepare:
-            prepare()
+    caches = [PreviewKVForward(dit) for _ in range(1 + (negative is not None))] if (
+        use_kv_cache and supports_preview_kv(dit, forward)
+    ) else []
+
+    def predict(values, sigma, branch):
+        if caches:
+            return caches[branch](latent, values[0], values[1], sigma,
+                                  reference_latents=reference,
+                                  image_slot_mask=values[2] if reference is not None else None)
         return forward(dit, latent, values[0], values[1], sigma,
                        reference_latents=reference,
                        image_slot_mask=values[2] if reference is not None else None)
 
-    for timestep in scheduler.timesteps:
-        sigma = (timestep / 1000).expand(1)
-        prediction = predict(positive, sigma)
-        if negative is not None:
-            unconditional = predict(negative, sigma)
-            prediction = unconditional + scale * (prediction - unconditional)
-        latent = scheduler.step(prediction, timestep, latent, return_dict=False)[0].to(dtype)
+    try:
+        for timestep in scheduler.timesteps:
+            sigma = (timestep / 1000).expand(1)
+            prediction = predict(positive, sigma, 0)
+            if negative is not None:
+                unconditional = predict(negative, sigma, 1)
+                prediction = unconditional + scale * (prediction - unconditional)
+            latent = scheduler.step(prediction, timestep, latent, return_dict=False)[0].to(dtype)
+    finally:
+        for cache in caches:
+            cache.close()
     return latent

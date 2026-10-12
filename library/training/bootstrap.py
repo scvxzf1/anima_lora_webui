@@ -242,6 +242,14 @@ class TrainingBootstrap:
         """
         if getattr(args, "mixed_precision", None) != "fp16":
             return False
+        from library.training.adaptive_runtime.native_precision import native_enabled
+        if native_enabled(args):
+            from library.training.adaptive_runtime.native_family import native_family, execution_guards
+            family = native_family(getattr(args, "model_family", "anima"))
+            if family == "krea2_raw":
+                # Installed before LoRA org_forward capture in the family loader.
+                execution_guards(unet, family)
+                return True
         if not isinstance(unet, anima_cls):
             return False
         unet.enable_fp32_residual()
@@ -469,6 +477,8 @@ class TrainingBootstrap:
             self.apply_train_batch_size_to_user_config(user_config, args)
             self.validate_qwen_dataset_config(args, user_config)
 
+            if getattr(args, "adaptive_oom_retry_resume", False):
+                args._adaptive_data_config = user_config
             blueprint = blueprint_generator.generate(user_config, args)
             train_dataset_group, val_dataset_group = (
                 config_util.generate_dataset_group_by_blueprint(
@@ -668,6 +678,14 @@ class TrainingBootstrap:
                 from library.models.qwen_image_2_1.compile import (
                     compile_qwen_image_2_1_blocks,
                 )
+                from library.runtime.harness import _pin_lokr_checkpoint_compile_budget
+
+                _pin_lokr_checkpoint_compile_budget(
+                    network,
+                    n_token_families=None,
+                    grad_ckpt=bool(getattr(args, "gradient_checkpointing", False)),
+                    logger=logger,
+                )
 
                 compile_qwen_image_2_1_blocks(
                     unet,
@@ -675,6 +693,8 @@ class TrainingBootstrap:
                     mode=getattr(args, "compile_inductor_mode", None),
                     dynamic_seq=bool(getattr(args, "compile_dynamic_seq", True)),
                     scope=str(getattr(args, "compile_block_scope", "all") or "all"),
+                    experiment_args=args,
+                    network=network,
                 )
 
         if args.torch_compile and resolve_model_family(args) != "qwen_image_2_1":
@@ -888,11 +908,17 @@ class TrainingBootstrap:
                     f"(subset_index={sorted(active0 or [])})"
                 )
 
-        train_dataloader = torch.utils.data.DataLoader(
-            train_dataset_group,
-            shuffle=True,
-            **dataloader_kwargs,
-        )
+        if getattr(args, "adaptive_oom_retry_resume", False):
+            from library.training.adaptive_runtime.resume_data import make_cursor_dataloader
+            train_dataloader = make_cursor_dataloader(
+                train_dataset_group, seed=args.seed,
+                loader_kwargs={k: v for k, v in dataloader_kwargs.items()
+                               if k not in {"batch_size", "collate_fn"}},
+            )
+        else:
+            train_dataloader = torch.utils.data.DataLoader(
+                train_dataset_group, shuffle=True, **dataloader_kwargs,
+            )
 
         val_dataloader = torch.utils.data.DataLoader(
             val_dataset_group if val_dataset_group is not None else [],
@@ -918,6 +944,9 @@ class TrainingBootstrap:
                 )
 
         train_dataset_group.set_max_train_steps(args.max_train_steps)
+        if getattr(args, "adaptive_oom_retry_resume", False):
+            from library.training.adaptive_runtime.resume_identity import attach_data_identity
+            attach_data_identity(train_dataloader, config=getattr(args, "_adaptive_data_config", {}))
         # Stash for loop-time stage switches (DataLoader rebuild).
         args._stage_dataloader_kwargs = {
             k: v for k, v in dataloader_kwargs.items() if k != "persistent_workers"

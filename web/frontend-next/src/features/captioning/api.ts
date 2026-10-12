@@ -108,6 +108,9 @@ export const updateCaptionItem = (
     { proposed_caption },
     "PATCH",
   );
+export type CaptionBatchUpdate = { id: string; proposed_caption: string; expected_caption: string };
+export const updateCaptionItems = (job: string, items: CaptionBatchUpdate[]) =>
+  post<JobSnapshot>(`/jobs/${encodeURIComponent(job)}/items`, { items }, "PATCH");
 export const commitCaptionJob = (job: string, item_ids: string[]) =>
   post<{
     written: number;

@@ -30,10 +30,13 @@ export type PreflightCheck = {
   key: string;
   message: string;
   path?: string;
+  overridable?: boolean;
+  risk_code?: string;
 };
 
 export type TrainingPreflightResponse = {
   ok: boolean;
+  can_override?: boolean;
   variant: string;
   preset: string;
   methods_subdir: string;
@@ -136,6 +139,7 @@ function trainingActionPayload(file: TrainingConfigFile, preset: string) {
 export type TrainingConfirmation = {
   confirmed: true;
   confirm_preprocess: true;
+  ignore_risks?: true;
 };
 
 export function startTraining(

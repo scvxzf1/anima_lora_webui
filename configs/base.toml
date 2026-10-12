@@ -15,6 +15,11 @@ save_model_as = "safetensors"
 model_family = "anima"
 # Qwen3-VL cache phase only: auto | cpu_offload | gpu | cpu.
 qwen_text_encoder_cache_policy = "auto"
+# Qwen preview only: inherit training swap, or custom count (0..30, zero resident).
+qwen_sample_swap_mode = "inherit"
+qwen_sample_blocks_to_swap = 0
+# tiled: bounded spatial GPU decode; auto retries normal GPU -> tiled GPU -> tiled CPU on CUDA OOM.
+sample_vae_decode = "tiled"
 
 network_module = "networks.lora_anima"
 network_train_unet_only = true
@@ -59,15 +64,22 @@ mixed_precision = "bf16"
 
 # Experimental adaptive precision / OOM recovery controls. Exposed in the
 # Next WebUI for every registered model family; ``auto`` is hardware-selected,
-# while ``fp16_fp32`` enables the explicit island contract. Keep ``off`` here
+# Anima FP16 candidates use native AMP (``native_fp16``), while ``fp16_fp32``
+# enables the explicit island contract. Native AMP requires torch attention,
+# full checkpointing, plain LoRA, no NF4/compile. Native OOM retry is a bounded
+# startup-only experiment with explicit seed, accumulation=1 and disk caches.
+# Keep ``off`` here
 # until a method opts into the compatible plain-LoRA contract.
 adaptive_precision = "off"
 adaptive_fp32_modules = []
 adaptive_loss_scale = 1024.0
 adaptive_oom_retry = false
+# Exact stateful cursor recovery is an explicit opt-in.
+adaptive_oom_retry_resume = false
 adaptive_oom_retry_max_attempts = 4
 adaptive_oom_retry_swap_increment = 2
-adaptive_oom_retry_max_swap = 26
+# 0 asks the supervisor to use the detected model limit, further bounded by host memory.
+adaptive_oom_retry_max_swap = 0
 adaptive_oom_retry_timeout = 3600.0
 
 gradient_checkpointing = false
@@ -105,6 +117,7 @@ skip_cache_check = true
 vae_chunk_size = 64
 vae_disable_cache = true
 masked_loss = true
+qwen_nf4_compile_experiment = false
 torch_compile = true
 attn_mode = "flash"
 compile_block_scope = "resident"

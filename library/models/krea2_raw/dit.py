@@ -254,6 +254,9 @@ class LastLayer(torch.nn.Module):
         self.modulation = SimpleModulation(features)
 
     def forward(self, x: Tensor, tvec: Tensor) -> Tensor:
+        if getattr(self, "fp32_residual", False):
+            from .native_precision import final_forward
+            return final_forward(self, x, tvec)
         scale, shift = self.modulation(tvec)
         x = (1 + scale) * self.norm(x) + shift
         x = self.linear(x)
@@ -276,6 +279,9 @@ class TextFusionBlock(torch.nn.Module):
         self.mlp = SwiGLU(features, multiplier, bias)
 
     def forward(self, x: Tensor, mask: Tensor | None = None) -> Tensor:
+        if getattr(self, "fp32_residual", False):
+            from .native_precision import text_forward
+            return text_forward(self, x, mask)
         x = x + self.attn(self.prenorm(x), mask=mask)
         x = x + self.mlp(self.postnorm(x))
 
@@ -315,6 +321,8 @@ class TextFusionTransformer(torch.nn.Module):
         for block in self.layerwise_blocks:
             x = block(x.contiguous(), mask=None)
         x = rearrange(x, "(b l) n d -> b l d n", b=b, l=l)
+        if getattr(self.layerwise_blocks[0], "fp32_residual", False):
+            x = x.to(self.projector.weight.dtype)
         x = self.projector(x)
         x = x.squeeze(-1)
 
@@ -359,6 +367,9 @@ class SingleStreamBlock(nn.Module):
     def _forward(
         self, x: Tensor, vec: Tensor, freqs: Tensor, mask: Tensor | None = None
     ) -> Tensor:
+        if getattr(self, "fp32_residual", False):
+            from .native_precision import block_forward
+            return block_forward(self, x, vec, freqs, mask)
         compute_dtype = x.dtype
         modulation = tuple(value.to(compute_dtype) for value in self.mod(vec))
         prescale, preshift, pregate, postscale, postshift, postgate = modulation

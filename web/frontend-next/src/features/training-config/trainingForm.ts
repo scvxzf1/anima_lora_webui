@@ -30,6 +30,12 @@ export const TRAINING_FIELDS: TrainingFieldSpec[] = [
     group: "input",
     kind: "select",
     options: ["anima", "krea2_raw", "z_image", "qwen_image_2_1"],
+    optionLabels: {
+      anima: "Anima",
+      krea2_raw: "Krea-2 Raw",
+      z_image: "Z-Image",
+      qwen_image_2_1: "Qwen-Image 2.1",
+    },
   },
   {
     key: "qwen_image_2_1_task",
@@ -41,7 +47,6 @@ export const TRAINING_FIELDS: TrainingFieldSpec[] = [
       t2i: "普通文生图 (t2i)",
       edit: "编辑数据集 (edit)",
     },
-    help: "Edit 需要已保存的编辑前/编辑后配对数据集；更改此项不会自动改写数据集。",
     defaultValue: "t2i",
   },
   {
@@ -56,8 +61,42 @@ export const TRAINING_FIELDS: TrainingFieldSpec[] = [
       gpu: "全部驻留 GPU",
       cpu: "仅 CPU",
     },
-    help: "仅影响 Qwen3-VL 文本/图文条件缓存阶段；CPU 卸载节省显存但较慢，全部 GPU 可能显存不足，与 DiT 块交换独立；已有有效缓存复用时不会重新编码。",
     defaultValue: "auto",
+  },
+  {
+    key: "qwen_sample_swap_mode",
+    label: "Qwen 预览块交换",
+    group: "training",
+    kind: "select",
+    options: ["inherit", "custom"],
+    optionLabels: {
+      inherit: "继承训练配置",
+      custom: "自定义数量",
+    },
+    defaultValue: "inherit",
+  },
+  {
+    key: "qwen_sample_blocks_to_swap",
+    label: "Qwen 预览交换块数",
+    group: "training",
+    kind: "number",
+    min: 0,
+    max: 30,
+    step: 1,
+    defaultValue: 0,
+  },
+  {
+    key: "sample_vae_decode",
+    label: "预览 VAE 解码",
+    group: "training",
+    kind: "select",
+    options: ["auto", "tiled", "cpu"],
+    optionLabels: {
+      auto: "自动（OOM 回退）",
+      tiled: "分块 GPU 解码（推荐）",
+      cpu: "CPU 解码",
+    },
+    defaultValue: "tiled",
   },
   {
     key: "pretrained_model_name_or_path",
@@ -238,7 +277,7 @@ export const TRAINING_FIELDS: TrainingFieldSpec[] = [
   },
   {
     key: "adaptive_oom_retry_swap_increment",
-    label: "OOM 每次增加交换块数",
+    label: "OOM 起始交换块增量",
     group: "resources",
     kind: "number",
     min: 1,
@@ -246,10 +285,10 @@ export const TRAINING_FIELDS: TrainingFieldSpec[] = [
   },
   {
     key: "adaptive_oom_retry_max_swap",
-    label: "OOM 最大交换块数",
+    label: "OOM 交换块预算（0=自动）",
     group: "resources",
     kind: "number",
-    min: 1,
+    min: 0,
     step: 1,
   },
   {

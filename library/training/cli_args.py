@@ -23,6 +23,9 @@ logger = logging.getLogger(__name__)
 
 
 def add_sd_models_arguments(parser: argparse.ArgumentParser):
+    from library.models.qwen_image_2_1.preview_memory import add_arguments
+
+    add_arguments(parser)
     parser.add_argument(
         "--v2",
         action="store_true",
@@ -463,6 +466,15 @@ def add_training_arguments(parser: argparse.ArgumentParser, support_dreambooth: 
             "--capture-range-end=stop ... so nsys only records that window. "
             "NVTX ranges (step / forward / backward / optimizer) label the timeline."
         ),
+    )
+    parser.add_argument(
+        "--qwen_nf4_compile_experiment", action="store_true", default=False,
+        help="experimental strict Qwen Edit mixed NF4 compile policy; default disabled",
+    )
+    parser.add_argument(
+        "--allow_unverified_nf4_compile",
+        action="store_true",
+        help="explicitly accept unverified mixed NF4 compile numerical risk for this run",
     )
     parser.add_argument(
         "--torch_compile",
@@ -1411,6 +1423,9 @@ def enable_high_vram(args: argparse.Namespace):
 
 
 def verify_training_args(args: argparse.Namespace):
+    from library.models.qwen_image_2_1.preview_memory import validate_config
+
+    validate_config(args)
     enable_high_vram(args)
 
     if getattr(args, "blocks_to_swap", None) is not None and args.blocks_to_swap < 0:

@@ -37,17 +37,44 @@ def run_training_cli(
     _config_schema.populate_schema(parser, extras=build_network_extras())
 
     args = parser.parse_args(argv[1:] if argv is not None else None)
+    allow_unverified_nf4_compile = "--allow_unverified_nf4_compile" in (
+        argv[1:] if argv is not None else sys.argv[1:]
+    )
     verify_command_line_training_args(args)
     args = read_config_from_file(args, parser)
+    # This acknowledgement must originate from this invocation, never a TOML default.
+    args.allow_unverified_nf4_compile = allow_unverified_nf4_compile
 
+    from library.models.qwen_image_2_1.nf4_compile_runtime import qwen_nf4_compile_session
+
+    with qwen_nf4_compile_session(args):
+        _run_configured_training(args, trainer_factory)
+
+
+def _run_configured_training(args, trainer_factory):
     # Resolve hardware-selected precision before the supervisor freezes its
     # child configuration.  Explicit modes remain unchanged.
     from library.training.adaptive_runtime.precision import resolve_adaptive_precision
-    resolve_adaptive_precision(args)
+    try:
+        resolve_adaptive_precision(args)
+    except BaseException as exc:
+        from library.training.precision_report import report_entry_rejection
+
+        # Artist runs use this actual destination once CLI setup succeeds.
+        if getattr(args, "artist_filter", None):
+            args.output_dir = "output/ckpt-artist"
+        report_entry_rejection(args, exc)
+        raise
 
     if getattr(args, "adaptive_oom_retry", False):
         from library.training.adaptive_runtime.supervisor import run_supervised
-        result = run_supervised(args)
+        try:
+            result = run_supervised(args)
+        except BaseException as exc:
+            from library.training.precision_report import report_entry_rejection
+
+            report_entry_rejection(args, exc)
+            raise
         raise SystemExit(0 if result["status"] == "ok" else 1)
 
     from library.models.pipeline_parallel import (

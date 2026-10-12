@@ -3,12 +3,13 @@ import type {
   TrainingConfigGroup,
 } from "../../api/trainingContext";
 import { useMemo, useState } from "react";
-import { Plus, RefreshCw } from "lucide-react";
+import { LayoutGrid, PanelLeft, PanelTop, Plus, RefreshCw } from "lucide-react";
 import { useQueryClient, useIsFetching } from "@tanstack/react-query";
 import { trainingContextKeys } from "../../api/trainingContext";
 import { TrainingLibraryActions } from "./TrainingLibraryActions";
 import { TrainingLibraryGroup } from "./TrainingLibraryGroup";
 import { TrainingLibraryDrag } from "./TrainingLibraryDrag";
+import { useTrainingLibraryLayout } from "./TrainingWorkspaceLayout";
 import "./TrainingLibrary.css";
 
 type Props = {
@@ -49,6 +50,7 @@ export function TrainingConfigLibrary({
 }: Props) {
   const [query, setQuery] = useState("");
   const [detailedManagement, setDetailedManagement] = useState(readDetailedManagement);
+  const layout = useTrainingLibraryLayout();
   const queryClient = useQueryClient();
   const refreshing =
     useIsFetching({ queryKey: trainingContextKeys.files() }) > 0;
@@ -98,6 +100,18 @@ export function TrainingConfigLibrary({
           <p className="eyebrow">CONFIG LIBRARY</p>
           <h2>配置库</h2>
         </div>
+        {layout && <div className="training-library-layout-switch" role="group" aria-label="配置库位置">
+          {([
+            ["auto", LayoutGrid, "自动排列"],
+            ["side", PanelLeft, "侧边排列"],
+            ["top", PanelTop, "顶部排列"],
+          ] as const).map(([mode, Icon, label]) => (
+            <button key={mode} type="button" className="icon-button" aria-label={label} title={label}
+              aria-pressed={layout.mode === mode} onClick={() => layout.setMode(mode)}>
+              <Icon size={15} />
+            </button>
+          ))}
+        </div>}
         <button
           type="button"
           className="icon-button"

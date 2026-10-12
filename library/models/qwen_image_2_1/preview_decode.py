@@ -9,6 +9,11 @@ from PIL import Image, ImageDraw, ImageOps, PngImagePlugin
 import torch
 
 from library.runtime.device import clean_memory_on_device
+from library.models.qwen_image_2_1.preview_decode_policy import (
+    PreviewDecodeRestoreError, decode_with_policy,
+)
+from library.training.preview_decode_config import decode_policy
+from library.training.preview_decode_events import decode_event_sink
 
 logger = logging.getLogger(__name__)
 
@@ -57,14 +62,17 @@ def decode_pending_samples(accelerator, args, vae):
     files = sorted((root / "latents").glob("*.pt"))
     if not files:
         return
-    original_device = vae.device
     try:
-        vae.to(accelerator.device)
         for path in files:
+            generated = image = None
+            reference_images = []
             try:
                 record = torch.load(path, map_location="cpu", weights_only=True)
-                with torch.no_grad():
-                    generated = decode_latent(vae, record["latents"])
+                generated = decode_with_policy(
+                    vae, record["latents"], accelerator.device,
+                    decode_policy(args), decode_latent,
+                    event_sink=decode_event_sink(args.output_dir, path),
+                )
                 metadata = record["metadata"]
                 image = generated
                 references = metadata.get("reference_images")
@@ -81,7 +89,6 @@ def decode_pending_samples(accelerator, args, vae):
                     result_path = results / f"{path.stem}.png"
                     generated.save(result_path)
                     metadata["result_file"] = result_path.relative_to(Path(args.output_dir)).as_posix()
-                    reference_images = []
                     for reference in references:
                         with Image.open(reference) as source:
                             reference_images.append(source.convert("RGB"))
@@ -91,9 +98,17 @@ def decode_pending_samples(accelerator, args, vae):
                 info.add_text("qwen_preview", json.dumps(metadata, ensure_ascii=False))
                 image.save(root / f"{path.stem}.png", pnginfo=info)
                 path.unlink()
+            except PreviewDecodeRestoreError:
+                raise
             except Exception:
                 logger.exception("Failed to decode Qwen preview %s; keeping latent for retry", path)
+            finally:
+                for reference_image in reference_images:
+                    reference_image.close()
+                if image is not None and image is not generated:
+                    image.close()
+                if generated is not None:
+                    generated.close()
             clean_memory_on_device(accelerator.device)
     finally:
-        vae.to(original_device)
         clean_memory_on_device(accelerator.device)

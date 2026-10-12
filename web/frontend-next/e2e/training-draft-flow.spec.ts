@@ -390,6 +390,73 @@ test("training optimizer and learning-rate choices can be saved from the editor"
   expect(mocks.unhandled).toEqual([]);
 });
 
+test("field help has opaque surfaces and readable theme colors", async ({ page }) => {
+  const mocks = await fixture(page);
+  await page.goto("/next/training");
+  await page.getByRole("tab", { name: "训练计划", exact: true }).click();
+  await page.getByRole("button", { name: /优化器与学习率/ }).click();
+  await page.getByRole("button", { name: "查看优化器帮助", exact: true }).click();
+
+  const colors = () => page.getByRole("dialog").evaluate((dialog) => {
+    const root = document.documentElement;
+    const probe = document.createElement("span");
+    probe.style.color = "var(--muted)";
+    root.append(probe);
+    const result = {
+      dialog: getComputedStyle(dialog).backgroundColor,
+      header: getComputedStyle(dialog.querySelector("header")!).backgroundColor,
+      context: getComputedStyle(dialog.querySelector(".training-field-help-context > div")!).backgroundColor,
+      text: getComputedStyle(dialog.querySelector(".training-field-help-section p")!).color,
+      expectedText: getComputedStyle(probe).color,
+    };
+    probe.remove();
+    return result;
+  });
+
+  for (const theme of ["light", "dark"]) {
+    await page.evaluate((value) => document.documentElement.setAttribute("data-theme", value), theme);
+    const computed = await colors();
+    expect(computed.dialog).not.toBe("rgba(0, 0, 0, 0)");
+    expect(computed.header).not.toBe("rgba(0, 0, 0, 0)");
+    expect(computed.context).not.toBe("rgba(0, 0, 0, 0)");
+    expect(computed.text).toBe(computed.expectedText);
+  }
+  expect(mocks.writes).toEqual([]);
+  expect(mocks.unhandled).toEqual([]);
+});
+
+test("field label hover does not activate its help button", async ({ page }) => {
+  const mocks = await fixture(page);
+  await page.goto("/next/training");
+  await page.getByRole("tab", { name: "输入准备", exact: true }).click();
+
+  const row = page.locator("#training-field-model_family");
+  const help = row.getByRole("button", { name: "查看模型族帮助" });
+  const assertHelpIdle = async () => {
+    expect(await help.evaluate((button) => button.matches(":hover"))).toBe(false);
+    expect(await help.evaluate((button) => getComputedStyle(button, "::before").opacity)).toBe("0");
+  };
+
+  await row.locator(".training-field-label > span:first-child").hover();
+  await assertHelpIdle();
+  await row.locator("select").hover();
+  await assertHelpIdle();
+  const box = await row.boundingBox();
+  expect(box).not.toBeNull();
+  await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height - 8);
+  await assertHelpIdle();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+
+  await help.hover();
+  expect(await help.evaluate((button) => button.matches(":hover"))).toBe(true);
+  await help.click();
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await page.getByRole("button", { name: "关闭字段说明" }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  expect(mocks.writes).toEqual([]);
+  expect(mocks.unhandled).toEqual([]);
+});
+
 test("training TOML editor saves the selected configuration", async ({ page }) => {
   const mocks = await fixture(page);
   await page.goto("/next/training");

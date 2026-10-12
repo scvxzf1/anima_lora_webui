@@ -133,9 +133,10 @@ export function fieldAvailability(
 export function availableFieldOptions(
   field: TrainingFieldSpec,
   family: string,
+  values?: Record<string, unknown>,
 ) {
   return field.options?.filter((option) =>
-    modelFamilyOptionSupported(field.key, family, option),
+    modelFamilyOptionSupported(field.key, family, option, { values }),
   );
 }
 

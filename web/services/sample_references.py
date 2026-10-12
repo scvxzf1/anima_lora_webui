@@ -4,6 +4,8 @@ import hashlib
 import io
 from pathlib import Path
 
+from PIL import Image
+
 from library.env import get_configs_root
 from library.training.preview_spec import MAX_REFERENCE_BYTES, publish_reference, read_reference, reference_path
 
@@ -37,3 +39,21 @@ def resolve_reference_asset(key: str) -> Path:
     if path.parent != root or not path.is_file():
         raise ValueError("参考图不存在")
     return path
+
+
+def preview_reference(path: str, *, thumbnail: bool = False, display: bool = False) -> bytes:
+    """Read a legacy or imported reference without publishing or changing it."""
+    image = read_reference(reference_path(path))
+    if thumbnail:
+        image.thumbnail((160, 160))
+    elif display:
+        image.thumbnail((1600, 1600), Image.Resampling.LANCZOS)
+    buffer = io.BytesIO()
+    if display and not thumbnail:
+        image.convert("RGB").save(buffer, format="JPEG", quality=90, subsampling=0)
+    else:
+        image.save(buffer, format="PNG")
+    encoded = buffer.getvalue()
+    if len(encoded) > MAX_REFERENCE_BYTES:
+        raise ValueError("参考图编码后超过 20 MiB，请先缩小图片")
+    return encoded

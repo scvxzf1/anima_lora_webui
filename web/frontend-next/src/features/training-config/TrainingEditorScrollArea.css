@@ -1,0 +1,58 @@
+.training-editor-scroll-area {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 12px;
+  gap: 5px;
+  flex: 1;
+  min-height: 0;
+}
+
+.training-editor-scroll-area > .training-edit-groups {
+  min-width: 0;
+  height: 100%;
+  grid-auto-rows: max-content;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.training-editor-scroll-area > .training-edit-groups::-webkit-scrollbar {
+  display: none;
+  width: 0;
+}
+
+.training-editor-scroll-track {
+  position: relative;
+  min-height: 0;
+  border-radius: 6px;
+  background: var(--surface-subtle);
+  touch-action: none;
+  cursor: pointer;
+}
+
+.training-editor-scroll-track[data-scrollable="false"] {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.training-editor-scroll-track:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.training-editor-scroll-thumb {
+  position: absolute;
+  inset: 0 1px auto;
+  border-radius: 5px;
+  background: var(--line-strong);
+  cursor: grab;
+}
+
+.training-editor-scroll-track:active .training-editor-scroll-thumb {
+  cursor: grabbing;
+  background: var(--accent);
+}
+
+@media (max-width: 800px) {
+  .training-editor-scroll-area { display: block; flex: none; }
+  .training-editor-scroll-area > .training-edit-groups { height: auto; }
+  .training-editor-scroll-track { display: none; }
+}

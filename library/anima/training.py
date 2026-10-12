@@ -12,10 +12,10 @@ import numpy as np
 import torch
 from accelerate import Accelerator
 from tqdm import tqdm
-from PIL import Image
 
 from library.runtime.device import clean_memory_on_device, synchronize_device
 from library import train_util
+from library.training.preview_lifecycle import preview_lifecycle
 from library.datasets.buckets import snap_sample_size
 from library.training.checkpoints import (
     get_epoch_ckpt_name,
@@ -1040,79 +1040,32 @@ def sample_images(
             raise compile_error
         raise RuntimeError("Sample compile preparation failed on another process")
 
-    # Adapter to eval for the duration — same as the validation phase, so
-    # dropout / rank-dropout don't perturb the previews. Restored in finally.
-    if net is not None:
-        net.eval()
-        # Sample does not go through apply_router_conditioning; force full
-        # rank so a stale T-LoRA buffer cannot shrink any module that still
-        # multiplies the mask outside a training-only guard.
-        if hasattr(net, "clear_timestep_mask"):
-            net.clear_timestep_mask()
-
-    block_swap_paused = False
-    if getattr(args, "disable_block_swap_for_eval", False) and hasattr(
-        dit, "pause_block_swap"
-    ):
-        block_swap_paused = dit.pause_block_swap()
-        if block_swap_paused:
-            logger.info("Block swap paused during sample preview.")
-    else:
-        dit.switch_block_swap_for_inference()
-
-    save_dir = os.path.join(args.output_dir, "sample")
-    os.makedirs(save_dir, exist_ok=True)
-
-    # Save RNG state
-    rng_state = torch.get_rng_state()
-    cuda_rng_state = None
-    try:
-        cuda_rng_state = (
-            torch.cuda.get_rng_state() if torch.cuda.is_available() else None
-        )
-    except Exception:
-        pass
-
     sample_error: Optional[Exception] = None
     try:
-        with torch.no_grad(), accelerator.autocast():
-            for prompt_dict in local_prompts:
-                dit.prepare_block_swap_before_forward()
-                _sample_image_inference(
-                    accelerator,
-                    args,
-                    dit,
-                    text_encoder,
-                    vae,
-                    tokenize_strategy,
-                    text_encoding_strategy,
-                    save_dir,
-                    prompt_dict,
-                    epoch,
-                    steps,
-                    sample_prompts_te_outputs,
-                    prompt_replacement,
-                )
+        with preview_lifecycle(
+            dit, net, disable_block_swap=getattr(args, "disable_block_swap_for_eval", False)
+        ):
+            save_dir = os.path.join(args.output_dir, "sample")
+            os.makedirs(save_dir, exist_ok=True)
+            with torch.no_grad(), accelerator.autocast():
+                for prompt_dict in local_prompts:
+                    _sample_image_inference(
+                        accelerator,
+                        args,
+                        dit,
+                        text_encoder,
+                        vae,
+                        tokenize_strategy,
+                        text_encoding_strategy,
+                        save_dir,
+                        prompt_dict,
+                        epoch,
+                        steps,
+                        sample_prompts_te_outputs,
+                        prompt_replacement,
+                    )
     except Exception as exc:  # coordinate failures before any rank enters a barrier
         sample_error = exc
-    finally:
-        # Restore RNG + model state even if a prompt errors, so training
-        # resumes exactly where it left off (mirrors run_validation's finally).
-        torch.set_rng_state(rng_state)
-        if cuda_rng_state is not None:
-            torch.cuda.set_rng_state(cuda_rng_state)
-
-        if block_swap_paused and hasattr(dit, "resume_block_swap"):
-            dit.resume_block_swap()
-        else:
-            dit.switch_block_swap_for_training()
-        if net is not None:
-            net.train()
-        # No clean_memory_on_device() here on purpose: emptying the CUDA cache
-        # at the sample<->train boundary is what made VRAM visibly fluctuate.
-        # Letting the caching allocator hold its blocks keeps usage flat (peak
-        # settles at max(training, sampling) and stays there).
-
     if sample_error is not None and _is_cuda_oom(sample_error):
         clean_memory_on_device(accelerator.device)
     if _sample_failed_on_any_process(
@@ -1126,8 +1079,15 @@ def sample_images(
     # visible, then keep the other ranks parked until the main rank restores
     # the VAE/DiT devices and removes the staging files.
     accelerator.wait_for_everyone()
-    if getattr(accelerator, "is_main_process", True):
-        decode_samples_for_live_preview(accelerator, args, vae, dit=dit, network=net)
+    decode_error = None
+    try:
+        if getattr(accelerator, "is_main_process", True):
+            decode_samples_for_live_preview(accelerator, args, vae, dit=dit, network=net)
+    except Exception as exc:
+        decode_error = exc
+    from library.training.preview_decode import raise_decode_failure
+
+    raise_decode_failure(accelerator, decode_error, num_processes)
     accelerator.wait_for_everyone()
 
 
@@ -1390,6 +1350,17 @@ def decode_samples_for_live_preview(
 
     dit_device = _module_device(dit)
     network_device = _module_device(network)
+    offloader = getattr(dit, "offloader", None)
+    parked = False
+    # Offloader placement owns active ConvRot carriers: ordinary dit.to(cpu)
+    # cannot retire them. Transfer failures are fatal, outside decode's retry.
+    if offloader is not None and dit_device is not None:
+        from library.runtime.block_swap_lifecycle import model_swap_blocks
+
+        parked_blocks = model_swap_blocks(dit)
+        parked = offloader.park_blocks_on_cpu(parked_blocks)
+        if not parked:
+            raise RuntimeError("Live decode requires blocks that are not already CPU-parked")
     try:
         if dit is not None and dit_device is not None:
             dit.to("cpu")
@@ -1398,6 +1369,10 @@ def decode_samples_for_live_preview(
         clean_memory_on_device(accelerator.device)
         decode_pending_samples(accelerator, args, vae)
     except Exception as exc:  # noqa: BLE001 - keep training; final cleanup can retry
+        from library.training.preview_decode_policy import PreviewDecodeRestoreError
+
+        if isinstance(exc, PreviewDecodeRestoreError):
+            raise
         if _is_cuda_oom(exc):
             logger.warning(
                 "Live sample decode skipped because CUDA memory is tight; "
@@ -1406,10 +1381,16 @@ def decode_samples_for_live_preview(
         else:
             logger.error(f"Live sample decode failed; will retry at stop/end: {exc}")
     finally:
-        if dit is not None and dit_device is not None:
-            _restore_dit_training_device(dit, dit_device)
-        if network is not None and network_device is not None:
-            network.to(network_device)
+        try:
+            if dit is not None and dit_device is not None:
+                _restore_dit_training_device(dit, dit_device)
+        finally:
+            try:
+                if parked:
+                    offloader.restore_parked_blocks(parked_blocks)
+            finally:
+                if network is not None and network_device is not None:
+                    network.to(network_device)
         if dit is not None and hasattr(dit, "switch_block_swap_for_training"):
             dit.switch_block_swap_for_training()
         clean_memory_on_device(accelerator.device)
@@ -1419,7 +1400,7 @@ def decode_pending_samples(accelerator: Accelerator, args, vae) -> None:
     """Decode the sample latents stashed during training into PNGs.
 
     Used both for live previews during training and as a final stop/end cleanup.
-    Loads the VAE to GPU a single time, decodes every
+    Applies the selected VAE memory policy and decodes every
     ``output_dir/sample/latents/*.pt`` into a PNG in ``output_dir/sample/``,
     then parks the VAE back. Each latent file is removed after a successful
     decode; a failed one is left on disk so it can be recovered. No-op when
@@ -1441,62 +1422,9 @@ def decode_pending_samples(accelerator: Accelerator, args, vae) -> None:
 
         decode_z_image_samples(accelerator, args, vae)
         return
-    save_dir = os.path.join(args.output_dir, "sample")
-    latents_dir = os.path.join(save_dir, "latents")
-    if not os.path.isdir(latents_dir):
-        return
-    files = sorted(f for f in os.listdir(latents_dir) if f.endswith(".pt"))
-    if not files:
-        return
+    from library.training.preview_decode import decode_anima_latent, decode_pending_samples as decode_shared_samples
 
-    logger.info(f"Decoding {len(files)} deferred sample image(s) to {save_dir}")
-    wandb_tracker = None
-    if "wandb" in [tracker.name for tracker in accelerator.trackers]:
-        wandb_tracker = accelerator.get_tracker("wandb")
-        import wandb
-
-    org_vae_device = vae.device
-    vae.to(accelerator.device)
-    try:
-        for fn in files:
-            path = os.path.join(latents_dir, fn)
-            try:
-                rec = torch.load(path, map_location="cpu")
-                latents = rec["latents"].to(accelerator.device)
-                with torch.no_grad():
-                    decoded = vae.decode_to_pixels(latents)
-                image = decoded.float()
-                image = torch.clamp((image + 1.0) / 2.0, min=0.0, max=1.0)[0]
-                if image.ndim == 4:  # drop temporal dim if present
-                    image = image[:, 0, :, :]
-                decoded_np = (
-                    255.0 * np.moveaxis(image.cpu().numpy(), 0, 2)
-                ).astype(np.uint8)
-                pil = Image.fromarray(decoded_np)
-                stem = os.path.splitext(fn)[0]
-                pil.save(os.path.join(save_dir, stem + ".png"))
-                if wandb_tracker is not None:
-                    wandb_tracker.log(
-                        {
-                            f"sample_{rec.get('enum', 0)}": wandb.Image(
-                                pil, caption=rec.get("prompt", "")
-                            )
-                        },
-                        commit=False,
-                    )
-                os.remove(path)
-            except Exception as exc:  # never let one bad latent abort the rest
-                logger.error(f"Failed to decode sample latent {fn}: {exc}")
-            clean_memory_on_device(accelerator.device)
-    finally:
-        vae.to(org_vae_device)
-        clean_memory_on_device(accelerator.device)
-
-    # Drop the staging dir if everything decoded cleanly.
-    try:
-        os.rmdir(latents_dir)
-    except OSError:
-        pass
+    decode_shared_samples(accelerator, args, vae, decode_latent=decode_anima_latent, wandb_enabled=True)
 
 
 def sample_image_to_tensor(

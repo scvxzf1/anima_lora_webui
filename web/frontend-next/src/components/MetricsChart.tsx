@@ -1,16 +1,22 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { metricRange, metricSeries } from "./metricSeries";
+import { metricSamples, metricWindows, segmentedMetricSeries } from "./metricWindows";
 import { useMetricsCanvas } from "./useMetricsCanvas";
 
-export function MetricsChart({ points, metric = "loss", label = "Loss 趋势", timeAxis = false, total, initialLimit = 2000, autoExpandEmptyWindow = false, hidden = false, valueVisible = true }: {
-  points: Record<string, unknown>[]; metric?: string; label?: string; timeAxis?: boolean; total?: number; initialLimit?: number; autoExpandEmptyWindow?: boolean; hidden?: boolean; valueVisible?: boolean;
+export function MetricsChart({ points, metric = "loss", label = "Loss 趋势", timeAxis = false, total, initialLimit = 2000, autoExpandEmptyWindow = false, hidden = false, valueVisible = true, segmentedWindow = false }: {
+  points: Record<string, unknown>[]; metric?: string; label?: string; timeAxis?: boolean; total?: number; initialLimit?: number; autoExpandEmptyWindow?: boolean; hidden?: boolean; valueVisible?: boolean; segmentedWindow?: boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const [smoothing, setSmoothing] = useState(0);
   const [limit, setLimit] = useState(initialLimit);
+  const [segment, setSegment] = useState<number | null>(null);
   const manuallySelectedWindow = useRef(false);
   const [focusedIndex, setFocusedIndex] = useState<number | null>(null);
-  const series = useMemo(() => metricSeries(points, metric, limit, smoothing, timeAxis), [points, metric, limit, smoothing, timeAxis]);
+  const series = useMemo(() => segmentedWindow ? segmentedMetricSeries(points, metric, segment, smoothing, timeAxis) : metricSeries(points, metric, limit, smoothing, timeAxis), [points, metric, limit, smoothing, timeAxis, segment, segmentedWindow]);
+  const loaded = useMemo(() => segmentedWindow ? metricSamples(points, metric).length : points.length, [points, metric, segmentedWindow]);
+  // Training totals include filtered events; only loaded samples have known window bounds.
+  const windowTotal = timeAxis ? total ?? loaded : loaded;
+  useEffect(() => setFocusedIndex(null), [points, metric, smoothing]);
   const previousWindow = useRef<{ points: Record<string, unknown>[]; hasData: boolean } | null>(null);
   useEffect(() => {
     const previous = previousWindow.current;
@@ -22,20 +28,21 @@ export function MetricsChart({ points, metric = "loss", label = "Loss 趋势", t
   const metricName = label.replace(/\s*趋势$/, "");
   useMetricsCanvas(ref, series.data, timeAxis, metricName, series.axis, !hidden, valueVisible);
   const axisName = series.axis === "time" ? "时间" : series.axis === "step" ? "STEP" : "采样序号";
-  const focusedPoint = focusedIndex === null ? undefined : series.data[focusedIndex];
+  const inspectionData = useMemo(() => series.data.filter(([, value]) => Number.isFinite(value)), [series.data]);
+  const focusedPoint = focusedIndex === null ? undefined : inspectionData[focusedIndex];
   const inspectPoint = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
     event.preventDefault();
-    const current = focusedIndex ?? (event.key === "ArrowRight" ? -1 : series.data.length);
-    setFocusedIndex(Math.max(0, Math.min(series.data.length - 1, current + (event.key === "ArrowRight" ? 1 : -1))));
+    const current = focusedIndex ?? (event.key === "ArrowRight" ? -1 : inspectionData.length);
+    setFocusedIndex(Math.max(0, Math.min(inspectionData.length - 1, current + (event.key === "ArrowRight" ? 1 : -1))));
   };
   return <section className="chart-section" aria-label={label} hidden={hidden}>
     <div className="chart-heading">
       <h2>{label}</h2>
       <div className="chart-controls">
         <label className="checkbox-row">窗口
-          <select aria-label={`${label}数据窗口`} value={limit} onChange={(e) => { manuallySelectedWindow.current = true; setLimit(Number(e.target.value)); }}>
-            <option value={500}>最近 500 点</option><option value={2000}>最近 2000 点</option><option value={0}>全部已读取</option>
+          <select aria-label={`${label}数据窗口`} value={segmentedWindow ? segment === null ? "all" : String(segment) : limit} onChange={(e) => { manuallySelectedWindow.current = true; setFocusedIndex(null); if (segmentedWindow) setSegment(e.target.value === "all" ? null : Number(e.target.value)); else setLimit(Number(e.target.value)); }}>
+            {segmentedWindow ? <><option value="all">全部已读取</option>{metricWindows(windowTotal).map(({ start, end }) => <option key={start} value={start} disabled={start >= loaded}>{start}–{end} 点{start >= loaded ? "（未读取）" : ""}</option>)}</> : <><option value={500}>最近 500 点</option><option value={2000}>最近 2000 点</option><option value={0}>全部已读取</option></>}
           </select>
         </label>
         <label className="checkbox-row">平滑
@@ -43,10 +50,10 @@ export function MetricsChart({ points, metric = "loss", label = "Loss 趋势", t
         </label>
       </div>
     </div>
-    <p className="data-scope">{series.data.length} 个有效点 / 已读取 {points.length} 点{total !== undefined && total > points.length ? ` / 共 ${total} 点（前段未读取）` : ""} · {metricRange(series.data, series.axis) || "无有效范围"}</p>
+    <p className="data-scope">{"valid" in series ? Number(series.valid) : series.data.length} 个有效点 · 渲染 {series.data.length} 点 / 已读取 {loaded} 点{loaded !== points.length ? `（源记录 ${points.length} 条，已过滤非训练事件）` : ""}{total !== undefined && total > points.length ? ` / 共 ${total} 条源记录（部分未读取）` : ""} · {metricRange(series.data, series.axis) || "无有效范围"}</p>
     {series.data.length ? <>
       <div ref={ref} className="metric-chart" role="group" tabIndex={0} aria-label={`${label}，${series.data.length} 个点`} aria-keyshortcuts="ArrowLeft ArrowRight" onKeyDown={inspectPoint} />
-      <p className="chart-inspection" aria-live="polite">{focusedPoint ? `检查点 ${focusedIndex! + 1}/${series.data.length} · ${axisName}: ${series.axis === "time" ? new Date(focusedPoint[0]).toLocaleString() : focusedPoint[0]}${valueVisible ? ` · ${metricName}: ${formatMetricValue(metricName, focusedPoint[1])}` : ""}` : ""}</p>
+      <p className="chart-inspection" aria-live="polite">{focusedPoint ? `检查点 ${focusedIndex! + 1}/${inspectionData.length} · ${axisName}: ${series.axis === "time" ? new Date(focusedPoint[0]).toLocaleString() : focusedPoint[0]}${valueVisible ? ` · ${metricName}: ${formatMetricValue(metricName, focusedPoint[1])}` : ""}` : ""}</p>
     </> : <p className="empty-state">暂无指标记录</p>}
   </section>;
 }

@@ -44,6 +44,9 @@ from library.runtime.block_swap_masters import (
     _weight_device_type,
     is_params4bit_weight,
 )
+from library.runtime.block_swap_representations import (
+    MixedRepresentationSlots, compatible_swap_shapes, swap_representation_jobs,
+)
 from library.runtime.block_swap_profiler import BlockSwapProfiler, _resolve_profiler
 from library.runtime.block_swap_payload import set_block_swap_payload_placement
 
@@ -356,6 +359,7 @@ class Offloader:
         self._block_module_maps: list[Optional[dict[str, nn.Module]]] = [
             None for _ in range(num_blocks)
         ]
+        self._mixed_representation_slots = MixedRepresentationSlots()
         self._swap_plan_cache: dict[tuple[int, int], _SwapPlan] = {}
         self._swap_slab_plan_cache: dict[tuple[int, int], _SwapSlabPlan] = {}
         self._swap_gpu_slab_cache: dict[
@@ -752,7 +756,9 @@ class Offloader:
                 and target_master is not None
                 and source_dtype is not None
                 and target_dtype is not None
-                and module_to_cpu.weight.shape == module_to_cuda.weight.shape
+                and compatible_swap_shapes(
+                    source_master, target_master, module_to_cpu, module_to_cuda
+                )
             ):
                 entry = (
                     module_name,
@@ -764,9 +770,10 @@ class Offloader:
                 # NF4 (Params4bit) master 走独立搬运: Params4bit 是复合容器
                 # (4-bit 码 + quant_state), 不能进 slab/foreach 的 .data 赋值
                 # 路径 (会丢 quant_state, forward 崩). 见 docs/proposal/krea2_nf4_blockswap.md.
-                if isinstance(source_master, Params4bitBlockSwapCpuMaster) or isinstance(
-                    target_master, Params4bitBlockSwapCpuMaster
-                ):
+                if ((block_idx_to_cpu, module_name) in self._mixed_representation_slots.members
+                    or isinstance(source_master, Params4bitBlockSwapCpuMaster) or isinstance(
+                        target_master, Params4bitBlockSwapCpuMaster
+                    )):
                     nf4_jobs.append(entry)
                 else:
                     swap_jobs.append(entry)
@@ -1338,6 +1345,10 @@ class Offloader:
             with torch.cuda.stream(stream):
                 if ready_event is not None:
                     stream.wait_event(ready_event)
+                nf4_jobs = swap_representation_jobs(
+                    self, block_idx_to_cpu, block_idx_to_cuda,
+                    modules_to_cpu, modules_to_cuda, nf4_jobs, stream,
+                )
                 for (
                     module_name,
                     source_master,
@@ -1575,6 +1586,10 @@ class Offloader:
                 _ensure_weight_on_device(module_to_cuda, self.device)
             if module_to_cpu is not None:
                 _ensure_weight_on_device(module_to_cpu, self.device)
+        nf4_jobs = swap_representation_jobs(
+            self, block_idx_to_cpu, block_idx_to_cuda,
+            modules_to_cpu, modules_to_cuda, nf4_jobs,
+        )
         for (
             module_name,
             source_master,
@@ -1638,6 +1653,7 @@ class Offloader:
             set_block_swap_payload_placement(block, active=False)
         synchronize_device(device)
         self._slab_slot_by_block = {}
+        self._mixed_representation_slots.clear()
 
     def _submit_move_blocks(
         self,
@@ -1878,6 +1894,8 @@ class ModelOffloader(Offloader):
                     self.remove_handles.append(handle)
 
     def set_forward_only(self, forward_only: bool):
+        if getattr(self, "_cpu_park_state", None) is not None:
+            raise RuntimeError("Restore CPU-parked blocks before switching swap mode")
         if forward_only and getattr(self, "master_scope", "all") == "participating":
             raise ValueError("Sparse CPU masters support training only")
         # switching must wait for all pending transfers
@@ -1887,9 +1905,23 @@ class ModelOffloader(Offloader):
         self.forward_only = forward_only
 
     def reconfigure(self, blocks, blocks_to_swap: int) -> bool:
+        if getattr(self, "_cpu_park_state", None) is not None:
+            raise RuntimeError("Restore CPU-parked blocks before reconfiguring swap")
         from library.runtime.block_swap_reconfigure import reconfigure_block_swap
 
         return reconfigure_block_swap(self, blocks, blocks_to_swap)
+
+    def park_blocks_on_cpu(self, blocks) -> bool:
+        """Release execution storage at a completed-step preview boundary."""
+        from library.runtime.block_swap_lifecycle import park_blocks_on_cpu
+
+        return park_blocks_on_cpu(self, blocks)
+
+    def restore_parked_blocks(self, blocks) -> bool:
+        """Restore the canonical entry layout; failures stop the caller."""
+        from library.runtime.block_swap_lifecycle import restore_parked_blocks
+
+        return restore_parked_blocks(self, blocks)
 
     def __del__(self):
         try:
@@ -1945,6 +1977,9 @@ class ModelOffloader(Offloader):
         blocks: Union[list[nn.Module], nn.ModuleList],
         free_cache: bool = True,
     ):
+        park_state = getattr(self, "_cpu_park_state", None)
+        if park_state is not None and not park_state.get("restoring", False):
+            raise RuntimeError("Restore CPU-parked blocks before preparing a forward")
         # ``free_cache=False`` skips the trailing ``empty_cache`` so callers
         # that re-enter another forward in the same step (e.g. the FECL
         # no-grad base pass for the FeRA stacked-experts path) don't release
@@ -1963,7 +1998,7 @@ class ModelOffloader(Offloader):
         self._slot_assignments = {}
         self.profile_step += 1
         self._ensure_cpu_weight_masters(blocks)
-        self._warm_swap_plan_cache(blocks)
+        self._mixed_representation_slots.release_bindings(self, blocks)
         self._reset_slab_slot_ownership()
 
         for block in blocks:
@@ -2003,11 +2038,17 @@ class ModelOffloader(Offloader):
                 b, torch.device("cpu"), include_trainable=False
             )  # keep adapter/trainable weights on the training device
 
+        if self._mixed_representation_slots.prepare(self, blocks):
+            self._swap_plan_cache.clear()
+            self._swap_slab_plan_cache.clear()
+        self._warm_swap_plan_cache(blocks)
         synchronize_device(self.device)
         if free_cache:
             clean_memory_on_device(self.device)
 
     def wait_for_block(self, block_idx: int):
+        if getattr(self, "_cpu_park_state", None) is not None:
+            raise RuntimeError("Restore CPU-parked blocks before running a forward")
         if self.blocks_to_swap is None or self.blocks_to_swap == 0:
             return
         self._wait_blocks_move(block_idx, phase="forward_wait")
@@ -2015,6 +2056,8 @@ class ModelOffloader(Offloader):
     def submit_move_blocks(
         self, blocks: Union[list[nn.Module], nn.ModuleList], block_idx: int
     ):
+        if getattr(self, "_cpu_park_state", None) is not None:
+            raise RuntimeError("Restore CPU-parked blocks before submitting transfers")
         # check if blocks_to_swap is enabled
         if self.blocks_to_swap is None or self.blocks_to_swap == 0:
             return

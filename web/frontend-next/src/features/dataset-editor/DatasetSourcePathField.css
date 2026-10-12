@@ -5,7 +5,7 @@
   min-width: 0;
 }
 
-.dataset-source-path-field > label {
+.dataset-source-path-field > .dataset-setting-field {
   grid-column: 1 / -1;
 }
 

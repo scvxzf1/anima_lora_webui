@@ -67,7 +67,7 @@ export function HistoryHotstart({ weight }: { weight: HistoryWeight }) {
   }
 
   return <>
-    <button type="button" disabled={!weight.abs_path || !available || groupsQuery.isFetching || presetsQuery.isFetching} onClick={() => { if (!stillAvailable(target, weight.abs_path)) return; setError(""); setOpen(true); }}>
+    <button className="history-weight-apply" type="button" disabled={!weight.abs_path || !available || groupsQuery.isFetching || presetsQuery.isFetching} onClick={() => { if (!stillAvailable(target, weight.abs_path)) return; setError(""); setOpen(true); }}>
       应用到训练草稿
     </button>
     {open && target && <InlineConfirmDialog

@@ -1,0 +1,39 @@
+.history-image-dialog .command-backdrop { padding: 16px; }
+.history-image-dialog .command-dialog {
+  width: 100%;
+  height: calc(100dvh - 32px);
+  max-height: calc(100dvh - 32px);
+  min-width: 0;
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.history-image-dialog .command-dialog > header { flex: none; min-width: 0; }
+.history-image-dialog .command-dialog h2 { overflow-wrap: anywhere; }
+.history-image-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, 360px); gap: 20px; min-height: 0; flex: 1; }
+.history-image-picture { display: flex; flex-direction: column; min-width: 0; min-height: 0; gap: 10px; }
+.history-image-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; flex: none; }
+.history-image-toolbar button { display: inline-flex; align-items: center; justify-content: center; gap: 5px; }
+.history-image-toolbar output { min-width: 46px; text-align: center; font-variant-numeric: tabular-nums; }
+.history-image-toolbar > span { color: var(--muted); font-size: 12px; }
+.history-image-viewport { position: relative; flex: 1; min-height: 0; overflow: hidden; background: var(--surface-0); border: 1px solid var(--line); border-radius: 8px; touch-action: none; cursor: grab; user-select: none; }
+.history-image-viewport[data-dragging="true"] { cursor: grabbing; }
+.history-image-viewport img { display: block; max-width: none; max-height: none; pointer-events: none; }
+.history-image-zoomed { position: absolute; top: 0; left: 0; transform-origin: 0 0; }
+.history-image-loading { width: 100%; height: 100%; object-fit: contain; }
+.history-image-viewport .image-fallback { width: 100%; height: 100%; transform: none !important; }
+.history-image-parameters { min-width: 0; overflow-y: auto; overscroll-behavior: contain; padding-right: 8px; }
+.history-image-parameters .history-info { margin-top: 0; }
+.history-image-parameters dd { overflow-wrap: anywhere; white-space: pre-wrap; }
+.history-image-parameters details { margin-top: 18px; }
+.history-image-parameters .history-detail-toml { max-width: 100%; white-space: pre-wrap; overflow-wrap: anywhere; }
+.history-image-dialog .history-image-navigation { flex: none; }
+@media (max-width: 760px) {
+  .history-image-dialog .command-backdrop { padding: 8px; }
+  .history-image-dialog .command-dialog { height: calc(100dvh - 16px); max-height: calc(100dvh - 16px); padding: 12px; }
+  .history-image-layout { display: flex; flex-direction: column; gap: 14px; overflow-y: auto; overscroll-behavior: contain; }
+  .history-image-picture { min-height: 360px; height: 55dvh; flex: none; }
+  .history-image-parameters { overflow: visible; flex: none; padding: 0; }
+  .history-image-toolbar > span { width: 100%; }
+}

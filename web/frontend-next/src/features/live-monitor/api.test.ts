@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { fetchTrainingLogs, fetchTrainingStatus, stopTraining } from './api';
+import { fetchTrainingLogs, fetchTrainingMetrics, fetchTrainingStatus, stopTraining } from './api';
 
 describe('live monitor API', () => {
   afterEach(() => {
@@ -32,6 +32,14 @@ describe('live monitor API', () => {
 
     expect(fetchMock).toHaveBeenCalledWith('/api/training/stop', expect.objectContaining({ method: 'POST', body: JSON.stringify({ task_id: 'task-a' }) }));
     expect(new Headers(fetchMock.mock.calls[0][1].headers).get('Content-Type')).toBe('application/json');
+  });
+
+  it('requests all recorded metrics with the current task guard and retains early samples', async () => {
+    const points = Array.from({ length: 7889 }, (_, step) => ({ step, loss: step }));
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(points), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    expect(await fetchTrainingMetrics('task a')).toEqual(points);
+    expect(fetchMock).toHaveBeenCalledWith('/api/training/metrics?all=1&task_id=task+a', expect.anything());
   });
 
   it('does not send an unguarded stop for an unknown task', () => {

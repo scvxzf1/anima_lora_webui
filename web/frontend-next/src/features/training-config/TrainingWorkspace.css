@@ -284,6 +284,10 @@
 .training-preflight-panel {
   border: 1px solid var(--line);
   background: var(--surface);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  transition: all 200ms cubic-bezier(0.4, 0, 0.2, 1);
+  overflow: hidden;
 }
 .training-edit-card > header,
 .training-patch-preview > header,
@@ -292,15 +296,17 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 12px 14px;
+  padding: 14px 16px;
   border-bottom: 1px solid var(--line);
-  background: var(--surface-subtle);
+  background: linear-gradient(to bottom, var(--surface-subtle), var(--surface));
 }
 .training-edit-card h2,
 .training-patch-preview h2,
 .training-preflight-panel h2 {
   margin: 0;
   font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
 }
 .training-edit-card header span,
 .training-patch-preview header span {

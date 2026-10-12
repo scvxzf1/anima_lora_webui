@@ -6,7 +6,7 @@ import logging
 from aiohttp import web
 
 from library.training.preview_spec import MAX_REFERENCE_BYTES
-from web.services.sample_references import import_reference, resolve_reference_asset
+from web.services.sample_references import import_reference, preview_reference, resolve_reference_asset
 
 
 logger = logging.getLogger(__name__)
@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 
 def setup_sample_reference_routes(app):
     app.router.add_post("/api/config/sample-references", handle_import)
+    app.router.add_get("/api/config/sample-references/preview", handle_preview)
     app.router.add_get("/api/config/sample-references/{key}", handle_image)
 
 
@@ -49,3 +50,21 @@ async def handle_image(request):
         return web.FileResponse(path, headers={"Cache-Control": "private, max-age=86400"})
     except ValueError as exc:
         return web.json_response({"ok": False, "error": str(exc)}, status=404)
+
+
+async def handle_preview(request):
+    try:
+        thumbnail = request.query.get("thumbnail") == "1"
+        display = request.query.get("display") == "1" and not thumbnail
+        data = await asyncio.to_thread(
+            preview_reference, request.query.get("path", ""),
+            thumbnail=thumbnail, display=display,
+        )
+        return web.Response(body=data, content_type="image/jpeg" if display else "image/png", headers={
+            "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff",
+        })
+    except (ValueError, OSError) as exc:
+        return web.json_response({"ok": False, "error": str(exc)}, status=400)
+    except Exception:
+        logger.exception("failed to preview sample reference")
+        return web.json_response({"ok": False, "error": "参考图预览失败"}, status=500)

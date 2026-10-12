@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { MetricsChart } from "./MetricsChart";
+import { CombinedTrainingChart } from "./CombinedTrainingChart";
 import { metricSeries } from "./metricSeries";
+import { isTrainingMetric } from "./metricSemantics";
 import { finiteNumber } from "./trainingNumbers";
 import "./TrainingMetricsCharts.css";
 
@@ -11,8 +13,8 @@ const METRIC_OPTIONS = [
 ] as const;
 
 export function TrainingMetricsCharts({ points, total }: { points: Record<string, unknown>[]; total?: number }) {
-  const hasLearningRate = metricSeries(points, "lr", 0, 0, false).data.length > 0;
-  const hasRecentLearningRate = metricSeries(points, "lr", 2000, 0, false).data.length > 0;
+  const trainingPoints = points.filter(isTrainingMetric);
+  const hasLearningRate = metricSeries(trainingPoints, "lr", 0, 0, false).data.length > 0;
   const availableMetrics = METRIC_OPTIONS.filter(({ key }) => key === "loss"
     || key === "lr" && hasLearningRate
     || key === "cmmd" && points.some((point) => finiteNumber(point.cmmd) !== undefined));
@@ -33,13 +35,14 @@ export function TrainingMetricsCharts({ points, total }: { points: Record<string
   });
   const latestValues = (["loss", "lr"] as const).flatMap((key) => {
     if (!availableMetrics.some((metric) => metric.key === key) || hiddenValues.has(key)) return [];
-    const data = metricSeries(points, key, 0, 0, false).data;
+    const data = metricSeries(trainingPoints, key, 0, 0, false).data;
     if (!data.length) return [];
     const label = key === "loss" ? "Loss" : "学习率";
     const value = key === "lr" ? data.at(-1)![1].toExponential(3) : data.at(-1)![1].toPrecision(4);
     return [`最新 ${label}: ${value}`];
   });
   return <>
+    <div className="training-metric-controls">
     <div className="training-metric-visibility" role="group" aria-label="训练曲线显隐">
       {availableMetrics.map(({ key, label }) => <label className="checkbox-row" key={key}>
         <input type="checkbox" checked={!hiddenMetrics.has(key)} onChange={(event) => toggleMetric(key, event.target.checked)} />
@@ -56,12 +59,12 @@ export function TrainingMetricsCharts({ points, total }: { points: Record<string
       })}
       {latestValues.map((value) => <span className="training-metric-latest" key={value}>{value}</span>)}
     </div>
-    {availableMetrics.length ? availableMetrics.map(({ key, label }) => key === "loss"
-      ? <MetricsChart key={key} points={points} total={total} hidden={hiddenMetrics.has(key)} valueVisible={!hiddenValues.has(key)} />
-      : key === "lr"
-        ? <MetricsChart key={key} points={points} total={total} metric="lr" label={label} initialLimit={hasRecentLearningRate ? 2000 : 0} autoExpandEmptyWindow hidden={hiddenMetrics.has(key)} valueVisible={!hiddenValues.has(key)} />
-        : <MetricsChart key={key} points={points} total={total} metric="cmmd" label={label} hidden={hiddenMetrics.has(key)} />)
-      : null}
+    </div>
+    <CombinedTrainingChart points={points} total={total}
+      visible={[!hiddenMetrics.has("loss"), hasLearningRate && !hiddenMetrics.has("lr")]}
+      values={[!hiddenValues.has("loss"), !hiddenValues.has("lr")]} />
+    {availableMetrics.some(({ key }) => key === "cmmd")
+      ? <MetricsChart points={points} total={total} metric="cmmd" label="验证 CMMD" hidden={hiddenMetrics.has("cmmd")} /> : null}
     {!visibleMetrics.length ? <p className="training-metrics-empty">已隐藏所有训练曲线</p> : null}
   </>;
 }

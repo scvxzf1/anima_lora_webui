@@ -31,6 +31,7 @@ from web.services.training.history_ops import (
     save_history_collection_settings,
     update_history_task,
 )
+from web.services.training.history_system import get_history_system_page
 from web.services.training.history_logs import find_history_log_match, get_history_log_page
 from web.services.training.history_resume import (
     _annotate_resume_checkpoints,
@@ -77,6 +78,7 @@ __all__ = [
     "get_history_task_summary",
     "get_history_log_path",
     "get_history_log_page",
+    "get_history_system_page",
     "find_history_log_match",
     "get_history_artifact_path",
     "get_config_group_timeline",

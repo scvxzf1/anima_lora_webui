@@ -292,9 +292,24 @@
 }
 
 .dataset-group > header {
+  flex-wrap: wrap;
   align-items: flex-start;
   min-height: 44px;
   padding: 7px 2px;
+}
+
+.dataset-group-heading {
+  flex: 1 0 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.dataset-group-heading h3,
+.dataset-group-heading > span {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .dataset-group h3 {
@@ -308,7 +323,9 @@
 }
 
 .dataset-group-actions {
-  flex: none;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
   flex-wrap: wrap;
   justify-content: flex-end;
 }

@@ -301,6 +301,43 @@ def test_qwen_plain_lora_gate_uses_network_args_precedence() -> None:
     assert "family_plain_lora_only" not in _codes(result.errors)
 
 
+@pytest.mark.parametrize("task", ["t2i", "edit"])
+@pytest.mark.parametrize("variant", ["use_lokr", "use_loha"])
+def test_qwen_allows_only_selected_plugin_specs(task, variant) -> None:
+    config = {
+        "model_family": "qwen_image_2_1",
+        "qwen_image_2_1_task": task,
+        "network_module": "networks.lora_anima",
+        "network_args": [f"{variant}=true"],
+    }
+    result = check_training_compat(config)
+    if task == "t2i":
+        assert "family_plain_lora_only" not in _codes(result.errors)
+        assert result.ok
+    else:
+        assert "family_plain_lora_only" in _codes(result.errors)
+
+    for conflict in ("use_glora", "use_vera", "use_ortho", "dora_wd", "train_adaln"):
+        rejected = check_training_compat({**config, conflict: True})
+        assert "family_plain_lora_only" in _codes(rejected.errors), conflict
+
+    fused = check_training_compat({**config, "qwen_fused_projections": "qkv"})
+    assert "qwen_fused_projections_plain_lora" in _codes(fused.errors)
+
+
+def test_qwen_rejects_lokr_loha_together_and_method_adapter() -> None:
+    config = {
+        "model_family": "qwen_image_2_1",
+        "network_module": "networks.lora_anima",
+        "use_lokr": True,
+        "use_loha": True,
+    }
+    assert "family_plain_lora_only" in _codes(check_training_compat(config).errors)
+    assert "family_plain_lora_only" in _codes(check_training_compat({
+        **config, "use_loha": False, "network_module": "networks.methods.ip_adapter"
+    }).errors)
+
+
 @pytest.mark.parametrize(
     "override",
     [

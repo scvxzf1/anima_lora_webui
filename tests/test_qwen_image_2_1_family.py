@@ -14,17 +14,18 @@ from library.models.qwen_image_2_1.weights import _text_key, _vae_key, _vae_shap
 from library.training.compat_matrix import check_training_compat
 
 
-def test_registry_isolated_cache_and_plain_lora() -> None:
+def test_registry_isolated_cache_and_supported_adapters() -> None:
     spec = get_model_family_spec("qwen_image_2_1")
     assert spec.latent_space.latent_channels == 64
     assert spec.latent_space.cache_suffix == "_qwen_image_2_1.npz"
     assert spec.text_cache.hidden_width == 4096
-    assert spec.supported_network_specs == frozenset({"lora"})
+    assert spec.supported_network_specs == frozenset({"lora", "lokr", "loha"})
     assert spec.supported_tasks == frozenset({"t2i", "edit"})
     assert spec.plain_lora_only
     assert spec.supported_attention_modes == frozenset({"torch", "sdpa", "flash"})
     assert spec.flash_runtime_dtypes == frozenset({"bf16"})
-    assert not spec.supported_inference_modes
+    assert spec.supported_inference_modes == frozenset({"single"})
+    assert spec.supported_inference_samplers == frozenset({"euler"})
 
 
 def test_comfy_single_file_key_conversion() -> None:

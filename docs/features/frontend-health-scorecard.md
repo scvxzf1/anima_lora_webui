@@ -1,9 +1,10 @@
 # WebUI 前端健康度评分卡
 
-状态：稳定（维护用；分数按各章节的审计日期和工作树快照解释）
+状态：维护参考 / 历史评分（分数按各章节的审计日期和工作树快照解释）
 
-适用版本：当前 `main` / 功能分支前端  
-入口命令：
+适用范围：Next 前端的可选集中审阅；2026-07-11 和 2026-09-13 分数仅描述当时的迁移阶段。\
+测试范围与执行时机遵循 [验证策略](../../AGENTS.md#验证策略)，本页不构成日常开发门禁。\
+集中审阅按需要选用的命令：
 
 ```bash
 .venv/bin/python tasks.py web-next-check
@@ -28,8 +29,8 @@
 
 本评分卡用于：
 
-- 日常 PR / 分支快速审核
-- 五轮自动迭代每轮复评
+- 明确安排的 PR / 分支集中审核
+- 新审计的评分记录；历史五轮迭代仅用于参考
 - 判断“工程债”和“配置体验债”谁更该先还
 
 本评分卡不用于：
@@ -58,14 +59,17 @@
 ```mermaid
 flowchart TD
   A[固定分支 + 取 HEAD] --> B[只读结构扫描]
-  B --> C[跑架构护栏测试]
+  B --> C[按风险选择必要验证]
   C --> D[填 4 大域评分]
   D --> E[合成总分与等级]
   E --> F[列出 High 项 + Top5 优化配置项]
   F --> G[写入本轮日志]
 ```
 
-### 2.1 必做命令
+### 2.1 按审阅范围选择命令
+
+先固定被审阅的工作树，再按需要扫描相关入口。测试域的新评分须有对应命令结果；
+仅审阅结构或文案时，可保留测试域历史分数并标注日期，不必为填表运行整套测试。
 
 ```bash
 # 0) 分支与脏工作区
@@ -78,10 +82,10 @@ sed -n '1,240p' web/frontend-next/src/app/router.tsx
 find web/frontend-next/src/features -mindepth 1 -maxdepth 1 -type d | sort
 find web/frontend-next/src/styles -maxdepth 1 -type f | sort
 
-# 2) Next 类型检查与 Vitest
+# 2) 需要类型检查与单元测试证据时
 .venv/bin/python tasks.py web-next-check
 
-# 3) Next 浏览器验收
+# 3) 关键交互或发布验收需要浏览器证据时
 .venv/bin/python tasks.py web-next-e2e
 ```
 
@@ -129,29 +133,29 @@ find web/frontend-next/src/styles -maxdepth 1 -type f | sort
 
 | 分项 | 满分 | 打分线索 |
 |---|---:|---|
-| 入口与模块边界 | 20 | `app.js` 是否薄；feature 目录是否真实承载业务 |
-| chunks 退役度 | 25 | 重业务 chunk 数量、是否继续新增业务 |
-| bridge / globalThis | 25 | `legacyRoot` 密度、未 configure 是否静默 no-op |
-| 依赖方向 | 15 | feature 是否反向 import chunks |
+| 入口与模块边界 | 20 | `main.tsx` / `app/` 是否薄；feature 是否真实承载业务 |
+| 功能组织 | 25 | 页面、组件、hooks、API 和样式的职责是否清楚 |
+| 状态与依赖 | 25 | store / context / hooks 是否显式，是否新增隐式全局状态 |
+| 依赖方向 | 15 | feature 与共享组件、API 的依赖是否清楚，是否存在循环 |
 | 体量预算 | 15 | 单文件 >20-30KB 热点、命名是否失真 |
 
 ### 3.3 B. 测试与门禁（100）
 
 | 分项 | 满分 | 打分线索 |
 |---|---:|---|
-| 覆盖广度 | 25 | modules/dom/config/history/queue/live 是否均衡 |
-| 护栏强度 | 25 | 模块图、cache token、globalThis baseline |
-| 行为仿真 | 25 | Node fixture / 状态机断言是否存在 |
+| 覆盖广度 | 25 | 配置、草稿、历史、队列和监控的关键风险是否有针对性覆盖 |
+| 护栏强度 | 25 | API、状态转换和用户数据边界是否有有效契约验证 |
+| 行为仿真 | 25 | Vitest fixture / mock API 与 WebSocket 是否隔离且可复现 |
 | 可回归性 | 15 | 60s 内可给信号、失败可定位 |
-| 门禁完备度 | 10 | 是否有固定五轮硬门禁命令 |
+| 验收选择 | 10 | 是否按具体风险和发布条件选择验证，而非固定轮次全量测试 |
 
 ### 3.4 C. CSS / DOM / 交互壳（100）
 
 | 分项 | 满分 | 打分线索 |
 |---|---:|---|
 | 样式系统 | 25 | tokens、forge 重复度、断头 CSS |
-| import / 层叠真相 | 20 | `style.css` 顺序、响应式是否兜底后挂页 |
-| DOM 契约 | 30 | id 数量、contract 覆盖、改 id 风险 |
+| import / 层叠真相 | 20 | Next 样式入口、组件样式和响应式覆盖是否有明确顺序 |
+| 交互契约 | 30 | 选择器、草稿保护、焦点和状态反馈是否稳定 |
 | 响应式 / a11y | 15 | 断点一致、label/for、叠层 z-index |
 | 文档对齐 | 10 | `docs/features` 是否描述真实 UI |
 
@@ -160,7 +164,7 @@ find web/frontend-next/src/styles -maxdepth 1 -type f | sort
 | 分项 | 满分 | 打分线索 |
 |---|---:|---|
 | 字段可理解性 | 25 | help/guide 是否准确、有无 ghost 变体 |
-| 默认值可信度 | 30 | `FORM_UI_DEFAULTS` 是否伪装成 merge 值 |
+| 默认值可信度 | 30 | 表单展示值是否能追溯到配置合并，是否混淆缺省与实际值 |
 | 兼容提示 | 20 | 表单 live 互斥 vs 仅 preflight |
 | 命名分层 | 15 | preset / variant / 快捷按钮是否混称 |
 | 与后端一致性 | 10 | provenance / compat matrix 是否被前端消费 |
@@ -214,7 +218,7 @@ find web/frontend-next/src/styles -maxdepth 1 -type f | sort
 ## 5. 历史基线（2026-07-11；docs/backend-config-optimization）
 
 以下分数、规模和 High 清单只描述 2026-07-11 的历史快照，不代表当前工作树。
-当前审计结果见 [2026-09-13 前端审计](../findings/webui_frontend_audit_20260913.md)。
+后续历史审计结果见 [2026-09-13 前端审计](../findings/webui_frontend_audit_20260913.md)。
 
 一句话：当时前端能用，但过渡层和配置可信度把总分压在 D 档。
 
@@ -291,6 +295,6 @@ find web/frontend-next/src/styles -maxdepth 1 -type f | sort
 
 ## 8. 维护规则
 
-- 改前端架构 / 配置体验 / 测试护栏后，至少更新本页“当前工作树快照”或新增 findings
+- 只有明确开展新评分或声称当前健康度时，才新增带日期、分支和证据的快照或 findings；普通前端改动不要求更新评分
 - 分数必须附证据；没有测试命令结果，不得上调测试域分数
 - 用户数据目录、训练输出、历史/队列文件不在本评分范围内，也不得为了提分去碰

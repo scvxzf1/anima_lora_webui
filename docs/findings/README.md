@@ -5,6 +5,15 @@
 
 这里放审计、实验结论、失败路径、性能记录和阶段性整理报告。
 
+## Anima 权重静态分析
+
+| 文档 | 说明 |
+| --- | --- |
+| [分类文件清单](anima_weight_analysis_20261001/README.md) | 2026-10-01 人物与画风调查产物、图表、统计和验证记录 |
+| [人物与画风汇总](anima_weight_analysis_20261001/summary.md) | 15 文件、5,700 模块；共同目标对照与异常样本敏感性检查 |
+| [画风完整报告](anima_weight_analysis_20261001/style/report.md) | 10 文件的有效 ΔW、模块分布与层热点 |
+| [人物完整报告](anima_weight_analysis_20261001/character/report.md) | 5 文件的逐模型差异、集中度及人物与画风对照 |
+
 ## 维护和整理
 
 | 文档 | 说明 |
@@ -52,19 +61,62 @@
 
 ## Runtime 和能力边界
 
+- [公开训练器 DDP / TP / PP 实现调研](multigpu_trainers_ddp_tp_pp_survey_20261004.md)：sd-scripts/Musubi/OneTrainer 数据并行、diffusion-pipe 真实 DP+PP、TorchTitan LoRA TP 与 Megatron 调度；固定源码版本与全模型接入建议。
+- [Anima 混合 NF4 autocast 与激活显存](anima_mixed_nf4_autocast_90hx_20261003.md)：修复 NF4 输出意外回升 FP32、LoRA 与 checkpoint 激活膨胀；保持配置和量化策略不变。
+- [扩散混合量化基座与后训练线上调研](diffusion_mixed_quant_post_training_survey_20261002.md)：训练器静态混合、EfficientDM/BitsFusion量化后训练、MixDQ/ViDiT-Q敏感度搜索、Nunchaku训练边界及sm86 INT8候选。
+- [INT8 训练本地与 musubi 对比](int8_training_local_vs_musubi_20261002.md)：3080 W8A8/W8A16历史证据、真实INT8前向、Triton融合与反向精度差异；原始日志缺失和数值门槛边界。
+- [ConvRot采样生命周期修复与90HX复测](convrot_lifecycle_fix_90hx_20261003.md)：完成step图释放、offloader显式CPU park/restore、共享模型族兼容与真实VAE短测；不含500步长测。
+- [ConvRot INT8 CMP90HX重新验证](convrot_90hx_validation_20261002.md)：同预算BF16最快，Triton前向改善但未晋级；Flash反向重复噪声、两处采样生命周期问题及500步条件跳过。
+- [Anima 混合 NF4 异型换层与显存追踪](anima_mixed_nf4_swap_memory_90hx_20261002.md)：稳定打包/dense 缓冲、采样池复用和重配置回滚；真实8步对照训练峰值略降但全程峰值未降，另有两步同初始LoRA数值对照。
+- [公网 AMP FP16 训练实现调研](public_amp_fp16_training_survey_20261002.md)：Diffusers Flux LoRA、Wan FP32 保护、OneTrainer 组件精度及其他训练器边界；公开源码依据，非热测或质量认证。
+- [公开训练器 OOM 回退源码调研](public_oom_fallback_survey_20261004.md)：Accelerate/Trainer 缩 batch、Lightning 启动校准、扩散与 LLM 训练器 checkpoint 边界；固定源码版本，区分启动重试与中途恢复。
+- [Anima 中途 OOM 恢复与独立预览交付](anima_committed_oom_preview_delivery_20261004.md)：完整 sampler/预取、optimizer/scaler/RNG 与设备布局，真实 CUDA OOM 新进程恢复对照及独立预览 CPU 回退；受限实验、默认关闭。
+- [Anima 原生 FP16 启动 OOM 静态验收](anima_native_fp16_startup_oom_static_20261002.md)：冻结精度与源身份、新进程递增 swap、首次 optimizer 开始后停止；限 CPU 验证。
+- [Anima 原生 FP16 正式入口](anima_native_fp16_product_entry_90hx_20261002.md)：配置、自动路由、轻量报告，以及生产保存/续训到 step5 的 scale 和真实 AdamW 验证。
+- [Anima FP16/BF16 200步配对热训](anima_fp16_bf16_ab200_90hx_20261002.md)：两路各200有效更新、零跳步，100/200步共16张采样图、240次共同BF16固定验证；未观察到FP16明显劣化，单seed弱改善信号和FP16外部监控汇总缺失如实记录。
+- [Krea-2 native FP16 CMP 90HX 三步 smoke](krea2_native_fp16_smoke_90hx_20261002.md)：官方非量化 plain-LoRA 配置，BF16/FP16 各 3 次有效更新、零跳步、588 个初始 LoRA hash 匹配并保存 state；非质量或长期稳定性认证。
+- [Anima旧FP16集中验收](anima_native_fp16_acceptance_90hx_20261001.md)：12格finite且有效更新，独立FP64证据审核通过；严格0/12通过，梯度漂移明显。质量标准已预登记，质量未运行，结束05/04与scale扩张。
+- [Anima旧FP16 AMP补充对照](anima_legacy_fp16_comparison_90hx_20261001.md)：旧路径scale1024五步有效、零跳步，2.694s/步、GPU峰3524MiB；其后严格矩阵见上项，长期质量和Turing未验收。
+- [Anima Linear精度交付批次2](anima_precision_delivery_batch2_90hx_20261001.md)：两样本×三sigma×初始/非零AdamW状态，05/04及控制各12/12通过；原四组真实五步与独立CPU验收通过，但候选显存峰值更高；旧FP16补测见上项。
+- [Anima Linear精度交付批次1](anima_precision_delivery_batch1_90hx_20261001.md)：有界12候选及同状态实际AdamW更新对照；10个固定案例数值通过，05/04进入保留集，理论权重减少不等于显存或速度收益。
 - [Qwen Image 2.1 Edit 50 对数据热训练](qwen_edit_hot_training_20260928.md)：Qwen3-VL 低显存缓存、32px 对齐和编译缓存路径修复；CMP 90HX swap24+compile 完成 50 步并通过权重 CPU 严格重载。
 - [预处理 Auto Batch 实测与消融](preprocess_auto_batch_20260906.md)：从1起步、预测上拉、OOM退避、吞吐收敛，以及真实模型/缓存验收边界。
 - [AUTO 块交换真实 GPU 热测与消融](auto_block_swap_hot_20260908.md)：Krea-2 真实缓存、显存竞争、OOM 回退、安全余量和速度排序的时变边界。
 - [全程动态 AUTO 块交换验收](auto_block_swap_dynamic_20260908.md)：运行时显存压力退避、释放后再探索、A/B/A 决策、NF4 存储复用和策略消融。
 - [Anima / Z-Image AUTO 块交换热测](auto_block_swap_families_20260909.md)：Anima 真实 startup AUTO 通过；Z-Image 因系统换页保护拒绝。
 - [FP16/FP32 与 OOM 重试静态契约论证](adaptive_precision_oom_static_proof_20260924.md)：精度请求与重试关联的不变量证明；不含热测。
+- [动态 OOM 上限与递增重试的静态数学论证](adaptive_oom_bounds_math_20260930.md)：结构/用户/host 上限归纳、指数尝试界、CPU 预算模型及不完备搜索反例；仅 CPU 验证。
+- [Anima 自适应精度首阶段 CMP 90HX 探针](anima_adaptive_precision_90hx_20260930.md)：disposable capture/replay 与首轮混合精度候选；FP16/BF16 梯度偏差 fail-closed，仅全 FP32 线性控制组通过。
+- [Anima FP16 梯度误差定位](anima_adaptive_precision_diagnostics_90hx_20260930.md)：Luna 分支与 scale 热测；三个分支均影响上游梯度，scale 有帮助但六个候选仍未达标。
+- [Anima 局部 VJP 与 cotangent 定位](anima_local_vjp_90hx_20260930.md)：固定 sigma/初始状态、8 层 base-output cotangent；局部 cast 误差与整网轨迹偏移分离，MLP2/GELU 尚待验证。
+- [Anima MLP2/GELU 与投影拆分](anima_mlp_path_90hx_20260930.md)：真实 GELU 两侧 cotangent、MLP1/MLP2 单独 FP16 干预；两种拆分均不达标，控制通过，实际误差非单调。
+- [Anima 同前向 FP32 base-dx 反事实](anima_backward_counterfactual_90hx_20260930.md)：两种 FP16 prediction 逐位一致，FP32 base-dx 未改善大梯度漂移；仅用于收窄因果定位。
+- [Anima 残差流边界 cotangent](anima_block_boundaries_90hx_20260930.md)：29个采样边界与FP32重放控制；反向首次超2%在boundary14，定位范围不等于因果归因。
+- [Anima block14 完整形状受控VJP](anima_block14_vjp_90hx_20260930.md)：八组真实4200-token对照及完整梯度独立复算；固定其他因素换cotangent的差异最大，仍非根因或生产认证。
+- [Anima 上游15/17/27完整VJP](anima_upstream_vjp_90hx_20260930.md)：两次多块捕获、24组完整矩阵；block17的激活变化与cotangent对照影响接近，下一步拆查其内部路径。
+- [Anima block17 内部残差阶段VJP](anima_block17_paths_90hx_20261001.md)：复用捕获的分析热测与CPU独立复算；固定参考cotangent时自注意力阶段对输入轨迹的对照最大，尚未定位具体算子。
+- [Anima 自注意力归一化与投影/核心拆分](anima_attention_split_90hx_20261001.md)：两批分析热测与独立CPU复算；归一化输入对照较小、core传回K梯度变化最大，仍未区分QK-norm/RoPE/attention。
+- [Anima 隔离QK-norm与attention cotangent](anima_qknorm_90hx_20261001.md)：隔离dp重现、四格解析验收及Luna热测完成；显存峰值1500MiB，换attention传回梯度的K对照大于固定梯度换norm输入，尚非根因或生产认证。
+- [Anima post-RoPE Q/K/V八格对照](anima_qkv_matrix_90hx_20261001.md)：固定du真实激活替换、端点/重放与CPU统计审计通过；K输入对照最大，仍不等于误差源头或安全层名单。
+- [Anima K方向插值与V背景](anima_k_interpolation_90hx_20261001.md)：固定Q/du的五点×两V背景；采样梯度响应非线性，独立CPU审计通过，外层热测超时退出124如实保留。
+- [Anima K插值梯度head/token分布](anima_k_distribution_90hx_20261001.md)：已有梯度的CPU定位，端点误差约99%集中于top1% tokens；独立统计复算通过，尚非误差源头或精度放行。
+- [Anima K激活漂移与梯度分布重合](anima_k_activation_distribution_90hx_20261001.md)：CPU真实norm/RoPE重建及独立NumPy核验；最大token同为3343，激活top42覆盖约93.1% fused梯度误差，仍需局部干预。
+- [Anima 局部K替换](anima_k_local_90hx_20261001.md)：head/token真实VJP干预通过，top42距full响应残差约12%--15%，低误差对照响应小；尚非精度放行，无新梯度张量独立审计。
 - [Adaptive runtime 实测与失败记录](adaptive_runtime_20260921.md)：自适应运行时实测、失败路径与能力边界。
 - [Adaptive training 实测结论](adaptive_training_20260922.md)：自适应训练实测与训练运行时结论。
 - [Qwen Image 2.1 CMP 90HX 热测](qwen_image_2_1_90hx_hot_test_20260926.md)：full checkpoint + swap24 + per-block compile 的 60-step 单图短测和硬件遥测。
 - [Qwen Image 2.1 Flash CMP 90HX 热测](qwen_image_2_1_flash_90hx_20260927.md)：左填充 mask 正确性、Flash/torch A/B/A 与 60-step 复测、缓存候选未采纳；24/32-head 探针差异、GPU wait 未测及 PCIe 传输预算修正。
 - [Qwen Image 2.1 INT8 packed block-swap CMP 90HX 热测](qwen_image_2_1_int8_swap_90hx_20260927.md)：INT8 packed swap 与 BF16 各 60-step 单轮对照，步时约快 3.7%；因顺序运行和温频差异，仍需交替复测及质量验收。
 - [Qwen Image 2.1 阶段 3 开发验收](qwen_image_2_1_stage3_acceptance_20260928.md)：MLP/QKV 融合与投影保留已集成，独立数值与完整模型短测通过，确定性诊断下恢复首步梯度逐位一致，性能未验收、默认关闭。
+- [Qwen Image 2.1 LoKr/LoHa 90HX 热测](qwen_image_2_1_adapter_variants_90hx_20260929.md)：LoKr 编译预算修复、两步 smoke 与 20 步热测、plain LoRA 对照及后端支持边界。
+- [Qwen Image 2.1 NF4 eager Edit smoke](qwen_nf4_edit_eager_20261005.md)：50 对真实 Edit 数据在 90HX 上完成全量 NF4 eager 单步、缓存重建、LoRA 更新与 checkpoint 保存。
+- [Qwen Image 2.1 NF4 compile 数值定位](qwen_nf4_compile_90hx_20261005.md)：strict/native norm+SiLU 联合策略与两个真实 bucket 独立逐位一致；默认关闭的受限入口通过真实两步 AdamW、预览与完整状态续训短测，记录 Rich 日志消费 Python RNG 的边界，普通 NF4 compile gate 保留。
+- [Qwen Image 2.1 独立 T2I/Edit 推理](qwen_standalone_inference_20261005.md)：真实 NF4 + plain LoRA 的 T2I、单/四参考 Edit 出图，自动 TE offload、严格加载和专属 latent 再解码像素一致。
 - [Qwen Image 2.1 编辑采样多参考图热测](qwen_edit_sampling_hot_20260928.md)：CMP 90HX 10 GiB 上单/双/四参考图与 CFG 编辑采样、采样后恢复训练和低显存 Qwen3-VL 缓存验收。
+- [Qwen 编辑采样块交换初始化 A/B](qwen_sampling_prepare_ab_90hx_20261002.md)：去掉逐预测重复 prepare；90HX 两张 28 步样张耗时约减少 45.4%，A/B/A 复跑、数值一致性、异常恢复与梯度更新验收。
+- [Qwen 编辑采样 DiT K/V A/B/C](qwen_sampling_kv_abc_90hx_20261002.md)：文本/参考图前缀缓存已接入；90HX 对 B 仅约0.17%耗时差且增加显存，BF16数值门槛未通过，训练预览保留 B 默认。
+- [多模型采样生命周期验收](sampling_batch_lifecycle_20261002.md)：三族训练预览去除每 prompt 初始化并覆盖入口异常恢复；Anima tiled 使用一次 inference scope；CPU/Gloo 和小型真实 CUDA/slab 验收通过，完整模型性能未测。
+- [Qwen 编辑 LoRA 1024 双图采样](qwen_edit_1024_dual_sampling_90hx_20261003.md)：step400、B默认、90HX两张1024方图各28步；记录去噪/解码、编译计数、显存与每秒硬件遥测，限单轮实测。
 
 | 文档 | 说明 |
 | --- | --- |

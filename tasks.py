@@ -25,6 +25,7 @@ import sys
 
 from scripts.experimental_tasks import inference as exp_inference
 from scripts.experimental_tasks import parallel as exp_parallel
+from scripts.experimental_tasks import nm_w4a16 as exp_nm_w4a16
 from scripts.experimental_tasks import training as exp_training
 from scripts.tasks import (
     daemon,
@@ -315,6 +316,10 @@ COMMANDS = {
     # ── Experimental ──────────────────────────────────────────────────
     # Unstable methods kept under exp-* so they don't pollute the main command
     # surface. May produce broken output, change without notice, or be removed.
+    "exp-nm-w4a16": (
+        exp_nm_w4a16.cmd_nm_w4a16,
+        "[experimental] 2:4 INT4/BF16 static costs or explicit GPU probe against dense BF16.",
+    ),
     "exp-anima-pipeline-bench": (
         exp_parallel.cmd_anima_pipeline_bench,
         "[experimental] Fixed-effective-batch Anima PP/single/TP benchmark and PP resume validation.",

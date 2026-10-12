@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from tests.nf4_preflight_test_support import write_ordinary_checkpoint
+
 from tests import training_resume_test_support as _training_resume_support
 
 globals().update(
@@ -24,7 +26,7 @@ def test_handle_start_converts_plain_config_to_preprocess_train_after(tmp_path, 
     Image.new("RGB", (8, 8), color=(10, 20, 30)).save(image_a / "a.png")
     Image.new("RGB", (8, 8), color=(30, 20, 10)).save(image_b / "b.png")
     (tmp_path / "models").mkdir()
-    (tmp_path / "models" / "anima.safetensors").write_bytes(b"model")
+    write_ordinary_checkpoint(tmp_path / "models" / "anima.safetensors")
     (tmp_path / "models" / "qwen.safetensors").write_bytes(b"qwen")
     (tmp_path / "models" / "vae.safetensors").write_bytes(b"vae")
     (tmp_path / "configs" / "base.toml").write_text(
@@ -35,6 +37,7 @@ def test_handle_start_converts_plain_config_to_preprocess_train_after(tmp_path, 
                 'vae = "models/vae.safetensors"',
                 'dataset_config = "configs/datasets/522.toml"',
                 'source_image_dir = "image_dataset/a"',
+                'max_train_steps = 100',
             ]
         ),
         encoding="utf-8",
@@ -90,7 +93,7 @@ def test_handle_start_requires_explicit_confirmation_before_preprocess_train_aft
     Image.new("RGB", (8, 8), color=(10, 20, 30)).save(image_a / "a.png")
     Image.new("RGB", (8, 8), color=(30, 20, 10)).save(image_b / "b.png")
     (tmp_path / "models").mkdir()
-    (tmp_path / "models" / "anima.safetensors").write_bytes(b"model")
+    write_ordinary_checkpoint(tmp_path / "models" / "anima.safetensors")
     (tmp_path / "models" / "qwen.safetensors").write_bytes(b"qwen")
     (tmp_path / "models" / "vae.safetensors").write_bytes(b"vae")
     (tmp_path / "configs" / "base.toml").write_text(
@@ -101,6 +104,7 @@ def test_handle_start_requires_explicit_confirmation_before_preprocess_train_aft
                 'vae = "models/vae.safetensors"',
                 'dataset_config = "configs/datasets/522.toml"',
                 'source_image_dir = "image_dataset/a"',
+                'max_train_steps = 100',
             ]
         ),
         encoding="utf-8",

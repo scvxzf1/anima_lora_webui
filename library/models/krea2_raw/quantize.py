@@ -33,6 +33,7 @@ import time
 import torch
 import bitsandbytes
 from bitsandbytes.nn import Linear4bit, Params4bit
+from library.quantization.nf4 import BF16AutocastLinear4bit
 from safetensors import safe_open
 from safetensors.torch import load_file, save_file
 
@@ -151,7 +152,7 @@ def _replace_with_linear4bit(
     先在 CPU 构造并喂 bf16 权重 (Params4bit 此时 bnb_quantized=False),
     后续 model.to(device) 触发 _quantize.
     """
-    new = Linear4bit(
+    new = BF16AutocastLinear4bit(
         orig.in_features,
         orig.out_features,
         bias=orig.bias is not None,
@@ -550,7 +551,7 @@ def load_nf4_dit_into(
         parent_path, attr = path.rsplit(".", 1) if "." in path else ("", path)
         parent = _get_nested(model, parent_path) if parent_path else model
         # Meta 空壳避免 nn.Linear 初始化一份随后会被丢弃的全尺寸 FP32 权重.
-        new = Linear4bit(
+        new = BF16AutocastLinear4bit(
             in_f,
             out_f,
             bias=has_bias,
