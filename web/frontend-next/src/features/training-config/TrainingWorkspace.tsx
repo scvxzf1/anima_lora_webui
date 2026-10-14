@@ -1,3 +1,5 @@
+import { useTrainingEditorView } from "./useTrainingEditorView";
+import "./TrainingBrickStream.css";
 import { useState } from "react";
 import { TrainingEditor } from "./TrainingEditor";
 import { TrainingCommands } from "./TrainingCommands";
@@ -24,9 +26,12 @@ import "./TrainingAnimations.css";
 import "./TrainingColors.css";
 import "./TrainingResponsive.css";
 import "./TrainingMicroInteractions.css";
+import "./TrainingEditorRefinements.css";
+import "./TrainingAutoLayout.css";
 
 export function TrainingWorkspace() {
   const state = useTrainingWorkspace();
+  const editorView = useTrainingEditorView(state.activeStage, state.setActiveStage);
   const [libraryExpanded, setLibraryExpanded] = useState(() => {
     try {
       const saved = localStorage.getItem("dragon-next.training-library-expanded");
@@ -147,7 +152,7 @@ export function TrainingWorkspace() {
               </div>
             </section>
 
-            <TrainingCommands state={state} libraryExpanded={libraryExpanded} onToggleLibrary={toggleLibrary}>
+            <TrainingCommands editorView={editorView} state={state} libraryExpanded={libraryExpanded} onToggleLibrary={toggleLibrary}>
               <TrainingTools state={state} />
             </TrainingCommands>
             <TrainingWorkspaceLayout>
@@ -167,7 +172,7 @@ export function TrainingWorkspace() {
                   if (confirmDiscard("新建配置")) setRawMode("new");
                 }}
               />
-              <TrainingEditor state={state} />
+              <TrainingEditor state={state} view={editorView.view} />
             </TrainingWorkspaceLayout>
           </>
         )}

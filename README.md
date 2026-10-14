@@ -18,6 +18,8 @@
 
 - 新手部署和 WebUI 使用：[Linux 部署启动](#linux-部署启动)、[Windows 部署启动](#windows-部署启动)
 - Next WebUI 使用与维护入口：[web/frontend-next/README.md](web/frontend-next/README.md)
+- Next 训练配置支持“分组视图 / 积木流视图”切换，连续浏览参数并通过阶段栏快速定位，见 [配置工作台](docs/features/config-workbench.md#next-react-配置工作台)。
+- 训练页模型路径与缓存卡片适配宽窄屏，路径旁可浏览服务器模型目录；目录选择需更新后端接口，选择只改草稿，见 [配置工作台](docs/features/config-workbench.md#next-react-配置工作台)。
 - 训练预检会提前识别新 NF4 权重与编译的冲突；可在启动确认中勾选风险确认后继续尝试，见[训练预检与风险确认](docs/features/config-workbench.md#训练预检与风险确认)。
 - Next 数据集图片工作台：在 `/next/datasets` 对应子集进入「图片工作台」，统一提供图片预览、手动蒙版编辑和打标，见 [蒙版使用说明](docs/features/manual-mask-editor.md)。
 - Linux 部署：[docs/guidelines/linux-deployment.zh.md](docs/guidelines/linux-deployment.zh.md)

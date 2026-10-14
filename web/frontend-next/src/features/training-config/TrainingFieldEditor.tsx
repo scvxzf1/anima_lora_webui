@@ -1,11 +1,13 @@
 import { sameTrainingValue, type TrainingDraft, type TrainingFieldSpec } from "./trainingForm";
 import { FilePenLine, HelpCircle, Undo2 } from "lucide-react";
 import { lazy, Suspense, useState } from "react";
+import { isTrainingModelPath, TrainingModelPathControl } from "./TrainingModelPathControl";
 import { TrainingDatasetField } from "./TrainingDatasetField";
 import { TrainingBlockSwapControl } from "./TrainingBlockSwapControl";
 import { availableFieldOptions, fieldAvailability } from "./fieldCatalog";
 import { FIELD_HELP_SUMMARY_ZH } from "./domain/field-help-summary.js";
 import { FORM_UI_DEFAULTS } from "./domain/defaults.js";
+import { getTrainingFieldLayout, getTrainingGridColumns } from "./trainingFieldLayout";
 
 const TrainingFieldHelpDialog = lazy(() => import("./TrainingFieldHelpDialog").then((module) => ({ default: module.TrainingFieldHelpDialog })));
 
@@ -34,9 +36,14 @@ export function TrainingFieldEditor({
   const modelFamily = String(draft.model_family || "anima");
   return (
     <>
-    <div className="training-edit-fields">
+    <div
+      className="training-edit-fields"
+      data-field-count={fields.length}
+      data-auto-columns={getTrainingGridColumns(fields)}
+    >
       {fields.map((field) => {
         const dirty = !sameTrainingValue(draft[field.key], baseline[field.key], field.kind);
+        const layout = getTrainingFieldLayout(field, fields.length);
         if (field.key === "dataset_config") return <TrainingDatasetField key={field.key} value={String(draft.dataset_config ?? "")} dirty={dirty} disabled={disabled} own={ownKeys.has(field.key)} onHelp={() => setHelpField(field)} onChange={(value) => onChange(field.key, value)} onUndo={() => onChange(field.key, baseline.dataset_config ?? "")} />;
         const availability = fieldAvailability(field.key, draft, method);
         const options = availableFieldOptions(
@@ -51,6 +58,10 @@ export function TrainingFieldEditor({
             id={`training-field-${field.key}`}
             htmlFor={`training-control-${field.key}`}
             tabIndex={-1}
+            data-model-path={isTrainingModelPath(field.key) || undefined}
+            data-brick-width={field.kind === "text" || field.kind === "json" ? "wide" : "narrow"}
+            data-auto-span={layout.span}
+            data-auto-width={layout.width}
             data-available={availability.enabled}
             data-visible={availability.visible}
             data-availability-code={availability.code || undefined}
@@ -76,6 +87,8 @@ export function TrainingFieldEditor({
             </span>
             {field.key === "blocks_to_swap" ? (
               <TrainingBlockSwapControl draft={draft} field={field} disabled={controlDisabled} onChange={onChange} />
+            ) : isTrainingModelPath(field.key) ? (
+              <TrainingModelPathControl fieldKey={field.key} label={field.label} value={String(draft[field.key] ?? "")} disabled={controlDisabled} onChange={(value) => onChange(field.key, value)} />
             ) : field.kind === "json" ? (
               <textarea
                 id={`training-control-${field.key}`}

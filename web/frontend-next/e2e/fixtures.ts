@@ -178,6 +178,8 @@ export async function mockWorkspace(page: Page) {
         ]);
       if (path === "/api/presets") return reply(["default", "low_vram"]);
       if (path === "/api/config/merged") return reply(config);
+      if (path === "/api/config/model-blocks")
+        return reply({ ok: true, block_count: 56, max_swap: 54 });
       if (path === "/api/config/raw")
         return reply({
           file: configFile.path,

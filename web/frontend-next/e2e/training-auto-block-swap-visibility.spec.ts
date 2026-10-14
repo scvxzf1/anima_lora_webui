@@ -27,7 +27,7 @@ test("AUTO swap controls follow the enabled mode without losing manual values", 
     await page.getByLabel("参数视图").selectOption("all");
     await page.getByRole("button", { name: /块交换与内存卸载/ }).click();
 
-    const swap = page.locator("#resource-fields-residency");
+    const swap = page.locator("#resource-fields-resources-residency");
     const toggle = page.getByRole("checkbox", { name: "AUTO 块交换（实验）" });
     await expect(toggle).not.toBeChecked();
     await expect(swap.locator('[id^="training-field-auto_block_swap_"]')).toHaveCount(0);

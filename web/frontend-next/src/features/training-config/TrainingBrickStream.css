@@ -1,0 +1,114 @@
+.training-view-switch {
+  display: inline-flex;
+  padding: 3px;
+  gap: 2px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-subtle);
+}
+.training-command-bar:has(.command-backdrop) {
+  animation: none;
+  position: relative;
+  z-index: 10;
+}
+.training-view-switch button {
+  white-space: nowrap;
+  padding: 6px 9px;
+  min-width: 0;
+  font-size: 12px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+}
+.training-view-switch button[aria-pressed="true"] {
+  color: var(--accent);
+  background: var(--surface);
+  box-shadow: 0 1px 3px #0002;
+}
+.training-editor-column[data-editor-view="stream"] {
+  container-type: inline-size;
+  container-name: brick-editor;
+}
+[data-editor-view="stream"] .training-edit-fields {
+  grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr));
+  gap: 10px;
+  padding: 12px;
+  align-items: start;
+}
+.training-config-page
+  [data-editor-view="stream"]
+  .training-edit-fields
+  > label {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  min-width: 0;
+  min-height: 0;
+  gap: 7px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+}
+[data-editor-view="stream"] .training-edit-fields > [data-brick-width="wide"],
+[data-editor-view="stream"] .training-dataset-field {
+  grid-column: 1 / -1;
+}
+[data-editor-view="stream"] .training-field-label {
+  width: 100%;
+}
+[data-editor-view="stream"] .training-edit-fields input:not([type="checkbox"]),
+[data-editor-view="stream"] .training-edit-fields select,
+[data-editor-view="stream"] .training-edit-fields textarea {
+  width: 100%;
+  min-width: 0;
+}
+[data-editor-view="stream"] .training-edit-fields input[type="checkbox"] {
+  align-self: flex-start;
+}
+[data-editor-view="stream"] .training-edit-fields small {
+  overflow-wrap: anywhere;
+}
+[data-editor-view="stream"] .training-edit-fields small[data-source] {
+  align-self: flex-start;
+}
+[data-editor-view="stream"] .training-edit-card {
+  scroll-margin-top: 8px;
+  min-width: 0;
+}
+@container brick-editor (max-width: 560px) {
+  [data-editor-view="stream"] .training-edit-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (max-width: 800px) {
+  .training-config-page .training-stage-nav {
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    overflow: visible;
+  }
+  .training-config-page .training-stage-nav button {
+    min-width: 0;
+    padding: 6px 4px;
+    white-space: normal;
+  }
+  [data-editor-view="stream"] .training-edit-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  [data-editor-view="stream"] .training-edit-card,
+  [data-editor-view="stream"] [id^="training-field-"] {
+    scroll-margin-top: 90px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-editor-view="stream"] *,
+  .training-view-switch button {
+    scroll-behavior: auto;
+    transition: none;
+    animation: none;
+  }
+}

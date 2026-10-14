@@ -28,11 +28,19 @@ export function TrainingEditorScrollArea({ children }: { children: ReactNode }) 
     const observer = new ResizeObserver(update);
     observer.observe(content);
     observer.observe(track);
-    if (content.firstElementChild) observer.observe(content.firstElementChild);
+    const observeChildren = () => {
+      observer.disconnect(); observer.observe(content); observer.observe(track);
+      Array.from(content.children).forEach((child) => observer.observe(child));
+      update();
+    };
+    observeChildren();
+    const mutations = new MutationObserver(observeChildren);
+    mutations.observe(content, { childList: true });
     content.addEventListener("scroll", update, { passive: true });
     update();
     return () => {
       observer.disconnect();
+      mutations.disconnect();
       content.removeEventListener("scroll", update);
     };
   }, []);

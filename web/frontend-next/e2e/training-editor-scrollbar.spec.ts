@@ -11,7 +11,7 @@ test("training editor uses an independent custom scrollbar on desktop and page s
   const track = page.getByRole("scrollbar", { name: "训练参数滚动条" });
   await page.getByRole("tab", { name: "设备与性能" }).click();
   while (await groups.evaluate((node) => node.scrollHeight - node.clientHeight) < 300) {
-    const collapsed = page.locator('.training-resource-group button[aria-expanded="false"]').first();
+    const collapsed = page.locator('#training-stage-resources .training-resource-group button[aria-expanded="false"]').first();
     if (await collapsed.count() === 0) break;
     await collapsed.click();
   }
@@ -52,7 +52,7 @@ test("training editor uses an independent custom scrollbar on desktop and page s
   await expect.poll(() => groups.evaluate((node) => node.scrollTop)).toBeGreaterThan(0);
 
   const maxBefore = Number(await track.getAttribute("aria-valuemax"));
-  const expanded = page.locator(".training-resource-group").first().locator("h3 button");
+  const expanded = page.locator("#training-stage-resources .training-resource-group").first().locator("h3 button");
   await expanded.click();
   await expect(expanded).toHaveAttribute("aria-expanded", "false");
   await expect.poll(async () => Number(await track.getAttribute("aria-valuemax"))).toBeLessThan(maxBefore);

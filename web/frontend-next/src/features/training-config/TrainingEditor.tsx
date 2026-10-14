@@ -1,14 +1,21 @@
+import { useState } from "react";
+import { TrainingStageNav } from "./TrainingStageNav";
+import { useTrainingStageNavigation } from "./useTrainingStageNavigation";
+import type { TrainingEditorView } from "./useTrainingEditorView";
 import type { useTrainingWorkspace } from "./useTrainingWorkspace";
 import { TrainingModelPicker } from "./TrainingExtras";
 import { TrainingStageFields } from "./TrainingResourceGroups";
 import { GROUPS } from "./useTrainingWorkspace";
 import { TrainingDevices } from "./TrainingDevices";
 import { TrainingEditorScrollArea } from "./TrainingEditorScrollArea";
+import { useTrainingBlockInventory } from "./useTrainingBlockInventory";
 
 export function TrainingEditor({
   state,
+  view = "groups",
 }: {
   state: ReturnType<typeof useTrainingWorkspace>;
+  view?: TrainingEditorView;
 }) {
   const {
     context,
@@ -30,9 +37,13 @@ export function TrainingEditor({
     busy,
     visibleFields,
   } = state;
+  const [expandedGroups, setExpandedGroups] = useState<Record<string, Record<string, boolean>>>({});
+  const selectStage = useTrainingStageNavigation(view, activeStage, setActiveStage);
+  // Keep the shared model header query alive when its field is outside the current stage.
+  useTrainingBlockInventory(String(draft.model_family || "anima"), String(draft.pretrained_model_name_or_path || ""));
   return (
     <>
-      <div className="training-editor-column">
+      <div className="training-editor-column" data-editor-view={view}>
         <TrainingModelPicker
           disabled={busy || context.isPending}
           onSelect={(item) => {
@@ -67,42 +78,14 @@ export function TrainingEditor({
             {visibleFields.length} / {fields.length}
           </span>
         </div>
-        <nav className="training-stage-nav" role="tablist" aria-label="配置阶段">
-          {GROUPS.map(([group, title], index) => (
-            <button
-              type="button"
-              role="tab"
-              id={`training-tab-${group}`}
-              aria-selected={activeStage === group}
-              aria-controls={activeStage === group ? `training-stage-${group}` : undefined}
-              tabIndex={activeStage === group ? 0 : -1}
-              key={group}
-              data-active={activeStage === group}
-              onClick={() => setActiveStage(group)}
-              onKeyDown={(event) => {
-                const target = {
-                  ArrowRight: (index + 1) % GROUPS.length,
-                  ArrowLeft: (index + GROUPS.length - 1) % GROUPS.length,
-                  Home: 0,
-                  End: GROUPS.length - 1,
-                }[event.key];
-                if (target === undefined) return;
-                event.preventDefault();
-                setActiveStage(GROUPS[target][0]);
-                document.getElementById(`training-tab-${GROUPS[target][0]}`)?.focus();
-              }}
-            >
-              {title}
-              {(fieldSearch || fieldView !== "applicable") && (
-                <small> ({visibleFields.filter((field) => field.group === group).length})</small>
-              )}
-            </button>
-          ))}
-        </nav>
-        <TrainingEditorScrollArea key={activeStage}>
-          {GROUPS.filter(([group]) => group === activeStage).map(([group, title]) => (
+        <TrainingStageNav view={view} activeStage={activeStage} onSelect={selectStage}
+          filtered={Boolean(fieldSearch || fieldView !== "applicable")} fields={visibleFields} />
+        <TrainingEditorScrollArea>
+          {GROUPS.filter(([group]) => view === "stream" || group === activeStage).map(([group, title]) => (
             <section
-              role="tabpanel"
+              role={view === "stream" ? "region" : "tabpanel"}
+              data-training-stage={group}
+              hidden={view === "groups" && group !== activeStage}
               aria-labelledby={`training-tab-${group}`}
               tabIndex={0}
               className="training-edit-card"
@@ -130,6 +113,8 @@ export function TrainingEditor({
               )}
               <TrainingStageFields
                 onEditPrompts={() => state.beforeAction("prompts")}
+                expandedGroups={expandedGroups}
+                onExpandedGroupsChange={setExpandedGroups}
                 stage={group}
                 search={fieldSearch}
                 view={fieldView}

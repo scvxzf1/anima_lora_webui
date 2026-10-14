@@ -1,3 +1,5 @@
+import { TrainingViewSwitch } from "./TrainingViewSwitch";
+import type { useTrainingEditorView } from "./useTrainingEditorView";
 import type { ReactNode } from "react";
 import type { useTrainingWorkspace } from "./useTrainingWorkspace";
 import {
@@ -19,11 +21,13 @@ export function TrainingCommands({
   libraryExpanded,
   onToggleLibrary,
   children,
+  editorView,
 }: {
   state: ReturnType<typeof useTrainingWorkspace>;
   libraryExpanded: boolean;
   onToggleLibrary: () => void;
   children?: ReactNode;
+  editorView?: ReturnType<typeof useTrainingEditorView>;
 }) {
   const {
     capabilities,
@@ -64,7 +68,7 @@ export function TrainingCommands({
         </button>
         <button
           type="button"
-          className="compact-tool"
+          className="compact-tool training-quiet-command"
           title="恢复页面默认值"
           aria-label="恢复页面默认值"
           onClick={restorePageDefaults}
@@ -86,7 +90,7 @@ export function TrainingCommands({
         </button>
         <button
           type="button"
-          className="primary-command compact-tool"
+          className="training-save-command compact-tool"
           title="保存配置"
           aria-label="保存配置"
           onClick={() => save.mutate({ ...draft })}
@@ -122,7 +126,7 @@ export function TrainingCommands({
         </button>
         <button
           type="button"
-          className="primary-command"
+          className="primary-command training-start-command"
           onClick={() => beforeAction("start")}
           disabled={commandBlocked || Boolean(state.deviceState.issue) || state.pipelineUnavailable}
         >
@@ -131,6 +135,7 @@ export function TrainingCommands({
         </button>
         <button
           type="button"
+          className="training-queue-command"
           onClick={() => beforeAction("queue")}
           disabled={commandBlocked || Boolean(state.deviceState.issue) || state.pipelineUnavailable}
         >
@@ -150,7 +155,7 @@ export function TrainingCommands({
         </button>
         <button
           type="button"
-          className="compact-tool"
+          className="compact-tool training-quiet-command"
           title="TOML"
           aria-label="TOML"
           disabled={dirty || !rawQuery.data || busy}
@@ -159,6 +164,7 @@ export function TrainingCommands({
           <FileCode size={16} />
           <span>TOML</span>
         </button>
+        {editorView && <TrainingViewSwitch view={editorView.view} onChange={editorView.changeView} />}
         {children}
       </div>
       {notice ? (

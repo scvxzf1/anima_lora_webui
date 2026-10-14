@@ -27,7 +27,7 @@ for (const width of [1440, 390]) {
       const control = field.locator("input, select, textarea");
       if (await control.isDisabled()) await expect(field).toBeFocused();
       else await expect(control).toBeFocused();
-      await expect(page.getByText("当前分类没有符合筛选条件的配置项。")).toHaveCount(0);
+      await expect(page.getByRole("tabpanel").getByText("当前分类没有符合筛选条件的配置项。")).toHaveCount(0);
       await page.screenshot({ path: info.outputPath(`${key}.png`) });
       await page.getByRole("tab", { name: /输入准备/ }).click();
       await page.getByLabel("参数视图").selectOption("changed");

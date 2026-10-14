@@ -1,0 +1,172 @@
+/* Automatic compact cards for regular configuration groups. Model/cache groups
+   keep their dedicated responsive layout; brick stream keeps its sortable flow. */
+.training-config-page
+  [data-editor-view="groups"]
+  .training-resource-group:not([data-group="models"]):not([data-group="cache"])
+  .training-edit-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-auto-flow: row dense;
+  gap: 10px;
+  padding: 12px;
+  align-items: start;
+}
+
+.training-config-page
+  [data-editor-view="groups"]
+  .training-resource-group:not([data-group="models"]):not([data-group="cache"])
+  .training-edit-fields > label {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  min-width: 0;
+  min-height: 0;
+  gap: 7px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.training-config-page
+  [data-editor-view="groups"]
+  .training-resource-group:not([data-group="models"]):not([data-group="cache"])
+  .training-edit-fields
+  > label[data-auto-span="wide"] {
+  grid-column: span 2;
+}
+
+.training-config-page
+  [data-editor-view="groups"]
+  .training-resource-group:not([data-group="models"]):not([data-group="cache"])
+  .training-edit-fields
+  > label[data-auto-width="compact"] {
+  max-inline-size: none;
+}
+
+.training-config-page
+  [data-editor-view="groups"]
+  .training-resource-group:not([data-group="models"]):not([data-group="cache"])
+  .training-edit-fields
+  > label[data-auto-width="wide"] {
+  max-inline-size: none;
+}
+
+.training-config-page
+  [data-editor-view="groups"]
+  .training-resource-group:not([data-group="models"]):not([data-group="cache"])
+  .training-edit-fields
+  .training-field-label {
+  width: 100%;
+}
+
+.training-config-page
+  [data-editor-view="groups"]
+  .training-resource-group:not([data-group="models"]):not([data-group="cache"])
+  .training-edit-fields
+  > label
+  > :is(input:not([type="checkbox"]), select, textarea, .training-model-path-control) {
+  width: 100%;
+  min-width: 0;
+}
+
+.training-config-page
+  [data-editor-view="groups"]
+  .training-resource-group:not([data-group="models"]):not([data-group="cache"])
+  .training-edit-fields
+  > label[data-auto-width="compact"]
+  > :is(input:not([type="checkbox"]), select, textarea, .training-model-path-control) {
+  max-width: 420px;
+}
+
+.training-config-page
+  [data-editor-view="groups"]
+  .training-resource-group:not([data-group="models"]):not([data-group="cache"])
+  .training-edit-fields
+  > label[data-auto-width="wide"]
+  > :is(input:not([type="checkbox"]), select, textarea, .training-model-path-control) {
+  max-width: 680px;
+}
+
+.training-config-page
+  [data-editor-view="groups"]
+  .training-resource-group:not([data-group="models"]):not([data-group="cache"])
+  .training-edit-fields
+  > label
+  > small[data-source] {
+  align-self: flex-start;
+  min-width: 0;
+  margin: 0;
+  padding: 2px 6px;
+}
+
+.training-config-page
+  [data-editor-view="groups"]
+  .training-resource-group:not([data-group="models"]):not([data-group="cache"])
+  .training-edit-fields
+  > label
+  > small:is(.training-field-help, .field-availability-reason) {
+  display: -webkit-box;
+  max-height: 2.8em;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-height: 1.4;
+}
+
+@container resource-group (min-width: 560px) {
+  .training-config-page
+    [data-editor-view="groups"]
+    .training-resource-group:not([data-group="models"]):not([data-group="cache"])
+    .training-edit-fields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@container resource-group (min-width: 900px) {
+  .training-config-page
+    [data-editor-view="groups"]
+    .training-resource-group:not([data-group="models"]):not([data-group="cache"])
+    .training-edit-fields {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  .training-config-page
+    [data-editor-view="groups"]
+    .training-resource-group:not([data-group="models"]):not([data-group="cache"])
+    .training-edit-fields[data-auto-columns="2"] {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .training-config-page
+    [data-editor-view="groups"]
+    .training-resource-group:not([data-group="models"]):not([data-group="cache"])
+    .training-edit-fields[data-auto-columns="3"] {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .training-config-page
+    [data-editor-view="groups"]
+    .training-resource-group:not([data-group="models"]):not([data-group="cache"])
+    .training-edit-fields[data-auto-columns="4"] {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+@container resource-group (max-width: 559px) {
+  .training-config-page
+    [data-editor-view="groups"]
+    .training-resource-group:not([data-group="models"]):not([data-group="cache"])
+    .training-edit-fields
+    > label[data-auto-span="wide"] {
+    grid-column: auto;
+  }
+}
+
+@media (max-width: 559px) {
+  .training-config-page
+    [data-editor-view="groups"]
+    .training-resource-group:not([data-group="models"]):not([data-group="cache"])
+    .training-edit-fields
+    > label[data-auto-span="wide"] {
+    grid-column: auto;
+  }
+}

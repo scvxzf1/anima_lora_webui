@@ -19,6 +19,8 @@ export function useTrainingBlockInventory(family: string, path: string) {
       model_family: family, pretrained_model_name_or_path: path,
     })}`, { signal }),
     staleTime: 30_000,
+    // Layout/stage switches reuse the current header; explicit refresh still re-reads it.
+    refetchOnMount: false,
     retry: false,
   });
   // Cached data must not constrain a changed model or a pending/failed refresh.
