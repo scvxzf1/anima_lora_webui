@@ -4,7 +4,7 @@ import { isTrainingMetric } from "../../components/metricSemantics";
 import type { HistoryResumeSource, HistoryTaskDetail, HistoryTaskSummary } from "./api";
 
 const STATE_LABELS: Record<string, string> = {
-  idle: "完成", running: "运行中", error: "异常", failed: "异常",
+  idle: "完成", done: "完成", completed: "完成", running: "运行中", error: "异常", failed: "异常",
   interrupted: "已中断", stopped: "已中断",
 };
 export const historyStateLabel = (state?: string) => STATE_LABELS[state || ""] || state || "未知";

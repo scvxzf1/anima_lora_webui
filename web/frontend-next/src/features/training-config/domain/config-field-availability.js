@@ -167,6 +167,27 @@ export function configFieldAvailability(key, context = {}) {
         );
     }
 
+    if (key === 'moss_te_quantization' && modelFamily !== 'moss_image') {
+        return unavailable('仅用于 MOSS-Image 的冻结文本编码器。', 'moss-te-family');
+    }
+    if (modelFamily === 'moss_image') {
+        const fixed = {
+            torch_compile: false, compile_dynamic_seq: false, compile_seq_bands: false,
+            gradient_checkpointing: true, use_vae_cache: true, use_text_cache: true,
+            network_train_unet_only: true, weighted_captions: false, masked_loss: false,
+            use_shuffled_caption_variants: false, cache_llm_adapter_outputs: false,
+            auto_block_swap: false, selective_checkpoint: 'off', base_compute: 'bf16',
+        };
+        if (Object.prototype.hasOwnProperty.call(fixed, key)) {
+            const required = fixed[key];
+            const current = contextValue(context, key, required);
+            const matches = typeof required === 'boolean'
+                ? normalizeBooleanConfigValue(key, current, required) === required
+                : String(current).toLowerCase() === required;
+            if (matches) return unavailable(`MOSS-Image 首版要求 ${key}=${required}。`, 'moss-fixed-contract');
+        }
+    }
+
     if (modelFamily === 'krea2_raw') {
         const fixedKrea2Values = {
             compile_dynamic_seq: [false, 'Krea-2 使用固定 token-family 编译图，不支持动态序列编译。', 'krea2-compile-dynamic-seq'],

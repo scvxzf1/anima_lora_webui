@@ -32,7 +32,7 @@ def main() -> None:
     parser.add_argument("--vae", type=str, required=True, help="Path to VAE weights")
     parser.add_argument(
         "--model_family",
-        choices=["anima", "krea2_raw", "z_image", "qwen_image_2_1"],
+        choices=["anima", "krea2_raw", "z_image", "qwen_image_2_1", "moss_image"],
         default="anima",
     )
     parser.add_argument(
@@ -51,8 +51,8 @@ def main() -> None:
         "--dtype",
         type=str,
         choices=["bfloat16", "float16", "float32"],
-        default="bfloat16",
-        help="VAE compute dtype (default: bfloat16).",
+        default=None,
+        help="VAE compute dtype (default: float32 for MOSS, bfloat16 otherwise).",
     )
     parser.add_argument(
         "--overwrite",
@@ -64,7 +64,7 @@ def main() -> None:
     data_dir = Path(args.dir)
     cache_dir = Path(args.cache_dir) if args.cache_dir else None
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    dtype = str_to_dtype(args.dtype)
+    dtype = str_to_dtype(args.dtype or ("float32" if args.model_family == "moss_image" else "bfloat16"))
 
     print(f"Loading VAE from {args.vae} ...")
     latent_space_name = None
@@ -85,6 +85,13 @@ def main() -> None:
         vae = load_qwen_image_2_1_vae(args.vae, dtype=dtype, device="cpu")
         latent_space_name = "qwen_image_2_1"
         encode_fn = encode_qwen_image_2_1_latents
+    elif args.model_family == "moss_image":
+        from library.models.moss_image.latent import encode_moss_latents
+        from library.models.moss_image.weights import load_moss_vae
+
+        vae = load_moss_vae(args.vae, dtype=dtype, device="cpu")
+        latent_space_name = "moss_image"
+        encode_fn = encode_moss_latents
     else:
         from library.models import qwen_vae as qwen_image_autoencoder_kl
 
@@ -109,7 +116,7 @@ def main() -> None:
         progress=tqdm_progress("Caching latents"),
         overwrite=bool(args.overwrite),
         latent_space_name=latent_space_name,
-        vae_spatial_compression=16 if args.model_family == "qwen_image_2_1" else 8,
+        vae_spatial_compression=16 if args.model_family in {"qwen_image_2_1", "moss_image"} else 8,
         encode_fn=encode_fn,
     )
     print(

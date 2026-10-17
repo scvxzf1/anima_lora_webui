@@ -4,6 +4,7 @@ import { ArrowDown, ArrowUp, Images, GripVertical } from 'lucide-react';
 import { useEffect, useState, type KeyboardEvent } from 'react';
 import type { FieldPath, UseFormReturn } from 'react-hook-form';
 
+import { SettingSwitch } from '../../components/SettingSwitch';
 import type { DatasetFormValues } from './datasetForm';
 import { DatasetSettingsFields } from './DatasetSettingsFields';
 import { DatasetFieldLabel } from './DatasetFieldLabel';
@@ -20,6 +21,7 @@ type Props = {
   disabled: boolean;
   workbenchDisabled: boolean;
   onSelect: () => void;
+  onImageCount?: (source: string, count: number | null) => void;
   onOpenWorkbench?: () => void;
   onMove: (index: number) => void;
   onRemove: () => void;
@@ -36,6 +38,7 @@ export function SortableDatasetSubset({
   disabled,
   workbenchDisabled,
   onSelect,
+  onImageCount,
   onOpenWorkbench,
   onMove,
   onRemove,
@@ -91,6 +94,7 @@ export function SortableDatasetSubset({
         </button>}
       </legend>
       <div className="dataset-row-heading">
+        <div className="dataset-row-tools">
         <div className="dataset-row-order-controls">
           <button
             ref={sortable.setActivatorNodeRef}
@@ -126,9 +130,12 @@ export function SortableDatasetSubset({
           </select>
         </div>
         {row.edit_role === 'normal' && <div className="dataset-setting-field dataset-checkbox-field">
-          <input id={path('is_reg')} type="checkbox" disabled={disabled} {...form.register(path('is_reg'))} />
+          <SettingSwitch id={path('is_reg')} aria-label="正则数据" disabled={disabled}
+                checked={Boolean(form.watch(path('is_reg')))}
+                onCheckedChange={(checked) => form.setValue(path('is_reg'), checked, { shouldDirty: true, shouldValidate: true })} />
           <DatasetFieldLabel htmlFor={path('is_reg')} field="is_reg" label="正则数据" />
         </div>}
+        </div>
         <button type="button" className="danger-command" onClick={onRemove} disabled={disabled || rowCount <= 1}>
           删除子集
         </button>
@@ -144,6 +151,7 @@ export function SortableDatasetSubset({
         form={form}
         path={path('source_dir')}
         helpField="source_dir"
+        onImageCount={onImageCount}
         disabled={disabled}
         label={row.edit_role === 'before' ? '编辑前图片目录' : row.edit_role === 'after' ? '目标图原始目录（编辑后）' : '原始图片目录'}
       />
@@ -156,19 +164,23 @@ export function SortableDatasetSubset({
         <DatasetFieldLabel htmlFor={path('cache_dir')} field="cache_dir" label="缓存目录" />
         <input id={path('cache_dir')} disabled={disabled} {...form.register(path('cache_dir'))} />
       </div>
+      <div className="dataset-row-basics dataset-wide-field">
       <div className="dataset-setting-field">
         <DatasetFieldLabel htmlFor={path('num_repeats')} field="num_repeats" label="重复次数" />
         <input id={path('num_repeats')} disabled={disabled} type="number" min="1" {...form.register(path('num_repeats'), { valueAsNumber: true })} />
         <FieldError form={form} path={path('num_repeats')} />
       </div>
-      <div className="dataset-setting-field dataset-checkbox-field">
-        <input id={path('recursive')} disabled={disabled} type="checkbox" {...form.register(path('recursive'))} />
-        <DatasetFieldLabel htmlFor={path('recursive')} field="recursive" label="递归扫描子目录" />
-      </div>
       <div className="dataset-setting-field">
         <DatasetFieldLabel htmlFor={path('path_pattern')} field="path_pattern" label="路径筛选" />
         <input id={path('path_pattern')} disabled={disabled} {...form.register(path('path_pattern'))} placeholder="*" />
         <FieldError form={form} path={path('path_pattern')} />
+      </div>
+      <div className="dataset-setting-field dataset-checkbox-field">
+        <SettingSwitch id={path('recursive')} aria-label="递归扫描子目录" disabled={disabled}
+                checked={Boolean(form.watch(path('recursive')))}
+                onCheckedChange={(checked) => form.setValue(path('recursive'), checked, { shouldDirty: true, shouldValidate: true })} />
+        <DatasetFieldLabel htmlFor={path('recursive')} field="recursive" label="递归扫描子目录" />
+      </div>
       </div>
 
       <details className="dataset-row-advanced dataset-wide-field">
@@ -179,7 +191,9 @@ export function SortableDatasetSubset({
           <h4>实验规则</h4>
           <div>
             <div className="dataset-setting-field dataset-checkbox-field">
-              <input id={path('nl_tag_mix.enabled')} type="checkbox" disabled={disabled} {...form.register(path('nl_tag_mix.enabled'))} />
+              <SettingSwitch id={path('nl_tag_mix.enabled')} aria-label="NL/Tag 标签混合" disabled={disabled}
+                checked={Boolean(form.watch(path('nl_tag_mix.enabled')))}
+                onCheckedChange={(checked) => form.setValue(path('nl_tag_mix.enabled'), checked, { shouldDirty: true, shouldValidate: true })} />
               <DatasetFieldLabel htmlFor={path('nl_tag_mix.enabled')} field="nl_tag_mix_enabled" label="NL/Tag 标签混合" />
             </div>
             <div className="dataset-setting-field">
@@ -188,7 +202,9 @@ export function SortableDatasetSubset({
               <FieldError form={form} path={path('nl_tag_mix.tag_ratio')} />
             </div>
             <div className="dataset-setting-field dataset-checkbox-field">
-              <input id={path('trigger_clone.enabled')} disabled={disabled} type="checkbox" {...form.register(path('trigger_clone.enabled'))} />
+              <SettingSwitch id={path('trigger_clone.enabled')} aria-label="触发词图像复制" disabled={disabled}
+                checked={Boolean(form.watch(path('trigger_clone.enabled')))}
+                onCheckedChange={(checked) => form.setValue(path('trigger_clone.enabled'), checked, { shouldDirty: true, shouldValidate: true })} />
               <DatasetFieldLabel htmlFor={path('trigger_clone.enabled')} field="trigger_clone_enabled" label="触发词图像复制" />
             </div>
             <div className="dataset-setting-field">
@@ -242,12 +258,12 @@ function ExperimentalScope({
           const targetIndex = fieldIds.indexOf(id);
           return (
             <label className="dataset-checkbox-field" key={id}>
-              <input
-                type="checkbox"
+              <SettingSwitch
+                aria-label={`子集 ${targetIndex + 1}`}
                 disabled={disabled}
                 checked={selected.includes(id)}
-                onChange={(event) => setSelected((current) => (
-                  event.target.checked ? [...current, id] : current.filter((item) => item !== id)
+                onCheckedChange={(checked) => setSelected((current) => (
+                  checked ? [...current, id] : current.filter((item) => item !== id)
                 ))}
               />
               <span>子集 {targetIndex + 1}</span>

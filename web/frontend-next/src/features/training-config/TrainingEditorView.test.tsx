@@ -85,11 +85,15 @@ it("preserves edited draft and per-filter fold state through layout changes", ()
   fireEvent.click(fold);
   const folded = fold.getAttribute("aria-expanded");
   fireEvent.click(screen.getByRole("button", { name: "编辑" }));
-  fireEvent.click(screen.getByRole("button", { name: "积木流视图" }));
+  fireEvent.change(screen.getByRole("combobox", { name: "配置布局" }), {
+    target: { value: "stream" },
+  });
   expect(fold).toHaveAttribute("aria-expanded", folded);
   expect(screen.getByText("edited-output")).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "筛选" }));
-  fireEvent.click(screen.getByRole("button", { name: "分组视图" }));
+  fireEvent.change(screen.getByRole("combobox", { name: "配置布局" }), {
+    target: { value: "groups" },
+  });
   fireEvent.click(screen.getByRole("button", { name: "筛选" }));
   expect(screen.getByRole("button", { name: /保存与续训点/ })).toHaveAttribute(
     "aria-expanded",

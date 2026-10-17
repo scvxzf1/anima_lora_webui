@@ -7,23 +7,16 @@ export function TrainingViewSwitch({
   onChange: (view: TrainingEditorView) => void;
 }) {
   return (
-    <div className="training-view-switch" role="group" aria-label="配置布局">
-      {(
-        [
-          ["groups", "分组视图"],
-          ["stream", "积木流视图"],
-        ] as const
-      ).map(([value, title]) => (
-        <button
-          key={value}
-          type="button"
-          aria-pressed={view === value}
-          onMouseDown={(event) => event.preventDefault()}
-          onClick={() => onChange(value)}
-        >
-          {title}
-        </button>
-      ))}
-    </div>
+    <label className="training-view-switch">
+      <span className="sr-only">配置布局</span>
+      <select
+        aria-label="配置布局"
+        value={view}
+        onChange={(event) => onChange(event.target.value as TrainingEditorView)}
+      >
+        <option value="groups">分组视图</option>
+        <option value="stream">积木流视图</option>
+      </select>
+    </label>
   );
 }

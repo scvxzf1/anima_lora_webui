@@ -11,12 +11,14 @@ export function TrainingModelPathControl({
   label,
   value,
   disabled,
+  required = false,
   onChange,
 }: {
   fieldKey: string;
   label: string;
   value: string;
   disabled: boolean;
+  required?: boolean;
   onChange: (value: string) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -29,6 +31,7 @@ export function TrainingModelPathControl({
           aria-label={label}
           value={value}
           disabled={disabled}
+          required={required}
           onChange={(event) => onChange(event.target.value)}
         />
         <button

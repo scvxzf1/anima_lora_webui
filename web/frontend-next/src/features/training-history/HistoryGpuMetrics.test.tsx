@@ -72,6 +72,7 @@ it("shows latest and peak GPU readings, recorded total VRAM, and joint values at
   const sampleSelect = screen.getByRole("combobox", { name: "同一采样点" });
   fireEvent.change(sampleSelect, { target: { value: (sampleSelect as HTMLSelectElement).options[0].value } });
   const inspected = screen.getByRole("group", { name: "所选采样点 GPU 数值" });
+  expect(inspected.querySelectorAll(".history-gpu-kpis > div")).toHaveLength(4);
   expect(inspected).toHaveTextContent("3 GB");
   expect(inspected).toHaveTextContent("8 GB");
   expect(inspected).toHaveTextContent("20 %");
@@ -114,7 +115,7 @@ it("offers one choice for indistinguishable legacy samples", () => {
 
 it("leaves total VRAM unknown when historical samples do not include it", () => {
   render(<HistoryGpuMetrics points={[{ ts: 100, vram_used_gb: 3, gpu_util: 20 }]} />);
-  expect(screen.getByLabelText("GPU 资源摘要")).not.toHaveTextContent("总显存");
+  expect(screen.getByLabelText("GPU 资源摘要").querySelectorAll(".history-gpu-kpis > div")).toHaveLength(4);
   expect(screen.getByRole("group", { name: "所选采样点 GPU 数值" })).toHaveTextContent("总显存—");
 });
 

@@ -17,6 +17,7 @@ _PREFIXES = {
     "anima": "blocks",
     "krea2_raw": "blocks",
     "z_image": "layers",
+    "moss_image": "layers",
     "qwen_image_2_1": "transformer_blocks",
 }
 _MAX_HEADER_BYTES = 64 * 1024 * 1024

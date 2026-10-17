@@ -3,11 +3,11 @@ import { TrainingStageNav } from "./TrainingStageNav";
 import { useTrainingStageNavigation } from "./useTrainingStageNavigation";
 import type { TrainingEditorView } from "./useTrainingEditorView";
 import type { useTrainingWorkspace } from "./useTrainingWorkspace";
-import { TrainingModelPicker } from "./TrainingExtras";
 import { TrainingStageFields } from "./TrainingResourceGroups";
 import { GROUPS } from "./useTrainingWorkspace";
 import { TrainingDevices } from "./TrainingDevices";
 import { TrainingEditorScrollArea } from "./TrainingEditorScrollArea";
+import { useTrainingInheritedDefaults } from "./useTrainingInheritedDefaults";
 import { useTrainingBlockInventory } from "./useTrainingBlockInventory";
 
 export function TrainingEditor({
@@ -38,26 +38,13 @@ export function TrainingEditor({
     visibleFields,
   } = state;
   const [expandedGroups, setExpandedGroups] = useState<Record<string, Record<string, boolean>>>({});
+  const defaults = useTrainingInheritedDefaults(selectedFile, context.selectedPreset, fields);
   const selectStage = useTrainingStageNavigation(view, activeStage, setActiveStage);
   // Keep the shared model header query alive when its field is outside the current stage.
   useTrainingBlockInventory(String(draft.model_family || "anima"), String(draft.pretrained_model_name_or_path || ""));
   return (
     <>
       <div className="training-editor-column" data-editor-view={view}>
-        <TrainingModelPicker
-          disabled={busy || context.isPending}
-          onSelect={(item) => {
-            setDraft((current) => ({
-              ...current,
-              model_family: item.model_family,
-              pretrained_model_name_or_path: item.pretrained_model_name_or_path,
-              qwen3: item.qwen3,
-              vae: item.vae,
-            }));
-            preview.reset();
-            preflight.reset();
-          }}
-        />
         <div className="training-field-search">
           <input
             aria-label="搜索参数"
@@ -121,6 +108,7 @@ export function TrainingEditor({
                 fields={visibleFields.filter((field) => field.group === group)}
                 draft={draft}
                 baseline={baseline}
+                defaults={defaults}
                 ownKeys={ownKeys}
                 method={selectedFile?.method}
                 disabled={

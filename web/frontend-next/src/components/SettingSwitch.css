@@ -1,0 +1,36 @@
+/* The switch owns its track geometry; shared command-button defaults exclude it. */
+.setting-switch {
+  position: relative;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  width: 34px;
+  height: 20px;
+  min-height: 20px;
+  flex: 0 0 34px;
+  padding: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: transparent;
+  cursor: pointer;
+  transition: background-color 160ms ease, border-color 160ms ease;
+}
+.setting-switch[data-state="checked"] { border-color: var(--accent); background: var(--accent); }
+.setting-switch-thumb {
+  display: block;
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  transform: translateX(1px);
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 20%);
+  transition: transform 160ms ease;
+}
+.setting-switch-thumb[data-state="checked"] { transform: translateX(15px); }
+.setting-switch:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.setting-switch:disabled { opacity: .5; cursor: not-allowed; }
+@media (prefers-reduced-motion: reduce) {
+  .setting-switch, .setting-switch-thumb { transition: none; }
+}

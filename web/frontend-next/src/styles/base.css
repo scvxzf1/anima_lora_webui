@@ -1,4 +1,6 @@
+@layer theme, control-defaults, utilities;
 @import "tailwindcss/theme.css" layer(theme);
+@import "./controlDefaults.css" layer(control-defaults);
 @import "tailwindcss/utilities.css" layer(utilities);
 @import "./workspace.css";
 @import "../components/sharedControls.css";
@@ -11,8 +13,8 @@
 
   /* 表面层次 */
   --surface: #ffffff;
-  --page: #f8f9fb;
-  --surface-subtle: #f3f5f8;
+  --page: #f1f5f9;
+  --surface-subtle: #f8fafc;
   --surface-elevated: #ffffff;
 
   /* 边框 */
@@ -157,9 +159,6 @@ body {
   visibility: visible;
 }
 
-button {
-  font: inherit;
-}
 
 .app-shell {
   min-height: 100vh;

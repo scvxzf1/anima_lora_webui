@@ -18,6 +18,7 @@ import {
   validateStageSchedule,
 } from './stageSchedule';
 import { trapDialogFocus } from './trapDialogFocus';
+import { SettingSwitch } from '../../components/SettingSwitch';
 
 type Props = {
   form: UseFormReturn<DatasetFormValues>;
@@ -51,11 +52,11 @@ export function StageScheduleEditor({ form, disabled }: Props) {
         </div>
         <div className="stage-schedule-toggle-control">
           <label className="stage-schedule-toggle">
-            <input
-              type="checkbox"
+            <SettingSwitch
+              aria-label="分阶段调度"
               checked={enabled}
               disabled={disabled}
-              onChange={(event) => setEnabled(event.target.checked)}
+              onCheckedChange={setEnabled}
             />
             <span>{enabled ? '已启用' : '已关闭'}</span>
           </label>

@@ -1,10 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, ChevronUp, Copy } from "lucide-react";
 import type { HistoryTaskDetail } from "./api";
-import { HistoryArtifacts } from "./HistoryArtifacts";
 import "./HistorySnapshot.css";
 
-export function HistorySnapshot({ detail, taskId }: { detail: HistoryTaskDetail; taskId: string }) {
+export function HistorySnapshot({ detail }: { detail: HistoryTaskDetail; taskId: string }) {
   const content = detail.config_toml || "";
   const [search, setSearch] = useState("");
   const [current, setCurrent] = useState(0);
@@ -62,7 +61,6 @@ export function HistorySnapshot({ detail, taskId }: { detail: HistoryTaskDetail;
         <code>{renderLines(content, hits, active)}</code>
       </pre>
     </> : <p role="status">此任务未保存配置快照。</p>}
-    <HistoryArtifacts taskId={taskId} />
   </section>;
 }
 

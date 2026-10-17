@@ -1,63 +1,105 @@
-.training-resource-group {
-  border-bottom: 1px solid var(--line);
-  transition: background 150ms cubic-bezier(0.4, 0, 0.2, 1);
+.training-resource-groups {
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+  min-width: 0;
 }
-.training-resource-group:hover {
-  background: var(--surface-subtle);
+.training-config-page .training-resource-group {
+  min-width: 0;
+  border: 1px solid rgb(226 232 240 / 80%);
+  border-radius: 12px;
+  background: rgb(248 250 252 / 70%);
+  overflow: hidden;
 }
-.training-resource-group h3 {
-  margin: 0;
-}
-.training-resource-group h3 button {
+.training-resource-group h3 { margin: 0; }
+.training-config-page .training-resource-group h3 button {
   display: flex;
   align-items: center;
-  gap: 10px;
+  flex-wrap: wrap;
+  gap: 8px 10px;
   width: 100%;
   min-height: 48px;
-  padding: 10px 12px;
+  padding: 12px;
   border: 0;
   border-radius: 0;
-  background: var(--surface-subtle);
+  background: transparent;
   color: var(--ink);
   text-align: left;
   font-size: 13px;
   cursor: pointer;
-  transition: all 180ms cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: none;
+  transform: none;
 }
-.training-resource-group h3 button:hover {
-  background: var(--surface);
-  padding-left: 16px;
-  box-shadow: inset 3px 0 0 var(--accent);
+.training-config-page .training-resource-group h3 button:hover {
+  background: rgb(241 245 249 / 65%);
 }
-.training-resource-group h3 svg {
-  flex-shrink: 0;
+.training-resource-group h3 button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -3px;
 }
-.training-resource-group h3 small {
+.training-resource-group h3 svg { flex-shrink: 0; }
+.training-resource-group .resource-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
   min-width: 0;
-  max-width: 55%;
-  margin-left: auto;
+}
+.training-resource-group .resource-title > svg { color: #64748b; }
+.training-resource-group .resource-meta {
+  display: flex;
+  flex: 1 1 220px;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  min-width: 0;
   font-size: 11px;
   font-weight: 400;
-  color: var(--muted);
+}
+.resource-summary-badge,
+.resource-chip {
+  padding: 3px 8px;
+  border-radius: 999px;
+  line-height: 1.5;
+}
+.resource-summary-badge {
+  min-width: 0;
+  max-width: 100%;
+  color: #1d4ed8;
+  background: #eff6ff;
+  border: 1px solid #dbeafe;
   overflow-wrap: anywhere;
 }
-.resource-field-count {
+.resource-chip {
   flex-shrink: 0;
-  color: var(--muted);
-  font-size: 11px;
-  font-weight: 400;
+  color: #64748b;
+  background: #f1f5f9;
+  border: 1px solid rgb(226 232 240 / 80%);
 }
-@container workspace (max-width: 600px) {
-  .training-resource-group h3 button {
-    flex-wrap: wrap;
-  }
-  .training-resource-group h3 small {
-    max-width: 100%;
-    order: 1;
+.resource-own-count { color: #2563eb; background: #eff6ff; border-color: #dbeafe; }
+.training-config-page .training-resource-group > div { padding: 0; }
+:root[data-theme="dark"] .training-config-page .training-resource-group {
+  background: var(--surface-subtle);
+  border-color: var(--line);
+}
+:root[data-theme="dark"] .training-config-page .training-resource-group h3 button:hover {
+  background: var(--surface);
+}
+:root[data-theme="dark"] .training-resource-group .resource-title > svg { color: var(--muted); }
+:root[data-theme="dark"] .resource-chip {
+  color: var(--muted);
+  background: var(--surface);
+  border-color: var(--line);
+}
+:root[data-theme="dark"] :is(.resource-summary-badge, .resource-own-count) {
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-color: color-mix(in srgb, var(--accent) 25%, var(--line));
+}
+@container parameter-group (max-width: 600px) {
+  .training-resource-group .resource-meta {
     flex-basis: 100%;
-    margin-left: 26px;
-  }
-  .resource-field-count {
-    margin-left: auto;
+    justify-content: flex-start;
+    padding-left: 26px;
   }
 }

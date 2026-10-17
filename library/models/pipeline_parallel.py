@@ -348,6 +348,8 @@ def build_pipeline_block_stage(
     from library.models.krea2_raw.pipeline_parallel import Krea2BlockStage
     from library.models.z_image.pipeline_parallel import ZImageBlockStage
 
+    from library.models.moss_image.integration import reject_pipeline_parallel
+
     canonical, pipeline_spec = _pipeline_spec(family)
     family_spec = get_model_family_spec(canonical)
     stage_type = dispatch_model_family(
@@ -357,6 +359,7 @@ def build_pipeline_block_stage(
             "anima": AnimaBlockStage,
             "krea2_raw": Krea2BlockStage,
             "z_image": ZImageBlockStage,
+            "moss_image": reject_pipeline_parallel,
             "qwen_image_2_1": lambda *_args, **_kwargs: (_ for _ in ()).throw(
                 NotImplementedError("Qwen Image 2.1 pipeline parallel is not implemented")
             ),

@@ -6,7 +6,10 @@ import { fetchHistoryTaskDetail, historyKeys, type HistoryTaskDetail } from "./a
 import { historyStateLabel, historyTaskName } from "./historySummary";
 import { finiteNumber } from "../../components/trainingNumbers";
 import { HistorySnapshot } from "./HistorySnapshot";
+import { HistoryNewTraining } from "./HistoryNewTraining";
 import "./HistoryDetailPage.css";
+import "./HistoryDetailHeader.css";
+import "./HistoryMetrics.css";
 
 const TrainingMetricsCharts = lazy(() => import("../../components/TrainingMetricsCharts").then((module) => ({ default: module.TrainingMetricsCharts })));
 const HistoryGpuMetrics = lazy(() => import("./HistoryGpuMetrics").then((module) => ({ default: module.HistoryGpuMetrics })));
@@ -39,14 +42,17 @@ export function HistoryDetailPage({ taskId: embeddedTaskId, onBack }: { taskId?:
         <div>
           {embedded ? <button type="button" className="history-back" onClick={onBack}>返回当前监控</button>
             : <Link to={`/history${listSearch ? `?${listSearch}` : ""}`} className="history-back">返回历史</Link>}
-          <h1>{historyTaskName(task)}</h1>
+          <div className="history-detail-title">
+            <h1>{historyTaskName(task)}</h1>
+            {task && <span className="history-detail-state" data-state={task.state}><i aria-hidden="true" />{historyStateLabel(task.state)}</span>}
+          </div>
           <p>{task?.job === "preprocess" ? "数据预处理" : task?.job === "training" ? "模型训练" : "历史任务"} · {task?.started_at_text || taskId}</p>
         </div>
         {task && <div className="history-detail-commands">
-          <span className="history-detail-state" data-state={task.state}>{historyStateLabel(task.state)}</span>
           {!embedded && task.job === "training" && <button type="button" disabled={Boolean(query.error)} onClick={() => setResumeOpen(true)}>
             <RotateCcw size={16} />检查点续训
           </button>}
+          {!embedded && task.job === "training" && <HistoryNewTraining key={taskId} detail={query.data!} disabled={Boolean(query.error)} />}
         </div>}
       </header>
       <nav className="page-tabs" aria-label="历史详情视图">
@@ -78,13 +84,13 @@ function HistoryDetailContent({ detail, taskId, tab, onViewChange, onMonitor }: 
   detail: HistoryTaskDetail; taskId: string; tab: string; onViewChange?: (view: string) => void; onMonitor?: () => void;
 }) {
   switch (tab) {
-    case "metrics": return <>
-      {detail.task?.job === "training" ? <TrainingMetricsCharts points={detail.metrics || []} total={finiteNumber(detail.limits?.metrics_total)} />
+    case "metrics": return <div className="history-metrics-stack">
+      {detail.task?.job === "training" ? <section className="history-metrics-card" aria-label="训练指标趋势"><TrainingMetricsCharts points={detail.metrics || []} total={finiteNumber(detail.limits?.metrics_total)} /></section>
         : <p className="data-scope">此任务不适用训练 Loss。</p>}
-      <HistoryGpuMetrics taskId={taskId} points={detail.system || []} total={finiteNumber(detail.limits?.system_total)}
-        whitelist={detail.task?.gpu_whitelist} />
-    </>;
-    case "artifacts": return <HistoryAssets taskId={taskId} />;
+      <section className="history-metrics-card" aria-label="GPU 资源"><HistoryGpuMetrics taskId={taskId} points={detail.system || []} total={finiteNumber(detail.limits?.system_total)}
+        whitelist={detail.task?.gpu_whitelist} /></section>
+    </div>;
+    case "artifacts": return <HistoryAssets taskId={taskId} metrics={detail.metrics} />;
     case "logs": return <HistoryLogs taskId={taskId} running={detail.task?.state === "running"} />;
     case "config": return <HistorySnapshot detail={detail} taskId={taskId} />;
     default: return <HistoryOverview detail={detail} onViewChange={onViewChange} onMonitor={onMonitor} />;

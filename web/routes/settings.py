@@ -16,6 +16,7 @@ from web.services.model_config_service import (
 )
 from web.services.settings_service import get_global_settings, save_global_settings
 from web.services.model_file_service import list_model_files
+from web.services import settings_paths
 
 
 def setup_settings_routes(app: web.Application) -> None:
@@ -24,6 +25,8 @@ def setup_settings_routes(app: web.Application) -> None:
     app.router.add_get("/api/settings/model-configs", handle_model_configs_get)
     app.router.add_put("/api/settings/model-configs", handle_model_configs_put)
     app.router.add_get("/api/settings/model-files", handle_model_files_get)
+    app.router.add_get("/api/settings/model-path-status", handle_model_path_status_get)
+    app.router.add_get("/api/settings/directories", handle_settings_directories_get)
 
 
 async def handle_model_files_get(request: web.Request) -> web.Response:
@@ -46,6 +49,47 @@ async def handle_model_files_get(request: web.Request) -> web.Response:
         return web.json_response({"ok": False, "error": message}, status=400 if invalid_path else 503)
     except (ValueError, RuntimeError) as e:
         return web.json_response({"ok": False, "error": str(e)}, status=400)
+
+
+async def handle_model_path_status_get(request: web.Request) -> web.Response:
+    try:
+        payload = await asyncio.to_thread(
+            settings_paths.check_model_path, request.query.get("path")
+        )
+        return web.json_response(payload)
+    except PermissionError as e:
+        return web.json_response({"ok": False, "error": str(e)}, status=403)
+    except ModelConfigFileError as e:
+        return web.json_response({"ok": False, "error": str(e)}, status=503)
+    except ValueError as e:
+        return web.json_response({"ok": False, "error": str(e)}, status=400)
+    except OSError as e:
+        invalid_path = e.errno in {errno.ENAMETOOLONG, errno.EINVAL}
+        message = "路径无效" if invalid_path else "暂时无法读取路径，请稍后重试"
+        return web.json_response({"ok": False, "error": message}, status=400 if invalid_path else 503)
+
+
+async def handle_settings_directories_get(request: web.Request) -> web.Response:
+    try:
+        offset = int(request.query.get("offset", "0"))
+        limit = int(request.query.get("limit", "100"))
+        payload = await asyncio.to_thread(
+            settings_paths.list_directories,
+            request.query.get("directory"),
+            offset=offset,
+            limit=limit,
+        )
+        return web.json_response(payload)
+    except PermissionError as e:
+        return web.json_response({"ok": False, "error": str(e)}, status=403)
+    except (FileNotFoundError, NotADirectoryError) as e:
+        return web.json_response({"ok": False, "error": str(e)}, status=404)
+    except ValueError as e:
+        return web.json_response({"ok": False, "error": str(e)}, status=400)
+    except OSError as e:
+        invalid_path = e.errno in {errno.ENAMETOOLONG, errno.EINVAL}
+        message = "目录路径无效" if invalid_path else "暂时无法读取目录，请稍后重试"
+        return web.json_response({"ok": False, "error": message}, status=400 if invalid_path else 503)
 
 
 async def handle_global_settings_get(request: web.Request) -> web.Response:

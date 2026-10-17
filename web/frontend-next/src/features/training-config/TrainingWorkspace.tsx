@@ -1,10 +1,11 @@
 import { useTrainingEditorView } from "./useTrainingEditorView";
+import { TrainingFieldHelpProvider } from "./TrainingFieldHelpPreference";
 import "./TrainingBrickStream.css";
 import { useState } from "react";
 import { TrainingEditor } from "./TrainingEditor";
 import { TrainingCommands } from "./TrainingCommands";
 import { trainingContextKeys } from "../../api/trainingContext";
-import { TrainingContextBar } from "../../app/TrainingContextBar";
+import { TrainingSetupHeader } from "./TrainingSetupHeader";
 import { TrainingTools } from "./TrainingTools";
 import { TrainingSaveAsDialog } from "./TrainingSaveAsDialog";
 import { TrainingConfigLibrary } from "./TrainingConfigLibrary";
@@ -28,6 +29,8 @@ import "./TrainingResponsive.css";
 import "./TrainingMicroInteractions.css";
 import "./TrainingEditorRefinements.css";
 import "./TrainingAutoLayout.css";
+import "./TrainingFieldCards.css";
+import "./TrainingCompactHeader.css";
 
 export function TrainingWorkspace() {
   const state = useTrainingWorkspace();
@@ -75,7 +78,6 @@ export function TrainingWorkspace() {
     confirmContextSwitch,
     cancelContextSwitch,
     guardedContext,
-    contextSelectionBusy,
     locked,
     busy,
   } = state;
@@ -91,21 +93,10 @@ export function TrainingWorkspace() {
     setDraft: state.setDraft,
   });
   return (
+    <TrainingFieldHelpProvider>
     <div className="training-config-shell">
       <main className="training-config-page">
-        <header className="training-config-header">
-          <div>
-            <p className="eyebrow">TRAINING BLUEPRINT</p>
-            <h1>训练配置</h1>
-          </div>
-          <span className="training-readonly-badge" data-editable={!locked}>
-            {locked ? "系统只读 · 可另存" : dirty ? "有未保存修改" : "已同步"}
-          </span>
-        </header>
-        <TrainingContextBar
-          context={guardedContext}
-          selectionDisabled={contextSelectionBusy}
-        />
+        <TrainingSetupHeader state={state} />
 
         {context.error || rawQuery.error ? (
           <section className="training-config-error" role="alert">
@@ -136,11 +127,15 @@ export function TrainingWorkspace() {
             >
               <div>
                 <span>方法文件</span>
-                <strong>{selectedFile?.path || context.selectedFileId || "—"}</strong>
+                <strong title={selectedFile?.path || context.selectedFileId || "—"}>
+                  {selectedFile?.path || context.selectedFileId || "—"}
+                </strong>
               </div>
               <div>
                 <span>硬件预设</span>
-                <strong>{context.selectedPreset}</strong>
+                <strong title={context.selectedPreset}>
+                  {context.selectedPreset}
+                </strong>
               </div>
               <div>
                 <span>文件自有字段</span>
@@ -267,5 +262,6 @@ export function TrainingWorkspace() {
       {hotstart.intent && hotstart.status === "checking" && <p role="status">正在重新检查热启动权重</p>}
       {hotstart.status === "error" && <p role="alert">{hotstart.error} {hotstart.intent && <><button type="button" onClick={hotstart.retry}>重试检查</button><button type="button" onClick={hotstart.cancel}>取消热启动</button></>}</p>}
     </div>
+    </TrainingFieldHelpProvider>
   );
 }

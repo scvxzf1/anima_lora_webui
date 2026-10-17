@@ -5,117 +5,17 @@
   min-width: 0;
 }
 
-.training-config-page .training-edit-fields > label > :is(input:not([type="checkbox"]), select) {
-  max-width: 360px;
-}
-.training-config-page .training-edit-fields > label[data-brick-width="wide"] > :is(input, textarea) {
-  max-width: 680px;
-}
 /* Native title hints preserve help without invisible pseudo-elements widening cards. */
 .training-edit-card [title]::before,
 .training-model-browser [title]::before {
   content: none;
-}
-.training-resource-group[data-group="models"],
-.training-resource-group[data-group="cache"] {
-  container-type: inline-size;
-  container-name: training-refined-group;
-}
-.training-config-page
-  .training-resource-group:is([data-group="models"], [data-group="cache"])
-  .training-edit-fields {
-  grid-template-columns: minmax(0, 1fr);
-  gap: 12px;
-  padding: 12px;
-  align-items: start;
-}
-.training-config-page
-  .training-resource-group:is([data-group="models"], [data-group="cache"])
-  .training-edit-fields
-  > label {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  min-width: 0;
-  min-height: 0;
-  padding: 12px;
-  gap: 7px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--surface);
-  grid-column: auto;
-}
-.training-config-page
-  .training-resource-group:is([data-group="models"], [data-group="cache"])
-  .training-field-label {
-  width: 100%;
-}
-.training-config-page
-  .training-resource-group:is([data-group="models"], [data-group="cache"])
-  small {
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-.training-config-page
-  .training-resource-group:is([data-group="models"], [data-group="cache"])
-  small[data-source],
-.training-config-page
-  .training-resource-group[data-group="cache"]
-  input[type="checkbox"] {
-  align-self: flex-start;
-}
-@container training-refined-group (min-width: 620px) {
-  .training-config-page
-    .training-resource-group:is([data-group="models"], [data-group="cache"])
-    .training-edit-fields {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-  .training-config-page .training-resource-group[data-group="models"] .training-edit-fields[data-field-count="5"] > label:last-child {
-    grid-column: 1 / -1;
-  }
-}
-@container training-refined-group (min-width: 980px) {
-  .training-config-page
-    .training-resource-group:is([data-group="models"], [data-group="cache"])
-    .training-edit-fields {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-}
-/* Qwen Edit exposes five model fields: balance the last row as 3 + 2. */
-@container training-refined-group (min-width: 980px) {
-  .training-config-page .training-resource-group[data-group="models"] .training-edit-fields[data-field-count="5"] {
-    grid-template-columns: repeat(6, minmax(0, 1fr));
-  }
-  .training-config-page .training-resource-group[data-group="models"] .training-edit-fields[data-field-count="5"] > label {
-    grid-column: span 2;
-  }
-  .training-config-page .training-resource-group[data-group="models"] .training-edit-fields[data-field-count="5"] > label:nth-last-child(-n + 2) {
-    grid-column: span 3;
-  }
-}
-@container training-refined-group (min-width: 1280px) {
-  .training-config-page
-    .training-resource-group[data-group="models"]
-    .training-edit-fields:not([data-field-count="5"]),
-  .training-config-page .training-resource-group[data-group="cache"] .training-edit-fields {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-  }
-}
-@container training-refined-group (min-width: 1760px) {
-  .training-config-page .training-resource-group[data-group="models"] .training-edit-fields[data-field-count="5"] {
-    grid-template-columns: repeat(5, minmax(0, 1fr));
-  }
-  .training-config-page .training-resource-group[data-group="models"] .training-edit-fields[data-field-count="5"] > label,
-  .training-config-page .training-resource-group[data-group="models"] .training-edit-fields[data-field-count="5"] > label:nth-last-child(-n + 2) {
-    grid-column: auto;
-  }
 }
 .training-config-page .training-model-path-control {
   display: flex;
   align-items: stretch;
   min-width: 0;
   width: 100%;
-  max-width: 560px;
+  max-width: none;
   gap: 0;
 }
 .training-config-page .training-model-path-control input {

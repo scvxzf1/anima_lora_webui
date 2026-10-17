@@ -121,50 +121,8 @@
   cursor: pointer;
 }
 
-.dataset-management-toggle input {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  opacity: 0;
-}
 
-.dataset-management-toggle-track {
-  position: relative;
-  width: 30px;
-  height: 17px;
-  background: var(--line-strong);
-  border: 1px solid var(--line-strong);
-  border-radius: 9px;
-  transition: background 120ms ease;
-}
-
-.dataset-management-toggle-track::after {
-  content: '';
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 11px;
-  height: 11px;
-  background: var(--surface);
-  border-radius: 50%;
-  transition: transform 120ms ease;
-}
-
-.dataset-management-toggle input:checked + .dataset-management-toggle-track {
-  background: var(--accent);
-  border-color: var(--accent);
-}
-
-.dataset-management-toggle input:checked + .dataset-management-toggle-track::after {
-  transform: translateX(13px);
-}
-
-.dataset-management-toggle input:focus-visible + .dataset-management-toggle-track {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
-
-.dataset-library-toolbar-actions button {
+.dataset-library-toolbar-actions button:not([role="switch"]) {
   min-width: 52px;
   white-space: nowrap;
 }
@@ -173,9 +131,9 @@
   font-size: 17px;
 }
 
-.dataset-library-toolbar button,
-.dataset-group-form button,
-.dataset-group-actions button,
+.dataset-library-toolbar button:not([role="switch"]),
+.dataset-group-form button:not([role="switch"]),
+.dataset-group-actions button:not([role="switch"]),
 .error-panel button {
   min-height: 34px;
   padding: 0 12px;
@@ -186,16 +144,16 @@
   cursor: pointer;
 }
 
-.dataset-library-toolbar button:hover,
-.dataset-group-form button:hover,
-.dataset-group-actions button:hover,
+.dataset-library-toolbar button:not([role="switch"]):hover,
+.dataset-group-form button:not([role="switch"]):hover,
+.dataset-group-actions button:not([role="switch"]):hover,
 .error-panel button:hover {
   border-color: var(--accent);
 }
 
-.dataset-library-toolbar button:disabled,
-.dataset-group-form button:disabled,
-.dataset-group-actions button:disabled {
+.dataset-library-toolbar button:not([role="switch"]):disabled,
+.dataset-group-form button:not([role="switch"]):disabled,
+.dataset-group-actions button:not([role="switch"]):disabled {
   cursor: wait;
   opacity: 0.6;
 }
@@ -330,7 +288,7 @@
   justify-content: flex-end;
 }
 
-.dataset-group-actions button {
+.dataset-group-actions button:not([role="switch"]) {
   min-height: 28px;
   padding: 0 8px;
   font-size: 11px;
@@ -612,11 +570,6 @@
   font-weight: 700;
 }
 
-.stage-schedule-toggle input {
-  width: 16px;
-  height: 16px;
-  margin: 0;
-}
 
 .stage-schedule-summary {
   min-width: 0;
@@ -793,10 +746,10 @@
   border-bottom: 1px solid var(--line);
 }
 
-.dataset-command-bar button,
-.dataset-subsets button,
-.dataset-dialog button,
-.dataset-editor-empty button {
+.dataset-command-bar button:not([role="switch"]),
+.dataset-subsets button:not([role="switch"]),
+.dataset-dialog button:not([role="switch"]),
+.dataset-editor-empty button:not([role="switch"]) {
   min-height: 34px;
   padding: 0 12px;
   color: var(--button-ink);
@@ -806,16 +759,16 @@
   cursor: pointer;
 }
 
-.dataset-command-bar button:hover,
-.dataset-subsets button:hover,
-.dataset-dialog button:hover,
-.dataset-editor-empty button:hover {
+.dataset-command-bar button:not([role="switch"]):hover,
+.dataset-subsets button:not([role="switch"]):hover,
+.dataset-dialog button:not([role="switch"]):hover,
+.dataset-editor-empty button:not([role="switch"]):hover {
   border-color: var(--accent);
 }
 
-.dataset-command-bar button:disabled,
-.dataset-subsets button:disabled,
-.dataset-dialog button:disabled {
+.dataset-command-bar button:not([role="switch"]):disabled,
+.dataset-subsets button:not([role="switch"]):disabled,
+.dataset-dialog button:not([role="switch"]):disabled {
   cursor: not-allowed;
   opacity: 0.55;
 }

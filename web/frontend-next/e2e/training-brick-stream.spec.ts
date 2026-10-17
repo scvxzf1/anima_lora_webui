@@ -96,8 +96,11 @@ for (const [width, theme, screenshot] of [
     const columns = await grid.evaluate(
       (node) => getComputedStyle(node).gridTemplateColumns.split(" ").length,
     );
-    if (width === 390) expect(columns).toBe(1);
-    else expect(columns).toBeGreaterThanOrEqual(2);
+    expect(columns).toBe(12);
+    const spans = await grid.locator(".training-field-card").evaluateAll((nodes) =>
+      nodes.map((node) => getComputedStyle(node).gridColumnStart),
+    );
+    if (width === 390) expect(spans.every((span) => span === "span 12")).toBe(true);
     if (width > 800) {
       const track = page.getByRole("scrollbar", { name: "训练参数滚动条" });
       await expect(track).toBeVisible();

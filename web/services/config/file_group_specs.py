@@ -151,6 +151,7 @@ def _glob_config_files(pattern: str) -> list[str]:
 def _default_config_file_group_specs() -> list[dict[str, Any]]:
     return [
         {"id": "gui_methods", "label": "可训练方法变体", "open": True, "locked": False, "trainable": True, "methods_subdir": "gui-methods", "patterns": ["configs/gui-methods/*.toml"]},
+        {"id": "methods", "label": "内置方法", "open": False, "locked": True, "trainable": True, "methods_subdir": "methods", "patterns": ["configs/methods/*.toml"]},
         {"id": "imported", "label": "导入配置", "open": True, "locked": False, "trainable": True, "methods_subdir": "imported", "patterns": ["configs/imported/*.toml"]},
         {"id": "datasets", "label": "数据集配置", "open": False, "locked": False, "trainable": False, "patterns": ["configs/datasets/*.toml"]},
         {"id": "presets", "label": "系统预设配置（锁定只读）", "open": False, "locked": True, "trainable": False, "files": ["configs/base.toml", "configs/presets.toml"]},

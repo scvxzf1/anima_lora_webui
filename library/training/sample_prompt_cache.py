@@ -89,6 +89,12 @@ def _z_image_encoding_profile(args) -> dict[str, Any]:
     )
 
 
+def _moss_encoding_profile(*args, **kwargs):
+    from library.models.moss_image.integration import encoding_profile
+
+    return encoding_profile(*args, **kwargs)
+
+
 def _qwen_image_2_1_encoding_profile(args) -> dict[str, Any]:
     from library.models.qwen_image_2_1.strategy import MAX_PROMPT_LENGTH, resolve_tokenizer_path
 
@@ -113,6 +119,7 @@ def _encoding_profile(args, family: str) -> dict[str, Any]:
             "krea2_raw": _krea2_encoding_profile,
             "z_image": _z_image_encoding_profile,
             "qwen_image_2_1": _qwen_image_2_1_encoding_profile,
+            "moss_image": _moss_encoding_profile,
         },
     )
     profile.update(handler(args))

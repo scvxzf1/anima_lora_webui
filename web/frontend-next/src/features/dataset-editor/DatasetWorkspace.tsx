@@ -1,10 +1,12 @@
 import { zodResolver } from '@hookform/resolvers/zod';
+import { SettingSwitch } from '../../components/SettingSwitch';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 
 import { z } from 'zod';
+import { Plus } from 'lucide-react';
 
 import { TrainingContextBar } from '../../app/TrainingContextBar';
 import { useTrainingContext } from '../../app/useTrainingContext';
@@ -31,6 +33,7 @@ import { useDatasetPresetEditor } from './useDatasetPresetEditor';
 import { useDatasetLibraryOrdering } from './useDatasetLibraryOrdering';
 import './DatasetWorkspace.css';
 import './DatasetWorkspaceLayout.css';
+import './DatasetForge.css';
 
 const groupSchema = z.object({
   label: z.string().trim().min(1, '请输入分组名称').max(80, '分组名称不能超过 80 个字符'),
@@ -114,6 +117,7 @@ export function DatasetWorkspace() {
   const [search, setSearch] = useState(() => restoredReturn?.search || '');
   const [detailedManagement, setDetailedManagement] = useState(readDetailedManagement);
   const [notice, setNotice] = useState('');
+  const [creatingGroup, setCreatingGroup] = useState(false);
   const [groupDialog, setGroupDialog] = useState<GroupDialogState | null>(null);
   const [importDraft, setImportDraft] = useState<ImportDraft | null>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
@@ -131,6 +135,7 @@ export function DatasetWorkspace() {
     mutationFn: ({ label }: GroupFormValues) => createDatasetGroup(label),
     onSuccess: async (result) => {
       groupForm.reset();
+      setCreatingGroup(false);
       setNotice(result.message || '分组已创建');
       await queryClient.invalidateQueries({ queryKey: datasetKeys.library() });
     },
@@ -266,25 +271,31 @@ export function DatasetWorkspace() {
             <aside ref={libraryScrollRef} className="dataset-library" aria-label="数据集预设库">
               <div className="dataset-library-toolbar">
                 <div>
-                  <h2>预设库</h2>
+                  <div className="dataset-library-title">
+                    <h2>预设库</h2>
+                    <button type="button" className="dataset-new-group" aria-expanded={creatingGroup}
+                      aria-controls="dataset-new-group-form" onClick={() => {
+                        setCreatingGroup((open) => !open);
+                        createGroup.reset();
+                      }}>
+                      <Plus size={14} aria-hidden="true" />新建分组
+                    </button>
+                  </div>
                   <p>按分组整理磁盘中的数据集蓝图。</p>
                 </div>
                 <div className="dataset-library-toolbar-actions">
                   <div className="dataset-library-import-actions">
                     <button type="button" onClick={chooseImportFile}>导入</button>
                     <label className="dataset-management-toggle">
-                      <input
-                        type="checkbox"
-                        role="switch"
+                      <SettingSwitch
+                        aria-label="详细管理"
                         checked={detailedManagement}
-                        onChange={(event) => {
-                          const enabled = event.target.checked;
+                        onCheckedChange={(enabled) => {
                           setDetailedManagement(enabled);
                           try { localStorage.setItem(DATASET_DETAILED_MANAGEMENT_KEY, String(enabled)); }
                           catch { /* Keep the setting for this session. */ }
                         }}
                       />
-                      <span className="dataset-management-toggle-track" aria-hidden="true" />
                       <span>详细管理</span>
                     </label>
                   </div>
@@ -319,10 +330,10 @@ export function DatasetWorkspace() {
                 />
               </label>
 
-              <form className="dataset-group-form" onSubmit={submitGroup}>
+              <form id="dataset-new-group-form" className="dataset-group-form" hidden={!creatingGroup} onSubmit={submitGroup}>
                 <label>
                   <span>新分组</span>
-                  <input {...groupForm.register('label')} placeholder="例如：角色训练" />
+                  <input {...groupForm.register('label')} aria-label="新分组" autoFocus={creatingGroup} placeholder="例如：角色训练" />
                 </label>
                 <button type="submit" disabled={createGroup.isPending}>创建</button>
                 {groupForm.formState.errors.label ? (

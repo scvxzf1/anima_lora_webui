@@ -16,6 +16,7 @@ const system = [
 for (const width of [1440, 390]) {
   test(`history GPU charts switch between aggregate and physical devices at ${width}px`, async ({ page }, info) => {
     await page.setViewportSize({ width, height: 900 });
+    await page.addInitScript(() => localStorage.setItem("dragon-next-ui-v1-theme", "light"));
     const mocks = await mockWorkspace(page);
     await mockSystemPages(page, system);
     await page.route((url) => url.pathname === "/api/training/history/fixture-run", (route) => route.fulfill({ json: {
@@ -28,6 +29,10 @@ for (const width of [1440, 390]) {
     await expect(region.getByRole("group", { name: "GPU 资源范围" }).getByRole("button")).toHaveCount(3);
     await expect(region.getByRole("button", { name: "汇总" })).toHaveAttribute("aria-pressed", "true");
     await expect(region.getByRole("group", { name: "显存 (GB)，2 个点" })).toBeVisible();
+    await expect(page.getByRole("region", { name: "训练指标趋势" })).toHaveCSS("background-color", "rgb(255, 255, 255)");
+    await expect(region.locator(".history-gpu-kpis > div")).toHaveCount(4);
+    await expect(region.locator(".history-gpu-summary")).toHaveCount(0);
+    expect(await region.locator(".history-gpu-kpis").evaluate((node) => getComputedStyle(node).gridTemplateColumns.split(" ").length)).toBe(width === 390 ? 2 : 4);
     await region.getByRole("button", { name: "GPU 1" }).click();
     await expect(region).toContainText("GPU 1 · GPU Beta · 任务已选");
     const utilization = region.getByRole("group", { name: "GPU 利用率 (%)，2 个点" });

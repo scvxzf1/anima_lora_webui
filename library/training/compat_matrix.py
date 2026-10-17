@@ -460,6 +460,11 @@ def check_training_compat(
                 + "; unsupported: " + ", ".join(adapter_conflicts),
             )
 
+    if family_spec.name == "moss_image":
+        from library.training.moss_compat import check_moss_training_contract
+
+        check_moss_training_contract(out, config)
+
     if qwen_image_2_1_family:
         _check_qwen_image_2_1_contract(
             out, config,

@@ -1,0 +1,138 @@
+/* Imported below utilities and component styles in the cascade. Defaults must
+   not force command-button geometry onto switches, help buttons or image tiles. */
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button:not([role="switch"]),
+.ui-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 0;
+  border: 1px solid var(--button-border);
+  background: var(--button-bg);
+  color: var(--button-ink);
+  border-radius: var(--radius-sm);
+  /* Natural height accommodates multiline labels. Explicit component padding
+     and height can override this without fighting an unrelated min-height. */
+  padding: 7px 14px;
+  cursor: pointer;
+  font-weight: 500;
+  transition: background-color 150ms ease, border-color 150ms ease, box-shadow 150ms ease;
+  box-shadow: var(--shadow-sm);
+}
+
+button svg,
+a svg {
+  flex-shrink: 0;
+}
+
+.icon-button,
+.nav-toggle {
+  padding: 0;
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  border-radius: var(--radius-sm);
+}
+
+button:disabled,
+.ui-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Hover elevation belongs to command buttons, never to every native button. */
+.ui-button:hover:not(:disabled),
+.button-primary:hover:not(:disabled) {
+  filter: brightness(1.05);
+  box-shadow: var(--shadow-md);
+}
+
+input:not([type="checkbox"], [type="radio"], [type="range"], [type="file"], [type="color"], [type="hidden"]),
+select,
+textarea {
+  min-width: 0;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  padding: 8px 11px;
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+
+select {
+  appearance: none !important;
+  -webkit-appearance: none !important;
+  -moz-appearance: none !important;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%234b5563' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E") !important;
+  background-repeat: no-repeat !important;
+  background-position: right 12px center !important;
+  background-size: 16px 16px !important;
+  padding-right: 36px !important;
+}
+
+select:focus,
+select:active {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%232563eb' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='18 15 12 9 6 15'%3E%3C/polyline%3E%3C/svg%3E") !important;
+}
+
+@media (prefers-color-scheme: dark) {
+  select {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E") !important;
+  }
+  select:focus,
+  select:active {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2360a5fa' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='18 15 12 9 6 15'%3E%3C/polyline%3E%3C/svg%3E") !important;
+  }
+}
+
+input:not([type="checkbox"], [type="radio"], [type="range"], [type="file"], [type="color"], [type="hidden"]):focus,
+select:focus,
+textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+input[type="checkbox"],
+input[type="radio"] {
+  width: 17px;
+  height: 17px;
+  padding: 0;
+  accent-color: var(--primary);
+  flex-shrink: 0;
+}
+
+textarea {
+  width: 100%;
+  resize: vertical;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+@media (max-width: 800px) {
+  button:not([role="switch"]),
+  .ui-button {
+    padding-block: 11px;
+  }
+  .icon-button,
+  .nav-toggle {
+    width: 44px;
+    height: 44px;
+    padding: 0;
+  }
+}

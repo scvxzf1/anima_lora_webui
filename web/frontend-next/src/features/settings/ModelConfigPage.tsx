@@ -21,6 +21,8 @@ import {
   settingsKeys,
   type ModelConfigItem,
   type ModelConfigResponse,
+  fetchModelPathStatus,
+  type ModelPathStatus,
 } from "./api";
 import {
   addModel,
@@ -31,6 +33,88 @@ import {
   reorderModel,
 } from "./modelLibrary";
 import "./settings.css";
+import { TrainingModelPathControl } from "../training-config/TrainingModelPathControl";
+
+function formatModelSize(bytes: number | undefined) {
+  if (bytes === undefined || !Number.isFinite(bytes)) return "";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let value = bytes;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
+  return `${value >= 10 || unit === 0 ? value.toFixed(0) : value.toFixed(1)} ${units[unit]}`;
+}
+
+function ModelPathStatusBadge({
+  value,
+  disabled,
+}: {
+  value: string;
+  disabled: boolean;
+}) {
+  const query = useQuery({
+    queryKey: ["settings", "model-path-status", value],
+    queryFn: ({ signal }) => fetchModelPathStatus(value.trim(), signal),
+    enabled: !disabled && Boolean(value.trim()),
+    retry: false,
+    staleTime: 5000,
+  });
+  let label = "未填写";
+  let tone = "empty";
+  const status: ModelPathStatus | undefined = query.data;
+  if (query.isFetching) {
+    label = "正在检查";
+    tone = "pending";
+  } else if (query.error) {
+    label = "无法校验";
+    tone = "missing";
+  } else if (status?.kind === "file") {
+    label = `文件已就绪 · ${formatModelSize(status.size_bytes)}`;
+    tone = "ready";
+  } else if (status?.kind === "directory") {
+    label = "目录已就绪";
+    tone = "ready";
+  } else if (value.trim()) {
+    label = "路径未找到";
+    tone = "missing";
+  }
+  return <span className={`model-path-status model-path-status-${tone}`}>{label}</span>;
+}
+
+function ModelPathField({
+  fieldKey,
+  label,
+  value,
+  disabled,
+  onChange,
+}: {
+  fieldKey: string;
+  label: string;
+  value: string;
+  disabled: boolean;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div className="model-path-card">
+      <div className="model-path-heading">
+        <label htmlFor={`training-control-model-${fieldKey}`}>{label}</label>
+        <ModelPathStatusBadge value={value} disabled={disabled} />
+      </div>
+      <div className="model-path-control">
+        <TrainingModelPathControl
+          fieldKey={`model-${fieldKey}`}
+          label={label}
+          value={value}
+          disabled={disabled}
+          required
+          onChange={onChange}
+        />
+      </div>
+    </div>
+  );
+}
 
 export function ModelConfigPage() {
   const qc = useQueryClient();
@@ -179,7 +263,7 @@ export function ModelConfigPage() {
               disabled={save.isPending}
               className="unframed-fieldset model-workspace"
             >
-              <aside className="object-library">
+              <aside className="object-library model-config-library">
                 <header>
                   <h2>模型组合</h2>
                   <button
@@ -278,7 +362,24 @@ export function ModelConfigPage() {
               </aside>
               <section className="model-editor">
                 <header>
-                  <h2>{item.name || "未命名配置"}</h2>
+                  <div className="model-editor-title">
+                    <h2>{item.name || "未命名配置"}</h2>
+                    <div className="model-capability-row">
+                      <div className="model-capability-group" aria-label="模型训练能力" aria-live="polite">
+                        <span>训练</span>
+                        <div className="model-capability-tags">
+                          {capabilityLabels(modelCapability(item.model_family)).map((label) => <span key={label}>{label}</span>)}
+                        </div>
+                        {capabilities.error && <small role="alert">能力读取失败：{capabilities.error.message}<button type="button" onClick={() => void capabilities.refetch()} title="重新读取模型能力" aria-label="重新读取模型能力"><RotateCcw size={14} /></button></small>}
+                      </div>
+                      <div className="model-capability-group" aria-label="模型采样能力" aria-live="polite">
+                        <span>采样</span>
+                        <div className="model-capability-tags">
+                          {previewCapabilityLabels(modelCapability(item.model_family)).map((label) => <span key={label}>{label}</span>)}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                   <div className="toolbar">
                     <button
                       type="button"
@@ -318,20 +419,9 @@ export function ModelConfigPage() {
                     </button>
                   </div>
                 </header>
-                <div className="settings-grid">
-                  <div className="full-width" aria-label="模型训练能力" aria-live="polite">
-                    <span>训练能力</span>
-                    <div className="model-capability-tags">
-                      {capabilityLabels(modelCapability(item.model_family)).map((label) => <span key={label}>{label}</span>)}
-                    </div>
-                    {capabilities.error && <small role="alert">模型能力读取失败：{capabilities.error.message}<button type="button" onClick={() => void capabilities.refetch()} title="重新读取模型能力" aria-label="重新读取模型能力"><RotateCcw size={16} /></button></small>}
-                  </div>
-                  <div className="full-width" aria-label="模型采样能力" aria-live="polite">
-                    <span>采样能力</span>
-                    <div className="model-capability-tags">
-                      {previewCapabilityLabels(modelCapability(item.model_family)).map((label) => <span key={label}>{label}</span>)}
-                    </div>
-                  </div>
+                <section className="model-properties" aria-label="基础属性">
+                  <h3>基础属性</h3>
+                  <div className="settings-grid model-properties-grid">
                   <label>
                     <span>名称</span>
                     <input
@@ -382,42 +472,49 @@ export function ModelConfigPage() {
                     />
                     <span>默认模型组合</span>
                   </label>
-                  {MODEL_PATHS.map(([key, label]) => (
-                    <label className="full-width" key={key}>
-                      <span>{label}</span>
-                      <input
-                        required
+                  </div>
+                </section>
+                <section className="model-path-section" aria-label="模型路径">
+                  <h3>模型路径</h3>
+                  <div className="model-path-grid">
+                    {MODEL_PATHS.map(([key, label]) => (
+                      <ModelPathField
+                        key={key}
+                        fieldKey={key}
+                        label={label}
                         value={item[key]}
-                        onChange={(e) => update({ [key]: e.target.value })}
+                        disabled={save.isPending}
+                        onChange={(value) => update({ [key]: value })}
                       />
-                    </label>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                </section>
+                <footer className="settings-actions model-config-actions">
+                  <button
+                    className="primary-command"
+                    type="submit"
+                    disabled={
+                      !editor.dirty ||
+                      save.isPending ||
+                      Boolean(query.error) ||
+                      requiresServerReload
+                    }
+                  >
+                    <Save size={16} />
+                    保存模型配置
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!editor.dirty || save.isPending}
+                    onClick={editor.reset}
+                  >
+                    <RotateCcw size={16} />
+                    还原修改
+                  </button>
+                  {notice && !editor.dirty && !query.error && <span role="status">{notice}</span>}
+                </footer>
               </section>
             </fieldset>
-            <footer className="settings-actions">
-              <button
-              className="primary-command"
-              type="submit"
-              disabled={
-                !editor.dirty ||
-                save.isPending ||
-                Boolean(query.error) ||
-                requiresServerReload
-              }
-              >
-                <Save size={16} />
-                保存模型配置
-              </button>
-              <button
-                type="button"
-                disabled={!editor.dirty || save.isPending}
-                onClick={editor.reset}
-              >
-                <RotateCcw size={16} />
-                还原修改
-              </button>
-            </footer>
           </form>
         )}
         {save.error && (
@@ -449,7 +546,6 @@ export function ModelConfigPage() {
             )}
           </p>
         )}
-        {notice && !editor.dirty && !query.error && <p role="status">{notice}</p>}
         {renameGroupId && (
           <CommandDialog
             title="重命名分组"

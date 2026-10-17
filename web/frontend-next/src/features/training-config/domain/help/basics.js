@@ -7,6 +7,7 @@ export const FIELD_HELP_BASICS_ZH = {
         summary: '选择你要训练的底模所属模型族，让训练使用对应的模型、文本编码和采样流程。',
         recommendation: '按底模权重选择模型族。切换后先核对模型路径、训练方法和缓存，再运行预检。',
         options: [
+            { value: 'moss_image', when: '你使用 MOSS-Image 底模权重时。', detail: '首版普通文生图 plain LoRA，冻结文本编码器，需磁盘文本和 latent 缓存。' },
             { value: 'anima', when: '你使用 Anima 底模权重时。' },
             { value: 'krea2_raw', when: '你使用 Krea-2 Raw 底模权重时。' },
             { value: 'z_image', when: '你使用 Z-Image 底模权重时。', detail: '普通 LoRA 已有真机训练验证，其他组合需要确认验证范围。' },

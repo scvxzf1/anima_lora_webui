@@ -27,6 +27,12 @@ def _z_image_tokenize_strategy(args):
     return ZImageTokenizeStrategy(args.qwen3)
 
 
+def _moss_tokenize_strategy(args):
+    from library.models.moss_image.strategy import MossImageTokenizeStrategy
+
+    return MossImageTokenizeStrategy(args.qwen3, int(getattr(args, "max_token_length", None) or 4096))
+
+
 def _qwen_image_2_1_tokenize_strategy(args):
     from library.models.qwen_image_2_1.strategy import (
         QwenImage21EditTokenizeStrategy,
@@ -56,6 +62,7 @@ def get_tokenize_strategy(args):
             "krea2_raw": _krea2_tokenize_strategy,
             "z_image": _z_image_tokenize_strategy,
             "qwen_image_2_1": _qwen_image_2_1_tokenize_strategy,
+            "moss_image": _moss_tokenize_strategy,
         },
     )
     return factory(args)
@@ -76,6 +83,10 @@ def get_tokenizers(tokenize_strategy):
 
     if isinstance(tokenize_strategy, QwenImage21TokenizeStrategy):
         return [tokenize_strategy.tokenizer]
+    from library.models.moss_image.strategy import MossImageTokenizeStrategy
+
+    if isinstance(tokenize_strategy, MossImageTokenizeStrategy):
+        return [tokenize_strategy.tokenizer]
     raise TypeError(
         f"Unsupported tokenize strategy: {type(tokenize_strategy).__name__}"
     )
@@ -92,6 +103,7 @@ def get_latents_caching_strategy(args):
             "krea2_raw": strategy_anima.AnimaLatentsCachingStrategy,
             "z_image": _z_image_latents_caching_strategy,
             "qwen_image_2_1": _qwen_image_2_1_latents_caching_strategy,
+            "moss_image": _moss_latents_caching_strategy,
         },
     )
     return factory(
@@ -110,6 +122,11 @@ def get_text_encoding_strategy(args):
 
         return ZImageTextEncodingStrategy()
 
+    def moss_encoding_factory():
+        from library.models.moss_image.strategy import MossImageTextEncodingStrategy
+
+        return MossImageTextEncodingStrategy()
+
     def qwen_image_2_1_factory():
         from library.models.qwen_image_2_1.strategy import QwenImage21TextEncodingStrategy
 
@@ -123,6 +140,7 @@ def get_text_encoding_strategy(args):
             "krea2_raw": krea2_factory,
             "z_image": z_image_factory,
             "qwen_image_2_1": qwen_image_2_1_factory,
+            "moss_image": moss_encoding_factory,
         },
     )
     return factory()
@@ -185,6 +203,16 @@ def get_text_encoder_outputs_caching_strategy(args, weight_dtype: torch.dtype):
             ),
         )
 
+    def moss_cache_factory():
+        from library.models.moss_image.strategy import MossImageTextCache
+
+        return MossImageTextCache(
+            args.cache_text_encoder_outputs_to_disk, args.text_encoder_batch_size,
+            args.skip_cache_check,
+            quantization=getattr(args, "moss_te_quantization", "nf4"),
+            use_shuffled_caption_variants=getattr(args, "use_shuffled_caption_variants", False),
+        )
+
     def qwen_image_2_1_factory():
         from library.models.qwen_image_2_1.strategy import (
             QwenImage21EditTextCache,
@@ -207,6 +235,7 @@ def get_text_encoder_outputs_caching_strategy(args, weight_dtype: torch.dtype):
             "krea2_raw": krea2_factory,
             "z_image": z_image_factory,
             "qwen_image_2_1": qwen_image_2_1_factory,
+            "moss_image": moss_cache_factory,
         },
     )
     return factory()
@@ -222,6 +251,12 @@ def _qwen_image_2_1_latents_caching_strategy(*args):
     from library.models.qwen_image_2_1.strategy import QwenImage21LatentCache
 
     return QwenImage21LatentCache(*args)
+
+
+def _moss_latents_caching_strategy(*args):
+    from library.models.moss_image.strategy import MossImageLatentCache
+
+    return MossImageLatentCache(*args)
 
 
 def get_models_for_text_encoding(args, accelerator, text_encoders):

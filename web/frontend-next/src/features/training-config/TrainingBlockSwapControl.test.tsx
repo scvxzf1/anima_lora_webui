@@ -30,7 +30,7 @@ it("keeps the inventory out of the field row while enforcing HTML max and commit
   const input = screen.getByRole("spinbutton", { name: field.label });
   await waitFor(() => expect(input).toHaveAttribute("max", "34"));
   expect(screen.queryByTestId("training-block-inventory")).not.toBeInTheDocument();
-  expect(input.nextElementSibling).toHaveAttribute("data-source", "merged");
+  expect(document.querySelector(".training-field-tag")).toHaveAttribute("title", expect.stringContaining("来源：继承值(所选预设及方法默认)"));
   const user = userEvent.setup();
   await user.clear(input);
   await user.type(input, "34");

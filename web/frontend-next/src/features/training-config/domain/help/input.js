@@ -1,4 +1,15 @@
 export const FIELD_HELP_INPUT_ZH = {
+  moss_te_quantization: {
+    version: 2,
+    summary: '选择 MOSS-Image 冻结文本编码器的 NF4 或 BF16 路径。',
+    recommendation: '优先使用 NF4 与 BF16 compute；需要数值对照时切换为 BF16。',
+    options: [
+      { value: 'nf4', when: '需要降低文本缓存阶段显存。', detail: '从本地 BF16 权重按需量化；失败会报错。' },
+      { value: 'bf16', when: '建立未量化对照且显存充足。' },
+    ],
+    cautions: ['切换精度后使用独立文本缓存目录或重建缓存；NF4 与 BF16 缓存不能混用。DiT 始终为 BF16。'],
+    relatedKeys: ['model_family', 'qwen3', 'use_text_cache', 'base_compute'],
+  },
   source_image_dir: {
     version: 2,
     summary: '旧配置的原图目录入口，只能代表第一组数据集。',

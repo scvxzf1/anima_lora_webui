@@ -12,11 +12,11 @@ describe("getTrainingFieldLayout", () => {
     expect(getTrainingFieldLayout({ key: "pretrained_model_name_or_path", kind: "text" }, 4).span).toBe("wide");
   });
 
-  it("does not make a single field span beyond its capped container", () => {
-    expect(getTrainingFieldLayout({ key: "optimizer_args", kind: "json" }, 1)).toEqual({ span: "single", width: "wide" });
+  it("keeps lone text fields at the same desktop footprint", () => {
+    expect(getTrainingFieldLayout({ key: "optimizer_args", kind: "json" }, 1)).toEqual({ span: "wide", width: "wide" });
   });
 
-  it("chooses three tracks for a five-field group with one wide field", () => {
+  it("uses twelve tracks regardless of group composition", () => {
     expect(
       getTrainingGridColumns([
         { key: "optimizer_type", kind: "select" },
@@ -25,6 +25,6 @@ describe("getTrainingFieldLayout", () => {
         { key: "lr_scheduler", kind: "select" },
         { key: "lr_warmup_steps", kind: "number" },
       ]),
-    ).toBe(3);
+    ).toBe(12);
   });
 });

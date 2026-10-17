@@ -615,17 +615,6 @@
   margin: 2px 0 0;
   font-size: 15px;
 }
-.icon-button {
-  width: 30px;
-  height: 30px;
-  color: var(--button-ink);
-  background: var(--button-bg);
-  border: 1px solid var(--button-border);
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 18px;
-  line-height: 1;
-}
 .training-library-search {
   display: grid;
   gap: 5px;

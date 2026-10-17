@@ -16,6 +16,7 @@ def test_normalize_model_family_accepts_registered_names_and_aliases() -> None:
     assert normalize_model_family("KREA2_RAW") == "krea2_raw"
     assert normalize_model_family("krea2") == "krea2_raw"
     assert normalize_model_family("zimage") == "z_image"
+    assert normalize_model_family("moss") == "moss_image"
     assert normalize_model_family("", allow_empty=True) == ""
     with pytest.raises(ValueError, match="unknown"):
         normalize_model_family("unknown")

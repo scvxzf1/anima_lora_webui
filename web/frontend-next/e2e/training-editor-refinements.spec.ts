@@ -1,7 +1,39 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import { mockWorkspace } from "./fixtures";
 
 const shots = "/tmp/training-editor-refinements";
+async function filledRows(fields: Locator, singleColumn = false) {
+  const geometry = await fields.evaluate((node) => {
+    const rect = node.getBoundingClientRect();
+    const style = getComputedStyle(node);
+    const boxes = [...node.querySelectorAll(":scope > .training-field-card")]
+      .map((card) => {
+        const box = card.getBoundingClientRect();
+        return { x: box.x, y: box.y, right: box.right, width: box.width };
+      }).filter((box) => box.width > 0);
+    return {
+      width: node.parentElement!.getBoundingClientRect().width,
+      left: rect.left + parseFloat(style.borderLeftWidth) + parseFloat(style.paddingLeft),
+      right: rect.right - parseFloat(style.borderRightWidth) - parseFloat(style.paddingRight),
+      boxes,
+    };
+  });
+  expect(geometry.boxes.length).toBeGreaterThan(0);
+  const rows: typeof geometry.boxes[] = [];
+  for (const box of geometry.boxes) {
+    const row = rows.at(-1);
+    if (row && Math.abs(row[0].y - box.y) < 1) row.push(box);
+    else rows.push([box]);
+    expect(box.x).toBeGreaterThanOrEqual(geometry.left - 1);
+    expect(box.right).toBeLessThanOrEqual(geometry.right + 1);
+  }
+  for (const row of rows) {
+    expect(Math.abs(row[0].x - geometry.left)).toBeLessThanOrEqual(1);
+    expect(Math.abs(row.at(-1)!.right - geometry.right)).toBeLessThanOrEqual(1);
+    if (singleColumn) expect(row).toHaveLength(1);
+  }
+  return { ...geometry, rowSizes: rows.map((row) => row.length) };
+}
 async function open(page: Page, qwenEdit = false) {
   const mocks = await mockWorkspace(page);
   if (qwenEdit) {
@@ -109,27 +141,7 @@ for (const [width, height] of [[390, 1000], [768, 1000], [1080, 1000], [1440, 10
             )
               await resource.getByRole("button").first().click();
             const fields = resource.locator(".training-edit-fields");
-            const geometry = await fields.evaluate((node) => ({
-              width: node.parentElement!.getBoundingClientRect().width,
-              columns:
-                getComputedStyle(node).gridTemplateColumns.split(" ").length,
-            }));
-            const expected =
-              group === "models" && qwenEdit && geometry.width >= 1760
-                ? 5
-                : group === "models" && qwenEdit && geometry.width >= 980
-                  ? 6
-                  : geometry.width >= 1280
-                    ? 4
-                    : geometry.width >= 980
-                  ? 3
-                  : geometry.width >= 620
-                    ? 2
-                    : 1;
-            expect(
-              geometry.columns,
-              `${width} ${view} ${library} ${group} width=${geometry.width}`,
-            ).toBe(expected);
+            const geometry = await filledRows(fields, width <= 559);
             await fits(page);
             if (width >= 1920) {
               const fill = await page.locator(".training-edit-card").evaluateAll((cards) =>
@@ -142,28 +154,14 @@ for (const [width, height] of [[390, 1000], [768, 1000], [1080, 1000], [1440, 10
               const stage = await page.locator(".training-stage-nav").boundingBox();
               expect(fill[0].width / stage!.width).toBeGreaterThan(0.97);
               if (group === "models") {
-                const bricks = fields.locator(":scope > label");
+                const bricks = fields.locator(":scope > .training-field-card");
                 await expect(bricks).toHaveCount(5);
                 await expect(page.locator("#training-control-qwen_image_2_1_task")).toHaveValue("edit");
-                const boxes = await bricks.evaluateAll((nodes) => nodes.map((node) => {
-                  const box = node.getBoundingClientRect();
-                  return { x: box.x, y: box.y, right: box.right };
-                }));
-                const edges = await fields.evaluate((node) => {
-                  const rect = node.getBoundingClientRect();
-                  const style = getComputedStyle(node);
-                  return { left: rect.left + parseFloat(style.paddingLeft), right: rect.right - parseFloat(style.paddingRight) };
-                });
+                if (geometry.width >= 1560) expect(geometry.rowSizes).toEqual([3, 2]);
                 await test.info().attach(`${width}-${view}-${library}-model-geometry`, {
-                  body: JSON.stringify({ viewport: { width, height }, view, library, cards: fill, stageWidth: stage!.width, grid: geometry, edges, bricks: boxes }, null, 2),
+                  body: JSON.stringify({ viewport: { width, height }, view, library, cards: fill, stageWidth: stage!.width, layout: geometry }, null, 2),
                   contentType: "application/json",
                 });
-                // Each occupied row reaches both grid edges, including Qwen's final two fields.
-                for (const y of new Set(boxes.map((box) => box.y))) {
-                  const row = boxes.filter((box) => box.y === y);
-                  expect(row[0].x).toBeCloseTo(edges.left, 0);
-                  expect(row.at(-1)!.right).toBeCloseTo(edges.right, 0);
-                }
               }
             }
             if (
@@ -193,7 +191,7 @@ for (const [width, height] of [[390, 1000], [768, 1000], [1080, 1000], [1440, 10
     const long = `models/${"long-directory/".repeat(45)}checkpoint.safetensors`;
     await input.fill(long);
     await expect(input).toHaveValue(long);
-    expect((await input.boundingBox())!.width).toBeLessThan(600);
+    expect((await input.boundingBox())!.width).toBeLessThanOrEqual((await control.boundingBox())!.width);
     await expect(control.getByRole("button")).toBeVisible();
     const bounds = await control.evaluate((node) => {
       const box = node.getBoundingClientRect();
@@ -407,7 +405,7 @@ test("server model picker GET, cancel, pagination, file, Diffusers, fallback and
   expect(mocks.unhandled).toEqual([]);
 });
 
-test("regular groups automatically pack wide fields without row gaps", async ({ page }) => {
+test("regular groups fill every row and stack on mobile", async ({ page }) => {
   const mocks = await open(page);
   await page.setViewportSize({ width: 1920, height: 1080 });
   await page.getByRole("tab", { name: "训练计划", exact: true }).click();
@@ -416,30 +414,9 @@ test("regular groups automatically pack wide fields without row gaps", async ({ 
   if ((await toggle.getAttribute("aria-expanded")) === "false") await toggle.click();
   const fields = group.locator(".training-edit-fields");
   await expect(fields).toHaveAttribute("data-field-count", "5");
-  await expect(fields).toHaveAttribute("data-auto-columns", "3");
-  const rows = await fields.evaluate((node) => {
-    const style = getComputedStyle(node);
-    const rect = node.getBoundingClientRect();
-    const left = rect.left + parseFloat(style.paddingLeft);
-    const right = rect.right - parseFloat(style.paddingRight);
-    const boxes = [...node.children].map((child) => {
-      const box = child.getBoundingClientRect();
-      return { x: box.x, y: box.y, right: box.right };
-    });
-    return [...new Set(boxes.map((box) => box.y))].map((y) => {
-      const row = boxes.filter((box) => box.y === y);
-      return { left: row[0].x, right: row.at(-1)!.right, expectedLeft: left, expectedRight: right };
-    });
-  });
-  expect(rows).toHaveLength(2);
-  for (const row of rows) {
-    expect(row.left).toBeCloseTo(row.expectedLeft, 0);
-    expect(row.right).toBeCloseTo(row.expectedRight, 0);
-  }
+  await filledRows(fields);
   await page.setViewportSize({ width: 390, height: 844 });
-  expect(
-    await fields.evaluate((node) => getComputedStyle(node).gridTemplateColumns.trim().split(/\s+/).length),
-  ).toBe(1);
+  await filledRows(fields, true);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
   expect(mocks.writes).toEqual([]);
   expect(mocks.unhandled).toEqual([]);

@@ -64,14 +64,6 @@ export function HistoryGpuMetrics({ points, total, whitelist = [], taskId }: {
       </div> : null}
     </div>
     {metrics.length || hasSummary ? <div className="history-gpu-metric-content">
-      <div className="history-gpu-summary" aria-label="GPU 资源摘要">
-        {HISTORY_GPU_METRICS.filter(({ key }) => summary[key].latest !== undefined || summary[key].peak !== undefined).map(({ key, label, unit }) =>
-          <div className="history-gpu-summary-item" key={key}>
-            <span>{label}</span>
-            <strong>{formatHistoryGpuValue(summary[key].latest, unit)}</strong>
-            <small>已读取峰值 {formatHistoryGpuValue(summary[key].peak, unit)}</small>
-          </div>)}
-      </div>
       {inspectionIndices.length ? <div className="history-gpu-inspection" aria-label="GPU 联合采样检查">
         <label htmlFor="history-gpu-inspection-point">同一采样点</label>
         <select id="history-gpu-inspection-point" value={inspectionPoint ? historyGpuSampleKey(inspectionPoint) : ""}
@@ -80,11 +72,14 @@ export function HistoryGpuMetrics({ points, total, whitelist = [], taskId }: {
             {historyGpuSampleTime(chartPoints[index], index)}
           </option>)}
         </select>
-        {inspectionPoint ? <dl role="group" aria-label="所选采样点 GPU 数值">
-          {HISTORY_GPU_METRICS.map(({ key, label, unit }) => <div key={key}>
-            <dt>{label}</dt><dd>{formatHistoryGpuValue(finiteNumber(inspectionPoint[key]), unit)}</dd>
-          </div>)}
-        </dl> : null}
+        {inspectionPoint ? <div className="history-gpu-kpi-wrap" aria-label="GPU 资源摘要">
+          <dl className="history-gpu-kpis" aria-label="所选采样点 GPU 数值" role="group">
+            {HISTORY_GPU_METRICS.map(({ key, label, unit }) => <div key={key}>
+              <dt>{label}</dt><dd>{formatHistoryGpuValue(finiteNumber(inspectionPoint[key]), unit)}</dd>
+              <small>已读取峰值 {formatHistoryGpuValue(summary[key].peak, unit)}</small>
+            </div>)}
+          </dl>
+        </div> : null}
       </div> : null}
       <div className="history-gpu-metric-visibility" role="group" aria-label="GPU 指标显隐">
         {metrics.map(({ key, label }) => <label className="checkbox-row" key={key}>

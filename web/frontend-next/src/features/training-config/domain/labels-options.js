@@ -130,6 +130,7 @@ export const FIELD_LABEL_ZH = {
     max_data_loader_n_workers: 'DataLoader 进程数',
     min_snr_gamma: 'Min-SNR Gamma',
     model_family: '模型家族',
+    moss_te_quantization: 'MOSS 文本编码器精度',
     qwen_image_2_1_task: 'Qwen 任务',
     qwen_text_encoder_cache_policy: '文本编码器缓存策略',
     qwen_nf4_compile_experiment: 'Qwen NF4 编译实验',
@@ -271,6 +272,7 @@ export const FIELD_LABEL_ZH = {
 };
 
 export const FIELD_OPTIONS = {
+    moss_te_quantization: ['nf4', 'bf16'],
     qwen_image_2_1_task: ['t2i', 'edit'],
     qwen_text_encoder_cache_policy: ['auto', 'cpu_offload', 'gpu', 'cpu'],
     qwen_sample_swap_mode: ['inherit', 'custom'],

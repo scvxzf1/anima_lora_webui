@@ -1415,6 +1415,11 @@ def decode_pending_samples(accelerator: Accelerator, args, vae) -> None:
 
         decode_qwen_samples(accelerator, args, vae)
         return
+    if resolve_model_family(args) == "moss_image":
+        from library.models.moss_image.training_preview import decode_pending_samples as decode_moss_samples
+
+        decode_moss_samples(accelerator, args, vae)
+        return
     if resolve_model_family(args) == "z_image":
         from library.models.z_image.training_preview import (
             decode_pending_samples as decode_z_image_samples,

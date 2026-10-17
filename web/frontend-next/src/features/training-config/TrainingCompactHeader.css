@@ -1,0 +1,447 @@
+/* Keep setup controls compact without changing the shared context bar on other pages. */
+.training-config-page .training-config-header {
+  align-items: center;
+  padding-bottom: 8px;
+  border-bottom: 0;
+}
+.training-config-header .eyebrow {
+  display: none;
+}
+.training-config-header h1 {
+  margin: 0;
+  font-size: 18px;
+}
+.training-config-header .training-readonly-badge {
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+.training-config-page .training-context-bar {
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 0.8fr) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  margin-top: 0;
+}
+.training-config-page .training-context-bar label {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 8px;
+}
+.training-config-page .training-context-bar label > span {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.training-config-page .training-context-bar select {
+  flex: 1;
+  min-width: 0;
+  min-height: 34px;
+  height: 34px;
+}
+.training-config-page .training-context-bar > .toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+  margin: 0;
+}
+.training-context-bar .training-model-picker {
+  flex: 1;
+}
+.training-context-bar .toolbar > a {
+  flex-shrink: 0;
+  font-size: 12px;
+}
+.training-config-page .training-context-state {
+  grid-column: auto;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.training-config-page .training-config-source {
+  min-width: 0;
+}
+.training-config-page .training-config-source > div {
+  min-width: 0;
+}
+.training-config-page .training-config-source strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.training-config-page .training-notice,
+.training-config-page .training-command-error,
+.training-config-page .form-error,
+.training-config-page .training-launch-availability {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+.training-config-page .training-command-error,
+.training-config-page .form-error {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  min-height: 24px;
+}
+.training-config-page .training-command-bar {
+  gap: 5px;
+  margin-top: 8px;
+  padding: 8px 0;
+  min-width: 0;
+  flex-wrap: nowrap;
+  overflow: visible;
+}
+.training-config-page .training-command-bar > * {
+  min-width: 0;
+}
+.training-save-group,
+.training-command-popover {
+  position: relative;
+  display: inline-flex;
+  min-width: 0;
+  flex-shrink: 0;
+}
+.training-save-group {
+  align-items: stretch;
+}
+.training-save-group > .training-save-command {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+.training-save-group > .training-command-popover > .training-command-menu-trigger {
+  min-width: 30px;
+  padding: 0 6px;
+  border-left-color: var(--line-strong);
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+}
+.training-save-group > .training-command-popover > .training-command-menu-trigger > span {
+  display: none;
+}
+.training-command-menu-trigger > svg:first-child {
+  display: none;
+}
+.training-command-menu-panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 40;
+  width: max-content;
+  min-width: 180px;
+  max-width: min(280px, calc(100vw - 24px));
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: var(--shadow-lg);
+}
+.training-command-menu-panel button {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+  white-space: nowrap;
+}
+.training-command-menu-panel button:hover:not(:disabled),
+.training-command-menu-panel button:focus-visible {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.training-command-menu-panel button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+.training-command-menu-panel .training-tools {
+  display: contents;
+}
+.training-command-menu-panel .training-tool-action {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  min-height: 34px;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 4px;
+  color: var(--ink);
+  background: transparent;
+  text-align: left;
+  white-space: nowrap;
+}
+.training-command-menu-panel .training-tool-action:hover:not(:disabled),
+.training-command-menu-panel .training-tool-action:focus-visible {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+.training-config-page .training-command-bar > :is(.compact-tool, .icon-button),
+.training-config-page .training-command-bar .training-tool-action,
+.training-config-page .training-display-menu > .compact-tool {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 34px;
+  height: 34px;
+  padding: 0 9px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  color: var(--muted);
+  background: transparent;
+  box-shadow: none;
+  transform: none;
+}
+.training-config-page .training-command-bar .training-save-command {
+  border-color: var(--line-strong);
+  color: var(--ink);
+  background: var(--surface-subtle);
+}
+.training-config-page .training-command-bar button:hover:not(:disabled) {
+  transform: none;
+}
+.training-config-page .training-command-bar > :is(.compact-tool, .icon-button):hover:not(:disabled),
+.training-config-page .training-command-bar .training-tool-action:hover:not(:disabled),
+.training-config-page .training-display-menu > .compact-tool:hover:not(:disabled) {
+  color: var(--ink);
+  background: var(--surface-subtle);
+  border-color: var(--line);
+}
+.training-config-page .training-command-bar .training-tools {
+  margin-left: 0;
+  gap: 1px;
+  padding: 2px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface-subtle);
+}
+.training-preview-command {
+  position: relative;
+}
+.training-preview-command > span:last-child {
+  display: none;
+}
+.training-preview-icon {
+  position: relative;
+  display: inline-flex;
+}
+.training-dirty-dot {
+  position: absolute;
+  top: -3px;
+  right: -4px;
+  width: 6px;
+  height: 6px;
+  border: 1px solid var(--surface);
+  border-radius: 50%;
+  background: #2563eb;
+}
+.training-config-page .training-command-bar .training-toml-command {
+  min-width: 34px;
+  padding-inline: 7px;
+}
+.training-config-page .training-command-bar .training-toml-command > span {
+  display: none;
+}
+.training-config-page .training-command-bar > .training-command-popover:last-of-type {
+  flex-shrink: 0;
+}
+.training-config-page .training-command-bar .training-view-switch {
+  margin-left: 5px;
+  flex-shrink: 0;
+}
+.training-launch-actions {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 8px;
+  margin-left: auto;
+  padding-left: 12px;
+  border-left: 1px solid var(--line);
+}
+.training-config-page .training-launch-actions .training-preflight-command {
+  min-height: 34px;
+  padding: 0 9px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  color: var(--muted);
+  background: transparent;
+  white-space: nowrap;
+}
+.training-config-page .training-launch-actions .training-preflight-command:hover:not(:disabled) {
+  color: var(--ink);
+  background: var(--surface-subtle);
+  border-color: var(--line);
+}
+.training-config-page .training-launch-actions button > span {
+  display: inline;
+}
+.training-config-page .training-launch-actions .training-queue-command {
+  color: #fff;
+  background: #334155;
+  border-color: #334155;
+  border-radius: 6px;
+}
+.training-config-page .training-launch-actions .training-queue-command:hover:not(:disabled) {
+  color: #fff;
+  background: #475569;
+  border-color: #475569;
+}
+.training-config-page .training-launch-actions button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+.training-config-page .training-launch-actions button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+.training-config-page .training-launch-actions .training-queue-command,
+.training-config-page .training-launch-actions .training-start-command {
+  min-height: 34px;
+  white-space: nowrap;
+}
+@container workspace (max-width: 1350px) {
+  .training-config-page .training-command-bar > .compact-tool,
+  .training-config-page .training-command-bar > .training-save-group .training-save-command {
+    width: 34px;
+    min-width: 34px;
+    padding: 0;
+  }
+  .training-config-page .training-command-bar > .compact-tool > span,
+  .training-config-page .training-command-bar > .training-save-group .training-save-command > span {
+    display: none;
+  }
+}
+@container workspace (max-width: 900px) {
+  .training-config-page .training-context-bar {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 8px 12px;
+  }
+  .training-config-page .training-context-bar > .toolbar {
+    grid-column: 1;
+  }
+  .training-config-page .training-context-state {
+    grid-column: 2;
+  }
+}
+@media (max-width: 800px) {
+  .training-config-page .training-command-bar {
+    gap: 5px;
+  }
+  .training-config-page .training-command-bar > :is(.compact-tool, .icon-button),
+  .training-config-page .training-command-bar .training-tool-action,
+  .training-config-page .training-display-menu > .compact-tool {
+    width: 44px;
+    min-width: 44px;
+    height: 44px;
+    padding: 0;
+  }
+  .training-config-page .training-command-bar .training-tool-action span {
+    display: none;
+  }
+  .training-config-page .training-command-bar {
+    flex-wrap: nowrap;
+    gap: 3px;
+  }
+  .training-config-page .training-command-bar .training-save-group,
+  .training-config-page .training-command-bar .training-command-popover {
+    min-height: 44px;
+  }
+  .training-config-page .training-command-bar .training-command-menu-trigger {
+    min-width: 44px;
+    height: 44px;
+    padding: 0;
+  }
+  .training-config-page .training-command-bar .training-command-menu-trigger > span {
+    display: none;
+  }
+  .training-config-page .training-command-bar .training-save-group > .training-save-command {
+    width: 44px;
+    min-width: 44px;
+    height: 44px;
+    padding: 0;
+  }
+  .training-config-page .training-command-bar .training-save-group > .training-save-command > span {
+    display: none;
+  }
+  .training-config-page .training-command-bar .training-view-switch select {
+    min-width: 0;
+    height: 36px;
+    padding: 0 6px;
+    font-size: 12px;
+  }
+  .training-launch-actions {
+    flex: 0 1 auto;
+    min-width: 0;
+    gap: 3px;
+    margin-left: auto;
+    padding-left: 0;
+    border-left: 0;
+  }
+  .training-config-page .training-command-bar .training-launch-actions button {
+    flex: 0 0 44px;
+    min-height: 44px;
+  }
+  .training-config-page .training-launch-actions .training-preflight-command {
+    width: 44px;
+    min-width: 44px;
+    padding: 0;
+  }
+  .training-config-page .training-launch-actions .training-preflight-command span {
+    display: none;
+  }
+  .training-config-page .training-launch-actions .training-queue-command > span,
+  .training-config-page .training-launch-actions .training-start-command > span {
+    display: none;
+  }
+}
+@media (min-width: 801px) and (max-width: 1200px) {
+  .training-config-page .training-command-bar > .training-command-popover > .training-command-menu-trigger > span,
+  .training-config-page .training-command-bar > .training-display-menu > .compact-tool > span {
+    display: none;
+  }
+  .training-config-page .training-command-bar > .training-command-popover > .training-command-menu-trigger,
+  .training-config-page .training-command-bar > .training-display-menu > .compact-tool {
+    width: 36px;
+    min-width: 36px;
+    padding: 0;
+  }
+}
+@container workspace (max-width: 520px) {
+  .training-config-page .training-context-bar label {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 4px;
+  }
+  .training-config-page .training-context-bar select {
+    flex: auto;
+    height: 40px;
+  }
+  .training-config-page .training-context-bar > label:first-of-type {
+    grid-column: 1 / -1;
+  }
+  .training-config-page .training-context-bar > .toolbar {
+    grid-column: 2;
+    grid-row: 2;
+    align-self: start;
+  }
+  .training-context-bar .toolbar > a {
+    line-height: 1;
+  }
+  .training-config-page .training-context-state {
+    grid-column: 1 / -1;
+  }
+}

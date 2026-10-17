@@ -16,18 +16,18 @@ test("boolean drafts and audit-only fields keep their editing boundaries", async
 
   await page.getByRole("tab", { name: "方法配置" }).click();
   await page.getByLabel("搜索参数").fill("dim_from_weights");
-  const dimensionSwitch = page.getByLabel("从权重读取秩");
-  await expect(dimensionSwitch).toHaveAttribute("type", "checkbox");
+  const dimensionSwitch = page.getByRole("switch", { name: "从权重读取秩" });
+  await expect(dimensionSwitch).toHaveAttribute("aria-label", "从权重读取秩");
   await expect(dimensionSwitch).not.toBeChecked();
 
   await page.getByLabel("搜索参数").fill("network_dim");
-  await expect(page.getByLabel("LoRA rank")).toBeEnabled();
+  await expect(page.getByRole("spinbutton", { name: "LoRA rank", exact: true })).toBeEnabled();
 
   await page.getByRole("tab", { name: "训练计划" }).click();
   await page.getByLabel("搜索参数").fill("__future_runtime_field__");
-  await expect(page.getByLabel("__future_runtime_field__")).toHaveCount(0);
+  await expect(page.getByLabel("__future_runtime_field__", { exact: true })).toHaveCount(0);
   await page.getByLabel("参数视图").selectOption("all");
-  await expect(page.getByLabel("__future_runtime_field__")).toBeDisabled();
+  await expect(page.getByLabel("__future_runtime_field__", { exact: true })).toBeDisabled();
   expect(mocks.writes).toEqual([]);
   expect(mocks.unhandled).toEqual([]);
 });

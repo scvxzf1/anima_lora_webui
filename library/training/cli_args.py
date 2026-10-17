@@ -47,8 +47,12 @@ def add_sd_models_arguments(parser: argparse.ArgumentParser):
         type=str,
         default=None,
         choices=list(KNOWN_MODEL_FAMILIES),
-        help="model family switch: anima (default), krea2_raw, z_image, or qwen_image_2_1. "
+        help="model family switch: anima (default), krea2_raw, z_image, qwen_image_2_1, or moss_image. "
         "None → fall back to resolve_model_family() (env/base.toml, stage 6 truth source).",
+    )
+    parser.add_argument(
+        "--moss_te_quantization", type=str, choices=("nf4", "bf16"), default="nf4",
+        help="MOSS-Image frozen text encoder: NF4 with BF16 compute (default), or BF16 reference; no fallback.",
     )
     parser.add_argument(
         "--qwen_image_2_1_task",
@@ -448,8 +452,8 @@ def add_training_arguments(parser: argparse.ArgumentParser, support_dreambooth: 
         "--max_token_length",
         type=int,
         default=None,
-        choices=[None, 150, 225],
-        help="max token length of text encoder (default for 75, 150 or 225)",
+        choices=[None, 150, 225, 4096],
+        help="max token length of text encoder (legacy 150/225; MOSS-Image supports 4096)",
     )
     parser.add_argument(
         "--mem_eff_attn",

@@ -56,6 +56,12 @@ def _z_image_lora_target_kwargs() -> dict:
     return z_image_target_kwargs()
 
 
+def _moss_lora_target_kwargs(*args, **kwargs):
+    from library.models.moss_image.lora_targets import moss_image_target_kwargs
+
+    return moss_image_target_kwargs(*args, **kwargs)
+
+
 def _qwen_image_2_1_lora_target_kwargs() -> dict:
     from library.models.qwen_image_2_1.lora_targets import qwen_image_2_1_target_kwargs
 
@@ -214,6 +220,7 @@ class TrainingBootstrap:
                 "krea2_raw": _krea2_lora_target_kwargs,
                 "z_image": _z_image_lora_target_kwargs,
                 "qwen_image_2_1": _qwen_image_2_1_lora_target_kwargs,
+                "moss_image": _moss_lora_target_kwargs,
             },
         )
         for k, v in target_factory().items():

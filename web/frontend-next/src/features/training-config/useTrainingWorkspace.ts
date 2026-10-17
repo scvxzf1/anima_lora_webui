@@ -569,6 +569,7 @@ export async function invalidateTrainingQueries(
       queryKey: trainingContextKeys.merged(file, preset),
     }),
     queryClient.invalidateQueries({ queryKey: trainingConfigKeys.raw(file) }),
+    queryClient.invalidateQueries({ queryKey: ["training-config", "inherited"] }),
     queryClient.invalidateQueries({ queryKey: datasetKeys.library() }),
     queryClient.invalidateQueries({
       queryKey: ["training-config", "estimate", file, preset],

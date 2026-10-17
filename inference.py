@@ -1031,6 +1031,12 @@ def _generate_krea2_latent(args, gen_settings) -> torch.Tensor:
     return latent
 
 
+def _generate_moss_latent(args, gen_settings) -> torch.Tensor:
+    from library.models.moss_image.integration import reject_inference
+
+    return reject_inference(args, gen_settings)
+
+
 def _generate_z_image_latent(args, gen_settings) -> torch.Tensor:
     raise RuntimeError("Z-Image inference is not implemented in the training v1 path.")
 
@@ -1175,6 +1181,7 @@ def main():
                     "krea2_raw": _generate_krea2_latent,
                     "z_image": _generate_z_image_latent,
                     "qwen_image_2_1": _generate_qwen_image_2_1_latent,
+                    "moss_image": _generate_moss_latent,
                 },
             )
             latent = generator(args, gen_settings)

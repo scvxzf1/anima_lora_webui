@@ -20,6 +20,7 @@ export const FORM_UI_DEFAULTS = {
     adaptive_oom_retry_max_swap: 0,
     adaptive_oom_retry_timeout: 3600.0,
     base_compute: 'bf16',
+    moss_te_quantization: 'nf4',
     convrot_group_size: 256,
     convrot_scope: 'mlp',
     convrot_hadamard: 'sylvester',

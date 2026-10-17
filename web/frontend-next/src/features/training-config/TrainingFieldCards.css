@@ -1,0 +1,118 @@
+.training-config-page .training-field-header {
+  display: grid;
+  grid-template-columns: minmax(4em, 1fr) minmax(0, auto);
+  align-items: flex-start;
+  gap: 6px;
+  min-width: 0;
+}
+.training-field-heading {
+  display: grid;
+  grid-column: 1;
+  grid-row: 1;
+  gap: 2px;
+  min-width: 0;
+}
+.training-field-name {
+  min-width: 0;
+  font-size: 13px;
+  line-height: 1.4;
+}
+.training-field-metadata {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.training-config-page .training-field-tag {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.training-config-page .training-field-header .training-field-actions {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  min-width: 0;
+  gap: 3px;
+  grid-column: 2;
+  grid-row: 1;
+}
+.training-field-state {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  flex: 0 1 auto;
+  min-width: 0;
+  gap: 6px;
+}
+.training-field-state > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.training-field-override { font-size: 10px; color: var(--accent); }
+/* The file source and unsaved draft are distinct from inherited-value differences. */
+.training-config-page .training-edit-fields > :is(.training-field-card, .training-dataset-field) {
+  border: 1px solid rgb(226 232 240 / 90%);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 3%);
+}
+.training-config-page .training-edit-fields > :is([data-own="true"], [data-dirty="true"]) {
+  border-color: #c8dcf8;
+  background: #f8fbff;
+}
+.training-field-own {
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: #eff6ff;
+  color: #2563eb;
+  font-size: 10px;
+  line-height: 1.5;
+}
+:root[data-theme="dark"] .training-config-page .training-edit-fields > :is(.training-field-card, .training-dataset-field) {
+  border-color: var(--line);
+  background: var(--surface);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 12%);
+}
+:root[data-theme="dark"] .training-config-page .training-edit-fields > :is([data-own="true"], [data-dirty="true"]) {
+  border-color: color-mix(in srgb, var(--accent) 30%, var(--line));
+  background: color-mix(in srgb, var(--accent) 5%, var(--surface));
+}
+:root[data-theme="dark"] .training-field-own {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+.training-config-page .training-field-card .training-field-help[data-help-display] {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+.training-config-page .training-field-card .training-field-help[data-help-display="single"] {
+  height: 1.4em;
+  min-height: 1.4em;
+  max-height: 1.4em;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.training-config-page .training-field-card .training-field-help[data-help-display="full"] {
+  height: auto;
+  overflow: visible;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.training-config-page .training-field-card .field-availability-reason {
+  white-space: normal;
+  overflow: visible;
+  overflow-wrap: anywhere;
+  font-size: 11px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .training-field-switch-thumb { transition: none; }
+}

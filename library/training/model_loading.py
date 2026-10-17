@@ -100,6 +100,12 @@ def _load_z_image_text_encoder(args, weight_dtype):
     return load_z_image_text_encoder(args.qwen3, dtype=weight_dtype, device="cpu")
 
 
+def _load_moss_text_encoder(*args, **kwargs):
+    from library.models.moss_image.integration import load_text_encoder
+
+    return load_text_encoder(*args, **kwargs)
+
+
 def _load_qwen_image_2_1_text_encoder(args, weight_dtype):
     from library.models.qwen_image_2_1.weights import load_qwen_image_2_1_text_encoder
 
@@ -123,6 +129,12 @@ def _load_z_image_vae(args, weight_dtype):
     from library.models.z_image.weights import load_z_image_vae
 
     return load_z_image_vae(args.vae, dtype=weight_dtype, device="cpu")
+
+
+def _load_moss_vae(*args, **kwargs):
+    from library.models.moss_image.integration import load_vae
+
+    return load_vae(*args, **kwargs)
 
 
 def _load_qwen_image_2_1_vae(args, weight_dtype):
@@ -150,6 +162,7 @@ def load_target_model(trainer, args, weight_dtype, accelerator, load_qwen3=True,
                 "krea2_raw": _load_krea2_text_encoder,
                 "z_image": _load_z_image_text_encoder,
                 "qwen_image_2_1": _load_qwen_image_2_1_text_encoder,
+                "moss_image": _load_moss_text_encoder,
             },
         )
         qwen3_text_encoder = loader(args, weight_dtype)
@@ -172,6 +185,7 @@ def load_target_model(trainer, args, weight_dtype, accelerator, load_qwen3=True,
                 "krea2_raw": _load_qwen_vae,
                 "z_image": _load_z_image_vae,
                 "qwen_image_2_1": _load_qwen_image_2_1_vae,
+                "moss_image": _load_moss_vae,
             },
         )
         vae = loader(args, weight_dtype)
@@ -194,9 +208,16 @@ def load_unet_lazily(trainer, args, weight_dtype, accelerator, text_encoders) ->
             "krea2_raw": _load_krea2_dit,
             "z_image": _load_z_image_dit,
             "qwen_image_2_1": _load_qwen_image_2_1_dit,
+            "moss_image": _load_moss_dit,
         },
     )
     return loader(trainer, args, weight_dtype, accelerator, text_encoders)
+
+
+def _load_moss_dit(*args, **kwargs):
+    from library.models.moss_image.integration import load_dit
+
+    return load_dit(*args, **kwargs)
 
 
 def _load_qwen_image_2_1_dit(trainer, args, weight_dtype, accelerator, text_encoders):

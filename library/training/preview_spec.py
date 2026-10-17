@@ -115,6 +115,10 @@ def validate_preview_prompt(prompt: dict, family: str, sampler: str = "euler") -
         raise ValueError("文生图样张不能包含编辑参考图")
     if len(references) > spec.max_preview_references:
         raise ValueError(f"{spec.display_name} 采样最多支持 {spec.max_preview_references} 张参考图")
+    if spec.name == "moss_image":
+        from library.models.moss_image.preview_validation import validate_moss_preview
+
+        validate_moss_preview(prompt, sampler)
     if spec.name == "qwen_image_2_1":
         if str(prompt.get("sample_sampler") or sampler) != "euler":
             raise ValueError("Qwen Image 2.1 采样仅支持 Euler")

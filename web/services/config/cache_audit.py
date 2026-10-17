@@ -15,7 +15,7 @@ from library.datasets.mask_mode import (
     MASK_MODE_EXTERNAL,
     normalize_mask_mode,
 )
-from library.io.cache_names import pe_cache_suffix
+from library.io.cache_names import pe_cache_suffix, text_cache_suffix
 from library.datasets.buckets import BucketManager
 from library.datasets.qwen_image_geometry import align_qwen_bucket_manager, align_qwen_resolution
 from library.datasets.qwen_image_edit import (
@@ -97,7 +97,9 @@ def audit_dataset_row_caches(
         "use_text_cache",
         "cache_text_encoder_outputs_to_disk",
     ):
-        text_strategy = _text_strategy(family, skip_check)
+        text_strategy = _text_strategy(
+            family, skip_check, moss_te_quantization=cfg.get("moss_te_quantization", "nf4"),
+        )
         if _is_qwen_edit(cfg, family):
             from library.models.qwen_image_2_1.strategy import QwenImage21EditTextCache
 
@@ -137,7 +139,7 @@ def audit_dataset_row_caches(
                         image,
                         image_dir=image_dir,
                         cache_dir=text_cache_dir,
-                        suffix=family_spec.text_cache.suffix,
+                        suffix=text_cache_suffix(family, text_strategy),
                         strategy=text_strategy,
                     ),
                 )
@@ -235,12 +237,16 @@ def _latent_strategy(family: str, skip_check: bool):
         from library.models.qwen_image_2_1.strategy import QwenImage21LatentCache
 
         cls = QwenImage21LatentCache
+    elif family == "moss_image":
+        from library.models.moss_image.strategy import MossImageLatentCache
+
+        cls = MossImageLatentCache
     else:
         raise ValueError(f"Unsupported latent cache audit family: {family}")
     return cls(True, 1, skip_check)
 
 
-def _text_strategy(family: str, skip_check: bool):
+def _text_strategy(family: str, skip_check: bool, *, moss_te_quantization="nf4"):
     if family == "anima":
         from library.anima.strategy import AnimaTextEncoderOutputsCachingStrategy
 
@@ -257,6 +263,10 @@ def _text_strategy(family: str, skip_check: bool):
         from library.models.qwen_image_2_1.strategy import QwenImage21TextCache
 
         return QwenImage21TextCache(True, 1, skip_check)
+    if family == "moss_image":
+        from library.models.moss_image.strategy import MossImageTextCache
+
+        return MossImageTextCache(True, 1, skip_check, quantization=moss_te_quantization)
     raise ValueError(f"Unsupported cache audit family: {family}")
 
 

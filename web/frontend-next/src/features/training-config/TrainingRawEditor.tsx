@@ -16,6 +16,7 @@ export function TrainingRawEditor({
   onSaved,
   onClose,
   onReload,
+  description,
 }: {
   file?: string;
   content: string;
@@ -24,6 +25,7 @@ export function TrainingRawEditor({
   onSaved: (file: string) => void;
   onClose: () => void;
   onReload: () => Promise<void>;
+  description?: string;
 }) {
   const [text, setText] = useState(content);
   const [name, setName] = useState("");
@@ -55,6 +57,7 @@ export function TrainingRawEditor({
       onClose={close}
       busy={save.isPending}
     >
+      {description && <p className="data-scope">{description}</p>}
       <form
         onSubmit={(e) => {
           e.preventDefault();

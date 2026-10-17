@@ -326,6 +326,68 @@ def preflight_training_config(
                 root,
             )
 
+    def check_moss_image_component(key: str, label: str, component: str) -> None:
+        """Validate one MOSS component without accepting single-file checkpoints."""
+        raw = cfg.get(key)
+        if not raw:
+            add("error", key, f"{label} 未填写")
+            return
+        root = _resolve_project_path(str(raw))
+        if not root.exists():
+            add("error", key, f"{label} 不存在", root)
+            return
+        if not root.is_dir():
+            add("error", key, f"{label} 需要本地 Diffusers 目录", root)
+            return
+
+        component_dir = root / component
+        path = component_dir if component_dir.is_dir() else root
+        if not (path / "config.json").is_file():
+            add("error", key, f"{label} 缺少 {component}/config.json", root)
+            return
+        has_weights = any(path.glob("*.safetensors")) or any(
+            path.glob("*.safetensors.index.json")
+        )
+        if not has_weights:
+            add("error", key, f"{label} 缺少 safetensors 权重或索引", root)
+            return
+        add("ok", key, f"{label} MOSS Diffusers 组件存在", path)
+
+        if component != "text_encoder":
+            return
+        tokenizer_candidates = [root / "tokenizer"]
+        if path != root:
+            tokenizer_candidates.append(path.parent / "tokenizer")
+        else:
+            tokenizer_candidates.append(root.parent / "tokenizer")
+        tokenizer = next(
+            (
+                candidate
+                for candidate in tokenizer_candidates
+                if (candidate / "tokenizer_config.json").is_file()
+            ),
+            tokenizer_candidates[0],
+        )
+        has_config = (tokenizer / "tokenizer_config.json").is_file()
+        has_vocab = (tokenizer / "tokenizer.json").is_file() or (
+            (tokenizer / "vocab.json").is_file()
+            and (tokenizer / "merges.txt").is_file()
+        )
+        if not has_config or not has_vocab:
+            add(
+                "error",
+                "moss_image_tokenizer",
+                "MOSS Qwen3 缺少 tokenizer 资源",
+                tokenizer,
+            )
+        else:
+            add(
+                "ok",
+                "moss_image_tokenizer",
+                "MOSS tokenizer 资源存在",
+                tokenizer,
+            )
+
     family_valid = True
     try:
         family = normalize_registered_family(
@@ -353,6 +415,12 @@ def preflight_training_config(
         )
         check_z_image_component("qwen3", "Qwen3 文本编码器", "text_encoder")
         check_z_image_component("vae", "VAE 模型", "vae")
+    elif family == "moss_image":
+        check_moss_image_component(
+            "pretrained_model_name_or_path", "基础 DiT 模型", "transformer"
+        )
+        check_moss_image_component("qwen3", "Qwen3 文本编码器", "text_encoder")
+        check_moss_image_component("vae", "VAE 模型", "vae")
     else:
         check_file(
             "pretrained_model_name_or_path",

@@ -296,6 +296,14 @@ class DreamBoothDataset(BaseDataset):
                     subset, "cache_dir", None
                 )
                 te_suffix = subset.text_cache_suffix
+                if subset.model_family == "moss_image":
+                    from library.anima.text_strategies import TextEncoderOutputsCachingStrategy
+                    from library.io.cache_names import text_cache_suffix
+
+                    te_suffix = text_cache_suffix(
+                        subset.model_family, TextEncoderOutputsCachingStrategy.get_strategy(),
+                        moss_te_quantization=getattr(subset, "moss_te_quantization", "nf4"),
+                    )
                 te_cached_keys: set[tuple[str, str]] = set()
                 if cache_dir and os.path.isdir(cache_dir):
                     cache_root = os.fspath(cache_dir)

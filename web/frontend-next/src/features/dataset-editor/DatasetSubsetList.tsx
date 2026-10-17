@@ -19,11 +19,13 @@ export function DatasetSubsetList({
   disabled,
   workbenchDisabled,
   onOpenWorkbench,
+  onImageCount,
 }: {
   form: UseFormReturn<DatasetFormValues>;
   disabled: boolean;
   workbenchDisabled: boolean;
   onOpenWorkbench?: (index: number) => void;
+  onImageCount?: (source: string, count: number | null) => void;
 }) {
   const rows = useFieldArray({ control: form.control, name: 'datasets' });
   const watchedRows = form.watch('datasets');
@@ -147,6 +149,7 @@ export function DatasetSubsetList({
                 disabled={disabled}
                 workbenchDisabled={workbenchDisabled}
                 onSelect={() => setSelectedId(field.id)}
+                onImageCount={onImageCount}
                 onOpenWorkbench={onOpenWorkbench ? () => onOpenWorkbench(index) : undefined}
                 onMove={(nextIndex) => rows.move(index, nextIndex)}
                 onRemove={() => rows.remove(index)}

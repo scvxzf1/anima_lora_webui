@@ -1,5 +1,16 @@
 const FALLBACK_MODEL_FAMILIES = Object.freeze([
     {
+        name: 'moss_image',
+        display_name: 'MOSS-Image',
+        aliases: ['moss', 'moss_image'],
+        supported_network_specs: ['lora'],
+        supports_method_adapters: false,
+        plain_lora_only: true,
+        supported_tasks: ['t2i'],
+        supported_attention_modes: ['torch', 'sdpa'],
+        pipeline_parallel: null,
+    },
+    {
         name: 'anima',
         aliases: ['anima'],
         supported_network_specs: null,
@@ -132,6 +143,19 @@ export function modelFamilyOptionSupported(fieldKey, family, option, context) {
     const capability = modelFamilyCapability(family);
     if (!capability) return true;
     const value = String(option ?? '').trim();
+    if (capability.name === 'moss_image') {
+        const fixedOptions = {
+            lora_adapter_kind: ['lora'], network_module: ['networks.lora_anima'],
+            base_compute: ['bf16'], mixed_precision: ['bf16'], precision_preference: ['bf16'],
+            moss_te_quantization: ['nf4', 'bf16'], selective_checkpoint: ['off'],
+            timestep_sampling: ['uniform'], weighting_scheme: ['none'], sample_sampler: ['euler'],
+            router_source: ['none'], block_swap_transfer_dtype: ['bf16'],
+        }[fieldKey];
+        if (fixedOptions) return fixedOptions.includes(value.toLowerCase());
+        if (['use_moe_style', 'route_per_layer', 'dora_wd', 'use_ortho', 'use_loha', 'use_lokr'].includes(fieldKey)) {
+            return ['false', 'off', 'none', '0'].includes(value.toLowerCase());
+        }
+    }
     if (capability.name === 'krea2_raw') {
         if (fieldKey === 'selective_checkpoint') {
             return ['off', 'every_other'].includes(value.toLowerCase());

@@ -45,10 +45,16 @@ it("renders boolean fields as switches and reports boolean values on change", as
     />,
   );
 
-  const ortho = screen.getByRole("checkbox", { name: "启用 OrthoLoRA" });
+  const ortho = screen.getByRole("switch", { name: "启用 OrthoLoRA" });
   expect(fields.find((field) => field.key === "use_cmmd")?.kind).toBe("boolean");
   expect(fields.find((field) => field.key === "use_moe_style")?.kind).toBe("select");
   expect(ortho).not.toBeChecked();
+  await userEvent.click(document.getElementById("training-field-use_ortho")!);
+  expect(onChange).not.toHaveBeenCalled();
+  ortho.focus();
+  await userEvent.keyboard(" ");
+  expect(onChange).toHaveBeenCalledWith("use_ortho", true);
+  onChange.mockClear();
   await userEvent.click(ortho);
   expect(onChange).toHaveBeenCalledWith("use_ortho", true);
   expect(screen.getByLabelText("MoE 结构").tagName).toBe("SELECT");

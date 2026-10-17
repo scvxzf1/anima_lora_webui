@@ -1,41 +1,9 @@
-.history-gpu-summary {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
-  gap: 8px 16px;
-  padding: 10px 0;
-  border-block: 1px solid var(--line);
-}
-
-.history-gpu-summary-item {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  align-items: baseline;
-  gap: 2px 10px;
-  min-width: 0;
-}
-
-.history-gpu-summary-item > span {
-  color: var(--muted);
-  font-size: 0.85rem;
-}
-
-.history-gpu-summary-item > strong {
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-}
-
-.history-gpu-summary-item > small {
-  grid-column: 1 / -1;
-  color: var(--muted);
-  font-variant-numeric: tabular-nums;
-}
-
 .history-gpu-inspection {
   display: grid;
   grid-template-columns: minmax(110px, auto) minmax(180px, 1fr);
   align-items: center;
-  gap: 8px 12px;
-  margin: 12px 0;
+  gap: 10px 12px;
+  margin: 16px 0;
 }
 
 .history-gpu-inspection > label {
@@ -48,28 +16,39 @@
   min-width: 0;
 }
 
-.history-gpu-inspection > dl {
+.history-gpu-kpis {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
-  gap: 6px 14px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
   grid-column: 1 / -1;
   margin: 0;
 }
+.history-gpu-kpi-wrap { grid-column: 1 / -1; min-width: 0; }
 
-.history-gpu-inspection > dl > div {
-  display: flex;
-  justify-content: space-between;
-  gap: 8px;
+.history-gpu-kpis > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 12px;
+  background: var(--surface-subtle);
+  border: 1px solid var(--line);
+  border-radius: 10px;
 }
 
 .history-gpu-inspection dt {
   color: var(--muted);
+  font-size: 12px;
 }
 
 .history-gpu-inspection dd {
   margin: 0;
+  color: var(--ink);
+  font-size: 18px;
+  font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
+
+.history-gpu-kpis small { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
 
 .history-gpu-metric-visibility {
   display: flex;
@@ -85,7 +64,7 @@
     grid-template-columns: 1fr;
   }
 
-  .history-gpu-inspection > dl {
+  .history-gpu-kpis {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }

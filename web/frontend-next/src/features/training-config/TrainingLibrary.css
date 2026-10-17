@@ -153,42 +153,6 @@
   font-size: 12px;
   cursor: pointer;
 }
-.training-library-management-toggle input {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  opacity: 0;
-}
-.training-library-management-track {
-  position: relative;
-  width: 30px;
-  height: 17px;
-  background: var(--line-strong);
-  border: 1px solid var(--line-strong);
-  border-radius: 9px;
-}
-.training-library-management-track::after {
-  content: "";
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 11px;
-  height: 11px;
-  background: var(--surface);
-  border-radius: 50%;
-  transition: transform 120ms ease;
-}
-.training-library-management-toggle input:checked + .training-library-management-track {
-  background: var(--accent);
-  border-color: var(--accent);
-}
-.training-library-management-toggle input:checked + .training-library-management-track::after {
-  transform: translateX(13px);
-}
-.training-library-management-toggle input:focus-visible + .training-library-management-track {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
 .training-library-actions .toolbar {
   flex-wrap: nowrap;
   margin: 0;

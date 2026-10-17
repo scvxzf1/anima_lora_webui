@@ -109,6 +109,7 @@ export const FIELD_HELP_SUMMARY_ZH = Object.freeze({
     "sample_every_n_steps": "按参数更新步数触发预览，适合一轮耗时很长的训练。",
     "sample_at_first": "在首次训练更新之前生成一组预览，作为训练前基线。",
     "sample_sampler": "选择训练预览的采样器，实际可用项受模型族限制。",
+    "moss_te_quantization": "选择 MOSS-Image 冻结文本编码器的 NF4 或 BF16 路径。",
     "source_image_dir": "旧配置的原图目录入口，只能代表第一组数据集。",
     "resized_image_dir": "旧配置中的缩放图目录，WebUI 会为运行准备实际的数据目录。",
     "lora_cache_dir": "旧配置中的训练缓存目录，可能包含 latent 和文本编码 sidecar。",

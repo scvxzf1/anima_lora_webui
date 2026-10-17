@@ -14,6 +14,7 @@ type Props = {
   label: string;
   helpField?: DatasetFieldHelpKey;
   disabled?: boolean;
+  onImageCount?: (source: string, count: number | null) => void;
 };
 
 type Inspection = {
@@ -25,7 +26,7 @@ type Inspection = {
   source_inspection_error?: string | null;
 };
 
-export function DatasetSourcePathField({ form, path, label, helpField, disabled = false }: Props) {
+export function DatasetSourcePathField({ form, path, label, helpField, disabled = false, onImageCount }: Props) {
   const value = useWatch({ control: form.control, name: path });
   const inputRef = useRef<HTMLInputElement>(null);
   const requestId = useRef(0);
@@ -65,10 +66,18 @@ export function DatasetSourcePathField({ form, path, label, helpField, disabled 
     const query = new URLSearchParams({ source_image_dir: source, inspect: '1' });
     void apiRequest<Inspection>(`/api/config/data-dirs/suggest?${query}`, { signal: controller.signal })
       .then((result) => {
-        if (requestId.current === id && !controller.signal.aborted) setStatus(describeInspection(result));
+        if (requestId.current === id && !controller.signal.aborted) {
+          setStatus(describeInspection(result));
+          onImageCount?.(source, result.ok !== false && result.source_exists && result.source_is_dir
+            && !result.source_inspection_error && Number.isInteger(result.source_image_count)
+            && result.source_image_count! >= 0 ? result.source_image_count! : null);
+        }
       })
       .catch((cause: unknown) => {
-        if (requestId.current === id && !controller.signal.aborted) setStatus(cause instanceof Error ? cause.message : '路径检测失败');
+        if (requestId.current === id && !controller.signal.aborted) {
+          setStatus(cause instanceof Error ? cause.message : '路径检测失败');
+          onImageCount?.(source, null);
+        }
       });
   }
 
@@ -79,6 +88,7 @@ export function DatasetSourcePathField({ form, path, label, helpField, disabled 
     activeRequest.current?.abort();
     activeRequest.current = null;
     setStatus(source ? '正在检测…' : '请输入路径');
+    onImageCount?.(source, null);
     if (!source) return;
     const delay = firstCheck.current ? 80 : 420;
     firstCheck.current = false;
@@ -99,6 +109,7 @@ export function DatasetSourcePathField({ form, path, label, helpField, disabled 
     requestId.current += 1;
     activeRequest.current?.abort();
     setStatus('正在检测…');
+    onImageCount?.(source, null);
     firstCheck.current = false;
     inspect(source);
   }
@@ -139,7 +150,11 @@ export function DatasetSourcePathField({ form, path, label, helpField, disabled 
   return (
     <div className="dataset-source-path-field dataset-wide-field">
       <div className="dataset-setting-field">
-        <DatasetFieldLabel htmlFor={path} field={helpField} label={label} />
+        <div className="dataset-source-path-label">
+          <DatasetFieldLabel htmlFor={path} field={helpField} label={label} />
+          <small id={statusId} aria-live="polite" data-state={status.startsWith('检测到') ? 'valid' : status ? 'checking' : 'idle'}>{status}</small>
+        </div>
+        <div className="dataset-source-path-input">
         <input
           id={path}
           disabled={disabled}
@@ -148,7 +163,6 @@ export function DatasetSourcePathField({ form, path, label, helpField, disabled 
           aria-invalid={errorMessage ? true : undefined}
           aria-describedby={[errorMessage ? errorId : '', statusId].filter(Boolean).join(' ') || undefined}
         />
-      </div>
       <div className="dataset-source-path-actions">
         <button type="button" disabled={disabled} title="选择本机文件夹名" aria-label="选择本机文件夹名" onClick={() => void chooseDirectory()}>
           <FolderOpen size={15} aria-hidden="true" />
@@ -160,8 +174,9 @@ export function DatasetSourcePathField({ form, path, label, helpField, disabled 
           <RefreshCw size={15} aria-hidden="true" />
         </button>
       </div>
+        </div>
+      </div>
       {errorMessage && <small id={errorId} role="alert">{errorMessage}</small>}
-      <small id={statusId} aria-live="polite" data-state={status.startsWith('检测到') ? 'valid' : status ? 'checking' : 'idle'}>{status}</small>
     </div>
   );
 }

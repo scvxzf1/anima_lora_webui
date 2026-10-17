@@ -238,6 +238,7 @@ export type HistoryWeight = {
   abs_path?: string;
   name: string;
   kind?: string;
+  steps?: number | null;
   size_bytes: number;
   scope_label: string;
 };

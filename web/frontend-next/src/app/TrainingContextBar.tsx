@@ -1,13 +1,15 @@
 import "./TrainingContextBar.css";
+import type { ReactNode } from "react";
 
 import type { TrainingContextController } from "./useTrainingContext";
 
 type Props = {
   context: TrainingContextController;
   selectionDisabled?: boolean;
+  children?: ReactNode;
 };
 
-export function TrainingContextBar({ context, selectionDisabled = false }: Props) {
+export function TrainingContextBar({ context, selectionDisabled = false, children }: Props) {
   return (
     <section className="training-context-bar" aria-label="当前训练上下文">
       <div className="training-context-copy">
@@ -59,6 +61,7 @@ export function TrainingContextBar({ context, selectionDisabled = false }: Props
           ) : null}
         </select>
       </label>
+      {children}
       <div
         className="training-context-state"
         data-tone={context.error ? "danger" : "neutral"}

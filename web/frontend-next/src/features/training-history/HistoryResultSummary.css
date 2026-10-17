@@ -1,0 +1,6 @@
+.history-result-preview { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; max-width: 100%; margin: 6px 0 0 10px; vertical-align: middle; }
+.history-result-preview .history-result-thumbnail { display: block; flex: 0 0 40px; width: 40px; height: 40px; object-fit: cover; border-radius: 6px; background: var(--surface-subtle); border: 1px solid var(--line); }
+@media (max-width: 600px) {
+  .history-result-preview { display: flex; margin-left: 0; }
+  .history-result-preview .history-result-thumbnail { flex-basis: 32px; width: 32px; height: 32px; }
+}

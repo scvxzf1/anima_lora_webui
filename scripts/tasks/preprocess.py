@@ -588,7 +588,7 @@ def _run_preprocess_resize(row: dict[str, Any], extra: list[str], *, copy_captio
 
 def _run_preprocess_vae(row: dict[str, Any], extra: list[str]) -> None:
     vae_batch_size, _ = _preprocess_cache_batch_sizes()
-    dtype = _preprocess_precision_dtype()
+    dtype = "float32" if _model_family() == "moss_image" else _preprocess_precision_dtype()
     run(
         [
             PY,
@@ -650,9 +650,16 @@ def _run_preprocess_te(
             "krea2_raw": _run_preprocess_te_krea2,
             "z_image": _run_preprocess_te_z_image,
             "qwen_image_2_1": _run_preprocess_te_qwen_image_2_1,
+            "moss_image": _run_preprocess_te_moss_image,
         },
     )
     handler(row, extra, shuffle_variants, tag_dropout_rate)
+
+
+def _run_preprocess_te_moss_image(row, extra, shuffle_variants=None, tag_dropout_rate=None):
+    from scripts.moss_image.preprocess_te_cache import run_task
+
+    run_task(row, extra, shuffle_variants, tag_dropout_rate)
 
 
 def _run_preprocess_te_qwen_image_2_1(
@@ -1090,7 +1097,7 @@ def cmd_preprocess_config(extra):
     if not cfg_path or not src_dir:
         raise SystemExit("preprocess-config requires --dataset_config <path> and --src <dir>")
     vae_batch_size, text_batch_size = _preprocess_cache_batch_sizes()
-    dtype = _preprocess_precision_dtype()
+    dtype = "float32" if _model_family() == "moss_image" else _preprocess_precision_dtype()
 
     last_err: OSError | None = None
     for attempt in range(10):
@@ -1197,6 +1204,7 @@ def cmd_preprocess_config(extra):
                 *(["--cache_dir", latent_cache_dir] if latent_cache_dir else []),
                 "--vae",
                 vae_path,
+                *(["--model_family", "moss_image"] if _model_family() == "moss_image" else []),
                 "--batch_size",
                 str(vae_batch_size),
                 "--dtype",
@@ -1207,6 +1215,15 @@ def cmd_preprocess_config(extra):
                 *_path_pattern_args(filter_row),
             ]
         )
+        if _model_family() == "moss_image":
+            _run_preprocess_te_moss_image(
+                {**filter_row, "source_image_dir": src_dir, "text_cache_dir": text_cache_dir,
+                 "prefer_json_caption": prefer_json,
+                 "caption_source_mode": entry.get("caption_source_mode"),
+                 "caption_extension": entry.get("caption_extension")},
+                ["--qwen3", qwen3_path, "--min_pixels", "0"],
+            )
+            continue
         run(
             [
                 PY,

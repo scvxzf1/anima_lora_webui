@@ -59,6 +59,8 @@ def classify_cache_file(
     pe_encoder: str | None = None,
     *,
     model_family: str = "anima",
+    text_cache_strategy=None,
+    moss_te_quantization: str = "nf4",
 ) -> str | None:
     """Bucket a cache filename into ``"latents"`` / ``"te"`` / ``"pe"`` (or None).
 
@@ -67,7 +69,10 @@ def classify_cache_file(
     ``"pe"`` (defaults to the REPA default ``pe_spatial``). Note ``TE`` is tested
     before ``pe`` so the ``pe`` encoder can never shadow a ``_anima_te`` sidecar.
     """
-    latent_suffix, text_suffix = family_cache_suffixes(model_family)
+    latent_suffix, text_suffix = family_cache_suffixes(
+        model_family, text_cache_strategy=text_cache_strategy,
+        moss_te_quantization=moss_te_quantization,
+    )
     if name.endswith(text_suffix):
         return "te"
     if name.endswith(pe_cache_suffix(pe_encoder)):
@@ -83,6 +88,8 @@ def count_preprocess_caches(
     pe_encoder: str | None = None,
     *,
     model_family: str = "anima",
+    text_cache_strategy=None,
+    moss_te_quantization: str = "nf4",
 ) -> dict[str, int]:
     """Count latent / TE / PE cache sidecars under ``cache_dir`` by filename.
 
@@ -115,13 +122,31 @@ def count_preprocess_caches(
             p.name,
             pe_encoder,
             model_family=model_family,
+            text_cache_strategy=text_cache_strategy,
+            moss_te_quantization=moss_te_quantization,
         )
         if kind:
             out[kind] += 1
     return out
 
 
-def family_cache_suffixes(model_family: str) -> tuple[str, str]:
+def text_cache_suffix(model_family: str, strategy=None, *, moss_te_quantization="nf4") -> str:
+    """Use the active MOSS precision identity; retain other families' names."""
+    from library.models.family_registry import normalize_registered_family
+
+    family = normalize_registered_family(model_family, allow_aliases=True)
+    if family == "moss_image":
+        if strategy is not None and getattr(strategy, "MODEL_FAMILY", None) == family:
+            return strategy.cache_suffix
+        if moss_te_quantization not in {"nf4", "bf16"}:
+            raise ValueError("moss_te_quantization must be 'nf4' or 'bf16'")
+        return f"_moss_image_te_{moss_te_quantization}.safetensors"
+    return family_cache_suffixes(family)[1]
+
+
+def family_cache_suffixes(
+    model_family: str, *, text_cache_strategy=None, moss_te_quantization="nf4",
+) -> tuple[str, str]:
     from library.models.family_registry import (
         get_model_family_spec,
         normalize_registered_family,
@@ -129,7 +154,12 @@ def family_cache_suffixes(model_family: str) -> tuple[str, str]:
 
     family = normalize_registered_family(model_family, allow_aliases=True)
     spec = get_model_family_spec(family)
-    return spec.latent_space.cache_suffix, spec.text_cache.suffix
+    suffix = spec.text_cache.suffix
+    if family == "moss_image":
+        suffix = text_cache_suffix(
+            family, text_cache_strategy, moss_te_quantization=moss_te_quantization,
+        )
+    return spec.latent_space.cache_suffix, suffix
 
 
 # Backwards-compatible private spelling for lightweight callers.

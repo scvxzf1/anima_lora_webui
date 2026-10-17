@@ -5,44 +5,6 @@ body {
   font-size: 14px;
   line-height: 1.5;
 }
-button,
-input,
-select,
-textarea {
-  font: inherit;
-}
-button,
-.ui-button {
-  min-height: 36px;
-  border: 1px solid var(--button-border);
-  background: var(--button-bg);
-  color: var(--button-ink);
-  border-radius: var(--radius-sm);
-  padding: 6px 14px;
-  cursor: pointer;
-  font-weight: 500;
-  transition: all 150ms cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow: var(--shadow-sm);
-}
-button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-}
-button svg,
-a svg {
-  flex-shrink: 0;
-}
-.next-layout .icon-button,
-.next-layout .nav-toggle,
-.command-dialog .icon-button {
-  padding: 0;
-  width: 36px;
-  height: 36px;
-  flex-shrink: 0;
-  border-radius: var(--radius-sm);
-}
 .inline-confirm-body {
   padding: 16px;
 }
@@ -61,57 +23,6 @@ a svg {
   border: none;
   box-shadow: var(--shadow-md);
   font-weight: 600;
-}
-button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-button:hover:not(:disabled) {
-  filter: brightness(1.05);
-  box-shadow: var(--shadow-md);
-  transform: translateY(-1px);
-}
-button:active:not(:disabled) {
-  transform: translateY(0);
-  box-shadow: var(--shadow-sm);
-}
-input,
-select,
-textarea {
-  min-width: 0;
-  color: var(--ink);
-  background: var(--surface);
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius-sm);
-  padding: 8px 11px;
-  transition: all 150ms cubic-bezier(0.4, 0, 0.2, 1);
-}
-input:focus,
-select:focus,
-textarea:focus {
-  outline: none;
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-soft);
-}
-input[type="checkbox"],
-input[type="radio"] {
-  width: 17px;
-  height: 17px;
-  accent-color: var(--primary);
-  flex-shrink: 0;
-}
-textarea {
-  width: 100%;
-  resize: vertical;
-}
-button:focus-visible,
-a:focus-visible,
-input:focus-visible,
-select:focus-visible,
-textarea:focus-visible,
-summary:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 3px;
 }
 a {
   color: var(--accent);
@@ -806,20 +717,6 @@ fieldset {
   }
   .command-backdrop {
     padding: 12px;
-  }
-  button,
-  .ui-button {
-    min-height: 44px;
-  }
-  .next-layout button,
-  .command-dialog button {
-    min-height: 44px;
-  }
-  .next-layout .icon-button,
-  .next-layout .nav-toggle,
-  .command-dialog .icon-button {
-    width: 44px;
-    height: 44px;
   }
 }
 @media (prefers-reduced-motion: reduce) {

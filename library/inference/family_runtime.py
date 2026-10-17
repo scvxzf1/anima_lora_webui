@@ -15,6 +15,10 @@ def _validate_krea2(args, *, mode: str) -> None:
     inference_runner.validate_krea2_inference_args(args, mode=mode)
 
 
+def _validate_moss(args, *, mode: str) -> None:
+    raise SystemExit("MOSS-Image v1 supports training previews only.")
+
+
 def _validate_z_image(args, *, mode: str) -> None:
     raise SystemExit("Z-Image inference is not implemented in the training v1 path.")
 
@@ -86,6 +90,7 @@ def prepare_inference_family(args, family: str, mode: str) -> None:
             "krea2_raw": _validate_krea2,
             "z_image": _validate_z_image,
             "qwen_image_2_1": _validate_qwen_image_2_1,
+            "moss_image": _validate_moss,
         },
     )
     validator(args, mode=mode)
@@ -97,6 +102,7 @@ def prepare_inference_family(args, family: str, mode: str) -> None:
             "krea2_raw": _install_krea2_strategies,
             "z_image": _install_z_image_strategies,
             "qwen_image_2_1": _install_qwen_image_2_1_strategies,
+            "moss_image": _install_z_image_strategies,
         },
     )
     installer(args)

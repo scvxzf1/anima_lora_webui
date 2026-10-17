@@ -1,0 +1,21 @@
+.history-detail-title { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin-top: 8px; }
+.history-detail-title h1 { margin: 0; }
+.history-detail-header > div:first-child { flex: 1 1 380px; }
+.history-detail-state { display: inline-flex; align-items: center; flex-shrink: 0; gap: 6px; padding: 4px 10px; color: var(--muted); background: var(--surface-2); border: 1px solid var(--line); border-radius: 999px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.history-detail-state i { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.history-detail-state:is([data-state="idle"], [data-state="done"], [data-state="completed"]) { color: #047857; background: #ecfdf5; border-color: #a7f3d0; }
+.history-detail-state[data-state="running"] { color: var(--accent); background: var(--accent-soft); border-color: var(--accent); }
+.history-detail-state:is([data-state="error"], [data-state="failed"]) { color: var(--danger); background: var(--danger-soft); border-color: var(--danger); }
+.history-detail-state:is([data-state="stopped"], [data-state="interrupted"]) { color: #92400e; background: #fffbeb; border-color: #fcd34d; }
+:root[data-theme="dark"] .history-detail-state:is([data-state="idle"], [data-state="done"], [data-state="completed"]) { color: #6ee7b7; background: #064e3b; border-color: #047857; }
+:root[data-theme="dark"] .history-detail-state:is([data-state="stopped"], [data-state="interrupted"]) { color: #fcd34d; background: #451a03; border-color: #92400e; }
+.history-detail-commands { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.history-detail-commands > button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 10px 14px; font-size: 13px; font-weight: 600; border-radius: 8px; border: 1px solid var(--line-strong); background: var(--surface-1); color: var(--ink); }
+.history-detail-commands > button:hover:not(:disabled) { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+.history-detail-commands > .history-new-training { color: var(--accent-contrast, #fff); background: var(--accent); border-color: var(--accent); }
+.history-detail-commands > .history-new-training:hover:not(:disabled) { color: var(--accent-contrast, #fff); background: var(--accent); filter: brightness(.92); }
+@media (max-width: 600px) {
+  .history-detail-header { gap: 18px; }
+  .history-detail-commands { width: 100%; }
+  .history-detail-commands > button { flex: 1 1 auto; }
+}

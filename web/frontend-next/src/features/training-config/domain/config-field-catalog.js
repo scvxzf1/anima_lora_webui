@@ -81,6 +81,7 @@ const FIELD_GROUPS = Object.freeze([
         'qwen_image_2_1_task',
         'pretrained_model_name_or_path',
         'qwen3',
+        'moss_te_quantization',
         'vae',
     ]),
     group('input', 'dataset', ['dataset_config']),

@@ -8,7 +8,6 @@ import { FIELD_HELP_SUMMARY_ZH } from "./field-help-summary.js";
 import { FIELD_OPTIONS } from "./labels-options.js";
 // @ts-expect-error Legacy domain JS modules do not yet ship TypeScript declarations.
 import { collectConfigDraftChanges, displayConfigValue, prepareConfigPatch } from "./config-values.js";
-// @ts-expect-error Legacy domain JS modules do not yet ship TypeScript declarations.
 import { NETWORK_ARG_FIELD_MAP } from "./defaults.js";
 // @ts-expect-error Legacy domain JS modules do not yet ship TypeScript declarations.
 import { FORM_UI_PERSIST_DEFAULT_FIELDS, NETWORK_ARG_FIELD_SPECS } from "./defaults.js";

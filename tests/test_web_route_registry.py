@@ -52,6 +52,8 @@ REQUIRED_ROUTES: set[tuple[str, str]] = {
     ("GET", "/api/settings/model-configs"),
     ("PUT", "/api/settings/model-configs"),
     ("GET", "/api/settings/model-files"),
+    ("GET", "/api/settings/model-path-status"),
+    ("GET", "/api/settings/directories"),
     ("GET", "/api/preview/settings"),
     ("PUT", "/api/preview/settings"),
     ("GET", "/api/preview/images"),

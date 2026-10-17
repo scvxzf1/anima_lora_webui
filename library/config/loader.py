@@ -95,6 +95,7 @@ class DreamBoothSubsetParams(BaseSubsetParams):
     cache_info: bool = False
     alpha_mask: bool = False
     model_family: str = "anima"
+    moss_te_quantization: str = "nf4"
     mask_mode: str = "auto"
     mask_dir: Optional[str] = None
     cache_dir: Optional[str] = None

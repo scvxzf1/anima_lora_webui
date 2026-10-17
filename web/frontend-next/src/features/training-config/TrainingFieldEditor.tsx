@@ -1,6 +1,9 @@
 import { sameTrainingValue, type TrainingDraft, type TrainingFieldSpec } from "./trainingForm";
-import { FilePenLine, HelpCircle, Undo2 } from "lucide-react";
+import { FilePenLine } from "lucide-react";
 import { lazy, Suspense, useState } from "react";
+import { SettingSwitch } from "../../components/SettingSwitch";
+import { TrainingFieldHeader } from "./TrainingFieldHeader";
+import { useTrainingFieldHelpDisplay } from "./TrainingFieldHelpPreference";
 import { isTrainingModelPath, TrainingModelPathControl } from "./TrainingModelPathControl";
 import { TrainingDatasetField } from "./TrainingDatasetField";
 import { TrainingBlockSwapControl } from "./TrainingBlockSwapControl";
@@ -15,6 +18,7 @@ type Props = {
   fields: TrainingFieldSpec[];
   draft: TrainingDraft;
   baseline?: TrainingDraft;
+  defaults?: TrainingDraft;
   ownKeys: Set<string>;
   disabled: boolean;
   onChange: (key: string, value: string | number | boolean) => void;
@@ -26,6 +30,7 @@ export function TrainingFieldEditor({
   fields,
   draft,
   baseline = draft,
+  defaults,
   ownKeys,
   disabled,
   onChange,
@@ -33,6 +38,7 @@ export function TrainingFieldEditor({
   onEditPrompts,
 }: Props) {
   const [helpField, setHelpField] = useState<TrainingFieldSpec | null>(null);
+  const { display: helpDisplay } = useTrainingFieldHelpDisplay();
   const modelFamily = String(draft.model_family || "anima");
   return (
     <>
@@ -44,7 +50,9 @@ export function TrainingFieldEditor({
       {fields.map((field) => {
         const dirty = !sameTrainingValue(draft[field.key], baseline[field.key], field.kind);
         const layout = getTrainingFieldLayout(field, fields.length);
-        if (field.key === "dataset_config") return <TrainingDatasetField key={field.key} value={String(draft.dataset_config ?? "")} dirty={dirty} disabled={disabled} own={ownKeys.has(field.key)} onHelp={() => setHelpField(field)} onChange={(value) => onChange(field.key, value)} onUndo={() => onChange(field.key, baseline.dataset_config ?? "")} />;
+        const hasInherited = defaults !== undefined && Object.hasOwn(defaults, field.key);
+        const overridden = hasInherited && !sameTrainingValue(draft[field.key], defaults[field.key], field.kind);
+        if (field.key === "dataset_config") return <TrainingDatasetField key={field.key} value={String(draft.dataset_config ?? "")} dirty={dirty} overridden={overridden} onReset={hasInherited ? () => onChange(field.key, defaults![field.key]) : undefined} disabled={disabled} own={ownKeys.has(field.key)} onHelp={() => setHelpField(field)} onChange={(value) => onChange(field.key, value)} onUndo={() => onChange(field.key, baseline.dataset_config ?? "")} />;
         const availability = fieldAvailability(field.key, draft, method);
         const options = availableFieldOptions(
           field,
@@ -53,11 +61,14 @@ export function TrainingFieldEditor({
         );
         const controlDisabled = disabled || !availability.enabled;
         return (
-          <label
+          <div
             key={field.key}
             id={`training-field-${field.key}`}
-            htmlFor={`training-control-${field.key}`}
             tabIndex={-1}
+            className="training-field-card"
+            data-own={ownKeys.has(field.key) || undefined}
+            data-dirty={dirty || undefined}
+            data-overridden={overridden || undefined}
             data-model-path={isTrainingModelPath(field.key) || undefined}
             data-brick-width={field.kind === "text" || field.kind === "json" ? "wide" : "narrow"}
             data-auto-span={layout.span}
@@ -65,26 +76,14 @@ export function TrainingFieldEditor({
             data-available={availability.enabled}
             data-visible={availability.visible}
             data-availability-code={availability.code || undefined}
-            onClick={(event) => {
-              // Keep the large field row clickable for text inputs, but do not let
-              // an incidental click in the checkbox row toggle its value.
-              if (field.kind === "boolean" && !(event.target instanceof HTMLInputElement)) {
-                event.preventDefault();
-              }
-            }}
           >
-            <span className="training-field-label">
-              <span>{field.label}</span>
-              <code className="training-field-tag">{field.key}</code>
-              {dirty && <span className="training-field-dirty" role="status">已修改</span>}
-              <span className="training-field-actions">
-                  <button type="button" className="training-field-help-trigger" title={`查看${field.label}帮助`} aria-label={`查看${field.label}帮助`} onClick={(event) => { event.preventDefault(); event.stopPropagation(); setHelpField(field); }}><HelpCircle size={16} aria-hidden="true" /></button>
-                  {dirty && <button type="button" className="training-field-undo" aria-label={`撤销${field.label}修改`} title={`撤销 ${field.label} 修改`} disabled={disabled} onClick={(event) => { event.preventDefault(); event.stopPropagation(); onChange(field.key, baseline[field.key] ?? ""); }}><Undo2 size={15} aria-hidden="true" /></button>}
-                  {field.key === "sample_prompts" && onEditPrompts && (
-                    <button type="button" title="编辑样张提示词" aria-label="编辑样张提示词" disabled={controlDisabled} onClick={(event) => { event.preventDefault(); onEditPrompts(); }}><FilePenLine size={16} /></button>
-                  )}
-                </span>
-            </span>
+            <TrainingFieldHeader label={field.label} fieldKey={field.key} own={ownKeys.has(field.key)} dirty={dirty} overridden={overridden} disabled={disabled}
+              onHelp={() => setHelpField(field)} onUndo={() => onChange(field.key, baseline[field.key] ?? "")}
+              onReset={hasInherited && availability.enabled ? () => onChange(field.key, defaults![field.key]) : undefined}>
+              {field.kind === "boolean" && <SettingSwitch id={`training-control-${field.key}`} aria-label={field.label}
+                checked={Boolean(draft[field.key])} disabled={controlDisabled} onCheckedChange={(checked) => onChange(field.key, checked)} />}
+              {field.key === "sample_prompts" && onEditPrompts && <button type="button" title="编辑样张提示词" aria-label="编辑样张提示词" disabled={controlDisabled} onClick={onEditPrompts}><FilePenLine size={16} /></button>}
+            </TrainingFieldHeader>
             {field.key === "blocks_to_swap" ? (
               <TrainingBlockSwapControl draft={draft} field={field} disabled={controlDisabled} onChange={onChange} />
             ) : isTrainingModelPath(field.key) ? (
@@ -98,16 +97,7 @@ export function TrainingFieldEditor({
                 disabled={controlDisabled}
                 onChange={(event) => onChange(field.key, event.target.value)}
               />
-            ) : field.kind === "boolean" ? (
-              <input
-                id={`training-control-${field.key}`}
-                type="checkbox"
-                aria-label={field.label}
-                checked={Boolean(draft[field.key])}
-                disabled={controlDisabled}
-                onChange={(event) => onChange(field.key, event.target.checked)}
-              />
-            ) : field.kind === "select" ? (
+            ) : field.kind === "boolean" ? null : field.kind === "select" ? (
               <select
                 id={`training-control-${field.key}`}
                 aria-label={field.label}
@@ -146,11 +136,8 @@ export function TrainingFieldEditor({
                 }
               />
             )}
-            <small data-source={ownKeys.has(field.key) ? "file" : "merged"}>
-              {ownKeys.has(field.key) ? "当前文件" : "继承/预设"}
-            </small>
-            {(field.help || FIELD_HELP_SUMMARY_ZH[field.key]) && (
-              <small className="training-field-help">
+            {helpDisplay !== "hidden" && (field.help || FIELD_HELP_SUMMARY_ZH[field.key]) && (
+              <small className="training-field-help" data-help-display={helpDisplay}>
                 {field.help || FIELD_HELP_SUMMARY_ZH[field.key]}
               </small>
             )}
@@ -159,7 +146,7 @@ export function TrainingFieldEditor({
                 {availability.reason}
               </small>
             )}
-          </label>
+          </div>
         );
       })}
     </div>

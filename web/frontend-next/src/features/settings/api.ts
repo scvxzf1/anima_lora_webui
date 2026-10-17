@@ -28,6 +28,30 @@ export type ModelConfigResponse = {
   groups?: { id: string; label: string; item_ids: string[] }[];
 };
 
+export type ModelPathStatus = {
+  path: string;
+  kind: "empty" | "file" | "directory" | "missing";
+  size_bytes?: number;
+};
+
+export type SettingsDirectoryEntry = {
+  name: string;
+  path: string;
+  kind: "directory";
+};
+
+export type SettingsDirectoryPage = {
+  ok?: boolean;
+  roots: { name: string; path: string }[];
+  directory: string;
+  parent: string | null;
+  entries: SettingsDirectoryEntry[];
+  offset: number;
+  next_offset: number | null;
+  total: number;
+  truncated: boolean;
+};
+
 export const settingsKeys = {
   global: ["settings", "global"] as const,
   models: ["settings", "models"] as const,
@@ -47,3 +71,22 @@ export const saveModelConfigs = (payload: ModelConfigResponse) =>
     method: "PUT",
     body: JSON.stringify(payload),
   });
+
+export const fetchModelPathStatus = (path: string, signal?: AbortSignal) =>
+  apiRequest<ModelPathStatus>(
+    `/api/settings/model-path-status?path=${encodeURIComponent(path)}`,
+    { signal },
+  );
+
+export const fetchSettingsDirectories = (
+  directory?: string,
+  offset = 0,
+  signal?: AbortSignal,
+) => {
+  const params = new URLSearchParams({ offset: String(offset), limit: "100" });
+  if (directory) params.set("directory", directory);
+  return apiRequest<SettingsDirectoryPage>(
+    `/api/settings/directories?${params.toString()}`,
+    { signal },
+  );
+};

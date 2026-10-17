@@ -1,0 +1,21 @@
+.training-launch-availability {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  margin-top: 6px;
+  padding: 6px 10px;
+  border: 1px solid var(--warning-line);
+  border-radius: 5px;
+  background: var(--warning-soft);
+  color: var(--ink);
+  font-size: 12px;
+}
+.training-launch-availability span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.training-launch-availability button {
+  flex-shrink: 0;
+  padding: 4px 8px;
+}

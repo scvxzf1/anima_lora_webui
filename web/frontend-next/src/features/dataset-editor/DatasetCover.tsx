@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type PointerEventHandler } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { ImageOff, Image as ImageIcon } from 'lucide-react';
+import { Images } from 'lucide-react';
 import { apiRequest } from '../../api/client';
 import { datasetKeys } from './api';
 import './DatasetCover.css';
@@ -49,8 +49,7 @@ export function DatasetCover({ file, onPointerDown }: Props) {
           draggable={false}
           onDragStart={(event) => event.preventDefault()}
           onError={() => setBroken(true)} />
-      ) : failed ? <><ImageOff size={19} aria-hidden="true" /><small>无图像</small></>
-        : <ImageIcon size={20} aria-hidden="true" />}
+      ) : <>{failed ? <><Images size={22} strokeWidth={1.5} aria-hidden="true" /><small>无图像</small></> : <Images size={22} strokeWidth={1.5} aria-hidden="true" />}</>}
       {failed && <span className="dataset-cover-tooltip" role="tooltip">{reason}</span>}
     </span>
   );

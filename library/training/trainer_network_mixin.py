@@ -144,6 +144,11 @@ class TrainerNetworkMixin:
 
             return encode_qwen_image_2_1_latents(loaded_vae, pixels)
 
+        def encode_moss_vae(loaded_vae, pixels):
+            from library.models.moss_image.latent import encode_moss_latents
+
+            return encode_moss_latents(loaded_vae, pixels)
+
         encoder = dispatch_model_family(
             resolve_model_family(args),
             operation="live VAE encoding",
@@ -152,6 +157,7 @@ class TrainerNetworkMixin:
                 "krea2_raw": encode_qwen_vae,
                 "z_image": encode_z_image_vae,
                 "qwen_image_2_1": encode_qwen_image_2_1_vae,
+                "moss_image": encode_moss_vae,
             },
         )
         return encoder(vae, images)  # Keep 4D for input/output

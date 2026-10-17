@@ -9,6 +9,7 @@ import { DatasetApplyDialog } from './DatasetApplyDialog';
 import { DatasetDeleteDialog } from './DatasetDeleteDialog';
 import { DatasetDefaultsEditor } from './DatasetDefaultsEditor';
 import { DatasetSubsetList } from './DatasetSubsetList';
+import { DatasetSummary, useDatasetImageCounts } from './DatasetSummary';
 import { datasetPresetStem } from './datasetForm';
 import { DatasetNameDialog, type DatasetNameAction } from './DatasetNameDialog';
 import { editCapabilityIssue, findModelCapability, useModelCapabilities } from '../../api/modelCapabilities';
@@ -46,7 +47,7 @@ export function DatasetPresetEditor({
   const persisted = Boolean(editor.selectedFile);
   const canEdit = Boolean(editor.currentFile) && !editor.readonly;
   const canOpenWorkbench = persisted && !editor.hasUnsavedChanges;
-  const summary = summarizeRows(watchedRows.filter((row) => row.edit_role !== 'before'));
+  const { imageCounts, onImageCount } = useDatasetImageCounts();
   const targetTrainingFile = trainingContext.selectedFile;
   const capabilities = useModelCapabilities(applyOpen && qwenEditEnabled);
   const capability = findModelCapability(capabilities.data?.items, trainingContext.mergedConfig?.model_family);
@@ -143,27 +144,30 @@ export function DatasetPresetEditor({
       </header>
 
       <div className="dataset-command-bar" aria-label="预设操作">
-        <button type="button" onClick={() => openNameDialog('new')} disabled={busy}>新建</button>
+        <button type="button" className="secondary-command" onClick={() => openNameDialog('new')} disabled={busy}>新建</button>
         <button type="submit" className="primary-command" disabled={!canEdit || busy || editor.saveConflict || !editor.hasUnsavedChanges}>保存</button>
-        <button type="button" onClick={() => openNameDialog('save-as')} disabled={busy}>另存</button>
-        <button type="button" onClick={() => openNameDialog('copy')} disabled={busy}>复制</button>
+        <button type="button" className="secondary-command" onClick={() => openNameDialog('save-as')} disabled={busy}>另存</button>
+        <div className="dataset-secondary-actions" aria-label="更多预设操作">
+        <button type="button" className="secondary-command" onClick={() => openNameDialog('copy')} disabled={busy}>复制</button>
         <button
           type="button"
+          className="secondary-command"
           onClick={() => onExport(editor.selectedFile)}
           disabled={!persisted || busy || exporting}
         >
           {exporting ? '导出中' : '导出'}
         </button>
-        <button type="button" onClick={() => openNameDialog('rename')} disabled={!persisted || editor.readonly || busy}>
+        <button type="button" className="secondary-command" onClick={() => openNameDialog('rename')} disabled={!persisted || editor.readonly || busy}>
           重命名
         </button>
-        <button type="button" onClick={() => setDeleteOpen(true)} disabled={!persisted || editor.readonly || busy}>
+        <button type="button" className="secondary-command" onClick={() => setDeleteOpen(true)} disabled={!persisted || editor.readonly || busy}>
           删除
         </button>
-        <button type="button" onClick={() => editor.reload()} disabled={!persisted || busy}>重新读取</button>
+        <button type="button" className="secondary-command" onClick={() => editor.reload()} disabled={!persisted || busy}>重新读取</button>
+        </div>
         <button
           type="button"
-          className="apply-command"
+          className="apply-command primary-command"
           onClick={() => {
             applyPreset.reset();
             onEnsureMergedConfig();
@@ -186,14 +190,8 @@ export function DatasetPresetEditor({
       {editor.command.isError ? <p className="dataset-command-error" role="alert">{editor.command.error.message}{editor.saveConflict ? '；请核对后使用“重新读取”' : ''}</p> : null}
       {exportError ? <p className="dataset-command-error" role="alert">{exportError}</p> : null}
 
-      <dl className="dataset-summary-grid">
-        <div><dt>子集</dt><dd>{watchedRows.length}</dd></div>
-        <div><dt>训练集</dt><dd>{summary.train}</dd></div>
-        <div><dt>正则集</dt><dd>{summary.reg}</dd></div>
-        <div><dt>总重复</dt><dd>{summary.repeats}</dd></div>
-        <div><dt>分辨率</dt><dd>{editor.form.watch('defaults.resolution')}</dd></div>
-        <div><dt>批大小</dt><dd>{editor.form.watch('defaults.batch_size')}</dd></div>
-      </dl>
+      <DatasetSummary rows={watchedRows} counts={imageCounts}
+        resolution={editor.form.watch('defaults.resolution')} batchSize={editor.form.watch('defaults.batch_size')} />
 
       <DatasetDefaultsEditor form={editor.form} disabled={editor.readonly || busy} />
       <DatasetSubsetList
@@ -201,6 +199,7 @@ export function DatasetPresetEditor({
         disabled={editor.readonly || busy}
         workbenchDisabled={!canOpenWorkbench || busy}
         onOpenWorkbench={onOpenWorkbench}
+        onImageCount={onImageCount}
       />
       <StageScheduleEditor form={editor.form} disabled={editor.readonly || busy} />
 
@@ -240,17 +239,6 @@ export function DatasetPresetEditor({
       ) : null}
 
     </form>
-  );
-}
-
-function summarizeRows(rows: Array<{ is_reg?: boolean; num_repeats?: number }>) {
-  return rows.reduce(
-    (summary, row) => ({
-      train: summary.train + (row.is_reg ? 0 : 1),
-      reg: summary.reg + (row.is_reg ? 1 : 0),
-      repeats: summary.repeats + (Number(row.num_repeats) || 1),
-    }),
-    { train: 0, reg: 0, repeats: 0 },
   );
 }
 

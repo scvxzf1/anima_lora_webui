@@ -11,6 +11,9 @@ async function historyAssetsFixture(page: Page) {
   const mocks = await mockWorkspace(page);
   const reads: URL[] = [];
   await page.route((url) => url.pathname === "/api/training/history/fixture-run", (route) => route.fulfill({ json: historyDetail }));
+  await page.route((url) => url.pathname === "/api/training/history/fixture-run/system", (route) => route.fulfill({ json: {
+    system: [], indices: [], total: 0, next_offset: 0, has_more_after: false,
+  } }));
   await page.route((url) => url.pathname.endsWith("/artifacts"), (route) => route.fulfill({ json: {
     artifacts: [
       { key: "config-snapshot", state: "available", name: "config.snapshot.toml", size_bytes: 96 },
@@ -274,7 +277,10 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 1280, height: 720
       await expect(page.getByLabel("训练摘要")).toContainText("0.0800");
       await expect(page.getByLabel("训练产物摘要")).toContainText("125 项");
       await expect(page.getByLabel("训练产物摘要")).toContainText("505 项");
-      expect(mocks.reads.every((url) => url.searchParams.get("limit") === "1")).toBe(true);
+      await expect(page.getByLabel("训练产物摘要").locator(".history-result-thumbnail")).toHaveCount(4);
+      await expect(page.getByLabel("训练产物摘要").locator("dt").first()).toHaveCSS("text-align", "left");
+      expect(mocks.reads.filter((url) => url.pathname.endsWith("/weights")).every((url) => url.searchParams.get("limit") === "1")).toBe(true);
+      expect(mocks.reads.filter((url) => url.pathname.endsWith("/images")).every((url) => url.searchParams.get("limit") === "4")).toBe(true);
       expect(new Set(mocks.reads.map((url) => url.pathname)).size).toBe(2);
       await expect(page.getByRole("link", { name: "config.snapshot.toml" })).toHaveAttribute("href", /config-snapshot\?download=1/);
       await expect(page.getByText("未保存或文件已不存在")).toBeVisible();
@@ -283,20 +289,20 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 1280, height: 720
       await page.getByRole("link", { name: "产物", exact: true }).click();
       await expect(page.locator(".history-image-grid img")).toHaveCount(60);
       await page.getByRole("button", { name: "下一页样张", exact: true }).click();
-      await expect(page.locator(".history-image-grid button").first()).toHaveText("image-60");
+      await expect(page.locator(".history-image-grid button").first()).toHaveText("Step 60");
       await page.getByRole("button", { name: "下一页样张", exact: true }).click();
       await expect(page.locator(".history-image-grid img")).toHaveCount(5);
       await expect(page.getByRole("button", { name: "下一页样张", exact: true })).toBeDisabled();
       await page.locator(".history-image-grid button").first().click();
       await expect(page.getByRole("dialog")).toContainText("Studio portrait");
-      await expect.poll(() => page.locator(".history-asset-full").evaluate((node) => (node as HTMLImageElement).naturalWidth)).toBe(480);
+      await expect.poll(() => page.locator(".history-image-viewport img").evaluate((node) => (node as HTMLImageElement).naturalWidth)).toBe(480);
       await page.screenshot({ path: info.outputPath("image-dialog.png") });
       await page.keyboard.press("Escape");
       for (let index = 1; index <= 5; index++) {
         await page.getByRole("button", { name: "下一页权重", exact: true }).click();
         await expect(page.locator(".weight-list a").first()).toHaveText(`weight-${index * 100}`);
       }
-      await expect(page.locator(".weight-list a")).toHaveCount(5);
+      await expect(page.locator(".weight-list .history-weight-file a")).toHaveCount(5);
       await expect(page.getByRole("button", { name: "下一页权重", exact: true })).toBeDisabled();
       await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
       await page.screenshot({ path: info.outputPath("assets.png"), fullPage: true });

@@ -1,4 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { SettingSwitch } from "../../components/SettingSwitch";
 import { ArrowDown, ArrowUp, Download, FolderPlus, ListPlus, Pencil, Trash2 } from "lucide-react";
 import { apiRequest } from "../../api/client";
 import { useState } from "react";
@@ -277,13 +278,11 @@ export function TrainingLibraryActions({
       </fieldset>
       {scope === "library" && onDetailedManagementChange && (
         <label className="training-library-management-toggle">
-          <input
-            type="checkbox"
-            role="switch"
+          <SettingSwitch
+            aria-label="详细管理"
             checked={Boolean(detailedManagement)}
-            onChange={(event) => onDetailedManagementChange(event.target.checked)}
+            onCheckedChange={onDetailedManagementChange}
           />
-          <span className="training-library-management-track" aria-hidden="true" />
           <span>详细管理</span>
         </label>
       )}

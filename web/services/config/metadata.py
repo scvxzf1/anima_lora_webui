@@ -163,6 +163,7 @@ CONFIG_FILE_LABELS_ZH = {
     "configs/methods/easycontrol.toml": "EasyControl 内置方法配置",
     "configs/methods/ip_adapter.toml": "IP-Adapter 内置方法配置",
     "configs/methods/lora.toml": "LoRA 内置方法配置",
+    "configs/methods/moss_image_lora.toml": "MOSS Image LoRA 内置方法配置",
     "configs/methods/soft_tokens.toml": "Soft Tokens 内置方法配置",
     "configs/methods/spd.toml": "SPD 实验配置",
     "configs/methods/turbo.toml": "Turbo 内置方法配置",

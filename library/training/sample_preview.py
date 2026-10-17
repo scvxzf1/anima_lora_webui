@@ -22,6 +22,12 @@ def _z_image_sample_images(*args, **kwargs):
     return sample_images(*args, **kwargs)
 
 
+def _moss_sample_images(*args, **kwargs):
+    from library.models.moss_image.training_preview import sample_images
+
+    return sample_images(*args, **kwargs)
+
+
 def _qwen_image_2_1_sample_images(*args, **kwargs):
     from library.models.qwen_image_2_1.training_preview import sample_images
 
@@ -57,6 +63,7 @@ def sample_images(
             "krea2_raw": _krea2_sample_images,
             "z_image": _z_image_sample_images,
             "qwen_image_2_1": _qwen_image_2_1_sample_images,
+            "moss_image": _moss_sample_images,
         },
     )
 

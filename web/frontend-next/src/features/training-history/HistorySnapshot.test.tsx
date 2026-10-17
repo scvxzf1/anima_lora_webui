@@ -70,15 +70,17 @@ describe("HistorySnapshot", () => {
     expect(scrolled.at(-1)).not.toBe(first);
   });
 
-  it("copies the snapshot and retains the artifact whitelist download listing", async () => {
+  it("copies the snapshot without duplicating the artifact listing", async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     const user = userEvent.setup();
     Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
-    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ artifacts: [{ key: "config-snapshot", state: "available", name: "snapshot.toml" }] }), { status: 200 })));
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
     render(<QueryClientProvider client={new QueryClient()}><HistorySnapshot taskId="task/1" detail={{ config_toml: 'value = "<script>"' }} /></QueryClientProvider>);
     await user.click(screen.getByRole("button", { name: /复制全部/ }));
     expect(writeText).toHaveBeenCalledWith('value = "<script>"');
-    expect(await screen.findByRole("link", { name: "snapshot.toml" })).toHaveAttribute("href", "/api/training/history/task%2F1/artifacts/config-snapshot?download=1");
+    expect(screen.queryByRole("heading", { name: "结果文件" })).not.toBeInTheDocument();
+    expect(fetchMock).not.toHaveBeenCalled();
     expect(document.querySelector(".history-snapshot-code script")).toBeNull();
   });
 });

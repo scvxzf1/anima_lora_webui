@@ -346,6 +346,7 @@ class DreamBoothSubset(BaseSubset):
         validation_split_num: int = 0,
         resize_interpolation: Optional[str] = None,
         model_family: str = "anima",
+        moss_te_quantization: str = "nf4",
         mask_mode: str = MASK_MODE_AUTO,
         mask_dir: Optional[str] = None,
         cache_dir: Optional[str] = None,
@@ -394,7 +395,6 @@ class DreamBoothSubset(BaseSubset):
             self.caption_extension = "." + self.caption_extension
         self.cache_info = cache_info
         from library.models.family_registry import (
-            get_model_family_spec,
             normalize_registered_family,
         )
 
@@ -402,9 +402,14 @@ class DreamBoothSubset(BaseSubset):
             model_family,
             allow_aliases=True,
         )
-        self.text_cache_suffix = get_model_family_spec(
-            self.model_family
-        ).text_cache.suffix
+        from library.anima.text_strategies import TextEncoderOutputsCachingStrategy
+        from library.io.cache_names import text_cache_suffix
+
+        self.text_cache_suffix = text_cache_suffix(
+            self.model_family, TextEncoderOutputsCachingStrategy.get_strategy(),
+            moss_te_quantization=moss_te_quantization,
+        )
+        self.moss_te_quantization = moss_te_quantization
         explicit_empty_mask_dir = mask_dir is not None and not str(mask_dir).strip()
         mask_config = normalize_mask_mode(
             mask_mode,

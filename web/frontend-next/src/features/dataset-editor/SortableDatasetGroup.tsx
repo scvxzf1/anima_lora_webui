@@ -15,6 +15,7 @@ import {
 } from './datasetOrdering';
 import type { DatasetLibraryGroup, DatasetPresetSummary } from './types';
 import { DatasetCover } from './DatasetCover';
+import { DatasetActionDisclosure } from './DatasetActionDisclosure';
 import { DatasetGroupExport } from './DatasetGroupExport';
 import type { DatasetDrop } from './datasetDrag';
 
@@ -110,18 +111,19 @@ export function SortableDatasetGroup({
       data-dragging={groupSort.isDragging}
     >
       <header ref={effectiveCollapsed ? drop.setNodeRef : undefined}>
+        <button type="button" className="dataset-group-collapse" onClick={onToggle}
+          disabled={collapseDisabled} aria-expanded={!effectiveCollapsed} aria-controls={contentId}
+          aria-label={`${collapsed ? '展开' : '折叠'}分组 ${group.label}`}
+          title={searchActive ? '搜索时显示匹配预设' : `${collapsed ? '展开' : '折叠'}分组`}>
+          {effectiveCollapsed ? <ChevronRight size={15} aria-hidden="true" /> : <ChevronDown size={15} aria-hidden="true" />}
+        </button>
         <div className="dataset-group-heading">
           <h3 title={group.label}>{group.label}</h3>
-          <span>{group.files.length} 个预设</span>
+          <span className="dataset-group-count">{group.files.length} 个预设</span>
         </div>
+        <DatasetActionDisclosure label={`管理分组 ${group.label}`} expanded={detailedManagement} compact>
         <div className="dataset-group-actions">
           <DatasetGroupExport groupId={group.id} label={group.label} empty={group.files.length === 0} />
-          <button type="button" className="dataset-sort-button" onClick={onToggle}
-            disabled={collapseDisabled} aria-expanded={!collapsed} aria-controls={contentId}
-            aria-label={`${collapsed ? '展开' : '折叠'}分组 ${group.label}`}
-            title={searchActive ? '搜索时显示匹配预设' : `${collapsed ? '展开' : '折叠'}分组`}>
-            {effectiveCollapsed ? <ChevronRight size={15} aria-hidden="true" /> : <ChevronDown size={15} aria-hidden="true" />}
-          </button>
           {group.locked || group.group_locked ? <span className="badge">锁定</span> : null}
           <button
             ref={groupSort.setActivatorNodeRef}
@@ -166,6 +168,7 @@ export function SortableDatasetGroup({
             </button>
           ) : null}
         </div>
+        </DatasetActionDisclosure>
       </header>
       <SortableContext items={group.files.map((preset) => presetDragId(preset.path))} strategy={verticalListSortingStrategy}>
         <div id={contentId} className="dataset-preset-list" hidden={effectiveCollapsed}>
