@@ -1,6 +1,6 @@
 # Anima LoRA WebUI
 
-这是一个面向 Anima 模型的 训练的 WebUI 项目，基于 [sorryhyun/anima_lora](https://github.com/sorryhyun/anima_lora#) 的 WebUI 前端扩展项目
+这是一个支持 Anima、Krea-2、Z-Image、Qwen Image 2.1 和 MOSS-Image 的训练与 WebUI 项目，基于 [sorryhyun/anima_lora](https://github.com/sorryhyun/anima_lora#) 的 WebUI 前端扩展项目。不同模型族的训练、预览、推理和 adapter 能力，以模型族 registry 与配置预检为准。
 
 感谢你选择我们的全绊屎山项目。它一定不优雅，但目标也不一定明确，项目尽量还能跑通，喜欢折腾，每天都在debug。
 
@@ -24,6 +24,10 @@
 - Next 数据集图片工作台：在 `/next/datasets` 对应子集进入「图片工作台」，统一提供图片预览、手动蒙版编辑和打标，见 [蒙版使用说明](docs/features/manual-mask-editor.md)。
 - Linux 部署：[docs/guidelines/linux-deployment.zh.md](docs/guidelines/linux-deployment.zh.md)
 - 训练参考：[docs/guidelines/training.md](docs/guidelines/training.md)
+- 多模型能力边界：[docs/multi_model_support.md](docs/multi_model_support.md)
+- 模型训练能力矩阵：[docs/configuration/model-training-capabilities.md](docs/configuration/model-training-capabilities.md)
+- MOSS-Image 配置：[docs/configuration/moss-image.md](docs/configuration/moss-image.md)
+- CLI 命令总览：`.venv/bin/python tasks.py --help`；配置诊断可用 `print-config`、`explain-config`、`config-compat`。
 - AUTO 块交换（实验，默认关闭）：在 Next「设备与性能」配置，先独立预热再固定交换数；限制和验证状态见 [配置说明](docs/configuration/auto-block-swap.md)。
 - 推理参考：[docs/guidelines/inference.md](docs/guidelines/inference.md)
 - 文档归档：[docs/archive-index.md](docs/archive-index.md)
@@ -77,17 +81,26 @@
   </tr>
 </table>
 
-## 大概有哪些能力
+## 当前模型与能力
 
-1. 训练 LoRA、LoKr 这两个主要在维护的。“也不一定就是好的”
-2. LoHa 已作为 PEFT/LyCORIS 兼容插件接通（训练 / 保存 / 静态 merge / WebUI 变体可用），但定位是**兼容可用、非主力**；说明见 `docs/methods/loha.md`。
-3. “OrthoLoRA、T-LoRA、HydraLoRA、FeRA、ReFT、ChimeraHydra、”这一窝没啥精力维护给我正义切割了，后端没删前端大部分没给配置项给了的也不一定可用。
-4. 在 WebUI 里管理训练方法、硬件预设、数据集配置、模型路径和 sample prompts。
-5. 支持图片 resize、VAE latent 缓存、文本编码缓存、PE 特征缓存和 caption index 构建。
-6. 支持训练队列、任务日志、历史任务分组、失败/中断任务续训和运行状态查看。
-7. 支持训练结果预览、权重选择、prompt 预览和基础推理测试。
-8. 保留命令行入口，适合自动化训练、实验方法验证和批处理。
-9. 附带 ComfyUI custom nodes、实验 bench、结构文档和 pytest 测试。
+模型族由 `library/models/family_registry.py` 统一注册，未知组合会在配置预检或运行时明确拒绝，不会静默回退到 Anima：
+
+- **Anima**：默认生产族，支持完整训练与 `single` / `batch` / `interactive` 推理。
+- **Krea-2 Raw**：独立训练与 `single`/Euler 推理，网络变体和显存策略以兼容矩阵为准。
+- **Z-Image**：训练与训练预览 v1；尚未注册通用 image-test 或独立推理入口。
+- **Qwen Image 2.1**：T2I/Edit 训练与训练预览；Edit 支持 1–4 张参考图，独立推理为 `single`/Euler，当前以 plain LoRA 为稳定边界。
+- **MOSS-Image**：普通文生图 plain LoRA 首版，支持 BF16/NF4 文本编码器缓存路径；普通推理/image-test 尚未注册。
+
+此外，项目提供：
+
+1. LoRA、LoKr，以及定位为兼容能力的 LoHa（训练 / 保存 / 静态 merge / WebUI 变体）；详见 `docs/methods/`。
+2. WebUI 中的训练方法、硬件预设、数据集配置、模型路径和 sample prompts 管理。
+3. 图片 resize、VAE latent 缓存、文本编码缓存、PE 特征缓存和 caption index 构建。
+4. 训练队列、任务日志、历史任务分组、失败/中断任务续训和运行状态查看。
+5. 训练结果预览、权重选择、prompt 预览和按模型族隔离的推理入口。
+6. 命令行自动化、实验 bench、ComfyUI custom nodes、结构文档和 pytest 测试。
+
+推理能力按模型族隔离：Anima 使用通用 `inference.py` 示例，Qwen Image 2.1 的 T2I/Edit 使用专用参数；Z-Image 与 MOSS-Image 当前不提供通用 image-test/独立推理入口。详见 [推理参考](docs/guidelines/inference.md)。
 
 ## 致谢 / “抄袭”列表
 
@@ -149,13 +162,27 @@ uv sync
 .venv/bin/python tasks.py download-models
 ```
 
+需要 Krea-2 时，再执行：
+
+```bash
+.venv/bin/python tasks.py download-krea2
+```
+
 启动 WebUI：
 
 ```bash
 ./webui.sh
 ```
 
+`webui.sh` 默认会构建 Next 前端，因此需要 Node.js 22.13+ 和 pnpm 11。若已有构建产物、只想启动后端，可跳过构建：
+
+```bash
+ANIMA_WEB_BUILD_FRONTEND=0 ./webui.sh
+```
+
 当前代码中的快捷脚本 `webui.sh` 默认监听 `127.0.0.1:20203`，等待 Next 就绪后打开 `/next`；这是本仓库脚本行为，不代表线上该端口已部署或切换。只启动服务、不打开浏览器时使用 `ANIMA_WEB_OPEN_BROWSER=0 ./webui.sh`。
+
+直接运行 `./start_webui.sh` 时默认端口是 `20103`；手动运行 `tasks.py web` 时默认端口是 `20102`。日常使用优先选择 `./webui.sh`，它会先构建前端并等待 Next 页面就绪。
 
 也可以手动指定监听地址和端口：
 
@@ -262,4 +289,4 @@ models/text_encoders/qwen_3_06b_base.safetensors
 models/vae/qwen_image_vae.safetensors
 ```
 
-如果模型放在别处，可以在 WebUI 的 **全局模型配置** 中改成实际路径。
+上述路径对应默认 Anima 配置。Krea-2、Z-Image、Qwen Image 2.1 和 MOSS-Image 使用各自方法配置中的组件路径，请以 `configs/methods/` 和对应配置文档为准。如果模型放在别处，可以在 WebUI 的 **全局模型配置** 中改成实际路径。

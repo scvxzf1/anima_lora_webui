@@ -20,9 +20,10 @@ family、未注册推理模式或 sampler 都应失败，不得静默回退 Anim
 | `anima` | 默认生产模型族 | 完整方法面 | `single` / `batch` / `interactive`；`euler` / `er_sde` / `lcm` | registry 中声明的 Anima 后端 |
 | `krea2_raw` | 第二生产模型族 | 开放所有网络变体选择 | `single` + `euler` | `torch` / `sdpa` / `flash` |
 | `z_image` | 训练与训练预览 v1 | 开放所有网络变体选择 | 尚未注册；mode/sampler 集合为空 | `torch` / `sdpa` / `flash` (`flash_varlen`) |
-| `qwen_image_2_1` | T2I LoRA 首阶段；CMP 90HX torch/Flash 指定组合各 60 步短测通过 | T2I plain LoRA；T2I 实验 LoKr/LoHa；Edit 仅 plain LoRA | `single` + `euler`（T2I/Edit、plain LoRA） | `torch` / `sdpa` / `flash`（BF16） |
+| `qwen_image_2_1` | T2I/Edit 训练与训练预览；CMP 90HX torch/Flash 指定组合各 60 步短测通过 | T2I plain LoRA；T2I 实验 LoKr/LoHa；Edit 仅 plain LoRA | `single` + `euler`（T2I/Edit、plain LoRA） | `torch` / `sdpa` / `flash`（BF16） |
+| `moss_image` | 普通文生图 plain LoRA 首版；真机质量与性能仍需按硬件验收 | plain LoRA | 尚未注册；mode/sampler 集合为空 | `torch` / `sdpa` |
 
-WebUI 能选择四个模型族，但这不扩大 registry 的能力集合。尤其是 Z-Image 的训练 sample
+WebUI 能选择五个模型族，但这不扩大 registry 的能力集合。尤其是 Z-Image 的训练 sample
 preview 只服务训练流程，不代表生图测试、独立 CLI 推理、batch 或 interactive 已可用。
 
 Anima、Krea-2 与 Z-Image 开放网络变体选择，配置预检与 network 创建/加载不再套用
