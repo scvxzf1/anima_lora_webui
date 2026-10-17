@@ -4,7 +4,7 @@
 
 感谢你选择我们的全绊屎山项目。它一定不优雅，但目标也不一定明确，项目尽量还能跑通，喜欢折腾，每天都在debug。
 
-源码部署目前还没发行版，下面截图使用的预览锚点是“4ea68b3”。当前代码会继续向前维护，谨慎更新 pull，随时做好回滚的准备。
+源码部署目前还没发行版。下面的界面截图来自当前 Next WebUI 的本地只读预览，统一使用 1920×1080 视口；当前代码会继续向前维护，谨慎更新 pull，随时做好回滚的准备。
 
 交流QQ群:1104879801
 
@@ -32,51 +32,51 @@
 - 推理参考：[docs/guidelines/inference.md](docs/guidelines/inference.md)
 - 文档归档：[docs/archive-index.md](docs/archive-index.md)
 
-## 项目内容物预览：锚点 `4ea68b3`
+## 项目内容物预览：当前 Next WebUI
 
-以下截图来自稳态锚点附近的旧版 classic UI，仅作为项目历史界面截图；当前推荐使用 Next WebUI。截图不代表当前页面布局或可用入口。
+以下截图来自当前前端的本地只读预览，统一以 1920×1080 视口采集。页面使用合成数据，不会启动训练或写入用户配置；用于展示当前布局和主要工作区，不替代实际环境验收。
 
 <table>
   <tr>
     <td width="33%">
-      <img src="image/README/project-preview/preview-01.png" alt="环境完整性检测" width="100%">
-      <br><sub>环境完整性检测</sub>
+      <img src="image/README/project-preview/next-training-1920x1080.png" alt="Next 训练配置工作台" width="100%">
+      <br><sub>训练配置工作台</sub>
     </td>
     <td width="33%">
-      <img src="image/README/project-preview/preview-02.png" alt="路径与模型配置" width="100%">
-      <br><sub>路径与模型配置</sub>
+      <img src="image/README/project-preview/next-datasets-1920x1080.png" alt="数据集蓝图工作台" width="100%">
+      <br><sub>数据集蓝图工作台</sub>
     </td>
     <td width="33%">
-      <img src="image/README/project-preview/preview-03.png" alt="训练结果预览" width="100%">
-      <br><sub>训练结果预览</sub>
-    </td>
-  </tr>
-  <tr>
-    <td width="33%">
-      <img src="image/README/project-preview/preview-04.png" alt="运行监控面板" width="100%">
-      <br><sub>运行监控面板</sub>
-    </td>
-    <td width="33%">
-      <img src="image/README/project-preview/preview-05.png" alt="Loss 与学习率曲线" width="100%">
-      <br><sub>Loss 与学习率曲线</sub>
-    </td>
-    <td width="33%">
-      <img src="image/README/project-preview/preview-06.png" alt="历史任务分组" width="100%">
-      <br><sub>历史任务分组</sub>
+      <img src="image/README/project-preview/next-history-1920x1080.png" alt="历史任务与训练结果" width="100%">
+      <br><sub>历史任务与训练结果</sub>
     </td>
   </tr>
   <tr>
     <td width="33%">
-      <img src="image/README/project-preview/preview-07.png" alt="数据集配置" width="100%">
-      <br><sub>数据集配置</sub>
+      <img src="image/README/project-preview/next-preview-1920x1080.png" alt="预览工作区" width="100%">
+      <br><sub>预览工作区</sub>
     </td>
     <td width="33%">
-      <img src="image/README/project-preview/preview-08.png" alt="训练任务详情" width="100%">
-      <br><sub>训练任务详情</sub>
+      <img src="image/README/project-preview/next-settings-1920x1080.png" alt="全局设置与模型路径" width="100%">
+      <br><sub>全局设置与模型路径</sub>
     </td>
     <td width="33%">
-      <img src="image/README/project-preview/preview-09.png" alt="训练方法配置" width="100%">
-      <br><sub>训练方法配置</sub>
+      <img src="docs/features/assets/dragon-next/monitor-desktop-dark.png" alt="运行监控面板" width="100%">
+      <br><sub>运行监控面板（深色主题示例）</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="33%">
+      <img src="docs/features/assets/dragon-next/caption-review-desktop.png" alt="打标审阅工作台" width="100%">
+      <br><sub>打标审阅工作台</sub>
+    </td>
+    <td width="33%">
+      <img src="image/README/project-preview/next-models-1920x1080.png" alt="模型配置与能力" width="100%">
+      <br><sub>模型配置与能力</sub>
+    </td>
+    <td width="33%">
+      <img src="image/README/project-preview/next-captioning-1920x1080.png" alt="打标工作台" width="100%">
+      <br><sub>打标工作台</sub>
     </td>
   </tr>
 </table>
