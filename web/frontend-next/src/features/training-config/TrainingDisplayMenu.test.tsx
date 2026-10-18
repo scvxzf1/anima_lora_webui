@@ -17,14 +17,14 @@ function Harness() {
 it("combines layout and description density while showing the active layout", () => {
   render(<Harness />);
   const trigger = screen.getByRole("button", { name: "视图与说明设置" });
-  expect(trigger).toHaveTextContent("分组视图");
+  expect(trigger).toHaveTextContent("分组");
 
   fireEvent.click(trigger);
   expect(screen.getByRole("heading", { name: "布局模式" })).toBeInTheDocument();
   expect(screen.getByRole("heading", { name: "简要说明" })).toBeInTheDocument();
-  fireEvent.click(screen.getByRole("menuitemradio", { name: "积木流视图" }));
+  fireEvent.click(screen.getByRole("menuitemradio", { name: "积木流" }));
 
-  expect(screen.getByRole("button", { name: "视图与说明设置" })).toHaveTextContent("积木流视图");
+  expect(screen.getByRole("button", { name: "视图与说明设置" })).toHaveTextContent("积木流");
   expect(screen.queryByRole("menu")).not.toBeInTheDocument();
 
   fireEvent.click(screen.getByRole("button", { name: "视图与说明设置" }));

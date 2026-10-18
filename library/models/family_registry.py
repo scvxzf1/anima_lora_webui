@@ -204,7 +204,7 @@ MODEL_FAMILY_REGISTRY: dict[str, ModelFamilySpec] = {
         latent_space=MOSS_IMAGE_F16C128_P1,
         text_cache=TextCacheSpec(
             suffix="_moss_image_te_nf4.safetensors",
-            schema="moss_image_te_v1",
+            schema="moss_image_te_v2",
             hidden_width=4096,
         ),
         supported_network_specs=frozenset({"lora"}),

@@ -4,6 +4,7 @@ from aiohttp import web
 
 from web.routes.analysis import setup_analysis_routes
 from web.routes.config import setup_config_routes
+from web.routes.data_management import setup_data_management_routes
 from web.routes.environment import setup_environment_routes
 from web.routes.image_test import setup_image_test_routes
 from web.routes.mask_editor import setup_mask_editor_routes
@@ -16,6 +17,7 @@ from web.routes.training import setup_training_routes
 def setup_routes(app: web.Application) -> None:
     setup_settings_routes(app)
     setup_config_routes(app)
+    setup_data_management_routes(app)
     setup_mask_editor_routes(app)
     setup_preview_routes(app)
     setup_analysis_routes(app)

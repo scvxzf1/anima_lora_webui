@@ -109,6 +109,10 @@ export function configFieldDisclosure(key, context = {}) {
         }
     }
 
+    if (key === 'vocab_pack_path' && modelFamily !== 'anima') {
+        return hidden(catalog, 'Anima 专用 vocab pack 缓存身份配置。', 'anima-vocab-pack-family');
+    }
+
     if (['qwen_text_encoder_cache_policy', 'qwen_sample_swap_mode', 'qwen_sample_blocks_to_swap'].includes(key)
         && modelFamily !== 'qwen_image_2_1') {
         return hidden(catalog, 'Qwen 专属预览/缓存策略仅适用于 qwen_image_2_1。', 'qwen-cache-family');

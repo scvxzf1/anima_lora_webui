@@ -35,6 +35,7 @@ from web.services import path_safety
 from web.services.image_listing import select_recent_files
 from web.services.image_size import probe_image_size
 from web.services.preview_service import DEFAULT_INFERENCE_DIR
+from web.services.data_cleanup_gate import guard_data_launch
 from web.services.project_python import resolve_web_python_executable
 from web.services.settings_service import display_path, resolve_image_test_save_root
 
@@ -97,7 +98,12 @@ class ImageTestService:
             "display_path": display_path(resolved),
         }
 
+    @guard_data_launch
     async def start(self, payload: dict[str, Any]) -> dict[str, Any]:
+        from web.services.data_cleanup_gate import is_data_cleanup_active
+
+        if is_data_cleanup_active():
+            raise RuntimeError("数据清理正在进行中")
         if self.status == "running":
             raise RuntimeError("已有生图测试任务正在运行")
         training_svc = self.app.get("training_service")

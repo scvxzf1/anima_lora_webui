@@ -27,6 +27,11 @@ class ZImageBlockSwapAdapter:
         profile_jsonl: str | None = None,
         transfer_dtype: str | None = None,
         restore_mode: str | None = None,
+        int8_restore_mode: str | None = None,
+        int8_staging_ring: int | None = None,
+        int8_dual_stream: bool | None = None,
+        int8_restore_chunk_rows: int | None = None,
+        int8_scope: str | None = None,
     ) -> None:
         layers = getattr(model, "layers", None)
         if not isinstance(layers, nn.ModuleList):
@@ -49,6 +54,11 @@ class ZImageBlockSwapAdapter:
             profile_jsonl=profile_jsonl,
             transfer_dtype=transfer_dtype,
             restore_mode=restore_mode,
+            int8_restore_mode=int8_restore_mode,
+            int8_staging_ring=int8_staging_ring,
+            int8_dual_stream=int8_dual_stream,
+            int8_restore_chunk_rows=int8_restore_chunk_rows,
+            int8_scope=int8_scope,
         )
         self._original_checkpoint_func = getattr(
             model, "_gradient_checkpointing_func", None
@@ -198,6 +208,11 @@ def enable_z_image_block_swap(
     profile_jsonl: str | None = None,
     transfer_dtype: str | None = None,
     restore_mode: str | None = None,
+    int8_restore_mode: str | None = None,
+    int8_staging_ring: int | None = None,
+    int8_dual_stream: bool | None = None,
+    int8_restore_chunk_rows: int | None = None,
+    int8_scope: str | None = None,
 ) -> ZImageBlockSwapAdapter:
     """Attach the shared training offloader to Z-Image's 30 main layers."""
     existing = getattr(model, "_z_image_block_swap_adapter", None)
@@ -210,6 +225,11 @@ def enable_z_image_block_swap(
         profile_jsonl=profile_jsonl,
         transfer_dtype=transfer_dtype,
         restore_mode=restore_mode,
+        int8_restore_mode=int8_restore_mode,
+        int8_staging_ring=int8_staging_ring,
+        int8_dual_stream=int8_dual_stream,
+        int8_restore_chunk_rows=int8_restore_chunk_rows,
+        int8_scope=int8_scope,
     )
     logger.info(
         "Z-Image block swap enabled: swapping %s/%s main layers on %s",

@@ -622,6 +622,11 @@ class SingleStreamDiT(nn.Module):
         profile_jsonl: str | None = None,
         transfer_dtype: str | None = None,
         restore_mode: str | None = None,
+        int8_restore_mode: str | None = None,
+        int8_staging_ring: int | None = None,
+        int8_dual_stream: bool | None = None,
+        int8_restore_chunk_rows: int | None = None,
+        int8_scope: str | None = None,
     ):
         self.blocks_to_swap = num_blocks
         assert self.blocks_to_swap <= self.num_blocks - 2, (
@@ -635,6 +640,11 @@ class SingleStreamDiT(nn.Module):
             profile_jsonl=profile_jsonl,
             transfer_dtype=transfer_dtype,
             restore_mode=restore_mode,
+            int8_restore_mode=int8_restore_mode,
+            int8_staging_ring=int8_staging_ring,
+            int8_dual_stream=int8_dual_stream,
+            int8_restore_chunk_rows=int8_restore_chunk_rows,
+            int8_scope=int8_scope,
         )
 
     def move_to_device_except_swap_blocks(self, device: torch.device):

@@ -198,5 +198,10 @@ def test_z_image_loader_stages_on_cpu_and_enables_block_swap(monkeypatch) -> Non
             "profile_jsonl": "profile.jsonl",
             "transfer_dtype": "bf16",
             "restore_mode": "slab",
+            "int8_restore_mode": None,
+            "int8_scope": None,
+            "int8_staging_ring": None,
+            "int8_dual_stream": None,
+            "int8_restore_chunk_rows": None,
         },
     )

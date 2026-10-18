@@ -505,6 +505,39 @@ def create_network(
     return network
 
 
+def require_adapter_family(
+    checkpoint_metadata: Optional[Dict[str, str]],
+    model_family: Optional[str],
+    *,
+    checkpoint: str = "adapter checkpoint",
+) -> None:
+    """Refuse a checkpoint whose stamped family disagrees with the target model.
+
+    "ss_model_family" is stamped only for non-anima families, so an absent
+    stamp means Anima. Family is not decoration: it selects the DiT target
+    containers, exclude patterns and forward contract, so a foreign checkpoint
+    applied to the wrong DiT matches no module key and degrades into a silent
+    no-op adapter instead of an error. Callers that know the runtime family
+    pass it here; callers that leave model_family=None keep the previous
+    stamp-driven behaviour.
+    """
+    if model_family is None:
+        return
+    target = normalize_model_family(model_family, source="target model_family")
+    stamp = (checkpoint_metadata or {}).get("ss_model_family")
+    stamped = (
+        normalize_model_family(stamp, source="checkpoint ss_model_family")
+        if stamp
+        else "anima"
+    )
+    if stamped != target:
+        raise ValueError(
+            f"{checkpoint} is stamped for model family {stamped!r} but the target "
+            f"model is {target!r}; cross-family adapter loading is refused. "
+            "Retrain, or select the matching model family."
+        )
+
+
 def create_network_from_weights(
     multiplier,
     file,
@@ -514,6 +547,7 @@ def create_network_from_weights(
     weights_sd=None,
     for_inference=False,
     metadata: Optional[Dict[str, str]] = None,
+    model_family: Optional[str] = None,
     **kwargs,
 ):
     # Metadata flows independently of the tensor-loading path. ``load_file()``
@@ -545,6 +579,15 @@ def create_network_from_weights(
 
         with safe_open(file, framework="pt") as f:
             file_metadata = dict(f.metadata() or {})
+
+    # Fail closed before any key processing: a checkpoint built for another
+    # family would otherwise be rebuilt with that family's target containers
+    # and silently match nothing on this DiT.
+    require_adapter_family(
+        file_metadata,
+        model_family,
+        checkpoint=str(file) if file else "<in-memory adapter weights>",
+    )
 
     if unet is not None:
         from library.anima.compat import validate_adapter_metadata

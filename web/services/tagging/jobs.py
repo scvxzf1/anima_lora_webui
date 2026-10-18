@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
+from web.services.data_cleanup_gate import guard_data_launch
 from .batch_update import update_candidates
 from .client import OpenAICompatibleClient, TaggingApiError
 from .local_worker_client import LocalTaggingWorkerClient, LocalWorkerError
@@ -48,7 +49,12 @@ class TaggingJobManager:
         self.logs = TaggingMemoryLog(log_retention_lines)
         self.max_retained_jobs = _normalize_job_retention(max_retained_jobs)
 
+    @guard_data_launch
     async def create(self, payload: dict[str, Any]) -> dict[str, Any]:
+        from web.services.data_cleanup_gate import is_data_cleanup_active
+
+        if is_data_cleanup_active():
+            raise RuntimeError("数据清理正在进行中")
         dataset_file = str(payload.get("dataset_file") or payload.get("file") or "").strip()
         if not dataset_file:
             raise ValueError("请先选择数据集预设")

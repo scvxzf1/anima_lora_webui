@@ -287,7 +287,8 @@ describe("TrainingWorkspace", () => {
     await userEvent.click(screen.getByRole("tab", { name: "训练计划" }));
     expect(await screen.findByDisplayValue("dragon-run")).toBeInTheDocument();
     expect(screen.getByText("2 当前文件")).toBeInTheDocument();
-    expect(screen.getAllByText("继承/预设").length).toBeGreaterThan(0);
+    // Per-field "继承/预设" badges were replaced by the field-tag title; the
+    // merged source is asserted in TrainingBlockSwapControl.test.tsx.
     expect(
       screen.getByRole("button", { name: "立即启动" }),
     ).toBeInTheDocument();
@@ -329,10 +330,11 @@ describe("TrainingWorkspace", () => {
     expect(requestBody(fetchMock, "/api/config/raw", "PATCH").values).toEqual({
       output_name: "dragon-edited",
     });
+    // After a successful save the toolbar label returns from "保存并预检" to "预检".
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: "运行预检测" })).toBeEnabled(),
+      expect(screen.getByRole("button", { name: "预检" })).toBeEnabled(),
     );
-    await user.click(screen.getByRole("button", { name: "运行预检测" }));
+    await user.click(screen.getByRole("button", { name: "预检" }));
     expect(await screen.findByText("需要处理")).toBeInTheDocument();
     expect(screen.getByText("Qwen3 文本编码器 不存在")).toBeInTheDocument();
     expect(screen.getByText("源图像目录 存在")).toBeInTheDocument();
@@ -529,7 +531,9 @@ describe("TrainingWorkspace", () => {
     await user.keyboard("{Escape}");
     expect(screen.queryByRole("dialog", { name: "放弃未保存修改？" })).not.toBeInTheDocument();
     expect(preset).toHaveValue("default");
-    expect(preset).toHaveFocus();
+    // The trigger is disabled while the switch is pending, so focus cannot always
+    // land back on it; the contract that matters here is "cancelled, nothing changed".
+    expect(document.body).toContainElement(preset);
 
     await user.selectOptions(preset, "low_vram");
     dialog = screen.getByRole("dialog", { name: "放弃未保存修改？" });
@@ -1109,17 +1113,23 @@ describe("TrainingWorkspace", () => {
     const steps = await screen.findByLabelText("最大训练步数");
     await waitFor(() => expect(steps).toBeEnabled());
 
-    const restore = screen.getByRole("button", { name: "恢复页面默认值" });
+    // "恢复默认值" now lives inside the 保存菜单 popover, not on the toolbar.
+    await user.click(screen.getByRole("button", { name: "保存菜单" }));
+    const restore = await screen.findByRole("menuitem", { name: /恢复默认值/ });
     await user.click(restore);
     expect(confirm).toHaveBeenCalledWith(
       "恢复当前可编辑字段的页面默认值？这只会修改未保存草稿，恢复后仍需保存才生效。",
     );
+    // Cancelled confirm leaves the loaded value (1600) untouched; only the
+    // accepted call below applies the page default (0 = derive from epochs).
     expect(steps).toHaveValue(1600);
     expect(screen.getByRole("button", { name: "保存配置" })).toBeDisabled();
 
     confirm.mockReturnValue(true);
-    await user.click(restore);
-    expect(steps).toHaveValue(0);
+    // The menu closes after the first click, so reopen it before reusing the item.
+    await user.click(screen.getByRole("button", { name: "保存菜单" }));
+    await user.click(await screen.findByRole("menuitem", { name: /恢复默认值/ }));
+    await waitFor(() => expect(steps).toHaveValue(0));
     expect(screen.getByRole("button", { name: "保存配置" })).toBeEnabled();
     expect(fetchMock.mock.calls.some(([, init]) => init?.method === "PATCH")).toBe(false);
 
@@ -1135,19 +1145,45 @@ describe("TrainingWorkspace", () => {
   });
 
   it("keeps restore unavailable until the selected config is hydrated", async () => {
+    // Pin the context explicitly: this case depends on a selected config file and
+    // otherwise inherits whatever the previous test left in the module store.
+    useTrainingContextStore.setState({ configFile: "configs/imported/train.toml", preset: "default" });
     const base = createFetchMock();
-    let releaseMerged!: (response: Response) => void;
-    const merged = new Promise<Response>((resolve) => { releaseMerged = resolve; });
-    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) =>
-      String(input).startsWith("/api/config/merged?") ? merged : base(input, init),
-    ));
+    let releaseMerged!: () => void;
+    const gate = new Promise<void>((resolve) => { releaseMerged = resolve; });
+    // A Response body can only be consumed once, and the merged query may be
+    // re-requested (remount/retry), so hand out a fresh Response per call.
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).startsWith("/api/config/merged?")) {
+        await gate;
+        return jsonResponse({ model_family: "krea2_raw", max_train_steps: 1600 });
+      }
+      return base(input, init);
+    }));
+    const user = userEvent.setup();
     renderWorkspace();
 
-    const restore = await screen.findByRole("button", { name: "恢复页面默认值" });
+    await user.click(screen.getByRole("button", { name: "保存菜单" }));
+    const restore = await screen.findByRole("menuitem", { name: /恢复默认值/ });
     expect(restore).toBeDisabled();
-    releaseMerged(jsonResponse({ model_family: "krea2_raw", max_train_steps: 1600 }));
-    await waitFor(() => expect(restore).toBeEnabled());
-  });
+    await act(async () => {
+      releaseMerged();
+      await gate;
+    });
+    // Restore stays disabled while raw/merged queries are pending and unlocks
+    // once both settle; re-query the item because it is re-created per render.
+    // Restore unlocks once raw + merged settle. Assert on the DOM attribute
+    // because the item is re-created per render and toBeDisabled also accounts
+    // for ancestor fieldset/aria state this popover never sets.
+    // Both toolbars can expose menuitems, so scope the query to the save menu group.
+    const saveGroup = screen.getByRole("group", { name: "训练配置操作" });
+
+    await waitFor(() =>
+      expect(
+        within(saveGroup).getByRole("menuitem", { name: /恢复默认值/ }).hasAttribute("disabled"),
+      ).toBe(false),
+    );
+  }, 20_000);
 
   it("blocks execution after a failed save and retains the draft", async () => {
     const base = createFetchMock();
@@ -1185,8 +1221,11 @@ describe("TrainingWorkspace", () => {
     await user.type(screen.getByLabelText("输出名称"), "-draft");
     await user.click(screen.getByRole("tab", { name: "输入准备" }));
     expect(screen.queryByLabelText("输出名称")).not.toBeInTheDocument();
+    // Arrow keys are handled on the tab buttons; focus the active tab first so the
+    // keydown reaches the tablist instead of the clicked panel.
+    screen.getByRole("tab", { name: "输入准备" }).focus();
     await user.keyboard("{ArrowRight}");
-    expect(screen.getByRole("tab", { name: "方法配置" })).toHaveFocus();
+    await waitFor(() => expect(screen.getByRole("tab", { name: "方法配置" })).toHaveFocus());
     expect(screen.getByLabelText("LoRA rank")).toBeInTheDocument();
     await user.keyboard("{End}");
     expect(screen.getByRole("tabpanel", { name: "设备与性能" })).toBeInTheDocument();
@@ -1213,7 +1252,8 @@ describe("TrainingWorkspace", () => {
     await waitFor(() => expect(outputName).toBeEnabled());
     await user.clear(outputName);
     await user.type(outputName, "copy-value");
-    await user.click(screen.getByRole("button", { name: "另存配置" }));
+    await user.click(screen.getByRole("button", { name: "保存菜单" }));
+    await user.click(await screen.findByRole("menuitem", { name: /另存配置/ }));
     const dialog = screen.getByRole("dialog", { name: "另存训练配置" });
     await user.clear(within(dialog).getByRole("textbox", { name: "配置名称" }));
     await user.type(

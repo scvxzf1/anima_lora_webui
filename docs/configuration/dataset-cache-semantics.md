@@ -36,3 +36,27 @@ Dragon 数据集编辑器和训练 runtime 共享以下契约：
 路径身份使用 size + mtime；目录身份使用文件清单（相对路径、大小、mtime），不读取权重内容。vocab pack 额外做内容 sha256，因此可以发现同尺寸、同 mtime 的就地修改；其他权重文件若被同尺寸同 mtime 的就地替换，身份仍然无法识别，这类来源不确定的 checkpoint 应换缓存目录或走 `--overwrite`。
 
 更换文本编码器、VAE、tokenizer 或 vocab pack 后不需要手动删除缓存：重跑预处理即可让失效 sidecar 重新编码，训练侧也会拒绝旧的 sidecar 而不是静默使用。
+
+## Anima vocab pack 配置选择
+
+当前配置键为 `vocab_pack_path`，可写在 `configs/base.toml`、方法配置或 WebUI 训练草稿中。默认值保持空字符串：
+
+```toml
+vocab_pack_path = ""
+```
+
+空值表示不选择额外 pack，不改变既有 Anima tokenizer/runtime 行为；它不是 `jp_v1` 的默认启用。只有在实际 pack runtime 已安装并且预处理、训练都能访问同一资源时，才应填写例如：
+
+```toml
+vocab_pack_path = "models/vocab_packs/anima_cjk_vocab_pack_jp_v1"
+```
+
+配置后，`preprocess` / `preprocess-te` 会把该路径转发给 Anima TE 缓存脚本，训练入口也会将其写入缓存身份。WebUI 只在 `model_family = "anima"` 时显示该字段；切换到其他模型族时隐藏。当前字段完成的是缓存身份与强制失效接线，**不代表 jp_v1 的 tokenizer/glyph runtime 已完成接入或热验收**。
+
+选择 pack 后建议先运行：
+
+```bash
+python tasks.py preprocess-te
+```
+
+不要把本机绝对路径或尚未存在的 pack 路径写入版本控制的默认方法配置；本机路径应通过外置配置、方法覆盖或 WebUI 草稿提供。

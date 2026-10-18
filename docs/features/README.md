@@ -19,6 +19,7 @@
 | [preview.md](preview.md) | 用户功能说明 | 训练样张 / 推理预览 / 权重列表 |
 | [global-settings.md](global-settings.md) | 用户功能说明 | 输出根、配置根、界面缩放 |
 | [global-model-configs.md](global-model-configs.md) | 用户功能说明 | Anima / Krea-2 模型配置创建、排序、默认项和选择弹窗 |
+| [data-management.md](data-management.md) | 用户功能说明 | 数据目录查阅、容量扫描和受保护的生成物清理 |
 | [ui-scale.md](ui-scale.md) | 用户功能说明 | UI 缩放：默认比例与分页面独立比例 |
 | [frontend-health-scorecard.md](frontend-health-scorecard.md) | 维护用评分入口 | 前端评分结构与历史基线；具体轮次审计结果保存在 `docs/findings/` |
 

@@ -251,7 +251,16 @@ def test_loader_stages_swapped_transformer_on_cpu(monkeypatch, training_count, p
         model,
         training_count,
         torch.device("cpu"),
-        {"profile_jsonl": None, "transfer_dtype": "bf16", "restore_mode": "slab"},
+        {
+            "profile_jsonl": None,
+            "transfer_dtype": "bf16",
+            "restore_mode": "slab",
+            "int8_restore_mode": None,
+            "int8_scope": None,
+            "int8_staging_ring": None,
+            "int8_dual_stream": None,
+            "int8_restore_chunk_rows": None,
+        },
     )
     assert text_encoders == [None]
     assert captured["checkpointing"] is True

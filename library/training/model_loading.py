@@ -255,6 +255,13 @@ def _load_qwen_image_2_1_dit(trainer, args, weight_dtype, accelerator, text_enco
             profile_jsonl=resolve_block_swap_profile_jsonl(args),
             transfer_dtype=getattr(args, "block_swap_transfer_dtype", None),
             restore_mode=getattr(args, "block_swap_restore_mode", None),
+            int8_restore_mode=getattr(args, "block_swap_int8_restore_mode", None),
+            int8_scope=getattr(args, "block_swap_int8_scope", None),
+            int8_staging_ring=getattr(args, "block_swap_int8_staging_ring", None),
+            int8_dual_stream=getattr(args, "block_swap_int8_dual_stream", None),
+            int8_restore_chunk_rows=getattr(
+                args, "block_swap_int8_restore_chunk_rows", None
+            ),
         )
     trainer._use_unsloth_offload_checkpointing = False
     return model, text_encoders
@@ -302,6 +309,13 @@ def _load_z_image_dit(trainer, args, weight_dtype, accelerator, text_encoders):
             profile_jsonl=profile_jsonl,
             transfer_dtype=args.block_swap_transfer_dtype,
             restore_mode=args.block_swap_restore_mode,
+            int8_restore_mode=getattr(args, "block_swap_int8_restore_mode", None),
+            int8_scope=getattr(args, "block_swap_int8_scope", None),
+            int8_staging_ring=getattr(args, "block_swap_int8_staging_ring", None),
+            int8_dual_stream=getattr(args, "block_swap_int8_dual_stream", None),
+            int8_restore_chunk_rows=getattr(
+                args, "block_swap_int8_restore_chunk_rows", None
+            ),
         )
         _maybe_probe_components(
             trainer,
@@ -457,6 +471,13 @@ def _load_krea2_dit(trainer, args, weight_dtype, accelerator, text_encoders):
             profile_jsonl=profile_jsonl,
             transfer_dtype=args.block_swap_transfer_dtype,
             restore_mode=args.block_swap_restore_mode,
+            int8_restore_mode=getattr(args, "block_swap_int8_restore_mode", None),
+            int8_scope=getattr(args, "block_swap_int8_scope", None),
+            int8_staging_ring=getattr(args, "block_swap_int8_staging_ring", None),
+            int8_dual_stream=getattr(args, "block_swap_int8_dual_stream", None),
+            int8_restore_chunk_rows=getattr(
+                args, "block_swap_int8_restore_chunk_rows", None
+            ),
         )
         _maybe_probe_components(
             trainer,
@@ -676,6 +697,13 @@ def _load_anima_dit(trainer, args, weight_dtype, accelerator, text_encoders):
             profile_jsonl=profile_jsonl,
             transfer_dtype=args.block_swap_transfer_dtype,
             restore_mode=args.block_swap_restore_mode,
+            int8_restore_mode=getattr(args, "block_swap_int8_restore_mode", None),
+            int8_scope=getattr(args, "block_swap_int8_scope", None),
+            int8_staging_ring=getattr(args, "block_swap_int8_staging_ring", None),
+            int8_dual_stream=getattr(args, "block_swap_int8_dual_stream", None),
+            int8_restore_chunk_rows=getattr(
+                args, "block_swap_int8_restore_chunk_rows", None
+            ),
         )
         _maybe_probe_components(
             trainer,

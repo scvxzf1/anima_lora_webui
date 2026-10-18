@@ -27,6 +27,11 @@ class QwenImage21BlockSwapAdapter:
         profile_jsonl: str | None = None,
         transfer_dtype: str | None = None,
         restore_mode: str | None = None,
+        int8_restore_mode: str | None = None,
+        int8_staging_ring: int | None = None,
+        int8_dual_stream: bool | None = None,
+        int8_restore_chunk_rows: int | None = None,
+        int8_scope: str | None = None,
     ) -> None:
         blocks = getattr(model, "transformer_blocks", None)
         if not isinstance(blocks, nn.ModuleList):
@@ -46,6 +51,11 @@ class QwenImage21BlockSwapAdapter:
             profile_jsonl=profile_jsonl,
             transfer_dtype=transfer_dtype,
             restore_mode=restore_mode,
+            int8_restore_mode=int8_restore_mode,
+            int8_staging_ring=int8_staging_ring,
+            int8_dual_stream=int8_dual_stream,
+            int8_restore_chunk_rows=int8_restore_chunk_rows,
+            int8_scope=int8_scope,
         )
         self._original_enable_checkpointing = model.enable_gradient_checkpointing
         self._original_checkpoint_func = getattr(model, "_gradient_checkpointing_func", None)
@@ -187,6 +197,11 @@ def enable_qwen_image_2_1_block_swap(
     profile_jsonl: str | None = None,
     transfer_dtype: str | None = None,
     restore_mode: str | None = None,
+    int8_restore_mode: str | None = None,
+    int8_staging_ring: int | None = None,
+    int8_dual_stream: bool | None = None,
+    int8_restore_chunk_rows: int | None = None,
+    int8_scope: str | None = None,
 ) -> QwenImage21BlockSwapAdapter:
     if getattr(model, "_qwen_image_2_1_block_swap_adapter", None) is not None:
         raise RuntimeError("Qwen Image 2.1 block swap is already enabled")
@@ -197,6 +212,11 @@ def enable_qwen_image_2_1_block_swap(
         profile_jsonl=profile_jsonl,
         transfer_dtype=transfer_dtype,
         restore_mode=restore_mode,
+        int8_restore_mode=int8_restore_mode,
+        int8_staging_ring=int8_staging_ring,
+        int8_dual_stream=int8_dual_stream,
+        int8_restore_chunk_rows=int8_restore_chunk_rows,
+        int8_scope=int8_scope,
     )
     logger.info(
         "Qwen Image 2.1 block swap enabled: %s/%s blocks on %s",

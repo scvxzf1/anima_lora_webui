@@ -99,6 +99,7 @@ def audit_dataset_row_caches(
     ):
         text_strategy = _text_strategy(
             family, skip_check, moss_te_quantization=cfg.get("moss_te_quantization", "nf4"),
+            moss_max_token_length=int(cfg.get("max_token_length", 4096) or 4096),
         )
         if _is_qwen_edit(cfg, family):
             from library.models.qwen_image_2_1.strategy import QwenImage21EditTextCache
@@ -246,7 +247,8 @@ def _latent_strategy(family: str, skip_check: bool):
     return cls(True, 1, skip_check)
 
 
-def _text_strategy(family: str, skip_check: bool, *, moss_te_quantization="nf4"):
+def _text_strategy(family: str, skip_check: bool, *, moss_te_quantization="nf4",
+                   moss_max_token_length=4096):
     if family == "anima":
         from library.anima.strategy import AnimaTextEncoderOutputsCachingStrategy
 
@@ -266,7 +268,8 @@ def _text_strategy(family: str, skip_check: bool, *, moss_te_quantization="nf4")
     if family == "moss_image":
         from library.models.moss_image.strategy import MossImageTextCache
 
-        return MossImageTextCache(True, 1, skip_check, quantization=moss_te_quantization)
+        return MossImageTextCache(True, 1, skip_check, quantization=moss_te_quantization,
+                                  max_text_tokens=moss_max_token_length)
     raise ValueError(f"Unsupported cache audit family: {family}")
 
 

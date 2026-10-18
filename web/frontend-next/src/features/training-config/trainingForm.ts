@@ -105,6 +105,7 @@ export const TRAINING_FIELDS: TrainingFieldSpec[] = [
     kind: "text",
   },
   { key: "qwen3", label: "Qwen3 文本编码器", group: "input", kind: "text" },
+  { key: "vocab_pack_path", label: "Anima vocab pack 路径", group: "input", kind: "text" },
   { key: "vae", label: "VAE 路径", group: "input", kind: "text" },
   { key: "dataset_config", label: "数据集配置", group: "input", kind: "text" },
   {

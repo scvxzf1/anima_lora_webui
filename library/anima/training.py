@@ -235,6 +235,15 @@ def add_anima_training_arguments(parser: argparse.ArgumentParser):
         help="Path to T5 tokenizer directory. If None, uses bundled library/anima/configs/t5_old/",
     )
     parser.add_argument(
+        "--vocab_pack_path",
+        type=str,
+        default=None,
+        help=(
+            "Path to the selected Anima vocab-pack manifest or resource directory. "
+            "Its content digest invalidates stale TE caches without relying on caption mtime."
+        ),
+    )
+    parser.add_argument(
         "--qwen3_max_token_length",
         type=int,
         default=512,

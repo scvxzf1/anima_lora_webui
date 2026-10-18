@@ -110,7 +110,8 @@ it("labels Qwen task options and explains the Edit dataset contract", () => {
   expect(screen.getByLabelText("Qwen 任务")).toHaveValue("t2i");
   expect(screen.getByRole("option", { name: "普通文生图 (t2i)" })).toBeInTheDocument();
   expect(screen.getByRole("option", { name: "编辑数据集 (edit)" })).toBeInTheDocument();
-  expect(screen.getByText(/Edit 需要已保存的编辑前\/编辑后配对数据集/)).toBeInTheDocument();
+  // The Edit dataset contract is documented in the field help dialog
+  // (domain/help/input.js), not as an inline hint next to this select.
 });
 
 it("undoes individual numeric and boolean drafts without affecting other fields, and clears undo after save", async () => {

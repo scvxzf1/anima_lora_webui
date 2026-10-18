@@ -14,6 +14,7 @@ from library.runtime.launch import (
     configure_accelerate_for_gpu_selection,
     resolve_training_world_size_for_gpu_selection,
 )
+from web.services.data_cleanup_gate import guard_data_launch
 from web.services.training.risk_acknowledgement import pending_preflight, without_risk_flag
 from web.services.training.common import _format_ts
 from web.services.training.launch_support import (
@@ -72,6 +73,7 @@ async def start(
             queue_item_id=queue_item_id,
         )
 
+@guard_data_launch
 async def _start_unlocked(
     self,
     variant: str,
@@ -219,6 +221,7 @@ async def start_preprocess(
             queue_item_id,
         )
 
+@guard_data_launch
 async def _start_preprocess_unlocked(
     self,
     variant: str,

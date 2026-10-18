@@ -321,15 +321,18 @@ async def shutdown(self) -> None:
         await cancel_run_tasks(self)
 
 def _ensure_launch_allowed(self, queue_item_id: str = "") -> None:
+    from web.services.data_cleanup_gate import is_data_cleanup_active
+
     launching = self._queue_launching_item_id
     same_queue_item = launching and str(queue_item_id or "") == launching
     if (
         self.status == "running"
         or self._stopping
         or self._shutting_down
+        or is_data_cleanup_active()
         or (launching and not same_queue_item)
     ):
-        raise RuntimeError("已有任务在运行中")
+        raise RuntimeError("已有任务在运行中" if not is_data_cleanup_active() else "数据清理正在进行中")
 
 def _write_terminal(self, text: str) -> None:
     try:

@@ -19,6 +19,7 @@ import {
   ScanSearch,
   Activity,
   Images,
+  FolderTree,
 } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Button } from "../components/ui/Button";
@@ -38,6 +39,7 @@ function savedSidebarWidth() {
 const LINKS = [
   ["/training", "训练配置", Box],
   ["/datasets", "数据集蓝图", Database],
+  ["/data", "数据管理", FolderTree],
   ["/queue", "训练队列", ListTodo],
   ["/monitor", "当前监控", Monitor],
   ["/history", "历史任务", History],
@@ -199,7 +201,7 @@ export function Topbar() {
           <NavLink
             key={to}
             to={to}
-            end={to === "/training" || to === "/datasets"}
+            end={to === "/training" || to === "/datasets" || to === "/data"}
             aria-label={label}
             title={label}
             onClick={() => setExpanded(false)}

@@ -8,12 +8,14 @@ export function CommandDialog({
   onClose,
   busy = false,
   initialFocusRef,
+  size = "default",
 }: {
   title: string;
   children: ReactNode;
   onClose: () => void;
   busy?: boolean;
   initialFocusRef?: RefObject<HTMLElement | null>;
+  size?: "default" | "wide";
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const returnFocusRef = useRef(
@@ -22,6 +24,7 @@ export function CommandDialog({
       : null,
   );
   const id = useId();
+  const descriptionId = `${id}-description`;
   useDialogLifecycle({
     dialogRef: ref,
     initialFocusRef,
@@ -33,14 +36,16 @@ export function CommandDialog({
   return (
     <div className="command-backdrop">
       <div
-        className="command-dialog"
+        className={size === "wide" ? "command-dialog is-wide" : "command-dialog"}
         ref={ref}
         role="dialog"
         aria-modal="true"
         aria-labelledby={id}
+        aria-describedby={descriptionId}
       >
         <header>
           <h2 id={id}>{title}</h2>
+          <span id={descriptionId} className="sr-only">弹窗内容。按 Escape 关闭。</span>
           <button
             type="button"
             className="icon-button"

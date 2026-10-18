@@ -149,7 +149,7 @@ export function modelFamilyOptionSupported(fieldKey, family, option, context) {
             base_compute: ['bf16'], mixed_precision: ['bf16'], precision_preference: ['bf16'],
             moss_te_quantization: ['nf4', 'bf16'], selective_checkpoint: ['off'],
             timestep_sampling: ['uniform'], weighting_scheme: ['none'], sample_sampler: ['euler'],
-            router_source: ['none'], block_swap_transfer_dtype: ['bf16'],
+            router_source: ['none'], block_swap_transfer_dtype: ['bf16', 'int8'],
         }[fieldKey];
         if (fixedOptions) return fixedOptions.includes(value.toLowerCase());
         if (['use_moe_style', 'route_per_layer', 'dora_wd', 'use_ortho', 'use_loha', 'use_lokr'].includes(fieldKey)) {

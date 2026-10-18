@@ -442,6 +442,7 @@ export function ModelConfigPage() {
                       <option value="krea2_raw">Krea-2 Raw</option>
                       <option value="z_image">Z-Image</option>
                       <option value="qwen_image_2_1">Qwen Image 2.1</option>
+                      <option value="moss_image">MOSS-Image</option>
                     </select>
                   </label>
                   <label>

@@ -66,6 +66,7 @@ const ImageTestPage = lazy(async () => ({ default: (await import("../features/im
 const WeightAnalysisPage = lazy(async () => ({ default: (await import("../features/weight-analysis/WeightAnalysisPage")).WeightAnalysisPage }));
 const EnvironmentPage = lazy(async () => ({ default: (await import("../features/environment/EnvironmentPage")).EnvironmentPage }));
 const PreviewWorkspace = lazy(async () => ({ default: (await import("../features/preview-workspace/PreviewWorkspace")).PreviewWorkspace }));
+const DataManagementPage = lazy(async () => ({ default: (await import("../features/data-management/DataManagementPage")).DataManagementPage }));
 
 function lazyPage(children: ReactNode) {
   return (
@@ -133,6 +134,7 @@ export const router = createBrowserRouter(
         { path: "/weight-analysis", element: lazyPage(<WeightAnalysisPage />) },
         { path: "/environment", element: lazyPage(<EnvironmentPage />) },
         { path: "/preview", element: lazyPage(<PreviewWorkspace />) },
+        { path: "/data", element: lazyPage(<DataManagementPage />) },
         { path: "*", element: <RouteError /> },
       ],
     },

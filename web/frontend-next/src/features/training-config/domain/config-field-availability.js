@@ -46,8 +46,19 @@ const COMPILE_CHILD_KEYS = new Set([
 const BLOCK_SWAP_CHILD_KEYS = new Set([
     'block_swap_transfer_dtype',
     'block_swap_restore_mode',
+    'block_swap_int8_restore_mode',
+    'block_swap_int8_staging_ring',
+    'block_swap_int8_dual_stream',
+    'block_swap_int8_restore_chunk_rows',
     'disable_block_swap_for_eval',
     'block_swap_profile_jsonl',
+]);
+
+// int8-only knobs: gated on transfer_dtype=int8, then narrowed by restore mode
+// (staging_ring/dual_stream belong to fused, chunk_rows to reuse_storage).
+const BLOCK_SWAP_INT8_FUSED_KEYS = new Set([
+    'block_swap_int8_staging_ring',
+    'block_swap_int8_dual_stream',
 ]);
 
 const PROBE_PARENT_BY_KEY = new Map([
@@ -170,6 +181,14 @@ export function configFieldAvailability(key, context = {}) {
     if (key === 'moss_te_quantization' && modelFamily !== 'moss_image') {
         return unavailable('仅用于 MOSS-Image 的冻结文本编码器。', 'moss-te-family');
     }
+    // MOSS stores real-length text states, so the token cap changes the cache
+    // identity; other families pad to a fixed shape and have no such knob.
+    if (key === 'max_token_length' && modelFamily !== 'moss_image') {
+        return unavailable(
+            '文本编码上限仅用于 MOSS-Image（其它模型族按固定 padding 缓存）。',
+            'moss-token-cap-family',
+        );
+    }
     if (modelFamily === 'moss_image') {
         const fixed = {
             torch_compile: false, compile_dynamic_seq: false, compile_seq_bands: false,
@@ -278,6 +297,29 @@ export function configFieldAvailability(key, context = {}) {
         && !toggleEnabled(context, 'auto_block_swap')
         && !(Number(contextValue(context, 'blocks_to_swap', 0)) > 0)) {
         return unavailable('请先设置大于 0 的 block swap 数量。', 'block-swap-disabled');
+    }
+
+    const int8ChildKey = BLOCK_SWAP_INT8_FUSED_KEYS.has(key)
+        || key === 'block_swap_int8_restore_chunk_rows';
+    if (key === 'block_swap_int8_restore_mode' || int8ChildKey) {
+        const transferDtype = String(contextValue(context, 'block_swap_transfer_dtype', 'bf16') ?? 'bf16')
+            .trim()
+            .toLowerCase();
+        if (transferDtype !== 'int8') {
+            return unavailable(
+                '请先把传输精度切换为 int8（实验性：流量减半，约 1% loss 偏移）。',
+                'block-swap-int8-disabled',
+            );
+        }
+        const int8RestoreMode = String(contextValue(context, 'block_swap_int8_restore_mode', 'fused') ?? 'fused')
+            .trim()
+            .toLowerCase();
+        if (BLOCK_SWAP_INT8_FUSED_KEYS.has(key) && int8RestoreMode !== 'fused') {
+            return unavailable('仅 INT8 恢复模式 = fused 使用该参数。', 'block-swap-int8-not-fused');
+        }
+        if (key === 'block_swap_int8_restore_chunk_rows' && int8RestoreMode !== 'reuse_storage') {
+            return unavailable('仅 INT8 恢复模式 = reuse_storage 使用该参数。', 'block-swap-int8-not-reuse');
+        }
     }
 
     const probeParent = PROBE_PARENT_BY_KEY.get(key);

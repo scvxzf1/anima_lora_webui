@@ -557,8 +557,11 @@ class TrainingBootstrap:
                     f"merging module: {weight_path} with multiplier {multiplier}"
                 )
 
+                from library.env import resolve_model_family
+
                 module, weights_sd = network_module.create_network_from_weights(
-                    multiplier, weight_path, vae, text_encoder, unet, for_inference=True
+                    multiplier, weight_path, vae, text_encoder, unet, for_inference=True,
+                    model_family=resolve_model_family(args),
                 )
                 module.merge_to(
                     text_encoder,

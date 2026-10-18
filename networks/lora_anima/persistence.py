@@ -213,7 +213,18 @@ def load_lora_network_weights(network, file):
 
         weights_sd = load_file(file)
         with safe_open(file, framework="pt") as handle:
-            validate_adapter_metadata(dict(handle.metadata() or {}), network)
+            file_metadata = dict(handle.metadata() or {})
+        # Resume / warm-start must agree on family before any tensor lands in
+        # the network: the cfg family selected the target containers at build
+        # time, so a foreign checkpoint can only half-load.
+        from networks.lora_anima.factory import require_adapter_family
+
+        require_adapter_family(
+            file_metadata,
+            getattr(getattr(network, "cfg", None), "model_family", None),
+            checkpoint=file,
+        )
+        validate_adapter_metadata(file_metadata, network)
     else:
         weights_sd = torch.load(file, map_location="cpu")
 

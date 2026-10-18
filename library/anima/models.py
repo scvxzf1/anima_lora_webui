@@ -2415,6 +2415,11 @@ class Anima(nn.Module):
         profile_jsonl: Optional[str] = None,
         transfer_dtype: Optional[str] = None,
         restore_mode: Optional[str] = None,
+        int8_restore_mode: Optional[str] = None,
+        int8_staging_ring: Optional[int] = None,
+        int8_dual_stream: Optional[bool] = None,
+        int8_restore_chunk_rows: Optional[int] = None,
+        int8_scope: Optional[str] = None,
     ):
         self.blocks_to_swap = num_blocks
 
@@ -2429,6 +2434,11 @@ class Anima(nn.Module):
             profile_jsonl=profile_jsonl,
             transfer_dtype=transfer_dtype,
             restore_mode=restore_mode,
+            int8_restore_mode=int8_restore_mode,
+            int8_staging_ring=int8_staging_ring,
+            int8_dual_stream=int8_dual_stream,
+            int8_restore_chunk_rows=int8_restore_chunk_rows,
+            int8_scope=int8_scope,
         )
         logger.info(
             "Anima: Block swap enabled. "

@@ -27,7 +27,12 @@ export const FIELD_LABEL_ZH = {
     block_swap_profile_jsonl: '块交换 Profile',
     block_swap_restore_mode: '块交换恢复路径',
     block_swap_transfer_dtype: '块交换传输精度',
+    block_swap_int8_restore_mode: 'INT8 恢复模式（仅 int8）',
+    block_swap_int8_staging_ring: 'INT8 Staging 缓冲数（仅 fused）',
+    block_swap_int8_dual_stream: 'INT8 双流解耦（仅 fused）',
+    block_swap_int8_restore_chunk_rows: 'INT8 分块恢复行数（仅 reuse_storage）',
     base_compute: '底模计算路径',
+    max_token_length: '文本编码上限（token）',
     blocks_to_swap: 'CPU/GPU 交换块数',
     auto_block_swap: 'AUTO 块交换（实验）',
     auto_block_swap_mode: 'AUTO 调整模式',
@@ -197,6 +202,7 @@ export const FIELD_LABEL_ZH = {
     preflight: '训练前预检测',
     preprocess_environment: '预处理启动环境',
     qwen3: 'Qwen3 文本编码器路径',
+    vocab_pack_path: 'Anima vocab pack 路径',
     reft_alpha: 'ReFT Alpha',
     reft_dim: 'ReFT 秩',
     reft_layers: 'ReFT 层范围',
@@ -272,6 +278,7 @@ export const FIELD_LABEL_ZH = {
 };
 
 export const FIELD_OPTIONS = {
+    model_family: ['moss_image', 'anima', 'krea2_raw', 'z_image', 'qwen_image_2_1'],
     moss_te_quantization: ['nf4', 'bf16'],
     qwen_image_2_1_task: ['t2i', 'edit'],
     qwen_text_encoder_cache_policy: ['auto', 'cpu_offload', 'gpu', 'cpu'],
@@ -289,6 +296,10 @@ export const FIELD_OPTIONS = {
     compile_inductor_mode: ['default', 'reduce-overhead', 'max-autotune', 'max-autotune-no-cudagraphs'],
     block_swap_restore_mode: ['foreach', 'slab'],
     block_swap_transfer_dtype: ['bf16', 'fp8_e4m3', 'int8'],
+    block_swap_int8_restore_mode: ['fused', 'copy', 'reuse_storage', 'direct_bind'],
+    // 0 = one buffer per swapped slot (fastest, swap x 48 MiB); 1 = one shared
+    // buffer (lowest footprint, makes swap 6/7 fit); 2 = two-buffer ring.
+    block_swap_int8_staging_ring: [0, 1, 2],
     base_compute: ['bf16', 'w8a16_convrot', 'w8a8_convrot', 'nf4'],
     convrot_group_size: [64, 256, 1024],
     // Product profiles: mlp (speed default), all (VRAM), attention_out (mid).

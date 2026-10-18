@@ -9,6 +9,7 @@ import torch
 from safetensors.torch import load_file
 
 from library.anima import models as anima_models, weights as anima_utils
+from library.env import resolve_model_family
 from library.inference.precision import resolve_runtime_dtype, resolve_text_encoder_dtype
 from library.inference.selective_lora import (
     ANIMA_SELECTIVE_BLOCKS,
@@ -316,6 +317,7 @@ def attach_adapters(
                 weights_sd=lora_sd,
                 metadata=_read_lora_metadata(lora_weight_path),
                 for_inference=True,
+                model_family=resolve_model_family(args),
             )
             network.apply_to([], model, apply_text_encoder=False, apply_unet=True)
             info = network.load_state_dict(weights_sd, strict=False)
@@ -377,6 +379,7 @@ def attach_adapters(
                 weights_sd=lora_sd,
                 metadata=lora_metadata,
                 for_inference=True,
+                model_family=resolve_model_family(args),
             )
             network.apply_to([], model, apply_text_encoder=False, apply_unet=True)
             info = network.load_state_dict(weights_sd, strict=False)
@@ -478,6 +481,7 @@ def _merge_network_adapters_into_model(
             weights_sd=lora_sd,
             metadata=_read_lora_metadata(lora_weight_path),
             for_inference=True,
+            model_family=resolve_model_family(args),
         )
         network.merge_to(None, model, weights_sd, dtype=dtype, device=device)
 

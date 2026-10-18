@@ -8,6 +8,7 @@ import { ModelConfigPage } from "./ModelConfigPage";
 const items = [
   { name: "anima", display_name: "Anima", aliases: ["anima"], supported_tasks: ["t2i"] },
   { name: "qwen_image_2_1", display_name: "Qwen Image 2.1", aliases: ["qwen21"], supported_tasks: ["t2i", "edit"], plain_lora_only: true },
+  { name: "moss_image", display_name: "MOSS-Image", aliases: ["moss"], supported_tasks: ["t2i"], plain_lora_only: true },
 ];
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
@@ -40,6 +41,7 @@ describe("backend-derived model capabilities", () => {
     const user = userEvent.setup();
     renderInApp(<ModelConfigPage />);
     const tags = await screen.findByLabelText("模型训练能力");
+    expect(screen.getByRole("option", { name: "MOSS-Image" })).toBeInTheDocument();
     expect(within(tags).getByText("普通文生图")).toBeInTheDocument();
     expect(within(tags).queryByText("编辑训练")).not.toBeInTheDocument();
     await user.selectOptions(screen.getByLabelText("模型族"), "qwen_image_2_1");

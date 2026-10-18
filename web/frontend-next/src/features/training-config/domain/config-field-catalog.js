@@ -81,6 +81,7 @@ const FIELD_GROUPS = Object.freeze([
         'qwen_image_2_1_task',
         'pretrained_model_name_or_path',
         'qwen3',
+        'vocab_pack_path',
         'moss_te_quantization',
         'vae',
     ]),
@@ -111,6 +112,7 @@ const FIELD_GROUPS = Object.freeze([
     group('method', 'contract', [
         'network_module',
         'lora_adapter_kind',
+        'max_token_length',
     ]),
     group('method', 'warm-start', [
         'network_weights',
@@ -343,6 +345,10 @@ const FIELD_GROUPS = Object.freeze([
         'blocks_to_swap',
         'block_swap_transfer_dtype',
         'block_swap_restore_mode',
+        'block_swap_int8_restore_mode',
+        'block_swap_int8_staging_ring',
+        'block_swap_int8_dual_stream',
+        'block_swap_int8_restore_chunk_rows',
         'disable_block_swap_for_eval',
     ]),
     group('resources', 'compile', [
@@ -469,6 +475,10 @@ const FIELD_RELATIONS = Object.freeze({
     auto_block_swap_preference: relation(['auto_block_swap', 'model_family'], ['auto_block_swap']),
     block_swap_transfer_dtype: relation(['blocks_to_swap'], ['blocks_to_swap']),
     block_swap_restore_mode: relation(['blocks_to_swap'], ['blocks_to_swap']),
+    block_swap_int8_restore_mode: relation(['block_swap_transfer_dtype'], ['block_swap_transfer_dtype']),
+    block_swap_int8_staging_ring: relation(['block_swap_int8_restore_mode'], ['block_swap_int8_restore_mode']),
+    block_swap_int8_dual_stream: relation(['block_swap_int8_restore_mode'], ['block_swap_int8_restore_mode']),
+    block_swap_int8_restore_chunk_rows: relation(['block_swap_int8_restore_mode'], ['block_swap_int8_restore_mode']),
     disable_block_swap_for_eval: relation(['blocks_to_swap'], ['blocks_to_swap']),
     compile_block_scope: relation(['torch_compile'], ['torch_compile']),
     compile_inductor_mode: relation(['torch_compile'], ['torch_compile']),

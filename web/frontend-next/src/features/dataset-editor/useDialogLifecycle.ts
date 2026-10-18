@@ -2,6 +2,27 @@ import { useEffect, useRef, type RefObject } from "react";
 
 import { trapDialogFocus } from "./trapDialogFocus";
 
+let bodyScrollLockCount = 0;
+let previousBodyOverflow = "";
+
+function acquireBodyScrollLock(): () => void {
+  if (bodyScrollLockCount === 0) {
+    previousBodyOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+  }
+  bodyScrollLockCount += 1;
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    bodyScrollLockCount = Math.max(0, bodyScrollLockCount - 1);
+    if (bodyScrollLockCount === 0) {
+      document.body.style.overflow = previousBodyOverflow;
+      previousBodyOverflow = "";
+    }
+  };
+}
+
 type Options = {
   dialogRef: RefObject<HTMLElement | null>;
   onClose: () => void;
@@ -40,6 +61,9 @@ export function useDialogLifecycle({
     if (selectInitialFocus && initialFocus instanceof HTMLInputElement)
       initialFocus.select();
 
+    // Shared ref-count handles nested dialogs closed in any order.
+    const releaseBodyScrollLock = acquireBodyScrollLock();
+
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
@@ -52,6 +76,7 @@ export function useDialogLifecycle({
     document.addEventListener("keydown", onKeyDown);
     return () => {
       document.removeEventListener("keydown", onKeyDown);
+      releaseBodyScrollLock();
       queueMicrotask(() => {
         // StrictMode can recreate this effect before deferred restoration runs.
         if (generation !== lifecycle.current) return;
