@@ -147,3 +147,85 @@ def test_maybe_promote_without_offloader_warns(caplog):
     with caplog.at_level(logging.WARNING):
         assert maybe_promote(_Plain(), margin_mib=0, free_bytes=GIB) is None
     assert "no block-swap offloader" in caplog.text
+
+MB = 1024 * 1024
+REAL_BLOCK = 138 * MB          # measured Anima block payload
+REAL_LINK = 3.0e9              # measured pinned H2D ceiling on the 50HX
+
+
+def test_stop_condition_keeps_swap_when_dma_is_already_hidden():
+    """step_ms=1500 is the measured swap=12 step on the 50HX (3.32 GB/step)."""
+    offloader = _FakeOffloader(swap=24, blocks=42, per_block=REAL_BLOCK)
+    plan = plan_promotion(
+        offloader,
+        [None] * 42,
+        margin_bytes=0,
+        free_bytes=64 * REAL_BLOCK,
+        step_ms=1500.0,
+        link_bytes_per_s=REAL_LINK,
+        dma_ratio_floor=0.5,
+    )
+    assert plan["stopped_by_dma"] is True
+    # 2 * 8 * 138 MiB / 3.0 GB/s ~= 772 ms, the first level above 0.5 * 1500 ms.
+    assert plan["new_swap"] == 8, plan
+    assert plan["projected_dma_ms_after"] >= plan["dma_ratio_floor"] * 1500.0
+
+
+def test_stop_condition_does_not_block_promotion_when_step_is_compute_bound():
+    """A 100 ms step leaves no DMA budget to protect, so the contract floor applies."""
+    offloader = _FakeOffloader(swap=24, blocks=42, per_block=REAL_BLOCK)
+    plan = plan_promotion(
+        offloader,
+        [None] * 42,
+        margin_bytes=0,
+        free_bytes=64 * REAL_BLOCK,
+        step_ms=100.0,
+        link_bytes_per_s=REAL_LINK,
+    )
+    assert plan["stopped_by_dma"] is False
+    assert plan["new_swap"] == 2
+
+
+def test_stop_condition_can_be_disabled():
+    offloader = _FakeOffloader(swap=24, blocks=42, per_block=REAL_BLOCK)
+    plan = plan_promotion(
+        offloader,
+        [None] * 42,
+        margin_bytes=0,
+        free_bytes=64 * REAL_BLOCK,
+        step_ms=1500.0,
+        link_bytes_per_s=REAL_LINK,
+        dma_ratio_floor=0.0,
+    )
+    assert plan["new_swap"] == 2
+
+
+def test_dma_ratio_floor_resolution(monkeypatch):
+    from library.runtime.block_swap_auto import (
+        DEFAULT_DMA_RATIO_FLOOR,
+        resolve_dma_ratio_floor,
+    )
+
+    monkeypatch.delenv("ANIMA_BLOCK_SWAP_AUTO_DMA_RATIO_FLOOR", raising=False)
+    assert resolve_dma_ratio_floor() == DEFAULT_DMA_RATIO_FLOOR
+    monkeypatch.setenv("ANIMA_BLOCK_SWAP_AUTO_DMA_RATIO_FLOOR", "0.25")
+    assert resolve_dma_ratio_floor() == 0.25
+    assert resolve_dma_ratio_floor(2.0) == 0.95
+    assert resolve_dma_ratio_floor(-1.0) == 0.0
+
+
+def test_stop_condition_is_off_by_default(monkeypatch):
+    """Default 0.0 keeps the speed-optimal behaviour: promote as far as VRAM allows."""
+    monkeypatch.delenv("ANIMA_BLOCK_SWAP_AUTO_DMA_RATIO_FLOOR", raising=False)
+    offloader = _FakeOffloader(swap=24, blocks=42, per_block=REAL_BLOCK)
+    plan = plan_promotion(
+        offloader,
+        [None] * 42,
+        margin_bytes=0,
+        free_bytes=64 * REAL_BLOCK,
+        step_ms=1500.0,
+        link_bytes_per_s=REAL_LINK,
+    )
+    assert plan["dma_ratio_floor"] == 0.0
+    assert plan["stopped_by_dma"] is False
+    assert plan["new_swap"] == 2

@@ -935,15 +935,34 @@ def _run_step(trainer, state: LoopState, batch) -> torch.Tensor:
 
 
 def _maybe_auto_block_swap(state: LoopState) -> None:
-    """Promote swapped blocks to resident once, at the first optimizer boundary.
+    """Promote swapped blocks to resident once, at an optimizer boundary.
 
     Performance-only feature: the promotion runs with cleared gradients and no live
     graph, so the offloader can migrate residency transactionally. Any failure is
     logged and training continues with the manual blocks_to_swap.
+
+    The decision needs a measured step time, because the promotion stops once the
+    projected DMA time is already hidden behind compute. When no measurement exists
+    yet (the first boundary has no previous timestamp), the call waits one more
+    boundary instead of promoting blind.
     """
     if not getattr(state.args, "block_swap_auto", False):
         return
     if getattr(state, "_block_swap_auto_done", False):
+        return
+    now = time.perf_counter()
+    previous = getattr(state, "_block_swap_auto_boundary_at", None)
+    state._block_swap_auto_boundary_at = now
+    step_ms = None
+    recent = _recent_step_seconds(state)
+    if recent:
+        step_ms = float(recent) * 1000.0
+    elif previous is not None:
+        step_ms = (now - previous) * 1000.0
+    if step_ms is None or step_ms <= 0:
+        logger.info(
+            "block_swap_auto: waiting one optimizer boundary for a measured step time"
+        )
         return
     state._block_swap_auto_done = True
     try:
@@ -952,6 +971,8 @@ def _maybe_auto_block_swap(state: LoopState) -> None:
         state._block_swap_auto_plan = maybe_promote(
             getattr(state, "unet", None),
             margin_mib=getattr(state.args, "block_swap_vram_margin_mib", None),
+            step_ms=step_ms,
+            dma_ratio_floor=getattr(state.args, "block_swap_auto_stop_ratio", 0.0) or None,
         )
     except Exception as exc:  # noqa: BLE001 - a perf feature must not fail a run
         logger.warning("block_swap_auto promotion failed: %s", exc)

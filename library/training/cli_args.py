@@ -1023,6 +1023,17 @@ def add_dit_training_arguments(parser: argparse.ArgumentParser):
         default=400,
         help="[EXPERIMENTAL] Free-VRAM margin kept by --block_swap_auto (default 400 MiB).",
     )
+    parser.add_argument(
+        "--block_swap_auto_stop_ratio",
+        type=float,
+        default=0.0,
+        help=(
+            "[EXPERIMENTAL] 0 disables (default): promote as far as VRAM allows, which is "
+            "speed-optimal. A value like 0.5 stops promoting once the projected DMA time "
+            "would fall below that fraction of the measured step, keeping more blocks "
+            "swapped at a small speed cost. Env: ANIMA_BLOCK_SWAP_AUTO_DMA_RATIO_FLOOR."
+        ),
+    )
     from library.training.auto_block_swap.config import add_arguments as add_auto_swap_arguments
 
     add_auto_swap_arguments(parser)

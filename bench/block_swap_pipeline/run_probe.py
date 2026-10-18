@@ -331,6 +331,7 @@ def main() -> int:
     parser.add_argument("--side", type=int, default=IMAGE_SIZE[0])
     parser.add_argument("--block-swap-auto", action="store_true")
     parser.add_argument("--margin-mib", type=int, default=400)
+    parser.add_argument("--stop-ratio", type=float, default=0.0)
     parser.add_argument(
         "--restore-mode",
         default=None,
@@ -370,6 +371,7 @@ def main() -> int:
         + (
             "block_swap_auto = true\n"
             f"block_swap_vram_margin_mib = {args.margin_mib}\n"
+            f"block_swap_auto_stop_ratio = {args.stop_ratio}\n"
             if args.block_swap_auto
             else ""
         ),
