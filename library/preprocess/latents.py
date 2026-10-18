@@ -21,6 +21,7 @@ import numpy as np
 import torch
 from PIL import Image
 
+from library import cache_identity as _identity
 from library.io.cache import resolve_cache_path
 from library.io.cache_names import latent_cache_suffix
 from library.datasets.image_utils import IMAGE_TRANSFORMS
@@ -61,7 +62,13 @@ def get_latents_npz_path(
 
 
 def _latent_cached(
-    npz_path: Path, w: int, h: int, vae_spatial_compression: int = 8
+    npz_path: Path,
+    w: int,
+    h: int,
+    vae_spatial_compression: int = 8,
+    *,
+    cache_identity: dict | None = None,
+    require_cache_identity: bool = False,
 ) -> bool:
     """True iff ``npz_path`` already holds the ``(w, h)`` latent.
 
@@ -73,7 +80,20 @@ def _latent_cached(
         return False
     key = f"latents_{h // vae_spatial_compression}x{w // vae_spatial_compression}"
     try:
-        return key in np.load(npz_path)
+        with np.load(npz_path) as npz:
+            keys = set(npz.files)
+            if cache_identity is not None:
+                recorded = _identity.read_npz_stamp(npz)
+        if cache_identity is not None:
+            # A sidecar encoded by a different VAE must be rebuilt even when the
+            # requested resolution key is present.
+            if _identity.evaluate(
+                recorded, cache_identity, require_identity=require_cache_identity
+            ) == "stale":
+                return False
+            if _identity.compare(recorded, cache_identity) == "absent":
+                _identity.warn_legacy("VAE latent", npz_path)
+        return key in keys
     except Exception:
         return False
 
@@ -87,6 +107,8 @@ def count_pending_latents(
     overwrite: bool = False,
     latent_space_name: str | None = None,
     vae_spatial_compression: int = 8,
+    cache_identity: dict | None = None,
+    require_cache_identity: bool = False,
 ) -> tuple[int, int]:
     """Return ``(pending, total)`` latent caches **without loading the VAE**.
 
@@ -109,7 +131,12 @@ def count_pending_latents(
                 latent_space_name=latent_space_name,
             )
             if not _latent_cached(
-                npz_path, w, h, vae_spatial_compression=vae_spatial_compression
+                npz_path,
+                w,
+                h,
+                vae_spatial_compression=vae_spatial_compression,
+                cache_identity=cache_identity,
+                require_cache_identity=require_cache_identity,
             ):
                 pending += 1
     return pending, len(image_files)
@@ -124,6 +151,8 @@ def _decode_batch(
     overwrite: bool = False,
     latent_space_name: str | None = None,
     vae_spatial_compression: int = 8,
+    cache_identity: dict | None = None,
+    require_cache_identity: bool = False,
 ) -> tuple[
     list[Path],
     list[tuple[Path, str]],
@@ -151,7 +180,12 @@ def _decode_batch(
             latent_space_name=latent_space_name,
         )
         if not overwrite and _latent_cached(
-            npz_path, w, h, vae_spatial_compression=vae_spatial_compression
+            npz_path,
+            w,
+            h,
+            vae_spatial_compression=vae_spatial_compression,
+            cache_identity=cache_identity,
+            require_cache_identity=require_cache_identity,
         ):
             skipped.append(p)
             continue
@@ -166,7 +200,11 @@ def _decode_batch(
     return skipped, failed, kept, img_batch
 
 
-def _save_batch(items: list[tuple[Path, np.ndarray, tuple[int, int]]]) -> None:
+def _save_batch(
+    items: list[tuple[Path, np.ndarray, tuple[int, int]]],
+    *,
+    cache_identity: dict | None = None,
+) -> None:
     """IO stage: write each ``(npz_path, latent, size)``. Preserves any
     other-resolution keys already in the file (read-modify-write). Each npz_path
     is written exactly once per ``cache_latents`` call, so threaded saves of a
@@ -175,9 +213,24 @@ def _save_batch(items: list[tuple[Path, np.ndarray, tuple[int, int]]]) -> None:
         key_reso_suffix = f"_{lat_np.shape[-2]}x{lat_np.shape[-1]}"
         kwargs: dict = {}
         if npz_path.exists():
-            npz = np.load(npz_path)
-            for key in npz.files:
-                kwargs[key] = npz[key]
+            with np.load(npz_path) as npz:
+                previous = _identity.read_npz_stamp(npz)
+                stale = (
+                    cache_identity is not None
+                    and _identity.compare(previous, cache_identity) == "mismatch"
+                )
+                if stale:
+                    # Other resolutions in this file came from the previous VAE
+                    # and are equally stale, so they are dropped, not carried.
+                    print(
+                        f"  VAE identity changed for {npz_path.name}: dropping "
+                        "latents encoded by the previous VAE."
+                    )
+                else:
+                    for key in npz.files:
+                        kwargs[key] = npz[key]
+        if cache_identity is not None:
+            kwargs[_identity.NPZ_KEY] = _identity.encode_npz(cache_identity)
         kwargs[f"latents{key_reso_suffix}"] = lat_np
         kwargs[f"original_size{key_reso_suffix}"] = np.array(list(size))
         kwargs[f"crop_ltrb{key_reso_suffix}"] = np.array([0, 0, size[0], size[1]])
@@ -206,6 +259,8 @@ def cache_latents(
     latent_space_name: str | None = None,
     vae_spatial_compression: int = 8,
     encode_fn=None,
+    cache_identity: dict | None = None,
+    require_cache_identity: bool = False,
 ) -> PreprocessStats:
     """Encode every image under ``data_dir`` through ``vae`` → latent NPZs.
 
@@ -264,6 +319,8 @@ def cache_latents(
                 overwrite,
                 latent_space_name,
                 vae_spatial_compression,
+                cache_identity,
+                require_cache_identity,
             )
         )
         return True
@@ -311,7 +368,9 @@ def cache_latents(
                 stats.written += 1
                 if progress is not None:
                     progress(1, detail=f"{p.name} → {size[0]}x{size[1]}")
-            save_q.append(save_ex.submit(_save_batch, items))
+            save_q.append(
+                save_ex.submit(_save_batch, items, cache_identity=cache_identity)
+            )
 
             while len(save_q) >= max_saves:  # backpressure on the save side
                 save_q.popleft().result()

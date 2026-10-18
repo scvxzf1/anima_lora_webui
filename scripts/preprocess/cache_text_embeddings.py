@@ -133,6 +133,15 @@ def main() -> None:
         help="Path to T5 tokenizer (default: library/anima/configs/t5_old/)",
     )
     parser.add_argument(
+        "--vocab_pack_path",
+        type=str,
+        default=None,
+        help=(
+            "Selected Anima vocab-pack manifest or resource directory. Its content "
+            "digest makes existing unstamped or mismatched TE caches stale."
+        ),
+    )
+    parser.add_argument(
         "--caption_shuffle_variants",
         type=int,
         default=0,
@@ -214,8 +223,19 @@ def main() -> None:
         action="store_true",
         help="Re-encode and replace existing text-encoder sidecars.",
     )
+    parser.add_argument(
+        "--require_cache_identity",
+        action="store_true",
+        help=(
+            "Treat sidecars without a cache-identity stamp (pre-identity "
+            "caches) as stale and rebuild them too. By default unstamped "
+            "sidecars are reused with a warning, and only sidecars stamped "
+            "with different encoder weights are rebuilt."
+        ),
+    )
     args = parser.parse_args()
 
+    from library import cache_identity as _identity
     from library.anima import weights as anima_utils
     from library.anima.strategy import AnimaTextEncodingStrategy, AnimaTokenizeStrategy
 
@@ -293,12 +313,27 @@ def main() -> None:
     )
     print(f"Caption source mode: {caption_source_mode}")
 
+    # Identity of the weights behind this pass. The training-side cache strategy
+    # asserts the same record, so swapping the text encoder (or the DiT that
+    # supplies the LLM adapter, whose outputs are cached alongside) rebuilds.
+    identity_inputs = {
+        "text_encoder": args.qwen3,
+        "t5_tokenizer": args.t5_tokenizer_path,
+        "vocab_pack": args.vocab_pack_path,
+        "dit": args.dit,
+    }
+
     stats = cache_text_embeddings(
         data_dir,
         tokenize_strategy,
         encoding_strategy,
         text_encoder,
         llm_adapter=llm_adapter,
+        identity_inputs=identity_inputs,
+        require_cache_identity=(
+            bool(getattr(args, "require_cache_identity", False))
+            or bool(args.vocab_pack_path)
+        ),
         device=device,
         cache_dir=cache_dir,
         recursive=args.recursive,

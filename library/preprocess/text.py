@@ -16,6 +16,7 @@ from pathlib import Path
 import torch
 from PIL import Image
 
+from library import cache_identity as _identity
 from library.io.cache import POOLED_CACHE_SUFFIX, TE_CACHE_SUFFIX, resolve_cache_path
 from library.models.family_registry import get_model_family_spec
 from library.preprocess.captions import CaptionSource, read_caption_source
@@ -138,6 +139,37 @@ def _te_cache_path(image_path: Path, cache_dir: Path | None, image_dir: Path) ->
     )
 
 
+def _te_cache_reusable(
+    cache_path: Path, identity: dict | None, require_identity: bool
+) -> bool:
+    """True when an existing TE sidecar was produced by the current encoder.
+
+    Reads only the safetensors header, so this is cheap next to encoding. An
+    unstamped (pre-identity) sidecar is reused with a one-off warning unless
+    require_identity asks for a full rebuild; an unreadable sidecar is always
+    re-encoded.
+    """
+    if identity is None:
+        return True
+    try:
+        from safetensors import safe_open
+
+        with safe_open(str(cache_path), framework="pt") as handle:
+            metadata = handle.metadata()
+    except Exception as e:  # corrupt/truncated sidecar -> re-encode
+        logger.warning("re-encoding unreadable text cache %s: %s", cache_path, e)
+        return False
+
+    recorded = _identity.read_stamp(metadata)
+    if _identity.evaluate(
+        recorded, identity, require_identity=require_identity
+    ) == "stale":
+        return False
+    if _identity.compare(recorded, identity) == "absent":
+        _identity.warn_legacy("text encoder", cache_path)
+    return True
+
+
 def cache_text_embeddings(
     data_dir: Path,
     tokenize_strategy,
@@ -161,6 +193,8 @@ def cache_text_embeddings(
     verbose: bool = True,
     progress: ProgressFn | None = None,
     overwrite: bool = False,
+    identity_inputs: dict | None = None,
+    require_cache_identity: bool = False,
 ) -> PreprocessStats:
     """Encode captions for every image under ``data_dir``.
 
@@ -221,7 +255,27 @@ def cache_text_embeddings(
     from safetensors.torch import save_file
 
     anima_cache_spec = get_model_family_spec("anima")
-    cache_metadata = anima_cache_spec.text_cache.metadata(anima_cache_spec.name)
+    # Model identity: which text encoder / tokenizer / DiT-backing-LLM-adapter
+    # produced these outputs. Swapping any of them must invalidate the sidecar.
+    identity = None
+    if identity_inputs:
+        identity = _identity.text_cache_identity(
+            family=anima_cache_spec.name,
+            text_encoder=identity_inputs.get("text_encoder"),
+            tokenizer=identity_inputs.get("tokenizer"),
+            t5_tokenizer=identity_inputs.get("t5_tokenizer"),
+            vocab_pack=identity_inputs.get("vocab_pack"),
+            dit=identity_inputs.get("dit"),
+            llm_adapter_outputs=llm_adapter is not None,
+            diff_output_preservation_trigger=diff_output_preservation_trigger,
+            diff_output_preservation_class=diff_output_preservation_class,
+            compute_dtype=cache_dtype,
+            caption_shuffle_variants=n_variants,
+            tag_dropout_rate=tag_dropout_rate,
+        )
+    cache_metadata = _identity.stamp(
+        anima_cache_spec.text_cache.metadata(anima_cache_spec.name), identity
+    )
 
     if progress is not None:
         progress(0, total=len(entries))
@@ -239,7 +293,11 @@ def cache_text_embeddings(
         to_encode: list[tuple[Path, CaptionSource, Path]] = []
         for img_path, caption in batch:
             cache_path = _te_cache_path(img_path, cache_dir, data_dir)
-            if cache_path.exists() and not overwrite:
+            if (
+                cache_path.exists()
+                and not overwrite
+                and _te_cache_reusable(cache_path, identity, require_cache_identity)
+            ):
                 stats.skipped += 1
                 if progress is not None:
                     progress(1, detail=f"skip {img_path.name}")

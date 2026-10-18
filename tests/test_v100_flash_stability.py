@@ -175,6 +175,9 @@ def test_v100_flash_provider_rejects_bf16_at_dispatch_boundary(monkeypatch):
 
     monkeypatch.setattr(attention_dispatch, "flash_attn_func", object())
     monkeypatch.setattr(attention_dispatch, "flash_attn_varlen_func", object())
+    # Device capability is a separate axis from dtype support; this test only
+    # exercises the dtype/provider boundary.
+    monkeypatch.setattr(attention_dispatch, "flash_attn_device_supported", lambda: True)
 
     monkeypatch.setattr(attention_dispatch, "flash_attn_v100_provider", True)
     assert attention_dispatch.flash_attn_available_for_dtype(torch.float16)
@@ -183,6 +186,41 @@ def test_v100_flash_provider_rejects_bf16_at_dispatch_boundary(monkeypatch):
     monkeypatch.setattr(attention_dispatch, "flash_attn_v100_provider", False)
     assert attention_dispatch.flash_attn_available_for_dtype(torch.bfloat16)
     assert not attention_dispatch.flash_attn_available_for_dtype(torch.float32)
+
+
+def test_flash_availability_requires_supported_device(monkeypatch):
+    """A wheel built for Ampere+ imports on Turing and then fails at launch."""
+    from networks import attention_dispatch
+
+    monkeypatch.setattr(attention_dispatch, "flash_attn_func", object())
+    monkeypatch.setattr(attention_dispatch, "flash_attn_varlen_func", object())
+    monkeypatch.setattr(attention_dispatch, "flash_attn_v100_provider", False)
+    monkeypatch.setattr(attention_dispatch.torch.cuda, "is_available", lambda: True)
+
+    monkeypatch.setattr(
+        attention_dispatch.torch.cuda, "get_device_capability", lambda *a, **k: (7, 5)
+    )
+    assert not attention_dispatch.flash_attn_device_supported()
+    assert not attention_dispatch.flash_attn_available_for_dtype(torch.float16)
+
+    monkeypatch.setattr(
+        attention_dispatch.torch.cuda, "get_device_capability", lambda *a, **k: (8, 6)
+    )
+    assert attention_dispatch.flash_attn_device_supported()
+    assert attention_dispatch.flash_attn_available_for_dtype(torch.float16)
+
+
+def test_v100_provider_keeps_pre_ampere_support(monkeypatch):
+    from networks import attention_dispatch
+
+    monkeypatch.setattr(attention_dispatch, "flash_attn_func", object())
+    monkeypatch.setattr(attention_dispatch, "flash_attn_varlen_func", object())
+    monkeypatch.setattr(attention_dispatch, "flash_attn_v100_provider", True)
+    monkeypatch.setattr(attention_dispatch.torch.cuda, "is_available", lambda: True)
+    monkeypatch.setattr(
+        attention_dispatch.torch.cuda, "get_device_capability", lambda *a, **k: (7, 0)
+    )
+    assert attention_dispatch.flash_attn_device_supported()
 
 
 def test_v100_dispatch_rejects_bf16_before_kernel(monkeypatch):

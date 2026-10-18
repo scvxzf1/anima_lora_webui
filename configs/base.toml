@@ -2,6 +2,10 @@
 
 pretrained_model_name_or_path = "models/diffusion_models/anima-base-v1.0.safetensors"
 qwen3 = "models/text_encoders/qwen_3_06b_base.safetensors"
+# Optional Anima vocab pack. Keep empty until its tokenizer/runtime integration is enabled.
+# When set, its content SHA-256 is bound to TE cache metadata; switch/update it
+# before preprocessing or training to rebuild stale caches without mtime reliance.
+vocab_pack_path = ""
 vae = "models/vae/qwen_image_vae.safetensors"
 
 output_dir = "output/ckpt"

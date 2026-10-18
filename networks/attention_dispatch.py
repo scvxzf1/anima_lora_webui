@@ -99,9 +99,32 @@ def sdpa_backend_context(attn_mode: Optional[str]):
     return nullcontext()
 
 
+def flash_attn_device_supported() -> bool:
+    """Return whether the installed Flash build can run on the current GPU.
+
+    The dtype/provider checks below only prove that a Python provider exists.
+    A wheel built for Ampere+ still imports on Turing and then raises
+    "FlashAttention only supports Ampere GPUs or newer" at kernel launch, so
+    callers that only know a dtype need this guard to fall back to SDPA instead
+    of crashing mid-forward. The bundled V100 provider targets sm_70, so it is
+    the one pre-Ampere build this dispatch treats as usable.
+    """
+    if not torch.cuda.is_available():
+        return False
+    try:
+        major, _minor = torch.cuda.get_device_capability()
+    except (RuntimeError, AssertionError, ValueError):
+        return False
+    if flash_attn_v100_provider:
+        return major >= 7
+    return major >= 8
+
+
 def flash_attn_available_for_dtype(dtype: torch.dtype) -> bool:
-    """Return whether the imported Flash provider supports this input dtype."""
+    """Return whether the imported Flash provider supports this dtype here."""
     if flash_attn_func is None or flash_attn_varlen_func is None:
+        return False
+    if not flash_attn_device_supported():
         return False
     if dtype == torch.float16:
         return True

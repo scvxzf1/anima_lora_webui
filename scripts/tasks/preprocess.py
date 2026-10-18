@@ -128,6 +128,12 @@ def _caption_source_args(value: Any, prefer_json: Any = None) -> list[str]:
     return ["--caption_source_mode", _caption_source_mode(value, prefer_json)]
 
 
+def _vocab_pack_args() -> list[str]:
+    """Forward the optional Anima pack only when the merged config selects one."""
+    value = str(_path_overrides_value().get("vocab_pack_path") or "").strip()
+    return ["--vocab_pack_path", value] if value else []
+
+
 def _first_explicit_caption_source_mode(*values: Any) -> Any:
     for value in values:
         if _explicit_caption_source_mode(value):
@@ -201,12 +207,42 @@ def _reuse_overwrite_args(row: dict, *, kind: str) -> list[str]:
         except Exception:
             pass
     policy = parse_cache_reuse_policy(cfg)
+    overwrite = []
     if policy.force_rebuild:
-        return ["--overwrite"]
-    if kind == "vae" and not policy.reuse_vae_latents:
-        return ["--overwrite"]
-    if kind == "te" and not policy.reuse_text_encoder_cache:
-        return ["--overwrite"]
+        overwrite = ["--overwrite"]
+    elif kind == "vae" and not policy.reuse_vae_latents:
+        overwrite = ["--overwrite"]
+    elif kind == "te" and not policy.reuse_text_encoder_cache:
+        overwrite = ["--overwrite"]
+    return [*overwrite, *_require_cache_identity_args(row)]
+
+
+def _require_cache_identity_args(row: dict) -> list[str]:
+    """Forward --require_cache_identity when the merged config asks for it.
+
+    Lets a run that opts into identity checking also rebuild pre-identity
+    sidecars during preprocessing instead of only rejecting them at training
+    time. Read from the row, then its settings block, then the runtime / base /
+    preset / method override chain (the same sources as the reuse policy).
+    """
+    settings = row.get("settings") if isinstance(row.get("settings"), dict) else {}
+    for source in (row, settings):
+        if "require_cache_identity" in source:
+            return (
+                ["--require_cache_identity"]
+                if _truthy(source["require_cache_identity"])
+                else []
+            )
+    try:
+        overrides = _path_overrides_value()
+    except Exception:  # defensive: overrides are best-effort
+        overrides = {}
+    if "require_cache_identity" in overrides:
+        return (
+            ["--require_cache_identity"]
+            if _truthy(overrides["require_cache_identity"])
+            else []
+        )
     return []
 
 
@@ -892,6 +928,7 @@ def _run_preprocess_te_anima(
             str(text_batch_size),
             "--dtype",
             dtype,
+            *_vocab_pack_args(),
             *source_args,
             *_caption_extension_args_for_row(row),
             *json_args,

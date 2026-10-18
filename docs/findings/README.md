@@ -61,6 +61,7 @@
 
 ## Runtime 和能力边界
 
+- [模型身份缓存重建 · CMP 50HX 真机热测试](cache_identity_hot_50hx_20261018.md)：三条真机热测试（VAE latent / Anima TE / 真实 train.py 启动）。覆盖身份一致复用、路径变化重建、就地 mtime 变化重建、旧缓存默认复用与严格模式重建、换 VAE 丢弃陈旧分辨率 key、消费端匹配接受/不匹配拒绝，以及训练启动路径上的 fail-closed 拒绝与重建恢复（干净启动 10 步、0.81~0.88 s/步、max allocated 4.44 GiB）。另记录本轮暴露的两个无关阻塞：flash 可用性未按设备能力判断（已加守卫并补测试）、int8 block-swap 参数与 Anima/Krea-2 enable_block_swap 签名不匹配（未修，blocks_to_swap>0 会 TypeError）。数据集为 2 图 / 512×512，非吞吐基准。
 - [公开训练器 DDP / TP / PP 实现调研](multigpu_trainers_ddp_tp_pp_survey_20261004.md)：sd-scripts/Musubi/OneTrainer 数据并行、diffusion-pipe 真实 DP+PP、TorchTitan LoRA TP 与 Megatron 调度；固定源码版本与全模型接入建议。
 - [Anima 混合 NF4 autocast 与激活显存](anima_mixed_nf4_autocast_90hx_20261003.md)：修复 NF4 输出意外回升 FP32、LoRA 与 checkpoint 激活膨胀；保持配置和量化策略不变。
 - [扩散混合量化基座与后训练线上调研](diffusion_mixed_quant_post_training_survey_20261002.md)：训练器静态混合、EfficientDM/BitsFusion量化后训练、MixDQ/ViDiT-Q敏感度搜索、Nunchaku训练边界及sm86 INT8候选。

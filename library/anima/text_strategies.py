@@ -8,6 +8,7 @@ import numpy as np
 import torch
 from transformers import CLIPTokenizer
 
+from library import cache_identity as _identity
 from library.log import setup_logging
 
 setup_logging()
@@ -438,11 +439,21 @@ class LatentsCachingStrategy:
     _strategy = None  # strategy instance: actual strategy class
 
     def __init__(
-        self, cache_to_disk: bool, batch_size: int, skip_disk_cache_validity_check: bool
+        self,
+        cache_to_disk: bool,
+        batch_size: int,
+        skip_disk_cache_validity_check: bool,
+        *,
+        cache_identity: Optional[dict] = None,
+        require_cache_identity: bool = False,
     ) -> None:
         self._cache_to_disk = cache_to_disk
         self._batch_size = batch_size
         self.skip_disk_cache_validity_check = skip_disk_cache_validity_check
+        # Model-identity stamp (library.cache_identity). None keeps the legacy
+        # behaviour for callers that never build one (tests, smoke harnesses).
+        self.cache_identity = cache_identity
+        self.require_cache_identity = bool(require_cache_identity)
 
     @classmethod
     def set_strategy(cls, strategy):
@@ -545,6 +556,8 @@ class LatentsCachingStrategy:
             key_reso_suffix,
             flip_aug,
             apply_alpha_mask,
+            cache_identity=self.cache_identity,
+            require_cache_identity=self.require_cache_identity,
         )
 
     @staticmethod
@@ -553,10 +566,28 @@ class LatentsCachingStrategy:
         key_reso_suffix: str,
         flip_aug: bool,
         apply_alpha_mask: bool,
+        *,
+        cache_identity: Optional[dict] = None,
+        require_cache_identity: bool = False,
     ) -> bool:
         try:
             with np.load(npz_path) as npz:
                 keys = set(npz.files)
+                recorded = _identity.read_npz_stamp(npz)
+
+            # Model identity first: a latent encoded by a different VAE must be
+            # rebuilt even when every required key is present.
+            if cache_identity is not None:
+                state = _identity.evaluate(
+                    recorded,
+                    cache_identity,
+                    require_identity=require_cache_identity,
+                )
+                if state == "stale":
+                    return False
+                if _identity.compare(recorded, cache_identity) == "absent":
+                    _identity.warn_legacy("VAE latent", npz_path)
+
             if "latents" + key_reso_suffix not in keys:
                 return False
             if flip_aug and "latents_flipped" + key_reso_suffix not in keys:
@@ -637,6 +668,7 @@ class LatentsCachingStrategy:
                     flipped_latent,
                     alpha_mask,
                     key_reso_suffix,
+                    cache_identity=self.cache_identity,
                 )
             else:
                 info.latents_original_size = original_size
@@ -736,6 +768,7 @@ class LatentsCachingStrategy:
         flipped_latents_tensor=None,
         alpha_mask=None,
         key_reso_suffix="",
+        cache_identity=None,
     ):
         """
         Args:
@@ -746,6 +779,10 @@ class LatentsCachingStrategy:
             flipped_latents_tensor (Optional[torch.Tensor]): Flipped latent tensor
             alpha_mask (Optional[torch.Tensor]): Alpha mask
             key_reso_suffix (str): Key resolution suffix
+            cache_identity (Optional[dict]): VAE identity to stamp; when it
+                differs from the recorded one, every other-resolution latent in
+                the file is dropped instead of carried over (they were encoded
+                by the previous VAE and are equally stale).
 
         Returns:
             None
@@ -753,10 +790,26 @@ class LatentsCachingStrategy:
         kwargs = {}
 
         if os.path.exists(npz_path):
-            # load existing npz and update it
-            npz = np.load(npz_path)
-            for key in npz.files:
-                kwargs[key] = npz[key]
+            # load existing npz and update it, unless the VAE identity changed
+            with np.load(npz_path) as npz:
+                previous = _identity.read_npz_stamp(npz)
+                stale = (
+                    cache_identity is not None
+                    and _identity.compare(previous, cache_identity) == "mismatch"
+                )
+                if stale:
+                    logger.warning(
+                        "VAE identity changed for %s; dropping latents encoded by "
+                        "the previous VAE and re-encoding this resolution (%s).",
+                        npz_path,
+                        sorted(k for k in npz.files if k.startswith("latents")),
+                    )
+                else:
+                    for key in npz.files:
+                        kwargs[key] = npz[key]
+
+        if cache_identity is not None:
+            kwargs[_identity.NPZ_KEY] = _identity.encode_npz(cache_identity)
 
         kwargs["latents" + key_reso_suffix] = latents_tensor.float().cpu().numpy()
         kwargs["original_size" + key_reso_suffix] = np.array(original_size)

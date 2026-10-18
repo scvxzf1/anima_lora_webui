@@ -11,6 +11,7 @@ from safetensors.torch import (
     save_file as _save_safetensors,
 )
 
+from library import cache_identity as _identity
 from library.anima import weights as anima_utils
 from library.datasets import base as _datasets_base
 from library.io.cache import resolve_cache_path
@@ -231,10 +232,17 @@ class AnimaTextEncoderOutputsCachingStrategy(TextEncoderOutputsCachingStrategy):
         diff_output_preservation_trigger: str | None = None,
         diff_output_preservation_class: str | None = None,
         cache_dtype: torch.dtype = torch.bfloat16,
+        identity_inputs: dict | None = None,
+        require_cache_identity: bool = False,
     ) -> None:
         super().__init__(
             cache_to_disk, batch_size, skip_disk_cache_validity_check, is_partial
         )
+        # Weights that produced this cache (library.cache_identity). The expected
+        # record is built per file so the DiT is only asserted when the cache
+        # actually carries LLM-adapter outputs.
+        self.identity_inputs = dict(identity_inputs or {})
+        self.require_cache_identity = bool(require_cache_identity)
         self.cache_llm_adapter_outputs = cache_llm_adapter_outputs
         self.use_shuffled_caption_variants = use_shuffled_caption_variants
         self.diff_output_preservation_trigger = diff_output_preservation_trigger
@@ -258,22 +266,71 @@ class AnimaTextEncoderOutputsCachingStrategy(TextEncoderOutputsCachingStrategy):
             image_dir=image_dir,
         )
 
+    def expected_cache_identity(self, keys) -> dict | None:
+        """Identity a text cache must carry for this strategy to reuse it.
+
+        Returning None (no identity inputs configured) disables the check and
+        keeps the pre-identity behaviour.
+        """
+        if not self.identity_inputs:
+            return None
+        adapter_outputs = bool(self.cache_llm_adapter_outputs) or any(
+            key.startswith("crossattn_emb") for key in keys
+        )
+        dit = self.identity_inputs.get("dit")
+        identity = _identity.text_cache_identity(
+            family="anima",
+            text_encoder=self.identity_inputs.get("text_encoder"),
+            t5_tokenizer=self.identity_inputs.get("t5_tokenizer"),
+            vocab_pack=self.identity_inputs.get("vocab_pack"),
+            dit=dit,
+            llm_adapter_outputs=adapter_outputs and bool(dit),
+            diff_output_preservation_trigger=self.diff_output_preservation_trigger,
+            diff_output_preservation_class=self.diff_output_preservation_class,
+        )
+        if not dit:
+            # Nothing to assert when the run is not told which DiT it uses.
+            identity.pop("dit", None)
+        return identity
+
+    def stamp_metadata(self, metadata) -> dict:
+        """Add this strategy's identity record to a text-cache metadata dict."""
+        identity = self.expected_cache_identity(
+            ["crossattn_emb"] if self.cache_llm_adapter_outputs or self.cache_prior_crossattn else []
+        )
+        return _identity.stamp(metadata, identity)
+
     def is_disk_cached_outputs_expected(self, cache_path: str) -> bool:
         if not self.cache_to_disk:
             return False
         if not os.path.exists(cache_path):
             return False
-        if self.skip_disk_cache_validity_check:
+        # --skip_cache_check is the documented escape hatch for the per-file
+        # content check; an explicit identity contract still wins over it.
+        if self.skip_disk_cache_validity_check and not self.require_cache_identity:
             return True
 
         try:
             with _safe_open(cache_path, framework="pt") as f:
-                validate_text_cache_metadata(
-                    f.metadata(), family="anima", path=cache_path
-                )
+                metadata = f.metadata()
+                validate_text_cache_metadata(metadata, family="anima", path=cache_path)
                 keys = set(f.keys())
                 if "num_variants" in keys:
                     num_variants = int(f.get_tensor("num_variants"))
+
+            expected = self.expected_cache_identity(keys)
+            if expected is not None:
+                recorded = _identity.read_stamp(metadata)
+                if _identity.evaluate(
+                    recorded, expected, require_identity=self.require_cache_identity
+                ) == "stale":
+                    return False
+                if _identity.compare(recorded, expected) == "absent":
+                    _identity.warn_legacy("text encoder", cache_path)
+
+            if self.skip_disk_cache_validity_check:
+                return True
+
             if "num_variants" in keys:
                 for vi in range(num_variants):
                     if f"prompt_embeds_v{vi}" not in keys:
@@ -582,7 +639,7 @@ class AnimaTextEncoderOutputsCachingStrategy(TextEncoderOutputsCachingStrategy):
                 _save_safetensors(
                     save_dict,
                     info.text_encoder_outputs_npz,
-                    metadata=spec.text_cache.metadata(spec.name),
+                    metadata=self.stamp_metadata(spec.text_cache.metadata(spec.name)),
                 )
             else:
                 if ce_i is None:
@@ -616,9 +673,21 @@ class AnimaLatentsCachingStrategy(LatentsCachingStrategy):
     ANIMA_LATENTS_NPZ_SUFFIX = "_anima.npz"
 
     def __init__(
-        self, cache_to_disk: bool, batch_size: int, skip_disk_cache_validity_check: bool
+        self,
+        cache_to_disk: bool,
+        batch_size: int,
+        skip_disk_cache_validity_check: bool,
+        *,
+        cache_identity: dict | None = None,
+        require_cache_identity: bool = False,
     ) -> None:
-        super().__init__(cache_to_disk, batch_size, skip_disk_cache_validity_check)
+        super().__init__(
+            cache_to_disk,
+            batch_size,
+            skip_disk_cache_validity_check,
+            cache_identity=cache_identity,
+            require_cache_identity=require_cache_identity,
+        )
 
     @property
     def cache_suffix(self) -> str:

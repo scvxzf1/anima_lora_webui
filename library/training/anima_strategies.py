@@ -10,9 +10,15 @@ from __future__ import annotations
 
 import torch
 
+from library import cache_identity as _identity
 from library.anima import strategy as strategy_anima
 from library.env import resolve_model_family
 from library.models.family_registry import dispatch_model_family
+
+
+def require_cache_identity(args) -> bool:
+    """Whether unstamped (pre-identity) caches must be rebuilt for this run."""
+    return bool(getattr(args, "require_cache_identity", False))
 
 
 def _krea2_tokenize_strategy(args):
@@ -95,8 +101,9 @@ def get_tokenizers(tokenize_strategy):
 def get_latents_caching_strategy(args):
     # VAE / latent cache is shared (same AutoencoderKLQwenImage); anima's
     # caching strategy is family-agnostic.
+    family = resolve_model_family(args)
     factory = dispatch_model_family(
-        resolve_model_family(args),
+        family,
         operation="latent cache strategy",
         handlers={
             "anima": strategy_anima.AnimaLatentsCachingStrategy,
@@ -107,7 +114,15 @@ def get_latents_caching_strategy(args):
         },
     )
     return factory(
-        args.cache_latents_to_disk, args.vae_batch_size, args.skip_cache_check
+        args.cache_latents_to_disk,
+        args.vae_batch_size,
+        args.skip_cache_check,
+        # Latents encoded by a different VAE are stale even when every
+        # resolution key is present.
+        cache_identity=_identity.latent_cache_identity(
+            family=family, vae=getattr(args, "vae", None)
+        ),
+        require_cache_identity=require_cache_identity(args),
     )
 
 
@@ -176,6 +191,17 @@ def get_text_encoder_outputs_caching_strategy(args, weight_dtype: torch.dtype):
             args.text_encoder_batch_size,
             args.skip_cache_check,
             False,
+            # Weight provenance asserted against each sidecar's own stamp.
+            identity_inputs={
+                "text_encoder": getattr(args, "qwen3", None),
+                "t5_tokenizer": getattr(args, "t5_tokenizer_path", None),
+                "vocab_pack": getattr(args, "vocab_pack_path", None),
+                "dit": getattr(args, "pretrained_model_name_or_path", None),
+            },
+            require_cache_identity=(
+                require_cache_identity(args)
+                or bool(getattr(args, "vocab_pack_path", None))
+            ),
             cache_llm_adapter_outputs=getattr(args, "cache_llm_adapter_outputs", False),
             use_shuffled_caption_variants=getattr(
                 args, "use_shuffled_caption_variants", False
@@ -210,6 +236,7 @@ def get_text_encoder_outputs_caching_strategy(args, weight_dtype: torch.dtype):
             args.cache_text_encoder_outputs_to_disk, args.text_encoder_batch_size,
             args.skip_cache_check,
             quantization=getattr(args, "moss_te_quantization", "nf4"),
+            max_text_tokens=int(getattr(args, "max_token_length", None) or 4096),
             use_shuffled_caption_variants=getattr(args, "use_shuffled_caption_variants", False),
         )
 
@@ -241,22 +268,22 @@ def get_text_encoder_outputs_caching_strategy(args, weight_dtype: torch.dtype):
     return factory()
 
 
-def _z_image_latents_caching_strategy(*args):
+def _z_image_latents_caching_strategy(*args, **kwargs):
     from library.models.z_image.strategy import ZImageLatentsCachingStrategy
 
-    return ZImageLatentsCachingStrategy(*args)
+    return ZImageLatentsCachingStrategy(*args, **kwargs)
 
 
-def _qwen_image_2_1_latents_caching_strategy(*args):
+def _qwen_image_2_1_latents_caching_strategy(*args, **kwargs):
     from library.models.qwen_image_2_1.strategy import QwenImage21LatentCache
 
-    return QwenImage21LatentCache(*args)
+    return QwenImage21LatentCache(*args, **kwargs)
 
 
-def _moss_latents_caching_strategy(*args):
+def _moss_latents_caching_strategy(*args, **kwargs):
     from library.models.moss_image.strategy import MossImageLatentCache
 
-    return MossImageLatentCache(*args)
+    return MossImageLatentCache(*args, **kwargs)
 
 
 def get_models_for_text_encoding(args, accelerator, text_encoders):

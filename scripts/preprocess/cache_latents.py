@@ -15,6 +15,7 @@ from pathlib import Path
 import torch
 
 
+from library import cache_identity as _identity
 from library.preprocess import cache_latents, tqdm_progress
 from library.runtime.cli import add_io_args
 from library.runtime.device import str_to_dtype
@@ -58,6 +59,16 @@ def main() -> None:
         "--overwrite",
         action="store_true",
         help="Re-encode and replace existing latent sidecars.",
+    )
+    parser.add_argument(
+        "--require_cache_identity",
+        action="store_true",
+        help=(
+            "Treat sidecars without a cache-identity stamp (pre-identity "
+            "caches) as stale and rebuild them too. By default unstamped "
+            "sidecars are reused with a warning, and only sidecars stamped "
+            "with a different VAE are rebuilt."
+        ),
     )
     args = parser.parse_args()
 
@@ -109,6 +120,10 @@ def main() -> None:
     stats = cache_latents(
         data_dir,
         vae,
+        cache_identity=_identity.latent_cache_identity(
+            family=args.model_family, vae=args.vae
+        ),
+        require_cache_identity=bool(args.require_cache_identity),
         cache_dir=cache_dir,
         recursive=args.recursive,
         path_pattern=args.path_pattern,
