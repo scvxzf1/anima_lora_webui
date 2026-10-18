@@ -922,6 +922,7 @@ def _run_step(trainer, state: LoopState, batch) -> torch.Tensor:
         _probe_step(memory_probe, state, "after_optimizer")
         if state.profile_started:
             torch.cuda.nvtx.range_pop()
+        _maybe_auto_block_swap(state)
 
     if peak_probe is not None:
         peak_probe.end_step(device=accelerator.device)
@@ -931,6 +932,29 @@ def _run_step(trainer, state: LoopState, batch) -> torch.Tensor:
     # needs the scalar value; retaining grad_fn across VAE decode keeps frozen
     # ConvRot/NF4 constants from a completed backward alive.
     return loss.detach()
+
+
+def _maybe_auto_block_swap(state: LoopState) -> None:
+    """Promote swapped blocks to resident once, at the first optimizer boundary.
+
+    Performance-only feature: the promotion runs with cleared gradients and no live
+    graph, so the offloader can migrate residency transactionally. Any failure is
+    logged and training continues with the manual blocks_to_swap.
+    """
+    if not getattr(state.args, "block_swap_auto", False):
+        return
+    if getattr(state, "_block_swap_auto_done", False):
+        return
+    state._block_swap_auto_done = True
+    try:
+        from library.runtime.block_swap_auto import maybe_promote
+
+        state._block_swap_auto_plan = maybe_promote(
+            getattr(state, "unet", None),
+            margin_mib=getattr(state.args, "block_swap_vram_margin_mib", None),
+        )
+    except Exception as exc:  # noqa: BLE001 - a perf feature must not fail a run
+        logger.warning("block_swap_auto promotion failed: %s", exc)
 
 
 def _step_lr_scheduler(state: LoopState, loss: torch.Tensor) -> None:

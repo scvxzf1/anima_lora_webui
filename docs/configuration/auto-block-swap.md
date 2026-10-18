@@ -214,3 +214,30 @@ NF4 eager/compiled 零容差前向与梯度、迁移 OOM 回滚。尚未新增�
 运行中调整的真实事件、固定对照、NF4 存储修复与单独策略消融见
 [全程动态验收报告](../findings/auto_block_swap_dynamic_20260908.md)。动态模式使用
 A/B/A 复测和成本门槛；实测23块只比25块快约0.9%，正确拒绝了低于3%门槛的候选。
+
+## 进程内水位调优（--block_swap_auto，2026-10-19 新增）
+
+上面的 AUTO 是独立进程启动校准。本节是另一个更轻的机制：在当前训练进程内，跑完第一个优化器步后
+量一次自己的空闲显存，把余量换算成「还能让多少换出块常驻」，在优化器边界用现成的
+ModelOffloader.reconfigure() 事务一次性晋升。两者可以并存，但不共享策略。
+
+```toml
+block_swap_auto = true
+block_swap_vram_margin_mib = 400   # 默认 400 MiB
+```
+
+CLI 对应 --block_swap_auto / --no-block_swap_auto 与 --block_swap_vram_margin_mib。
+
+| 维度 | 启动校准 AUTO | 进程内 --block_swap_auto |
+| --- | --- | --- |
+| 生效时机 | 训练前，多次独立候选进程 | 第一个优化器步之后，一次边界事务 |
+| 决策依据 | 候选实测耗时 + 显存/内存策略 | 本进程 mem_get_info() 空闲显存与 per-block 字节 |
+| 是否改 blocks_to_swap | 只覆盖本次运行的有效值 | 只下调（晋升常驻），不会上调 |
+| 失败行为 | 候选被拒绝 | 事务自动回滚，保留原水位；异常只告警不中断训练 |
+| 典型用途 | 跨分辨率/卡型首次定档 | 已知保守水位时的自动收敛 |
+
+实测（CMP 50HX，Anima 512×512，保守起点 blocks_to_swap=24，margin 400 MiB）：
+日志 promoting 22 block(s) to resident, blocks_to_swap 24 -> 2 (free=7.57 GiB)；
+每步任务数 48 → 4、H2D 字节 6644 MB → 554 MB、DMA 2322 ms → 178 ms。
+晋升上限受 offloader 契约约束（至少保留 2 块换出），因此该卡在 512 下收敛到 swap=2。
+证据与边界见 [Block Swap 进程内水位调优（CMP 50HX 第 3 轮）](../findings/block_swap_auto_tuner_50hx_20261019.md)。

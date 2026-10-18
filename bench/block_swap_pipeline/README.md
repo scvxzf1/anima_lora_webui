@@ -26,6 +26,15 @@
 .venv/bin/python -m bench.block_swap_pipeline.run_probe --gpu 0 --steps 4 --blocks-to-swap 12 --label swap12
 ```
 
+常用开关：
+
+| 开关 | 作用 |
+| --- | --- |
+| `--blocks-to-swap N` | 固定水位 |
+| `--block-swap-auto --margin-mib N` | 打开进程内水位调优（`block_swap_auto`），并在 `result.json` 的 `block_swap_auto` 字段回收日志行 |
+| `--restore-mode foreach\|slab` | 固定恢复模式，做 A/B |
+| `--side 256\|512` | 分辨率；非默认分辨率使用独立工作区目录（`workspace-<side>`）避免缓存互串 |
+
 产物：`<run>/result.json`（原始 metrics）、`<run>/train.log`、`<run>/config.runtime.toml`、profile JSONL。
 
 ## 指标口径

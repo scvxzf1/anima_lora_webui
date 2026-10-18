@@ -1006,6 +1006,23 @@ def add_dit_training_arguments(parser: argparse.ArgumentParser):
         default=None,
         help="[EXPERIMENTAL] Sets the number of blocks to swap during the forward and backward passes.",
     )
+    parser.add_argument(
+        "--block_swap_auto",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "[EXPERIMENTAL] In-process water-level tuner: after the first optimizer step, "
+            "promote swapped blocks to resident while keeping block_swap_vram_margin_mib "
+            "free. Only lowers blocks_to_swap; differs from the separate auto_block_swap "
+            "startup calibration."
+        ),
+    )
+    parser.add_argument(
+        "--block_swap_vram_margin_mib",
+        type=int,
+        default=400,
+        help="[EXPERIMENTAL] Free-VRAM margin kept by --block_swap_auto (default 400 MiB).",
+    )
     from library.training.auto_block_swap.config import add_arguments as add_auto_swap_arguments
 
     add_auto_swap_arguments(parser)

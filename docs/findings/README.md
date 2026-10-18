@@ -61,6 +61,7 @@
 
 ## Runtime 和能力边界
 
+- [Block Swap 进程内水位调优（CMP 50HX 第 3 轮）](block_swap_auto_tuner_50hx_20261019.md)：`--block_swap_auto` 在第一个优化器步后按空闲显存晋升常驻块，512 真机从 24 自动收敛到 2（H2D 6644 → 554 MB/步、任务窗口 2118 → ~720 ms）；与固定 swap=5 对照后确认 swap≤5 时步时已转为计算受限，因此需要停止条件。含 10 项单测与未验证边界。
 - [Block Swap 恢复链已到链路极限（CMP 50HX 第 2 轮）](block_swap_restore_link_limit_50hx_20261019.md)：纯拷贝微基准测出本机链路天花板 3.14 GB/s（pinned，分块粒度无关）；训练内 profiler 加字节计量后实测每步 3321.9 MB / 24 任务，foreach 达 3.02 GB/s、slab 达 3.12 GB/s（96% / 99% 链路），建议显式用 `block_swap_restore_mode=slab`（DMA +3.3%、步时 −4%）；据此确认后续杠杆只剩减少搬运字节（auto swap / int8）。
 - [Block Swap 宏观流水线基线（CMP 50HX）](block_swap_pipeline_baseline_50hx_20261019.md)：同一工作区 swap=0 vs swap=12 A/B（swap 代价 ≈ +0.45~0.49 s/步），profiler 实测 24 任务/步(=2S)、重复恢复 0 次、exposed_wait ≈ 1.6 ms/步、单块 H2D 有效带宽 ≈1.3~2.3 GB/s；据此否定"折返点重复搬运"前提，把 P0 修正为压缩串行 DMA 链。含复现命令、边界与未证明项。
 - [模型身份缓存重建 · CMP 50HX 真机热测试](cache_identity_hot_50hx_20261018.md)：三条真机热测试（VAE latent / Anima TE / 真实 train.py 启动）。覆盖身份一致复用、路径变化重建、就地 mtime 变化重建、旧缓存默认复用与严格模式重建、换 VAE 丢弃陈旧分辨率 key、消费端匹配接受/不匹配拒绝，以及训练启动路径上的 fail-closed 拒绝与重建恢复（干净启动 10 步、0.81~0.88 s/步、max allocated 4.44 GiB）。另记录本轮暴露的两个无关阻塞：flash 可用性未按设备能力判断（已加守卫并补测试）、int8 block-swap 参数与 Anima/Krea-2 enable_block_swap 签名不匹配（未修，blocks_to_swap>0 会 TypeError）。数据集为 2 图 / 512×512，非吞吐基准。

@@ -110,17 +110,18 @@ def _run(cmd: list[str], *, gpu: int, log: Path) -> int:
     return proc.returncode
 
 
-def _write_images(image_dir: Path) -> None:
+def _write_images(image_dir: Path, side: int = IMAGE_SIZE[0]) -> None:
     from PIL import Image
 
+    size = (side, side)
     image_dir.mkdir(parents=True, exist_ok=True)
     for idx in range(2):
         pixels = [
             ((x * 7 + idx * 31) % 256, (y * 5 + idx * 17) % 256, ((x + y) * 3) % 256)
-            for y in range(IMAGE_SIZE[1])
-            for x in range(IMAGE_SIZE[0])
+            for y in range(size[1])
+            for x in range(size[0])
         ]
-        img = Image.new("RGB", IMAGE_SIZE)
+        img = Image.new("RGB", size)
         img.putdata(pixels)
         img.save(image_dir / f"img{idx}.png")
         (image_dir / f"img{idx}.txt").write_text(
@@ -128,13 +129,15 @@ def _write_images(image_dir: Path) -> None:
         )
 
 
-def _ensure_workspace(workspace: Path, sources: dict, *, gpu: int, dtype: str) -> dict:
+def _ensure_workspace(
+    workspace: Path, sources: dict, *, gpu: int, dtype: str, side: int = IMAGE_SIZE[0]
+) -> dict:
     """Create (once) the dataset + a reusable cache workspace."""
     image_dir = workspace / "images"
     cache_dir = workspace / "cache"
     cache_dir.mkdir(parents=True, exist_ok=True)
     if not (image_dir / "img0.png").exists():
-        _write_images(image_dir)
+        _write_images(image_dir, side)
 
     te_copy = workspace / "te.safetensors"
     vae_copy = workspace / "vae.safetensors"
@@ -144,7 +147,7 @@ def _ensure_workspace(workspace: Path, sources: dict, *, gpu: int, dtype: str) -
 
     dataset_toml = workspace / "dataset.toml"
     dataset_toml.write_text(
-        DATASET_TOML.format(image_dir=image_dir, cache_dir=cache_dir, side=IMAGE_SIZE[0]),
+        DATASET_TOML.format(image_dir=image_dir, cache_dir=cache_dir, side=side),
         encoding="utf-8",
     )
 
@@ -325,6 +328,9 @@ def main() -> int:
     parser.add_argument("--root", default=DEFAULT_ROOT)
     parser.add_argument("--workspace", default=None)
     parser.add_argument("--label", default=None)
+    parser.add_argument("--side", type=int, default=IMAGE_SIZE[0])
+    parser.add_argument("--block-swap-auto", action="store_true")
+    parser.add_argument("--margin-mib", type=int, default=400)
     parser.add_argument(
         "--restore-mode",
         default=None,
@@ -333,14 +339,15 @@ def main() -> int:
     args = parser.parse_args()
 
     sources = {"dit": args.dit, "te": args.te, "vae": args.vae}
-    workspace = Path(args.workspace or (Path(args.root) / "workspace"))
+    default_workspace = f"workspace-{args.side}" if args.side != IMAGE_SIZE[0] else "workspace"
+    workspace = Path(args.workspace or (Path(args.root) / default_workspace))
     workspace.mkdir(parents=True, exist_ok=True)
     label = args.label or f"swap{args.blocks_to_swap}"
     run_dir = Path(args.root) / f"{time.strftime('%Y%m%d-%H%M%S')}-{label}"
     (run_dir / "train_out").mkdir(parents=True, exist_ok=True)
 
     print(f"[probe] workspace={workspace}", flush=True)
-    _ensure_workspace(workspace, sources, gpu=args.gpu, dtype=args.dtype)
+    _ensure_workspace(workspace, sources, gpu=args.gpu, dtype=args.dtype, side=args.side)
 
     runtime = run_dir / "config.runtime.toml"
     dataset_toml = workspace / "dataset.toml"
@@ -358,6 +365,12 @@ def main() -> int:
         + (
             f'block_swap_restore_mode = "{args.restore_mode}"\n'
             if args.restore_mode
+            else ""
+        )
+        + (
+            "block_swap_auto = true\n"
+            f"block_swap_vram_margin_mib = {args.margin_mib}\n"
+            if args.block_swap_auto
             else ""
         ),
         encoding="utf-8",
@@ -377,11 +390,18 @@ def main() -> int:
         if profile.exists()
         else {"error": "profile missing", "train": parse_step_time(run_dir / "train.log")}
     )
+    auto_lines = [
+        line for line in (run_dir / "train.log").read_text(
+            encoding="utf-8", errors="replace"
+        ).splitlines()
+        if "block_swap_auto" in line
+    ]
     result = {
         "label": label,
         "args": vars(args),
         "train_returncode": rc,
         "metrics": metrics,
+        "block_swap_auto": auto_lines[-3:],
     }
     (run_dir / "result.json").write_text(json.dumps(result, indent=2, ensure_ascii=False), encoding="utf-8")
     print(json.dumps(metrics.get("mean", metrics), indent=2, ensure_ascii=False), flush=True)
