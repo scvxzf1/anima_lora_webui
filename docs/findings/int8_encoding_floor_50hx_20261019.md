@@ -37,9 +37,17 @@
 | **真实 Anima block 25** | 8.864e-05 | +0.81% | +2.01% |
 
 即使把 scale 选择完全放开（`wide`，包含会饱和 70% 元素的激进档），收益也只有 **≤2.01%**。
-原因很直接：per-row 对称 int8 的相对误差已经贴着均匀量化的噪声地板
-（step = amax/127，误差 ≈ step²/12，即 ≈5.2e-5 相对量级），离群值只影响它自己那一行，
-而裁剪会把离群值变成饱和误差，多数行并不划算（行内 L2 搜索自动只挑划算的行）。
+原因很直接：per-row 对称 int8 已经贴着均匀量化的噪声地板。下表把**本文件用的口径**与
+训练运行时用的口径对齐（第 6 轮补充，符号不要混）：
+
+| 口径 | 公式 | 纯高斯行 | 真实 Anima block 0 |
+| --- | --- | --- | --- |
+| 本文件 `相对误差`（归一化 MSE） | Σ(r−w)²/Σw² | 5.65e-05 | 3.72e-04 |
+| 运行时 `stats["relative_l2"]`（相对 L2 范数） | ‖r−w‖/‖w‖ = 上一行开方 | 7.5e-03（0.75%） | 1.93e-02（1.93%） |
+| 解析地板 | (amax/σ)/(127·√12) | 0.75% | 1.93% |
+
+即真实 DiT 行的权重 int8 相对 L2 误差就是 **0.4%~2%** 这一量级（amax/σ 越大越差），
+不是 0.005% 那种量级；本文件表格里的数字是它的**平方**。
 
 **结论：原始 P2 里"均方量化误差下降 60%~80%"的说法在 per-row 缩放下不成立。**
 
@@ -87,3 +95,57 @@
 .venv/bin/python -m bench.block_swap_int8.encode_error --real-limit 3
 timeout 200 .venv/bin/python -m pytest -q tests/test_int8_clip_encode.py
 ```
+## 第 6 轮补充：端到端归因（int8 等价性探针）
+
+用现成的 `scripts/experiments/int8_blockswap_equivalence_probe.py`（合成 Anima 形状 block，
+bf16 与 int8 两条路径跑同一步）在 50HX 上实跑：
+
+```bash
+CUDA_VISIBLE_DEVICES=0 .venv/bin/python scripts/experiments/int8_blockswap_equivalence_probe.py \
+    --device cuda --num-blocks 6 --blocks-to-swap 3 --repeat-steps 3 \
+    --out output/bench/block_swap_int8/int8-equivalence-probe.json
+```
+
+| 指标 | 实测 | 说明 |
+| --- | --- | --- |
+| `gate_pass` | true | 探针自带门槛（loss 5% / output 3%）通过 |
+| `loss_rel_delta` | **0.108%**（3.2261 → 3.2296） | 6 块中换 3 块的整步 loss 相对偏移 |
+| `output_rel_l2` / `output_cosine` | 0.62% / 0.999982 | block 输出偏差 |
+| `grad_norm_rel_delta` | 0.19%（9.510 → 9.528） | 梯度范数偏差 |
+| `int8_relative_l2_by_block` | 0.366%~0.378% | **权重** int8 相对 L2（范数口径） |
+| `int8_master_ratio_vs_bf16` | **0.566** | int8 master 字节数占比（toy 小张量；真实块约 0.50） |
+| `int8_quantized_tensors` | 42 | 走 int8 的张量数 |
+
+**逐模块核对**（同 seed 重建 toy block，逐个模块跑 `_capture_cpu_master(transfer_dtype="int8")`）：
+
+| 模块 | 形状 | 相对 L2 | 单元素最大误差 | 权重范数 |
+| --- | --- | --- | --- | --- |
+| self_attn.qkv_proj | (48,16) | 3.60e-03 | 9.73e-04 | 4.067 |
+| cross_attn.kv_proj | (32,16) | 3.57e-03 | 9.81e-04 | 3.229 |
+| mlp.layer1 | (64,16) | 3.69e-03 | 9.77e-04 | 4.469 |
+| mlp.layer2 | (16,64) | 3.88e-03 | 4.90e-04 | 2.308 |
+| adaln_up_mlp / adapter | (16,16) | 0（未走 int8） | — | — |
+
+`nn.Linear` 默认初始化是 U(−1/√16, 1/√16)，amax = 0.25，理论单元素最大误差
+= amax/(2·127) = **9.84e-04**，与实测 9.73e-04~9.81e-04 吻合 → **运行时编码器与本文档测的
+是同一个 per-row amax/127 编码，数值链条没有异常**。
+
+### 归因结论
+
+1. 1 Byte/元素 的权重误差就是 0.4%~2%（相对 L2 范数），这是 8 bit 均匀格 + per-row amax 的
+   固有地板，与 3A 是否裁剪无关。
+2. toy 场景下 0.37% 的权重误差换来 **0.108% 的整步 loss 偏移**；原始材料里 MOSS 的 1.09%
+   偏移比它大一个数量级，但权重误差量级相同，因此"偏移由 1 Byte 量化本身贡献"这一解释
+   是自洽的；真正要确认还需要在 MOSS/Anima 真权重+真训练步上复测。
+3. **目标里的"把 ~1.09% 压到 <0.2%"在 1 Byte/元素下不可达**：需要约 5.5× 的误差下降，
+   而固定 NF8 对真实行的收益是误差平方降 13.7%~64.3%（范数降约 7%~40%），
+   连 per-row 拟合码本（lloyd 上界 28%~91% 平方）也不到 5.5×。
+4. 因此 P2 的合理交付是：**int8 作为"省一半 PCIe 流量、附带 0.1%~1% 量级 loss 偏移"的显式
+   选项**，并把 NF8 作为可选的按行择优编码；若要求"无损默认"，需要 >1 Byte/元素（如 12 bit），
+   那是流量与精度的另一个取舍，需要用户决定，而不是编码技巧能解决的。
+
+### 本轮新增边界
+
+- toy block 只有 6 块 / dim=16，与真实 Anima(42 块) 的误差累积规模不同，**不能外推 loss 偏移数值**。
+- MOSS 权重不在本机，原始的 1.09% 尚未复现；本文件只给出量级自洽性与可达性论证。
+- 探针的 `repeat_steps=3`，未覆盖长训练下的漂移。
