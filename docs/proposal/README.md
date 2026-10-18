@@ -9,6 +9,7 @@
 
 | 文档 | 状态 | 说明 |
 | --- | --- | --- |
+| [block_swap_macro_pipeline_plan.md](block_swap_macro_pipeline_plan.md) | 活跃 / 第 1 轮基线完成 | Block Swap 宏观流水线 P0'–P3 开发计划；第 1 轮真机 A/B 修正了折返点前提，P0 改为压缩串行 DMA 链 |
 | [training_help_refactor_plan_20261005.md](training_help_refactor_plan_20261005.md) | 活跃 / 待实施 | 训练字段帮助的内容契约、建议优先展示、默认恢复与相关导航，P0–P5 分阶段迁移和验收 |
 | [qwen_image_2_1_90hx_optimization_20260927.md](qwen_image_2_1_90hx_optimization_20260927.md) | 实验 / 阶段 3 开发中 | INT8 首轮热测、32-head 与 GPU wait 证据修正、PCIe 传输预算及结构性优化排序 |
 | [qwen_image_2_1_training_block_stage3_20260927.md](qwen_image_2_1_training_block_stage3_20260927.md) | 开发中 | 冻结 MLP/QKV 融合、独立 LoRA 梯度与保存契约、激活预算及分段重算验收 |
