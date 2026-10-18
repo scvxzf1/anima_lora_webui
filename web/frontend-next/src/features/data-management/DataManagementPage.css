@@ -1,0 +1,929 @@
+.data-management-page {
+  max-width: 1320px;
+  margin: 0 auto;
+  padding: 24px clamp(16px, 3vw, 38px) 72px;
+  color: var(--ink);
+}
+
+.data-management-heading,
+.data-management-section-heading,
+.data-management-toolbar,
+.data-management-pathbar,
+.data-management-entry,
+.data-management-entry-main,
+.data-management-entry-meta,
+.data-management-plan-summary,
+.data-management-plan-actions {
+  display: flex;
+  align-items: center;
+}
+
+.data-management-heading,
+.data-management-section-heading {
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.data-management-heading {
+  padding: 0 0 18px;
+  border-bottom: 1px solid var(--line);
+}
+
+.data-management-heading h1 {
+  margin: 0;
+  letter-spacing: -0.02em;
+  font-size: clamp(22px, 2.2vw, 28px);
+  line-height: 1.2;
+}
+
+.data-management-heading p {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.data-management-toolbar {
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.data-management-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 1 1 280px;
+  min-width: 220px;
+  max-width: 560px;
+  color: var(--muted);
+}
+
+.data-management-search input {
+  width: 100%;
+  height: 36px;
+  padding: 7px 11px 7px 34px;
+}
+
+.data-management-search svg {
+  position: absolute;
+  left: 10px;
+  pointer-events: none;
+}
+
+.data-management-view-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.data-management-filter-group {
+  display: inline-flex;
+  align-items: stretch;
+  overflow: hidden;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.data-management-filter-group button {
+  min-height: 34px;
+  padding: 6px 11px;
+  border: 0;
+  border-right: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+  color: var(--muted);
+  box-shadow: none;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.data-management-filter-group button:last-child {
+  border-right: 0;
+}
+
+.data-management-filter-group button:hover:not(:disabled) {
+  background: var(--surface-subtle);
+  color: var(--ink);
+}
+
+.data-management-filter-group button.is-active {
+  background: var(--accent-soft);
+  color: var(--accent-hover);
+  font-weight: 600;
+}
+
+.data-management-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.data-management-sort select {
+  width: 158px;
+  height: 36px;
+  padding-top: 7px;
+  padding-bottom: 7px;
+  font-size: 12px;
+}
+
+.data-management-summary {
+  display: grid;
+  grid-template-columns: minmax(260px, 1.45fr) repeat(3, minmax(132px, 1fr));
+  gap: 10px;
+  margin: 18px 0 26px;
+}
+
+.data-management-storage-overview,
+.data-management-metric {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.data-management-storage-overview {
+  padding: 14px;
+}
+
+.data-management-storage-bar {
+  display: flex;
+  width: 100%;
+  height: 9px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--surface-subtle);
+  box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.06);
+}
+
+.data-management-storage-segment {
+  display: block;
+  min-width: 2px;
+  height: 100%;
+  transition: width 180ms ease;
+}
+
+.data-management-storage-legend {
+  display: flex;
+  gap: 7px 14px;
+  flex-wrap: wrap;
+  margin-top: 11px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.data-management-storage-legend span {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.data-management-storage-legend i {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  flex: 0 0 auto;
+  margin-right: 5px;
+  border-radius: 50%;
+}
+
+.data-management-metric {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 76px;
+  padding: 12px 14px;
+}
+
+.data-management-metric strong {
+  display: block;
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 18px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.data-management-metric span {
+  margin-top: 4px;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.data-management-section {
+  margin: 0 0 12px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.data-management-section-heading {
+  width: 100%;
+  min-height: 76px;
+  padding: 14px 16px;
+  border: 0;
+  border-bottom: 1px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+  box-shadow: none;
+}
+
+.data-management-section-heading:hover:not(:disabled) {
+  background: var(--surface-subtle);
+}
+
+.data-management-section-heading[aria-expanded="true"] {
+  border-bottom-color: var(--line);
+}
+
+.data-management-section-heading > div:first-child {
+  min-width: 0;
+  flex: 1 1 240px;
+}
+
+.data-management-section-heading h2 {
+  margin: 0;
+  overflow: hidden;
+  font-size: 15px;
+  font-weight: 650;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.data-management-root-path,
+.data-management-entry-path,
+.data-management-plan-path {
+  overflow: hidden;
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.data-management-root-path {
+  max-width: min(560px, 100%);
+  margin: 4px 0 0;
+}
+
+.data-management-root-meta,
+.data-management-entry-meta {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.data-management-root-meta {
+  justify-content: flex-end;
+  flex: 0 1 auto;
+  max-width: 48%;
+  text-align: right;
+}
+
+.data-management-root-meta > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.data-management-access-readonly,
+.data-management-access-write {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.data-management-access-readonly {
+  color: var(--muted);
+}
+
+.data-management-access-write {
+  color: var(--success);
+}
+
+.data-management-root-chevron {
+  flex: 0 0 auto;
+  color: var(--muted);
+  transition:
+    transform 160ms ease,
+    color 160ms ease;
+}
+
+.data-management-section-heading[aria-expanded="true"]
+  .data-management-root-chevron {
+  transform: rotate(90deg);
+  color: var(--accent);
+}
+
+.data-management-root-content {
+  min-width: 0;
+  padding: 0 16px 12px;
+}
+
+.data-management-pathbar {
+  gap: 7px;
+  min-width: 0;
+  margin: 10px 0 2px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.data-management-pathbar button {
+  min-height: 30px;
+  padding: 5px 8px;
+  white-space: nowrap;
+}
+
+.data-management-pathbar .data-management-entry-path {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.data-management-entry-list {
+  display: grid;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.data-management-entry {
+  justify-content: space-between;
+  gap: 14px;
+  min-width: 0;
+  min-height: 48px;
+  padding: 7px 0;
+  border-top: 1px solid var(--line);
+  box-sizing: border-box;
+}
+
+.data-management-entry:first-child {
+  border-top: 0;
+}
+
+.data-management-entry:hover {
+  background: var(--surface-subtle);
+}
+
+.data-management-entry-main {
+  min-width: 0;
+  flex: 1 1 auto;
+  gap: 8px;
+}
+
+.data-management-entry-main > svg {
+  flex: 0 0 auto;
+  color: var(--muted);
+}
+
+.data-management-entry-main > .data-management-entry-lock {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 24px;
+  flex: 0 0 18px;
+  color: var(--muted);
+}
+
+.data-management-entry-label {
+  display: grid;
+  min-width: 0;
+  flex: 1 1 auto;
+  gap: 1px;
+  overflow: hidden;
+  line-height: 1.35;
+}
+
+.data-management-entry-label strong,
+.data-management-entry-label span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.data-management-entry-label strong {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.data-management-entry-label span {
+  color: var(--muted);
+}
+
+.data-management-entry-open {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 4px;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+  box-shadow: none;
+}
+
+.data-management-entry-open strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.data-management-entry-open:hover,
+.data-management-entry-open:focus-visible {
+  color: var(--accent);
+}
+
+.data-management-entry-open svg {
+  flex: 0 0 auto;
+}
+
+.data-management-entry-meta {
+  display: grid;
+  grid-template-columns: minmax(96px, 1fr) 42px 66px 86px;
+  align-items: center;
+  gap: 10px;
+  width: min(390px, 40%);
+  min-width: 318px;
+  flex: 0 1 390px;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.data-management-entry-meta > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.data-management-entry-size {
+  display: grid;
+  gap: 3px;
+  justify-items: stretch;
+  min-width: 0;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+
+.data-management-entry-size-track {
+  display: block;
+  width: 100%;
+  height: 3px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--surface-subtle);
+  text-align: left;
+}
+
+.data-management-entry-size-track > span {
+  display: block;
+  height: 100%;
+  min-width: 0;
+  border-radius: inherit;
+  background: var(--accent);
+  opacity: 0.72;
+}
+
+.data-management-entry-kind {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.data-management-entry-status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  padding: 2px 6px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.data-management-entry-status.is-cleanable {
+  border-color: var(--success-line);
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+.data-management-entry-status.is-protected {
+  background: var(--surface-subtle);
+}
+
+.data-management-entry-meta > span:last-child {
+  color: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.data-management-entry-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 24px;
+  flex: 0 0 18px;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.data-management-entry-check input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+}
+
+.data-management-empty {
+  margin: 12px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.data-management-selection-bar {
+  position: sticky;
+  bottom: 14px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 18px;
+  padding: 10px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--surface) 94%, transparent);
+  box-shadow: var(--shadow-md);
+  backdrop-filter: blur(12px);
+}
+
+.data-management-floating-bar {
+  position: fixed;
+  left: 50%;
+  bottom: 20px;
+  z-index: 20;
+  width: min(620px, calc(100vw - 32px));
+  margin: 0;
+  transform: translateX(-50%);
+}
+
+.data-management-selection-bar p {
+  min-width: 0;
+  margin: 0 auto 0 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.data-management-selection-bar strong {
+  color: var(--ink);
+}
+
+.data-management-notice {
+  margin: 14px 0 0;
+  color: var(--success);
+  font-size: 12px;
+}
+
+.data-management-plan {
+  min-width: min(560px, 100%);
+  padding: 0 16px 16px;
+}
+
+.data-management-plan-intro {
+  margin: 16px 0 10px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.data-management-plan-summary {
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 10px 0;
+  border-block: 1px solid var(--line);
+  font-size: 12px;
+}
+
+.data-management-plan-summary strong {
+  color: var(--ink);
+}
+
+.data-management-plan-summary span {
+  color: var(--muted);
+}
+
+.data-management-plan-items,
+.data-management-plan-blocked {
+  max-height: 230px;
+  overflow: auto;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.data-management-plan-items li,
+.data-management-plan-blocked li {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 12px;
+}
+
+.data-management-plan-items li {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.data-management-plan-items li > strong,
+.data-management-plan-items li > span,
+.data-management-plan-items li > small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.data-management-plan-items small,
+.data-management-plan-blocked span {
+  color: var(--muted);
+}
+
+.data-management-plan h3 {
+  margin: 18px 0 7px;
+  font-size: 13px;
+}
+
+.data-management-plan-blocked {
+  color: var(--danger);
+}
+
+.data-management-plan-confirm {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 16px;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.data-management-plan-confirm input {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  margin-top: 1px;
+}
+
+.data-management-plan-actions {
+  justify-content: flex-end;
+  gap: 9px;
+  margin-top: 16px;
+}
+
+.data-management-plan-error {
+  margin: 12px 0 0;
+  color: var(--danger);
+  white-space: pre-wrap;
+}
+
+.data-management-result {
+  margin: 14px 0 0;
+  padding: 10px 12px;
+  border: 1px solid var(--danger-line);
+  border-left-width: 3px;
+  border-radius: var(--radius-sm);
+  background: var(--danger-soft);
+  color: var(--danger);
+  font-size: 12px;
+}
+
+.data-management-danger {
+  color: var(--danger) !important;
+}
+
+.data-management-page .sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (max-width: 980px) {
+  .data-management-summary {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .data-management-storage-overview {
+    grid-column: 1 / -1;
+  }
+
+  .data-management-root-meta {
+    max-width: 56%;
+  }
+}
+
+@media (max-width: 760px) {
+  .data-management-page {
+    padding-inline: 14px;
+  }
+
+  .data-management-toolbar {
+    align-items: stretch;
+  }
+
+  .data-management-search {
+    flex-basis: 100%;
+    max-width: none;
+  }
+
+  .data-management-view-controls {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .data-management-filter-group {
+    flex: 1 1 auto;
+  }
+
+  .data-management-filter-group button {
+    flex: 1 1 0;
+    padding-inline: 8px;
+  }
+
+  .data-management-sort {
+    flex: 0 0 auto;
+  }
+
+  .data-management-section-heading {
+    align-items: flex-start;
+    min-height: 0;
+    padding: 13px 12px;
+  }
+
+  .data-management-section-heading > div:first-child {
+    flex-basis: calc(100% - 28px);
+  }
+
+  .data-management-root-meta {
+    justify-content: flex-start;
+    flex: 1 1 100%;
+    max-width: calc(100% - 28px);
+    padding-left: 2px;
+    text-align: left;
+  }
+
+  .data-management-root-meta > span:nth-child(n + 3) {
+    display: none;
+  }
+
+  .data-management-root-chevron {
+    position: absolute;
+    right: 12px;
+    margin-top: 2px;
+  }
+
+  .data-management-section-heading {
+    position: relative;
+  }
+
+  .data-management-root-content {
+    padding-inline: 12px;
+  }
+
+  .data-management-entry {
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .data-management-entry-meta {
+    grid-template-columns: minmax(76px, 1fr) 58px 78px;
+    width: 100%;
+    min-width: 0;
+    flex: 0 0 100%;
+    padding-left: 26px;
+    text-align: left;
+  }
+
+  .data-management-entry-meta > span:last-child {
+    display: none;
+  }
+
+  .data-management-entry-meta .data-management-entry-status {
+    justify-self: start;
+  }
+
+  .data-management-entry {
+    flex-wrap: wrap;
+  }
+
+  .data-management-selection-bar {
+    align-items: stretch;
+    flex-wrap: wrap;
+  }
+
+  .data-management-floating-bar {
+    bottom: 12px;
+    width: min(620px, calc(100vw - 24px));
+  }
+
+  .data-management-selection-bar p {
+    flex: 1 1 100%;
+  }
+
+  .data-management-selection-bar button {
+    flex: 1 1 auto;
+  }
+
+  .data-management-plan {
+    min-width: 0;
+    padding-inline: 12px;
+  }
+}
+
+@media (max-width: 520px) {
+  .data-management-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .data-management-storage-overview {
+    grid-column: auto;
+  }
+
+  .data-management-metric {
+    min-height: 64px;
+  }
+
+  .data-management-view-controls {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .data-management-sort {
+    justify-content: space-between;
+  }
+
+  .data-management-sort select {
+    flex: 1 1 auto;
+    width: auto;
+  }
+
+  .data-management-root-meta {
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  .data-management-entry-meta {
+    grid-template-columns: minmax(72px, 1fr) auto auto;
+    gap: 7px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .data-management-storage-segment,
+  .data-management-root-chevron {
+    transition: none;
+  }
+}

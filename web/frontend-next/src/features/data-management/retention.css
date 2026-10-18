@@ -1,0 +1,435 @@
+.retention-layout {
+  display: grid;
+  grid-template-columns: minmax(340px, 44%) minmax(0, 1fr);
+  gap: 18px;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.retention-pane {
+  min-height: 0;
+}
+
+.retention-pane.is-form {
+  display: grid;
+  gap: 14px;
+  align-content: start;
+  overflow-y: auto;
+  padding-right: 6px;
+}
+
+.retention-pane.is-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow: hidden;
+}
+
+.retention-scope {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-subtle);
+  font-size: 13px;
+}
+
+.retention-scope > span {
+  color: var(--muted);
+}
+
+.retention-form {
+  display: grid;
+  gap: 14px;
+}
+
+.retention-form fieldset {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  min-width: 0;
+}
+
+.retention-form legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.retention-field {
+  display: grid;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.retention-field input,
+.retention-field select {
+  width: 100%;
+  max-width: 420px;
+  color: var(--ink);
+}
+
+.retention-radios {
+  display: grid;
+  gap: 6px;
+}
+
+.retention-radio,
+.retention-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.retention-radio input[type="radio"],
+.retention-check input[type="checkbox"] {
+  flex: none;
+  margin: 0;
+}
+
+.retention-radio input[type="number"] {
+  width: 64px;
+  margin: 0 2px;
+  color: var(--ink);
+}
+
+.retention-note {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.retention-warn {
+  margin: 0;
+  color: var(--danger);
+  font-size: 12px;
+}
+
+.retention-error {
+  margin: 0;
+  color: var(--danger);
+  font-size: 13px;
+}
+
+.retention-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.retention-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding-bottom: 2px;
+}
+
+.retention-toolbar-meta {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.retention-summary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-subtle);
+  font-size: 13px;
+  flex: none;
+}
+
+.retention-summary .is-delete,
+.retention-group-meta .is-delete {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+.retention-pending {
+  color: var(--muted);
+}
+
+.retention-excluded-tag {
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.retention-blocked {
+  border: 1px solid var(--danger-line);
+  border-radius: var(--radius-sm);
+  background: var(--danger-soft);
+  padding: 10px 12px;
+  font-size: 12px;
+  flex: none;
+}
+
+.retention-blocked > p {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 6px;
+  color: var(--danger);
+  font-weight: 600;
+}
+
+.retention-blocked ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 4px;
+  max-height: 120px;
+  overflow: auto;
+}
+
+.retention-blocked li {
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+  overflow-wrap: anywhere;
+}
+
+.retention-blocked small {
+  color: var(--muted);
+  flex: none;
+}
+
+.retention-groups {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+  flex: 1 1 auto;
+  min-height: 140px;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.retention-group {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.retention-group > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  cursor: pointer;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.retention-group > summary::marker {
+  color: var(--muted);
+}
+
+.retention-group.is-excluded > summary {
+  opacity: 0.72;
+}
+
+.retention-group-check {
+  flex: none;
+  margin: 0;
+}
+
+.retention-group-path {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.retention-group-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 12px;
+  flex: none;
+}
+
+.retention-items {
+  margin: 0;
+  padding: 0 12px 10px;
+  list-style: none;
+  display: grid;
+  gap: 2px;
+}
+
+.retention-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 0;
+  border-top: 1px solid var(--line);
+  font-size: 12px;
+}
+
+.retention-item-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--success);
+}
+
+.retention-item.is-delete .retention-item-dot {
+  background: var(--danger);
+}
+
+.retention-item-main {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.retention-item-main strong {
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.retention-item-main small {
+  color: var(--muted);
+}
+
+.retention-item.is-delete .retention-item-main strong {
+  color: var(--danger);
+}
+
+.retention-item-role {
+  flex: none;
+  color: var(--muted);
+}
+
+.retention-item-size {
+  flex: none;
+  min-width: 72px;
+  text-align: right;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.retention-footer {
+  flex: none;
+  display: grid;
+  gap: 8px;
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+  background: var(--surface);
+}
+
+.retention-confirm {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.retention-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.retention-danger {
+  color: var(--danger);
+  border-color: var(--danger-line);
+}
+
+.retention-danger:disabled {
+  color: var(--muted);
+  border-color: var(--line);
+}
+
+.data-management-retention-open {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.data-management-heading-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.command-backdrop {
+  overscroll-behavior: contain;
+}
+
+.command-dialog.is-wide {
+  width: min(1180px, 100%);
+  height: min(880px, calc(100dvh - 40px));
+  max-height: calc(100dvh - 40px);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.command-dialog.is-wide > header {
+  flex: none;
+}
+
+@media (max-width: 900px) {
+  .command-dialog.is-wide {
+    height: auto;
+    overflow-y: auto;
+  }
+
+  .retention-layout {
+    grid-template-columns: minmax(0, 1fr);
+    overflow: visible;
+  }
+
+  .retention-pane.is-form {
+    overflow: visible;
+    padding-right: 0;
+  }
+
+  .retention-pane.is-preview {
+    overflow: visible;
+  }
+
+  .retention-groups {
+    max-height: 360px;
+    min-height: 120px;
+  }
+}
+
+@media (max-width: 720px) {
+  .retention-item-role,
+  .retention-group-meta > span:first-child {
+    display: none;
+  }
+}
