@@ -1,0 +1,83 @@
+# MOSS-Image ordinary T2I plain LoRA — token-budget tier `768`.
+#
+# Self-contained variant of configs/methods/moss_image_lora.toml. The ONLY
+# differences from the base method config are:
+#   resolution      1024 -> 768
+#   min_bucket_reso  672 -> 504   (0.75 x, keeps the scaled table intact)
+#   max_bucket_reso 1536 -> 1152  (0.75 x)
+#   output_name            -> moss_image_lora_t768
+#
+# Rationale and measured (or pending) numbers:
+#   docs/findings/moss_image_token_budget_tiers_20261017.md
+# tests/test_moss_image_token_tiers.py enforces the diff whitelist above, so
+# this file cannot silently drift from the base config.
+
+model_family = "moss_image"
+pretrained_model_name_or_path = "models/moss_image/MOSS-Image-DiT"
+qwen3 = "models/moss_image/MOSS-Image-TextEncoder-BF16"
+vae = "models/moss_image/MOSS-Image-VAE"
+moss_te_quantization = "nf4"
+
+network_module = "networks.lora_anima"
+network_train_unet_only = true
+network_dim = 32
+network_alpha = 32
+learning_rate = 5e-5
+max_train_epochs = 3
+output_name = "moss_image_lora_t768"
+mixed_precision = "bf16"
+base_compute = "bf16"
+no_half_vae = true
+attn_mode = "torch"
+gradient_checkpointing = true
+selective_checkpoint = "off"
+cpu_offload_checkpointing = false
+unsloth_offload_checkpointing = false
+torch_compile = false
+compile_dynamic_seq = false
+compile_seq_bands = false
+# Initial tuning point only: 0 disables swapping; valid 0..40, batch size 1.
+blocks_to_swap = 20
+block_swap_transfer_dtype = "bf16"
+block_swap_restore_mode = "foreach"
+train_batch_size = 1
+use_vae_cache = true
+use_text_cache = true
+cache_llm_adapter_outputs = false
+max_token_length = 4096
+caption_dropout_rate = 0.0
+use_shuffled_caption_variants = false
+weighted_captions = false
+masked_loss = false
+timestep_sampling = "uniform"
+discrete_flow_shift = 1.0
+weighting_scheme = "none"
+p2_gamma = 0.0
+loss_type = "l2"
+checkpointing_epochs = 1
+checkpointing_last_n_epochs = 2
+sample_sampler = "euler"
+use_moe_style = false
+route_per_layer = false
+router_source = "none"
+use_ortho = false
+use_timestep_mask = false
+
+[[datasets]]
+# `resolution` rescales the canonical 24-entry constant-token table:
+#   scale = resolution / 1024
+# min/max must be scaled with it, otherwise the table is over-filtered.
+resolution = 768
+batch_size = 1
+caption_extension = ".txt"
+enable_bucket = true
+min_bucket_reso = 504
+max_bucket_reso = 1152
+bucket_reso_steps = 64
+bucket_no_upscale = true
+caption_dropout_rate = 0.0
+
+[[datasets.subsets]]
+image_dir = "{resized_image_dir}"
+cache_dir = "{lora_cache_dir}"
+num_repeats = 1

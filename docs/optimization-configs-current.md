@@ -36,8 +36,12 @@ configs/base.toml
 | 配置名 | 所在位置 | 作用 | 默认值/候选值 | 适用场景 | 风险或副作用 | UI 暴露 |
 | --- | --- | --- | --- | --- | --- | --- |
 | `blocks_to_swap` | `configs/base.toml`、`configs/presets.toml`、方法/GUI 变体、`train.py` | 把 DiT frozen block 在 CPU/GPU 间交换，降低 GPU 驻留显存 | base 未设显式值；`default=0`；`low_vram_blockswap=8`；`balanced_16g=12`；`graft=20`；LoKr 快捷为 `23` | 16GB/低显存训练、block swap 实验 | 训练变慢；不能与 `cpu_offload_checkpointing`、`unsloth_offload_checkpointing`、Soft Tokens、`functional_loss_weight>0` 同用 | 是，含快捷按钮 |
-| `block_swap_transfer_dtype` | `configs/base.toml`、`train.py`、WebUI catalog | block swap frozen base 权重的 CPU master/传输精度 | 默认 `bf16`；候选 `bf16`、`fp8_e4m3`、`int8` | block swap 传输带宽实验、显存极度紧张时减传输量 | `fp8_e4m3`/`int8` 会量化 frozen base 权重；int8 数值等价已验证（对称 per-row，loss delta ≤0.059%），但端到端被 restore 调度/显存开销抵消，**不建议默认开**（见 `docs/findings/blockswap_baseline_20260806.md` 方向4） | 是 |
+| `block_swap_transfer_dtype` | `configs/base.toml`、`train.py`、`library/training/moss_compat.py`、WebUI catalog | block swap frozen base 权重的 CPU master/传输精度 | 默认 `bf16`；候选 `bf16`、`fp8_e4m3`、`int8` | block swap 传输带宽实验、显存极度紧张时减传输量 | `fp8_e4m3`/`int8` 会量化 frozen base 权重；MOSS 上 int8 现在可通过兼容门禁，但会打印实验性 WARNING；CMP 50HX 实测逐 step loss 偏移 0.3%~2.0%，**不建议默认开**（见 `docs/findings/moss_image_int8_blockswap_diagnosis_20261018.md`） | 是 |
 | `block_swap_restore_mode` | `configs/base.toml`、`train.py`、WebUI catalog | block swap restore 阶段的 H2D 拷贝布局 | 默认 `slab`；候选 `foreach`、`slab` | 高带宽卡上减少小拷贝调度 | slab 把同 slot 多个 weight 合并成一段连续 H2D；int8 传输或混合 dtype 时自动回退 foreach；RTX 3080 基线每块约快 0.7ms | 是 |
+| `block_swap_int8_restore_mode` | `configs/base.toml`、`train.py`、`library/runtime/block_swap_config.py`、`library/runtime/offloading.py`、WebUI catalog | int8 master 的恢复方式（仅 `block_swap_transfer_dtype=int8` 时生效） | 默认 `fused`；候选 `fused`、`copy`、`reuse_storage`、`direct_bind`（别名 `single_kernel`） | 带宽受限链路（PCIe Gen1 等）上降低反量化开销与临时显存 | `fused` 用单条 `torch.mul(int8, fp32, out=half)` 直写 slot，无 fp32/fp16 临时量，目标张量非连续时直接报错而非静默写副本；CMP 50HX 实测 2.3986→1.9740 s/步、reserved 9.16→7.21 GiB；算子级逐位等价已验证，但 MOSS int8 相对未量化路径的逐 step loss 偏移为 0.3%~2.0%（见 `docs/findings/moss_image_int8_blockswap_diagnosis_20261018.md`） | 是 |
+| `block_swap_int8_staging_ring` | `configs/base.toml`、`train.py`、`library/runtime/block_swap_config.py`、WebUI catalog | `fused` 恢复使用的 staging 缓冲数量，即显存↔速度置换器 | 默认 `2`；`0`=每换出块一份（swap × 48 MiB，最快）；`1`=全局一份（48 MiB，最省）；`N`=N 份共享 | 显存卡在刀刃时压占用、显存富裕时换速度 | `0` 在 swap=10 实测 1.1204→1.0818 s/步（+3.5%）但占 swap × 48 MiB；`1`/2 是 swap=6/7 能跑起来的准入条件（2 份 9732 MiB vs 每块独立约 9932 MiB 超 9788 MiB 上限）。env 回退 `ANIMA_BLOCK_SWAP_INT8_STAGING_RING` | 是 |
+| `block_swap_int8_dual_stream` | `configs/base.toml`、`train.py`、`library/runtime/block_swap_config.py`、WebUI catalog | 把 `fused` 恢复拆成纯 DMA 流 + `priority=-1` 反量化流 | 默认 `false` | 需要稳定长训 ETA 或机器有后台负载 | 吞吐不变（swap=20 中位 2.0116 vs 单流 2.0243 s），但逐 step 极差从最高 1.59 s 收敛到约 0.015 s；双流自带 2 份 48 MiB 缓冲并忽略 `staging_ring`。env 回退 `ANIMA_BLOCK_SWAP_INT8_DUAL_STREAM` | 是 |
+| `block_swap_int8_restore_chunk_rows` | `configs/base.toml`、`train.py`、`library/runtime/block_swap_config.py`、WebUI catalog | `reuse_storage` 模式每次处理的行数 | 默认 `0`（整块） | 压低非融合模式的瞬时显存峰值 | 行数过小会增加 kernel 次数并变慢。env 回退 `ANIMA_BLOCK_SWAP_INT8_RESTORE_CHUNK_ROWS` | 是 |
 | `ANIMA_BLOCK_SWAP_PREFETCH_DEPTH` | `library/runtime/block_swap_config.py`、`library/runtime/offloading.py` | 块交换预取深度 K（env 变量，兼容旋钮） | 默认 `1`；`>1` 被忽略（训练/推理统一钳 `1`） | 无（已停用） | K≥2 与该设计「resident slot 数恒定、`to_cuda` 由 `to_cpu` 唯一决定」根本冲突：更深的 lead 会把尚未运行的块当退役块 park 到 CPU，forward 读到 CPU 权重（`mat2 is on cpu`，真实训练 fwd+bwd 必崩）。零显存代价下无正确 K≥2，已钳 `1`（见 `docs/findings/blockswap_baseline_20260806.md` 方向1） | CLI/env |
 | `block_swap_profile_jsonl` | `configs/base.toml`、`balanced_16g`、Web runtime | 记录 block swap transfer/wait profile | 默认 `off`；候选 `off`、`auto`、显式路径；`balanced_16g=off` | 判断 H2D/D2H、prefetch runway 和 slot reuse | 诊断探针会扰动吞吐；正式长训/热测对比应关闭；完整 GPU wait timing 需显式 `ANIMA_BLOCK_SWAP_PROFILE_GPU_WAIT=1` | 是 |
 | `disable_block_swap_for_eval` | `configs/base.toml`、`train.py` | sample/validation 阶段临时暂停 block swap | 默认 `false` | 训练需要 swap，但评估完整 DiT 能放进显存 | 评估阶段可能 OOM | 是 |
@@ -163,6 +167,24 @@ configs/base.toml
 | Soft Tokens | `configs/methods/soft_tokens.toml`、`gui-methods/soft_tokens.toml`、`tasks.py exp-soft-tokens` | 每层/每时间桶软文本 token | method `n_layers=6`、`n_t_buckets=14`、contrastive 参数；GUI `n_layers=10`、`n_t_buckets=100` | 文本条件容量实验 | training-only v1；不支持 block swap；推理路径非普通 LoRA | 是，实验 |
 | BYG | `configs/methods/byg.toml`、`tasks.py exp-byg` | unpaired instruction-editing 训练 | `network_dim=64`、`max_train_epochs=2`、`gradient_checkpointing=true`、`blocks_to_swap=0` | 编辑类实验 | 明确保持 `unsloth_offload_checkpointing=false`；需先构建 BYG sidecars | CLI 实验入口 |
 | Colorize EasyAdapter | `configs/methods/colorize.toml`、`tasks.py exp-easycontrol EASYADAPTER=colorize` | EasyControl colorize adapter | `network_dim=32`、`gradient_checkpointing=true`、`unsloth=true`、`masked_loss=false` | Sketch2Manga/colorize 实验 | 需要额外 adapter 权重和专用数据集 | CLI 实验入口 |
+
+### int8 块交换的三套玩家档位（CMP 50HX / PCIe Gen1 实测）
+
+以下组合都已在 10 步单图短程验证，参数可直接写进 TOML（与 `ANIMA_*` 环境变量并存，TOML/CLI 优先）：
+
+| 档位 | blocks_to_swap | transfer_dtype | int8_restore_mode | int8_staging_ring | int8_dual_stream | 实测 |
+| --- | ---: | --- | --- | ---: | --- | --- |
+| A 极限榨干 | 7 | int8 | fused | 2（触顶时改 1） | true | 0.8793 s/步（相对 bf16/swap20 3.33×），整卡 9512 MiB |
+| B 显存富裕提速 | 10~20 | int8 | fused | 0 | false | swap=10 1.0818 s/步（比 ring=2 快 3.5%） |
+| C 零量化误差 | 7~10 | bf16 | — | — | — | swap=10 1.4810 s/步；无 int8 的 0.3%~2.0% loss 偏移 |
+
+训练启动时会打印一行生效组合，便于贴日志求助与对照 benchmark：
+
+```text
+[BlockSwap] swap=7, transfer_dtype=int8, restore_mode=slab, int8_restore_mode=fused, int8_scope=all, staging_ring=2 (2 x 48 MiB), dual_stream=True
+```
+
+该行同时写入 `block_swap_profile_jsonl` 的 `block_swap_config` 事件（字段 `int8_staging_ring`、`int8_dual_stream`）。
 
 ## 当前事实性注意点
 

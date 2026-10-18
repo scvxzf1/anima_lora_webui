@@ -225,6 +225,26 @@ transformer input/caption width 和 Qwen3 hidden width。
 | 推理 | Anima 与 Krea-2 有独立路径，Z-Image 尚无通用路径 | registry 集合为空时必须拒绝，不得借用 Anima sampler |
 | Compile/bucket | Anima 支持 dynamic-seq；Krea-2 使用固定 token family；Z-Image 未验证 compile | family compatibility 必须关闭不适用参数 |
 
+## 跨 family 隔离契约
+
+不同 family 的模型、text cache、latent cache 和 adapter 之间没有兼容面，任何“看起来能读”
+的组合都按错误处理，不做静默降级：
+
+- **Adapter**：LoRA checkpoint 的 `ss_model_family` stamp 必须与目标模型 family 一致
+  （未 stamp 等同于 `anima`）。训练 resume / `--base_weights` / `--dim_from_weights`、
+  Anima harness 和推理加载都会在读取 tensor、构建 target container 之前 fail closed，
+  由 `networks/lora_anima/factory.py::require_adapter_family` 统一判定。跨 family 加载会
+  命中零个模块并伪装成“已加载但无效果”，因此不能放行。
+- **Text cache**：sidecar 后缀和 metadata schema 均按 family 区分；MOSS-Image 另有
+  `nf4` / `bf16` 两套身份，切换量化方式必须换目录或重新预处理。
+- **Latent cache**：后缀按 latent space 区分（`_anima.npz` / `_moss_image.npz` 等），
+  MOSS 读取使用 stride 16 的 `{H}x{W}` key，Anima 的 stride 8 key 不会被命中。
+- **模型**：`dispatch_model_family` 对未知 family、缺失 handler、未注册推理 mode/sampler
+  一律拒绝；MOSS-Image 目前不注册通用推理 mode/sampler。
+
+回归入口：`tests/test_adapter_family_isolation.py`（CPU-only，覆盖 adapter / text cache /
+latent cache 三个面）。
+
 ## 修改检查清单
 
 新增或扩展模型族时至少同步检查：

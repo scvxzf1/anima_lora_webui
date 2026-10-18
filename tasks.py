@@ -304,6 +304,10 @@ COMMANDS = {
         utilities.cmd_training_hot,
         "Run short training hot-test matrix (pass -- --dry-run, --case gui:loha, etc.)",
     ),
+    "moss-tier-hot": (
+        utilities.cmd_moss_tier_hot,
+        "Run the MOSS-Image resolution / text-cap tier hot test (pass -- plan|all|report)",
+    ),
     "update": (
         utilities.cmd_update,
         "Update from GitHub release (preserves datasets/output/models, prompts on "

@@ -10,7 +10,8 @@ from library.anima.strategy import AnimaLatentsCachingStrategy
 from library.anima.text_strategies import TextEncoderOutputsCachingStrategy
 from library.io.cache import resolve_cache_path
 from .cache_policy import (
-    MOSS_HIDDEN_SIZE, text_cache_metadata, validate_cache_metadata, validate_quantization,
+    MOSS_HIDDEN_SIZE, MOSS_MAX_LENGTH, resolve_text_token_cap, text_cache_metadata,
+    validate_cache_metadata, validate_quantization,
 )
 from .text import MossImageTextEncodingStrategy, MossImageTokenizeStrategy
 
@@ -24,13 +25,15 @@ class MossImageTextCache(TextEncoderOutputsCachingStrategy):
     MODEL_FAMILY = "moss_image"
 
     def __init__(self, cache_to_disk, batch_size, skip_disk_cache_validity_check,
-                 *, quantization="nf4", use_shuffled_caption_variants=False):
+                 *, quantization="nf4", max_text_tokens=MOSS_MAX_LENGTH,
+                 use_shuffled_caption_variants=False):
         if use_shuffled_caption_variants:
             raise ValueError("MOSS shuffled caption variants are unsupported")
         if batch_size == "auto":
             batch_size = 1  # Qwen GDN always executes one unpadded caption at a time.
         super().__init__(cache_to_disk, batch_size, skip_disk_cache_validity_check)
         self.quantization = validate_quantization(quantization)
+        self.max_text_tokens = resolve_text_token_cap(max_text_tokens)
         self.use_shuffled_caption_variants = False
 
     @property
@@ -47,7 +50,9 @@ class MossImageTextCache(TextEncoderOutputsCachingStrategy):
 
     def _validate(self, handle, path):
         # Identity remains mandatory even when callers skip expensive checks.
-        validate_cache_metadata(handle.metadata(), self.quantization, path)
+        validate_cache_metadata(
+            handle.metadata(), self.quantization, path, self.max_text_tokens,
+        )
         hidden = handle.get_slice("hiddens")
         mask = handle.get_slice("mask")
         shape = hidden.get_shape()
@@ -102,7 +107,8 @@ class MossImageTextCache(TextEncoderOutputsCachingStrategy):
             if self.cache_to_disk:
                 path = Path(info.text_encoder_outputs_npz)
                 path.parent.mkdir(parents=True, exist_ok=True)
-                save_file(tensors, str(path), metadata=text_cache_metadata(self.quantization))
+                save_file(tensors, str(path), metadata=text_cache_metadata(
+                    self.quantization, self.max_text_tokens))
             else:
                 info.text_encoder_outputs = list(tensors.values())
 

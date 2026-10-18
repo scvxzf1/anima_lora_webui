@@ -1,6 +1,10 @@
 """Fail-closed contracts for the first MOSS-Image text-to-image LoRA path."""
 
 from collections.abc import Mapping
+import logging
+
+
+logger = logging.getLogger(__name__)
 
 
 def _get(config, key, default=None):
@@ -38,7 +42,7 @@ def check_moss_training_contract(out, config):
             out.error(f"moss_image_{key}", key, f"MOSS-Image v1 {detail}")
 
     for key, default, accepted in (
-        ("mixed_precision", "bf16", {"bf16"}),
+        ("mixed_precision", "bf16", {"bf16", "fp16", "no"}),
         ("base_compute", "bf16", {"bf16"}),
         ("moss_te_quantization", "nf4", {"nf4", "bf16"}),
         ("attn_mode", "torch", {"torch", "sdpa"}),
@@ -49,11 +53,19 @@ def check_moss_training_contract(out, config):
         ("loss_type", "l2", {"l2"}),
         ("sampler", "default", {"default"}),
         ("sample_sampler", "euler", {"euler"}),
-        ("block_swap_transfer_dtype", "bf16", {"bf16"}),
+        ("block_swap_transfer_dtype", "bf16", {"bf16", "int8"}),
         ("v100_flash_stability", "off", {"off"}),
     ):
         value = str(_get(config, key, default) or default).strip().lower()
         reject(key, value not in accepted, f"requires {key} in {sorted(accepted)}; got {value!r}.")
+        if key == "block_swap_transfer_dtype" and value == "int8":
+            warning = (
+                "MOSS-Image int8 block-swap transfer is experimental: observed "
+                "per-step loss shifts are approximately 0.3%-2.0% versus the "
+                "unquantized path; validate quality before production use."
+            )
+            logger.warning(warning)
+            out.warning("moss_image_int8_experimental", key, warning)
 
     for key in (
         "gradient_checkpointing", "network_train_unet_only", "use_vae_cache", "use_text_cache",

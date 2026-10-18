@@ -42,6 +42,10 @@ def run_task(row, extra, shuffle_variants=None, tag_dropout_rate=None):
         "--qwen3", tasks._path("qwen3", "models/text_encoders/MOSS-Image/text_encoder"),
         "--batch_size", "1", "--dtype", "bfloat16",
         "--moss_te_quantization", quantization,
+        # The token cap is part of the MOSS text cache identity: a cache built
+        # at 4096 must not be reused by a capped tier (and vice versa).
+        "--max_token_length",
+        str(tasks._path_overrides_value().get("max_token_length", 4096) or 4096),
         "--caption_shuffle_variants", shuffle,
         "--caption_tag_dropout_rate", dropout,
         *tasks._caption_source_args(source_mode, prefer_json),
@@ -61,6 +65,7 @@ def main() -> None:
     parser.add_argument("--batch_size", type=batch_size_arg, default=1)
     parser.add_argument("--dtype", choices=["bfloat16"], default="bfloat16")
     parser.add_argument("--moss_te_quantization", choices=["nf4", "bf16"], default="nf4")
+    parser.add_argument("--max_token_length", type=int, default=4096)
     parser.add_argument("--caption_shuffle_variants", type=int, default=0)
     parser.add_argument("--caption_tag_dropout_rate", type=float, default=0.0)
     parser.add_argument("--path_pattern", default="*")
@@ -89,8 +94,12 @@ def main() -> None:
     ))
     if any(len(source.caption_texts()) > 1 for _, source in items):
         parser.error("MOSS multiple-caption variants are unsupported")
-    caching = MossImageTextCache(True, 1, False, quantization=args.moss_te_quantization)
-    tokenizer = MossImageTokenizeStrategy(args.qwen3, max_length=4096)
+    from library.models.moss_image.cache_policy import resolve_text_token_cap
+
+    token_cap = resolve_text_token_cap(args.max_token_length)
+    caching = MossImageTextCache(True, 1, False, quantization=args.moss_te_quantization,
+                                 max_text_tokens=token_cap)
+    tokenizer = MossImageTokenizeStrategy(args.qwen3, max_length=token_cap)
     encoder = load_moss_text_encoder(
         args.qwen3, dtype=torch.bfloat16, device="cpu", quantization=args.moss_te_quantization,
     )

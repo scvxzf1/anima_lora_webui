@@ -391,3 +391,16 @@ def cmd_training_hot(extra):
     if extra and extra[0] == "--":
         extra = extra[1:]
     run([PY, "-m", "bench.training_hot.run_matrix", *extra])
+
+
+def cmd_moss_tier_hot(extra):
+    """Run the MOSS-Image resolution/text-cap tier hot test (protocol section 7).
+
+    Examples:
+      python tasks.py moss-tier-hot -- plan
+      python tasks.py moss-tier-hot -- all --rows 1024-short,512-short --steps 10
+      python tasks.py moss-tier-hot -- report --root output/bench/moss_tier_hot/matrix-X
+    """
+    if extra and extra[0] == "--":
+        extra = extra[1:]
+    run([PY, "-m", "bench.moss_tier_hot.run_matrix", *extra])

@@ -12,6 +12,7 @@
 | 推理与组合 DCW、Spectrum | [推理参考](guidelines/inference.md) |
 | 理解配置合并和外置路径 | [配置索引](configuration/README.md) |
 | 使用 WebUI 独立功能 | [功能索引](features/README.md) |
+| 查阅和清理训练产物 | [数据管理](features/data-management.md) |
 | 阅读完整历史日志、跳转与搜索 | [历史日志](features/history-logs.md) |
 | 使用外部模型 API 打标 | [打标工作台](features/tagging-workbench.md) |
 | 查阅已退役 Dragon / classic 的历史记录 | [Dragon UI 历史指南](features/dragon-ui.md) |
@@ -28,6 +29,7 @@
 | 理解 FP16/FP32 训练误差与静态测试边界 | [混合精度数值论证](structure/adaptive-precision-numerics.md) |
 | 配置实验中途 OOM 恢复与独立预览回退 | [训练恢复](experimental/adaptive-training-recovery.md)、[预览内存策略](configuration/sample-preview-memory.md) |
 | 查实验结论、失败路径和审计 | [研究结论索引](findings/README.md) |
+| 复查 MOSS 热测试与作废尝试 | [CMP 50HX 热测试复盘（含尸体记录）](findings/moss_image_tier_hot_50hx_20261018.md) |
 | 评估活跃提案或维护计划 | [提案索引](proposal/README.md)、[施工区索引](superpowers/README.md) |
 | 准备贡献或认领待办 | [PR 规范](../CONTRIBUTING.md)、[贡献优先事项](contribution-priorities.md) |
 | 查归档材料 | [归档索引](archive-index.md) |

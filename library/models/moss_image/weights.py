@@ -4,8 +4,8 @@ import torch
 
 
 def _load_component(cls, path, component, *, dtype, device):
-    if dtype not in (torch.bfloat16, torch.float32):
-        raise ValueError("MOSS components require BF16 or FP32")
+    if dtype not in (torch.bfloat16, torch.float16, torch.float32):
+        raise ValueError("MOSS components require BF16, FP16 or FP32")
     root = Path(path).expanduser()
     if (root / component / "config.json").is_file():
         root = root / component

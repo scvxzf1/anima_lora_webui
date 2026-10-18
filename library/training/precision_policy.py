@@ -41,11 +41,6 @@ def resolve_mixed_precision(
         return
 
     if major < 8:
-        from library.env import resolve_model_family
-
-        if resolve_model_family(args) == "moss_image":
-            logger.info("MOSS-Image keeps explicit BF16 compute on sm_%d%d", major, _minor)
-            return
         args.mixed_precision = "fp16"
         logger.warning(
             "GPU sm_%d%d has no native bf16 (bf16 autocast runs the slower "

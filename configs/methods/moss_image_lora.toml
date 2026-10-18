@@ -1,8 +1,8 @@
 # MOSS-Image ordinary T2I plain LoRA v1. Local component directories only.
 model_family = "moss_image"
-pretrained_model_name_or_path = "models/moss_image/transformer"
-qwen3 = "models/moss_image/text_encoder"
-vae = "models/moss_image/vae"
+pretrained_model_name_or_path = "models/moss_image/MOSS-Image-DiT"
+qwen3 = "models/moss_image/MOSS-Image-TextEncoder-BF16"
+vae = "models/moss_image/MOSS-Image-VAE"
 moss_te_quantization = "nf4"
 
 network_module = "networks.lora_anima"
@@ -55,6 +55,14 @@ resolution = 1024
 batch_size = 1
 caption_extension = ".txt"
 enable_bucket = true
+# NOTE (constant-token buckets): with resolution = 1024 MOSS resolves to the
+# canonical 24-entry table via make_constant_token_bucket_resolutions(), which
+# early-returns before the min/max filter runs. The three keys below are
+# therefore INERT on this path — they encode "allow the whole table"
+# (extremes 672/1536) rather than an active constraint.
+# They only bind when resolution != 1024 (see moss_image_lora_t768.toml and
+# moss_image_lora_t512.toml, which scale all three keys together). Do not
+# change resolution alone: it silently collapses the aspect ladder.
 min_bucket_reso = 672
 max_bucket_reso = 1536
 bucket_reso_steps = 64
