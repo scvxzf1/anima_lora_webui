@@ -68,3 +68,13 @@ web/frontend-next/vite.config.d.ts
 
 # Local ImageMagick debug artifact accidentally emitted at repository root.
 /torch
+
+# Local agent / tooling scratch (never source)
+graphify-out/
+.playwright-cli/
+node_modules/
+tmp/
+.memsearch/
+
+# User sample reference imagery (multi-MB, local only)
+configs/sample-references/
