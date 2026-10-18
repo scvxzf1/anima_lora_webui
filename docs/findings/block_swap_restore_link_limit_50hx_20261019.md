@@ -14,7 +14,9 @@
    `non_blocking`、CUDA event 计时、取中位数），并改变 payload 分块数（1 / 8 / 24）以暴露逐张量开销。
 2. **在真机训练里给 profiler 加字节计量**：`Offloader._estimate_swap_bytes()` 从交换计划读取目标 master 的
    `stored_nbytes()`，事件里新增 `h2d_bytes` / `d2h_bytes`，于是"每步搬了多少字节、有效速率多少"可直接读出。
-3. **A/B**：`block_swap_restore_mode=foreach`（默认）vs `slab`，同一工作区、同一 swap=12。
+3. **A/B**：`block_swap_restore_mode=foreach` vs `slab`，同一工作区、同一 swap=12。
+   （当时项目默认是 `foreach`；该默认值已在提交 `e8ad25b3 perf(blockswap): default restore_mode to slab`
+   改为 `slab`，本轮 A/B 结论不受影响，但"默认值"字样按现状读。）
 
 ## 结果 1：链路天花板 3.14 GB/s，逐张量开销可忽略
 
@@ -37,7 +39,7 @@ swap=12、同一工作区、稳态（第 2~4 步）：
 
 | `restore_mode` | 每步任务数 | 每步 H2D 字节 | 每步 H2D 时间 | 有效带宽 | 步时样本（ms） |
 | --- | --- | --- | --- | --- | --- |
-| `foreach`（默认） | 24 | 3321.9 MB | 1098 / 1103 / 1101 ms | 3.03 / 3.01 / 3.02 GB/s | 1610 / 1530 / 1620 |
+| `foreach`（当时默认） | 24 | 3321.9 MB | 1098 / 1103 / 1101 ms | 3.03 / 3.01 / 3.02 GB/s | 1610 / 1530 / 1620 |
 | **`slab`** | 24 | 3321.9 MB | **1065 / 1066 / 1066 ms** | **3.12 / 3.12 / 3.12 GB/s** | **1550 / 1470 / 1550** |
 
 - 每步 24 个任务 = 2S（前向 12 次换出块恢复 + 反向 12 次早块恢复），**无重复恢复**，与第 1 轮一致。
@@ -60,7 +62,9 @@ swap=12、同一工作区、稳态（第 2~4 步）：
 - 只在 CMP 50HX（窄链路 3.14 GB/s）上验证；宽链路卡（x16 Gen4/5）上"链路饱和"结论会反转，
   届时调度类优化可能重新有价值——**本结论不跨硬件外推**。
 - `slab` 的 +3.3% 是单机 4 步短跑（吞吐量很小），未做多次重复的统计显著性检验。
-  因此本轮只把它记录为**建议的显式设置**，没有改项目默认值。
+  本轮当时只把它记录为**建议的显式设置**，没有改项目默认值；该默认值随后由提交
+  `e8ad25b3` 改为 `slab`（本分支与 `dev` 一致），所以这一条现在是**复核结论**而非待办，
+  不需要额外的关闭动作。
 - `h2d_bytes` 由交换计划推算（`stored_nbytes()`），未与 NVML/PCIe 计数器交叉校验。
 - 138.4 MB/块是 Anima-base 在本工作区的实测 payload；不同模型族/精度会不同。
 
@@ -70,7 +74,7 @@ swap=12、同一工作区、稳态（第 2~4 步）：
 # 链路天花板
 .venv/bin/python -m bench.block_swap_pipeline.copy_bench --gpu 0 --sizes-mb 100,50 --chunks 1,8,24
 
-# 训练内字节与有效带宽（foreach 默认）
+# 训练内字节与有效带宽（foreach 档位）
 .venv/bin/python -m bench.block_swap_pipeline.run_probe --gpu 0 --steps 4 --blocks-to-swap 12 --label swap12-bytes
 
 # slab 对照

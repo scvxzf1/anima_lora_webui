@@ -146,3 +146,39 @@ block swap 越容易成为关键路径；256 档改用 stop ratio=0.5 后步时�
   这是有意的保守方向（省显存），但也意味着它拿不到 swap≤5 的最后一截速度。
 - 512 未跑 stop_ratio=0.5；256 未跑 stop_ratio=0.0。两模式的横向对比只在各自测过的档位上成立。
 - 仍未做：Z-Image / Qwen-Image 2.1 / Krea-2 真机验收（`resolve_offloader_and_blocks` 只做了代码级适配）。
+- 模型族的换出上界不同：Anima `num_blocks=28` → 合法区间 `1..26`（`library/anima/models.py:2426`
+  的断言；`num_blocks` 默认值见同文件 `models.py:1842`）。用 30 起跑会被断言直接拒绝，
+  本轮首次触达该边界（见下）。
+
+### 1024 真机验收（Anima 1024×1024，起点 swap=24，margin 400 MiB，默认 stop ratio 0）
+
+复现：`.venv/bin/python -m bench.block_swap_pipeline.run_probe --gpu 0 --side 1024 --steps 4
+--blocks-to-swap 24 --block-swap-auto --margin-mib 400 --label auto1024b`；
+运行目录：`output/bench/block_swap_pipeline/20261019-074852-auto1024b`。
+
+晋升日志：`promoting 22 block(s) to resident, blocks_to_swap 24 -> 2
+(free=6.55 GiB, margin=0.39 GiB, block=132.0 MiB)`。
+
+| 步骤 | `blocks_to_swap` | 任务/步 | H2D 字节/步 | DMA/步 | DMA 占步时 | trainer 步时 |
+| --- | --- | --- | --- | --- | --- | --- |
+| step 1 | 24 | 48 | 6644 MB | 2291 ms | 59% | 3.88 s |
+| step 2 | 24 | 48 | 6644 MB | 2133 ms | 54% | 3.94 s |
+| step 3 | 2 | 4 | 554 MB | 178 ms | 5.2% | 3.42 s |
+| step 4 | 2 | 4 | 554 MB | 180 ms | 5.6% | 3.19 s |
+
+口径提醒：`result.json` 的 `jobs` / `h2d_bytes` / `dma_busy_ms` 是**四步平均**
+（26 / 3599 MB / 1195 ms），其中混合了两档差异极大的状态，**不能当稳态值**；逐步数据以本表为准。
+总字节核对：`6644 + 6644 + 554 + 554 = 14396 MB`，profile 实测 14395 MB，一致。
+
+**读数**：
+
+1. 默认模式（`stop_ratio=0`）在 1024 下同样晋升到 **2**，与 512 一致 —— "把可用显存全用上"
+   的语义跨分辨率稳定；256 的 13 是停止条件主动踩的刹车。
+2. 1024 的绑定约束**是晋升上限而不是显存**：`free=6.55 GiB` 扣掉 0.39 GiB 余量后按 132 MiB/块
+   本可晋升约 47 块，但 `plan_promotion` 另有"至少保留 2 个换出块"的硬上限
+   （`library/runtime/block_swap_auto.py:201`，`min(headroom // block_bytes, current - 2) = 22`），
+   于是终值就是 `swap=2`。注意区分两个不同数字：`num_blocks - 2 = 26` 是 Anima 侧
+   `blocks_to_swap` 的合法上界，这里起作用的是 `current - 2 = 22` 的晋升上限。
+3. DMA 占步时从 54%~59% 降到 5% 量级，但步时只降了约 0.7 s —— **1024 档由算力/激活主导**，
+   block swap 已不是关键路径。这与 256 档（DMA 主导）形成对照，也解释了停止条件在高分辨率下
+   收益变小的原因。
