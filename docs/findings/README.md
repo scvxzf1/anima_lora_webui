@@ -61,6 +61,7 @@
 
 ## Runtime 和能力边界
 
+- [INT8 单字节编码的误差上限（CMP 50HX 第 4/5 轮）](int8_encoding_floor_50hx_20261019.md)：per-row 对称 int8 已贴均匀量化噪声地板，离群裁剪/scale 搜索的上限只有 ≤2.01%（3A 否定）；固定 NF8 码本在真实 Anima 行再降 13.7%~64.3% MSE，但在高斯型行回归 70%~477%，必须按行择优；1.09% loss 偏移尚未归因。含 15 项单测与未验证边界。
 - [Block Swap 进程内水位调优（CMP 50HX 第 3 轮）](block_swap_auto_tuner_50hx_20261019.md)：`--block_swap_auto` 在第一个优化器步后按空闲显存晋升常驻块，512 真机从 24 自动收敛到 2（H2D 6644 → 554 MB/步、任务窗口 2118 → ~720 ms）；与固定 swap=5 对照后确认 swap≤5 时步时已转为计算受限，因此需要停止条件。含 10 项单测与未验证边界。
 - [Block Swap 恢复链已到链路极限（CMP 50HX 第 2 轮）](block_swap_restore_link_limit_50hx_20261019.md)：纯拷贝微基准测出本机链路天花板 3.14 GB/s（pinned，分块粒度无关）；训练内 profiler 加字节计量后实测每步 3321.9 MB / 24 任务，foreach 达 3.02 GB/s、slab 达 3.12 GB/s（96% / 99% 链路），建议显式用 `block_swap_restore_mode=slab`（DMA +3.3%、步时 −4%）；据此确认后续杠杆只剩减少搬运字节（auto swap / int8）。
 - [Block Swap 宏观流水线基线（CMP 50HX）](block_swap_pipeline_baseline_50hx_20261019.md)：同一工作区 swap=0 vs swap=12 A/B（swap 代价 ≈ +0.45~0.49 s/步），profiler 实测 24 任务/步(=2S)、重复恢复 0 次、exposed_wait ≈ 1.6 ms/步、单块 H2D 有效带宽 ≈1.3~2.3 GB/s；据此否定"折返点重复搬运"前提，把 P0 修正为压缩串行 DMA 链。含复现命令、边界与未证明项。

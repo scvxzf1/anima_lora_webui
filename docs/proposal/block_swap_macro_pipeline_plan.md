@@ -33,7 +33,7 @@ profiler: 24 任务/步（=2S）、重复恢复 0 次、exposed_wait ≈ 1.6 ms/
 | --- | --- | --- | --- |
 | **P0'** | 压缩串行 DMA 链：量化单块 H2D 有效带宽，对比 `restore_mode`（foreach / slab） | **已完成（结论：链路饱和）** | 见[第 2 轮证据](../findings/block_swap_restore_link_limit_50hx_20261019.md)：链路天花板 3.14 GB/s，训练内已达 3.02（foreach）/ 3.12（slab）GB/s；建议显式设 `block_swap_restore_mode="slab"`（DMA +3.3%、步时 −4%） |
 | **P1** | 进程内水位调优 `--block_swap_auto`：第一个优化器步后按空闲显存与 per-block 字节晋升常驻块（复用 `reconfigure()` 边界事务），替代固定水位 | **已实现 + 512 真机验收（256/1024 待验收）** | 见[第 3 轮证据](../findings/block_swap_auto_tuner_50hx_20261019.md)：512 下 24 → 2，字节/步 6644 → 554 MB，任务窗口 2118 → ~720 ms；但 swap≤5 后步时与固定 swap=5 持平（≈0.90 vs 0.94 s），下一步需加"DMA 已低于计算量即停止晋升"的停止条件 |
-| **P2** | 1 Byte 高信噪比编码：per-row 离群裁剪（99.95% 分位缩放）或稀疏残差补偿；NF8 分位查表（可选后做） | 待开始 | 同 swap 同分辨率下 loss 偏移从 MOSS 的 ~1.09% 压到 <0.2%，PCIe 字节数不增 |
+| **P2** | 1 Byte 高信噪比编码：3A（离群裁剪 / per-row scale 搜索）与 3B（NF8 分位查表） | **3A 已否定；3B 有效但分布依赖（选择性接入待做）** | 见[第 4/5 轮证据](../findings/int8_encoding_floor_50hx_20261019.md)：3A 上限仅 ≤2.01%（已贴噪声地板）；固定 NF8 在真实 Anima 行再降 13.7%~64.3% MSE，但在高斯型行回归 70%~477% → 必须按行/张量择优；1.09% loss 偏移尚未归因，归因前不设默认 |
 | **P3** | 交错换出拓扑 / 跨步预取 | 降级（收益受限） | 仅在 P0'/P1 完成后复查：折返点空窗实测仅 37~43 ms/步、无暴露等待 |
 
 ## 每轮工作约定
@@ -50,3 +50,4 @@ profiler: 24 任务/步（=2S）、重复恢复 0 次、exposed_wait ≈ 1.6 ms/
 | 1 | 2026-10-19 | 建立 `bench/block_swap_pipeline` 探针（工作区复用 + 相位切分 + 指标口径），跑 swap=12 / swap=0 A/B | P0 前提被实测否定并修正为 P0'；swap 代价 ≈ +0.45~0.49 s/步；重复搬运 0；exposed_wait ≈ 1.6 ms |
 | 2 | 2026-10-19 | 纯拷贝微基准（`copy_bench.py`）+ profiler 加 `h2d_bytes` 字节计量 + `foreach` vs `slab` A/B | 链路天花板 3.14 GB/s；训练内 3.02 / 3.12 GB/s = 96% / 99%；分块粒度无关；P0' 完成并推荐 slab；下一步 P1 |
 | 3 | 2026-10-19 | 实现 `library/runtime/block_swap_auto.py` + CLI（`--block_swap_auto` / `--block_swap_vram_margin_mib`）+ 优化器边界挂点 + 10 项单测；真机跑 auto（24 起点）与固定 swap=5 对照 | 512 下自动 24 → 2（bytes 6644 → 554 MB/步，窗口 2118 → ~720 ms）；但 swap≤5 后与固定 5 持平 → 需加停止条件；256/1024 与其它模型族待验收 |
+| 4~5 | 2026-10-19 | 新增 `library/runtime/int8_encode.py`（裁剪搜索 + NF8 码本）与 `bench/block_swap_int8/encode_error.py` 探针；对 4 组合成分布 + 3 个真实 Anima 张量量化 4 种编码的误差上限；15 项单测 | **3A 否定**（上限 ≤2.01%，已贴噪声地板）；**3B 分布依赖**（真实行 +13.7~64.3%，高斯行回归 70~477%）→ 须选择性接入；1.09% loss 偏移仍未归因 |
