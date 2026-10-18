@@ -266,6 +266,12 @@ def analyze_profile(path: Path, *, train_log: Path | None = None) -> dict:
             "dma_busy_ms": total("d2h_ms", evs) + total("h2d_ms", evs),
             "d2h_ms": total("d2h_ms", evs),
             "h2d_ms": total("h2d_ms", evs),
+            "h2d_bytes": int(sum(float(e.get("h2d_bytes") or 0.0) for e in evs)),
+            "gb_per_s": round(
+                (sum(float(e.get("h2d_bytes") or 0.0) for e in evs) / 1e9)
+                / max(1e-9, (total("d2h_ms", evs) + total("h2d_ms", evs)) / 1000.0),
+                2,
+            ),
             "exposed_wait_ms": total("wait_ms", evs),
             "worker_queue_ms": total("submit_to_enqueue_ms", evs),
             "step_span_ms": (finished - started) * 1000.0,
@@ -289,6 +295,8 @@ def analyze_profile(path: Path, *, train_log: Path | None = None) -> dict:
         "mean": {
             "jobs": agg("jobs"),
             "dma_busy_ms": agg("dma_busy_ms"),
+            "h2d_bytes": agg("h2d_bytes"),
+            "gb_per_s": agg("gb_per_s"),
             "d2h_ms": agg("d2h_ms"),
             "h2d_ms": agg("h2d_ms"),
             "exposed_wait_ms": agg("exposed_wait_ms"),
@@ -317,6 +325,11 @@ def main() -> int:
     parser.add_argument("--root", default=DEFAULT_ROOT)
     parser.add_argument("--workspace", default=None)
     parser.add_argument("--label", default=None)
+    parser.add_argument(
+        "--restore-mode",
+        default=None,
+        help="block_swap_restore_mode (foreach|slab); None keeps the project default",
+    )
     args = parser.parse_args()
 
     sources = {"dit": args.dit, "te": args.te, "vae": args.vae}
@@ -341,6 +354,11 @@ def main() -> int:
             logging_dir=run_dir / "logs",
             steps=args.steps,
             blocks_to_swap=args.blocks_to_swap,
+        )
+        + (
+            f'block_swap_restore_mode = "{args.restore_mode}"\n'
+            if args.restore_mode
+            else ""
         ),
         encoding="utf-8",
     )

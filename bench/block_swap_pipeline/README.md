@@ -41,6 +41,18 @@
 | `step_span_ms` | 该步从第一个任务入队到最后一个任务等待返回的墙钟跨度 |
 | `forward_tail_idle_ms` | 最后一个前向任务 ready → 第一个反向任务入队之间的空窗（跨折返点的可预取窗口） |
 | `duplicate_restores` | 同一步内同一个 block 被恢复两次的目标块号（折返点重复搬运的直接证据） |
+| `h2d_bytes` / `gb_per_s` | 每步 H2D 字节数与有效带宽（`Offloader._estimate_swap_bytes()` 从交换计划的 `stored_nbytes()` 推算） |
+
+## 纯拷贝微基准
+
+`copy_bench.py` 不加载任何模型，直接测链路上限与逐张量开销：
+
+```bash
+.venv/bin/python -m bench.block_swap_pipeline.copy_bench --gpu 0 --sizes-mb 100,50 --chunks 1,8,24
+```
+
+输出每档 `median_ms` / `GB/s` / `us/chunk`，写入 `<root>/<stamp>-copy-bench.json`；它是判断训练内搬运
+是链路受限还是开销受限的参照系。
 
 ## 注意
 

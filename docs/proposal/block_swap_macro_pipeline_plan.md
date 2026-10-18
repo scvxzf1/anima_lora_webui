@@ -31,7 +31,7 @@ profiler: 24 任务/步（=2S）、重复恢复 0 次、exposed_wait ≈ 1.6 ms/
 
 | 阶段 | 内容 | 状态 | 验收口径 |
 | --- | --- | --- | --- |
-| **P0'** | 压缩串行 DMA 链：量化单块 H2D 有效带宽（纯拷贝微基准 + 训练内 per-block `h2d_ms`），对比 `restore_mode`（copy / slab / fused / int8 fused）与 packing 方式的每档 GB/s | 待开始 | 每档给出 GB/s 与 12 块/步总时长；同一工作区、同一 swap 下 A/B |
+| **P0'** | 压缩串行 DMA 链：量化单块 H2D 有效带宽，对比 `restore_mode`（foreach / slab） | **已完成（结论：链路饱和）** | 见[第 2 轮证据](../findings/block_swap_restore_link_limit_50hx_20261019.md)：链路天花板 3.14 GB/s，训练内已达 3.02（foreach）/ 3.12（slab）GB/s；建议显式设 `block_swap_restore_mode="slab"`（DMA +3.3%、步时 −4%） |
 | **P1** | `blocks_to_swap="auto"`：加载后按 `max_memory_reserved` 与可用显存自动定水位（Step 0 探针 → 晋升常驻块），避免"固定 swap=20 慢一倍 / 固定 swap=7 换分辨率就 OOM" | 待开始 | 自动化后落在人工甜点位 ±1 块；给出多分辨率（256/512/1024）自动选档记录 |
 | **P2** | 1 Byte 高信噪比编码：per-row 离群裁剪（99.95% 分位缩放）或稀疏残差补偿；NF8 分位查表（可选后做） | 待开始 | 同 swap 同分辨率下 loss 偏移从 MOSS 的 ~1.09% 压到 <0.2%，PCIe 字节数不增 |
 | **P3** | 交错换出拓扑 / 跨步预取 | 降级（收益受限） | 仅在 P0'/P1 完成后复查：折返点空窗实测仅 37~43 ms/步、无暴露等待 |
@@ -48,3 +48,4 @@ profiler: 24 任务/步（=2S）、重复恢复 0 次、exposed_wait ≈ 1.6 ms/
 | 轮次 | 日期 | 内容 | 结果 |
 | --- | --- | --- | --- |
 | 1 | 2026-10-19 | 建立 `bench/block_swap_pipeline` 探针（工作区复用 + 相位切分 + 指标口径），跑 swap=12 / swap=0 A/B | P0 前提被实测否定并修正为 P0'；swap 代价 ≈ +0.45~0.49 s/步；重复搬运 0；exposed_wait ≈ 1.6 ms |
+| 2 | 2026-10-19 | 纯拷贝微基准（`copy_bench.py`）+ profiler 加 `h2d_bytes` 字节计量 + `foreach` vs `slab` A/B | 链路天花板 3.14 GB/s；训练内 3.02 / 3.12 GB/s = 96% / 99%；分块粒度无关；P0' 完成并推荐 slab；下一步 P1 |

@@ -307,6 +307,20 @@ def _restore_packed_int8_slab(
             destination[row_start:row_end].copy_(restored)
 
 
+def _master_stored_nbytes(master: Any) -> int:
+    """Bytes a CPU master occupies on the wire (int8 packs, NF4 copies, tensors)."""
+    stored = getattr(master, "stored_nbytes", None)
+    if callable(stored):
+        try:
+            return int(stored())
+        except Exception:
+            return 0
+    try:
+        return int(getattr(master, "nbytes", 0) or 0)
+    except Exception:
+        return 0
+
+
 class Offloader:
     """
     common offloading class
@@ -1193,6 +1207,23 @@ class Offloader:
         self._slab_slot_by_block.pop(int(block_idx_to_cuda), None)
         self._slab_slot_by_block[int(block_idx_to_cuda)] = slot_id
 
+    def _estimate_swap_bytes(self, block_idx_to_cpu: int, block_idx_to_cuda: int) -> int:
+        """H2D payload of a retire+restore job, from the cached swap plan.
+
+        The retire itself copies nothing back when the CPU master already holds
+        the frozen weights, so this is the bytes that actually cross PCIe.
+        """
+        plan = self._swap_plan_cache.get((block_idx_to_cpu, block_idx_to_cuda))
+        if plan is None:
+            return 0
+        weight_jobs, _fallback, nf4_jobs = plan
+        total = 0
+        for _name, _source, target, _source_dtype, _target_dtype in weight_jobs:
+            total += _master_stored_nbytes(target)
+        for _name, _source, target, _source_dtype, _target_dtype in nf4_jobs:
+            total += _master_stored_nbytes(target)
+        return int(total)
+
     def _prefetch_lead_blocks(
         self,
         *,
@@ -1301,6 +1332,8 @@ class Offloader:
             "gpu_wait_ms": gpu_wait_ms,
             "h2d_ms": float(timings.get("h2d_ms", 0.0)),
             "d2h_ms": float(timings.get("d2h_ms", 0.0)),
+            "h2d_bytes": int(timings.get("h2d_bytes", 0) or 0),
+            "d2h_bytes": int(timings.get("d2h_bytes", 0) or 0),
             "event_wait_ms": float(timings.get("event_wait_ms", 0.0)),
             "transfer_ms": float(timings.get("transfer_ms", 0.0)),
             "enqueue_ms": float(timings.get("enqueue_ms", 0.0)),
@@ -1920,6 +1953,8 @@ class Offloader:
             )
             enqueued_at = time.time()
             timings["enqueue_ms"] = (time.perf_counter() - transfer_t0) * 1000.0
+            timings["h2d_bytes"] = self._estimate_swap_bytes(bidx_to_cpu, bidx_to_cuda)
+            timings["d2h_bytes"] = 0
 
             if self.debug:
                 print(
