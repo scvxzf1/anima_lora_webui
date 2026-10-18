@@ -424,3 +424,60 @@ def _restore_int8_cpu_master_into_tensor(
         rows = quantized.to(dtype=dtype)
         torch.mul(rows, scale[:, None], out=dst_rows[row_start:row_end])
     return dst
+
+def _restore_int8_cpu_master_fused(
+    master: Int8BlockSwapCpuMaster,
+    dst: torch.Tensor,
+    *,
+    device: torch.device,
+    dtype: torch.dtype,
+    staging: Optional[torch.Tensor] = None,
+    scale_staging: Optional[torch.Tensor] = None,
+    non_blocking: bool = True,
+) -> torch.Tensor:
+    """Dequantize an int8 master into dst with one fused multiply kernel.
+
+    torch.mul(int8_tensor, float32_scale, out=half_tensor) fuses cast, multiply
+    and store inside a single ATen TensorIterator kernel, so no fp32 or fp16
+    temporaries are allocated. Bitwise-equal to the fp32 reference dequant for
+    both fp16 and bf16 targets (measured on CMP 50HX). Supplying staging makes
+    the H2D land in a preallocated static buffer, so the step loop performs no
+    dynamic CUDA allocation at all.
+    """
+    if tuple(dst.shape) != master.shape:
+        raise ValueError(
+            f"int8 fused restore target shape mismatch: {tuple(dst.shape)} != {master.shape}"
+        )
+    if dst.device.type != device.type:
+        raise ValueError(f"int8 fused restore target must be on {device}, got {dst.device}")
+    if dst.dtype != dtype:
+        raise ValueError(f"int8 fused restore target dtype mismatch: {dst.dtype} != {dtype}")
+    rows = master.shape[0]
+    cols = master.quantized.numel() // rows
+    if staging is None:
+        quantized = master.quantized.to(device=device, non_blocking=non_blocking)
+    else:
+        if staging.numel() < master.quantized.numel():
+            raise ValueError(
+                f"int8 staging too small: {staging.numel()} < {master.quantized.numel()}"
+            )
+        quantized = staging[: master.quantized.numel()]
+        quantized.copy_(master.quantized.reshape(-1), non_blocking=non_blocking)
+    if scale_staging is None:
+        scale = master.scale.to(device=device, non_blocking=non_blocking)
+    else:
+        if scale_staging.numel() < rows:
+            raise ValueError(f"int8 scale staging too small: {scale_staging.numel()} < {rows}")
+        scale = scale_staging[:rows]
+        scale.copy_(master.scale, non_blocking=non_blocking)
+    if not dst.is_contiguous():
+        # view() would be silently impossible here and reshape() would hand the
+        # kernel a copy, leaving the slot stale. Fail loudly instead.
+        raise ValueError("int8 fused restore target must be contiguous")
+    # int8 x float32 -> fp16/bf16: the store cast happens inside the kernel.
+    torch.mul(
+        quantized.view(rows, cols),
+        scale.to(torch.float32)[:, None],
+        out=dst.view(rows, cols),
+    )
+    return dst

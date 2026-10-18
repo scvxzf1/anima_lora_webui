@@ -149,6 +149,7 @@ def build_anima(
             None,  # text_encoders (unused for harness callers)
             anima,
             for_inference=not train_mode,
+            model_family="anima",  # build_anima always loads an Anima DiT
         )
         network.apply_to([], anima, apply_text_encoder=False, apply_unet=True)
         info = network.load_weights(adapter)

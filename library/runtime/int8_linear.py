@@ -20,6 +20,9 @@ MLP_LINEAR_MODULES = {
     "mlp.layer2",
     "img_mlp.gate_layer",
     "img_mlp.proj",
+    # MOSS-Image DiT projection names.
+    "proj.ffn_up_gate",
+    "proj.ffn_down",
 }
 
 ATTENTION_LINEAR_MODULES = {
@@ -38,6 +41,11 @@ ATTENTION_LINEAR_MODULES = {
     "attn.to_k",
     "attn.to_v",
     "attn.to_out.0",
+    # MOSS-Image DiT projection names.
+    "proj.q",
+    "proj.k",
+    "proj.v",
+    "proj.o",
 }
 
 SELF_ATTENTION_QKV_MODULES = {

@@ -525,8 +525,8 @@ def test_block_swap_restore_mode_aliases_and_rejects_invalid() -> None:
 
 
 def test_block_swap_int8_restore_mode_aliases_and_rejects_invalid() -> None:
-    assert normalize_block_swap_int8_restore_mode(None) == "copy"
-    assert normalize_block_swap_int8_restore_mode("default") == "copy"
+    assert normalize_block_swap_int8_restore_mode(None) == "fused"
+    assert normalize_block_swap_int8_restore_mode("default") == "fused"
     assert normalize_block_swap_int8_restore_mode("reuse") == "reuse_storage"
     assert normalize_block_swap_int8_restore_mode("into") == "reuse_storage"
     assert normalize_block_swap_int8_restore_mode("inplace") == "reuse_storage"
@@ -1562,6 +1562,9 @@ def test_block_swap_cached_cuda_int8_master_uses_dequant_restore(monkeypatch) ->
         device=torch.device("cuda"),
         supports_backward=False,
         restore_mode="slab",
+        # This case exercises the fp32-temporary dequant path specifically; the
+        # default is now fused (covered by tests/test_int8_fused_restore.py).
+        int8_restore_mode="copy",
     )
     offloader._cpu_weight_masters = [
         {"mlp.layer1": int8_master},

@@ -1207,6 +1207,66 @@ def add_dit_training_arguments(parser: argparse.ArgumentParser):
         ),
     )
     parser.add_argument(
+        "--block_swap_int8_restore_mode",
+        type=str,
+        default=None,
+        choices=["copy", "direct_bind", "reuse_storage", "fused"],
+        help=(
+            "Restore path used only when block_swap_transfer_dtype=int8. copy "
+            "(default) dequantizes through fp32 temporaries; reuse_storage writes "
+            "chunked into the resident slot; direct_bind rebinds the slot; fused "
+            "uses one torch.mul(int8, fp32, out=half) kernel straight into the slot "
+            "with a small static staging ring (no dynamic allocation). On a PCIe "
+            "Gen1 link fused measured 2.3986 -> 1.9740 s/step and reserved "
+            "9.16 -> 7.21 GiB "
+            "(docs/findings/moss_image_int8_blockswap_diagnosis_20261018.md)."
+        ),
+    )
+    parser.add_argument(
+        "--block_swap_int8_staging_ring",
+        type=int,
+        default=None,
+        help=(
+            "Staging buffers used by block_swap_int8_restore_mode=fused, i.e. the "
+            "VRAM/speed dial. 0 keeps one 48 MiB buffer per swapped slot (no "
+            "cross-slot event wait, fastest: measured 1.1204 -> 1.0818 s/step at "
+            "swap=10) at the cost of swap x 48 MiB; N>=1 shares N buffers between "
+            "all slots (fixed N x 48 MiB). 1 is the lowest-footprint setting and is "
+            "what makes aggressive swap=6/7 fit (9732 MiB with 2 buffers vs ~9932 "
+            "MiB per-slot, above the 9788 MiB card limit). Default 2. Env fallback: "
+            "ANIMA_BLOCK_SWAP_INT8_STAGING_RING."
+        ),
+    )
+    parser.add_argument(
+        "--block_swap_int8_dual_stream",
+        default=None,
+        action="store_true",
+        help=(
+            "Split the int8 fused restore across two streams (pure DMA stream plus "
+            "a priority=-1 dequant stream). Measured: no throughput change, but the "
+            "per-step spread collapses from up to 1.59 s to ~0.015 s, which makes "
+            "long-run ETA estimates reliable. Only meaningful with "
+            "block_swap_int8_restore_mode=fused. Default off. Env fallback: "
+            "ANIMA_BLOCK_SWAP_INT8_DUAL_STREAM."
+        ),
+    )
+    parser.add_argument(
+        "--block_swap_int8_scope",
+        type=str,
+        default=None,
+        help="Comma-separated int8 candidate scope; default all. Env fallback ANIMA_BLOCK_SWAP_INT8_SCOPE.",
+    )
+    parser.add_argument(
+        "--block_swap_int8_restore_chunk_rows",
+        type=int,
+        default=None,
+        help=(
+            "Row chunk size for block_swap_int8_restore_mode=reuse_storage; lowers "
+            "the transient VRAM peak of the non-fused path. 0 (default) uses the "
+            "whole tensor. Env fallback: ANIMA_BLOCK_SWAP_INT8_RESTORE_CHUNK_ROWS."
+        ),
+    )
+    parser.add_argument(
         "--selective_checkpoint",
         type=str,
         default="off",
@@ -1611,6 +1671,17 @@ def add_dataset_arguments(
         "--skip_cache_check",
         action="store_true",
         help="skip the content validation of cache",
+    )
+    parser.add_argument(
+        "--require_cache_identity",
+        action="store_true",
+        help=(
+            "Treat preprocessed sidecars without a cache-identity stamp as "
+            "stale and refuse them, instead of reusing them silently. Sidecars "
+            "stamped with different text-encoder / VAE / tokenizer weights are "
+            "always rejected. Re-run preprocessing (or pass --overwrite to the "
+            "preprocess task) to stamp and rebuild."
+        ),
     )
     parser.add_argument(
         "--resize_interpolation",

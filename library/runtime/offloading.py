@@ -16,12 +16,16 @@ from library.runtime.block_swap_config import (
     _BLOCK_SWAP_INT8_RESTORE_MODES,
     _BLOCK_SWAP_INT8_SCOPES,
     _BLOCK_SWAP_RESTORE_MODES,
+    _DEFAULT_BLOCK_SWAP_INT8_STAGING_RING,
     _BLOCK_SWAP_TRANSFER_DTYPES,
     _DEFAULT_BLOCK_SWAP_PROFILE_POLL_INTERVAL_S,
     _block_swap_prefetch_depth,
     _block_swap_profile_poll_interval_s,
     _env_flag,
     _env_int,
+    resolve_block_swap_int8_dual_stream,
+    resolve_block_swap_int8_restore_chunk_rows,
+    resolve_block_swap_int8_staging_ring,
     normalize_block_swap_int8_restore_mode,
     normalize_block_swap_int8_scope,
     normalize_block_swap_restore_mode,
@@ -40,6 +44,7 @@ from library.runtime.block_swap_masters import (
     _parked_cpu_master_tensor,
     _restore_cpu_master_tensor,
     _restore_int8_cpu_master_into_tensor,
+    _restore_int8_cpu_master_fused,
     _tensor_nbytes,
     _weight_device_type,
     is_params4bit_weight,
@@ -319,6 +324,8 @@ class Offloader:
         int8_restore_mode: Optional[str] = None,
         int8_restore_chunk_rows: Optional[int] = None,
         int8_scope: Optional[str] = None,
+        int8_staging_ring: Optional[int] = None,
+        int8_dual_stream: Optional[bool] = None,
     ):
         self.num_blocks = num_blocks
         self.blocks_to_swap = blocks_to_swap
@@ -329,19 +336,30 @@ class Offloader:
         self.restore_mode = normalize_block_swap_restore_mode(restore_mode)
         int8_restore_mode = int8_restore_mode or os.getenv(
             "ANIMA_BLOCK_SWAP_INT8_RESTORE_MODE",
-            "copy",
+            "fused",
         )
         self.int8_restore_mode = normalize_block_swap_int8_restore_mode(
             int8_restore_mode
         )
         int8_scope = int8_scope or os.getenv("ANIMA_BLOCK_SWAP_INT8_SCOPE", "all")
         self.int8_scope = normalize_block_swap_int8_scope(int8_scope)
-        if int8_restore_chunk_rows is None:
-            int8_restore_chunk_rows = _env_int(
-                "ANIMA_BLOCK_SWAP_INT8_RESTORE_CHUNK_ROWS",
-                default=0,
-            )
-        self.int8_restore_chunk_rows = max(0, int(int8_restore_chunk_rows))
+        # Effective block-swap int8 combination, logged once below and recorded in
+        # profile events so a user can paste one line and reproduce the run.
+        self.int8_staging_ring = (
+            resolve_block_swap_int8_staging_ring(int8_staging_ring)
+            if self.transfer_dtype == "int8"
+            else None
+        )
+        self.int8_dual_stream = (
+            resolve_block_swap_int8_dual_stream(int8_dual_stream)
+            if self.transfer_dtype == "int8"
+            else None
+        )
+        self.int8_restore_chunk_rows = resolve_block_swap_int8_restore_chunk_rows(
+            int8_restore_chunk_rows
+        )
+        if self.int8_dual_stream and self.int8_restore_mode != "fused":
+            raise ValueError("block_swap_int8_dual_stream requires block_swap_int8_restore_mode=fused")
 
         self.thread_pool = ThreadPoolExecutor(max_workers=1)
         self.futures = {}
@@ -375,6 +393,26 @@ class Offloader:
         # Per-slot copy streams let multiple in-flight H2D restores run on
         # independent streams instead of queueing on one. Keyed by slot id.
         self._copy_streams: dict[int, Any] = {}
+        # int8_restore_mode=fused: per-slot static staging (payload, scale).
+        self._int8_fused_staging: dict[Any, tuple[Any, Any, Any]] = {}
+        self._int8_fused_staging_event: Optional[Any] = None
+        # 0 = one staging buffer per slot; N >= 1 = N buffers shared by all slots.
+        self._int8_staging_ring_size = (
+            self.int8_staging_ring
+            if self.int8_staging_ring is not None
+            else _DEFAULT_BLOCK_SWAP_INT8_STAGING_RING
+        )
+        # Experimental: split the H2D (pure DMA) and the fused dequant (SM kernel)
+        # onto two streams so the next tensor's H2D never waits behind the
+        # previous tensor's SM work (head-of-line blocking, see
+        # docs/findings/moss_image_int8_blockswap_diagnosis_20261018.md 3.1/3.5).
+        self._int8_dual_stream_enabled = bool(self.int8_dual_stream)
+        self._int8_dma_stream: Optional[Any] = None
+        self._int8_dequant_stream: Optional[Any] = None
+        self._int8_dual_buffers: Optional[list[Any]] = None
+        self._int8_dual_payload = 0
+        self._int8_dual_rows = 0
+        self._int8_dequant_done_event: Optional[Any] = None
         # Forward prefetch lead (blocks ahead to begin H2D restore). See
         # docs/findings/blockswap_baseline_20260806.md — bf16 transfer slightly
         # exceeds single-block compute on RTX 3080, so depth 2 hides it.
@@ -577,6 +615,7 @@ class Offloader:
                 f"{total_bytes / (1024 ** 3):.2f} GiB across {len(blocks)} blocks "
                 f"(transfer_dtype={self.transfer_dtype})"
             )
+            logger.info(self.describe_block_swap_config())
             self._reported_weight_masters = True
         if self.profiler is not None:
             self.profiler.write(
@@ -590,6 +629,8 @@ class Offloader:
                     "int8_restore_mode": self.int8_restore_mode,
                     "int8_restore_chunk_rows": self.int8_restore_chunk_rows,
                     "int8_scope": self.int8_scope,
+                    "int8_staging_ring": self.int8_staging_ring,
+                    "int8_dual_stream": self.int8_dual_stream,
                     "frozen_weight_master_bytes": total_bytes,
                     "frozen_weight_bytes_by_block": bytes_by_block,
                     "bf16_master_bytes": total_bf16_bytes,
@@ -956,6 +997,141 @@ class Offloader:
             stream = torch.cuda.Stream(device=self.device)
             self._copy_streams[slot_id] = stream
         return stream
+
+    def _get_int8_fused_staging(self, slot_id, weight_swap_jobs):
+        """Small ring of int8/scale staging buffers shared across swap slots.
+
+        Per-slot buffers waste resident VRAM: 20 slots x 48 MiB measured
+        +0.94 GiB allocated on CMP 50HX. A single buffer minimises VRAM but
+        serialises restores through one event (+3.8% step time). The ring size
+        (default 2, ANIMA_BLOCK_SWAP_INT8_STAGING_RING) keeps prefetch overlap
+        while capping resident staging at ring x largest tensor.
+        """
+        max_payload = 0
+        max_rows = 0
+        for _name, _src, target_master, _sd, _td in weight_swap_jobs:
+            if isinstance(target_master, Int8BlockSwapCpuMaster):
+                max_payload = max(max_payload, int(target_master.quantized.numel()))
+                max_rows = max(max_rows, int(target_master.scale.numel()))
+        ring = self._int8_staging_ring_size
+        # ring <= 0 keeps one buffer per swap slot (fastest, largest footprint);
+        # ring >= 1 shares that many buffers across slots (event-gated).
+        key = int(slot_id or 0) if ring <= 0 else int(slot_id or 0) % ring
+        cached = self._int8_fused_staging.get(key)
+        if cached is not None and cached[0].numel() >= max_payload and cached[1].numel() >= max_rows:
+            return cached
+        if max_payload == 0:
+            return None, None, None
+        if cached is None:
+            staging = torch.empty(max_payload, dtype=torch.int8, device=self.device)
+            scale_staging = torch.empty(max_rows, dtype=torch.float32, device=self.device)
+        else:
+            # Grow once to the largest observed payload; never shrink, so no
+            # repeated free/allocate churn across slots.
+            staging = torch.empty(max(max_payload, cached[0].numel()),
+                                  dtype=torch.int8, device=self.device)
+            scale_staging = torch.empty(max(max_rows, cached[1].numel()),
+                                        dtype=torch.float32, device=self.device)
+        event = torch.cuda.Event() if torch.cuda.is_available() else None
+        self._int8_fused_staging[key] = (staging, scale_staging, event)
+        return staging, scale_staging, event
+
+    def _int8_dual_stream_buffers(self, weight_swap_jobs):
+        """Two staging buffer pairs plus per-buffer DMA/dequant events."""
+        if self._int8_dma_stream is None:
+            self._int8_dma_stream = torch.cuda.Stream(device=self.device)
+            self._int8_dequant_stream = torch.cuda.Stream(
+                device=self.device, priority=-1
+            )
+        max_payload = 0
+        max_rows = 0
+        for _name, _src, target_master, _sd, _td in weight_swap_jobs:
+            if isinstance(target_master, Int8BlockSwapCpuMaster):
+                max_payload = max(max_payload, int(target_master.quantized.numel()))
+                max_rows = max(max_rows, int(target_master.scale.numel()))
+        if (
+            self._int8_dual_buffers is None
+            or self._int8_dual_payload < max_payload
+            or self._int8_dual_rows < max_rows
+        ):
+            buffers = []
+            for _ in range(2):
+                quantized = torch.empty(max_payload, dtype=torch.int8, device=self.device)
+                scale = torch.empty(max_rows, dtype=torch.float32, device=self.device)
+                buffers.append(
+                    (quantized, scale, torch.cuda.Event(), torch.cuda.Event())
+                )
+            self._int8_dual_buffers = buffers
+            self._int8_dual_payload = max_payload
+            self._int8_dual_rows = max_rows
+        return self._int8_dual_buffers
+
+    def _restore_int8_fused_dual_stream(
+        self, cuda_dsts, weight_swap_jobs, stream, ready_event
+    ) -> None:
+        """Issue every H2D on a pure DMA stream and every dequant on a high-priority stream."""
+        buffers = self._int8_dual_stream_buffers(weight_swap_jobs)
+        dma_stream = self._int8_dma_stream
+        dequant_stream = self._int8_dequant_stream
+        if ready_event is not None:
+            dequant_stream.wait_event(ready_event)
+        for index, (dst, job) in enumerate(zip(cuda_dsts, weight_swap_jobs)):
+            target_master = job[2]
+            if not isinstance(target_master, Int8BlockSwapCpuMaster):
+                continue
+            quantized, scale, dma_ready, buffer_free = buffers[index % 2]
+            rows = target_master.shape[0]
+            cols = target_master.quantized.numel() // rows
+            payload = target_master.quantized.numel()
+            dma_stream.wait_event(buffer_free)
+            with torch.cuda.stream(dma_stream):
+                quantized_view = quantized[:payload]
+                scale_view = scale[:rows]
+                quantized_view.copy_(
+                    target_master.quantized.reshape(-1), non_blocking=True
+                )
+                scale_view.copy_(target_master.scale, non_blocking=True)
+                dma_ready.record(dma_stream)
+            dequant_stream.wait_event(dma_ready)
+            if not dst.is_contiguous():
+                raise ValueError("int8 dual-stream restore target must be contiguous")
+            with torch.cuda.stream(dequant_stream):
+                torch.mul(
+                    quantized_view.view(rows, cols),
+                    scale_view.to(torch.float32)[:, None],
+                    out=dst.view(rows, cols),
+                )
+                buffer_free.record(dequant_stream)
+                dst.record_stream(dequant_stream)
+        if self._int8_dequant_done_event is None:
+            self._int8_dequant_done_event = torch.cuda.Event()
+        self._int8_dequant_done_event.record(dequant_stream)
+        # The caller records its own completion event on `stream`; ordering it
+        # after the dequant stream keeps the compute stream waiting correctly.
+        stream.wait_event(self._int8_dequant_done_event)
+
+    def describe_block_swap_config(self) -> str:
+        """One-line effective block-swap configuration for logs and bug reports."""
+        parts = [
+            f"swap={self.blocks_to_swap}",
+            f"transfer_dtype={self.transfer_dtype}",
+            f"restore_mode={self.restore_mode}",
+        ]
+        if self.transfer_dtype == "int8":
+            ring = self.int8_staging_ring
+            if ring is None:
+                ring_desc = "n/a"
+            elif ring <= 0:
+                ring_desc = f"{self.blocks_to_swap} x 48 MiB (per slot)"
+            else:
+                ring_desc = f"{ring} x 48 MiB"
+            parts.append(f"int8_restore_mode={self.int8_restore_mode}")
+            parts.append(f"int8_scope={self.int8_scope}")
+            parts.append(f"staging_ring={ring} ({ring_desc})")
+            parts.append(f"dual_stream={bool(self.int8_dual_stream)}")
+            if self.int8_restore_mode == "reuse_storage":
+                parts.append(f"chunk_rows={self.int8_restore_chunk_rows}")
+        return "[BlockSwap] " + ", ".join(parts)
 
     def _acquire_cuda_event(self, *, enable_timing: bool) -> Any:
         with self._event_pool_lock:
@@ -1514,6 +1690,52 @@ class Offloader:
                             non_blocking=True,
                         )
                         cuda_data_view.copy_(restored, non_blocking=True)
+                elif has_int8_master and self.int8_restore_mode == "fused":
+                    # All-int8 blocks can split H2D and dequant onto two streams;
+                    # mixed blocks keep the single-stream fused path.
+                    dual_stream = self._int8_dual_stream_enabled and all(
+                        isinstance(job[2], Int8BlockSwapCpuMaster)
+                        for job in weight_swap_jobs
+                    )
+                    if dual_stream:
+                        self._restore_int8_fused_dual_stream(
+                            cuda_dsts, weight_swap_jobs, stream, ready_event
+                        )
+                    staging, scale_staging, staging_event = (
+                        (None, None, None) if dual_stream
+                        else self._get_int8_fused_staging(slot_id, weight_swap_jobs)
+                    )
+                    if staging_event is not None:
+                        # Ring buffer: wait until this buffer's previous consumer
+                        # finished before overwriting it.
+                        stream.wait_event(staging_event)
+                    for cuda_data_view, (
+                        _module_name,
+                        _source_master,
+                        target_master,
+                        _source_dtype,
+                        target_dtype,
+                    ) in (() if dual_stream else zip(cuda_dsts, weight_swap_jobs)):
+                        if isinstance(target_master, Int8BlockSwapCpuMaster):
+                            _restore_int8_cpu_master_fused(
+                                target_master,
+                                cuda_data_view,
+                                device=self.device,
+                                dtype=target_dtype,
+                                staging=staging,
+                                scale_staging=scale_staging,
+                                non_blocking=True,
+                            )
+                            continue
+                        restored = _restore_cpu_master_tensor(
+                            target_master,
+                            device=self.device,
+                            dtype=target_dtype,
+                            non_blocking=True,
+                        )
+                        cuda_data_view.copy_(restored, non_blocking=True)
+                    if staging_event is not None:
+                        staging_event.record(stream)
                 elif has_int8_master and self.int8_restore_mode == "reuse_storage":
                     for cuda_data_view, (
                         _module_name,
@@ -1865,6 +2087,8 @@ class ModelOffloader(Offloader):
         int8_restore_mode: Optional[str] = None,
         int8_restore_chunk_rows: Optional[int] = None,
         int8_scope: Optional[str] = None,
+        int8_staging_ring: Optional[int] = None,
+        int8_dual_stream: Optional[bool] = None,
     ):
         super().__init__(
             len(blocks),
@@ -1877,6 +2101,8 @@ class ModelOffloader(Offloader):
             int8_restore_mode=int8_restore_mode,
             int8_restore_chunk_rows=int8_restore_chunk_rows,
             int8_scope=int8_scope,
+            int8_staging_ring=int8_staging_ring,
+            int8_dual_stream=int8_dual_stream,
         )
 
         self.supports_backward = supports_backward

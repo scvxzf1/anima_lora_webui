@@ -11,7 +11,7 @@ from library.runtime.int8_linear import INT8_LINEAR_SCOPE_MODULES
 
 _BLOCK_SWAP_TRANSFER_DTYPES = {"bf16", "fp8_e4m3", "int8"}
 _BLOCK_SWAP_RESTORE_MODES = {"foreach", "slab"}
-_BLOCK_SWAP_INT8_RESTORE_MODES = {"copy", "direct_bind", "reuse_storage"}
+_BLOCK_SWAP_INT8_RESTORE_MODES = {"copy", "direct_bind", "reuse_storage", "fused"}
 _BLOCK_SWAP_INT8_SCOPES = {"all", *INT8_LINEAR_SCOPE_MODULES}
 _DEFAULT_BLOCK_SWAP_PROFILE_POLL_INTERVAL_S = 0.05
 
@@ -98,14 +98,16 @@ def normalize_block_swap_restore_mode(value: Optional[str]) -> str:
 
 
 def normalize_block_swap_int8_restore_mode(value: Optional[str]) -> str:
-    mode = str(value or "copy").strip().lower()
+    mode = str(value or "fused").strip().lower()
     aliases = {
-        "default": "copy",
+        "default": "fused",
         "reuse": "reuse_storage",
         "inplace": "reuse_storage",
         "into": "reuse_storage",
         "bind": "direct_bind",
         "direct": "direct_bind",
+        "single_kernel": "fused",
+        "one_kernel": "fused",
     }
     mode = aliases.get(mode, mode)
     if mode not in _BLOCK_SWAP_INT8_RESTORE_MODES:
@@ -114,6 +116,88 @@ def normalize_block_swap_int8_restore_mode(value: Optional[str]) -> str:
             f"{', '.join(sorted(_BLOCK_SWAP_INT8_RESTORE_MODES))}"
         )
     return mode
+
+
+_DEFAULT_BLOCK_SWAP_INT8_STAGING_RING = 2
+_DEFAULT_BLOCK_SWAP_INT8_RESTORE_CHUNK_ROWS = 0
+
+
+def normalize_block_swap_int8_staging_ring(value: Optional[int]) -> int:
+    """int8 fused staging buffer count: 0 = per slot, N >= 1 = shared ring."""
+    if value is None or (isinstance(value, str) and not str(value).strip()):
+        return _DEFAULT_BLOCK_SWAP_INT8_STAGING_RING
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        raise ValueError(
+            "block_swap_int8_staging_ring must be an integer >= 0 "
+            "(0 = one buffer per swap slot, 1 = one shared buffer, "
+            "N = N buffers shared by all slots)"
+        )
+    if parsed < 0:
+        raise ValueError("block_swap_int8_staging_ring must be >= 0")
+    return parsed
+
+
+def normalize_block_swap_int8_restore_chunk_rows(value: Optional[int]) -> int:
+    if value is None or (isinstance(value, str) and not str(value).strip()):
+        return _DEFAULT_BLOCK_SWAP_INT8_RESTORE_CHUNK_ROWS
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        raise ValueError("block_swap_int8_restore_chunk_rows must be an integer >= 0")
+    if parsed < 0:
+        raise ValueError("block_swap_int8_restore_chunk_rows must be >= 0")
+    return parsed
+
+
+def resolve_block_swap_int8_staging_ring(value: Optional[int] = None) -> int:
+    """CLI/TOML value wins; ANIMA_BLOCK_SWAP_INT8_STAGING_RING is the fallback."""
+    if value is not None and not (isinstance(value, str) and not str(value).strip()):
+        return normalize_block_swap_int8_staging_ring(value)
+    return normalize_block_swap_int8_staging_ring(
+        _env_int(
+            "ANIMA_BLOCK_SWAP_INT8_STAGING_RING",
+            default=_DEFAULT_BLOCK_SWAP_INT8_STAGING_RING,
+        )
+    )
+
+
+def resolve_block_swap_int8_restore_chunk_rows(value: Optional[int] = None) -> int:
+    if value is not None and not (isinstance(value, str) and not str(value).strip()):
+        return normalize_block_swap_int8_restore_chunk_rows(value)
+    return normalize_block_swap_int8_restore_chunk_rows(
+        _env_int(
+            "ANIMA_BLOCK_SWAP_INT8_RESTORE_CHUNK_ROWS",
+            default=_DEFAULT_BLOCK_SWAP_INT8_RESTORE_CHUNK_ROWS,
+        )
+    )
+
+
+_TRUTHY = {"1", "true", "yes", "on"}
+_FALSY = {"0", "false", "no", "off"}
+
+
+def normalize_block_swap_int8_dual_stream(value: Optional[object]) -> bool:
+    if value is None:
+        return False
+    if isinstance(value, bool):
+        return value
+    text = str(value).strip().lower()
+    if not text:
+        return False
+    if text in _TRUTHY:
+        return True
+    if text in _FALSY:
+        return False
+    raise ValueError("block_swap_int8_dual_stream must be a boolean")
+
+
+def resolve_block_swap_int8_dual_stream(value: Optional[object] = None) -> bool:
+    """CLI/TOML value wins; ANIMA_BLOCK_SWAP_INT8_DUAL_STREAM is the fallback."""
+    if value is not None and not (isinstance(value, str) and not str(value).strip()):
+        return normalize_block_swap_int8_dual_stream(value)
+    return _env_flag("ANIMA_BLOCK_SWAP_INT8_DUAL_STREAM", default=False)
 
 
 def normalize_block_swap_int8_scope(value: Optional[str]) -> str:
