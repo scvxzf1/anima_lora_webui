@@ -34,8 +34,26 @@
 | `--block-swap-auto --margin-mib N` | 打开进程内水位调优（`block_swap_auto`），并在 `result.json` 的 `block_swap_auto` 字段回收日志行 |
 | `--restore-mode foreach\|slab` | 固定恢复模式，做 A/B |
 | `--side 256\|512` | 分辨率；非默认分辨率使用独立工作区目录（`workspace-<side>`）避免缓存互串 |
+| `--family {anima,krea2_raw,z_image,qwen_image_2_1}` | 族预设：模型路径、sidecar 后缀、运行时键；非 anima 族用 `workspace-<family>[-<side>]` |
 
 产物：`<run>/result.json`（原始 metrics）、`<run>/train.log`、`<run>/config.runtime.toml`、profile JSONL。
+
+## 跨族运行
+
+`--family` 预设了每族的 dit/te/vae、缓存后缀与运行时键，并按族选择 TE 缓存脚本：
+anima 用 `scripts/preprocess/cache_text_embeddings.py`，`krea2_raw` / `z_image` /
+`qwen_image_2_1` 各有自己的脚本，编码器参数名也不同（`--qwen3` vs `--qwen`）。
+Anima 沿用历史工作区 `workspace`，其它族使用 `workspace-<family>`，缓存互不串用。
+
+```bash
+.venv/bin/python -m bench.block_swap_pipeline.run_probe --family krea2_raw \
+    --gpu 0 --steps 4 --blocks-to-swap 26 --label krea2-swap26
+```
+
+50HX（Turing）上各族都只能用 `attn_mode="torch"`：flash 不可用，`sdpa` 在 Krea-2 上报
+`No available kernel`；原生高分辨率还会因注意力内存 OOM（Krea-2 在 896×1200 实测如此）。
+真实数据集的缓存重建流程与四个实测坑见
+[Krea-2 跨族验收](../../docs/findings/block_swap_krea2_hot_50hx_20261019.md)。
 
 ## 指标口径
 
