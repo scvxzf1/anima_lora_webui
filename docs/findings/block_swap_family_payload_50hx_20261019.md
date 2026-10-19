@@ -41,6 +41,11 @@ P1 的进程内水位调优（`--block_swap_auto`）目前只在 Anima 上跑过
 注：`krea2_raw` 的文件比「块 + 非块」略大，因为非块里的 norm 以 F32 存盘、传输仍按 bf16；
 `qwen_image_2_1` 盘上是 fp8（1 字节/元素），传输按 bf16 计，所以块总量约为文件的 2 倍。
 
+真机核对（后续轮次）：Krea-2-Raw 日志 `22.64 GiB across 28 blocks`、Z-Image 日志
+`10.11 GiB across 30 blocks`（promotion 行报 `block=345.0 MiB`）——两者都与上表逐项一致，
+见 [Krea-2 验收](block_swap_krea2_hot_50hx_20261019.md) 与
+[Z-Image 验收](block_swap_zimage_hot_50hx_20261019.md)。
+
 四族都是**均匀块**（`uniform=True`）：`plan_promotion` 用「块 `count - current` 的载荷」
 作单块代表的口径成立，不需要按块差分。
 
