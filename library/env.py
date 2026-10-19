@@ -187,6 +187,42 @@ def get_configs_root() -> Path:
     return project_root() / "configs"
 
 
+def get_webui_settings_file() -> Path:
+    """获取 WebUI 全局设置文件路径（web-ui-settings.toml）。
+
+    优先级：
+    1. ANIMA_WEBUI_SETTINGS_FILE 环境变量
+    2. .anima-webui-settings.toml [paths].settings_file
+    3. 默认 get_configs_root()/web-ui-settings.toml
+
+    存在的意义：默认情况下设置文件被 `configs_root` 焊死，而
+    `configs/web-ui-settings.toml` 同时承担「仓库模板」和「本机设置」两个角色，
+    导致用户真实设置容易在 pull / 重置时被覆盖。此覆盖项让本机设置能脱离
+    版本控制，而 `configs/` 里的那份回归纯模板。
+
+    注意：该覆盖只能来自环境变量或 `.anima-webui-settings.toml`（二者都已被
+    .gitignore 忽略），绝不能从 `web-ui-settings.toml` 自身读取 —— 否则会出现
+    「需要先读设置才能知道设置在哪里」的循环依赖。
+    """
+    load_dotenv()
+
+    env_value = os.environ.get("ANIMA_WEBUI_SETTINGS_FILE")
+    if env_value:
+        return _resolve_project_relative_override(
+            env_value,
+            label="ANIMA_WEBUI_SETTINGS_FILE",
+        )
+
+    webui_value = _webui_paths_section().get("settings_file", "").strip()
+    if webui_value:
+        return _resolve_project_relative_override(
+            webui_value,
+            label="settings_file",
+        )
+
+    return get_configs_root() / "web-ui-settings.toml"
+
+
 def get_training_history_root() -> Path:
     """获取训练历史根目录。
 

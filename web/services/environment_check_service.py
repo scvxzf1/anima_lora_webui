@@ -255,12 +255,31 @@ def _load_model_path_settings() -> dict[str, str]:
     return settings
 
 
+def _webui_settings_file(configs_root: Path) -> Path:
+    """解析设置文件；显式覆盖优先，否则回退到给定配置根。
+
+    保留按 configs_root 扫描的能力：只有当存在显式覆盖
+    （ANIMA_WEBUI_SETTINGS_FILE / [paths].settings_file）时才统一走覆盖路径。
+    """
+    from library.env import get_configs_root, get_webui_settings_file
+
+    fallback = configs_root / "web-ui-settings.toml"
+    try:
+        resolved = get_webui_settings_file()
+        default_file = Path(get_configs_root()) / "web-ui-settings.toml"
+        if resolved.resolve() != default_file.resolve():
+            return resolved
+    except OSError:
+        return fallback
+    return fallback
+
+
 def _load_model_path_settings_from_config_root(configs_root: Path) -> dict[str, str]:
     settings: dict[str, str] = {}
     base = _read_toml(configs_root / "base.toml")
     for key, _, _ in MODEL_PATH_CHECKS:
         settings[key] = str(base.get(key) or "").strip()
-    web_settings = _read_toml(configs_root / "web-ui-settings.toml")
+    web_settings = _read_toml(_webui_settings_file(configs_root))
     section = web_settings.get("global") if isinstance(web_settings.get("global"), dict) else {}
     for key, _, _ in MODEL_PATH_CHECKS:
         if key in section:

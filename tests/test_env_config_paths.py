@@ -372,3 +372,64 @@ def test_web_service_roots_follow_anima_home(monkeypatch, tmp_path):
     from web.services.config import common as common_mod
     assert common_mod.anima_home() == home.resolve()
 
+
+
+def test_get_webui_settings_file_defaults_to_configs_root(monkeypatch, tmp_path):
+    """未配置覆盖时，设置文件落在 configs_root 下。"""
+    project = tmp_path / "project"
+    project.mkdir()
+    monkeypatch.delenv("ANIMA_WEBUI_SETTINGS_FILE", raising=False)
+    monkeypatch.delenv("ANIMA_CONFIGS_ROOT", raising=False)
+
+    library_env = _reload_env_with_project_root(monkeypatch, project)
+
+    assert library_env.get_webui_settings_file() == (project / "configs" / "web-ui-settings.toml")
+
+
+def test_get_webui_settings_file_env_override_wins(monkeypatch, tmp_path):
+    """ANIMA_WEBUI_SETTINGS_FILE 应优先于 configs_root 推导。"""
+    project = tmp_path / "project"
+    project.mkdir()
+    external = tmp_path / "external" / "web-ui-settings.toml"
+    monkeypatch.setenv("ANIMA_WEBUI_SETTINGS_FILE", str(external))
+    monkeypatch.delenv("ANIMA_CONFIGS_ROOT", raising=False)
+
+    library_env = _reload_env_with_project_root(monkeypatch, project)
+
+    assert library_env.get_webui_settings_file() == external.resolve()
+
+
+def test_get_webui_settings_file_paths_override(monkeypatch, tmp_path):
+    """[paths].settings_file 应生效，且环境变量优先级更高。"""
+    project = tmp_path / "project"
+    project.mkdir()
+    (project / ".anima-webui-settings.toml").write_text(
+        "\n".join(["[paths]", 'settings_file = "external/settings.toml"']) + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.delenv("ANIMA_WEBUI_SETTINGS_FILE", raising=False)
+    monkeypatch.delenv("ANIMA_CONFIGS_ROOT", raising=False)
+
+    library_env = _reload_env_with_project_root(monkeypatch, project)
+
+    assert library_env.get_webui_settings_file() == (
+        project / "external" / "settings.toml"
+    ).resolve()
+
+    env_file = tmp_path / "env-wins.toml"
+    monkeypatch.setenv("ANIMA_WEBUI_SETTINGS_FILE", str(env_file))
+    library_env = _reload_env_with_project_root(monkeypatch, project)
+    assert library_env.get_webui_settings_file() == env_file.resolve()
+
+
+def test_get_webui_settings_file_rejects_parent_traversal(monkeypatch, tmp_path):
+    """覆盖路径不允许 .. 穿越。"""
+    project = tmp_path / "project"
+    project.mkdir()
+    monkeypatch.setenv("ANIMA_WEBUI_SETTINGS_FILE", "../escape/settings.toml")
+
+    library_env = _reload_env_with_project_root(monkeypatch, project)
+
+    with pytest.raises(ValueError):
+        library_env.get_webui_settings_file()
+

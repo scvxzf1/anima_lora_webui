@@ -13,6 +13,7 @@ from library.env import (
     get_configs_root,
     get_training_history_root,
     get_training_queue_root,
+    get_webui_settings_file,
     normalize_model_family,
 )
 from web.services._dynamic_path import DynamicPath
@@ -22,7 +23,7 @@ ROOT = anima_home()
 
 
 def _default_settings_file() -> Path:
-    return get_configs_root() / "web-ui-settings.toml"
+    return get_webui_settings_file()
 
 
 SETTINGS_FILE = DynamicPath(_default_settings_file)
@@ -613,9 +614,27 @@ def resolve_config_path(key: str, value: str | None = None) -> Path:
 
 
 def _settings_file_for_payload(data: dict[str, Any], current_settings_file: Path) -> Path:
+    # 显式设置文件覆盖（环境变量 / .anima-webui-settings.toml [paths].settings_file）
+    # 优先于 configs_root 推导：否则用户改了 configs_root 会把设置写到别处，
+    # 而读取端仍按覆盖路径读，导致「保存成功但设置不生效」。
+    override = _explicit_settings_file_override()
+    if override is not None:
+        return override
     if "configs_root" not in data:
         return current_settings_file.resolve()
     return _settings_file_for_configs_root(data.get("configs_root"))
+
+
+def _explicit_settings_file_override() -> Path | None:
+    """返回显式设置文件覆盖路径；未配置时返回 None。"""
+    configured = get_webui_settings_file()
+    default_file = get_configs_root() / "web-ui-settings.toml"
+    try:
+        if configured.resolve() == default_file.resolve():
+            return None
+    except OSError:
+        return None
+    return configured
 
 
 def _settings_file_for_configs_root(value: Any) -> Path:

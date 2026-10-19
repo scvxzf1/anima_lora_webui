@@ -26,6 +26,13 @@ def _blank_model_path(value: Any) -> bool:
     return str(value or "").strip() == ""
 
 
+def _webui_settings_file() -> Path:
+    """解析 WebUI 设置文件，尊重 ANIMA_WEBUI_SETTINGS_FILE 覆盖。"""
+    from library.env import get_webui_settings_file
+
+    return get_webui_settings_file()
+
+
 def apply_global_model_path_defaults(
     cfg: dict[str, Any],
     *,
@@ -45,7 +52,7 @@ def apply_global_model_path_defaults(
 
 def _global_model_path_defaults(fallback: dict[str, Any]) -> dict[str, str]:
     values: dict[str, str] = {}
-    settings_file = CONFIGS_DIR / "web-ui-settings.toml"
+    settings_file = _webui_settings_file()
     if settings_file.exists():
         try:
             raw = toml.loads(settings_file.read_text(encoding="utf-8"))
