@@ -126,3 +126,21 @@ ls -la output/ckpt/moss_image_lora*
 - 长训练（热稳态、收敛、过拟合）无证据；热测只有 10 步窗口。
 - MOSS 未注册通用推理 mode/sampler，训练产物只能用训练预览或外部管线验证。
 - 本页不改变任何默认配置。
+
+## 8. 受保护产物（清理磁盘前必读）
+
+磁盘清理是最容易误伤实验证据的操作。以下路径**不属于可清理缓存**，任何人（含 Agent）
+在清理磁盘时都不得把它们当作候选：
+
+| 路径（相对工作树根） | 是什么 | 删除规则 |
+| --- | --- | --- |
+| `output/km-venv/` | B 侧（KohakuMossTrainer）实测运行环境：`torch 2.13.0+cu130` + `kohaku-engine`/`kohakuvault`/`anyschedule`/`lycoris-lora` 全套依赖，约 5.4 GB | **必须先向用户提出，并反复多次询问取得明确肯定回答**后才可删除；一次含糊同意不算数 |
+| `output/km-src/` | B 侧源码副本（原仓库 `KohakuMossTrainer` 保持只读） | 随 `km-venv` 一并询问 |
+| `output/analysis/moss-ab/` | A/B 对比与 512 幅面实测的全部证据：原始日志、逐步计时、配置快照、核验记录 | 不得删除；报告里每个数字都要靠它回查 |
+
+重建成本说明：`km-venv` 之所以要保护，是因为本机默认 pip 源（tuna）已失效，必须显式走
+`https://mirrors.aliyun.com/pypi/simple/`，且 `torch` 需从 `https://download.pytorch.org/whl/cu130`
+拉取——整套重建是十几分钟到几十分钟的下载加安装，不是一条 `pip install` 就回来的东西。
+
+同一规则在文件系统里另有两份副本：`output/PROTECTED-DIRS.md` 与 `output/km-venv/DO-NOT-DELETE.md`
+（`output/` 被 gitignore，所以受版本控制的这份才是 `git clean` 之后仍然存在的记录）。
