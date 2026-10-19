@@ -215,6 +215,59 @@ NF4 eager/compiled 零容差前向与梯度、迁移 OOM 回滚。尚未新增�
 [全程动态验收报告](../findings/auto_block_swap_dynamic_20260908.md)。动态模式使用
 A/B/A 复测和成本门槛；实测23块只比25块快约0.9%，正确拒绝了低于3%门槛的候选。
 
+## blocks_to_swap 的合法区间（按族）
+
+`blocks_to_swap` 是整数，**合法上界按模型族不同**，不是全局统一值。各族都要求至少保留
+两块常驻（换出集合是首 `n` 块与末 `n` 块的并集），所以上界为「换出块总数 − 2」：
+
+| 模型族 | 可换出块总数 | `blocks_to_swap` 合法区间 | 单块载荷 | 上界处的每步搬运量 |
+| --- | ---: | --- | ---: | ---: |
+| Anima | 28（`net.blocks`） | `0`（关闭）或 `1..26` | 132.0 MiB | 7197 MB |
+| Krea-2-Raw | 28（`blocks`） | `0`（关闭）或 `1..26` | 828.1 MiB | 45153 MB |
+| Z-Image | 30（`layers`） | `0`（关闭）或 `1..28` | 345.1 MiB | 20262 MB |
+| Qwen-Image 2.1 | 32（`transformer_blocks`） | `0`（关闭）或 `1..30` | 416.0 MiB | 26172 MB |
+
+每步搬运量 = `2 × blocks_to_swap × 单块载荷`（每个换出块一步恢复两次）。给出上界是因为
+超限会被断言或校验直接拒绝，典型报错：
+
+- Anima：`AssertionError: Cannot swap more than 26 blocks. Requested: N blocks.`（`library/anima/models.py`）；
+- Krea-2-Raw：同样的 `Cannot swap more than 26 blocks` 断言（`library/models/krea2_raw/dit.py`）；
+- Qwen-Image 2.1：`blocks_to_swap must be between 0 and 30`（`library/training/compat_matrix.py`）；
+- Z-Image：`Z-Image has 30 main layers and requires at least two resident layers; use blocks_to_swap between 0 and 28.`。
+
+`0` 表示完全关闭块交换。这些数字来自只读 safetensors 头部的真实权重字节，且四族都已在本机
+真机训练中逐字节验证；推算方法见
+[各族分块载荷与晋升算术](../findings/block_swap_family_payload_50hx_20261019.md)。
+单块载荷决定「省一块」的价值：Krea-2 上少换出一块约省 0.55 s/步，是 Anima（0.088 s/步）的
+6 倍以上，所以大块族更应该开启自动水位。
+
+## 各族运行时键约束（训练前校验）
+
+部分运行时键有**按族硬性约束**，只在训练启动时由
+`library/training/compat_matrix.py::check_training_compat` 校验，**不满足就直接报错退出**，
+不会静默回退。手写运行时 TOML 或拼装 CLI 时最容易踩到 `timestep_sampling`：
+
+| 键 | 约束 | 涉及的族 |
+| --- | --- | --- |
+| `timestep_sampling` | 必须为 `"uniform"` | Z-Image、Qwen-Image 2.1 |
+| `weighting_scheme` | 必须为 `"none"` | Z-Image、Qwen-Image 2.1 |
+| `loss_type` | 仅 L2 | Z-Image、Qwen-Image 2.1 |
+| `caption_dropout_rate` | 必须为 `0` | Z-Image、Qwen-Image 2.1 |
+| `masked_loss` | 必须关闭 | 仅 Qwen-Image 2.1 |
+| `attn_mode` | 仅 `torch` / `sdpa` / `flash`；Z-Image 不接受 `xformers`，`sdpa` 视作 `torch` 别名 | Z-Image、Qwen-Image 2.1 |
+
+关键在于 **`configs/base.toml` 默认 `timestep_sampling = "sigmoid"`**：走标准
+`base.toml → presets.toml → methods/*.toml` 合并链时，方法配置会覆盖它，所以正常训练不受
+影响；但只要绕开方法配置（手写 runtime TOML、bench 脚本、临时 CLI），`sigmoid` 就会漏进去，
+报错形如：
+
+```text
+ValueError: Qwen Image 2.1 T2I adapter uses uniformly sampled dynamic-shift sigmas
+```
+
+修法是显式写 `timestep_sampling = "uniform"`。其它族的兼容组合以 `compat_matrix.py` 的
+实时源码为准，本文不复制完整矩阵。
+
 ## 进程内水位调优（--block_swap_auto，2026-10-19 新增）
 
 上面的 AUTO 是独立进程启动校准。本节是另一个更轻的机制：在当前训练进程内，跑完第一个优化器步后

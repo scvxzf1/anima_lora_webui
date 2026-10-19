@@ -102,7 +102,24 @@ CPU/Gloo 和小型真实 CUDA/slab 验收已通过，完整三族权重的吞吐
 ComfyUI 单文件 safetensors：32-block DiT、Qwen3-VL 8B 和独立的 RGBA/64-channel VAE。
 加载器在装载权重前核对完整参数名与形状；文本编码器的 ComfyUI `model.*` 命名映射到
 Transformers `model.language_model.*`，VAE 转换卷积的 singleton 时间核，DiT 拆分
-`img_mlp.gate_up`。文本以官方 T2I 模板左填充，取最终 decoder 层 RMSNorm 前 hidden，
+`img_mlp.gate_up`。
+
+**Tokenizer 是独立依赖，必须与 TE 配套。** `qwen3` 指向单个 `.safetensors` 时，
+`library/models/qwen_image_2_1/strategy.py::resolve_tokenizer_path` 会从该文件所在目录
+逐级向上查找带 `tokenizer_config.json` 的 `tokenizer/` 目录，或 ComfyUI 安装里的
+`comfy/text_encoders/qwen25_tokenizer`；两者都找不到就报
+`FileNotFoundError: Qwen Image 2.1 needs a local Qwen3-VL tokenizer`。
+因此「单文件 TE」不等于「自带 tokenizer」，需要满足以下之一：
+
+- 在 TE 文件同级放一个 `tokenizer/` 目录（Qwen3-VL 的 `tokenizer_config.json` /
+  `tokenizer.json` / `vocab.json` / `merges.txt`）；
+- 或在同一目录树内存在 ComfyUI 的 `comfy/text_encoders/qwen25_tokenizer`。
+
+注意该族要求 Qwen3-VL 词表（`<|im_start|>`=151644、pad=151643），加载时校验 pad token；
+ComfyUI 的 `qwen25_tokenizer` 虽能通过该校验（pad 同为 151643），但其词表对齐 Qwen2.5
+而非 Qwen3-VL，**不保证与本族 TE 训练时一致**，仅作兼容回退。
+若使用官方 Diffusers 目录或本机 HF 快照（如 `Qwen3-VL-4B-Instruct`），
+目录内已带 tokenizer，无需额外配置。文本以官方 T2I 模板左填充，取最终 decoder 层 RMSNorm 前 hidden，
 使用独立 `_qwen_image_2_1_te.safetensors` 缓存。RGB 数据在 VAE 前补不透明 alpha，
 64-channel latent 使用 VAE 的逐通道 mean/std，并隔离到 `_qwen_image_2_1.npz`。
 
