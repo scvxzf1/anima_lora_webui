@@ -20,8 +20,8 @@
 ## 快速开始
 
 ```bash
-git clone https://github.com/scvxzf1/anima_lora_webui.git
-cd anima_lora_webui
+git clone https://github.com/scvxzf1/dragon-trainer.git
+cd dragon-trainer
 git lfs pull
 uv sync
 ./webui.sh   # 构建 Next 前端 -> 等待就绪 -> 打开 http://127.0.0.1:20203/next
@@ -165,8 +165,8 @@ uv --version
 克隆项目并安装依赖：
 
 ```bash
-git clone https://github.com/scvxzf1/anima_lora_webui.git
-cd anima_lora_webui
+git clone https://github.com/scvxzf1/dragon-trainer.git
+cd dragon-trainer
 git lfs pull
 uv sync
 ```
@@ -257,8 +257,8 @@ uv --version
 克隆项目并安装依赖：
 
 ```powershell
-git clone https://github.com/scvxzf1/anima_lora_webui.git
-cd anima_lora_webui
+git clone https://github.com/scvxzf1/dragon-trainer.git
+cd dragon-trainer
 git lfs pull
 uv sync
 ```

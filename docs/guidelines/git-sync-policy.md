@@ -2,7 +2,7 @@
 
 状态：稳定
 
-默认目标仓库：`github.com/scvxzf1/anima_lora_webui`
+默认目标仓库：`github.com/scvxzf1/dragon-trainer`（2026-10-19 由 `anima_lora_webui` 改名，旧地址自动重定向）
 
 分支职责：`dev` 用于日常开发和集成，`main` 用于发布。未指定分支的开发推送默认进入
 `dev`；只有明确发布时才更新 `main`。
