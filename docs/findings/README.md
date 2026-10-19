@@ -61,6 +61,7 @@
 
 ## Runtime 和能力边界
 
+- [Block Swap 各族分块载荷与晋升算术（CMP 50HX 第 9 轮）](block_swap_family_payload_50hx_20261019.md)：只读 safetensors 头部算出四族真实分块载荷（anima 132.0 MiB/块、z_image 345.1、krea2_raw 828.1、qwen_image_2_1 648.2，均为均匀块）与 `swap` 上界（26/28/26/58）；Anima 档与真机 profiler 的 138.4 MB/任务逐字一致，四族总量与文件大小交叉吻合。推论：非 Anima 族「省一块」值 0.23~0.55 s/步（Anima 的 2.6~6.3 倍），krea2/qwen 在 10 GB 卡上不可能全常驻。含工具自身抓到的 `llm_adapter.blocks` 同号 bug 与未验证边界。
 - [INT8 单字节编码的误差上限（CMP 50HX 第 4/5 轮）](int8_encoding_floor_50hx_20261019.md)：per-row 对称 int8 已贴均匀量化噪声地板，离群裁剪/scale 搜索的上限只有 ≤2.01%（3A 否定）；固定 NF8 码本在真实 Anima 行再降 13.7%~64.3% MSE，但在高斯型行回归 70%~477%，必须按行择优；1.09% loss 偏移尚未归因。含 15 项单测与未验证边界。
 - [Block Swap 进程内水位调优（CMP 50HX 第 3/7/8 轮）](block_swap_auto_tuner_50hx_20261019.md)：`--block_swap_auto` 在第一个优化器步后按空闲显存晋升常驻块。512 默认模式 24 → 2（H2D 6644 → 554 MB/步、任务窗口 2118 → ~720 ms）；256 加停止条件 `stop_ratio=0.5` 按设计停在 13（省约 1.45 GB 显存、步时 +0.4 s）；1024 默认模式 24 → 2，DMA 占步时降到约 5%，绑定约束变成晋升上限（保留 2 个换出块）而非显存。含 21 项单测与未验证边界。
 - [Block Swap 恢复链已到链路极限（CMP 50HX 第 2 轮）](block_swap_restore_link_limit_50hx_20261019.md)：纯拷贝微基准测出本机链路天花板 3.14 GB/s（pinned，分块粒度无关）；训练内 profiler 加字节计量后实测每步 3321.9 MB / 24 任务，foreach 达 3.02 GB/s、slab 达 3.12 GB/s（96% / 99% 链路），A/B 中 `slab` 优于 `foreach`（DMA +3.3%、步时 −4%），该默认值随后由上游 `e8ad25b3` 定为 `slab`；据此确认后续杠杆只剩减少搬运字节（auto swap / int8）。

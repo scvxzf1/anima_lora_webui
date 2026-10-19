@@ -63,6 +63,20 @@
 输出每档 `median_ms` / `GB/s` / `us/chunk`，写入 `<root>/<stamp>-copy-bench.json`；它是判断训练内搬运
 是链路受限还是开销受限的参照系。
 
+## 跨族分块载荷（不加载权重）
+
+`family_bytes.py` 只读 safetensors 头部，算出每族的每块换出载荷、块数与 `swap` 上界，
+用来把 Anima 上的 P1 结论换算到其它族：
+
+```bash
+.venv/bin/python -m bench.block_swap_pipeline.family_bytes --all
+.venv/bin/python -m bench.block_swap_pipeline.family_bytes --family krea2_raw --free-mib 6550 --margin-mib 400
+```
+
+口径与运行时一致（bf16 传输 = `numel × 2`，等于 `Offloader._estimate_swap_bytes()` 的
+`stored_nbytes()` 求和）；Anima 档会自校验是否等于 profiler 实测的 132.0 MiB/块。
+数据与推论见[各族分块载荷与晋升算术](../../docs/findings/block_swap_family_payload_50hx_20261019.md)。
+
 ## 注意
 
 - `exposed_wait_ms` 只统计"等待返回"的耗时；任务在等待点之前就 ready 的部分不计入，因此它是
