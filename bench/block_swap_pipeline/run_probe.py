@@ -79,16 +79,26 @@ FAMILY_PRESETS = {
         "runtime_extra": 'timestep_sampling = "uniform"\ndiscrete_flow_shift = 6.0',
     },
     "qwen_image_2_1": {
-        "dit": "/home/scv/nvme0n1p1/ComfyUI/models/diffusion_models/qwen/qwenimage2512-fp8_e4m3fn.safetensors",
-        "te": "models/text_encoders/qwen3vl_4b_bf16.safetensors",
-        "vae": "models/vae/qwen_image_vae.safetensors",
+        # Verified against the loader contract in library/models/qwen_image_2_1/
+        # weights.py: exactly 32 transformer blocks with packed img_mlp.gate_up
+        # tensors. The 60-block ComfyUI 2511/Edit checkpoints on this box are a
+        # different architecture and _validate_header rejects them.
+        "dit": "/home/scv/nvme0n1p1/ComfyUI/local_models/diffusion_models/Qwen-Image-2.1/qwen_image_2.1_bf16.safetensors",
+        "te": "/home/scv/nvme0n1p1/ComfyUI/local_models/text_encoders/Qwen-Image-2.1/qwen3vl_8b_bf16.safetensors",
+        "vae": "/home/scv/nvme0n1p1/ComfyUI/local_models/vae/Qwen-Image-2.1/qwen_image_2.1_vae_bf16.safetensors",
         "latent_suffix": "_qwen_image_2_1.npz",
         "te_suffix": "_qwen_image_2_1_te.safetensors",
         "cached_llm_adapter": False,
         "te_module": "scripts.qwen_image_2_1.preprocess_te_cache",
         "te_encoder_flag": "--qwen3",
-        # NOTE: this family has not been run yet; the sources above are placeholders.
-        "runtime_extra": "",
+        # library/models/qwen_image_2_1/strategy.py::resolve_tokenizer_path walks up
+        # from the TE file looking for a sibling tokenizer/ dir holding
+        # tokenizer_config.json; the single-file ComfyUI TE has none, so the probe
+        # stages a tokenizer next to the workspace copy of it.
+        "tokenizer": "/home/scv/.cache/huggingface/hub/models--Qwen--Qwen3-VL-4B-Instruct/snapshots/ebb281ec70b05090aa6165b016eac8ec08e71b17",
+        # configs/base.toml ships timestep_sampling="sigmoid"; the family contract
+        # (library/training/compat_matrix.py:223) admits uniform only, so pin it here.
+        "runtime_extra": 'timestep_sampling = "uniform"',
     },
 }
 
@@ -252,13 +262,25 @@ def _ensure_workspace(
     te_copy = resolved["te"]
     vae_copy = resolved["vae"]
 
+    preset = FAMILY_PRESETS[family]
+    tokenizer_src = preset.get("tokenizer")
+    if tokenizer_src:
+        # resolve_tokenizer_path() looks for <te-parent>/tokenizer; stage it beside
+        # the workspace TE copy so the family keeps its own tokenizer contract.
+        staged = Path(te_copy).parent / "tokenizer"
+        if not (staged / "tokenizer_config.json").is_file():
+            staged.mkdir(parents=True, exist_ok=True)
+            for item in sorted(Path(tokenizer_src).iterdir()):
+                if item.is_file():
+                    shutil.copy2(item, staged / item.name)
+        resolved["tokenizer"] = staged
+
     dataset_toml = workspace / "dataset.toml"
     dataset_toml.write_text(
         DATASET_TOML.format(image_dir=image_dir, cache_dir=cache_dir, side=side),
         encoding="utf-8",
     )
 
-    preset = FAMILY_PRESETS[family]
     have_latents = any(cache_dir.glob("*" + preset["latent_suffix"]))
     have_te = any(cache_dir.glob("*" + preset["te_suffix"]))
     if not have_latents:

@@ -42,8 +42,16 @@
 
 `--family` 预设了每族的 dit/te/vae、缓存后缀与运行时键，并按族选择 TE 缓存脚本：
 anima 用 `scripts/preprocess/cache_text_embeddings.py`，`krea2_raw` / `z_image` /
-`qwen_image_2_1` 各有自己的脚本，编码器参数名也不同（`--qwen3` vs `--qwen`）。
+`qwen_image_2_1` 各有自己的脚本（编码器参数名统一为 `--qwen3`）。
 Anima 沿用历史工作区 `workspace`，其它族使用 `workspace-<family>`，缓存互不串用。
+
+各族还会覆盖运行时的族契约键：`z_image` 与 `qwen_image_2_1` 都显式写
+`timestep_sampling = "uniform"`（`configs/base.toml` 默认 `sigmoid`，会被
+`library/training/compat_matrix.py` 的族校验直接拒绝）。
+
+`qwen_image_2_1` 另有 `tokenizer` 预设：`library/models/qwen_image_2_1/strategy.py`
+从 TE 路径向上找 `tokenizer/` 目录，ComfyUI 单文件 TE 旁边没有，探针会在 workspace 的
+TE 副本旁就地铺一份。
 
 ```bash
 .venv/bin/python -m bench.block_swap_pipeline.run_probe --family krea2_raw \
@@ -67,7 +75,7 @@ Anima 沿用历史工作区 `workspace`，其它族使用 `workspace-<family>`�
 | `worker_queue_ms` | Σ(`submit_to_enqueue_ms`)：任务在单线程拷贝池里排队的时间，直接反映 `max_workers=1` 的串行化 |
 | `step_span_ms` | 该步从第一个任务入队到最后一个任务等待返回的墙钟跨度 |
 | `forward_tail_idle_ms` | 最后一个前向任务 ready → 第一个反向任务入队之间的空窗（跨折返点的可预取窗口） |
-| `duplicate_restores` | 同一步内同一个 block 被恢复两次的目标块号（折返点重复搬运的直接证据） |
+| `duplicate_restores` | 同一步内同一个 block 被恢复两次的目标块号。**注意口径**：前向与反向相位各自覆盖全部换出块，跨相位的同号是正常契约而非重复搬运；只有**同相位内**同号才是折返点证据（第 12 轮核对，见 [Qwen-Image 2.1 验收](../../docs/findings/block_swap_qwen_image_21_hot_50hx_20261019.md)） |
 | `h2d_bytes` / `gb_per_s` | 每步 H2D 字节数与有效带宽（`Offloader._estimate_swap_bytes()` 从交换计划的 `stored_nbytes()` 推算） |
 
 ## 纯拷贝微基准

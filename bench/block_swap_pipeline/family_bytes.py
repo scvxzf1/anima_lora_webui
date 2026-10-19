@@ -32,7 +32,10 @@ FAMILY_DITS = {
     "anima": "/home/scv/nvme0n1p1/ComfyUI/models/diffusion_models/anima/anima-base-v1.0-sha.safetensors",
     "z_image": "/home/scv/nvme0n1p1/ComfyUI/models/diffusion_models/z-image/z_image_bf16.safetensors",
     "krea2_raw": "models/diffusion_models/krea2_raw_bf16.safetensors",
-    "qwen_image_2_1": "/home/scv/nvme0n1p1/ComfyUI/models/diffusion_models/qwen/qwenimage2512-fp8_e4m3fn.safetensors",
+    # The ComfyUI qwen/qwenimage2512-* and qwenedit-2511-* checkpoints are a 60-block
+    # fp8 architecture that library/models/qwen_image_2_1/weights.py rejects at
+    # _validate_header; this is the real 32-block bf16 transformer.
+    "qwen_image_2_1": "/home/scv/nvme0n1p1/ComfyUI/local_models/diffusion_models/Qwen-Image-2.1/qwen_image_2.1_bf16.safetensors",
 }
 
 ANIMA_MEASURED_BLOCK_MIB = 132.0
