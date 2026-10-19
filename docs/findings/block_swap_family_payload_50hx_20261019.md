@@ -69,9 +69,13 @@ P1 的进程内水位调优（`--block_swap_auto`）目前只在 Anima 上跑过
   步时未测，「该升到几块」没有实测答案，本表只给每块的价格。
 - `qwen_image_2_1` 盘上是 fp8；若实现 fp8 直传（未实现），载荷会减半，本表不适用。
 - 3.14 GB/s 是本机 pinned 实测链路，跨硬件不外推。
-- 跨族真机的真正阻塞不在探针，而在缓存流水线：
-  `scripts/preprocess/cache_text_embeddings.py` 硬编码 Anima 的 `library.anima` 策略，
-  Z-Image / Krea-2 / Qwen-Image 2.1 的 TE 缓存没有同等的独立 CLI 入口。
+- 跨族真机的阻塞在**探针**，不在缓存流水线（本节初稿曾误判为后者，已按源码更正）：
+  `scripts/tasks/preprocess.py::_run_preprocess_te`（同文件 669~692 行）已按运行时配置里的
+  `model_family` 分派 anima / krea2_raw / z_image / qwen_image_2_1 / moss_image，
+  latent 侧也通过 `--model_family` 透传；只有最底层的
+  `scripts/preprocess/cache_text_embeddings.py` 是 Anima 专用。
+  要把跨族真机跑起来，需要给 `run_probe.py` 加族预设：它当前硬编码 Anima 的
+  dit/te/vae 路径，并直接调用 Anima 专有的 TE 缓存脚本。
 
 ## 复现
 
