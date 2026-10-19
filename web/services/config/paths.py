@@ -2,11 +2,33 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Callable
 
 
 ExpandEnvVars = Callable[[str], str]
+
+LOGGER = logging.getLogger(__name__)
+
+
+def _warn_symlink_escape(kind: str, raw: str, resolved: Path, configs_dir: Path) -> None:
+    """配置路径被判定越界时留下可诊断日志。
+
+    `configs_root` 若指向一个「根为真实目录、子项为符号链接」的外置根，
+    子项 `.resolve()` 会跳到链接目标（通常在仓库内），于是
+    `relative_to(configs_dir)` 判定越界 —— 这正是「配置页/数据集页突然全空
+    但文件都还在」的成因。以前这里静默返回 None，用户看不到任何提示。
+    只在 `..` 穿越之外额外区分「软链逃逸」，便于直接定位。
+    """
+    LOGGER.warning(
+        "config path rejected (%s): raw=%r resolved=%s is not under configs_dir=%s; "
+        "if configs_root uses per-entry symlinks the targets must stay inside it",
+        kind,
+        raw,
+        resolved,
+        configs_dir,
+    )
 
 
 def normalize_config_rel_path(rel_path: str) -> str:
@@ -32,6 +54,7 @@ def safe_resolve(rel_path: str, *, root: Path, configs_dir: Path) -> Path | None
     try:
         resolved.relative_to(configs_dir.resolve())
     except ValueError:
+        _warn_symlink_escape("safe_resolve", raw, resolved, configs_dir)
         return None
     return resolved
 
@@ -44,6 +67,7 @@ def safe_config_subdir(subdir: str, *, configs_dir: Path) -> Path | None:
     try:
         resolved.relative_to(configs_dir.resolve())
     except ValueError:
+        _warn_symlink_escape("safe_config_subdir", subdir, resolved, configs_dir)
         return None
     return resolved
 

@@ -76,3 +76,44 @@ def test_routes_status_and_directory_errors(home: Path) -> None:
             assert response.status == 400
 
     asyncio.run(run())
+
+
+def test_symlink_escape_logs_actionable_warning(tmp_path, caplog):
+    """配置根用「子项软链指向外部」时必须留下可诊断日志，而不是静默返回空。"""
+    import logging
+
+    from web.services.config.paths import safe_config_subdir, safe_resolve
+
+    configs_root = tmp_path / "external-root"
+    configs_root.mkdir()
+    repo_configs = tmp_path / "repo" / "configs"
+    (repo_configs / "gui-methods").mkdir(parents=True)
+    (repo_configs / "gui-methods" / "lora.toml").write_text("[base]\n", encoding="utf-8")
+    (configs_root / "gui-methods").symlink_to(repo_configs / "gui-methods")
+
+    with caplog.at_level(logging.WARNING, logger="web.services.config.paths"):
+        assert safe_config_subdir("gui-methods", configs_dir=configs_root) is None
+    messages = [rec.getMessage() for rec in caplog.records]
+    assert any("config path rejected" in msg for msg in messages)
+    assert any("safe_config_subdir" in msg for msg in messages)
+    assert any(str(configs_root) in msg for msg in messages)
+
+    caplog.clear()
+    with caplog.at_level(logging.WARNING, logger="web.services.config.paths"):
+        assert safe_resolve("configs/gui-methods/lora.toml", root=tmp_path, configs_dir=configs_root) is None
+    assert any("config path rejected" in rec.getMessage() for rec in caplog.records)
+
+
+def test_parent_traversal_stays_silent(tmp_path, caplog):
+    """真正的 .. 穿越属于常规拒绝，不应刷 warning 日志。"""
+    import logging
+
+    from web.services.config.paths import safe_config_subdir
+
+    configs_root = tmp_path / "configs"
+    configs_root.mkdir()
+
+    with caplog.at_level(logging.WARNING, logger="web.services.config.paths"):
+        assert safe_config_subdir("../escape", configs_dir=configs_root) is None
+    assert not [rec for rec in caplog.records if "config path rejected" in rec.getMessage()]
+
