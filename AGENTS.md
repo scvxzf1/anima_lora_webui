@@ -110,7 +110,7 @@
 ## Git 推送和回滚
 
 - 默认线上仓库由 URL 确定，而不是由本机 remote 别名确定：
-  `github.com/scvxzf1/anima_lora_webui`。`main` 是发布分支，`dev` 是日常集成分支。
+  `github.com/scvxzf1/dragon-trainer`（2026-10-19 由 `anima_lora_webui` 改名，旧 URL 自动重定向）。`main` 是发布分支，`dev` 是日常集成分支。
   用户说“拉取线上更新”或“同步线上 main”时，按指定分支操作；未指定分支的日常开发推送
   默认使用 `dev`，只有明确要求发布或推送 `main` 时才写入发布分支。
 - 不要把 `main` 当作日常开发分支。开始独立开发任务时，在干净且适合切换的工作树中

@@ -405,7 +405,7 @@ kill <PID>
 
 ```ini
 [Unit]
-Description=Anima LoRA WebUI
+Description=Dragon Trainer
 After=network.target
 
 [Service]

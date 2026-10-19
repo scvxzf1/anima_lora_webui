@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for contributing to Anima LoRA. This document defines the requirements for opening and reviewing a pull request. Project priorities live in [`docs/contribution-priorities.md`](docs/contribution-priorities.md); they are not part of the PR contract.
+Thanks for contributing to Dragon Trainer (formerly Anima LoRA WebUI). This document defines the requirements for opening and reviewing a pull request. Project priorities live in [`docs/contribution-priorities.md`](docs/contribution-priorities.md); they are not part of the PR contract.
 
 ## Source of truth
 
@@ -10,7 +10,7 @@ When documentation and code disagree, verify the live implementation and tests, 
 
 ## Before opening a PR
 
-1. Open or comment on an [Issue](https://github.com/scvxzf1/anima_lora_webui/issues) for work larger than Tier 1. Agree on the scope before implementing a new method or changing numerics.
+1. Open or comment on an [Issue](https://github.com/scvxzf1/dragon-trainer/issues) for work larger than Tier 1. Agree on the scope before implementing a new method or changing numerics.
 2. Keep the change focused. Do not mix feature work with unrelated refactors, formatting, generated files, user data, model weights, caches, or training outputs.
 3. Use the repository's Python 3.13 `uv` environment. For an unchanged lockfile, maintainers should prefer `uv sync --locked`; dependency changes must update both `pyproject.toml` and `uv.lock` through `uv add` or an explicit lock operation.
 4. Do not introduce a generic `requirements.txt` or document ad-hoc `pip install` flows. The tracked `requirements-v100.txt` is a deliberate hardware-specific exception.

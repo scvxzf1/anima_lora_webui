@@ -1,6 +1,6 @@
-# Anima LoRA 文档导航
+# Dragon Trainer 文档导航
 
-这里是 Anima LoRA WebUI 的文档总入口。本文只负责把读者带到正确的当前说明、分区索引或历史证据，不重复维护各分区的完整文件清单。
+这里是 Dragon Trainer（原 Anima LoRA WebUI / ALW）的文档总入口。本文只负责把读者带到正确的当前说明、分区索引或历史证据，不重复维护各分区的完整文件清单。
 
 ## 按任务查阅
 
