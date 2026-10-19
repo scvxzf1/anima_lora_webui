@@ -21,6 +21,8 @@
 | [anima-app-legacy-bridge-cleanup.md](../_archive/docs/proposal/anima-app-legacy-bridge-cleanup.md) | `anima-app` legacy bridge 收尾已完成，仅保留实施上下文 |
 | [lora-network-decomposition.md](../_archive/docs/proposal/lora-network-decomposition.md) | `LoRANetwork` 分层拆分核心代码已落地，当前仅保留实施计划和历史上下文 |
 | [upstream_high_value_merge_roadmap_2026-06-24.md](../_archive/docs/proposal/upstream_high_value_merge_roadmap_2026-06-24.md) | 上游合并路线图已执行，当前仅保留历史上下文 |
+| [upstream_core_merge_plan_2026-07-02.md](../_archive/docs/proposal/upstream_core_merge_plan_2026-07-02.md) | 一次性上游增量合并计划已执行完毕，从根目录移入归档 |
+| [configs_external_task_completed_2026-07.md](../_archive/docs/proposal/configs_external_task_completed_2026-07.md) | 配置目录外置完成报告，当前说明见 [外置配置目录](configuration/external-configs.md) |
 | [upstream_merge_completion_report_2026-06-24.md](../_archive/docs/proposal/upstream_merge_completion_report_2026-06-24.md) | 上游合并完成报告，已经不是活跃提案 |
 | [upstream_merge_completion_report_2026-06-24_audit.md](../_archive/docs/proposal/upstream_merge_completion_report_2026-06-24_audit.md) | 上游合并完成报告审核记录 |
 | [upstream_merge_completion_report_fixes_summary.md](../_archive/docs/proposal/upstream_merge_completion_report_fixes_summary.md) | 上游合并报告修复摘要 |

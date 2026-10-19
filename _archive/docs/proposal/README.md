@@ -4,6 +4,13 @@
 
 本目录的材料默认不是当前实现说明。实现状态以 `docs/README.md` 指向的 `guidelines/`、`methods/`、`experimental/`、`structure/`、`configuration/`、`features/`、`findings/` 和 `optimizations/` 文档为准。
 
+## 2026-10-19 归档（根目录资料清理）
+
+| 文档 | 原因 |
+| --- | --- |
+| [configs_external_task_completed_2026-07.md](configs_external_task_completed_2026-07.md) | 配置目录外置任务的完成报告，功能已落地；当前说明由 `docs/configuration/external-configs.md` 承接 |
+| [upstream_core_merge_plan_2026-07-02.md](upstream_core_merge_plan_2026-07-02.md) | 一次性上游增量合并计划，执行状态已成历史，不再作为根目录活跃文档 |
+
 ## 2026-10-04 归档
 
 | 文档 | 原因 |

@@ -1,5 +1,12 @@
 # Anima LoRA WebUI
 
+<p>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
+  <a href="https://docs.astral.sh/uv/"><img src="https://img.shields.io/badge/Python-3.13-3776AB.svg" alt="Python 3.13 + uv"></a>
+  <a href="web/frontend-next/README.md"><img src="https://img.shields.io/badge/WebUI-Next%20React-orange.svg" alt="Next React WebUI"></a>
+  <a href="#"><img src="https://img.shields.io/badge/QQ%E7%BE%A4-1104879801-0099FF.svg" alt="QQ 群"></a>
+</p>
+
 这是一个支持 Anima、Krea-2、Z-Image、Qwen Image 2.1 和 MOSS-Image 的训练与 WebUI 项目，基于 [sorryhyun/anima_lora](https://github.com/sorryhyun/anima_lora#) 的 WebUI 前端扩展项目。不同模型族的训练、预览、推理和 adapter 能力，以模型族 registry 与配置预检为准。
 
 感谢你选择我们的全绊屎山项目。它一定不优雅，但目标也不一定明确，项目尽量还能跑通，喜欢折腾，每天都在debug。
@@ -9,6 +16,21 @@
 交流QQ群:1104879801
 
 后端会和欧巴的有些变动不完全对齐，作者偶尔会发挥主观能动性加点小巧思进来。
+
+## 快速开始
+
+```bash
+git clone https://github.com/scvxzf1/anima_lora_webui.git
+cd anima_lora_webui
+git lfs pull
+uv sync
+./webui.sh   # 构建 Next 前端 -> 等待就绪 -> 打开 http://127.0.0.1:20203/next
+```
+
+- 快捷脚本需要 Node.js 24.13+（`<25`）和 pnpm 11.9 来构建前端；`webui.sh` 会优先使用 nvm 下的 Node 24。
+- 已有前端构建产物、只想启动后端：`ANIMA_WEB_BUILD_FRONTEND=0 ./webui.sh`。
+- 只启动服务、不打开浏览器：`ANIMA_WEB_OPEN_BROWSER=0 ./webui.sh`。
+- 逐步安装、V100 专属环境和局域网访问见下文「Linux 部署启动」「Windows 部署启动」与 [Linux 部署指南](docs/guidelines/linux-deployment.zh.md)。
 
 ## 文档入口
 
@@ -89,7 +111,7 @@
 - **Krea-2 Raw**：独立训练与 `single`/Euler 推理，网络变体和显存策略以兼容矩阵为准。
 - **Z-Image**：训练与训练预览 v1；尚未注册通用 image-test 或独立推理入口。
 - **Qwen Image 2.1**：T2I/Edit 训练与训练预览；Edit 支持 1–4 张参考图，独立推理为 `single`/Euler，当前以 plain LoRA 为稳定边界。
-- **MOSS-Image**：普通文生图 plain LoRA 首版，支持 BF16/NF4 文本编码器缓存路径；普通推理/image-test 尚未注册。
+- **MOSS-Image**：普通文生图 plain LoRA 首版，支持 BF16/NF4 文本编码器缓存路径；普通推理/image-test 尚未注册，组件与精度要求见 [MOSS-Image 配置](docs/configuration/moss-image.md)。
 
 此外，项目提供：
 
@@ -174,7 +196,7 @@ uv sync
 ./webui.sh
 ```
 
-`webui.sh` 默认会构建 Next 前端，因此需要 Node.js 22.13+ 和 pnpm 11。若已有构建产物、只想启动后端，可跳过构建：
+`webui.sh` 默认会构建 Next 前端，因此需要 Node.js 24.13+（`<25`）和 pnpm 11.9（以 `web/frontend-next/package.json` 的 `engines` 为准），脚本会优先使用 nvm 下的 Node 24。若已有构建产物、只想启动后端，可跳过构建：
 
 ```bash
 ANIMA_WEB_BUILD_FRONTEND=0 ./webui.sh
@@ -270,6 +292,8 @@ http://127.0.0.1:20102/
 
 如果 PowerShell 禁止激活脚本，不需要激活虚拟环境，直接使用上面的 `.\.venv\Scripts\python.exe` 命令即可。
 
+也可以直接双击快捷脚本：`setup_and_start.bat` 负责首次安装并启动，`start_webui.bat` 只启动已装环境，两者默认端口都是 `20103`。
+
 ## 启动后怎么用
 
 当前用户界面为 Next。Next 页面中的错误恢复入口用于返回训练配置；界面使用说明和开发、验收命令见 [Next 前端 README](web/frontend-next/README.md)。旧版 Dragon/classic 的实现记录保留在[退役指南](docs/features/dragon-ui.md)，仅供维护历史参考。
@@ -290,3 +314,17 @@ models/vae/qwen_image_vae.safetensors
 ```
 
 上述路径对应默认 Anima 配置。Krea-2、Z-Image、Qwen Image 2.1 和 MOSS-Image 使用各自方法配置中的组件路径，请以 `configs/methods/` 和对应配置文档为准。如果模型放在别处，可以在 WebUI 的 **全局模型配置** 中改成实际路径。
+
+## 常用命令
+
+完整命令面以 `.venv/bin/python tasks.py --help` 为准，下表只列高频入口：
+
+| 目的 | 命令 |
+| --- | --- |
+| 启动 WebUI（默认端口 20102） | `.venv/bin/python tasks.py web --host 127.0.0.1 --port 20102` |
+| 构建并发布 Next 前端 | `.venv/bin/python tasks.py web-next-build` |
+| Next 前端类型检查与单测 | `.venv/bin/python tasks.py web-next-check` |
+| 从线上更新（保留数据） | `.venv/bin/python tasks.py update --dry-run` |
+| 下载默认模型 / Krea-2 | `.venv/bin/python tasks.py download-models`、`download-krea2` |
+| 查看合并后的训练配置 | `.venv/bin/python tasks.py print-config METHOD=<name> PRESET=<name>` |
+| 快速冒烟测试 | `timeout 60 .venv/bin/python tasks.py test-fast` |

@@ -1,5 +1,10 @@
 # anima_lora
 
+> ⚠️ **상태: 역사 문서 / 갱신 중단 (구 버전 스냅샷)**
+> 이 파일은 초기 `sorryhyun/anima_lora` README의 한국어 번역으로, 이미 폐기된 예전 UI와 예전 방법 목록을 설명합니다.
+> 현재 구현과 설치 절차는 [README.md](README.md) 와 [docs/README.md](docs/README.md) 를 기준으로 하세요.
+> 中文说明：本文件是早期上游 README 的韩文翻译，仍在描述已退役的旧界面与旧方法清单，不代表当前实现，请以 [README.md](README.md) 为准。
+
 [English](README.md) · 📖 [**가이드북 (Windows 초보자용 한국어 종합 가이드)**](docs/guidelines/가이드북.md)
 
 [Anima](https://huggingface.co/circlestone-labs/Anima) 디퓨전 모델(DiT 기반, flow-matching)을 위한 LoRA / T-LoRA 학습 및 추론 엔진.
