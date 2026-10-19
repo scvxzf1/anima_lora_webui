@@ -30,6 +30,7 @@
 | 配置实验中途 OOM 恢复与独立预览回退 | [训练恢复](experimental/adaptive-training-recovery.md)、[预览内存策略](configuration/sample-preview-memory.md) |
 | 查实验结论、失败路径和审计 | [研究结论索引](findings/README.md) |
 | 复查 MOSS 热测试与作废尝试 | [CMP 50HX 热测试复盘（含尸体记录）](findings/moss_image_tier_hot_50hx_20261018.md) |
+| 准备 MOSS-Image 真实训练 | [MOSS 训练前置清单](configuration/moss-image-training-preflight.md)、[MOSS 配置说明](configuration/moss-image.md) |
 | 评估活跃提案或维护计划 | [提案索引](proposal/README.md)、[施工区索引](superpowers/README.md) |
 | 准备贡献或认领待办 | [PR 规范](../CONTRIBUTING.md)、[贡献优先事项](contribution-priorities.md) |
 | 查归档材料 | [归档索引](archive-index.md) |
