@@ -75,6 +75,8 @@ graphify-out/
 node_modules/
 tmp/
 .memsearch/
+.agent-teams/
+.tmp/
 
 # User sample reference imagery (multi-MB, local only)
 configs/sample-references/
