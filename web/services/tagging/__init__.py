@@ -12,11 +12,12 @@ from .caption_snapshots import (
     create_snapshot as _create_caption_snapshot,
     delete_snapshot as _delete_caption_snapshot,
     list_snapshots as _list_caption_snapshots,
+    read_snapshot as _read_caption_snapshot,
     restore_snapshot as _restore_caption_snapshot,
 )
 from .client import OpenAICompatibleClient
 from .download_jobs import ModelDownloadService
-from .jobs import TaggingJobManager
+from .jobs import TaggingJobManager, caption_scope_key
 from .prompt_presets import (
     create_prompt_preset,
     delete_prompt_preset,
@@ -253,10 +254,12 @@ class TaggingService:
             raise ValueError("dataset_index 必须是整数") from exc
         source = "source" if str(data.get("source") or "source").lower() == "source" else "training"
         label = str(data.get("label") or "").strip()[:80]
-        # Manual restore points share the dataset write lock with commit, so a
-        # backup can never capture a half-written caption set (dataset-level
-        # mutex; the lock order inside a commit is job lock -> dataset lock).
-        async with self.jobs.dataset_write_lock(dataset_file, dataset_index):
+        # Manual restore points share the scope write lock with commit, so a
+        # backup can never capture a half-written caption set.  The key is the
+        # resolved caption directory, so rows over one directory share the lock;
+        # inside a commit the order is job lock -> scope lock.
+        scope_key = caption_scope_key(dataset_file, dataset_index, source=source)
+        async with self.jobs.dataset_write_lock(scope_key):
             snapshot = await asyncio.to_thread(
                 _create_caption_snapshot,
                 dataset_file,
@@ -268,7 +271,14 @@ class TaggingService:
         return {"ok": True, "snapshot": snapshot}
 
     async def restore_caption_snapshot(self, snapshot_id: str) -> dict[str, Any]:
-        return await asyncio.to_thread(_restore_caption_snapshot, snapshot_id)
+        # Read the manifest first: it carries the scope_dir the restore will touch
+        # and is validated there (missing/broken documents keep their 404/400).
+        # Restore takes ONLY that scope lock; it never takes a job lock, so the
+        # global order job lock -> scope lock is never reversed.
+        manifest = await asyncio.to_thread(_read_caption_snapshot, snapshot_id)
+        scope_key = str(manifest.get("scope_dir") or "").strip() or f"snapshot:{snapshot_id}"
+        async with self.jobs.dataset_write_lock(scope_key):
+            return await asyncio.to_thread(_restore_caption_snapshot, snapshot_id)
 
     def delete_caption_snapshot(self, snapshot_id: str) -> dict[str, Any]:
         return _delete_caption_snapshot(snapshot_id)

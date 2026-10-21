@@ -4,6 +4,7 @@ import asyncio
 import json
 import threading
 import time
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 import pytest
@@ -720,6 +721,7 @@ def test_manual_snapshot_waits_for_the_running_write_back(tmp_path, monkeypatch,
     monkeypatch.setattr(
         jobs, "create_caption_snapshot", lambda *_args, **_kwargs: {"id": "auto", "file_count": 2}
     )
+    monkeypatch.setattr(jobs, "resolve_caption_directory", lambda *_args, **_kwargs: dataset_dir)
     monkeypatch.setattr(
         caption_snapshots, "resolve_caption_directory", lambda *_args, **_kwargs: dataset_dir
     )
@@ -802,11 +804,254 @@ def test_dataset_locks_are_dropped_once_idle(tmp_path, monkeypatch) -> None:
         manager.jobs["job-1"] = job
         await manager.commit("job-1", all_items=True)
         assert manager._dataset_locks == {}
-        manager._dataset_locks[("stale.toml", 0)] = asyncio.Lock()
+        manager._dataset_locks["row:stale.toml#0"] = asyncio.Lock()
         manager.clear_finished(["job-1"])
         assert manager._dataset_locks == {}
-        manager._dataset_locks[("stale.toml", 1)] = asyncio.Lock()
+        manager._dataset_locks["row:stale.toml#1"] = asyncio.Lock()
         manager._prune()
         assert manager._dataset_locks == {}
 
     asyncio.run(run())
+
+
+def _shared_dir_jobs(tmp_path: Path, monkeypatch) -> tuple[Path, dict, dict]:
+    shared_dir = tmp_path / "shared-dataset"
+    _dataset_with_images(shared_dir, ["a.png", "b.png", "c.png", "d.png"])
+    # Two different dataset rows (index 0 / 1) that resolve to one physical folder.
+    monkeypatch.setattr(jobs, "resolve_caption_directory", lambda *_args, **_kwargs: shared_dir)
+    job_a = _dir_job(shared_dir, ["a.png", "b.png"], {"a.png": "A-1", "b.png": "A-2"})
+    job_b = _dir_job(shared_dir, ["c.png", "d.png"], {"c.png": "B-1", "d.png": "B-2"})
+    job_b["id"] = "job-2"
+    job_b["dataset_index"] = 1
+    return shared_dir, job_a, job_b
+
+
+def _run_shared_dir_commits(job_a: dict, job_b: dict, slow_write, started: threading.Event):
+    async def run() -> tuple[dict, dict]:
+        manager = jobs.TaggingJobManager()
+        manager.jobs["job-1"] = job_a
+        manager.jobs["job-2"] = job_b
+        first = asyncio.create_task(manager.commit("job-1", all_items=True))
+        assert await asyncio.to_thread(started.wait, 10)
+        second = asyncio.create_task(manager.commit("job-2", all_items=True))
+        assert not first.done()
+        return await first, await second
+
+    return asyncio.run(run())
+
+
+def test_rows_sharing_one_caption_directory_share_the_scope_lock(tmp_path, monkeypatch) -> None:
+    _, job_a, job_b = _shared_dir_jobs(tmp_path, monkeypatch)
+    guard = threading.Lock()
+    started = threading.Event()
+    in_flight = 0
+    max_in_flight = 0
+
+    def slow_write(_f, _i, image_file, text, **_kwargs):
+        nonlocal in_flight, max_in_flight
+        with guard:
+            in_flight += 1
+            max_in_flight = max(max_in_flight, in_flight)
+        if text == "A-1":
+            started.set()
+        time.sleep(0.05)
+        Path(image_file).with_suffix(".txt").write_text(f"{text}\n", encoding="utf-8")
+        with guard:
+            in_flight -= 1
+        return {"text": text, "caption_file": image_file}
+
+    monkeypatch.setattr(jobs, "write_caption", slow_write)
+    monkeypatch.setattr(
+        jobs, "create_caption_snapshot", lambda *_args, **_kwargs: {"id": "snap", "file_count": 4}
+    )
+
+    first, second = _run_shared_dir_commits(job_a, job_b, slow_write, started)
+
+    assert first["written"] == 2 and second["written"] == 2
+    # t23-F2: rows over one physical directory must not interleave (was 2 before).
+    assert max_in_flight == 1
+
+
+def test_rows_sharing_one_caption_directory_interleave_without_the_lock(tmp_path, monkeypatch) -> None:
+    # Negative control: without the scope lock the very same scenario interleaves,
+    # which proves the assertion above can detect the bug.
+    _, job_a, job_b = _shared_dir_jobs(tmp_path, monkeypatch)
+    guard = threading.Lock()
+    started = threading.Event()
+    in_flight = 0
+    max_in_flight = 0
+
+    def slow_write(_f, _i, image_file, text, **_kwargs):
+        nonlocal in_flight, max_in_flight
+        with guard:
+            in_flight += 1
+            max_in_flight = max(max_in_flight, in_flight)
+        if text == "A-1":
+            started.set()
+        time.sleep(0.05)
+        Path(image_file).with_suffix(".txt").write_text(f"{text}\n", encoding="utf-8")
+        with guard:
+            in_flight -= 1
+        return {"text": text, "caption_file": image_file}
+
+    @asynccontextmanager
+    async def no_lock(_self, _scope_key):
+        yield
+
+    monkeypatch.setattr(jobs, "write_caption", slow_write)
+    monkeypatch.setattr(
+        jobs, "create_caption_snapshot", lambda *_args, **_kwargs: {"id": "snap", "file_count": 4}
+    )
+    monkeypatch.setattr(jobs.TaggingJobManager, "dataset_write_lock", no_lock)
+
+    first, second = _run_shared_dir_commits(job_a, job_b, slow_write, started)
+
+    assert first["written"] == 2 and second["written"] == 2
+    assert max_in_flight >= 2
+
+
+def test_restore_waits_for_the_running_write_back_and_ends_consistent(tmp_path, monkeypatch) -> None:
+    dataset_dir = tmp_path / "restore-dataset"
+    _dataset_with_images(dataset_dir, ["a.png", "b.png"])
+    (dataset_dir / "a.txt").write_text("old-a\n", encoding="utf-8")
+    (dataset_dir / "b.txt").write_text("old-b\n", encoding="utf-8")
+    monkeypatch.setattr(jobs, "resolve_caption_directory", lambda *_args, **_kwargs: dataset_dir)
+    monkeypatch.setattr(
+        caption_snapshots, "resolve_caption_directory", lambda *_args, **_kwargs: dataset_dir
+    )
+    monkeypatch.setattr(
+        tagging_settings, "SETTINGS_FILE", tmp_path / "configs" / "captioning" / "settings.toml"
+    )
+    snapshot = caption_snapshots.create_snapshot(DATASET_FILE, 0)
+    first_write_started = threading.Event()
+    release = threading.Event()
+
+    def slow_write(_f, _i, image_file, text, **_kwargs):
+        if text == "new-a":
+            first_write_started.set()
+            assert release.wait(10)
+        Path(image_file).with_suffix(".txt").write_text(f"{text}\n", encoding="utf-8")
+        return {"text": text, "caption_file": image_file}
+
+    monkeypatch.setattr(jobs, "write_caption", slow_write)
+    monkeypatch.setattr(
+        jobs, "create_caption_snapshot", lambda *_args, **_kwargs: {"id": "auto", "file_count": 2}
+    )
+    job = _dir_job(dataset_dir, ["a.png", "b.png"], {"a.png": "new-a", "b.png": "new-b"})
+
+    async def run() -> dict:
+        manager = jobs.TaggingJobManager()
+        manager.jobs["job-1"] = job
+        service = TaggingService.__new__(TaggingService)
+        service.jobs = manager
+        commit_task = asyncio.create_task(manager.commit("job-1", all_items=True))
+        assert await asyncio.to_thread(first_write_started.wait, 10)
+        restore_task = asyncio.create_task(service.restore_caption_snapshot(snapshot["id"]))
+        await asyncio.sleep(0.05)
+        # t23-C7: restore must wait for the running write-back instead of mixing states.
+        assert not restore_task.done()
+        release.set()
+        await commit_task
+        return await restore_task
+
+    result = asyncio.run(run())
+
+    assert result["written"] == 2
+    state = {
+        "a.txt": (dataset_dir / "a.txt").read_text(encoding="utf-8"),
+        "b.txt": (dataset_dir / "b.txt").read_text(encoding="utf-8"),
+    }
+    # Whole write-back or whole restore, never {a: old-a, b: new-b}.
+    assert state in (
+        {"a.txt": "new-a\n", "b.txt": "new-b\n"},
+        {"a.txt": "old-a\n", "b.txt": "old-b\n"},
+    )
+    # Restore ran after the write-back here, so the snapshot content wins.
+    assert state == {"a.txt": "old-a\n", "b.txt": "old-b\n"}
+
+
+def test_rows_over_different_caption_directories_still_run_in_parallel(tmp_path, monkeypatch) -> None:
+    dir_a = tmp_path / "dataset-a"
+    dir_b = tmp_path / "dataset-b"
+    _dataset_with_images(dir_a, ["a.png"])
+    _dataset_with_images(dir_b, ["b.png"])
+
+    def resolve(_file, index, **_kwargs):
+        return dir_a if index == 0 else dir_b
+
+    monkeypatch.setattr(jobs, "resolve_caption_directory", resolve)
+    guard = threading.Lock()
+    both_started = threading.Event()
+    in_flight = 0
+    max_in_flight = 0
+
+    def slow_write(_f, _i, image_file, text, **_kwargs):
+        nonlocal in_flight, max_in_flight
+        with guard:
+            in_flight += 1
+            max_in_flight = max(max_in_flight, in_flight)
+            if in_flight >= 2:
+                both_started.set()
+        time.sleep(0.15)
+        Path(image_file).with_suffix(".txt").write_text(f"{text}\n", encoding="utf-8")
+        with guard:
+            in_flight -= 1
+        return {"text": text, "caption_file": image_file}
+
+    monkeypatch.setattr(jobs, "write_caption", slow_write)
+    monkeypatch.setattr(
+        jobs, "create_caption_snapshot", lambda *_args, **_kwargs: {"id": "snap", "file_count": 1}
+    )
+    job_a = _dir_job(dir_a, ["a.png"], {"a.png": "A-1"})
+    job_b = _dir_job(dir_b, ["b.png"], {"b.png": "B-1"})
+    job_b["id"] = "job-2"
+    job_b["dataset_index"] = 1
+
+    async def run() -> tuple[dict, dict]:
+        manager = jobs.TaggingJobManager()
+        manager.jobs["job-1"] = job_a
+        manager.jobs["job-2"] = job_b
+        return await asyncio.gather(
+            manager.commit("job-1", all_items=True),
+            manager.commit("job-2", all_items=True),
+        )
+
+    first, second = asyncio.run(run())
+
+    assert first["written"] == 1 and second["written"] == 1
+    # The scope lock must not degrade into one global lock.
+    assert both_started.is_set()
+    assert max_in_flight >= 2
+
+
+def test_unresolved_caption_directory_falls_back_to_a_row_key(tmp_path, monkeypatch) -> None:
+    dataset_dir = tmp_path / "dataset"
+    _dataset_with_images(dataset_dir, ["a.png"])
+
+    def missing(*_args, **_kwargs):
+        raise FileNotFoundError("数据集图片目录不存在")
+
+    monkeypatch.setattr(jobs, "resolve_caption_directory", missing)
+    monkeypatch.setattr(caption_snapshots, "resolve_caption_directory", missing)
+    monkeypatch.setattr(
+        jobs,
+        "write_caption",
+        lambda _f, _i, image_file, text, **_kwargs: {"text": text, "caption_file": image_file},
+    )
+    job = _dir_job(dataset_dir, ["a.png"], {"a.png": "A-1"})
+
+    assert jobs.caption_scope_key(DATASET_FILE, 0) == f"row:{DATASET_FILE}#0"
+
+    async def run() -> tuple[dict, dict]:
+        manager = jobs.TaggingJobManager()
+        manager.jobs["job-1"] = job
+        result = await manager.commit("job-1", all_items=True)
+        return result, dict(manager._dataset_locks)
+
+    result, locks = asyncio.run(run())
+
+    # Existing grading: a missing directory is a non-blocking snapshot_error.
+    assert result["written"] == 1
+    assert result["snapshot"] is None
+    assert result["snapshot_error"]
+    assert locks == {}

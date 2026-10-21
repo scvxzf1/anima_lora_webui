@@ -27,6 +27,7 @@ from .settings import load_settings
 from .storage import (
     CaptionWriteConflict,
     caption_text_suffix,
+    resolve_caption_directory,
     resolve_tagging_image,
     write_caption,
 )
@@ -34,6 +35,24 @@ from .storage import (
 MAX_ITEMS_PER_JOB = 500
 DEFAULT_MAX_RETAINED_JOBS = 40
 SHUTDOWN_TIMEOUT_SECONDS = 2.0
+
+
+def caption_scope_key(dataset_file: str, dataset_index: int, *, source: str = "source") -> str:
+    """Return the write-lock key for one dataset row: its caption directory.
+
+    The key is the resolved caption directory as an absolute POSIX path, the
+    same value a snapshot manifest records as ``scope_dir``, so two dataset
+    rows that point at one physical directory share a single lock.  When the
+    directory cannot be resolved (unreadable preset, missing directory) the
+    caller still gets a stable row-level key instead of an exception: write-back
+    keeps its existing snapshot_error grading instead of failing here.
+    """
+
+    try:
+        directory = resolve_caption_directory(dataset_file, dataset_index, source=source)
+        return directory.resolve().as_posix()
+    except (OSError, ValueError, TypeError):
+        return f"row:{dataset_file or ''}#{dataset_index}"
 
 
 class TaggingJobManager:
@@ -60,12 +79,13 @@ class TaggingJobManager:
         self._job_locks: dict[str, asyncio.Lock] = {}
         self._commit_locks = self._job_locks
         self._rerun_locks = self._job_locks
-        # Dataset-level write lock: serialises write-back and restore points for
-        # one dataset row, across jobs.  Lock order is always job lock first,
-        # then the dataset lock; no code path may take them in the other order,
-        # which is what keeps commit/rerun and manual snapshots deadlock free.
-        self._dataset_locks: dict[tuple[str, int], asyncio.Lock] = {}
-        self._dataset_lock_users: dict[tuple[str, int], int] = {}
+        # Scope-level write lock: serialises write-back, manual backups and restores
+        # for one caption directory (the resolved scope_dir), across dataset rows and
+        # jobs.  Lock order is always job lock first, then this scope lock; nothing
+        # may take them in the other order, which keeps commit/rerun, backups and
+        # restores deadlock free.
+        self._dataset_locks: dict[str, asyncio.Lock] = {}
+        self._dataset_lock_users: dict[str, int] = {}
         self._local_workers: dict[str, LocalTaggingWorkerClient] = {}
         self._local_worker_factory = local_worker_factory or LocalTaggingWorkerClient
         self.logs = TaggingMemoryLog(log_retention_lines)
@@ -387,16 +407,18 @@ class TaggingJobManager:
         return self.snapshot(job_id)
 
     @asynccontextmanager
-    async def dataset_write_lock(self, dataset_file: str, dataset_index: int):
-        """Serialise caption mutations for one dataset row.
+    async def dataset_write_lock(self, scope_key: str):
+        """Serialise caption mutations for one caption directory.
 
-        Callers that already hold the job lock take this one second (job lock ->
-        dataset lock); nobody may take the dataset lock first and then wait for a
-        job lock.  Idle entries are dropped as soon as the last user leaves, so the
-        table cannot grow with dead dataset rows.
+        ``scope_key`` is a resolved caption directory (see caption_scope_key), so
+        two dataset rows over one physical directory share the lock.  Callers that
+        already hold a job lock take this one second (job lock -> scope lock);
+        restore takes only this lock.  Nobody may take the scope lock first and
+        then wait for a job lock.  Idle entries are dropped as soon as the last
+        user leaves, so the table cannot grow with dead scopes.
         """
 
-        key = (str(dataset_file or ""), int(dataset_index))
+        key = str(scope_key or "")
         lock = self._dataset_locks.get(key)
         if lock is None:
             lock = asyncio.Lock()
@@ -448,10 +470,14 @@ class TaggingJobManager:
             job = self._get(job_id)
             if job["state"] in {"queued", "running"}:
                 raise RuntimeError("任务正在重新打标，结束前不能写回 caption")
-            # Lock order: job lock first, dataset lock second (never reversed).
+            # Lock order: job lock first, scope lock second (never reversed).
             # The restore point and every sidecar write happen inside this block,
-            # so a concurrent snapshot sees either the old or the new caption set.
-            async with self.dataset_write_lock(job["dataset_file"], job["dataset_index"]):
+            # so a concurrent snapshot or restore sees either the old or the new
+            # caption set, never a half-written mix.
+            scope_key = caption_scope_key(
+                job["dataset_file"], job["dataset_index"], source=job.get("source", "source")
+            )
+            async with self.dataset_write_lock(scope_key):
                 return await self._commit_locked(job, all_items=all_items, item_ids=item_ids)
 
     async def _create_commit_snapshot(self, job: dict[str, Any]) -> tuple[dict[str, Any] | None, str]:
