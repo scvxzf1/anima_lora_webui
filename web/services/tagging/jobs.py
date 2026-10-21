@@ -11,13 +11,24 @@ from pathlib import Path
 from typing import Any, Callable
 
 from web.services.data_cleanup_gate import guard_data_launch
+from . import caption_edit
 from .batch_update import update_candidates
+from .caption_snapshots import (
+    CaptionSnapshotError,
+    CaptionSnapshotTooLarge,
+    create_snapshot as create_caption_snapshot,
+)
 from .client import OpenAICompatibleClient, TaggingApiError
 from .local_worker_client import LocalTaggingWorkerClient, LocalWorkerError
 from .memory_log import DEFAULT_LOG_RETENTION_LINES, TaggingMemoryLog
 from .profiles import get_effective_settings
 from .settings import load_settings
-from .storage import CaptionWriteConflict, resolve_tagging_image, write_caption
+from .storage import (
+    CaptionWriteConflict,
+    caption_text_suffix,
+    resolve_tagging_image,
+    write_caption,
+)
 
 MAX_ITEMS_PER_JOB = 500
 DEFAULT_MAX_RETAINED_JOBS = 40
@@ -42,8 +53,12 @@ class TaggingJobManager:
         self.jobs: OrderedDict[str, dict[str, Any]] = OrderedDict()
         self._tasks: dict[str, asyncio.Task] = {}
         self._cancel_events: dict[str, asyncio.Event] = {}
-        self._commit_locks: dict[str, asyncio.Lock] = {}
-        self._rerun_locks: dict[str, asyncio.Lock] = {}
+        # One job-level write lock: write-back and rerun must never overlap, so
+        # a rerun cannot replace candidate text while a commit reads it.  The
+        # legacy names are aliases of the same mapping on purpose.
+        self._job_locks: dict[str, asyncio.Lock] = {}
+        self._commit_locks = self._job_locks
+        self._rerun_locks = self._job_locks
         self._local_workers: dict[str, LocalTaggingWorkerClient] = {}
         self._local_worker_factory = local_worker_factory or LocalTaggingWorkerClient
         self.logs = TaggingMemoryLog(log_retention_lines)
@@ -63,6 +78,8 @@ class TaggingJobManager:
         except (TypeError, ValueError) as exc:
             raise ValueError("数据集序号无效") from exc
         source = "source" if str(payload.get("source") or "source").lower() == "source" else "training"
+        on_existing = caption_edit.normalize_policy(payload.get("on_existing"))
+        trigger_word = str(payload.get("trigger_word") or "").strip()[:200]
         profile_id = str(payload.get("profile_id") or "").strip()
         provider_settings = get_effective_settings(profile_id) if profile_id else load_settings()
         provider = str(provider_settings.get("provider") or "openai_compatible").strip().lower()
@@ -101,6 +118,18 @@ class TaggingJobManager:
                 source=source,
             )
             current = resolved["caption"]
+            if on_existing == caption_edit.POLICY_SKIP:
+                # Same suffix source as write_caption: a custom caption_extension
+                # must flip detection and the write target together (BAC-5).
+                row_settings = (
+                    resolved.get("settings") if isinstance(resolved.get("settings"), dict) else {}
+                )
+                if await asyncio.to_thread(
+                    caption_edit.has_effective_caption,
+                    resolved["path"],
+                    text_suffix=caption_text_suffix(row_settings),
+                ):
+                    continue
             items.append(
                 {
                     "id": uuid.uuid4().hex[:12],
@@ -119,6 +148,8 @@ class TaggingJobManager:
                 }
             )
         if not items:
+            if on_existing == caption_edit.POLICY_SKIP:
+                raise ValueError("所选图片都已有 caption，按“跳过已有”策略没有可处理的图片")
             raise ValueError("没有可提交的有效图片")
 
         job_id = uuid.uuid4().hex[:16]
@@ -132,6 +163,8 @@ class TaggingJobManager:
             "dataset_file": dataset_file,
             "dataset_index": dataset_index,
             "source": source,
+            "on_existing": on_existing,
+            "trigger_word": trigger_word,
             "profile_id": provider_settings.get("_profile_id", "legacy-openai"),
             "profile_name": provider_settings.get("_profile_name", "默认外部 API"),
             "prompt": prompt[:10000],
@@ -147,8 +180,7 @@ class TaggingJobManager:
         }
         self.jobs[job_id] = job
         self._cancel_events[job_id] = asyncio.Event()
-        self._commit_locks[job_id] = asyncio.Lock()
-        self._rerun_locks[job_id] = asyncio.Lock()
+        self._job_locks[job_id] = asyncio.Lock()
         self._prune()
         self._log(job, f"任务已加入队列，共 {len(items)} 张图片", event="job_queued")
         self._tasks[job_id] = asyncio.create_task(self._run(job), name=f"tagging:{job_id}")
@@ -161,9 +193,14 @@ class TaggingJobManager:
         profile_id: str = "",
         item_ids: list[str] | None = None,
     ) -> dict[str, Any]:
-        lock = self._rerun_locks.setdefault(str(job_id), asyncio.Lock())
+        key = str(job_id)
+        lock = self._job_locks.setdefault(key, asyncio.Lock())
+        if lock.locked():
+            # Write-back owns the same lock; rerunning now would replace the
+            # candidate text a commit is writing back.
+            raise RuntimeError("任务正在写回或重跑，请稍后再重新打标")
         async with lock:
-            return await self._rerun_in_place(job_id, profile_id=profile_id, item_ids=item_ids)
+            return await self._rerun_in_place(key, profile_id=profile_id, item_ids=item_ids)
 
     async def _rerun_in_place(
         self,
@@ -359,9 +396,46 @@ class TaggingJobManager:
         job = self._get(job_id)
         if job["state"] in {"queued", "running"}:
             raise RuntimeError("任务尚未完成，不能写回 caption")
-        lock = self._commit_locks.setdefault(job_id, asyncio.Lock())
+        lock = self._job_locks.setdefault(job_id, asyncio.Lock())
         async with lock:
+            # A rerun may have finished while this call waited for the lock.
+            job = self._get(job_id)
+            if job["state"] in {"queued", "running"}:
+                raise RuntimeError("任务正在重新打标，结束前不能写回 caption")
             return await self._commit_locked(job, all_items=all_items, item_ids=item_ids)
+
+    async def _create_commit_snapshot(self, job: dict[str, Any]) -> tuple[dict[str, Any] | None, str]:
+        """Capture a caption restore point before anything is written back."""
+
+        try:
+            snapshot = await asyncio.to_thread(
+                create_caption_snapshot,
+                job["dataset_file"],
+                job["dataset_index"],
+                source=job["source"],
+                reason="commit",
+            )
+        except CaptionSnapshotTooLarge as exc:
+            self._log(job, f"跳过还原点：{exc}", level="warning", event="commit_snapshot_skipped")
+            return None, str(exc)
+        except CaptionSnapshotError as exc:
+            # Any other restore-point fault aborts the write-back: no caption is
+            # written without the safety net (spec 2.4).
+            self._log(job, f"还原点创建失败，已取消写回：{exc}", level="error", event="commit_snapshot_failed")
+            raise
+        except (FileNotFoundError, ValueError) as exc:
+            self._log(job, f"无法创建还原点：{exc}", level="warning", event="commit_snapshot_skipped")
+            return None, str(exc)
+        except OSError as exc:
+            self._log(job, f"还原点创建失败，已取消写回：{exc}", level="error", event="commit_snapshot_failed")
+            raise CaptionSnapshotError(f"还原点创建失败，已取消写回：{exc}") from exc
+        self._log(
+            job,
+            f"已创建还原点 {snapshot['id']}（{snapshot['file_count']} 个 caption 文件）",
+            level="info",
+            event="commit_snapshot",
+        )
+        return snapshot, ""
 
     async def _commit_locked(
         self,
@@ -371,47 +445,94 @@ class TaggingJobManager:
         item_ids: list[str] | None,
     ) -> dict[str, Any]:
         wanted = set(str(item_id) for item_id in (item_ids or []))
-        candidates = [
-            item
-            for item in job["items"]
-            if (all_items or item["id"] in wanted)
-            and str(item.get("proposed_caption") or "").strip()
-            and (
+        candidates: list[tuple[dict[str, Any], str]] = []
+        errors: list[dict[str, str]] = []
+        invalid = 0
+        for item in job["items"]:
+            if not all_items and item["id"] not in wanted:
+                continue
+            # Freeze the text here: a later edit or rerun must never change what
+            # this write-back actually writes.
+            text = str(item.get("proposed_caption") or "").strip()
+            if not text:
+                continue
+            if not (
                 item.get("state") in {"ready", "failed"}
                 or (
                     item.get("state") == "committed"
-                    and str(item.get("caption") or "") != str(item.get("proposed_caption") or "")
+                    and str(item.get("caption") or "") != text
                 )
-            )
-        ]
+            ):
+                continue
+            if not caption_edit.split_tags(text):
+                # Resolved to no tag at all: never clear an existing caption.
+                invalid += 1
+                item["commit_status"] = "failed"
+                item["commit_error"] = "候选 caption 解析后没有有效标签，已跳过写回"
+                errors.append(
+                    {"item_id": item["id"], "file": item["file"], "error": item["commit_error"]}
+                )
+                self._log(
+                    job,
+                    f"写回跳过：{item['name']} - 候选没有有效标签",
+                    level="warning",
+                    event="commit_failed",
+                    item=item,
+                )
+                continue
+            candidates.append((item, text))
         if not candidates:
-            return {"ok": True, "written": 0, "conflicts": 0, "skipped": 0, "errors": [], "job": self._public_job(job)}
+            if invalid:
+                self._refresh_counts(job)
+            return {
+                "ok": True,
+                "written": 0,
+                "conflicts": 0,
+                "skipped": 0,
+                "failed": invalid,
+                "errors": errors,
+                "snapshot": None,
+                "snapshot_error": "",
+                "job": self._public_job(job),
+            }
+        snapshot, snapshot_error = await self._create_commit_snapshot(job)
         written = 0
         conflicts = 0
         skipped = 0
-        errors: list[dict[str, str]] = []
-        for item in candidates:
+        failed = invalid
+        for item, text in candidates:
             try:
                 result = await asyncio.to_thread(
                     write_caption,
                     job["dataset_file"],
                     job["dataset_index"],
                     item["file"],
-                    item["proposed_caption"],
+                    text,
                     source=job["source"],
+                    policy=job.get("on_existing", "overwrite"),
+                    trigger_word=job.get("trigger_word", ""),
                 )
             except CaptionWriteConflict as exc:
                 conflicts += 1
+                item["commit_status"] = "conflict"
                 item["commit_error"] = str(exc)
                 errors.append({"item_id": item["id"], "file": item["file"], "error": str(exc)})
                 self._log(job, f"写回冲突：{item['name']} - {exc}", level="warning", event="commit_conflict", item=item)
             except (OSError, ValueError) as exc:
-                skipped += 1
+                failed += 1
+                item["commit_status"] = "failed"
                 item["commit_error"] = str(exc)
                 errors.append({"item_id": item["id"], "file": item["file"], "error": str(exc)})
                 self._log(job, f"写回失败：{item['name']} - {exc}", level="error", event="commit_failed", item=item)
             else:
+                if result.get("skipped"):
+                    skipped += 1
+                    item["commit_status"] = "skipped"
+                    item["commit_error"] = "已存在有效 caption，按当前策略跳过"
+                    self._log(job, f"按策略跳过：{item['name']}", level="info", event="commit_skipped", item=item)
+                    continue
                 written += 1
+                item["commit_status"] = "written"
                 item["state"] = "committed"
                 item["commit_error"] = ""
                 item["caption"] = result["text"]
@@ -420,7 +541,7 @@ class TaggingJobManager:
         self._refresh_counts(job)
         self._log(
             job,
-            f"写回完成：成功 {written}，冲突 {conflicts}，跳过 {skipped}",
+            f"写回完成：成功 {written}，冲突 {conflicts}，跳过 {skipped}，失败 {failed}",
             level="success" if written and not errors else "warning",
             event="commit_finished",
         )
@@ -429,7 +550,10 @@ class TaggingJobManager:
             "written": written,
             "conflicts": conflicts,
             "skipped": skipped,
+            "failed": failed,
             "errors": errors,
+            "snapshot": snapshot,
+            "snapshot_error": snapshot_error,
             "job": self._public_job(job),
         }
 
@@ -769,6 +893,7 @@ class TaggingJobManager:
                     (job_id, job)
                     for job_id, job in self.jobs.items()
                     if job["state"] not in {"queued", "running"}
+                    and not self._lock_is_held(job_id)
                 ),
                 None,
             )
@@ -777,8 +902,13 @@ class TaggingJobManager:
             job_id, _job = candidate
             self.jobs.pop(job_id, None)
             self._cancel_events.pop(job_id, None)
-            self._commit_locks.pop(job_id, None)
-            self._rerun_locks.pop(job_id, None)
+            # Dropping the lock entry of a job that is still writing would let
+            # the next mutation create a second lock for the same job.
+            self._job_locks.pop(job_id, None)
+
+    def _lock_is_held(self, job_id: str) -> bool:
+        lock = self._job_locks.get(job_id)
+        return lock is not None and lock.locked()
 
     def _log(
         self,
