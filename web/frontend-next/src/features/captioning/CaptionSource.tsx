@@ -11,7 +11,11 @@ import {
   captionImageUrl,
   type Profiles,
 } from "./api";
-import { useCaptionDraft } from "./captionDraft";
+import {
+  CAPTION_WRITE_POLICIES,
+  buildCaptionJobPayload,
+  useCaptionDraft,
+} from "./captionDraft";
 
 export function CaptionSource({
   library,
@@ -103,20 +107,30 @@ export function CaptionSource({
       create.isPending
     )
       return;
-    const message =
+    const target =
       profile.kind === "external"
-        ? `将 ${selected.length} 张图片及提示词发送至 ${String(profile.config.base_url || profile.name)}。可能产生费用。确认开始打标吗？`
-        : `使用本地 ${profile.name} 处理 ${selected.length} 张图片，会占用计算资源。确认开始吗？`;
-    if (!window.confirm(message)) return;
-    create.mutate({
-      dataset_file: file,
-      dataset_index: index,
-      source,
-      profile_id: profile.id,
-      user_prompt: prompt,
-      system_prompt: systemPrompt,
-      items: selected.map((entry) => ({ file: entry })),
-    });
+        ? `将 ${selected.length} 张图片及提示词发送至 ${String(profile.config.base_url || profile.name)}。可能产生费用。`
+        : `使用本地 ${profile.name} 处理 ${selected.length} 张图片，会占用计算资源。`;
+    const policyHint =
+      draft.onExisting === "skip"
+        ? "已有 caption 的图片会被跳过。"
+        : draft.onExisting === "append"
+          ? "结果会追加到已有 caption。"
+          : "已有 caption 会被覆盖。";
+    if (!window.confirm(`${target}${policyHint}确认开始打标吗？`)) return;
+    create.mutate(
+      buildCaptionJobPayload({
+        datasetFile: file,
+        datasetIndex: index,
+        source,
+        profileId: profile.id,
+        prompt,
+        systemPrompt,
+        onExisting: draft.onExisting,
+        triggerWord: draft.triggerWord,
+        items: selected,
+      }),
+    );
   }
   return (
     <section>
@@ -177,6 +191,29 @@ export function CaptionSource({
               <option value="source">原始图</option>
               <option value="training">训练图</option>
             </select>
+          </label>
+          <label>
+            <span>已有 caption</span>
+            <select
+              value={draft.onExisting}
+              onChange={(e) => update({ onExisting: e.target.value })}
+            >
+              {CAPTION_WRITE_POLICIES.map((policy) => (
+                <option key={policy.value} value={policy.value}>
+                  {policy.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>触发词</span>
+            <input
+              type="text"
+              maxLength={200}
+              placeholder="可留空；写回时作为第一个 tag"
+              value={draft.triggerWord}
+              onChange={(e) => update({ triggerWord: e.target.value })}
+            />
           </label>
           <label>
             <span>接入预设</span>

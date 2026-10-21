@@ -10,20 +10,25 @@ from pathlib import Path
 def atomic_write_text(path: Path, text: str, *, encoding: str = "utf-8") -> None:
     """Replace ``path`` only after a same-directory temp file is durable."""
 
+    atomic_write_bytes(path, text.encode(encoding))
+
+
+def atomic_write_bytes(path: Path, payload: bytes) -> None:
+    """Replace ``path`` with ``payload`` only after an fsynced temp file is durable."""
+
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
     temp_path: Path | None = None
     try:
         with tempfile.NamedTemporaryFile(
-            mode="w",
-            encoding=encoding,
+            mode="wb",
             dir=target.parent,
             prefix=f".{target.name}.",
             suffix=".tmp",
             delete=False,
         ) as temp_file:
             temp_path = Path(temp_file.name)
-            temp_file.write(text)
+            temp_file.write(payload)
             temp_file.flush()
             os.fsync(temp_file.fileno())
         os.replace(temp_path, target)

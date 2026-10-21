@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from aiohttp import web
 
+from web.services.tagging.caption_snapshots import CaptionSnapshotNotFound
 from web.services.tagging.client import TaggingApiError
 from web.services.tagging import TaggingService
 
@@ -49,6 +50,10 @@ def setup_tagging_routes(app: web.Application) -> None:
         app.router.add_patch(f"{prefix}/jobs/{{job_id}}/items", handle_items_update)
         app.router.add_patch(f"{prefix}/jobs/{{job_id}}/items/{{item_id}}", handle_item_update)
         app.router.add_post(f"{prefix}/jobs/{{job_id}}/commit", handle_job_commit)
+        app.router.add_get(f"{prefix}/caption-snapshots", handle_caption_snapshots_get)
+        app.router.add_post(f"{prefix}/caption-snapshots", handle_caption_snapshot_create)
+        app.router.add_post(f"{prefix}/caption-snapshots/{{snapshot_id}}/restore", handle_caption_snapshot_restore)
+        app.router.add_delete(f"{prefix}/caption-snapshots/{{snapshot_id}}", handle_caption_snapshot_delete)
 
 
 def _service(request: web.Request) -> TaggingService | None:
@@ -480,6 +485,60 @@ async def handle_job_commit(request: web.Request) -> web.Response:
         return web.json_response({"ok": False, "error": str(exc)}, status=404)
     except RuntimeError as exc:
         return web.json_response({"ok": False, "error": str(exc)}, status=409)
+    except (ValueError, OSError) as exc:
+        return web.json_response({"ok": False, "error": str(exc)}, status=400)
+
+
+async def handle_caption_snapshots_get(request: web.Request) -> web.Response:
+    service = _service(request)
+    if service is None:
+        return _unavailable()
+    dataset_file = str(request.query.get("dataset_file") or "").strip()
+    raw_index = str(request.query.get("dataset_index") or "").strip()
+    try:
+        dataset_index = int(raw_index) if raw_index else None
+    except ValueError:
+        return web.json_response({"ok": False, "error": "dataset_index 必须是整数"}, status=400)
+    return web.json_response(
+        service.list_caption_snapshots(dataset_file=dataset_file, dataset_index=dataset_index)
+    )
+
+
+async def handle_caption_snapshot_create(request: web.Request) -> web.Response:
+    service = _service(request)
+    if service is None:
+        return _unavailable()
+    try:
+        payload = await _json_object(request, allow_empty=True)
+        return web.json_response(await service.create_caption_snapshot(payload), status=201)
+    except KeyError as exc:
+        return web.json_response({"ok": False, "error": str(exc)}, status=404)
+    except (ValueError, OSError) as exc:
+        return web.json_response({"ok": False, "error": str(exc)}, status=400)
+    except RuntimeError as exc:
+        return web.json_response({"ok": False, "error": str(exc)}, status=409)
+
+
+async def handle_caption_snapshot_restore(request: web.Request) -> web.Response:
+    service = _service(request)
+    if service is None:
+        return _unavailable()
+    try:
+        return web.json_response(await service.restore_caption_snapshot(request.match_info["snapshot_id"]))
+    except CaptionSnapshotNotFound as exc:
+        return web.json_response({"ok": False, "error": str(exc)}, status=404)
+    except (ValueError, OSError) as exc:
+        return web.json_response({"ok": False, "error": str(exc)}, status=400)
+
+
+async def handle_caption_snapshot_delete(request: web.Request) -> web.Response:
+    service = _service(request)
+    if service is None:
+        return _unavailable()
+    try:
+        return web.json_response(service.delete_caption_snapshot(request.match_info["snapshot_id"]))
+    except CaptionSnapshotNotFound as exc:
+        return web.json_response({"ok": False, "error": str(exc)}, status=404)
     except (ValueError, OSError) as exc:
         return web.json_response({"ok": False, "error": str(exc)}, status=400)
 

@@ -1,4 +1,4 @@
-import { cleanup, screen } from "@testing-library/react";
+import { cleanup, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { jsonResponse, renderInApp } from "../../test/renderInApp";
@@ -84,6 +84,66 @@ describe("caption review write boundaries", () => {
       await screen.findByText("sample.png: TXT 已被其他程序修改"),
     ).toBeInTheDocument();
   });
+  it("warns when a write-back finished without a restore point and refreshes the list", async () => {
+    const item = {
+      id: "i1",
+      name: "s.png",
+      file: "s.png",
+      state: "ready",
+      caption: "",
+      proposed_caption: "1girl",
+      url: "",
+    };
+    const job = {
+      id: "j1",
+      state: "done",
+      profile_name: "Fixture",
+      profile_id: "p1",
+      dataset_file: "configs/datasets/example.toml",
+      dataset_index: 0,
+      settings: { provider: "wd14" },
+      total: 1,
+      completed: 1,
+      failed: 0,
+      items: [item],
+    };
+    const calls: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        calls.push(`${init?.method || "GET"} ${url}`);
+        if (url.includes("/logs?")) return jsonResponse({ lines: [] });
+        if (url.includes("/caption-snapshots"))
+          return jsonResponse({ ok: true, snapshots: [] });
+        if (url.endsWith("/commit"))
+          return jsonResponse({
+            written: 1,
+            conflicts: 0,
+            skipped: 0,
+            failed: 2,
+            errors: [],
+            snapshot: null,
+            snapshot_error: "还原点范围过大（超过 20000 个文件或 64 MiB），已跳过自动备份",
+            job,
+          });
+        return jsonResponse({ ok: true, job });
+      }),
+    );
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    renderInApp(<CaptionReview jobId="j1" />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: /写回全部候选/ }));
+
+    expect(await screen.findByText(/本次写回没有还原点/)).toBeInTheDocument();
+    expect(await screen.findByText(/失败 2/)).toBeInTheDocument();
+    const snapshotCalls = () =>
+      calls.filter(
+        (entry) => entry.startsWith("GET") && entry.includes("/caption-snapshots"),
+      ).length;
+    await waitFor(() => expect(snapshotCalls()).toBeGreaterThan(1));
+  });
+
   it("shows the provider-aware running state from the job snapshot", async () => {
     const job = {
       id: "j1",

@@ -89,6 +89,8 @@ def test_ui_scale_override_settings_roundtrip(tmp_path, monkeypatch):
     settings_file = tmp_path / "configs" / "web-ui-settings.toml"
     monkeypatch.setattr(settings_service, "ROOT", tmp_path)
     monkeypatch.setattr(settings_service, "SETTINGS_FILE", settings_file)
+    # 本机若配置了外部设置文件覆盖，保存会按设计写到覆盖路径；测试必须隔离它。
+    monkeypatch.setattr(settings_service, "_explicit_settings_file_override", lambda: None)
 
     saved = settings_service.save_global_settings(
         {

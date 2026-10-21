@@ -12,7 +12,51 @@ export type CaptionDraft = {
   prompt: string;
   systemPrompt: string;
   promptPresetId: string;
+  onExisting: string;
+  triggerWord: string;
 };
+
+export const CAPTION_WRITE_POLICIES = [
+  { value: "overwrite", label: "覆盖已有 caption" },
+  { value: "skip", label: "跳过已有 caption" },
+  { value: "append", label: "追加到已有 caption" },
+] as const;
+
+export type CaptionJobPayload = {
+  dataset_file: string;
+  dataset_index: number;
+  source: string;
+  profile_id: string;
+  user_prompt: string;
+  system_prompt: string;
+  on_existing: string;
+  trigger_word: string;
+  items: { file: string }[];
+};
+
+export function buildCaptionJobPayload(args: {
+  datasetFile: string;
+  datasetIndex: number;
+  source: string;
+  profileId: string;
+  prompt: string;
+  systemPrompt: string;
+  onExisting: string;
+  triggerWord: string;
+  items: string[];
+}): CaptionJobPayload {
+  return {
+    dataset_file: args.datasetFile,
+    dataset_index: args.datasetIndex,
+    source: args.source,
+    profile_id: args.profileId,
+    user_prompt: args.prompt,
+    system_prompt: args.systemPrompt,
+    on_existing: args.onExisting || "overwrite",
+    trigger_word: args.triggerWord.trim(),
+    items: args.items.map((file) => ({ file })),
+  };
+}
 
 const drafts = new Map<string, CaptionDraft>();
 export function clearCaptionDrafts() { drafts.clear(); }
@@ -23,6 +67,8 @@ const emptyDraft = (): CaptionDraft => ({
   prompt: "",
   systemPrompt: "",
   promptPresetId: "",
+  onExisting: "overwrite",
+  triggerWord: "",
 });
 
 function scopeKey(scope: CaptionDraftScope) {

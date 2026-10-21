@@ -804,7 +804,7 @@ def test_resolved_tagging_image_exposes_cached_thumbnail_and_original_urls(tmp_p
     assert "&v=" in resolved["thumbnail_url"]
 
 
-def test_caption_write_always_creates_one_txt_sidecar_and_preserves_structured_sources(tmp_path, monkeypatch) -> None:
+def test_caption_write_creates_txt_sidecar_then_edits_structured_sidecar_in_place(tmp_path, monkeypatch) -> None:
     image = tmp_path / "dataset" / "sample.png"
     image.parent.mkdir()
     image.write_bytes(b"image")
@@ -821,13 +821,19 @@ def test_caption_write_always_creates_one_txt_sidecar_and_preserves_structured_s
     result = storage.write_caption("preset.toml", 0, image.as_posix(), "new caption")
 
     assert result["text"] == "new caption"
+    assert result["format"] == "text"
     assert image.with_suffix(".txt").read_text(encoding="utf-8") == "new caption\n"
 
+    # Phase 2: an existing structured sidecar is authoritative and edited in
+    # place, because the dataset reader prefers JSON over the stray TXT.
     structured = image.with_suffix(".json")
-    structured.write_text('{"sample": "old"}', encoding="utf-8")
+    structured.write_text('{"sample": "old", "meta": {"source": "api"}}', encoding="utf-8")
     resolved["caption"] = {"path": structured, "text": "old"}
     replacement = storage.write_caption("preset.toml", 0, image.as_posix(), "replacement")
 
-    assert replacement["caption_file"].endswith("sample.txt")
-    assert image.with_suffix(".txt").read_text(encoding="utf-8") == "replacement\n"
-    assert structured.read_text(encoding="utf-8") == '{"sample": "old"}'
+    assert replacement["caption_file"].endswith("sample.json")
+    assert replacement["format"] == "json"
+    written = json.loads(structured.read_text(encoding="utf-8"))
+    assert written["tags"] == ["replacement"]
+    assert written["sample"] == "old"
+    assert written["meta"] == {"source": "api"}

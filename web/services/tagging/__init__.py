@@ -8,6 +8,12 @@ from typing import Any
 
 from web.services.settings_service import get_global_settings
 
+from .caption_snapshots import (
+    create_snapshot as _create_caption_snapshot,
+    delete_snapshot as _delete_caption_snapshot,
+    list_snapshots as _list_caption_snapshots,
+    restore_snapshot as _restore_caption_snapshot,
+)
 from .client import OpenAICompatibleClient
 from .download_jobs import ModelDownloadService
 from .jobs import TaggingJobManager
@@ -224,6 +230,44 @@ class TaggingService:
         item_ids: list[str] | None = None,
     ) -> dict[str, Any]:
         return await self.jobs.commit(job_id, all_items=all_items, item_ids=item_ids)
+
+    def list_caption_snapshots(
+        self,
+        *,
+        dataset_file: str = "",
+        dataset_index: int | None = None,
+    ) -> dict[str, Any]:
+        return {
+            "ok": True,
+            "snapshots": _list_caption_snapshots(dataset_file=dataset_file, dataset_index=dataset_index),
+        }
+
+    async def create_caption_snapshot(self, payload: dict[str, Any] | None) -> dict[str, Any]:
+        data = payload if isinstance(payload, dict) else {}
+        dataset_file = str(data.get("dataset_file") or data.get("file") or "").strip()
+        if not dataset_file:
+            raise ValueError("请先选择数据集预设")
+        try:
+            dataset_index = int(data.get("dataset_index", 0) or 0)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("dataset_index 必须是整数") from exc
+        source = "source" if str(data.get("source") or "source").lower() == "source" else "training"
+        label = str(data.get("label") or "").strip()[:80]
+        snapshot = await asyncio.to_thread(
+            _create_caption_snapshot,
+            dataset_file,
+            dataset_index,
+            source=source,
+            reason="manual",
+            label=label,
+        )
+        return {"ok": True, "snapshot": snapshot}
+
+    async def restore_caption_snapshot(self, snapshot_id: str) -> dict[str, Any]:
+        return await asyncio.to_thread(_restore_caption_snapshot, snapshot_id)
+
+    def delete_caption_snapshot(self, snapshot_id: str) -> dict[str, Any]:
+        return _delete_caption_snapshot(snapshot_id)
 
     async def shutdown(self) -> None:
         await self.tag_dictionary.shutdown()
