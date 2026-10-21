@@ -42,6 +42,7 @@
 | [webui_frontend_audit_20260913.md](webui_frontend_audit_20260913.md) | 2026-09-13 Classic/Dragon/Next 前端当前工作树审计：静态/Next 门禁、cache token、配置库键盘排序与文档风险分级 |
 | [captioning_uiux_external_review_20260829.md](captioning_uiux_external_review_20260829.md) | Captioning 13 界面外部视觉评审 API 探针、失败边界与后续裁决要求 |
 | [captioning_uiux_iteration_20260829.md](captioning_uiux_iteration_20260829.md) | Captioning/打标工作台 13 界面两轮 UI/UX 优化与验收记录 |
+| [tagging-port-spec.md](tagging-port-spec.md) | 打标能力净室移植行为契约：caption 还原点（Phase 1）与 caption 写入语义（Phase 2），含审计→修复→独立复核闭环（BAC / FAC / T9-1 全量状态）、captions_json 写回 fail-closed 设计决策与已知限制 |
 | [dragon_frontend_performance_20260826.md](dragon_frontend_performance_20260826.md) | Dragon 五个核心路由的按需加载与运行时优化历史基线（不含后续 tagging 工作台） |
 | [dragon_frontend_uiux_review_20260829.md](dragon_frontend_uiux_review_20260829.md) | Dragon 13 页面双视口截图评审、外部视觉模型意见与实施顺序 |
 | [dragon_responsive_hardcoding_audit_20260824.md](dragon_responsive_hardcoding_audit_20260824.md) | Dragon 视口硬编码解耦、浏览器降级和响应式验证记录 |
