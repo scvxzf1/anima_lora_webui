@@ -134,6 +134,10 @@
 不触碰范围外目录；整单校验失败时磁盘零变化（没有「删了一半」的中间态）。
 嵌套目录（递归数据集子目录）里的 sidecar 不在任何还原点内，见 §2.2.1。
 
+还原在 **scope 锁**内执行：`TaggingService.restore_caption_snapshot` 先读 manifest 取 `scope_dir`
+作为锁键，再持锁执行还原；这把锁与写回、手动备份共用，因此三者互斥 —— 并发的 commit 只会让还原看到
+「写回前」或「写回后」的完整集合，不会出现「还原到一半又被写回覆盖」的混合态。
+
 ### 2.4 写回集成
 
 `TaggingJobManager._commit_locked()` 在写任何 caption **之前**创建 `reason="commit"` 的快照：
@@ -156,21 +160,25 @@
 - commit 持锁期间：`rerun` 立即抛 `RuntimeError`（路由 409，「任务正在写回或重跑…」），
   `update_items` 同样被拒；不会再出现「写回循环读到被清空的候选」。
 - commit 拿到锁后会**重新读取 job 状态**再判断，避免等锁期间 rerun 已完成造成误判。
-- **dataset 级共享锁**（BAC-10）：`dataset_write_lock(dataset_file, dataset_index)` 按
-  `(dataset_file, dataset_index)` 建锁，`commit` 在 job 锁内再取它；还原点创建与全部 sidecar 写入
-  都在该临界区内，所以同一 dataset 的快照只会看到「写回前」或「写回后」的完整集合，不会记录半写中间态。
-- 手动「立即备份」（`TaggingService.create_caption_snapshot`）取同一把 dataset 锁，因此与进行中的写回
-  **互斥**：实测 commit 停在第一张图时，快照任务被挡到写回结束，最终 manifest 是全写回状态
+- **scope 级共享锁**（BAC-10，`dataset_write_lock(scope_key)`）：锁键是**解析后的 caption 目录**
+  （`caption_scope_key(...)` → `resolve_caption_directory(...).resolve().as_posix()`，与快照 manifest 的
+  `scope_dir` 同源同格式）。`commit` 在 job 锁内再取它，还原点创建与全部 sidecar 写入都在该临界区内，
+  所以同一目录的快照只会看到「写回前」或「写回后」的完整集合，不会记录半写中间态。
+- 因为键是目录而不是 `(dataset_file, dataset_index)`，**两行数据集指向同一物理目录时共用一把锁**
+  （实测两行并发 commit `max_inflight=1`；负对照去掉锁则为 2）。
+- 手动「立即备份」（`TaggingService.create_caption_snapshot`）用同一 helper 算键、取同一把锁，因此与
+  进行中的写回**互斥**：实测 commit 停在第一张图时，快照任务被挡到写回结束，最终 manifest 是全写回状态
   （`{a.txt: new-a, b.txt: new-b}`）；负对照（去掉锁）会拿到半写状态。
-- 不同 `(dataset_file, dataset_index)` 互不阻塞（实测两个 commit 并发 `max_inflight=2`）；锁表按引用
-  计数管理，最后一个使用者退出即回收条目（实测结束后 `_dataset_locks == {}`）。
-- 加锁顺序固定为 **job 锁 → dataset 锁**，任何路径都不得反向取锁（服务层快照只取 dataset 锁、不持
-  job 锁）。
-- 锁键不含 `source` 是安全且合理的：`resolve_caption_directory` 按 `source → source_dir`、
-  `training → image_dir` 解析且互相回退，同一行两种 source 通常指向同一目录；只有显式配成不同目录时
-  才会多串行一次（代价仅是吞吐）。
-- 两条已知边界（不阻塞，见 §6.2）：`restore_caption_snapshot` **不取** dataset 锁（T23-F1）；
-  两行 `dataset_index` 不同但 `source_dir` 解析到同一物理目录时锁键不同（T23-F2）。
+- `restore_caption_snapshot` 也取同一把 scope 锁：先读 manifest 拿 `scope_dir` 作键，再持锁还原
+  （锁内重复读取 manifest 可接受）。实测 commit 中途发起 restore 会被挡到写回结束，终态等于快照内容
+  （全旧）而不是 `{a: old-a, b: new-b}` 的混合态；负对照绕过锁才会复现混合态。
+- 不同物理目录互不阻塞（实测两个 commit 并发 `max_inflight=2`）；锁表按引用计数管理，最后一个使用者
+  退出即回收条目（实测结束后 `_dataset_locks == {}`）。
+- 加锁顺序固定为 **job 锁 → scope 锁**，任何路径都不得反向取锁：commit 持 job 锁再取 scope 锁，
+  手动快照只取 scope 锁，restore 只取 scope 锁（不取 job 锁）。
+- 锁键用解析后的目录而非 `(file, index, source)`：`resolve_caption_directory` 按 `source → source_dir`、
+  `training → image_dir` 解析且互相回退，同一行两种 source 指向同一目录时自然共用一把锁；显式配成不同
+  目录时各自加锁——不同目录本来就应当并行。
 
 ### 2.5 HTTP 契约
 
@@ -269,8 +277,8 @@
   注意 skip 预筛只按 sidecar 判据，所以 `captions_json` 行的图片不会被预筛掉，仍会进入候选池，
   最终在提交时以 `failed` 呈现；这是 fail-closed 的直接后果（宁可失败，也不产生双真值）。
 - 幂等：重复 commit 得到 `written=0`、`failed=0`，且不会重复创建快照；无候选时不建快照。
-- 并发：同一 `(dataset_file, dataset_index)` 的 commit 串行（dataset 级共享锁，见 §2.4），手动快照与
-  写回互斥；不同 dataset 的写回并行。还原（restore）不受该锁约束，见 §6.2 T23-F1。
+- 并发：同一 caption 目录（含多行数据集指向同一目录）的 commit 串行（scope 级共享锁，见 §2.4），
+  手动快照与还原也取同一把锁 → 三者互斥；不同目录的写回并行。
 
 **commit 响应与计数语义（2026-10-21 收窄）**：
 
@@ -305,8 +313,9 @@
 
 ## 4. 验收与洁净度证据
 
-以下数字按 revision 分两段记录：先列 **round-2（t11 / t13 / t15）** 的实跑数字，再列 **round-3
-（t22 / t23，HEAD `09eec34e`，含 t20 / t21 的 FAC-6 与 BAC-10 改动）** 的数字与复核结论；均为复核者实跑。
+以下数字按 revision 分三段记录：先列 **round-2（t11 / t13 / t15）** 的实跑数字，再列 **round-3
+（t22 / t23，HEAD `09eec34e`，含 t20 / t21 的 FAC-6 与 BAC-10 改动）**，最后是 **round-4
+（t25 / t26，HEAD `eb8a231f`，scope 锁键与 restore 互斥）**；均为复核者实跑。
 
 - 定向后端：`tests/test_tagging_caption_write.py` + `test_tagging_caption_snapshots.py` +
   `test_tagging_caption_edit.py` + `test_tagging_service.py` → **95 passed, 2 warnings**。
@@ -332,9 +341,19 @@
     900 ms 内 commit 请求数仍为 1（无自动重试）；非 status 0 错误与成功路径行为不变。
   - **t23（BAC-10 锁）**：14/14 并发探针（含负对照）—— 同 dataset+index 串行 `max_inflight=1`、
     手动快照被挡到写回结束且只见全写回状态、跨 dataset 并发 `max_inflight=2`、锁表回收、锁序
-    job→dataset；并实测出两条 low 边界（restore 不取锁、跨行同目录不互斥，见 §6.2）。
+    job→dataset；该轮另报两条 low 边界（restore 不取锁、跨行同目录不互斥），已由 round-4 收口。
   - 该 revision 实跑：后端 7 文件 **120 passed, 9 warnings**；前端 **19 files / 51 tests passed**；
     `tsc -b` 无输出、`ruff check` All checks passed、`*.pyc` 为 0。
+- 独立复核 · round-4（HEAD `eb8a231f`，T23-F1 / T23-F2 收口，`verdict=pass`）：
+  - **T23-F2（跨行同目录）已关闭**：`caption_scope_key` 对两行同一目录只产生 **1 个键**，并发 commit
+    `max_inflight=1`（负对照去掉锁为 2）；结束后 `_dataset_locks == {}`。
+  - **T23-F1（restore 与写回交错）已关闭**：commit 中途发起 restore，150 ms 后仍未完成（被 scope 锁挡住）；
+    放行后终态 `{a: old-a, b: old-b}` = 快照内容（全旧），不是 t23 记录的混合态；负对照绕过锁才能复现
+    混合态。restore 返回 `ok=True, written=4, removed=0` 与实际一致。
+  - 粒度与语义未退化：不同物理目录并发 `max_inflight=2`；同目录 commit×2 + 手动快照 + restore 混跑
+    0.20 s 全部完成、无死锁、锁表清空；commit 字段、幂等（`written=0, snapshot=None`）、写回中 rerun→409
+    均不变。该 revision 实跑：后端 7 文件 **125 passed, 9 warnings**、12 个 `test_tagging_*` **181 passed**
+    （+ `test_ui_scale_settings` 4 = 185）、前端 **19 files / 51 tests**、`tsc` 无输出、`ruff` 全绿。
 
 Phase 1 / Phase 2 定向测试覆盖：
 
@@ -377,7 +396,7 @@ Phase 1 / Phase 2 定向测试覆盖：
 | BAC-7 | low | 部分修复 | 计数已分离（`failed`/`commit_status`）；`conflicts` 仍为死代码，见 §6.2 |
 | BAC-8 | low | 部分修复 | `CaptionSnapshotError` 现阻塞且 0 写入；目录解析失败仍写回，见 §6.2 |
 | BAC-9 | low | 已修 / 已复核 | 聚合文件名比较改为大小写不敏感 |
-| BAC-10 | low | 已修 / 已复核（还原路径与跨行同目录两条边界见 §6.2） | dataset 级共享锁 `dataset_write_lock(dataset_file, dataset_index)`：commit 与手动快照互斥、跨 dataset 并行、锁序 job→dataset、引用计数回收；t21 实现 / t23 复核 |
+| BAC-10 | low | 已修 / 已复核（含 scope 锁键与 restore 互斥，t25 / t26） | scope 级共享锁 `dataset_write_lock(scope_key)`（键=解析后的 caption 目录）：commit / 手动快照 / restore 互斥、跨目录并行、锁序 job→scope、引用计数回收；t21 实现 / t23 复核，t25 收口 / t26 复核 |
 | BAC-11 | low | 已修 / 已复核 | 空 `dataset_file` 时不裁剪，避免跨数据集删除 |
 | BAC-12 | low | 遗留 | 既有预览解析问题，非 Phase 1/2 引入，见 §6.2 |
 | FAC-1 | high | 已修 / 已复核 | `snapshot`/`snapshot_error` 进入 commit 结果区；无还原点时 `role=alert` 告警 |
@@ -448,26 +467,6 @@ Phase 1 / Phase 2 定向测试覆盖：
 - 影响：与 §2.4「除范围过大外都阻塞」的原始文字仍有差异；用户在 UI 会看到「本次写回没有还原点」，
   但写回已经发生。
 - 建议：确认该分级是否符合预期；如需严格，统一改为阻塞并让 UI 直接拦截批量写回。
-
-**T23-F1 [low]（BAC-10 的已知边界）：还原（restore）不取 dataset 锁，可与进行中的写回交错**
-
-- 事实：`restore_caption_snapshot` 不参与 `dataset_write_lock`。复核实测：commit 写完 `a.txt`（new-a）后
-  阻塞，此时调用 restore 立即执行（`ok=True, written=4`）把 `a.txt` 还原成 `old-a`，放行后 commit 继续写
-  `b.txt`（new-b），最终磁盘为 `{a: old-a, b: new-b}` —— 既不是全旧也不是全新。
-- 可达性：`CaptionReview` 未把 commit 进行状态传给 `CaptionSnapshots`，面板的 `disabled` 只含自身
-  mutation busy，因此**同一页面**在「写回全部候选」进行中仍可点「还原」；第二标签页或直连
-  `POST /caption-snapshots/{id}/restore` 也随时可用。还原点本身仍在，没有静默数据丢失。
-- 等级：low（需要用户在写回窗口内主动触发还原）。
-- 建议：restore 前按 manifest 的 `dataset_file`/`dataset_index` 取同一把 `dataset_write_lock`；或在
-  commit pending 时由 UI 禁用还原入口。
-
-**T23-F2 [low]（BAC-10 的已知边界）：锁键按 dataset 行，跨行同目录不互斥**
-
-- 事实：锁键是 `(dataset_file, dataset_index)`；两行 `dataset_index` 不同但 `source_dir` 解析到**同一物理
-  目录**时锁键不同，复核实测两个 commit 并发 `max_inflight=2`，会同时写同一目录。
-- 可达性：需要把同一目录重复配置成两行数据集（非默认路径）。
-- 等级：low（配置相关，默认配置不受影响）。
-- 建议：把锁键改为解析后的 `scope_dir`（与快照 manifest 的 `scope_dir` 同一来源），即可覆盖该情形。
 
 **BAC-12 [low，既有问题]：空 `source_dir` 时写回解析根退化**
 
@@ -585,3 +584,15 @@ Phase 1 / Phase 2 定向测试覆盖：
 - §5：BAC-10 与 FAC-6 升为「已修 / 已复核」（t21/t23、t20/t22），BAC-10 括注两条边界指向 §6.2。
 - §6.2：删除旧 BAC-10 / FAC-6 条目，改为 T23-F1（restore 不取锁、可与写回交错）、T23-F2（跨行同目录
   不互斥）与 FAC-6 残余观察（409 不 refetch / 文案重复 / 0-0 表述）。
+
+### 7.5 第五次修订（T23-F1 / T23-F2 收口）
+
+- §2.3：补「还原在 scope 锁内执行，与写回 / 手动备份互斥」一句。
+- §2.4：锁键由 `(dataset_file, dataset_index)` 改为**解析后的 caption 目录**（与快照 manifest 的
+  `scope_dir` 同源）；补「多行数据集指向同一目录共用一把锁」与「`restore_caption_snapshot` 也取同一把
+  scope 锁」；保留 job → scope 锁序与引用计数回收说明；删除两条已收口边界。
+- §3.3：并发一句改为「同一 caption 目录的 commit 串行，手动快照与还原同锁互斥，不同目录并行」。
+- §4：新增 round-4（HEAD `eb8a231f`，t26 `verdict=pass`）证据——T23-F1/F2 已关闭、粒度与语义未退化、
+  该 revision 实跑 125 / 181（+4 = 185）/ 19 files · 51 tests。
+- §5：BAC-10 状态改为「已修 / 已复核（含 scope 锁键与 restore 互斥，t25 / t26）」。
+- §6.2：移除 T23-F1 / T23-F2 两条（已修复，不再列为遗留）。
