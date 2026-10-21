@@ -11,6 +11,7 @@ import { useState } from "react";
 import { ApiError } from "../../api/client";
 import { CaptionBatchConflict } from "./CaptionBatchConflict";
 import { CaptionBatchToolbar } from "./CaptionBatchToolbar";
+import { CaptionSnapshots } from "./CaptionSnapshots";
 import { applyDeltas, filterCandidates } from "./captionBatch";
 import { useReviewDrafts } from "./useReviewDrafts";
 import { CaptionTranslation } from "./CaptionTranslation";
@@ -19,6 +20,7 @@ import { CaptionReviewContext } from "./CaptionReviewContext";
 import { captionJobStateLabel } from "./captionJobState";
 import { CaptionPreviewImage } from "./CaptionPreviewImage";
 import { QueryFeedback } from "../../components/QueryFeedback";
+import { snapshotKeys } from "./snapshotApi";
 import { ResilientImage } from "../../components/ResilientImage";
 import { useUnsavedChangesGuard } from "../dataset-editor/useUnsavedChangesGuard";
 import {
@@ -121,6 +123,13 @@ function CaptionReviewJob({ jobId }: { jobId: string }) {
     retry: false,
     onSuccess: (data) => {
       qc.setQueryData(captioningKeys.job(jobId), { ok: true, job: data.job });
+      // The write-back just stored a restore point; show it without a reload.
+      const datasetFile = data.job?.dataset_file;
+      if (datasetFile) {
+        void qc.invalidateQueries({
+          queryKey: snapshotKeys.list(datasetFile, data.job.dataset_index ?? 0),
+        });
+      }
     },
   });
   const control = useMutation({
@@ -181,6 +190,10 @@ function CaptionReviewJob({ jobId }: { jobId: string }) {
           <h2>{job.profile_name}</h2>
           <p>
             {captionJobStateLabel(job.state, job)} · {job.completed}/{job.total} · 失败 {job.failed}
+            {job.on_existing && job.on_existing !== "overwrite"
+              ? ` · ${job.on_existing === "skip" ? "跳过已有" : "追加已有"}`
+              : ""}
+            {job.trigger_word ? ` · 触发词 ${job.trigger_word}` : ""}
           </p>
         </div>
         <div className="toolbar">
@@ -244,6 +257,12 @@ function CaptionReviewJob({ jobId }: { jobId: string }) {
           写回全部候选 ({writableIds.length})
         </button>
       </div>
+      <CaptionSnapshots
+        datasetFile={job.dataset_file}
+        datasetIndex={job.dataset_index}
+        source={job.source || "source"}
+        onRestored={() => void qc.invalidateQueries({ queryKey: captioningKeys.job(jobId) })}
+      />
       <CaptionBatchToolbar items={job.items} drafts={drafts} checked={selectedIds} filtered={filteredItems}
         filter={tagFilter} onFilter={(tag) => { setTagFilter(tag); setPage(0); }}
         allowed={["cltagger", "wd14"].includes(job.settings?.provider || "")} disabled={running || busy || query.isError}
@@ -356,9 +375,21 @@ function CaptionReviewJob({ jobId }: { jobId: string }) {
                   setDrafts((current) => ({ ...current, [item.id]: text }))
                 }
               />
-              {(item.error || item.commit_error) && (
+              {item.error && (
                 <p className="form-error" role="alert">
-                  {item.error || item.commit_error}
+                  {item.error}
+                </p>
+              )}
+              {item.commit_error && (
+                <p
+                  className={
+                    item.commit_status === "skipped"
+                      ? "caption-commit-note"
+                      : "form-error"
+                  }
+                  role={item.commit_status === "skipped" ? "status" : "alert"}
+                >
+                  {item.commit_error}
                 </p>
               )}
             </div>
@@ -378,7 +409,17 @@ function CaptionReviewJob({ jobId }: { jobId: string }) {
           <p>
             写入 {commit.data.written} · 冲突 {commit.data.conflicts} · 跳过{" "}
             {commit.data.skipped}
+            {commit.data.failed ? ` · 失败 ${commit.data.failed}` : ""}
           </p>
+          {commit.data.snapshot_error ? (
+            <p className="form-error" role="alert">
+              本次写回没有还原点：{commit.data.snapshot_error}
+            </p>
+          ) : commit.data.snapshot ? (
+            <p className="caption-commit-note">
+              已创建还原点 {commit.data.snapshot.id}
+            </p>
+          ) : null}
           {commit.data.errors.map((error, index) => (
             <p key={index} className="form-error">
               {error.file}: {error.error}

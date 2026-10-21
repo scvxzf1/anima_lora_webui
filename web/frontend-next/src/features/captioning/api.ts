@@ -1,5 +1,6 @@
 import { apiRequest } from "../../api/client";
 import type { DatasetPreviewResponse } from "../dataset-editor/types";
+import type { CaptionSnapshot } from "./snapshotApi";
 
 const ROOT = "/api/captioning";
 export const captioningKeys = {
@@ -36,6 +37,7 @@ export type CaptionItem = {
   proposed_caption: string;
   error?: string;
   commit_error?: string;
+  commit_status?: string;
 };
 export type CaptionJob = {
   id: string;
@@ -43,6 +45,9 @@ export type CaptionJob = {
   settings?: { provider?: string };
   dataset_file: string;
   dataset_index: number;
+  source?: string;
+  on_existing?: string;
+  trigger_word?: string;
   profile_name: string;
   profile_id: string;
   total: number;
@@ -67,6 +72,8 @@ export type CreateJob = {
   profile_id: string;
   user_prompt: string;
   system_prompt: string;
+  on_existing?: string;
+  trigger_word?: string;
   items: { file: string }[];
 };
 export const captionActive = (state?: string) =>
@@ -111,14 +118,20 @@ export const updateCaptionItem = (
 export type CaptionBatchUpdate = { id: string; proposed_caption: string; expected_caption: string };
 export const updateCaptionItems = (job: string, items: CaptionBatchUpdate[]) =>
   post<JobSnapshot>(`/jobs/${encodeURIComponent(job)}/items`, { items }, "PATCH");
+export type CaptionCommitResult = {
+  written: number;
+  conflicts: number;
+  skipped: number;
+  failed?: number;
+  errors: { file: string; error: string }[];
+  snapshot?: CaptionSnapshot | null;
+  snapshot_error?: string;
+  job: CaptionJob;
+};
 export const commitCaptionJob = (job: string, item_ids: string[]) =>
-  post<{
-    written: number;
-    conflicts: number;
-    skipped: number;
-    errors: { file: string; error: string }[];
-    job: CaptionJob;
-  }>(`/jobs/${encodeURIComponent(job)}/commit`, { item_ids });
+  post<CaptionCommitResult>(`/jobs/${encodeURIComponent(job)}/commit`, {
+    item_ids,
+  });
 export const fetchCaptionPrompts = (signal?: AbortSignal) =>
   apiRequest<{ presets: PromptPreset[] }>(`${ROOT}/prompt-presets`, { signal });
 export const saveCaptionPrompt = (
