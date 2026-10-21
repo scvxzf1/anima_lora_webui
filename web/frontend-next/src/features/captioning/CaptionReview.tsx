@@ -66,6 +66,7 @@ function CaptionReviewJob({ jobId }: { jobId: string }) {
   const [page, setPage] = useState(0);
   const [mobileView, setMobileView] = useState<"editor" | "items">("editor");
   const [needsReconcile, setNeedsReconcile] = useState(false);
+  const [reconcileNotice, setReconcileNotice] = useState("");
   const dirty = Object.keys(drafts).length > 0;
   useUnsavedChangesGuard(
     dirty,
@@ -122,6 +123,7 @@ function CaptionReviewJob({ jobId }: { jobId: string }) {
     mutationFn: (ids: string[]) => commitCaptionJob(jobId, ids),
     retry: false,
     onSuccess: (data) => {
+      setReconcileNotice("");
       qc.setQueryData(captioningKeys.job(jobId), { ok: true, job: data.job });
       // The write-back just stored a restore point; show it without a reload.
       const datasetFile = data.job?.dataset_file;
@@ -130,6 +132,12 @@ function CaptionReviewJob({ jobId }: { jobId: string }) {
           queryKey: snapshotKeys.list(datasetFile, data.job.dataset_index ?? 0),
         });
       }
+    },
+    onError: (error) => {
+      // A transport-level failure (status 0) means the captions may or may
+      // not have been written; the page must reconcile before allowing any
+      // further write-back instead of just re-enabling the buttons.
+      if (error instanceof ApiError && error.status === 0) setNeedsReconcile(true);
     },
   });
   const control = useMutation({
@@ -155,6 +163,12 @@ function CaptionReviewJob({ jobId }: { jobId: string }) {
   async function reconcileUnknown() {
     const result = await query.refetch();
     if (result.isError || !result.data) return;
+    // Tell the user what the server actually holds, so an unknown write-back
+    // result is resolved instead of guessed.
+    const items = result.data.job.items;
+    const written = items.filter((item) => item.state === "committed").length;
+    const failed = items.filter((item) => item.commit_status === "failed").length;
+    setReconcileNotice(`已核对服务器状态：${written} 项已写回，${failed} 项写回失败`);
     if (pendingBatch.length) {
       const confirmed = pendingBatch.filter((entry) => result.data.job.items.find((item) => item.id === entry.id)?.proposed_caption === entry.proposed_caption);
       draftState.acknowledge(Object.fromEntries(confirmed.map((entry) => [entry.id, entry.proposed_caption])));
@@ -165,6 +179,8 @@ function CaptionReviewJob({ jobId }: { jobId: string }) {
     }
     setNeedsReconcile(false);
     control.reset();
+    // Drop a superseded "result unknown" error; real failures keep theirs.
+    if (commit.error instanceof ApiError && commit.error.status === 0) commit.reset();
     await qc.invalidateQueries({ queryKey: captioningKeys.jobs });
   }
   function write(ids: string[]) {
@@ -238,7 +254,12 @@ function CaptionReviewJob({ jobId }: { jobId: string }) {
           </button>
         </div>
       )}
-      {batchConflict && <CaptionBatchConflict items={job.items} drafts={drafts} disabled={query.isError || query.isFetching}
+      {reconcileNotice && (
+        <p className="caption-commit-note" role="status">
+          {reconcileNotice}
+        </p>
+      )}
+      {batchConflict && <CaptionBatchConflict items={job.items} drafts={drafts} disabled={query.isError || query.isFetching || needsReconcile}
         onRebase={() => { draftState.rebase(); setBatchConflict(false); }} />}
       <div className="toolbar">
         <button

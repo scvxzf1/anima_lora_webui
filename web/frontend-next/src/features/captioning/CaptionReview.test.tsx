@@ -240,4 +240,113 @@ describe("caption review write boundaries", () => {
       captionImageUrl("/api/config/dataset-presets/image?image=a.png"),
     ).toContain("image=a.png");
   });
+
+  it("asks for reconciliation when a write-back result is unknown", async () => {
+    const item = {
+      id: "i1",
+      name: "s.png",
+      file: "s.png",
+      state: "ready",
+      caption: "",
+      proposed_caption: "1girl",
+      url: "",
+    };
+    const job = {
+      id: "j1",
+      state: "done",
+      profile_name: "Fixture",
+      profile_id: "p1",
+      dataset_file: "configs/datasets/example.toml",
+      dataset_index: 0,
+      settings: { provider: "wd14" },
+      total: 1,
+      completed: 1,
+      failed: 0,
+      items: [item],
+    };
+    let commitAttempts = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes("/logs?")) return jsonResponse({ lines: [] });
+        if (url.includes("/caption-snapshots"))
+          return jsonResponse({ ok: true, snapshots: [] });
+        if (url.endsWith("/commit")) {
+          commitAttempts += 1;
+          // Transport-level failure: apiRequest turns this into ApiError status 0.
+          throw new TypeError("Failed to fetch");
+        }
+        return jsonResponse({ ok: true, job });
+      }),
+    );
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    renderInApp(<CaptionReview jobId="j1" />);
+    const user = userEvent.setup();
+    const commitButton = await screen.findByRole("button", {
+      name: /写回全部候选/ ,
+    });
+    await user.click(commitButton);
+
+    expect(
+      await screen.findByText("操作结果尚未确认。核对服务器任务状态后再继续。"),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /写回全部候选/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /写回选中/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "重新打标" })).toBeDisabled();
+    expect(commitAttempts).toBe(1);
+
+    await user.click(screen.getByRole("button", { name: "核对任务状态" }));
+
+    expect(await screen.findByText(/已核对服务器状态/)).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /写回全部候选/ })).not.toBeDisabled(),
+    );
+    expect(screen.queryByText(/操作结果尚未确认/)).toBeNull();
+    // No automatic retry of the write-back after reconciliation.
+    expect(commitAttempts).toBe(1);
+  });
+
+  it("keeps a plain write-back failure as an error without reconciliation", async () => {
+    const item = {
+      id: "i1",
+      name: "s.png",
+      file: "s.png",
+      state: "ready",
+      caption: "",
+      proposed_caption: "1girl",
+      url: "",
+    };
+    const job = {
+      id: "j1",
+      state: "done",
+      profile_name: "Fixture",
+      profile_id: "p1",
+      settings: { provider: "wd14" },
+      total: 1,
+      completed: 1,
+      failed: 0,
+      items: [item],
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes("/logs?")) return jsonResponse({ lines: [] });
+        if (url.endsWith("/commit"))
+          return jsonResponse({ ok: false, error: "写回目录不可写" }, 400);
+        return jsonResponse({ ok: true, job });
+      }),
+    );
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    renderInApp(<CaptionReview jobId="j1" />);
+    const user = userEvent.setup();
+    await user.click(
+      await screen.findByRole("button", { name: /写回全部候选/ }),
+    );
+
+    expect(await screen.findByText("写回目录不可写")).toBeInTheDocument();
+    expect(screen.queryByText(/操作结果尚未确认/)).toBeNull();
+    expect(screen.getByRole("button", { name: /写回全部候选/ })).not.toBeDisabled();
+  });
 });
