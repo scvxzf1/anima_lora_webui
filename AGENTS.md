@@ -121,6 +121,11 @@
   `origin`、`webui` 或其他名字。命令和汇报使用实际 remote，不要凭文档假定别名存在。
 - 指向个人 fork、私有镜像或 `sorryhyun/anima_lora` 等参考仓的 remote 不是默认发布目标。
   除非用户明确点名，不要向它们 pull、push、reset，也不要把上游参考合入和线上发布混为一谈。
+- 本仓与 `sorryhyun/anima_lora` 是血缘关系而不是跟踪关系：指向上游的 remote 统一命名
+  `upstream`，只 fetch 不 push，不要求 merge-base 对齐；有价值的上游改动按需移植，并在
+  提交信息标注 `port(upstream): ...`。对外表述以
+  [项目血缘与上游政策](docs/project-lineage.md) 为准，不要把 README 写回
+  「基于某某的扩展项目」。
 - 日常开发在干净工作树中的最小同步流程是：
   ```text
   git status --short --branch

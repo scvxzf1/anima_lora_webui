@@ -7,7 +7,11 @@
   <a href="#"><img src="https://img.shields.io/badge/QQ%E7%BE%A4-1104879801-0099FF.svg" alt="QQ 群"></a>
 </p>
 
-**Dragon Trainer**（原名 Anima LoRA WebUI，社区简称 ALW，2026-10-19 随仓库更名为 `dragon-trainer`）是一个支持 Anima、Krea-2、Z-Image、Qwen Image 2.1 和 MOSS-Image 的训练与 WebUI 项目，基于 [sorryhyun/anima_lora](https://github.com/sorryhyun/anima_lora#) 的 WebUI 前端扩展项目。不同模型族的训练、预览、推理和 adapter 能力，以模型族 registry 与配置预检为准。旧仓库地址、旧 clone 链接与 Issue 链接由 GitHub 自动重定向；内部包名 `anima_lora`、`ANIMA_*` 环境变量与 `.anima-webui-settings.toml` 保持不变。
+**Dragon Trainer**（原名 Anima LoRA WebUI，社区简称 ALW，2026-10-19 随仓库更名为 `dragon-trainer`）是一个支持 Anima、Krea-2、Z-Image、Qwen Image 2.1 和 MOSS-Image 的训练与 WebUI 项目。
+
+从 [sorryhyun/anima_lora](https://github.com/sorryhyun/anima_lora) 起源，后经历小巧思大幅度魔改，现状已经无法直接合并了。
+
+旧仓库地址、旧 clone 链接与 Issue 链接由 GitHub 自动重定向；内部包名 `anima_lora`、`ANIMA_*` 环境变量与 `.anima-webui-settings.toml` 是兼容契约，沿用旧名字不代表还归谁管。不同模型族的训练、预览、推理和 adapter 能力，以模型族 registry 与配置预检为准。
 
 感谢你选择我们的全绊屎山项目。它一定不优雅，但目标也不一定明确，项目尽量还能跑通，喜欢折腾，每天都在debug。
 
@@ -15,7 +19,7 @@
 
 交流QQ群:1104879801
 
-后端会和欧巴的有些变动不完全对齐，作者偶尔会发挥主观能动性加点小巧思进来。
+本项目按自己的节奏走，不承诺跟上游的接口、行为、发布节奏对齐。起点是别人的，路是自己走的，谢谢一路上给过起点、补丁和想法的人。
 
 ## 快速开始
 
@@ -48,6 +52,7 @@ uv sync
 - 训练参考：[docs/guidelines/training.md](docs/guidelines/training.md)
 - 多模型能力边界：[docs/multi_model_support.md](docs/multi_model_support.md)
 - 模型训练能力矩阵：[docs/configuration/model-training-capabilities.md](docs/configuration/model-training-capabilities.md)
+- 项目血缘与上游政策：[docs/project-lineage.md](docs/project-lineage.md)
 - MOSS-Image 配置：[docs/configuration/moss-image.md](docs/configuration/moss-image.md)
 - CLI 命令总览：`.venv/bin/python tasks.py --help`；配置诊断可用 `print-config`、`explain-config`、`config-compat`。
 - AUTO 块交换（实验，默认关闭）：在 Next「设备与性能」配置，先独立预热再固定交换数；限制和验证状态见 [配置说明](docs/configuration/auto-block-swap.md)。
@@ -124,19 +129,21 @@ uv sync
 
 推理能力按模型族隔离：Anima 使用通用 `inference.py` 示例，Qwen Image 2.1 的 T2I/Edit 使用专用参数；Z-Image 与 MOSS-Image 当前不提供通用 image-test/独立推理入口。详见 [推理参考](docs/guidelines/inference.md)。
 
-## 致谢 / “抄袭”列表
+## 致谢与来源
 
-不会做还不会抄吗？问题不大的啦：
+这项目不是从石头里蹦出来的。从谁那儿起步、抄了谁的东西，都摆在下面；对应的提交在[项目血缘与上游政策](docs/project-lineage.md)里能查到。不会做还不会抄吗？问题不大的啦：
 
-- [sorryhyun/anima_lora](https://github.com/sorryhyun/anima_lora#)：当前项目的主要基础，WebUI 前端和 Anima LoRA 训练管线都基于它继续扩展。
-  [https://github.com/WhitecrowAurora/lulynx-trainer](https://github.com/WhitecrowAurora/lulynx-trainer) ：本项目非常重要的优化来源
-  [MonadForge](https://github.com/LingyeSoul/MonadForge)：lokr换血优化，提升450%速度，伟大的G8炉。
-- [Moeblack/AnimaLoraToolkit](https://github.com/Moeblack/AnimaLoraToolkit)：参考了 Anima LoRA 训练工具链、lokr支持，配置组织和使用体验。
-- [huggingface/peft](https://github.com/huggingface/peft)：loha兼容支持。
-  [DNPMBHC/DiffPipeForge](https://github.com/DNPMBHC/DiffPipeForge) :dpf的一个分支,从中抄袭了块交换缓存和环境检测
+- [sorryhyun/anima_lora](https://github.com/sorryhyun/anima_lora)：**起点**。2026-03-27 的初始提取、早期 Anima LoRA 训练管线和旧 WebUI 来自这里；上游作者在本仓历史里的提交停于 2026-05-27，之后的四个模型族和 Next 工作台都是自己加的。现在把上游当可选补丁来源，谈不上对齐义务。
+- [WhitecrowAurora/lulynx-trainer](https://github.com/WhitecrowAurora/lulynx-trainer)：本项目非常重要的优化来源。
+- [LingyeSoul/MonadForge](https://github.com/LingyeSoul/MonadForge)：lokr 换血优化，提升 450% 速度，伟大的 G8 炉。
+- [Moeblack/AnimaLoraToolkit](https://github.com/Moeblack/AnimaLoraToolkit)：参考了 Anima LoRA 训练工具链、lokr 支持，配置组织和使用体验。
+- [huggingface/peft](https://github.com/huggingface/peft)：loha 兼容支持。
+- [DNPMBHC/DiffPipeForge](https://github.com/DNPMBHC/DiffPipeForge)：dpf 的一个分支，从中抄袭了块交换缓存和环境检测。
 - [TianDongL/DiffPipeForge](https://github.com/TianDongL/DiffPipeForge)：参考了数据处理、训练流程和部分工程组织思路。
 - [LoganBooker/prodigy-plus-schedule-free](https://github.com/LoganBooker/prodigy-plus-schedule-free)：用于 Prodigy Plus Schedule-Free 优化器支持。
 - [kozistr/pytorch_optimizer](https://github.com/kozistr/pytorch_optimizer)：用于 CAME 等 `pytorch-optimizer` 优化器支持。
+
+MIT 只管这堆代码；Anima 权重受 CircleStone NCL 约束，训出来的东西算权重衍生品，别拿 MIT 当挡箭牌。细节在 [NOTICE](NOTICE)。
 
 ## Linux 部署启动
 

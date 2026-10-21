@@ -60,6 +60,7 @@
 | [optimization-configs-current.md](optimization-configs-current.md) | 与实时配置面同步的优化配置事实清单 |
 | [optimization-roadmap.md](optimization-roadmap.md) | 优化候选方向与按风险选择的验收方式 |
 | [multi_model_support.md](multi_model_support.md) | 多模型支持的架构耦合地图 |
+| [project-lineage.md](project-lineage.md) | 项目血缘、上游政策与不能动的兼容面 |
 | [separation_plan.md](separation_plan.md) | 推理拆分的历史规划快照；不表示搬迁已完成 |
 | [archive-index.md](archive-index.md) | `_archive/docs/` 历史材料入口 |
 

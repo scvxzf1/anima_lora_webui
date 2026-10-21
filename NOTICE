@@ -1,7 +1,16 @@
-anima_lora
-Copyright (c) 2026 Seunghyun Ji
+Dragon Trainer
+Copyright (c) 2026 Dragon Trainer contributors (subsequent modifications)
 
-This repository (training pipeline, inference code, WebUI, and utilities) is
+--------------------------------------------------------------------------------
+Upstream origin
+--------------------------------------------------------------------------------
+
+This project started from anima_lora, Copyright (c) 2026 Seunghyun Ji.
+That copyright notice stays here and in LICENSE on purpose: being independently
+maintained describes engineering direction and release cadence, not copyright
+ownership. Do not remove it.
+
+The upstream code (training pipeline, inference code, WebUI, and utilities) is
 licensed under the MIT License. See LICENSE for the full text.
 
 --------------------------------------------------------------------------------
