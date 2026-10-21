@@ -149,14 +149,28 @@
 - 例外（见 §6.2 BAC-8）：数据集行 / 目录解析失败（`FileNotFoundError`、非快照类 `ValueError`）
   仍会继续写回，但 `snapshot: null` 与 `snapshot_error` 会透出到 API 与 UI。
 
-**并发与锁**（BAC-1 修复后的最终行为）：
+**并发与锁**（BAC-1 / BAC-10 修复后的最终行为）：
 
 - 每个 job 一把 job 级锁 `_job_locks`；`commit`、`rerun`、`update_items` 共用同一把锁
   （`_commit_locks` / `_rerun_locks` 是同一 mapping 的别名，保留旧名只为兼容既有调用）。
 - commit 持锁期间：`rerun` 立即抛 `RuntimeError`（路由 409，「任务正在写回或重跑…」），
   `update_items` 同样被拒；不会再出现「写回循环读到被清空的候选」。
 - commit 拿到锁后会**重新读取 job 状态**再判断，避免等锁期间 rerun 已完成造成误判。
-- 同一 job 的 commit 串行；不同 job 之间没有共享锁（见 §6.2 BAC-10）。
+- **dataset 级共享锁**（BAC-10）：`dataset_write_lock(dataset_file, dataset_index)` 按
+  `(dataset_file, dataset_index)` 建锁，`commit` 在 job 锁内再取它；还原点创建与全部 sidecar 写入
+  都在该临界区内，所以同一 dataset 的快照只会看到「写回前」或「写回后」的完整集合，不会记录半写中间态。
+- 手动「立即备份」（`TaggingService.create_caption_snapshot`）取同一把 dataset 锁，因此与进行中的写回
+  **互斥**：实测 commit 停在第一张图时，快照任务被挡到写回结束，最终 manifest 是全写回状态
+  （`{a.txt: new-a, b.txt: new-b}`）；负对照（去掉锁）会拿到半写状态。
+- 不同 `(dataset_file, dataset_index)` 互不阻塞（实测两个 commit 并发 `max_inflight=2`）；锁表按引用
+  计数管理，最后一个使用者退出即回收条目（实测结束后 `_dataset_locks == {}`）。
+- 加锁顺序固定为 **job 锁 → dataset 锁**，任何路径都不得反向取锁（服务层快照只取 dataset 锁、不持
+  job 锁）。
+- 锁键不含 `source` 是安全且合理的：`resolve_caption_directory` 按 `source → source_dir`、
+  `training → image_dir` 解析且互相回退，同一行两种 source 通常指向同一目录；只有显式配成不同目录时
+  才会多串行一次（代价仅是吞吐）。
+- 两条已知边界（不阻塞，见 §6.2）：`restore_caption_snapshot` **不取** dataset 锁（T23-F1）；
+  两行 `dataset_index` 不同但 `source_dir` 解析到同一物理目录时锁键不同（T23-F2）。
 
 ### 2.5 HTTP 契约
 
@@ -186,6 +200,10 @@
 - commit 结果区：`snapshot_error` 非空时渲染 `role=alert` 的「本次写回没有还原点：…」；
   有快照时显示「已创建还原点 <id>」。commit 成功后立即失效快照列表查询，新还原点无需重开页面。
 - 列表查询失败时渲染 `query.error` 并提供「重试加载」；「立即备份」不因列表失败而禁用。
+- 写回结果未知（`ApiError.status === 0`，连接中断）时进入**对账态**：显示「操作结果尚未确认。核对服务器
+  任务状态后再继续。」并禁用全部破坏性操作（写回选中 / 写回全部 / 重新打标 / 取消 / 批量冲突面板），
+  直到点「核对任务状态」拿到服务器真值——核对后提示「已核对服务器状态：N 项已写回，M 项写回失败」，
+  再解除禁用。整个过程**不自动重试**写回（实测 900 ms 内 commit 请求数仍为 1，核对也不重发写回）。
 - 还原是磁盘操作，任务候选仍显示该 job 上次写回的内存状态；如需刷新磁盘真值请重新打开对应数据集。
 
 ## 3. Phase 2 契约：caption 写入语义
@@ -251,6 +269,8 @@
   注意 skip 预筛只按 sidecar 判据，所以 `captions_json` 行的图片不会被预筛掉，仍会进入候选池，
   最终在提交时以 `failed` 呈现；这是 fail-closed 的直接后果（宁可失败，也不产生双真值）。
 - 幂等：重复 commit 得到 `written=0`、`failed=0`，且不会重复创建快照；无候选时不建快照。
+- 并发：同一 `(dataset_file, dataset_index)` 的 commit 串行（dataset 级共享锁，见 §2.4），手动快照与
+  写回互斥；不同 dataset 的写回并行。还原（restore）不受该锁约束，见 §6.2 T23-F1。
 
 **commit 响应与计数语义（2026-10-21 收窄）**：
 
@@ -285,8 +305,8 @@
 
 ## 4. 验收与洁净度证据
 
-以下数字为 2026-10-21 **round-2 复核（t11 / t13 / t15）之后的当前 revision** 实测结果
-（复核者与本文档任务各自实跑，命令与输出随条目列出）。
+以下数字按 revision 分两段记录：先列 **round-2（t11 / t13 / t15）** 的实跑数字，再列 **round-3
+（t22 / t23，HEAD `09eec34e`，含 t20 / t21 的 FAC-6 与 BAC-10 改动）** 的数字与复核结论；均为复核者实跑。
 
 - 定向后端：`tests/test_tagging_caption_write.py` + `test_tagging_caption_snapshots.py` +
   `test_tagging_caption_edit.py` + `test_tagging_service.py` → **95 passed, 2 warnings**。
@@ -299,7 +319,7 @@
 - 静态检查：`ruff check web/services/tagging/ web/routes/tagging.py` → **All checks passed!**；
   `git diff --check` 对改动路径干净。
 - 依赖：`pyproject.toml`、`uv.lock`、`package.json`、`pnpm-lock` 零 diff（未新增依赖）。
-- 独立复核（三条均为 `verdict=pass`，覆盖当前 revision）：
+- 独立复核 · round-2（三条均为 `verdict=pass`）：
   - **t11（round 2，覆盖 t12/t14 之后的当前字节）**：t3 的 BAC-1/2/3 与 FAC-1 仍成立；t3 + t7 叠加边界
     （聚合行 skip 仍进候选池、commit 记 `failed`、拒绝前仍创建还原点）与 §3.3 一致；4 个快照端点
     双前缀 8 组状态码全对。
@@ -307,6 +327,14 @@
     残留转出（后续由 t14 修复）。
   - **t15（T9-1 修复）**：嵌套布局 fail-closed 生效（零 sidecar、聚合字节不变），11 组嵌套/边界探针
     满足「拦截 ⇔ `reader.detected_mode == captions_json`」，且无过度阻断。
+- 独立复核 · round-3（HEAD `09eec34e`，两条均为 `verdict=pass`）：
+  - **t22（FAC-6 对账）**：status 0 进入对账态并禁用写回/重跑、核对后显示服务器真值、
+    900 ms 内 commit 请求数仍为 1（无自动重试）；非 status 0 错误与成功路径行为不变。
+  - **t23（BAC-10 锁）**：14/14 并发探针（含负对照）—— 同 dataset+index 串行 `max_inflight=1`、
+    手动快照被挡到写回结束且只见全写回状态、跨 dataset 并发 `max_inflight=2`、锁表回收、锁序
+    job→dataset；并实测出两条 low 边界（restore 不取锁、跨行同目录不互斥，见 §6.2）。
+  - 该 revision 实跑：后端 7 文件 **120 passed, 9 warnings**；前端 **19 files / 51 tests passed**；
+    `tsc -b` 无输出、`ruff check` All checks passed、`*.pyc` 为 0。
 
 Phase 1 / Phase 2 定向测试覆盖：
 
@@ -349,7 +377,7 @@ Phase 1 / Phase 2 定向测试覆盖：
 | BAC-7 | low | 部分修复 | 计数已分离（`failed`/`commit_status`）；`conflicts` 仍为死代码，见 §6.2 |
 | BAC-8 | low | 部分修复 | `CaptionSnapshotError` 现阻塞且 0 写入；目录解析失败仍写回，见 §6.2 |
 | BAC-9 | low | 已修 / 已复核 | 聚合文件名比较改为大小写不敏感 |
-| BAC-10 | low | 部分修复 | `_prune` 不再回收持锁 job；无跨任务共享锁，见 §6.2 |
+| BAC-10 | low | 已修 / 已复核（还原路径与跨行同目录两条边界见 §6.2） | dataset 级共享锁 `dataset_write_lock(dataset_file, dataset_index)`：commit 与手动快照互斥、跨 dataset 并行、锁序 job→dataset、引用计数回收；t21 实现 / t23 复核 |
 | BAC-11 | low | 已修 / 已复核 | 空 `dataset_file` 时不裁剪，避免跨数据集删除 |
 | BAC-12 | low | 遗留 | 既有预览解析问题，非 Phase 1/2 引入，见 §6.2 |
 | FAC-1 | high | 已修 / 已复核 | `snapshot`/`snapshot_error` 进入 commit 结果区；无还原点时 `role=alert` 告警 |
@@ -357,7 +385,7 @@ Phase 1 / Phase 2 定向测试覆盖：
 | FAC-3 | medium | 已修 / 已复核 | 渲染 `query.error`、提供「重试加载」、备份按钮不再被列表失败禁用 |
 | FAC-4 | medium | 已修 / 已复核 | commit 成功后 invalidate 快照列表 |
 | FAC-5 | medium | 已修 / 已复核 | `skipped` 只含策略跳过，失败独立计数并使用错误样式 |
-| FAC-6 | medium-low | 遗留 | commit 缺「结果未知」对账，见 §6.2 |
+| FAC-6 | medium-low | 已修 / 已复核 | commit status 0 进入对账态（禁用破坏性操作、核对后显示服务器真值、不自动重试）；t20 实现 / t22 复核；残余观察见 §6.2 |
 | FAC-7 | low | 遗留 | restore 结果无「请重开数据集核对」提示，见 §6.2 |
 | FAC-8 | low | 遗留 | `writableIds` 计数与后端判据不一致，见 §6.2 |
 | FAC-9 | low | 已修 / 已复核 | `item.error` 与 `commit_error` 分块显示，不再互相吞掉 |
@@ -421,12 +449,25 @@ Phase 1 / Phase 2 定向测试覆盖：
   但写回已经发生。
 - 建议：确认该分级是否符合预期；如需严格，统一改为阻塞并让 UI 直接拦截批量写回。
 
-**BAC-10 [low，部分修复]：无跨任务共享锁**
+**T23-F1 [low]（BAC-10 的已知边界）：还原（restore）不取 dataset 锁，可与进行中的写回交错**
 
-- 事实：只有 job 级锁；`_prune` 已不再回收仍持锁 job 的锁条目。
-- 影响：同一 dataset 的两个 job（或「立即备份」与另一 job 的写回）并发时，快照可能记录到部分
-  已写回的中间态。
-- 建议：按 `(dataset_file, dataset_index, source)` 引入共享的快照 / 写回锁。
+- 事实：`restore_caption_snapshot` 不参与 `dataset_write_lock`。复核实测：commit 写完 `a.txt`（new-a）后
+  阻塞，此时调用 restore 立即执行（`ok=True, written=4`）把 `a.txt` 还原成 `old-a`，放行后 commit 继续写
+  `b.txt`（new-b），最终磁盘为 `{a: old-a, b: new-b}` —— 既不是全旧也不是全新。
+- 可达性：`CaptionReview` 未把 commit 进行状态传给 `CaptionSnapshots`，面板的 `disabled` 只含自身
+  mutation busy，因此**同一页面**在「写回全部候选」进行中仍可点「还原」；第二标签页或直连
+  `POST /caption-snapshots/{id}/restore` 也随时可用。还原点本身仍在，没有静默数据丢失。
+- 等级：low（需要用户在写回窗口内主动触发还原）。
+- 建议：restore 前按 manifest 的 `dataset_file`/`dataset_index` 取同一把 `dataset_write_lock`；或在
+  commit pending 时由 UI 禁用还原入口。
+
+**T23-F2 [low]（BAC-10 的已知边界）：锁键按 dataset 行，跨行同目录不互斥**
+
+- 事实：锁键是 `(dataset_file, dataset_index)`；两行 `dataset_index` 不同但 `source_dir` 解析到**同一物理
+  目录**时锁键不同，复核实测两个 commit 并发 `max_inflight=2`，会同时写同一目录。
+- 可达性：需要把同一目录重复配置成两行数据集（非默认路径）。
+- 等级：low（配置相关，默认配置不受影响）。
+- 建议：把锁键改为解析后的 `scope_dir`（与快照 manifest 的 `scope_dir` 同一来源），即可覆盖该情形。
 
 **BAC-12 [low，既有问题]：空 `source_dir` 时写回解析根退化**
 
@@ -444,11 +485,17 @@ Phase 1 / Phase 2 定向测试覆盖：
   manifest 的 `scope_dir`，用户可能以为自己还原的是当前 source。
 - 建议：列表请求 / query key 增加 `source`，后端补过滤参数，行内显示 source（或 scope_dir）。
 
-**FAC-6 [medium-low]：commit 缺少「结果未知」对账**
+**FAC-6 残余观察（主体已修，以下为不阻塞的边界，不改变「已修 / 已复核」）**
 
-- 事实：连接中断（status 0）时 `CaptionReview` 没有 `onError` / `needsReconcile`，按钮立即恢复可用。
-- 影响：用户可能重复提交破坏性写回；同页其它写操作已有对账入口，行为不一致。
-- 建议：与同页对齐，进入 needsReconcile 并提示先核对服务器任务状态。
+- 409 处理不对称：同页 `control`（重新打标）在 409 时 `await query.refetch()`，而 commit 在 409
+  （「任务正在写回或重跑」/「任务尚未完成」）只显示错误、不 refetch；此时 job 已结束、
+  `refetchInterval` 已关闭，页面状态会偏陈旧直到手动刷新。无数据风险（服务端已拒绝写回）。
+  建议后续与 control 对齐（409 也 refetch）。
+- 提示文案重复：`ApiError(status 0)` 自带的「连接中断，操作结果尚未确认。请先刷新对应记录核对服务器
+  状态，再决定是否重试。」与页面新增的对账提示同时出现，语义一致但重复；可将错误横幅收窄为
+  「连接中断」。
+- 零值表述：若网络在请求发出前就失败（服务端确实没写），核对后提示「0 项已写回，0 项写回失败」，
+  属服务器真值但读起来偏空；可在 0/0 时改为「服务器未记录到本次写回」。
 
 **FAC-7 [low]：还原结果缺少「重开数据集核对」提示**
 
@@ -528,3 +575,13 @@ Phase 1 / Phase 2 定向测试覆盖：
   表下注改为三条复核的覆盖范围说明。
 - §6.1 BAC-4 改写为「t7 落地、t14 收窄、t15 复核」，补充目录集合同源与嵌套布局行为。
 - 索引 `docs/findings/README.md` 描述同步为「审计→修复→独立复核闭环 + 已知限制」。
+
+### 7.4 第四次修订（FAC-6 / BAC-10 复核收口）
+
+- §2.4 并发与锁：补 dataset 级共享锁 `dataset_write_lock(dataset_file, dataset_index)`（commit 与手动快照
+  互斥、跨 dataset 并行、锁序 job→dataset、引用计数回收、锁键不含 `source` 的设计说明）与两条已知边界。
+- §2.6 前端面板：补「写回结果未知 → 对账态」行为（禁用破坏性操作、核对后显示服务器真值、不自动重试）。
+- §3.3 补并发语义一句（同 dataset 串行、跨 dataset 并行、restore 不在锁内）。
+- §5：BAC-10 与 FAC-6 升为「已修 / 已复核」（t21/t23、t20/t22），BAC-10 括注两条边界指向 §6.2。
+- §6.2：删除旧 BAC-10 / FAC-6 条目，改为 T23-F1（restore 不取锁、可与写回交错）、T23-F2（跨行同目录
+  不互斥）与 FAC-6 残余观察（409 不 refetch / 文案重复 / 0-0 表述）。
