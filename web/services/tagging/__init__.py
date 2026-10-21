@@ -253,14 +253,18 @@ class TaggingService:
             raise ValueError("dataset_index 必须是整数") from exc
         source = "source" if str(data.get("source") or "source").lower() == "source" else "training"
         label = str(data.get("label") or "").strip()[:80]
-        snapshot = await asyncio.to_thread(
-            _create_caption_snapshot,
-            dataset_file,
-            dataset_index,
-            source=source,
-            reason="manual",
-            label=label,
-        )
+        # Manual restore points share the dataset write lock with commit, so a
+        # backup can never capture a half-written caption set (dataset-level
+        # mutex; the lock order inside a commit is job lock -> dataset lock).
+        async with self.jobs.dataset_write_lock(dataset_file, dataset_index):
+            snapshot = await asyncio.to_thread(
+                _create_caption_snapshot,
+                dataset_file,
+                dataset_index,
+                source=source,
+                reason="manual",
+                label=label,
+            )
         return {"ok": True, "snapshot": snapshot}
 
     async def restore_caption_snapshot(self, snapshot_id: str) -> dict[str, Any]:

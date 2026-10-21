@@ -6,6 +6,7 @@ import asyncio
 import time
 import uuid
 from collections import OrderedDict
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
@@ -59,6 +60,12 @@ class TaggingJobManager:
         self._job_locks: dict[str, asyncio.Lock] = {}
         self._commit_locks = self._job_locks
         self._rerun_locks = self._job_locks
+        # Dataset-level write lock: serialises write-back and restore points for
+        # one dataset row, across jobs.  Lock order is always job lock first,
+        # then the dataset lock; no code path may take them in the other order,
+        # which is what keeps commit/rerun and manual snapshots deadlock free.
+        self._dataset_locks: dict[tuple[str, int], asyncio.Lock] = {}
+        self._dataset_lock_users: dict[tuple[str, int], int] = {}
         self._local_workers: dict[str, LocalTaggingWorkerClient] = {}
         self._local_worker_factory = local_worker_factory or LocalTaggingWorkerClient
         self.logs = TaggingMemoryLog(log_retention_lines)
@@ -319,6 +326,7 @@ class TaggingJobManager:
             for mapping in (self.jobs, self._tasks, self._cancel_events, self._commit_locks, self._rerun_locks):
                 mapping.pop(key, None)
             removed.append(key)
+        self._drop_idle_dataset_locks()
         return {"ok": True, "removed": removed, "skipped": skipped}
 
     def get_logs(self, *, after: Any = 0, limit: Any = None, job_id: str = "") -> dict[str, Any]:
@@ -378,6 +386,44 @@ class TaggingJobManager:
         )
         return self.snapshot(job_id)
 
+    @asynccontextmanager
+    async def dataset_write_lock(self, dataset_file: str, dataset_index: int):
+        """Serialise caption mutations for one dataset row.
+
+        Callers that already hold the job lock take this one second (job lock ->
+        dataset lock); nobody may take the dataset lock first and then wait for a
+        job lock.  Idle entries are dropped as soon as the last user leaves, so the
+        table cannot grow with dead dataset rows.
+        """
+
+        key = (str(dataset_file or ""), int(dataset_index))
+        lock = self._dataset_locks.get(key)
+        if lock is None:
+            lock = asyncio.Lock()
+            self._dataset_locks[key] = lock
+        self._dataset_lock_users[key] = self._dataset_lock_users.get(key, 0) + 1
+        try:
+            async with lock:
+                yield
+        finally:
+            remaining = self._dataset_lock_users.get(key, 1) - 1
+            if remaining > 0:
+                self._dataset_lock_users[key] = remaining
+            else:
+                self._dataset_lock_users.pop(key, None)
+                # Released above and no waiters left: the entry is dead weight.
+                self._dataset_locks.pop(key, None)
+
+    def _drop_idle_dataset_locks(self) -> None:
+        """Forget dataset locks nobody holds or waits for."""
+
+        for key in [
+            key
+            for key, lock in self._dataset_locks.items()
+            if not self._dataset_lock_users.get(key) and not lock.locked()
+        ]:
+            self._dataset_locks.pop(key, None)
+
     def update_items(self, job_id: str, updates: Any) -> dict[str, Any]:
         job = self._get(job_id)
         if any(lock is not None and lock.locked() for lock in (self._commit_locks.get(job_id), self._rerun_locks.get(job_id))):
@@ -402,7 +448,11 @@ class TaggingJobManager:
             job = self._get(job_id)
             if job["state"] in {"queued", "running"}:
                 raise RuntimeError("任务正在重新打标，结束前不能写回 caption")
-            return await self._commit_locked(job, all_items=all_items, item_ids=item_ids)
+            # Lock order: job lock first, dataset lock second (never reversed).
+            # The restore point and every sidecar write happen inside this block,
+            # so a concurrent snapshot sees either the old or the new caption set.
+            async with self.dataset_write_lock(job["dataset_file"], job["dataset_index"]):
+                return await self._commit_locked(job, all_items=all_items, item_ids=item_ids)
 
     async def _create_commit_snapshot(self, job: dict[str, Any]) -> tuple[dict[str, Any] | None, str]:
         """Capture a caption restore point before anything is written back."""
@@ -905,6 +955,7 @@ class TaggingJobManager:
             # Dropping the lock entry of a job that is still writing would let
             # the next mutation create a second lock for the same job.
             self._job_locks.pop(job_id, None)
+        self._drop_idle_dataset_locks()
 
     def _lock_is_held(self, job_id: str) -> bool:
         lock = self._job_locks.get(job_id)
